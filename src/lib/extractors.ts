@@ -220,6 +220,7 @@ export function extractKeywords(text: string): string[] {
         .toLowerCase()
         .replace(/[^a-z0-9_/.-]+/g, " ")
         .split(/\s+/)
+        .map((word) => word.replace(/^[._/-]+|[._/-]+$/g, ""))
         .filter((word) => word.length > 2 && !STOP_WORDS.has(word))
         .slice(0, 12)
     )

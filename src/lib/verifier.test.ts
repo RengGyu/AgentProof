@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 import type { PullRequestInput } from "./types";
 
@@ -45,6 +46,13 @@ describe("generateVerificationReport", () => {
     expect(report.testing.missingTests).toHaveLength(1);
     expect(report.requirements[0]?.status).toBe("partial");
     expect(report.requirements[0]?.gaps.join(" ")).toContain("asks for tests");
+  });
+
+  it("recognizes demo test evidence for the invalid email acceptance criterion", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+
+    expect(report.requirements[2]?.requirementText).toBe("add tests for invalid email");
+    expect(report.requirements[2]?.status).toBe("met");
   });
 
   it("does not mark a requirement met from one broad keyword in a diff", () => {
