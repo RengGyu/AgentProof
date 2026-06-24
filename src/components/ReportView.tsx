@@ -111,7 +111,10 @@ export function ReportView({ report }: ReportViewProps) {
 
       setPostedCommentUrl(json.url);
       setCommentToken("");
-      setActionMessage({ tone: "success", text: `GitHub comment ${json.action}.` });
+      setActionMessage({
+        tone: "success",
+        text: json.warning ? `GitHub comment ${json.action}. ${json.warning}` : `GitHub comment ${json.action}.`
+      });
     } catch (error) {
       setActionMessage({
         tone: "error",

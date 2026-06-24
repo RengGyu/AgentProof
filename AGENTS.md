@@ -19,3 +19,11 @@ AgentProof is not a generic AI code review tool. Preserve the product position: 
 - Feed LLMs normalized evidence, not large raw source dumps.
 - Validate schema boundaries before rendering or storing reports.
 - Tests should cover schema stability, parsers, privacy redaction, and report rendering.
+
+## Collaboration Workflow
+
+- For each non-trivial AgentProof work item, start a fresh Codex thread with the concrete objective, roadmap phase, acceptance criteria, expected files, and privacy/security boundaries.
+- Use sub-agents to reduce confirmation bias. Assign distinct roles such as implementation driver, skeptical reviewer, evidence/provenance auditor, UX/docs reviewer, or test-gap finder.
+- Keep sub-agent scopes disjoint when they edit code. Make each role state what evidence it checked and what remains uncertain.
+- The main thread owns integration. Resolve disagreements by deterministic evidence first: file contents, tests, typecheck, build output, GitHub/API responses, and explicit report provenance.
+- Do not accept a sub-agent conclusion as verified unless it cites concrete evidence. If agents disagree or evidence is weak, mark the result as `unclear` or create a follow-up ticket.

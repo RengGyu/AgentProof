@@ -32,6 +32,7 @@ export interface PostGitHubCommentRequest {
 export interface PostGitHubCommentResponse {
   action: "created" | "updated";
   url: string;
+  warning?: string;
 }
 
 export type DemoScenarioId =

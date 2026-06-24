@@ -239,6 +239,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
                 <Trash2 size={14} />
               </button>
             </div>
+            <p className="muted small">Summary-only reports stored in this browser.</p>
             {history.length > 0 ? (
               <ul className="history-list">
                 {history.map((item) => (

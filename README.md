@@ -1,6 +1,8 @@
 # AgentProof
 
-AgentProof is an evidence-based verifier for AI-generated pull requests. It is deliberately not a generic AI code reviewer: it maps the original task to acceptance criteria, checks whether a PR has evidence for each criterion, highlights weak tests and scope creep, and produces a short re-prompt for the coding agent.
+AgentProof creates evidence-based verification reports for AI-generated pull requests. It answers: "Is there enough evidence that this agent-authored PR satisfies the original request?"
+
+It is deliberately not a generic AI code reviewer. AgentProof maps the original issue, task, or prompt to acceptance criteria, checks whether the PR has evidence for each criterion, highlights weak tests and scope creep, and produces a short re-prompt for the coding agent. It supports human merge decisions; it does not replace them.
 
 ## MVP
 
@@ -11,7 +13,7 @@ AgentProof is an evidence-based verifier for AI-generated pull requests. It is d
 - Review priority map
 - 30-second reviewer card and detailed report
 - Demo mode with realistic sample data
-- Local-only recent report history
+- Summary-only recent report history in the browser
 - Summary-only share links
 - Short-lived summary-only saved report API
 - Optional GitHub PR comment posting with a one-time write token
@@ -47,11 +49,11 @@ Optional server integrations are off by default:
 - `SLACK_WEBHOOK_URL`, `AGENTPROOF_NOTIFY_TOKEN`: enables summary-only Slack notifications from trusted internal callers.
 - `OPENAI_API_KEY`, `AGENTPROOF_LLM_TOKEN`, optional `OPENAI_MODEL`: enables the structured-output verifier adapter. Missing or invalid output falls back to the deterministic report.
 
-Short-lived saved reports use in-memory storage and are summary-only. This is suitable for local demos, but not durable on serverless deployments. Production sharing needs Postgres/Supabase, ownership/auth, encryption, and retention policy.
+Browser recent history, portable share links, Slack payloads, and short-lived saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, and raw re-prompt text. Full Markdown export remains an explicit user action.
+
+Short-lived saved reports use in-memory storage. This is suitable for local demos, but not durable on serverless deployments. Production sharing needs Postgres/Supabase, ownership/auth, encryption, and retention policy.
 
 ## Product Position
-
-AgentProof answers: "Is there enough evidence that this agent-authored PR satisfies the original request?"
 
 It avoids:
 
@@ -70,7 +72,7 @@ It avoids:
 - `src/lib/report-validation.ts`: runtime report validation and evidence-ref integrity checks
 - `src/lib/report-share.ts`: summary-only portable share links
 - `src/lib/server-report-store.ts`: short-lived summary-only saved report store
-- `src/lib/report-history.ts`: browser-local recent report history
+- `src/lib/report-history.ts`: browser-local summary-only recent report history
 - `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
 - `src/lib/openai-verifier.ts`: optional OpenAI Responses API structured-output adapter
 - `src/lib/github-app.ts`: GitHub App webhook signature/config helpers
@@ -96,7 +98,7 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
-For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`.
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
 
 ## Deployed Demo
 

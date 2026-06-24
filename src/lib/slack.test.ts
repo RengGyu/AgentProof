@@ -6,10 +6,17 @@ import { generateVerificationReport } from "./verifier";
 describe("slack helpers", () => {
   it("formats summary-only payloads", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.claims.push({
+      id: "claim_raw",
+      text: "Added raw claim that should not leave the report boundary.",
+      evidenceRefs: [],
+      supported: false
+    });
     const payloadText = JSON.stringify(reportToSlackPayload(report, "https://agentproof.example/reports/1"));
 
     expect(payloadText).not.toContain("Patch excerpt");
     expect(payloadText).not.toContain(report.reprompt.prompt);
+    expect(payloadText).not.toContain("Added raw claim");
     expect(payloadText).toContain("summary report");
   });
 

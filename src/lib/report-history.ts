@@ -1,4 +1,5 @@
 import type { VerificationReport } from "./types";
+import { sanitizeReportForShare } from "./report-share";
 
 export interface StoredReport {
   id: string;
@@ -16,14 +17,20 @@ const MAX_REPORT_BYTES = 180_000;
 export function readReportHistory(storage: Storage): StoredReport[] {
   try {
     const raw = storage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as StoredReport[]) : [];
+    return raw
+      ? (JSON.parse(raw) as StoredReport[]).map((item) => ({
+          ...item,
+          report: sanitizeReportForShare(item.report)
+        }))
+      : [];
   } catch {
     return [];
   }
 }
 
 export function saveReportToHistory(storage: Storage, report: VerificationReport): StoredReport[] {
-  const serialized = JSON.stringify(report);
+  const safeReport = sanitizeReportForShare(report);
+  const serialized = JSON.stringify(safeReport);
 
   if (new TextEncoder().encode(serialized).length > MAX_REPORT_BYTES) {
     throw new Error("Report is too large for browser history. Use Download instead.");
@@ -37,7 +44,7 @@ export function saveReportToHistory(storage: Storage, report: VerificationReport
       title: report.source.title,
       priority: report.summary.priority,
       evidenceCoverage: report.summary.evidenceCoverage,
-      report
+      report: safeReport
     },
     ...current
   ].slice(0, MAX_HISTORY_ITEMS);

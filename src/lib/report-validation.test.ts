@@ -21,4 +21,54 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("ev_missing");
     expect(result.errors.join("\n")).toContain("summary.confidence");
   });
+
+  it("rejects missing nested fields and unknown report properties", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    delete (report.summary as Partial<typeof report.summary>).oneLine;
+    (report as unknown as Record<string, unknown>).rawDiff = "hidden raw diff";
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("summary.oneLine is required");
+    expect(result.errors.join("\n")).toContain("report.rawDiff is not allowed");
+  });
+
+  it("rejects non-object array items and invalid enum values", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.requirements = ["not a requirement"] as never;
+    report.testing.ciStatus = "green" as never;
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("requirements[0] must be an object");
+    expect(result.errors.join("\n")).toContain("testing.ciStatus is invalid");
+  });
+
+  it("rejects oversized strings and arrays", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.summary.topRisks = Array.from({ length: 21 }, (_, index) => `risk ${index}`);
+    report.evidenceIndex[0].summary = "x".repeat(3001);
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("summary.topRisks must contain at most 20 items");
+    expect(result.errors.join("\n")).toContain("evidenceIndex[0].summary must be at most 3000 characters");
+  });
+
+  it("rejects malformed nested objects without throwing", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    (report as unknown as Record<string, unknown>).testing = "failed";
+    (report as unknown as Record<string, unknown>).reprompt = null;
+    (report as unknown as Record<string, unknown>).evidenceIndex = [null];
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("testing must be an object");
+    expect(result.errors.join("\n")).toContain("reprompt must be an object");
+    expect(result.errors.join("\n")).toContain("evidenceIndex[0] must be an object");
+  });
 });

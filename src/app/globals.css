@@ -452,6 +452,10 @@ button {
   margin-bottom: 8px;
 }
 
+.history-block > .muted.small {
+  margin: 0 0 8px;
+}
+
 .history-head h3 {
   display: inline-flex;
   align-items: center;

@@ -4,8 +4,25 @@ import { redactSecrets } from "./redact";
 
 describe("redaction", () => {
   it("redacts common token-like secrets", () => {
-    expect(redactSecrets("token=github_pat_abcdefghijklmnopqrstuvwxyz123456")).toContain("[redacted]");
-    expect(redactSecrets("api_key=sk-abcdefghijklmnopqrstuvwxyz123456")).toContain("[redacted]");
+    const input = [
+      "token=github_pat_abcdefghijklmnopqrstuvwxyz123456",
+      "gho_abcdefghijklmnopqrstuvwxyz123456",
+      "api_key=sk-abcdefghijklmnopqrstuvwxyz123456",
+      "https://hooks.slack.com/services/T000/B000/abcdefghijklmnopqrstuvwxyz",
+      "Authorization: Bearer abcdefghijklmnopqrstuvwxyz.1234567890",
+      "AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP",
+      "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----"
+    ].join("\n");
+    const redacted = redactSecrets(input);
+
+    expect(redacted).toContain("[redacted]");
+    expect(redacted).not.toContain("github_pat_");
+    expect(redacted).not.toContain("gho_");
+    expect(redacted).not.toContain("sk-");
+    expect(redacted).not.toContain("hooks.slack.com/services");
+    expect(redacted).not.toContain("Bearer abc");
+    expect(redacted).not.toContain("AKIA");
+    expect(redacted).not.toContain("BEGIN PRIVATE KEY");
   });
 
   it("redacts secrets before requirement and claim extraction", () => {
