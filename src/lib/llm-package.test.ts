@@ -12,6 +12,8 @@ describe("buildLlmVerifierPackage", () => {
     expect(pkg.schema.name).toBe("agentproof_verification_report");
     expect(pkg.input.evidenceIndex).toEqual(report.evidenceIndex);
     expect(pkg.input.deterministicReport.analysisId).toBe(report.analysisId);
+    expect(JSON.stringify(pkg.schema.schema.properties.scope)).toContain('"evidenceRefs"');
+    expect(JSON.stringify(pkg.schema.schema.properties.reviewPriority)).toContain('"evidenceRefs"');
     expect(JSON.stringify(pkg)).not.toContain("githubToken");
   });
 });

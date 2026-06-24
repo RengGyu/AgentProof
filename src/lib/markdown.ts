@@ -4,6 +4,7 @@ export const AGENTPROOF_COMMENT_MARKER = "<!-- agentproof:evidence-check:v1 -->"
 const MAX_GITHUB_COMMENT_LENGTH = 12_000;
 
 export function reportToMarkdown(report: VerificationReport): string {
+  const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const lines = [
     `# AgentProof Evidence Report`,
     "",
@@ -23,7 +24,7 @@ export function reportToMarkdown(report: VerificationReport): string {
       `- **${requirement.status.toUpperCase()}** ${requirement.requirementText}`,
       requirement.reviewerNote ? `  - Reviewer note: ${requirement.reviewerNote}` : undefined,
       requirement.gaps.length > 0 ? `  - Gaps: ${requirement.gaps.join("; ")}` : undefined,
-      requirement.evidenceRefs.length > 0 ? `  - Evidence: ${requirement.evidenceRefs.join(", ")}` : undefined
+      ...evidenceLines(requirement.evidenceRefs, evidenceById, "  ")
     ]),
     "",
     `## Top Risks`,
@@ -33,7 +34,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     `## Scope`,
     "",
     report.scope.suspected
-      ? report.scope.reasons.map((reason) => `- ${reason}`).join("\n")
+      ? [...report.scope.reasons.map((reason) => `- ${reason}`), ...evidenceLines(report.scope.evidenceRefs ?? [], evidenceById)].join("\n")
       : "- No out-of-scope file cluster found from available evidence.",
     "",
     `## Testing`,
@@ -41,11 +42,17 @@ export function reportToMarkdown(report: VerificationReport): string {
     `- CI: ${report.testing.ciStatus}`,
     `- Lint: ${report.testing.lintStatus}`,
     `- Typecheck: ${report.testing.typecheckStatus}`,
-    ...report.testing.missingTests.map((item) => `- Missing test evidence for \`${item.path}\`: ${item.why}`),
+    ...report.testing.missingTests.flatMap((item) => [
+      `- Missing test evidence for \`${item.path}\`: ${item.why}`,
+      ...evidenceLines(item.evidenceRefs, evidenceById, "  ")
+    ]),
     "",
     `## Review Priority`,
     "",
-    ...report.reviewPriority.map((item) => `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}`),
+    ...report.reviewPriority.flatMap((item) => [
+      `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}`,
+      ...evidenceLines(item.evidenceRefs ?? [], evidenceById, "  ")
+    ]),
     "",
     `## Re-prompt`,
     "",
@@ -55,7 +62,10 @@ export function reportToMarkdown(report: VerificationReport): string {
     "",
     `## Evidence Index`,
     "",
-    ...report.evidenceIndex.map((item) => `- \`${item.id}\` ${item.kind} / ${item.label}: ${item.summary}`),
+    ...report.evidenceIndex.map(
+      (item) =>
+        `- \`${item.id}\` source=${item.kind}; locator=${item.locator ?? item.label}; confidence=${Math.round(item.confidence * 100)}%; text=${item.summary}`
+    ),
     "",
     `## Limitations`,
     "",
@@ -69,19 +79,31 @@ export function reportToGitHubComment(
   report: VerificationReport,
   options: { includeReprompt?: boolean; includeMarker?: boolean } = {}
 ): string {
+  const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const requirementLines = report.requirements.slice(0, 8).map((requirement) => {
-    const evidence = requirement.evidenceRefs.length > 0 ? ` Evidence: ${requirement.evidenceRefs.join(", ")}` : "";
+    const evidence = requirement.evidenceRefs.length > 0
+      ? ` Evidence: ${formatEvidenceRefs(requirement.evidenceRefs, evidenceById)}`
+      : "";
     const gaps = requirement.gaps.length > 0 ? ` Gap: ${requirement.gaps.join("; ")}` : "";
 
     return `- **${requirement.status.toUpperCase()}** ${requirement.requirementText}${evidence}${gaps}`;
   });
   const riskLines = report.summary.topRisks.slice(0, 5).map((risk) => `- ${risk}`);
   const priorityLines = report.reviewPriority.slice(0, 5).map(
-    (item) => `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}`
+    (item) =>
+      `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
   );
   const missingTestLines = report.testing.missingTests.slice(0, 5).map(
-    (item) => `- \`${item.path}\`: ${item.why}`
+    (item) => `- \`${item.path}\`: ${item.why}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
   );
+  const scopeLines = report.scope.suspected
+    ? [
+        ...report.scope.reasons.slice(0, 5).map((reason) => `- ${reason}`),
+        ...(report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0
+          ? [`- Evidence: ${formatEvidenceRefs(report.scope.evidenceRefs, evidenceById)}`]
+          : [])
+      ]
+    : ["- No out-of-scope file cluster found from available evidence."];
 
   const lines = [
     options.includeMarker === false ? undefined : AGENTPROOF_COMMENT_MARKER,
@@ -98,6 +120,10 @@ export function reportToGitHubComment(
     "### Top Risks",
     "",
     ...(riskLines.length > 0 ? riskLines : ["- No major risks detected from available evidence."]),
+    "",
+    "### Scope",
+    "",
+    ...scopeLines,
     "",
     "### Review Priority",
     "",
@@ -124,6 +150,51 @@ export function reportToGitHubComment(
   ].filter((line): line is string => typeof line === "string");
 
   return truncateComment(neutralizeGitHubMentions(lines.join("\n")));
+}
+
+function evidenceLines(
+  refs: string[] | undefined,
+  evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>,
+  indent = ""
+): string[] {
+  if (!refs || refs.length === 0) return [];
+
+  return refs.map((ref) => `${indent}- Evidence: ${formatEvidenceRef(ref, evidenceById)}`);
+}
+
+function formatOptionalEvidence(
+  refs: string[] | undefined,
+  evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>
+): string {
+  return refs && refs.length > 0 ? ` Evidence: ${formatEvidenceRefs(refs, evidenceById)}` : "";
+}
+
+function formatEvidenceRefs(
+  refs: string[],
+  evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>
+): string {
+  return refs.map((ref) => formatEvidenceRef(ref, evidenceById, { concise: true })).join("; ");
+}
+
+function formatEvidenceRef(
+  ref: string,
+  evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>,
+  options: { concise?: boolean } = {}
+): string {
+  const evidence = evidenceById.get(ref);
+
+  if (!evidence) {
+    return `${ref} (missing evidence item)`;
+  }
+
+  const locator = evidence.locator ?? evidence.label;
+  const confidence = `${Math.round(evidence.confidence * 100)}%`;
+
+  if (options.concise) {
+    return `${ref} ${evidence.kind} ${locator} ${confidence}`;
+  }
+
+  return `${ref} source=${evidence.kind}; locator=${locator}; confidence=${confidence}; text=${evidence.summary}`;
 }
 
 export function neutralizeGitHubMentions(value: string): string {

@@ -74,9 +74,9 @@ export function validateVerificationReport(report: unknown): ReportValidationRes
   validateSummary(report.summary, errors);
   validateRequirements(report.requirements, evidenceIds, errors);
   validateClaims(report.claims, evidenceIds, errors);
-  validateScope(report.scope, errors);
+  validateScope(report.scope, evidenceIds, errors);
   validateTesting(report.testing, evidenceIds, errors);
-  validateReviewPriority(report.reviewPriority, errors);
+  validateReviewPriority(report.reviewPriority, evidenceIds, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
 
@@ -152,16 +152,19 @@ function validateClaims(value: unknown, evidenceIds: Set<string>, errors: string
   }
 }
 
-function validateScope(value: unknown, errors: string[]) {
+function validateScope(value: unknown, evidenceIds: Set<string>, errors: string[]) {
   if (!isRecord(value)) {
     errors.push("scope must be an object.");
     return;
   }
 
-  requireKeys(value, ["suspected", "outOfScopeFiles", "reasons"], "scope", errors);
+  requireKeys(value, ["suspected", "outOfScopeFiles", "reasons"], "scope", errors, ["evidenceRefs"]);
   validateBoolean(value.suspected, "scope.suspected", errors);
   validateStringArray(value.outOfScopeFiles, "scope.outOfScopeFiles", LIMITS.scopeFiles, LIMITS.sourceUrl, errors);
   validateStringArray(value.reasons, "scope.reasons", LIMITS.scopeFiles, LIMITS.shortText, errors);
+  if (value.evidenceRefs !== undefined) {
+    validateEvidenceRefs(value.evidenceRefs, "scope.evidenceRefs", evidenceIds, errors);
+  }
 }
 
 function validateTesting(value: unknown, evidenceIds: Set<string>, errors: string[]) {
@@ -192,7 +195,7 @@ function validateTesting(value: unknown, evidenceIds: Set<string>, errors: strin
   }
 }
 
-function validateReviewPriority(value: unknown, errors: string[]) {
+function validateReviewPriority(value: unknown, evidenceIds: Set<string>, errors: string[]) {
   const items = validateArray(value, "reviewPriority", LIMITS.reviewPriority, errors);
   if (!items) return;
 
@@ -203,10 +206,13 @@ function validateReviewPriority(value: unknown, errors: string[]) {
       continue;
     }
 
-    requireKeys(item, ["path", "reason", "priority"], path, errors);
+    requireKeys(item, ["path", "reason", "priority"], path, errors, ["evidenceRefs"]);
     validateString(item.path, `${path}.path`, LIMITS.sourceUrl, errors);
     validateString(item.reason, `${path}.reason`, LIMITS.shortText, errors);
     validateEnum(item.priority, `${path}.priority`, PRIORITIES, errors);
+    if (item.evidenceRefs !== undefined) {
+      validateEvidenceRefs(item.evidenceRefs, `${path}.evidenceRefs`, evidenceIds, errors);
+    }
   }
 }
 

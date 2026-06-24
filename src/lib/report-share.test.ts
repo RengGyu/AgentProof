@@ -14,7 +14,10 @@ describe("report share", () => {
     expect(shared.evidenceIndex).toHaveLength(0);
     expect(shared.claims).toHaveLength(0);
     expect(shared.reprompt.prompt).not.toContain("Explain or revert");
+    expect(shared.testing.missingTests.every((item) => item.evidenceRefs.length === 0)).toBe(true);
+    expect(shared.reviewPriority.every((item) => !item.evidenceRefs || item.evidenceRefs.length === 0)).toBe(true);
     expect(JSON.stringify(shared)).not.toContain("Patch excerpt");
+    expect(JSON.stringify(shared)).not.toContain("ev_");
   });
 
   it("builds a portable share URL", () => {

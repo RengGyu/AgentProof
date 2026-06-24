@@ -49,8 +49,19 @@ function toShareableReport(report: VerificationReport): ShareableReport {
       reviewerNote: requirement.reviewerNote,
       confidence: requirement.confidence
     })),
-    testing: report.testing,
-    reviewPriority: report.reviewPriority,
+    testing: {
+      ...report.testing,
+      missingTests: report.testing.missingTests.map((item) => ({
+        path: item.path,
+        why: item.why,
+        evidenceRefs: []
+      }))
+    },
+    reviewPriority: report.reviewPriority.map((item) => ({
+      path: item.path,
+      reason: item.reason,
+      priority: item.priority
+    })),
     limitations: [
       ...report.limitations,
       "Shared report omits raw evidence, patch/log excerpts, claims, and re-prompt text."
@@ -74,7 +85,13 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
       outOfScopeFiles: [],
       reasons: shared.summary.topRisks.filter((risk) => /scope/i.test(risk))
     },
-    testing: shared.testing,
+    testing: {
+      ...shared.testing,
+      missingTests: shared.testing.missingTests.map((item) => ({
+        ...item,
+        evidenceRefs: []
+      }))
+    },
     reviewPriority: shared.reviewPriority,
     reprompt: {
       targetAgent: "codex",

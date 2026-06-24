@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
-import type { PullRequestInput } from "./types";
+import type { PullRequestInput, VerificationReport } from "./types";
 
 describe("generateVerificationReport", () => {
   it("does not mark a requirement met from a filename-only match", () => {
@@ -99,4 +99,67 @@ describe("generateVerificationReport", () => {
     expect(report.summary.priority).toBe("blocker");
     expect(report.requirements[0]?.gaps.join(" ")).toContain("failing check");
   });
+
+  it("keeps generated findings tied to evidence refs or explicit gaps", () => {
+    for (const input of Object.values(demoScenarios)) {
+      const report = generateVerificationReport(input);
+
+      for (const requirement of report.requirements) {
+        expect(requirement.evidenceRefs.length > 0 || requirement.gaps.length > 0).toBe(true);
+        expectRefsResolve(report, requirement.evidenceRefs);
+      }
+
+      for (const missingTest of report.testing.missingTests) {
+        expect(missingTest.evidenceRefs.length).toBeGreaterThan(0);
+        expectRefsResolve(report, missingTest.evidenceRefs);
+      }
+
+      if (report.scope.suspected) {
+        expect(report.scope.evidenceRefs?.length ?? 0).toBeGreaterThan(0);
+        expectRefsResolve(report, report.scope.evidenceRefs ?? []);
+      }
+
+      for (const priority of report.reviewPriority) {
+        expect(priority.evidenceRefs?.length ?? 0).toBeGreaterThan(0);
+        expectRefsResolve(report, priority.evidenceRefs ?? []);
+      }
+    }
+  });
+
+  it("cites changed-file evidence for scope creep and missing-test findings", () => {
+    const scopeReport = generateVerificationReport(demoScenarios["scope-creep"]);
+    const scopeEvidence = refsToEvidence(scopeReport, scopeReport.scope.evidenceRefs ?? []);
+
+    expect(scopeEvidence.map((item) => item.locator)).toEqual(
+      expect.arrayContaining(["src/server/auth/sessionExpiry.ts", "src/server/auth/permissions.ts"])
+    );
+
+    const missingTestReport = generateVerificationReport(demoScenarios["missing-tests"]);
+    const missingTest = missingTestReport.testing.missingTests[0];
+    const missingEvidence = refsToEvidence(missingTestReport, missingTest?.evidenceRefs ?? []);
+
+    expect(missingTest?.path).toBe("src/features/auth/PasswordResetForm.tsx");
+    expect(missingEvidence.some((item) => item.locator === missingTest?.path)).toBe(true);
+  });
 });
+
+function expectRefsResolve(report: VerificationReport, refs: string[]) {
+  const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
+
+  for (const ref of refs) {
+    const evidence = evidenceById.get(ref);
+
+    expect(evidence, `Expected ${ref} to resolve`).toBeDefined();
+    expect(evidence?.kind).toBeTruthy();
+    expect(evidence?.summary.length).toBeGreaterThan(0);
+    expect(evidence?.summary.length).toBeLessThanOrEqual(3000);
+    expect(typeof evidence?.confidence).toBe("number");
+    expect(evidence?.locator ?? evidence?.label).toBeTruthy();
+  }
+}
+
+function refsToEvidence(report: VerificationReport, refs: string[]) {
+  const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
+
+  return refs.map((ref) => evidenceById.get(ref)).filter((item): item is VerificationReport["evidenceIndex"][number] => Boolean(item));
+}

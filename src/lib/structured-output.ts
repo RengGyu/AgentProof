@@ -84,7 +84,8 @@ export const verificationReportSchema = {
         properties: {
           suspected: { type: "boolean" },
           outOfScopeFiles: { type: "array", maxItems: 100, items: { type: "string", maxLength: 500 } },
-          reasons: { type: "array", maxItems: 100, items: { type: "string", maxLength: 600 } }
+          reasons: { type: "array", maxItems: 100, items: { type: "string", maxLength: 600 } },
+          evidenceRefs: { type: "array", maxItems: 50, items: { type: "string", maxLength: 600 } }
         }
       },
       testing: {
@@ -121,7 +122,8 @@ export const verificationReportSchema = {
           properties: {
             path: { type: "string", maxLength: 500 },
             reason: { type: "string", maxLength: 600 },
-            priority: { type: "string", enum: ["low", "medium", "high", "blocker"] }
+            priority: { type: "string", enum: ["low", "medium", "high", "blocker"] },
+            evidenceRefs: { type: "array", maxItems: 50, items: { type: "string", maxLength: 600 } }
           }
         }
       },

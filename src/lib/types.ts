@@ -115,6 +115,7 @@ export interface ScopeFinding {
   suspected: boolean;
   outOfScopeFiles: string[];
   reasons: string[];
+  evidenceRefs?: string[];
 }
 
 export interface MissingTestFinding {
@@ -127,6 +128,7 @@ export interface ReviewPriorityItem {
   path: string;
   reason: string;
   priority: PriorityLevel;
+  evidenceRefs?: string[];
 }
 
 export interface VerificationReport {

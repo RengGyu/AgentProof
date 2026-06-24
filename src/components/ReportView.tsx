@@ -182,24 +182,7 @@ export function ReportView({ report }: ReportViewProps) {
                     </ul>
                   ) : null}
                   {requirement.evidenceRefs.length > 0 ? (
-                    <div className="evidence-ref-block">
-                      <span className="evidence-label">Cited evidence</span>
-                      <ul className="evidence-list compact-list">
-                        {requirement.evidenceRefs.map((ref) => {
-                          const evidence = evidenceById.get(ref);
-
-                          return (
-                            <li key={ref}>
-                              <span className="evidence-label">
-                                {ref}
-                                {evidence ? ` - ${evidence.kind} - ${evidence.label}` : ""}
-                              </span>
-                              {evidence?.summary ?? "Evidence item was not found in this report."}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
+                    <EvidenceRefs refs={requirement.evidenceRefs} evidenceById={evidenceById} />
                   ) : null}
                 </div>
               </div>
@@ -234,6 +217,7 @@ export function ReportView({ report }: ReportViewProps) {
                 <li key={`${item.path}-${item.reason}`}>
                   <span className={`evidence-label priority-${item.priority}`}>{item.priority.toUpperCase()} - {item.path}</span>
                   {item.reason}
+                  <EvidenceRefs refs={item.evidenceRefs} evidenceById={evidenceById} compact />
                 </li>
               ))}
             </ul>
@@ -245,7 +229,7 @@ export function ReportView({ report }: ReportViewProps) {
               {report.evidenceIndex.slice(0, 12).map((item) => (
                 <li key={item.id}>
                   <span className="evidence-label">
-                    {item.id} - {item.kind} - {item.label}
+                    {item.id} - {item.kind} - {item.locator ?? item.label} - {Math.round(item.confidence * 100)}%
                   </span>
                   {item.summary}
                 </li>
@@ -275,6 +259,11 @@ export function ReportView({ report }: ReportViewProps) {
                     <FileWarning size={14} /> {reason}
                   </li>
                 ))}
+                {report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0 ? (
+                  <li>
+                    <EvidenceRefs refs={report.scope.evidenceRefs} evidenceById={evidenceById} compact />
+                  </li>
+                ) : null}
               </ul>
             ) : (
               <p className="muted small">No out-of-scope file cluster found from available evidence.</p>
@@ -288,7 +277,10 @@ export function ReportView({ report }: ReportViewProps) {
               <li>Lint: {report.testing.lintStatus}</li>
               <li>Typecheck: {report.testing.typecheckStatus}</li>
               {report.testing.missingTests.map((item) => (
-                <li key={item.path}>{item.path}: {item.why}</li>
+                <li key={item.path}>
+                  {item.path}: {item.why}
+                  <EvidenceRefs refs={item.evidenceRefs} evidenceById={evidenceById} compact />
+                </li>
               ))}
             </ul>
           </div>
@@ -380,6 +372,41 @@ function StatusChip({ status }: { status: RequirementStatus }) {
       <ClipboardList size={14} />
       {status.toUpperCase()}
     </span>
+  );
+}
+
+function EvidenceRefs({
+  refs,
+  evidenceById,
+  compact = false
+}: {
+  refs?: string[];
+  evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>;
+  compact?: boolean;
+}) {
+  if (!refs || refs.length === 0) return null;
+
+  return (
+    <div className="evidence-ref-block">
+      <span className="evidence-label">Cited evidence</span>
+      <ul className={`evidence-list${compact ? " compact-list" : ""}`}>
+        {refs.map((ref) => {
+          const evidence = evidenceById.get(ref);
+
+          return (
+            <li key={ref}>
+              <span className="evidence-label">
+                {ref}
+                {evidence
+                  ? ` - ${evidence.kind} - ${evidence.locator ?? evidence.label} - ${Math.round(evidence.confidence * 100)}%`
+                  : ""}
+              </span>
+              {evidence?.summary ?? "Evidence item was not found in this report."}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

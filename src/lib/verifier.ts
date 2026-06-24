@@ -30,12 +30,12 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const requirementFindings = requirements.map((requirement) =>
     evaluateRequirement(requirement, evidenceIndex, input)
   );
-  const scope = detectScopeCreep(requirements, input.changedFiles);
+  const scope = detectScopeCreep(requirements, input.changedFiles, evidenceIndex);
   const missingTests = detectMissingTests(input, evidenceIndex);
   const ciStatus = aggregateStatus(input.checks, input.logs);
   const lintStatus = statusForCheck(input.checks, /lint/i);
   const typecheckStatus = statusForCheck(input.checks, /type(check|script)/i);
-  const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
+  const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex);
   const priority = highestPriority(reviewPriority);
   const evidenceCoverage = computeEvidenceCoverage(requirementFindings, input.changedFiles.length);
   const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
@@ -64,7 +64,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     scope: {
       suspected: scope.outOfScopeFiles.length > 0,
       outOfScopeFiles: scope.outOfScopeFiles,
-      reasons: scope.reasons
+      reasons: scope.reasons,
+      evidenceRefs: scope.evidenceRefs
     },
     testing: {
       ciStatus,
@@ -88,11 +89,13 @@ function evaluateRequirement(
   input: PullRequestInput
 ): RequirementFinding {
   if (requirement.keywords.length === 0) {
+    const refs = sourceEvidenceRefs(evidenceIndex);
+
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "unclear",
-      evidenceRefs: [],
+      evidenceRefs: refs,
       gaps: ["The task is too vague to map to concrete PR evidence."],
       reviewerNote: "Ask for explicit acceptance criteria before trusting this result.",
       confidence: 0.25
@@ -238,7 +241,11 @@ const WEAK_SINGLE_MATCH_KEYWORDS = new Set([
   "user"
 ]);
 
-function detectScopeCreep(requirements: Requirement[], files: PullRequestInput["changedFiles"]) {
+function detectScopeCreep(
+  requirements: Requirement[],
+  files: PullRequestInput["changedFiles"],
+  evidenceIndex: EvidenceItem[]
+) {
   const requirementKeywords = new Set(requirements.flatMap((requirement) => requirement.keywords));
   const outOfScopeFiles = files
     .filter((file) => !isTestFile(file.path))
@@ -258,6 +265,7 @@ function detectScopeCreep(requirements: Requirement[], files: PullRequestInput["
 
   return {
     outOfScopeFiles,
+    evidenceRefs: uniqueRefs(outOfScopeFiles.flatMap((path) => evidenceRefsForPath(evidenceIndex, path))),
     reasons: outOfScopeFiles.map((path) =>
       isRiskFile(path)
         ? `${path} is risk-sensitive and does not clearly map to the stated criteria.`
@@ -284,7 +292,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
     why: hasTestFileChange
       ? "A test file changed, but no passing test check was provided."
       : "Behavior-affecting file changed without matching test-file evidence.",
-    evidenceRefs: testEvidenceRefs
+    evidenceRefs: uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5)
   }));
 }
 
@@ -293,15 +301,20 @@ function buildReviewPriority(
   requirements: RequirementFinding[],
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
-  ciStatus: CheckStatus
+  ciStatus: CheckStatus,
+  evidenceIndex: EvidenceItem[]
 ): ReviewPriorityItem[] {
   const items: ReviewPriorityItem[] = [];
+  const sourceRefs = sourceEvidenceRefs(evidenceIndex);
 
   if (ciStatus === "failed") {
     items.push({
       path: "CI checks",
       reason: "At least one check failed; requirement satisfaction is not proven.",
-      priority: "blocker"
+      priority: "blocker",
+      evidenceRefs: evidenceIndex
+        .filter((item) => (item.kind === "check" || item.kind === "log") && /\bfailed\b/i.test(item.summary))
+        .map((item) => item.id)
     });
   }
 
@@ -313,7 +326,8 @@ function buildReviewPriority(
     items.push({
       path: "Requirement evidence",
       reason: `${missingRequirements.length} requirement(s) have no matching implementation evidence.`,
-      priority: "high"
+      priority: "high",
+      evidenceRefs: refsForFindings(missingRequirements, sourceRefs)
     });
   }
 
@@ -321,7 +335,8 @@ function buildReviewPriority(
     items.push({
       path: "Requirement evidence",
       reason: `${unclearRequirements.length} requirement(s) need human interpretation before trusting the report.`,
-      priority: "medium"
+      priority: "medium",
+      evidenceRefs: refsForFindings(unclearRequirements, sourceRefs)
     });
   }
 
@@ -329,7 +344,8 @@ function buildReviewPriority(
     items.push({
       path: "Requirement evidence",
       reason: `${partialRequirements.length} requirement(s) have only partial evidence.`,
-      priority: "medium"
+      priority: "medium",
+      evidenceRefs: refsForFindings(partialRequirements, sourceRefs)
     });
   }
 
@@ -339,7 +355,8 @@ function buildReviewPriority(
       reason: isRiskFile(path)
         ? "Risk-sensitive file appears outside the stated requirement."
         : "Changed file does not clearly map to acceptance criteria.",
-      priority: isRiskFile(path) ? "high" : "medium"
+      priority: isRiskFile(path) ? "high" : "medium",
+      evidenceRefs: evidenceRefsForPath(evidenceIndex, path)
     });
   }
 
@@ -347,7 +364,8 @@ function buildReviewPriority(
     items.push({
       path: missing.path,
       reason: missing.why,
-      priority: isRiskFile(missing.path) ? "high" : "medium"
+      priority: isRiskFile(missing.path) ? "high" : "medium",
+      evidenceRefs: missing.evidenceRefs
     });
   }
 
@@ -356,7 +374,8 @@ function buildReviewPriority(
       items.push({
         path: file.path,
         reason: "Risk-sensitive path changed; verify manually even if other evidence passes.",
-        priority: "high"
+        priority: "high",
+        evidenceRefs: evidenceRefsForPath(evidenceIndex, file.path)
       });
     }
   }
@@ -365,11 +384,37 @@ function buildReviewPriority(
     items.push({
       path: "Changed files",
       reason: "No blocker found from deterministic evidence; spot-check requirement mapping.",
-      priority: "low"
+      priority: "low",
+      evidenceRefs: evidenceIndex
+        .filter((item) => item.kind === "changed_file" || item.kind === "diff" || item.kind === "test")
+        .map((item) => item.id)
+        .slice(0, 5)
     });
   }
 
   return items;
+}
+
+function evidenceRefsForPath(evidenceIndex: EvidenceItem[], path: string): string[] {
+  return evidenceIndex
+    .filter((item) => item.locator === path || item.label === path)
+    .map((item) => item.id);
+}
+
+function sourceEvidenceRefs(evidenceIndex: EvidenceItem[]): string[] {
+  return evidenceIndex
+    .filter((item) => item.kind === "task" || item.kind === "pr_description")
+    .map((item) => item.id)
+    .slice(0, 2);
+}
+
+function refsForFindings(findings: RequirementFinding[], fallbackRefs: string[]): string[] {
+  const refs = uniqueRefs(findings.flatMap((finding) => finding.evidenceRefs));
+  return (refs.length > 0 ? refs : fallbackRefs).slice(0, 5);
+}
+
+function uniqueRefs(refs: string[]): string[] {
+  return Array.from(new Set(refs));
 }
 
 function buildReprompt(

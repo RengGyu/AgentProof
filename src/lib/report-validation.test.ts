@@ -22,6 +22,18 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("summary.confidence");
   });
 
+  it("rejects missing scope and review-priority evidence references", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.scope.evidenceRefs = ["ev_missing_scope"];
+    report.reviewPriority[0].evidenceRefs = ["ev_missing_priority"];
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("scope.evidenceRefs cites missing evidence ev_missing_scope");
+    expect(result.errors.join("\n")).toContain("reviewPriority[0].evidenceRefs cites missing evidence ev_missing_priority");
+  });
+
   it("rejects missing nested fields and unknown report properties", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     delete (report.summary as Partial<typeof report.summary>).oneLine;
