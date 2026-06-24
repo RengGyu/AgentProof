@@ -7,6 +7,7 @@ import type {
   Requirement
 } from "./types";
 import { compactText } from "./redact";
+import { redactSecrets } from "./redact";
 
 const STOP_WORDS = new Set([
   "the",
@@ -19,6 +20,16 @@ const STOP_WORDS = new Set([
   "should",
   "must",
   "add",
+  "added",
+  "implemented",
+  "fixed",
+  "updated",
+  "created",
+  "changed",
+  "removed",
+  "validated",
+  "tested",
+  "cleaned",
   "user",
   "users",
   "flow",
@@ -38,7 +49,7 @@ const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|\/tests?\/|test_|_test\.
 const RISK_FILE_PATTERN = /(auth|permission|billing|payment|migration|schema|infra|session|security|token|secret|admin)/i;
 
 export function extractRequirements(taskText: string, prDescription: string): Requirement[] {
-  const sourceText = taskText.trim() || prDescription.trim();
+  const sourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
   const explicit = sourceText.match(/acceptance criteria:?([\s\S]*)/i)?.[1] ?? sourceText;
   const candidateLines = explicit
     .split(/\n|;|(?<=\.)\s+|(?:^|\s)(?:-|\*|\d+\.)\s+/)
@@ -72,26 +83,58 @@ export function extractRequirements(taskText: string, prDescription: string): Re
 }
 
 export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem[]): AgentClaim[] {
-  const sentences = prDescription
+  const sentences = redactSecrets(prDescription)
     .split(/(?<=\.)\s+|\n/)
     .map((line) => line.trim())
     .filter((line) => /\b(added|implemented|fixed|updated|created|changed|removed|validated|tested)\b/i.test(line))
+    .flatMap(expandClaimClauses)
     .slice(0, 6);
 
   return sentences.map((text, index) => {
     const keywords = extractKeywords(text);
+    const independentEvidence = evidenceIndex.filter((item) => item.kind !== "task" && item.kind !== "pr_description");
     const evidenceRefs = evidenceIndex
+      .filter((item) => item.kind !== "task" && item.kind !== "pr_description")
       .filter((item) => keywords.some((keyword) => item.summary.toLowerCase().includes(keyword)))
       .slice(0, 3)
       .map((item) => item.id);
+    const supportedKeywordCount = keywords.filter((keyword) =>
+      independentEvidence.some((item) => item.summary.toLowerCase().includes(keyword))
+    ).length;
+    const supportRatio = keywords.length === 0 ? 0 : supportedKeywordCount / keywords.length;
 
     return {
       id: `claim_${index + 1}`,
       text: normalizeSentence(text),
       evidenceRefs,
-      supported: evidenceRefs.length > 0
+      supported: evidenceRefs.length > 0 && supportRatio >= 0.5
     };
   });
+}
+
+function expandClaimClauses(sentence: string): string[] {
+  const match = sentence.match(/^\s*(added|implemented|fixed|updated|created|changed|removed|validated|tested)\s+(.+)$/i);
+
+  if (!match) {
+    return [sentence];
+  }
+
+  const verb = match[1];
+  const rest = match[2].replace(/\.$/, "");
+  const clauses = rest
+    .split(/,\s*(?:and\s+)?|\s+and\s+/i)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 4);
+
+  if (clauses.length <= 1) {
+    return [sentence];
+  }
+
+  return clauses.map((clause) =>
+    /^(added|implemented|fixed|updated|created|changed|removed|validated|tested|cleaned)\b/i.test(clause)
+      ? clause
+      : `${verb} ${clause}`
+  );
 }
 
 export function buildEvidenceIndex(
@@ -132,12 +175,14 @@ export function buildEvidenceIndex(
     const testSignal = isTestFile(file.path) ? " Test evidence file." : "";
     const riskSignal = isRiskFile(file.path) ? " Risk-sensitive path." : "";
 
+    const patchSummary = file.patch ? ` Patch excerpt: ${compactText(file.patch, 500)}` : "";
+
     items.push({
       id: `ev_${items.length + 1}`,
-      kind: isTestFile(file.path) ? "test" : "changed_file",
+      kind: file.patch ? "diff" : isTestFile(file.path) ? "test" : "changed_file",
       label: file.path,
       locator: file.path,
-      summary: `${status}${file.path}${stats}.${testSignal}${riskSignal}`.trim(),
+      summary: `${status}${file.path}${stats}.${testSignal}${riskSignal}${patchSummary}`.trim(),
       confidence: 0.85
     });
   }

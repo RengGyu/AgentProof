@@ -108,12 +108,18 @@ function evaluateRequirement(
 
   const hasImplementationEvidence = refs.some((ref) => {
     const item = evidenceIndex.find((evidence) => evidence.id === ref);
-    return item?.kind === "changed_file" || item?.kind === "diff";
+    return item?.kind === "changed_file" || item?.kind === "diff" || item?.kind === "test";
   });
+  const hasDiffEvidence = refs.some((ref) => evidenceIndex.find((item) => item.id === ref)?.kind === "diff");
   const asksForTests = /\b(tests?|coverage|specs?)\b/i.test(requirement.text);
   const hasTestEvidence = refs.some((ref) => {
     const item = evidenceIndex.find((evidence) => evidence.id === ref);
-    return Boolean(item && (item.kind === "test" || /test|spec|passed/i.test(item.summary)));
+    return Boolean(
+      item &&
+        item.kind !== "task" &&
+        item.kind !== "pr_description" &&
+        (item.kind === "test" || /test|spec/i.test(`${item.label} ${item.summary}`))
+    );
   });
   const failedCheck = input.checks.some((check) => check.status === "failed");
 
@@ -153,7 +159,7 @@ function evaluateRequirement(
     };
   }
 
-  if (hasImplementationEvidence && refs.length > 0) {
+  if (hasImplementationEvidence && refs.length > 0 && (hasDiffEvidence || hasTestEvidence)) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -164,6 +170,18 @@ function evaluateRequirement(
         ? "Evidence appears connected to this criterion."
         : "Check the changed code path manually if this behavior is important.",
       confidence: hasTestEvidence ? 0.85 : 0.68
+    };
+  }
+
+  if (hasImplementationEvidence && refs.length > 0) {
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "partial",
+      evidenceRefs: refs.slice(0, 5),
+      gaps: ["A related file changed, but no diff, test, or log evidence proves this criterion."],
+      reviewerNote: "Treat this as a lead for human review, not proof of satisfaction.",
+      confidence: 0.5
     };
   }
 

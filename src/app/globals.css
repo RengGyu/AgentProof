@@ -197,6 +197,12 @@ button {
   font-weight: 700;
 }
 
+.button.compact {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+
 .button.primary {
   flex: 1;
   border-color: var(--strong);
@@ -207,6 +213,12 @@ button {
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .report {
@@ -328,6 +340,14 @@ button {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.compact-list {
+  margin-top: 8px;
+}
+
+.evidence-ref-block {
+  margin-top: 10px;
 }
 
 .evidence-list li,

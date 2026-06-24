@@ -16,9 +16,21 @@ export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
     description:
       "Implemented password reset email format validation, inline error messaging, and tests for invalid and valid reset flows.",
     changedFiles: [
-      { path: "src/features/auth/PasswordResetForm.tsx", additions: 38, deletions: 9, status: "modified" },
+      {
+        path: "src/features/auth/PasswordResetForm.tsx",
+        additions: 38,
+        deletions: 9,
+        status: "modified",
+        patch: "+ if (!isValidEmail(email)) setError('Enter a valid email address')\n+ return sendPasswordReset(email)"
+      },
       { path: "src/features/auth/passwordReset.ts", additions: 21, deletions: 4, status: "modified" },
-      { path: "src/features/auth/PasswordResetForm.test.tsx", additions: 64, deletions: 0, status: "added" }
+      {
+        path: "src/features/auth/PasswordResetForm.test.tsx",
+        additions: 64,
+        deletions: 0,
+        status: "added",
+        patch: "+ it('shows an inline error for invalid email', async () => {})\n+ it('keeps the valid reset path working', async () => {})"
+      }
     ],
     checks: [
       { name: "lint", status: "passed", summary: "No lint errors" },
@@ -34,11 +46,23 @@ export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
     taskText:
       "Add password reset email validation. Acceptance criteria: validate email format before sending reset email; show a helpful inline error for invalid email; add tests for invalid email.",
     description:
-      "Added validation and cleaned up auth session behavior while touching shared auth utilities.",
+      "Added validation, inline error handling, rate limiting, and cleaned up auth session behavior while touching shared auth utilities.",
     changedFiles: [
-      { path: "src/features/auth/PasswordResetForm.tsx", additions: 34, deletions: 8, status: "modified" },
+      {
+        path: "src/features/auth/PasswordResetForm.tsx",
+        additions: 34,
+        deletions: 8,
+        status: "modified",
+        patch: "+ if (!isValidEmail(email)) setError('Enter a valid email address')"
+      },
       { path: "src/features/auth/passwordReset.ts", additions: 18, deletions: 3, status: "modified" },
-      { path: "src/features/auth/PasswordResetForm.test.tsx", additions: 22, deletions: 0, status: "added" },
+      {
+        path: "src/features/auth/PasswordResetForm.test.tsx",
+        additions: 22,
+        deletions: 0,
+        status: "added",
+        patch: "+ it('rejects invalid email before submit', async () => {})"
+      },
       { path: "src/server/auth/sessionExpiry.ts", additions: 47, deletions: 33, status: "modified" },
       { path: "src/server/auth/permissions.ts", additions: 12, deletions: 19, status: "modified" }
     ],
@@ -57,7 +81,13 @@ export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
     description:
       "Added email validation and inline errors. No test files were changed because behavior is simple.",
     changedFiles: [
-      { path: "src/features/auth/PasswordResetForm.tsx", additions: 42, deletions: 11, status: "modified" },
+      {
+        path: "src/features/auth/PasswordResetForm.tsx",
+        additions: 42,
+        deletions: 11,
+        status: "modified",
+        patch: "+ if (!email.includes('@')) setError('Invalid email')"
+      },
       { path: "src/features/auth/passwordReset.ts", additions: 16, deletions: 2, status: "modified" }
     ],
     checks: [
@@ -75,8 +105,20 @@ export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
     description:
       "Added validation and tests for password reset email handling.",
     changedFiles: [
-      { path: "src/features/auth/PasswordResetForm.tsx", additions: 35, deletions: 10, status: "modified" },
-      { path: "src/features/auth/PasswordResetForm.test.tsx", additions: 51, deletions: 0, status: "added" }
+      {
+        path: "src/features/auth/PasswordResetForm.tsx",
+        additions: 35,
+        deletions: 10,
+        status: "modified",
+        patch: "+ if (!isValidEmail(email)) setError('Enter a valid email address')"
+      },
+      {
+        path: "src/features/auth/PasswordResetForm.test.tsx",
+        additions: 51,
+        deletions: 0,
+        status: "added",
+        patch: "+ it('shows inline error for invalid email', async () => {})"
+      }
     ],
     checks: [
       { name: "lint", status: "passed", summary: "No lint errors" },

@@ -1,4 +1,8 @@
-import { AlertCircle, CheckCircle2, ClipboardList, FileWarning, Gauge, GitCommitVertical, TestTube2 } from "lucide-react";
+"use client";
+
+import { AlertCircle, CheckCircle2, Clipboard, ClipboardList, Download, FileWarning, Gauge, GitCommitVertical, TestTube2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { reportToMarkdown } from "@/lib/markdown";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
 
 interface ReportViewProps {
@@ -6,6 +10,29 @@ interface ReportViewProps {
 }
 
 export function ReportView({ report }: ReportViewProps) {
+  const markdown = useMemo(() => reportToMarkdown(report), [report]);
+  const evidenceById = useMemo(
+    () => new Map(report.evidenceIndex.map((item) => [item.id, item])),
+    [report.evidenceIndex]
+  );
+  const [copied, setCopied] = useState(false);
+
+  async function copyMarkdown() {
+    await navigator.clipboard.writeText(markdown);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  function downloadMarkdown() {
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "agentproof-report.md";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <section className="report">
       <div className="panel summary-card">
@@ -15,6 +42,17 @@ export function ReportView({ report }: ReportViewProps) {
             <p>{report.summary.oneLine}</p>
           </div>
           <PriorityChip priority={report.summary.priority} />
+        </div>
+
+        <div className="report-actions" aria-label="Report export actions">
+          <button className="button compact" onClick={copyMarkdown}>
+            {copied ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
+            {copied ? "Copied" : "Copy Markdown"}
+          </button>
+          <button className="button compact" onClick={downloadMarkdown}>
+            <Download size={15} />
+            Download
+          </button>
         </div>
 
         <div className="metric-grid">
@@ -42,9 +80,50 @@ export function ReportView({ report }: ReportViewProps) {
                       ))}
                     </ul>
                   ) : null}
+                  {requirement.evidenceRefs.length > 0 ? (
+                    <div className="evidence-ref-block">
+                      <span className="evidence-label">Cited evidence</span>
+                      <ul className="evidence-list compact-list">
+                        {requirement.evidenceRefs.map((ref) => {
+                          const evidence = evidenceById.get(ref);
+
+                          return (
+                            <li key={ref}>
+                              <span className="evidence-label">
+                                {ref}
+                                {evidence ? ` - ${evidence.kind} - ${evidence.label}` : ""}
+                              </span>
+                              {evidence?.summary ?? "Evidence item was not found in this report."}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="card">
+            <h2>Agent Claims</h2>
+            {report.claims.length > 0 ? (
+              <ul className="plain-list">
+                {report.claims.map((claim) => (
+                  <li key={claim.id}>
+                    <span className={claim.supported ? "evidence-label status-met" : "evidence-label status-unclear"}>
+                      {claim.supported ? "SUPPORTED" : "UNPROVEN"} - {claim.id}
+                    </span>
+                    {claim.text}
+                    {claim.evidenceRefs.length > 0 ? (
+                      <span className="muted small"> Evidence: {claim.evidenceRefs.join(", ")}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted small">No explicit implementation claims were found in the PR description.</p>
+            )}
           </div>
 
           <div className="card">

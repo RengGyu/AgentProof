@@ -1,5 +1,7 @@
 import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput } from "./types";
-import { compactText } from "./redact";
+import { compactText, redactSecrets } from "./redact";
+
+const GITHUB_FETCH_TIMEOUT_MS = 8000;
 
 interface GitHubPullUrl {
   owner: string;
@@ -42,19 +44,25 @@ export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
 }
 
 export async function buildPullRequestInput(request: AnalyzeRequest): Promise<PullRequestInput> {
-  if (request.prUrl && request.githubToken) {
-    const live = await fetchGitHubPullRequest(request.prUrl, request.githubToken, request.taskText ?? "");
+  if (request.prUrl) {
+    try {
+      const live = await fetchGitHubPullRequest(request.prUrl, request.githubToken, request.taskText ?? "");
 
-    if (live) {
-      return mergePastedOverrides(live, request);
+      if (live) {
+        return mergePastedOverrides(live, request);
+      }
+    } catch (error) {
+      if (!hasPastedEvidence(request)) {
+        throw error;
+      }
     }
   }
 
   return {
     url: request.prUrl,
     title: request.prUrl ? `PR analysis for ${request.prUrl}` : "Pasted PR evidence",
-    description: request.prDescription ?? "",
-    taskText: request.taskText ?? "",
+    description: redactSecrets(request.prDescription ?? ""),
+    taskText: redactSecrets(request.taskText ?? ""),
     changedFiles: parseChangedFiles(request.changedFiles ?? ""),
     checks: parseChecks(request.checks ?? ""),
     logs: parseLogs(request.logs ?? "")
@@ -63,7 +71,7 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
 
 async function fetchGitHubPullRequest(
   prUrl: string,
-  token: string,
+  token: string | undefined,
   taskText: string
 ): Promise<PullRequestInput | null> {
   const parsed = parseGitHubPullUrl(prUrl);
@@ -72,27 +80,34 @@ async function fetchGitHubPullRequest(
     return null;
   }
 
-  const headers = {
+  const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
-    Authorization: `Bearer ${token}`,
     "X-GitHub-Api-Version": "2022-11-28"
   };
 
-  const prResponse = await fetch(
+  if (token?.trim()) {
+    headers.Authorization = `Bearer ${token.trim()}`;
+  }
+
+  const prResponse = await githubFetch(
     `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
-    { headers, cache: "no-store" }
+    headers
   );
 
   if (!prResponse.ok) {
-    throw new Error(`GitHub PR fetch failed: ${prResponse.status}`);
+    throw new Error(
+      token?.trim()
+        ? `GitHub PR fetch failed: ${prResponse.status}`
+        : `GitHub PR fetch failed: ${prResponse.status}. Public PRs work without a token, but private repos require a fine-grained token.`
+    );
   }
 
   const pr = await prResponse.json();
   const [filesResponse, checksResponse] = await Promise.all([
-    fetch(pr.url + "/files", { headers, cache: "no-store" }),
-    fetch(
-      `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`,
-      { headers, cache: "no-store" }
+    githubFetch(pr.url + "/files?per_page=100", headers),
+    githubFetch(
+      `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs?per_page=100`,
+      headers
     )
   ]);
 
@@ -103,11 +118,11 @@ async function fetchGitHubPullRequest(
   return {
     url: prUrl,
     title: pr.title ?? `PR #${parsed.number}`,
-    description: pr.body ?? "",
+    description: redactSecrets(pr.body ?? ""),
     author: pr.user?.login,
     baseBranch: pr.base?.ref,
     headBranch: pr.head?.ref,
-    taskText,
+    taskText: redactSecrets(taskText),
     changedFiles: files.map((file) => ({
       path: file.filename,
       additions: file.additions,
@@ -128,12 +143,29 @@ async function fetchGitHubPullRequest(
 function mergePastedOverrides(live: PullRequestInput, request: AnalyzeRequest): PullRequestInput {
   return {
     ...live,
-    taskText: request.taskText ?? live.taskText,
-    description: request.prDescription?.trim() ? request.prDescription : live.description,
+    taskText: request.taskText ? redactSecrets(request.taskText) : live.taskText,
+    description: request.prDescription?.trim() ? redactSecrets(request.prDescription) : live.description,
     changedFiles: request.changedFiles?.trim() ? parseChangedFiles(request.changedFiles) : live.changedFiles,
     checks: request.checks?.trim() ? parseChecks(request.checks) : live.checks,
     logs: request.logs?.trim() ? parseLogs(request.logs) : live.logs
   };
+}
+
+function hasPastedEvidence(request: AnalyzeRequest): boolean {
+  return Boolean(
+    request.prDescription?.trim() ||
+      request.changedFiles?.trim() ||
+      request.checks?.trim() ||
+      request.logs?.trim()
+  );
+}
+
+function githubFetch(url: string, headers: Record<string, string>): Promise<Response> {
+  return fetch(url, {
+    headers,
+    cache: "no-store",
+    signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS)
+  });
 }
 
 function parseChangedFiles(input: string): ChangedFile[] {
@@ -180,7 +212,7 @@ function mapGitHubCheckStatus(status: string, conclusion: string | null): CheckR
     return status === "queued" || status === "in_progress" ? "pending" : "unknown";
   }
 
-  if (conclusion === "success" || conclusion === "neutral" || conclusion === "skipped") {
+  if (conclusion === "success") {
     return "passed";
   }
 
