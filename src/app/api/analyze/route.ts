@@ -18,18 +18,18 @@ export async function POST(request: Request) {
     const contentLength = Number(request.headers.get("content-length") ?? 0);
 
     if (contentLength > MAX_BODY_BYTES) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "Request is too large. Paste shorter logs or use a PR URL." },
-        { status: 413 }
+        413
       );
     }
 
     const rawText = await request.text();
 
     if (new TextEncoder().encode(rawText).length > MAX_BODY_BYTES) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "Request is too large. Paste shorter logs or use a PR URL." },
-        { status: 413 }
+        413
       );
     }
 
@@ -45,16 +45,16 @@ export async function POST(request: Request) {
       !body.checks?.trim() &&
       !body.logs?.trim()
     ) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "Provide a PR URL, demo scenario, or pasted PR evidence before analysis." },
-        { status: 400 }
+        400
       );
     }
 
     if (body.prUrl?.trim() && !parseGitHubPullUrl(body.prUrl)) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "PR URL must be a GitHub pull request URL, for example https://github.com/org/repo/pull/123." },
-        { status: 400 }
+        400
       );
     }
 
@@ -64,18 +64,28 @@ export async function POST(request: Request) {
 
     const report = generateVerificationReport(input);
 
-    return NextResponse.json({ report });
+    return jsonNoStore({ report });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Analysis failed";
 
-    return NextResponse.json(
+    return jsonNoStore(
       {
         error: message,
         hint: "Use demo mode, paste PR evidence, or provide a fine-grained GitHub token for private PRs."
       },
-      { status: 400 }
+      400
     );
   }
+}
+
+function jsonNoStore(payload: unknown, status = 200) {
+  return NextResponse.json(payload, {
+    status,
+    headers: {
+      "Cache-Control": "private, no-store",
+      "Referrer-Policy": "no-referrer"
+    }
+  });
 }
 
 function parseJsonBody(rawText: string): unknown {

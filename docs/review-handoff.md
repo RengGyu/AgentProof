@@ -39,4 +39,7 @@ Return findings first, ordered by severity, with file paths and exact suggested 
 - Switch to manual mode and analyze a public GitHub PR URL without a token.
 - Paste task text plus changed file names, then confirm the report still works without GitHub access.
 - Use Copy Report, Copy PR Comment, Download, and Copy re-prompt.
+- Use Copy Share Link and confirm the opened shared page omits raw evidence.
+- Confirm Recent reports reload locally and Clear removes them.
+- Preview a GitHub PR comment and verify it is short, marker-based, and does not include raw evidence.
 - Check that long file paths and evidence summaries do not overflow on mobile.

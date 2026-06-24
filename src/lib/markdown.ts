@@ -1,5 +1,8 @@
 import type { VerificationReport } from "./types";
 
+export const AGENTPROOF_COMMENT_MARKER = "<!-- agentproof:evidence-check:v1 -->";
+const MAX_GITHUB_COMMENT_LENGTH = 12_000;
+
 export function reportToMarkdown(report: VerificationReport): string {
   const lines = [
     `# AgentProof Evidence Report`,
@@ -62,7 +65,10 @@ export function reportToMarkdown(report: VerificationReport): string {
   return lines.filter((line): line is string => typeof line === "string").join("\n");
 }
 
-export function reportToGitHubComment(report: VerificationReport): string {
+export function reportToGitHubComment(
+  report: VerificationReport,
+  options: { includeReprompt?: boolean; includeMarker?: boolean } = {}
+): string {
   const requirementLines = report.requirements.slice(0, 8).map((requirement) => {
     const evidence = requirement.evidenceRefs.length > 0 ? ` Evidence: ${requirement.evidenceRefs.join(", ")}` : "";
     const gaps = requirement.gaps.length > 0 ? ` Gap: ${requirement.gaps.join("; ")}` : "";
@@ -77,7 +83,8 @@ export function reportToGitHubComment(report: VerificationReport): string {
     (item) => `- \`${item.path}\`: ${item.why}`
   );
 
-  return [
+  const lines = [
+    options.includeMarker === false ? undefined : AGENTPROOF_COMMENT_MARKER,
     "## AgentProof Evidence Check",
     "",
     `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **CI:** ${report.testing.ciStatus}`,
@@ -101,14 +108,32 @@ export function reportToGitHubComment(report: VerificationReport): string {
     `- Lint: ${report.testing.lintStatus}`,
     `- Typecheck: ${report.testing.typecheckStatus}`,
     ...(missingTestLines.length > 0 ? missingTestLines : ["- No missing test evidence detected."]),
-    "",
-    "<details>",
-    "<summary>Agent re-prompt</summary>",
-    "",
-    "```text",
-    report.reprompt.prompt,
-    "```",
-    "",
-    "</details>"
-  ].join("\n");
+    ...(options.includeReprompt
+      ? [
+          "",
+          "<details>",
+          "<summary>Agent re-prompt</summary>",
+          "",
+          "```text",
+          report.reprompt.prompt,
+          "```",
+          "",
+          "</details>"
+        ]
+      : [])
+  ].filter((line): line is string => typeof line === "string");
+
+  return truncateComment(neutralizeGitHubMentions(lines.join("\n")));
+}
+
+export function neutralizeGitHubMentions(value: string): string {
+  return value.replace(/@(?=[a-z0-9][a-z0-9-]{0,38}\b)/gi, "@\u200B");
+}
+
+function truncateComment(value: string): string {
+  if (value.length <= MAX_GITHUB_COMMENT_LENGTH) {
+    return value;
+  }
+
+  return `${value.slice(0, MAX_GITHUB_COMMENT_LENGTH - 80)}\n\n_Comment truncated by AgentProof for safety._`;
 }

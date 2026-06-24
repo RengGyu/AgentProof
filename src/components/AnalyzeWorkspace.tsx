@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, ClipboardCheck, GitPullRequest, Play, RotateCcw, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, ClipboardCheck, GitPullRequest, History, Play, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { ReportView } from "@/components/ReportView";
+import { clearReportHistory, readReportHistory, saveReportToHistory, type StoredReport } from "@/lib/report-history";
 import type { AnalyzeRequest, DemoScenarioId, VerificationReport } from "@/lib/types";
 
 const scenarioLabels: { id: DemoScenarioId; label: string }[] = [
@@ -26,6 +27,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
     logs: ""
   });
   const [report, setReport] = useState<VerificationReport | null>(initialReport);
+  const [history, setHistory] = useState<StoredReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +35,10 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
     if (!report) return "No report";
     return `${report.summary.priority.toUpperCase()} - ${report.summary.evidenceCoverage}% evidence`;
   }, [report]);
+
+  useEffect(() => {
+    setHistory(readReportHistory(window.localStorage));
+  }, []);
 
   async function runAnalysis() {
     setLoading(true);
@@ -51,7 +57,10 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
         throw new Error(json.error ?? "Analysis failed");
       }
 
-      setReport(json.report);
+      const nextReport = json.report as VerificationReport;
+      setReport(nextReport);
+      setHistory(saveReportToHistory(window.localStorage, nextReport));
+      setForm((current) => ({ ...current, githubToken: "" }));
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "Analysis failed");
     } finally {
@@ -61,6 +70,10 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
 
   function updateForm<K extends keyof AnalyzeRequest>(key: K, value: AnalyzeRequest[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function clearHistory() {
+    setHistory(clearReportHistory(window.localStorage));
   }
 
   return (
@@ -202,6 +215,32 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
               <AlertTriangle size={14} /> {error}
             </div>
           ) : null}
+
+          <div className="history-block">
+            <div className="history-head">
+              <h3>
+                <History size={14} />
+                Recent
+              </h3>
+              <button className="icon-button" onClick={clearHistory} aria-label="Clear recent reports">
+                <Trash2 size={14} />
+              </button>
+            </div>
+            {history.length > 0 ? (
+              <ul className="history-list">
+                {history.map((item) => (
+                  <li key={item.id}>
+                    <button onClick={() => setReport(item.report)}>
+                      <span>{item.title}</span>
+                      <small>{item.priority.toUpperCase()} - {item.evidenceCoverage}%</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted small">No saved reports.</p>
+            )}
+          </div>
         </aside>
 
         {report ? (

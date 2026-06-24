@@ -13,6 +13,7 @@ describe("POST /api/analyze", () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(json.error).toContain("GitHub pull request URL");
   });
 
@@ -26,5 +27,6 @@ describe("POST /api/analyze", () => {
     );
 
     expect(response.status).toBe(413);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
   });
 });

@@ -114,6 +114,12 @@ button {
   padding: 20px;
 }
 
+.shared-layout {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 20px;
+}
+
 .panel {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -138,6 +144,10 @@ button {
   display: grid;
   gap: 7px;
   margin: 0 0 14px;
+}
+
+.compact-field {
+  margin-top: 12px;
 }
 
 .field label {
@@ -196,6 +206,22 @@ button {
   background: #fff;
   color: var(--ink);
   font-weight: 700;
+}
+
+.icon-button,
+.icon-link {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+}
+
+.icon-link {
+  text-decoration: none;
 }
 
 .button.compact {
@@ -398,6 +424,73 @@ button {
   overflow-wrap: anywhere;
 }
 
+.comment-preview {
+  margin: 0;
+  overflow: auto;
+  max-height: 260px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfa;
+  color: var(--ink);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-block {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.history-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-list button {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfa;
+  color: var(--ink);
+  text-align: left;
+}
+
+.history-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-list small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .action-feedback {
   margin: -4px 0 0;
   font-size: 13px;
@@ -502,6 +595,10 @@ button {
   .layout {
     padding: 12px;
     gap: 12px;
+  }
+
+  .shared-layout {
+    padding: 12px;
   }
 
   .summary-card,

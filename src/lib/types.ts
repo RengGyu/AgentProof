@@ -23,6 +23,17 @@ export interface AnalyzeRequest {
   inputLimitations?: string[];
 }
 
+export interface PostGitHubCommentRequest {
+  prUrl: string;
+  githubToken: string;
+  report: VerificationReport;
+}
+
+export interface PostGitHubCommentResponse {
+  action: "created" | "updated";
+  url: string;
+}
+
 export type DemoScenarioId =
   | "clean"
   | "scope-creep"

@@ -11,6 +11,10 @@ AgentProof is an evidence-based verifier for AI-generated pull requests. It is d
 - Review priority map
 - 30-second reviewer card and detailed report
 - Demo mode with realistic sample data
+- Local-only recent report history
+- Summary-only share links
+- Optional GitHub PR comment posting with a one-time write token
+- LLM structured-output boundary and runtime report validation
 
 ## Run
 
@@ -33,6 +37,8 @@ pnpm build
 
 The app can run in demo mode without environment variables. For live GitHub PR fetches, paste a fine-grained GitHub token in the form. The token is used only for that request and is not stored by this MVP.
 
+Posting a PR comment requires a separate fine-grained token with comment write permission for the target repository. The exact comment preview is shown before posting, and the token is cleared after the request.
+
 ## Product Position
 
 AgentProof answers: "Is there enough evidence that this agent-authored PR satisfies the original request?"
@@ -43,6 +49,7 @@ It avoids:
 - Auto-merge decisions
 - Security scanning claims without evidence
 - Long-term raw source retention
+- Server-side report persistence
 
 ## Architecture
 
@@ -50,10 +57,15 @@ It avoids:
 - `src/lib/extractors.ts`: deterministic requirement, claim, and evidence extraction
 - `src/lib/verifier.ts`: evidence scoring and report generation
 - `src/lib/structured-output.ts`: JSON schema contract for future LLM calls
+- `src/lib/report-validation.ts`: runtime report validation and evidence-ref integrity checks
+- `src/lib/report-share.ts`: summary-only portable share links
+- `src/lib/report-history.ts`: browser-local recent report history
+- `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
 - `src/components/*`: reviewer-focused UI
 - `src/app/api/analyze/route.ts`: analysis API endpoint
+- `src/app/api/github/comment/route.ts`: one-time GitHub PR comment posting endpoint
 
-The current verifier is deterministic so the MVP can be tested without an LLM key. Future LLM calls should preserve the same JSON shape and only fill fields that have evidence.
+The current verifier is deterministic so the MVP can be tested without an LLM key. Future LLM calls should preserve the same JSON shape, pass runtime validation, and only cite known evidence IDs.
 
 ## Review Handoff Prompt
 

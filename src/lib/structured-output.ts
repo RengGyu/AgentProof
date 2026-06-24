@@ -20,7 +20,18 @@ export const verificationReportSchema = {
     properties: {
       analysisId: { type: "string" },
       createdAt: { type: "string" },
-      source: { type: "object" },
+      source: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title"],
+        properties: {
+          title: { type: "string", maxLength: 300 },
+          url: { type: "string", maxLength: 500 },
+          author: { type: "string", maxLength: 120 },
+          baseBranch: { type: "string", maxLength: 120 },
+          headBranch: { type: "string", maxLength: 120 }
+        }
+      },
       summary: {
         type: "object",
         additionalProperties: false,
@@ -82,10 +93,34 @@ export const verificationReportSchema = {
           ciStatus: { type: "string", enum: ["passed", "failed", "pending", "unknown"] },
           lintStatus: { type: "string", enum: ["passed", "failed", "pending", "unknown"] },
           typecheckStatus: { type: "string", enum: ["passed", "failed", "pending", "unknown"] },
-          missingTests: { type: "array" }
+          missingTests: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["path", "why", "evidenceRefs"],
+              properties: {
+                path: { type: "string", maxLength: 500 },
+                why: { type: "string", maxLength: 600 },
+                evidenceRefs: { type: "array", items: { type: "string" } }
+              }
+            }
+          }
         }
       },
-      reviewPriority: { type: "array" },
+      reviewPriority: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["path", "reason", "priority"],
+          properties: {
+            path: { type: "string", maxLength: 500 },
+            reason: { type: "string", maxLength: 600 },
+            priority: { type: "string", enum: ["low", "medium", "high", "blocker"] }
+          }
+        }
+      },
       reprompt: {
         type: "object",
         additionalProperties: false,

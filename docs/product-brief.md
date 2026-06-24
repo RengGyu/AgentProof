@@ -15,6 +15,10 @@ Build only the narrowed version: an evidence-based verifier for AI-generated PRs
 - Missing-test detector using changed file names and check status
 - Review priority map
 - Re-prompt generator for Codex, Claude Code, Cursor, or Copilot
+- Browser-local recent report history
+- Summary-only share links that omit raw evidence and re-prompt text
+- Optional GitHub PR comment posting with a one-time write token
+- Runtime report validation before future LLM output is trusted
 
 ## Not In MVP
 
@@ -24,6 +28,7 @@ Build only the narrowed version: an evidence-based verifier for AI-generated PRs
 - Native mobile app
 - GitHub App installation
 - Long-term raw source retention
+- Server-side share/report persistence
 
 ## First Demo Cases
 
@@ -32,3 +37,11 @@ Build only the narrowed version: an evidence-based verifier for AI-generated PRs
 3. PR with implementation changes and no meaningful test evidence.
 4. PR with plausible implementation but failed CI.
 5. Vague task where criteria and conclusions stay low-confidence.
+
+## Current Security Boundary
+
+- GitHub tokens are accepted per request and are not stored.
+- Recent history is local to the browser.
+- Share links contain only summary-level report data.
+- GitHub PR comments use a short marker comment and update the prior AgentProof comment when present.
+- LLM mode is not enabled yet; the code only prepares a structured package and validation boundary.

@@ -7,14 +7,18 @@ import {
   Clipboard,
   ClipboardList,
   Download,
+  ExternalLink,
   FileWarning,
   Gauge,
   GitCommitVertical,
+  Link2,
   MessageSquareText,
+  Send,
   TestTube2
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
+import { buildShareUrl } from "@/lib/report-share";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
 
 interface ReportViewProps {
@@ -28,10 +32,13 @@ export function ReportView({ report }: ReportViewProps) {
     () => new Map(report.evidenceIndex.map((item) => [item.id, item])),
     [report.evidenceIndex]
   );
-  const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | null>(null);
+  const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | "share" | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [commentToken, setCommentToken] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
+  const [postedCommentUrl, setPostedCommentUrl] = useState<string | null>(null);
 
-  async function copyText(text: string, action: "report" | "comment" | "reprompt") {
+  async function copyText(text: string, action: "report" | "comment" | "reprompt" | "share") {
     try {
       await writeClipboardText(text);
       setCopiedAction(action);
@@ -64,6 +71,57 @@ export function ReportView({ report }: ReportViewProps) {
     }
   }
 
+  async function copyShareLink() {
+    try {
+      const url = buildShareUrl(report, window.location.origin);
+      await copyText(url, "share");
+      setActionMessage({ tone: "success", text: "Summary share link copied." });
+    } catch (error) {
+      setActionMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : "Share link could not be created."
+      });
+    }
+  }
+
+  async function postGitHubComment() {
+    if (!report.source.url || !commentToken.trim()) {
+      setActionMessage({ tone: "error", text: "PR URL and write token are required." });
+      return;
+    }
+
+    setPostingComment(true);
+    setActionMessage(null);
+
+    try {
+      const response = await fetch("/api/github/comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prUrl: report.source.url,
+          githubToken: commentToken,
+          report
+        })
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.error ?? "GitHub comment post failed");
+      }
+
+      setPostedCommentUrl(json.url);
+      setCommentToken("");
+      setActionMessage({ tone: "success", text: `GitHub comment ${json.action}.` });
+    } catch (error) {
+      setActionMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : "GitHub comment post failed."
+      });
+    } finally {
+      setPostingComment(false);
+    }
+  }
+
   return (
     <section className="report">
       <div className="panel summary-card">
@@ -83,6 +141,10 @@ export function ReportView({ report }: ReportViewProps) {
           <button className="button compact" onClick={() => copyText(githubComment, "comment")}>
             {copiedAction === "comment" ? <CheckCircle2 size={15} /> : <MessageSquareText size={15} />}
             {copiedAction === "comment" ? "Copied" : "Copy PR Comment"}
+          </button>
+          <button className="button compact" onClick={copyShareLink}>
+            {copiedAction === "share" ? <CheckCircle2 size={15} /> : <Link2 size={15} />}
+            {copiedAction === "share" ? "Copied" : "Copy Share Link"}
           </button>
           <button className="button compact" onClick={downloadMarkdown}>
             <Download size={15} />
@@ -227,6 +289,35 @@ export function ReportView({ report }: ReportViewProps) {
               ))}
             </ul>
           </div>
+
+          {report.source.url ? (
+            <div className="card">
+              <div className="card-title-row">
+                <h2>GitHub PR Comment</h2>
+                {postedCommentUrl ? (
+                  <a className="icon-link" href={postedCommentUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink size={15} />
+                  </a>
+                ) : null}
+              </div>
+              <pre className="comment-preview">{githubComment}</pre>
+              <div className="field compact-field">
+                <label htmlFor="commentToken">Write token</label>
+                <input
+                  id="commentToken"
+                  className="input"
+                  value={commentToken}
+                  onChange={(event) => setCommentToken(event.target.value)}
+                  type="password"
+                  placeholder="Fine-grained token"
+                />
+              </div>
+              <button className="button primary" onClick={postGitHubComment} disabled={postingComment || !commentToken.trim()}>
+                <Send size={16} />
+                {postingComment ? "Posting" : "Post Comment"}
+              </button>
+            </div>
+          ) : null}
 
           <div className="card">
             <div className="card-title-row">
