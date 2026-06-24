@@ -1,0 +1,42 @@
+# AgentProof Review Handoff
+
+Use this when asking ChatGPT, Claude, Codex, or another reviewer to inspect the public repository.
+
+Repository:
+
+`https://github.com/wjdrb3434/AgentProof`
+
+Deployed demo:
+
+`https://agentproof-pearl.vercel.app`
+
+## Review Prompt
+
+```text
+Review this repository as a product-quality code review.
+
+Project context:
+AgentProof is an evidence-based verifier for AI-generated PRs. It should not behave like a generic AI code reviewer. Its job is to map issue/task requirements to PR evidence, identify weak proof, detect scope creep, surface missing test evidence, and generate a concise re-prompt for a coding agent.
+
+Please prioritize:
+- false positives in requirement-to-evidence matching
+- false negatives in missing-test and scope-creep detection
+- GitHub PR ingestion edge cases
+- token/privacy handling
+- mobile report UX
+- whether every finding is traceable to concrete evidence
+- tests that are missing for high-risk behavior
+
+Do not focus on cosmetic refactors unless they affect usability or correctness.
+Return findings first, ordered by severity, with file paths and exact suggested fixes.
+```
+
+## Manual Test Checklist
+
+- Open the deployed demo on mobile and desktop.
+- Run each demo scenario: Clean PR, Scope creep, Missing tests, Failed CI, Vague task.
+- Confirm the priority, evidence coverage, missing-test count, and re-prompt change between scenarios.
+- Switch to manual mode and analyze a public GitHub PR URL without a token.
+- Paste task text plus changed file names, then confirm the report still works without GitHub access.
+- Use Copy Report, Copy PR Comment, Download, and Copy re-prompt.
+- Check that long file paths and evidence summaries do not overflow on mobile.

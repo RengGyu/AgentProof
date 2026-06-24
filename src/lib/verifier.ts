@@ -32,10 +32,10 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   );
   const scope = detectScopeCreep(requirements, input.changedFiles);
   const missingTests = detectMissingTests(input, evidenceIndex);
-  const ciStatus = aggregateStatus(input.checks);
+  const ciStatus = aggregateStatus(input.checks, input.logs);
   const lintStatus = statusForCheck(input.checks, /lint/i);
   const typecheckStatus = statusForCheck(input.checks, /type(check|script)/i);
-  const reviewPriority = buildReviewPriority(input, scope.outOfScopeFiles, missingTests, ciStatus);
+  const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
   const priority = highestPriority(reviewPriority);
   const evidenceCoverage = computeEvidenceCoverage(requirementFindings, input.changedFiles.length);
   const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
@@ -99,29 +99,29 @@ function evaluateRequirement(
     };
   }
 
-  const refs = evidenceIndex
-    .filter((item) => {
-      const text = `${item.label} ${item.summary}`.toLowerCase();
-      return requirement.keywords.some((keyword) => text.includes(keyword));
-    })
-    .map((item) => item.id);
+  const matches = evidenceIndex
+    .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
+    .filter(({ match }) => match.score > 0);
+  const refs = matches.map(({ item }) => item.id);
 
-  const hasImplementationEvidence = refs.some((ref) => {
-    const item = evidenceIndex.find((evidence) => evidence.id === ref);
-    return item?.kind === "changed_file" || item?.kind === "diff" || item?.kind === "test";
-  });
-  const hasDiffEvidence = refs.some((ref) => evidenceIndex.find((item) => item.id === ref)?.kind === "diff");
+  const implementationMatches = matches.filter(({ item }) =>
+    item.kind === "changed_file" || item.kind === "diff" || item.kind === "test"
+  );
+  const strongImplementationRefs = implementationMatches
+    .filter(({ item, match }) => item.kind !== "changed_file" && match.strong)
+    .map(({ item }) => item.id);
+  const hasImplementationEvidence = implementationMatches.length > 0;
+  const hasStrongImplementationEvidence = strongImplementationRefs.length > 0;
+  const hasDiffEvidence = matches.some(({ item, match }) => item.kind === "diff" && match.strong);
   const asksForTests = /\b(tests?|coverage|specs?)\b/i.test(requirement.text);
-  const hasTestEvidence = refs.some((ref) => {
-    const item = evidenceIndex.find((evidence) => evidence.id === ref);
-    return Boolean(
-      item &&
-        item.kind !== "task" &&
-        item.kind !== "pr_description" &&
-        (item.kind === "test" || /test|spec/i.test(`${item.label} ${item.summary}`))
-    );
-  });
-  const failedCheck = input.checks.some((check) => check.status === "failed");
+  const hasTestEvidence = matches.some(({ item, match }) =>
+    item.kind !== "task" &&
+    item.kind !== "pr_description" &&
+    match.strong &&
+    (item.kind === "test" || /test|spec/i.test(`${item.label} ${item.summary}`))
+  );
+  const failedCheck = input.checks.some((check) => check.status === "failed") ||
+    input.logs.some((log) => log.status === "failed");
 
   if (failedCheck) {
     return {
@@ -140,7 +140,7 @@ function evaluateRequirement(
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "met",
-      evidenceRefs: refs.slice(0, 5),
+      evidenceRefs: refsForReport(matches, strongImplementationRefs),
       gaps: [],
       reviewerNote: "Test evidence appears connected to this criterion.",
       confidence: 0.82
@@ -159,12 +159,12 @@ function evaluateRequirement(
     };
   }
 
-  if (hasImplementationEvidence && refs.length > 0 && (hasDiffEvidence || hasTestEvidence)) {
+  if (hasStrongImplementationEvidence && refs.length > 0 && (hasDiffEvidence || hasTestEvidence)) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "met",
-      evidenceRefs: refs.slice(0, 5),
+      evidenceRefs: refsForReport(matches, strongImplementationRefs),
       gaps: hasTestEvidence ? [] : ["Implementation evidence exists, but test coverage is not strongly tied to this criterion."],
       reviewerNote: hasTestEvidence
         ? "Evidence appears connected to this criterion."
@@ -195,6 +195,48 @@ function evaluateRequirement(
     confidence: refs.length > 0 ? 0.38 : 0.2
   };
 }
+
+function requirementEvidenceMatch(
+  requirement: Requirement,
+  item: EvidenceItem
+): { score: number; strong: boolean } {
+  const text = `${item.label} ${item.summary}`.toLowerCase();
+  const hits = requirement.keywords.filter((keyword) => text.includes(keyword));
+  const meaningfulHits = hits.filter((keyword) => keyword.length >= 4 && !WEAK_SINGLE_MATCH_KEYWORDS.has(keyword));
+  const score = hits.length;
+  const canProve = item.kind === "diff" || item.kind === "test" || item.kind === "log" || item.kind === "check";
+  const strong = canProve && (meaningfulHits.length >= 2 || meaningfulHits.some((keyword) => keyword.length >= 8));
+
+  return { score, strong };
+}
+
+function refsForReport(
+  matches: Array<{ item: EvidenceItem; match: { score: number; strong: boolean } }>,
+  preferredRefs: string[]
+): string[] {
+  return Array.from(new Set([
+    ...preferredRefs,
+    ...matches.filter(({ match }) => match.strong).map(({ item }) => item.id),
+    ...matches.map(({ item }) => item.id)
+  ])).slice(0, 5);
+}
+
+const WEAK_SINGLE_MATCH_KEYWORDS = new Set([
+  "api",
+  "app",
+  "auth",
+  "code",
+  "data",
+  "edge",
+  "file",
+  "node",
+  "page",
+  "pages",
+  "route",
+  "test",
+  "tests",
+  "user"
+]);
 
 function detectScopeCreep(requirements: Requirement[], files: PullRequestInput["changedFiles"]) {
   const requirementKeywords = new Set(requirements.flatMap((requirement) => requirement.keywords));
@@ -248,6 +290,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
 
 function buildReviewPriority(
   input: PullRequestInput,
+  requirements: RequirementFinding[],
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
   ciStatus: CheckStatus
@@ -259,6 +302,34 @@ function buildReviewPriority(
       path: "CI checks",
       reason: "At least one check failed; requirement satisfaction is not proven.",
       priority: "blocker"
+    });
+  }
+
+  const missingRequirements = requirements.filter((finding) => finding.status === "missing");
+  const unclearRequirements = requirements.filter((finding) => finding.status === "unclear");
+  const partialRequirements = requirements.filter((finding) => finding.status === "partial");
+
+  if (missingRequirements.length > 0) {
+    items.push({
+      path: "Requirement evidence",
+      reason: `${missingRequirements.length} requirement(s) have no matching implementation evidence.`,
+      priority: "high"
+    });
+  }
+
+  if (unclearRequirements.length > 0) {
+    items.push({
+      path: "Requirement evidence",
+      reason: `${unclearRequirements.length} requirement(s) need human interpretation before trusting the report.`,
+      priority: "medium"
+    });
+  }
+
+  if (partialRequirements.length > 0) {
+    items.push({
+      path: "Requirement evidence",
+      reason: `${partialRequirements.length} requirement(s) have only partial evidence.`,
+      priority: "medium"
     });
   }
 
@@ -338,20 +409,25 @@ function buildReprompt(
   ].join("\n");
 }
 
-function aggregateStatus(checks: PullRequestInput["checks"]): CheckStatus {
-  if (checks.length === 0) {
+function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestInput["logs"] = []): CheckStatus {
+  const statuses = [
+    ...checks.map((check) => check.status),
+    ...logs.map((log) => log.status).filter((status): status is CheckStatus => Boolean(status))
+  ];
+
+  if (statuses.length === 0) {
     return "unknown";
   }
 
-  if (checks.some((check) => check.status === "failed")) {
+  if (statuses.some((status) => status === "failed")) {
     return "failed";
   }
 
-  if (checks.some((check) => check.status === "pending")) {
+  if (statuses.some((status) => status === "pending")) {
     return "pending";
   }
 
-  if (checks.every((check) => check.status === "passed")) {
+  if (statuses.every((status) => status === "passed")) {
     return "passed";
   }
 
@@ -409,6 +485,7 @@ function buildLimitations(
 ): string[] {
   const limitations: string[] = [];
 
+  limitations.push(...(input.limitations ?? []));
   if (!input.taskText.trim()) limitations.push("No original task text was provided; criteria were inferred from PR description.");
   if (input.logs.length === 0) limitations.push("No CI or test logs were available.");
   if (ciStatus === "unknown") limitations.push("Check status is unknown or incomplete.");

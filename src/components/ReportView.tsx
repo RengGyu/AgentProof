@@ -1,8 +1,20 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Clipboard, ClipboardList, Download, FileWarning, Gauge, GitCommitVertical, TestTube2 } from "lucide-react";
+import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  Clipboard,
+  ClipboardList,
+  Download,
+  FileWarning,
+  Gauge,
+  GitCommitVertical,
+  MessageSquareText,
+  TestTube2
+} from "lucide-react";
 import { useMemo, useState } from "react";
-import { reportToMarkdown } from "@/lib/markdown";
+import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
 
 interface ReportViewProps {
@@ -11,26 +23,45 @@ interface ReportViewProps {
 
 export function ReportView({ report }: ReportViewProps) {
   const markdown = useMemo(() => reportToMarkdown(report), [report]);
+  const githubComment = useMemo(() => reportToGitHubComment(report), [report]);
   const evidenceById = useMemo(
     () => new Map(report.evidenceIndex.map((item) => [item.id, item])),
     [report.evidenceIndex]
   );
-  const [copied, setCopied] = useState(false);
+  const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
-  async function copyMarkdown() {
-    await navigator.clipboard.writeText(markdown);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+  async function copyText(text: string, action: "report" | "comment" | "reprompt") {
+    try {
+      await writeClipboardText(text);
+      setCopiedAction(action);
+      setActionMessage({ tone: "success", text: "Copied to clipboard." });
+      window.setTimeout(() => {
+        setCopiedAction(null);
+        setActionMessage(null);
+      }, 1800);
+    } catch {
+      setActionMessage({ tone: "error", text: "Copy failed in this browser. Use Download or select the text manually." });
+    }
   }
 
   function downloadMarkdown() {
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "agentproof-report.md";
-    anchor.click();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "agentproof-report.md";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setActionMessage({ tone: "success", text: "Download started." });
+      window.setTimeout(() => setActionMessage(null), 1800);
+    } catch {
+      setActionMessage({ tone: "error", text: "Download failed in this browser. Use Copy Report instead." });
+    }
   }
 
   return (
@@ -45,15 +76,20 @@ export function ReportView({ report }: ReportViewProps) {
         </div>
 
         <div className="report-actions" aria-label="Report export actions">
-          <button className="button compact" onClick={copyMarkdown}>
-            {copied ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
-            {copied ? "Copied" : "Copy Markdown"}
+          <button className="button compact" onClick={() => copyText(markdown, "report")}>
+            {copiedAction === "report" ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
+            {copiedAction === "report" ? "Copied" : "Copy Report"}
+          </button>
+          <button className="button compact" onClick={() => copyText(githubComment, "comment")}>
+            {copiedAction === "comment" ? <CheckCircle2 size={15} /> : <MessageSquareText size={15} />}
+            {copiedAction === "comment" ? "Copied" : "Copy PR Comment"}
           </button>
           <button className="button compact" onClick={downloadMarkdown}>
             <Download size={15} />
             Download
           </button>
         </div>
+        {actionMessage ? <p className={`action-feedback ${actionMessage.tone}`}>{actionMessage.text}</p> : null}
 
         <div className="metric-grid">
           <Metric label="Coverage" value={`${report.summary.evidenceCoverage}%`} icon={<Gauge size={17} />} />
@@ -193,7 +229,13 @@ export function ReportView({ report }: ReportViewProps) {
           </div>
 
           <div className="card">
-            <h2>Agent Re-prompt</h2>
+            <div className="card-title-row">
+              <h2>Agent Re-prompt</h2>
+              <button className="button compact" onClick={() => copyText(report.reprompt.prompt, "reprompt")}>
+                {copiedAction === "reprompt" ? <CheckCircle2 size={15} /> : <Bot size={15} />}
+                {copiedAction === "reprompt" ? "Copied" : "Copy"}
+              </button>
+            </div>
             <pre className="reprompt">{report.reprompt.prompt}</pre>
           </div>
 
@@ -249,4 +291,25 @@ function StatusChip({ status }: { status: RequirementStatus }) {
 
 function statusClass(status: CheckStatus): string {
   return `status-${status}`;
+}
+
+async function writeClipboardText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+
+  if (!copied) {
+    throw new Error("Clipboard fallback failed");
+  }
 }

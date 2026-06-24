@@ -30,6 +30,7 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
 
 button,
@@ -242,6 +243,7 @@ button {
 
 .summary-title {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .summary-title h1 {
@@ -308,6 +310,18 @@ button {
   font-size: 15px;
 }
 
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.card-title-row h2 {
+  margin: 0;
+}
+
 .requirement {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
@@ -358,6 +372,7 @@ button {
   border-radius: 7px;
   background: #fbfcfa;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .evidence-label {
@@ -366,6 +381,7 @@ button {
   font-size: 12px;
   font-weight: 750;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .reprompt {
@@ -379,6 +395,21 @@ button {
   color: #eef7f0;
   line-height: 1.45;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.action-feedback {
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.action-feedback.success {
+  color: var(--ok);
+}
+
+.action-feedback.error {
+  color: var(--danger);
 }
 
 .empty-state {
@@ -450,16 +481,38 @@ button {
 
 @media (max-width: 640px) {
   .topbar {
-    align-items: flex-start;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 10px;
     padding: 12px;
   }
 
   .topbar-actions {
-    display: none;
+    width: 100%;
+  }
+
+  .status-chip {
+    width: 100%;
+    height: auto;
+    min-height: 32px;
+    white-space: normal;
+    line-height: 1.2;
   }
 
   .layout {
     padding: 12px;
+    gap: 12px;
+  }
+
+  .summary-card,
+  .card,
+  .intake {
+    padding: 14px;
+  }
+
+  .report-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .requirement {
@@ -468,5 +521,20 @@ button {
 
   .button-row {
     display: grid;
+  }
+
+  .button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .button.compact,
+  .input,
+  .select {
+    min-height: 44px;
+  }
+
+  .metric {
+    min-height: 72px;
   }
 }

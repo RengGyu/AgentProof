@@ -20,6 +20,7 @@ export interface AnalyzeRequest {
   checks?: string;
   logs?: string;
   demoScenario?: DemoScenarioId;
+  inputLimitations?: string[];
 }
 
 export type DemoScenarioId =
@@ -40,6 +41,7 @@ export interface PullRequestInput {
   checks: CheckRun[];
   logs: LogSnippet[];
   taskText: string;
+  limitations?: string[];
 }
 
 export interface ChangedFile {

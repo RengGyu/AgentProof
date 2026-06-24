@@ -2,6 +2,8 @@ import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInpu
 import { compactText, redactSecrets } from "./redact";
 
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
+const GITHUB_PAGE_SIZE = 100;
+const GITHUB_MAX_PAGES = 3;
 
 interface GitHubPullUrl {
   owner: string;
@@ -28,12 +30,31 @@ interface GitHubCheckRunResponse {
   };
 }
 
+interface GitHubStatusResponse {
+  context: string;
+  state: string;
+  target_url?: string;
+  description?: string;
+}
+
 export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
   try {
-    const parsed = new URL(url);
-    const [, owner, repo, pull, number] = parsed.pathname.split("/");
+    const normalizedUrl = /^[a-z][a-z\d+.-]*:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
+    const parsed = new URL(normalizedUrl);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const [owner, repo, pull, number] = parts;
 
-    if (!owner || !repo || pull !== "pull" || !number || Number.isNaN(Number(number))) {
+    if (
+      parsed.hostname.toLowerCase() !== "github.com" ||
+      !["http:", "https:"].includes(parsed.protocol) ||
+      parts.length !== 4 ||
+      !owner ||
+      !repo ||
+      pull !== "pull" ||
+      !number ||
+      !Number.isInteger(Number(number)) ||
+      Number(number) <= 0
+    ) {
       return null;
     }
 
@@ -45,6 +66,10 @@ export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
 
 export async function buildPullRequestInput(request: AnalyzeRequest): Promise<PullRequestInput> {
   if (request.prUrl) {
+    if (!parseGitHubPullUrl(request.prUrl)) {
+      throw new Error("PR URL must be a GitHub pull request URL, for example https://github.com/org/repo/pull/123.");
+    }
+
     try {
       const live = await fetchGitHubPullRequest(request.prUrl, request.githubToken, request.taskText ?? "");
 
@@ -65,7 +90,8 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
     taskText: redactSecrets(request.taskText ?? ""),
     changedFiles: parseChangedFiles(request.changedFiles ?? ""),
     checks: parseChecks(request.checks ?? ""),
-    logs: parseLogs(request.logs ?? "")
+    logs: parseLogs(request.logs ?? ""),
+    limitations: request.inputLimitations ?? []
   };
 }
 
@@ -103,17 +129,12 @@ async function fetchGitHubPullRequest(
   }
 
   const pr = await prResponse.json();
-  const [filesResponse, checksResponse] = await Promise.all([
-    githubFetch(pr.url + "/files?per_page=100", headers),
-    githubFetch(
-      `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs?per_page=100`,
-      headers
-    )
+  const limitations: string[] = [];
+  const [files, checkRuns, statuses] = await Promise.all([
+    fetchPullFiles(pr.url + "/files", headers, limitations),
+    fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations),
+    fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations)
   ]);
-
-  const files = filesResponse.ok ? ((await filesResponse.json()) as GitHubFileResponse[]) : [];
-  const checksJson = checksResponse.ok ? await checksResponse.json() : { check_runs: [] };
-  const checkRuns = (checksJson.check_runs ?? []) as GitHubCheckRunResponse[];
 
   return {
     url: prUrl,
@@ -135,8 +156,14 @@ async function fetchGitHubPullRequest(
       status: mapGitHubCheckStatus(check.status, check.conclusion),
       summary: check.output?.summary || check.output?.title,
       url: check.html_url
-    })),
-    logs: []
+    })).concat(statuses.map((status) => ({
+      name: status.context,
+      status: mapGitHubCommitStatus(status.state),
+      summary: status.description,
+      url: status.target_url
+    }))),
+    logs: [],
+    limitations
   };
 }
 
@@ -147,7 +174,14 @@ function mergePastedOverrides(live: PullRequestInput, request: AnalyzeRequest): 
     description: request.prDescription?.trim() ? redactSecrets(request.prDescription) : live.description,
     changedFiles: request.changedFiles?.trim() ? parseChangedFiles(request.changedFiles) : live.changedFiles,
     checks: request.checks?.trim() ? parseChecks(request.checks) : live.checks,
-    logs: request.logs?.trim() ? parseLogs(request.logs) : live.logs
+    logs: request.logs?.trim() ? parseLogs(request.logs) : live.logs,
+    limitations: [
+      ...(live.limitations ?? []),
+      ...(request.inputLimitations ?? []),
+      ...(request.changedFiles?.trim() ? ["Pasted changed files replaced live GitHub file evidence."] : []),
+      ...(request.checks?.trim() ? ["Pasted checks replaced live GitHub check evidence."] : []),
+      ...(request.logs?.trim() ? [] : [])
+    ]
   };
 }
 
@@ -166,6 +200,82 @@ function githubFetch(url: string, headers: Record<string, string>): Promise<Resp
     cache: "no-store",
     signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS)
   });
+}
+
+async function fetchPullFiles(
+  baseUrl: string,
+  headers: Record<string, string>,
+  limitations: string[]
+): Promise<GitHubFileResponse[]> {
+  const files: GitHubFileResponse[] = [];
+
+  for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
+    const response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
+
+    if (!response.ok) {
+      limitations.push(`GitHub changed-file fetch failed with status ${response.status}; file evidence may be incomplete.`);
+      return files;
+    }
+
+    const pageItems = (await response.json()) as GitHubFileResponse[];
+    files.push(...pageItems);
+
+    if (pageItems.length < GITHUB_PAGE_SIZE) {
+      return files;
+    }
+  }
+
+  limitations.push(`GitHub changed-file fetch was capped at ${GITHUB_PAGE_SIZE * GITHUB_MAX_PAGES} files.`);
+  return files;
+}
+
+async function fetchCheckRuns(
+  baseUrl: string,
+  headers: Record<string, string>,
+  limitations: string[]
+): Promise<GitHubCheckRunResponse[]> {
+  const checks: GitHubCheckRunResponse[] = [];
+  let totalCount: number | undefined;
+
+  for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
+    const response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
+
+    if (!response.ok) {
+      limitations.push(`GitHub check-run fetch failed with status ${response.status}; CI evidence may be incomplete.`);
+      return checks;
+    }
+
+    const pageJson = await response.json();
+    totalCount = typeof pageJson.total_count === "number" ? pageJson.total_count : totalCount;
+    const pageItems = (pageJson.check_runs ?? []) as GitHubCheckRunResponse[];
+    checks.push(...pageItems);
+
+    if (pageItems.length < GITHUB_PAGE_SIZE || (totalCount !== undefined && checks.length >= totalCount)) {
+      return checks;
+    }
+  }
+
+  if (totalCount === undefined || checks.length < totalCount) {
+    limitations.push(`GitHub check-run fetch was capped at ${GITHUB_PAGE_SIZE * GITHUB_MAX_PAGES} checks.`);
+  }
+
+  return checks;
+}
+
+async function fetchCommitStatuses(
+  url: string,
+  headers: Record<string, string>,
+  limitations: string[]
+): Promise<GitHubStatusResponse[]> {
+  const response = await githubFetch(url, headers);
+
+  if (!response.ok) {
+    limitations.push(`GitHub commit-status fetch failed with status ${response.status}; legacy status evidence may be incomplete.`);
+    return [];
+  }
+
+  const json = await response.json();
+  return (json.statuses ?? []) as GitHubStatusResponse[];
 }
 
 function parseChangedFiles(input: string): ChangedFile[] {
@@ -220,5 +330,12 @@ function mapGitHubCheckStatus(status: string, conclusion: string | null): CheckR
     return "failed";
   }
 
+  return "unknown";
+}
+
+function mapGitHubCommitStatus(state: string): CheckRun["status"] {
+  if (state === "success") return "passed";
+  if (state === "failure" || state === "error") return "failed";
+  if (state === "pending") return "pending";
   return "unknown";
 }

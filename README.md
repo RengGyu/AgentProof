@@ -67,6 +67,8 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`.
+
 ## Deployed Demo
 
 Current demo deployment:

@@ -61,3 +61,54 @@ export function reportToMarkdown(report: VerificationReport): string {
 
   return lines.filter((line): line is string => typeof line === "string").join("\n");
 }
+
+export function reportToGitHubComment(report: VerificationReport): string {
+  const requirementLines = report.requirements.slice(0, 8).map((requirement) => {
+    const evidence = requirement.evidenceRefs.length > 0 ? ` Evidence: ${requirement.evidenceRefs.join(", ")}` : "";
+    const gaps = requirement.gaps.length > 0 ? ` Gap: ${requirement.gaps.join("; ")}` : "";
+
+    return `- **${requirement.status.toUpperCase()}** ${requirement.requirementText}${evidence}${gaps}`;
+  });
+  const riskLines = report.summary.topRisks.slice(0, 5).map((risk) => `- ${risk}`);
+  const priorityLines = report.reviewPriority.slice(0, 5).map(
+    (item) => `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}`
+  );
+  const missingTestLines = report.testing.missingTests.slice(0, 5).map(
+    (item) => `- \`${item.path}\`: ${item.why}`
+  );
+
+  return [
+    "## AgentProof Evidence Check",
+    "",
+    `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **CI:** ${report.testing.ciStatus}`,
+    "",
+    report.summary.oneLine,
+    "",
+    "### Requirement Coverage",
+    "",
+    ...(requirementLines.length > 0 ? requirementLines : ["- No requirements were extracted."]),
+    "",
+    "### Top Risks",
+    "",
+    ...(riskLines.length > 0 ? riskLines : ["- No major risks detected from available evidence."]),
+    "",
+    "### Review Priority",
+    "",
+    ...(priorityLines.length > 0 ? priorityLines : ["- No priority files detected."]),
+    "",
+    "### Testing",
+    "",
+    `- Lint: ${report.testing.lintStatus}`,
+    `- Typecheck: ${report.testing.typecheckStatus}`,
+    ...(missingTestLines.length > 0 ? missingTestLines : ["- No missing test evidence detected."]),
+    "",
+    "<details>",
+    "<summary>Agent re-prompt</summary>",
+    "",
+    "```text",
+    report.reprompt.prompt,
+    "```",
+    "",
+    "</details>"
+  ].join("\n");
+}

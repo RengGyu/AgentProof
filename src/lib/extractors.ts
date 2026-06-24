@@ -54,7 +54,9 @@ export function extractRequirements(taskText: string, prDescription: string): Re
   const candidateLines = explicit
     .split(/\n|;|(?<=\.)\s+|(?:^|\s)(?:-|\*|\d+\.)\s+/)
     .map((line) => line.trim().replace(/^[-*]\s*/, ""))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((line) => !/^#+\s*(summary|verification|testing|test plan)\s*$/i.test(line))
+    .filter((line) => !/^<!--[\s\S]*-->$/.test(line));
 
   const requirements = candidateLines
     .filter((line) => line.length > 12)
