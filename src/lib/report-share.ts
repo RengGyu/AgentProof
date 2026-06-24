@@ -21,6 +21,10 @@ export function decodeSharedReport(payload: string): VerificationReport {
   return shareableToReport(JSON.parse(decodeBase64Url(payload)) as ShareableReport);
 }
 
+export function sanitizeReportForShare(report: VerificationReport): VerificationReport {
+  return shareableToReport(toShareableReport(report));
+}
+
 export function buildShareUrl(report: VerificationReport, origin: string): string {
   const payload = encodeReportForShare(report);
 

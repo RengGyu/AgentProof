@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment } from "@/lib/markdown";
 import { parseGitHubPullUrl } from "@/lib/github";
+import { validateVerificationReport } from "@/lib/report-validation";
 import type { PostGitHubCommentRequest } from "@/lib/types";
 
 const MAX_BODY_BYTES = 220_000;
@@ -23,6 +24,11 @@ export async function POST(request: Request) {
 
     if (!body.prUrl || !body.githubToken || !body.report) {
       return jsonNoStore({ error: "PR URL, write token, and report are required." }, 400);
+    }
+
+    const validation = validateVerificationReport(body.report);
+    if (!validation.valid) {
+      return jsonNoStore({ error: "Report failed validation.", details: validation.errors }, 422);
     }
 
     const parsed = parseGitHubPullUrl(body.prUrl);

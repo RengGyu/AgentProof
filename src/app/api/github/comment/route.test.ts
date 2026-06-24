@@ -28,6 +28,25 @@ describe("POST /api/github/comment", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects invalid report shapes before calling GitHub", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          prUrl: "https://github.com/org/repo/pull/1",
+          githubToken: "token",
+          report: { analysisId: "bad" }
+        })
+      })
+    );
+
+    expect(response.status).toBe(422);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("updates an existing AgentProof marker comment", async () => {
     const fetchMock = vi
       .fn()

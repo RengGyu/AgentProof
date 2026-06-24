@@ -17,7 +17,9 @@ Build only the narrowed version: an evidence-based verifier for AI-generated PRs
 - Re-prompt generator for Codex, Claude Code, Cursor, or Copilot
 - Browser-local recent report history
 - Summary-only share links that omit raw evidence and re-prompt text
+- Short-lived summary-only saved report API for local demos
 - Optional GitHub PR comment posting with a one-time write token
+- Env-gated GitHub App webhook, Slack notification, and OpenAI verifier adapters
 - Runtime report validation before future LLM output is trusted
 
 ## Not In MVP
@@ -28,7 +30,7 @@ Build only the narrowed version: an evidence-based verifier for AI-generated PRs
 - Native mobile app
 - GitHub App installation
 - Long-term raw source retention
-- Server-side share/report persistence
+- Durable server-side share/report persistence before auth and database are added
 
 ## First Demo Cases
 
@@ -43,5 +45,8 @@ Build only the narrowed version: an evidence-based verifier for AI-generated PRs
 - GitHub tokens are accepted per request and are not stored.
 - Recent history is local to the browser.
 - Share links contain only summary-level report data.
+- Server saved reports are summary-only, short-lived, and currently in-memory.
 - GitHub PR comments use a short marker comment and update the prior AgentProof comment when present.
-- LLM mode is not enabled yet; the code only prepares a structured package and validation boundary.
+- GitHub App webhook intake verifies `X-Hub-Signature-256` when configured, but automated App actions remain disabled until installation-token handling and idempotency storage exist.
+- Slack notifications require a server webhook plus `AGENTPROOF_NOTIFY_TOKEN`, and send summary-only payloads.
+- LLM mode requires `OPENAI_API_KEY` plus `AGENTPROOF_LLM_TOKEN`; structured output must pass runtime report validation before it is trusted.

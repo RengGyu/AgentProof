@@ -1,6 +1,16 @@
 "use client";
 
-import { AlertTriangle, ClipboardCheck, GitPullRequest, History, Play, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardCheck,
+  GitPullRequest,
+  History,
+  Plug,
+  Play,
+  RotateCcw,
+  ShieldCheck,
+  Trash2
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ReportView } from "@/components/ReportView";
 import { clearReportHistory, readReportHistory, saveReportToHistory, type StoredReport } from "@/lib/report-history";
@@ -86,6 +96,9 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
           <span>AgentProof</span>
         </div>
         <div className="topbar-actions">
+          <a className="icon-link" href="/integrations" aria-label="Integration readiness">
+            <Plug size={15} />
+          </a>
           <span className="status-chip">
             <ClipboardCheck size={14} />
             {statusLabel}

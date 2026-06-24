@@ -13,7 +13,9 @@ AgentProof is an evidence-based verifier for AI-generated pull requests. It is d
 - Demo mode with realistic sample data
 - Local-only recent report history
 - Summary-only share links
+- Short-lived summary-only saved report API
 - Optional GitHub PR comment posting with a one-time write token
+- Env-gated GitHub App webhook, Slack notification, and OpenAI verifier adapters
 - LLM structured-output boundary and runtime report validation
 
 ## Run
@@ -39,6 +41,14 @@ The app can run in demo mode without environment variables. For live GitHub PR f
 
 Posting a PR comment requires a separate fine-grained token with comment write permission for the target repository. The exact comment preview is shown before posting, and the token is cleared after the request.
 
+Optional server integrations are off by default:
+
+- `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`: enables signed webhook intake only. Automated App actions still need installation-token and idempotency storage.
+- `SLACK_WEBHOOK_URL`, `AGENTPROOF_NOTIFY_TOKEN`: enables summary-only Slack notifications from trusted internal callers.
+- `OPENAI_API_KEY`, `AGENTPROOF_LLM_TOKEN`, optional `OPENAI_MODEL`: enables the structured-output verifier adapter. Missing or invalid output falls back to the deterministic report.
+
+Short-lived saved reports use in-memory storage and are summary-only. This is suitable for local demos, but not durable on serverless deployments. Production sharing needs Postgres/Supabase, ownership/auth, encryption, and retention policy.
+
 ## Product Position
 
 AgentProof answers: "Is there enough evidence that this agent-authored PR satisfies the original request?"
@@ -49,7 +59,7 @@ It avoids:
 - Auto-merge decisions
 - Security scanning claims without evidence
 - Long-term raw source retention
-- Server-side report persistence
+- Durable server-side report persistence before auth and database are added
 
 ## Architecture
 
@@ -59,11 +69,18 @@ It avoids:
 - `src/lib/structured-output.ts`: JSON schema contract for future LLM calls
 - `src/lib/report-validation.ts`: runtime report validation and evidence-ref integrity checks
 - `src/lib/report-share.ts`: summary-only portable share links
+- `src/lib/server-report-store.ts`: short-lived summary-only saved report store
 - `src/lib/report-history.ts`: browser-local recent report history
 - `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
+- `src/lib/openai-verifier.ts`: optional OpenAI Responses API structured-output adapter
+- `src/lib/github-app.ts`: GitHub App webhook signature/config helpers
+- `src/lib/slack.ts`: summary-only Slack notification formatter
 - `src/components/*`: reviewer-focused UI
 - `src/app/api/analyze/route.ts`: analysis API endpoint
 - `src/app/api/github/comment/route.ts`: one-time GitHub PR comment posting endpoint
+- `src/app/api/github/webhook/route.ts`: env-gated signed webhook intake endpoint
+- `src/app/api/notifications/slack/route.ts`: env-gated Slack notification endpoint
+- `src/app/api/llm/verify/route.ts`: env-gated OpenAI verifier endpoint
 
 The current verifier is deterministic so the MVP can be tested without an LLM key. Future LLM calls should preserve the same JSON shape, pass runtime validation, and only cite known evidence IDs.
 

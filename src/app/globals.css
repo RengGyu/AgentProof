@@ -525,6 +525,43 @@ button {
   line-height: 1.5;
 }
 
+.notice {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-muted);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.integration-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.integration-head h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+}
+
+.integration-head p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.integration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .error {
   margin-top: 12px;
   padding: 10px 12px;
@@ -618,6 +655,12 @@ button {
 
   .button-row {
     display: grid;
+  }
+
+  .integration-head,
+  .integration-grid {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .button {
