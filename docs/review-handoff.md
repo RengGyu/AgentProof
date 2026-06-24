@@ -4,7 +4,7 @@ Use this when asking ChatGPT, Claude, Codex, or another reviewer to inspect the 
 
 Repository:
 
-`https://github.com/wjdrb3434/AgentProof`
+`https://github.com/RengGyu/AgentProof`
 
 Deployed demo:
 
