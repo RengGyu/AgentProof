@@ -43,11 +43,22 @@ The app can run in demo mode without environment variables. For live GitHub PR f
 
 Posting a PR comment requires a separate fine-grained token with comment write permission for the target repository. The exact comment preview is shown before posting, and the token is cleared after the request.
 
+Use `.env.example` as the local template. Do not commit `.env` or `.env.local`; both are ignored.
+
 Optional server integrations are off by default:
 
-- `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`: enables signed webhook intake only. Automated App actions still need installation-token and idempotency storage.
+- `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`: enables signed webhook intake only. `GITHUB_PRIVATE_KEY` must be a valid PEM private key; local env files may use escaped `\n` newlines. Automated App actions still need installation-token and idempotency storage.
 - `SLACK_WEBHOOK_URL`, `AGENTPROOF_NOTIFY_TOKEN`: enables summary-only Slack notifications from trusted internal callers.
 - `OPENAI_API_KEY`, `AGENTPROOF_LLM_TOKEN`, optional `OPENAI_MODEL`: enables the structured-output verifier adapter. Missing or invalid output falls back to the deterministic report.
+
+After pulling trusted env into `.env.local`, run the live OpenAI smoke test explicitly:
+
+```bash
+pnpm smoke:openai
+```
+
+This command calls the configured deployment and prints only pass/fail metadata, not prompts, reports, or secret values.
+If Vercel stores a secret as unreadable/sensitive, `vercel env pull` may create a blank placeholder; export the needed value in your shell for that smoke run instead.
 
 Browser recent history, portable share links, Slack payloads, and short-lived saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, and raw re-prompt text. Full Markdown export remains an explicit user action.
 

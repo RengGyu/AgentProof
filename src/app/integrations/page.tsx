@@ -15,7 +15,8 @@ const rows = [
   {
     name: "OpenAI verifier",
     purpose: "Run an optional structured-output verifier after the deterministic report.",
-    requiredEnv: ["OPENAI_API_KEY", "AGENTPROOF_LLM_TOKEN", "OPENAI_MODEL"]
+    requiredEnv: ["OPENAI_API_KEY", "AGENTPROOF_LLM_TOKEN"],
+    optionalEnv: ["OPENAI_MODEL"]
   },
   {
     name: "Server saved reports",
@@ -50,6 +51,16 @@ export default function IntegrationsPage() {
                 <li key={envName}>{envName}</li>
               ))}
             </ul>
+            {"optionalEnv" in row && row.optionalEnv ? (
+              <>
+                <h3>Optional env</h3>
+                <ul className="plain-list">
+                  {row.optionalEnv.map((envName) => (
+                    <li key={envName}>{envName}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
           </article>
         ))}
       </section>
@@ -58,7 +69,13 @@ export default function IntegrationsPage() {
         <h2>Current GitHub App Config</h2>
         <ul className="plain-list">
           <li>App ID: {github.appIdConfigured ? "configured" : "missing"}</li>
-          <li>Private key: {github.privateKeyConfigured ? "configured" : "missing"}</li>
+          <li>
+            Private key: {github.privateKeyConfigured
+              ? github.privateKeyFormatValid
+                ? "configured, valid PEM"
+                : "configured, invalid PEM"
+              : "missing"}
+          </li>
           <li>Webhook secret: {github.webhookSecretConfigured ? "configured" : "missing"}</li>
           <li>Ready: {github.ready ? "yes" : "no"}</li>
         </ul>
