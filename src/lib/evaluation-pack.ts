@@ -175,6 +175,18 @@ interface SweBenchRow {
   difficulty?: unknown;
 }
 
+const RAW_DATASET_ROW_KEYS = new Set([
+  "repo",
+  "base_commit",
+  "patch",
+  "test_patch",
+  "problem_statement",
+  "hints_text",
+  "FAIL_TO_PASS",
+  "PASS_TO_PASS",
+  "difficulty"
+]);
+
 export function sweBenchRowToEvaluationCase(row: unknown): EvaluationCase {
   if (!isRecord(row)) {
     throw new Error("SWE-bench row must be an object.");
@@ -263,6 +275,10 @@ export function evaluationCaseFromRecord(record: unknown): EvaluationCase {
 
 export function isNormalizedEvaluationCase(value: unknown): value is EvaluationCase {
   if (!isRecord(value) || !isRecord(value.source) || !isRecord(value.input) || !isRecord(value.oracle)) {
+    return false;
+  }
+
+  if (Object.keys(value).some((key) => RAW_DATASET_ROW_KEYS.has(key))) {
     return false;
   }
 

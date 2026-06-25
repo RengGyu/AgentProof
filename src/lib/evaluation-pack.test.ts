@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   EVALUATION_DATA_SOURCES,
-  evaluationCaseFromRecord,
   evaluateReportAgainstCase,
   isNormalizedEvaluationCase,
   summarizeEvaluationResults,
@@ -11,7 +11,7 @@ import {
   sweBenchRowToEvaluationCase
 } from "./evaluation-pack";
 import { generateVerificationReport } from "./verifier";
-import type { EvaluationMetric } from "./evaluation-pack";
+import type { EvaluationCase, EvaluationMetric } from "./evaluation-pack";
 
 const SWE_BENCH_ROW = {
   repo: "example/project",
@@ -43,6 +43,15 @@ const SWE_BENCH_ROW = {
   PASS_TO_PASS: "[\"tests/test_invoice_export.py::test_existing_export\"]",
   difficulty: "medium"
 };
+
+const RAW_ROW_KEYS = [
+  "repo",
+  "patch",
+  "test_patch",
+  "problem_statement",
+  "FAIL_TO_PASS",
+  "PASS_TO_PASS"
+];
 
 describe("real-dataset evaluation pack", () => {
   it("keeps AIDev exploratory instead of scored until labels are audited", () => {
@@ -280,24 +289,55 @@ describe("real-dataset evaluation pack", () => {
   });
 
   it("can evaluate generated or committed real SWE-bench cases", () => {
-    const rows = loadAvailableEvaluationRecords(3);
+    const testCases = loadAvailableEvaluationRecords(3);
 
-    if (rows.length === 0) {
-      expect(rows).toEqual([]);
+    if (testCases.length === 0) {
+      expect(testCases).toEqual([]);
       return;
     }
 
-    const results = rows.map((row) => {
-      const testCase = evaluationCaseFromRecord(row);
+    const results = testCases.map((testCase) => {
       const report = generateVerificationReport(testCase.input);
 
       return evaluateReportAgainstCase(report, testCase);
     });
     const summary = summarizeEvaluationResults(results);
 
-    expect(results).toHaveLength(rows.length);
+    expect(results).toHaveLength(testCases.length);
+    expect(testCases.every(isNormalizedEvaluationCase)).toBe(true);
+    expect(testCases.flatMap((testCase) => Object.keys(testCase))).not.toEqual(expect.arrayContaining([
+      "repo",
+      "patch",
+      "test_patch",
+      "problem_statement",
+      "FAIL_TO_PASS",
+      "PASS_TO_PASS"
+    ]));
     expect(results.flatMap((result) => result.metrics).filter((metric) => metric.status === "fail")).toEqual([]);
     expect(summary.failedCount).toBe(0);
+  });
+
+  it("rejects raw benchmark rows in evaluation record loaders", () => {
+    expect(() => parseNormalizedEvaluationRecords(
+      `${JSON.stringify(SWE_BENCH_ROW)}\n`,
+      "synthetic raw row"
+    )).toThrow("must contain normalized EvaluationCase records");
+  });
+
+  it("rejects normalized-looking records that retain raw benchmark fields", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const hybridRecord = {
+      ...testCase,
+      patch: "raw patch should not ride along with normalized cases",
+      FAIL_TO_PASS: "[\"tests/private.py::test_hidden\"]"
+    };
+
+    expect(isNormalizedEvaluationCase(testCase)).toBe(true);
+    expect(isNormalizedEvaluationCase(hybridRecord)).toBe(false);
+    expect(() => parseNormalizedEvaluationRecords(
+      `${JSON.stringify(hybridRecord)}\n`,
+      "hybrid record"
+    )).toThrow("must contain normalized EvaluationCase records");
   });
 
   it("keeps the committed SWE-bench fixture reproducible by manifest hash", () => {
@@ -376,6 +416,32 @@ describe("real-dataset evaluation pack", () => {
     expect(fixtureText).not.toMatch(/https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]+/);
     expect(fixtureText).not.toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/);
   });
+
+  it("keeps every committed evaluation fixture normalized and summary-safe", () => {
+    const fixturesDir = new URL("../../eval/fixtures/", import.meta.url);
+    const fixtureFiles = readdirSync(fixturesDir)
+      .filter((name) => name.endsWith(".jsonl"))
+      .sort();
+    const trackedGenerated = execFileSync("git", ["ls-files", "eval/generated"], {
+      cwd: process.cwd()
+    }).toString("utf8").trim();
+
+    expect(fixtureFiles.length).toBeGreaterThan(0);
+    expect(trackedGenerated).toBe("");
+
+    for (const fixtureFile of fixtureFiles) {
+      const fixtureUrl = new URL(fixtureFile, fixturesDir);
+      const records = parseNormalizedEvaluationRecords(readFileSync(fixtureUrl, "utf8"), fixtureFile);
+
+      for (const record of records) {
+        expect(Object.keys(record)).not.toEqual(expect.arrayContaining(RAW_ROW_KEYS));
+        expect(record.oracle.hiddenValues).toEqual([]);
+        expect(record.oracle.failToPassTests).toEqual([]);
+        expect(record.oracle.passToPassTests).toEqual([]);
+        expect(JSON.stringify(record.input)).not.toMatch(/SWE-bench|benchmark|gold|FAIL_TO_PASS|PASS_TO_PASS|huggingface/i);
+      }
+    }
+  });
 });
 
 function metric(id: string, status: EvaluationMetric["status"], detail = ""): EvaluationMetric {
@@ -387,22 +453,34 @@ function metric(id: string, status: EvaluationMetric["status"], detail = ""): Ev
   };
 }
 
-function loadAvailableEvaluationRecords(limit: number): unknown[] {
+function loadAvailableEvaluationRecords(limit: number): EvaluationCase[] {
   const fixtureUrl = availableFixtureUrl();
 
-  if (!existsSync(fixtureUrl)) {
+  if (!fixtureUrl || !existsSync(fixtureUrl)) {
     return [];
   }
 
-  return readFileSync(fixtureUrl, "utf8")
+  return parseNormalizedEvaluationRecords(readFileSync(fixtureUrl, "utf8"), fixtureUrl.pathname)
+    .slice(0, limit);
+}
+
+function parseNormalizedEvaluationRecords(text: string, sourceLabel: string): EvaluationCase[] {
+  return text
     .trim()
     .split(/\n+/)
     .filter(Boolean)
-    .slice(0, limit)
-    .map((line) => JSON.parse(line) as unknown);
+    .map((line, index) => {
+      const parsed = JSON.parse(line) as unknown;
+
+      if (!isNormalizedEvaluationCase(parsed)) {
+        throw new Error(`${sourceLabel} line ${index + 1} must contain normalized EvaluationCase records, not raw dataset rows.`);
+      }
+
+      return parsed;
+    });
 }
 
-function availableFixtureUrl(): URL {
+function availableFixtureUrl(): URL | null {
   const casesUrl = new URL("../../eval/generated/swebench-verified.cases.jsonl", import.meta.url);
 
   if (existsSync(casesUrl)) {
@@ -415,10 +493,10 @@ function availableFixtureUrl(): URL {
     return committedFixtureUrl;
   }
 
-  return new URL("../../eval/generated/swebench-verified.rows.jsonl", import.meta.url);
+  return null;
 }
 
-function readJsonlRecord(url: URL): ReturnType<typeof evaluationCaseFromRecord> {
+function readJsonlRecord(url: URL): EvaluationCase {
   const line = readFileSync(url, "utf8").trim().split(/\n+/)[0];
   const parsed = JSON.parse(line);
 

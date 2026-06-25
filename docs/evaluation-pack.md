@@ -42,6 +42,8 @@ Print a learning summary. In a clean checkout this uses the committed fixture; i
 pnpm eval:summary
 ```
 
+The summary harness accepts only normalized `EvaluationCase` JSONL. It intentionally refuses raw dataset rows so hidden oracle labels and raw benchmark fields cannot be converted or printed by accident.
+
 Force the committed fixture path even when `eval/generated/` exists:
 
 ```bash
