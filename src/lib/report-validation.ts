@@ -288,10 +288,6 @@ function validateFullReportProvenance(report: RecordValue, evidenceIds: Set<stri
     return;
   }
 
-  if (hasEvidenceUnavailableNote(report.limitations)) {
-    return;
-  }
-
   if (isRecord(report.scope) && report.scope.suspected === true) {
     const refs = getStringArray(report.scope.evidenceRefs);
     if (refs.length === 0 && !hasEvidenceUnavailableNote(report.scope.reasons)) {
@@ -369,6 +365,13 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     errors.push("summary.confidence must be capped when CI status is unknown or pending.");
   }
 
+  if (
+    testing?.ciStatus === "passed" &&
+    !Array.from(evidenceById.values()).some((evidence) => isPassingTestExecutionEvidence(evidence))
+  ) {
+    errors.push("testing.ciStatus cannot be passed without passing test, build, or CI execution evidence.");
+  }
+
   if (!Array.isArray(report.requirements)) {
     return;
   }
@@ -380,7 +383,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`requirements[${index}] cannot be met while evidence gaps are present.`);
     }
 
-    if (item.status !== "met" || typeof item.requirementText !== "string" || !/\b(tests?|coverage|specs?)\b/i.test(item.requirementText)) {
+    if (item.status !== "met") {
       return;
     }
 
@@ -388,6 +391,14 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     const hasPassingTestExecution = refs
       .map((ref) => evidenceById.get(ref))
       .some((evidence) => evidence ? isPassingTestExecutionEvidence(evidence) : false);
+
+    if (!hasPassingTestExecution) {
+      errors.push(`requirements[${index}] cannot be met without passing test, build, or CI execution evidence.`);
+    }
+
+    if (typeof item.requirementText !== "string" || !/\b(tests?|coverage|specs?)\b/i.test(item.requirementText)) {
+      return;
+    }
 
     if (!hasPassingTestExecution) {
       errors.push(`requirements[${index}] test requirement cannot be met without passing test execution evidence.`);

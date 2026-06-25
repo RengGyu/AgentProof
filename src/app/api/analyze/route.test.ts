@@ -139,6 +139,97 @@ describe("POST /api/analyze", () => {
     expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
   });
 
+  it("does not treat non-execution GitHub checks as passed CI", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/76")) {
+        return Promise.resolve(
+          Response.json({
+            title: "fix(server-actions): handle malformed Origin headers",
+            body: "Handled malformed Origin headers and added regression coverage.",
+            url: "https://api.github.com/repos/vercel/next.js/pulls/76",
+            user: { login: "coding-agent" },
+            base: { ref: "canary" },
+            head: { ref: "agent/malformed-origin", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(
+          Response.json([
+            {
+              filename: "packages/next/src/server/app-render/action-handler.ts",
+              additions: 6,
+              deletions: 2,
+              status: "modified",
+              patch: "+ if (!isValidOriginHeader(origin)) return rejectAction()"
+            },
+            {
+              filename: "test/e2e/app-dir/actions-allowed-origins/app-action-malformed-origin.test.ts",
+              additions: 18,
+              deletions: 0,
+              status: "modified",
+              patch: "+ it('handles malformed origin headers', async () => {})"
+            }
+          ])
+        );
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(
+          Response.json({
+            total_count: 3,
+            check_runs: [
+              {
+                name: "Socket Security: Project Report",
+                status: "completed",
+                conclusion: "success",
+                output: { summary: "Project report passed" }
+              },
+              {
+                name: "Vercel Agent Review",
+                status: "completed",
+                conclusion: "success",
+                output: { summary: "Analysis completed successfully" }
+              },
+              {
+                name: "Vercel - Code Owners",
+                status: "completed",
+                conclusion: "success",
+                output: { summary: "There are no code owners defined" }
+              }
+            ]
+          })
+        );
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/vercel/next.js/pull/76",
+          taskText: "Acceptance criteria: handle malformed Origin headers and include regression coverage."
+        })
+      })
+    );
+    const json = await response.json() as { report: VerificationReport };
+
+    expect(response.status).toBe(200);
+    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(json.report.testing.ciStatus).toBe("unknown");
+    expect(json.report.limitations.join(" ")).toContain("Check status is unknown or incomplete");
+    expect(json.report.evidenceIndex.filter((item) => item.kind === "check")).toHaveLength(3);
+  });
+
   it("returns a full-valid fallback report when live GitHub evidence is rate-limited", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response("rate limited", {

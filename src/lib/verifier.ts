@@ -268,12 +268,13 @@ const WEAK_SINGLE_MATCH_KEYWORDS = new Set([
   "user"
 ]);
 
-const TEST_EXECUTION_PATTERN = /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage)\b/i;
+const TEST_EXECUTION_PATTERN = /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage|ci|build)\b/i;
+const PASSING_EXECUTION_PATTERN = /\b(pass|passed|success|succeeded|green)\b/i;
 
 function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
   return (item.kind === "check" || item.kind === "log") &&
     TEST_EXECUTION_PATTERN.test(`${item.label} ${item.summary}`) &&
-    /\b(pass|passed|success|succeeded|green)\b/i.test(item.summary);
+    PASSING_EXECUTION_PATTERN.test(item.summary);
 }
 
 function detectScopeCreep(
@@ -544,28 +545,41 @@ function buildReprompt(
 }
 
 function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestInput["logs"] = []): CheckStatus {
-  const statuses = [
+  const allStatuses = [
     ...checks.map((check) => check.status),
     ...logs.map((log) => log.status).filter((status): status is CheckStatus => Boolean(status))
   ];
+  const executionStatuses = [
+    ...checks
+      .filter((check) => isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+      .map((check) => check.status),
+    ...logs
+      .filter((log) => isExecutionSignal(`${log.source} ${log.text}`))
+      .map((log) => log.status)
+      .filter((status): status is CheckStatus => Boolean(status))
+  ];
 
-  if (statuses.length === 0) {
+  if (allStatuses.length === 0) {
     return "unknown";
   }
 
-  if (statuses.some((status) => status === "failed")) {
+  if (allStatuses.some((status) => status === "failed")) {
     return "failed";
   }
 
-  if (statuses.some((status) => status === "pending")) {
+  if (executionStatuses.some((status) => status === "pending")) {
     return "pending";
   }
 
-  if (statuses.every((status) => status === "passed")) {
+  if (executionStatuses.length > 0 && executionStatuses.every((status) => status === "passed")) {
     return "passed";
   }
 
   return "unknown";
+}
+
+function isExecutionSignal(text: string): boolean {
+  return TEST_EXECUTION_PATTERN.test(text);
 }
 
 function statusForCheck(checks: PullRequestInput["checks"], pattern: RegExp): CheckStatus {

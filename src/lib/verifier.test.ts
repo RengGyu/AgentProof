@@ -96,6 +96,71 @@ describe("generateVerificationReport", () => {
     expect(report.summary.confidence).toBeLessThan(0.85);
   });
 
+  it("does not mark CI passed from non-execution checks only", () => {
+    const report = generateVerificationReport({
+      title: "Fix malformed origin handling",
+      description: "Handled malformed Origin headers and added a regression test.",
+      taskText: "Acceptance criteria: handle malformed Origin headers and include regression coverage.",
+      changedFiles: [
+        {
+          path: "packages/next/src/server/app-render/action-handler.ts",
+          additions: 6,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidOriginHeader(origin)) return rejectAction()"
+        },
+        {
+          path: "test/e2e/app-dir/actions-allowed-origins/app-action-malformed-origin.test.ts",
+          additions: 18,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it('handles malformed origin headers', async () => {})"
+        }
+      ],
+      checks: [
+        { name: "Socket Security: Project Report", status: "passed", summary: "Project report passed" },
+        { name: "Vercel Agent Review", status: "passed", summary: "Analysis completed successfully" },
+        { name: "Vercel - Code Owners", status: "passed", summary: "There are no code owners defined" }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.limitations.join(" ")).toContain("Check status is unknown or incomplete");
+    expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
+  });
+
+  it("marks CI passed when execution-relevant checks pass", () => {
+    const report = generateVerificationReport({
+      title: "Fix malformed origin handling",
+      description: "Handled malformed Origin headers and added a regression test.",
+      taskText: "Acceptance criteria: handle malformed Origin headers and include regression coverage.",
+      changedFiles: [
+        {
+          path: "packages/next/src/server/app-render/action-handler.ts",
+          additions: 6,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidOriginHeader(origin)) return rejectAction()"
+        },
+        {
+          path: "test/e2e/app-dir/actions-allowed-origins/app-action-malformed-origin.test.ts",
+          additions: 18,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it('handles malformed origin headers', async () => {})"
+        }
+      ],
+      checks: [
+        { name: "build", status: "passed", summary: "Build succeeded" },
+        { name: "integration tests", status: "passed", summary: "Origin header tests passed" }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("passed");
+  });
+
   it("does not mark a requirement met from one broad keyword in a diff", () => {
     const report = generateVerificationReport({
       title: "Fix user settings",
