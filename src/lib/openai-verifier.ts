@@ -50,7 +50,8 @@ export async function verifyReportWithOpenAI(
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI verifier failed with HTTP ${response.status}.`);
+    const errorText = await response.text();
+    throw new Error(`OpenAI verifier failed with HTTP ${response.status}: ${summarizeOpenAIError(errorText)}`);
   }
 
   const json = await response.json();
@@ -145,6 +146,25 @@ function validateOutputEvidenceMatchesBaseline(
   }
 
   return errors;
+}
+
+function summarizeOpenAIError(value: string): string {
+  const redacted = value.replace(/sk-[A-Za-z0-9_-]+/g, "[REDACTED]");
+
+  try {
+    const parsed = JSON.parse(redacted) as unknown;
+    if (isRecord(parsed) && isRecord(parsed.error) && typeof parsed.error.message === "string") {
+      return truncate(parsed.error.message, 500);
+    }
+  } catch {
+    // Fall through to the plain-text body.
+  }
+
+  return truncate(redacted || "No error body returned.", 500);
+}
+
+function truncate(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }
 
 export function extractOpenAIResponseText(value: unknown): string | null {

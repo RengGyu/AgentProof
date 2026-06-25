@@ -91,6 +91,31 @@ describe("openai verifier adapter", () => {
     ).rejects.toThrow("failed validation");
   });
 
+  it("surfaces sanitized OpenAI error messages for smoke diagnostics", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "Invalid schema for response_format with key sk-test-secret."
+          }
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("Invalid schema for response_format with key [REDACTED]");
+  });
+
   it("rejects structured model output that omits full-report provenance", async () => {
     const input = demoScenarios["scope-creep"];
     const report = generateVerificationReport(input);
