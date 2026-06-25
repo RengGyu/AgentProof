@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       return jsonNoStore({ error: "PR URL, write token, and report are required." }, 400);
     }
 
-    const validation = validateVerificationReport(body.report);
+    const validation = validateVerificationReport(body.report, { requireFullProvenance: true });
     if (!validation.valid) {
       return jsonNoStore({ error: "Report failed validation.", details: validation.errors }, 422);
     }

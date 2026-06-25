@@ -34,4 +34,20 @@ describe("POST /api/reports", () => {
 
     expect(response.status).toBe(422);
   });
+
+  it("rejects full reports that omit required provenance", async () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    delete report.scope.evidenceRefs;
+
+    const response = await POST(
+      new Request("http://localhost/api/reports", {
+        method: "POST",
+        body: JSON.stringify({ report })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(json.details.join("\n")).toContain("scope.evidenceRefs is required");
+  });
 });

@@ -47,6 +47,29 @@ describe("POST /api/github/comment", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects full reports with missing provenance before calling GitHub", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const report = reportFor("https://github.com/org/repo/pull/1");
+    delete report.scope.evidenceRefs;
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          prUrl: "https://github.com/org/repo/pull/1",
+          githubToken: "token",
+          report
+        })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(json.details.join("\n")).toContain("scope.evidenceRefs is required");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("updates an existing AgentProof marker comment", async () => {
     const report = reportFor("https://github.com/org/repo/pull/1");
     const fetchMock = vi

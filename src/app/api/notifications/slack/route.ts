@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "report is required." }, { status: 400 });
   }
 
-  const validation = validateVerificationReport(body.report);
+  const validation = validateVerificationReport(body.report, { requireFullProvenance: true });
   if (!validation.valid) {
     return noStoreJson({ error: "Report failed validation.", details: validation.errors }, { status: 422 });
   }

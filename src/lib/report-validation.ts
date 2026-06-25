@@ -37,9 +37,13 @@ export interface ReportValidationResult {
   errors: string[];
 }
 
+export interface ReportValidationOptions {
+  requireFullProvenance?: boolean;
+}
+
 type RecordValue = Record<string, unknown>;
 
-export function validateVerificationReport(report: unknown): ReportValidationResult {
+export function validateVerificationReport(report: unknown, options: ReportValidationOptions = {}): ReportValidationResult {
   const errors: string[] = [];
 
   if (!isRecord(report)) {
@@ -79,6 +83,9 @@ export function validateVerificationReport(report: unknown): ReportValidationRes
   validateReviewPriority(report.reviewPriority, evidenceIds, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
+  if (options.requireFullProvenance) {
+    validateFullReportProvenance(report, evidenceIds, errors);
+  }
 
   return { valid: errors.length === 0, errors };
 }
@@ -267,6 +274,55 @@ function validateEvidenceRefs(value: unknown, path: string, evidenceIds: Set<str
       errors.push(`${path} cites missing evidence ${ref}.`);
     }
   }
+}
+
+function validateFullReportProvenance(report: RecordValue, evidenceIds: Set<string>, errors: string[]) {
+  if (evidenceIds.size === 0 || hasEvidenceUnavailableNote(report.limitations)) {
+    return;
+  }
+
+  if (isRecord(report.scope) && report.scope.suspected === true) {
+    const refs = getStringArray(report.scope.evidenceRefs);
+    if (refs.length === 0 && !hasEvidenceUnavailableNote(report.scope.reasons)) {
+      errors.push("scope.evidenceRefs is required for full reports when scope.suspected is true.");
+    }
+  }
+
+  if (!Array.isArray(report.reviewPriority)) {
+    return;
+  }
+
+  report.reviewPriority.forEach((item, index) => {
+    if (!isRecord(item) || !requiresPriorityEvidence(item)) {
+      return;
+    }
+
+    const refs = getStringArray(item.evidenceRefs);
+    if (refs.length === 0 && !hasEvidenceUnavailableNote([item.reason])) {
+      errors.push(`reviewPriority[${index}].evidenceRefs is required for full reports with high-risk or file-specific priority items.`);
+    }
+  });
+}
+
+function requiresPriorityEvidence(item: RecordValue): boolean {
+  const priority = typeof item.priority === "string" ? item.priority : "";
+  const path = typeof item.path === "string" ? item.path : "";
+
+  return priority === "high" || priority === "blocker" || isConcretePath(path);
+}
+
+function isConcretePath(value: string): boolean {
+  return /(^|\/)[^/\s]+\.[^/\s]+$/.test(value) || value.includes("/");
+}
+
+function hasEvidenceUnavailableNote(value: unknown): boolean {
+  const text = getStringArray(value).join(" ");
+
+  return /\bevidence\b.{0,80}\b(unavailable|not available|omitted|missing|redacted|not collected|could not be collected)\b/i.test(text);
+}
+
+function getStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function validateArray(value: unknown, path: string, maxItems: number, errors: string[]): unknown[] | null {

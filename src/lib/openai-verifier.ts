@@ -67,12 +67,50 @@ export async function verifyReportWithOpenAI(
     throw new Error("OpenAI verifier returned invalid JSON.");
   }
 
-  const validation = validateVerificationReport(report);
+  const validation = validateVerificationReport(report, { requireFullProvenance: true });
   if (!validation.valid) {
     throw new Error(`OpenAI verifier output failed validation: ${validation.errors.join(" ")}`);
   }
 
+  const baselineErrors = validateOutputEvidenceMatchesBaseline(report as VerificationReport, deterministicReport);
+  if (baselineErrors.length > 0) {
+    throw new Error(`OpenAI verifier output changed deterministic evidence: ${baselineErrors.join(" ")}`);
+  }
+
   return report as VerificationReport;
+}
+
+function validateOutputEvidenceMatchesBaseline(
+  report: VerificationReport,
+  deterministicReport: VerificationReport
+): string[] {
+  const errors: string[] = [];
+  const baselineById = new Map(deterministicReport.evidenceIndex.map((item) => [item.id, item]));
+
+  if (report.evidenceIndex.length !== deterministicReport.evidenceIndex.length) {
+    errors.push("evidenceIndex length changed.");
+  }
+
+  for (const item of report.evidenceIndex) {
+    const baseline = baselineById.get(item.id);
+
+    if (!baseline) {
+      errors.push(`evidenceIndex includes non-baseline evidence ${item.id}.`);
+      continue;
+    }
+
+    if (
+      item.kind !== baseline.kind ||
+      item.label !== baseline.label ||
+      item.locator !== baseline.locator ||
+      item.summary !== baseline.summary ||
+      item.confidence !== baseline.confidence
+    ) {
+      errors.push(`evidenceIndex item ${item.id} differs from deterministic baseline.`);
+    }
+  }
+
+  return errors;
 }
 
 export function extractOpenAIResponseText(value: unknown): string | null {

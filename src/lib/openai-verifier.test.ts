@@ -53,4 +53,44 @@ describe("openai verifier adapter", () => {
       })
     ).rejects.toThrow("failed validation");
   });
+
+  it("rejects structured model output that omits full-report provenance", async () => {
+    const input = demoScenarios["scope-creep"];
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    delete invalid.scope.evidenceRefs;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("scope.evidenceRefs is required");
+  });
+
+  it("rejects structured model output that changes deterministic evidence", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    invalid.evidenceIndex[0].summary = "Fabricated task evidence.";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("changed deterministic evidence");
+  });
 });

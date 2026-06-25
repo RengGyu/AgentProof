@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildShareUrl, decodeSharedReport, encodeReportForShare } from "./report-share";
+import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
@@ -18,6 +19,7 @@ describe("report share", () => {
     expect(shared.reviewPriority.every((item) => !item.evidenceRefs || item.evidenceRefs.length === 0)).toBe(true);
     expect(JSON.stringify(shared)).not.toContain("Patch excerpt");
     expect(JSON.stringify(shared)).not.toContain("ev_");
+    expect(validateVerificationReport(shared, { requireFullProvenance: true })).toEqual({ valid: true, errors: [] });
   });
 
   it("builds a portable share URL", () => {

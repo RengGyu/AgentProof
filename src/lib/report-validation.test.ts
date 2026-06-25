@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateVerificationReport } from "./report-validation";
+import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
@@ -32,6 +33,43 @@ describe("validateVerificationReport", () => {
     expect(result.valid).toBe(false);
     expect(result.errors.join("\n")).toContain("scope.evidenceRefs cites missing evidence ev_missing_scope");
     expect(result.errors.join("\n")).toContain("reviewPriority[0].evidenceRefs cites missing evidence ev_missing_priority");
+  });
+
+  it("keeps default validation backward-compatible for optional provenance", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    delete report.scope.evidenceRefs;
+    delete report.reviewPriority[0].evidenceRefs;
+
+    expect(validateVerificationReport(report)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("requires full-report provenance when strict mode is enabled", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    delete report.scope.evidenceRefs;
+    delete report.reviewPriority[0].evidenceRefs;
+
+    const result = validateVerificationReport(report, { requireFullProvenance: true });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("scope.evidenceRefs is required");
+    expect(result.errors.join("\n")).toContain("reviewPriority[0].evidenceRefs is required");
+  });
+
+  it("allows strict validation for summary-only reports without an evidence index", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    const shared = decodeSharedReport(encodeReportForShare(report));
+
+    expect(shared.evidenceIndex).toHaveLength(0);
+    expect(validateVerificationReport(shared, { requireFullProvenance: true })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("allows strict validation when a full report explicitly says evidence was unavailable", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    delete report.scope.evidenceRefs;
+    delete report.reviewPriority[0].evidenceRefs;
+    report.limitations.push("File-level priority evidence was unavailable from the imported report source.");
+
+    expect(validateVerificationReport(report, { requireFullProvenance: true })).toEqual({ valid: true, errors: [] });
   });
 
   it("rejects missing nested fields and unknown report properties", () => {
