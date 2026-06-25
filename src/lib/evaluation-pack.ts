@@ -254,11 +254,25 @@ export function sweBenchRowToEvaluationCase(row: unknown): EvaluationCase {
 }
 
 export function evaluationCaseFromRecord(record: unknown): EvaluationCase {
-  if (isEvaluationCase(record)) {
+  if (isNormalizedEvaluationCase(record)) {
     return record;
   }
 
   return sweBenchRowToEvaluationCase(record);
+}
+
+export function isNormalizedEvaluationCase(value: unknown): value is EvaluationCase {
+  if (!isRecord(value) || !isRecord(value.source) || !isRecord(value.input) || !isRecord(value.oracle)) {
+    return false;
+  }
+
+  return typeof value.id === "string" &&
+    typeof value.source.id === "string" &&
+    Array.isArray(value.input.changedFiles) &&
+    Array.isArray(value.oracle.hiddenLabels) &&
+    Array.isArray(value.oracle.hiddenValues) &&
+    Array.isArray(value.oracle.deniedReportTerms) &&
+    Array.isArray(value.oracle.visibleChangedFiles);
 }
 
 export function evaluateReportAgainstCase(report: VerificationReport, testCase: EvaluationCase): EvaluationResult {
@@ -693,18 +707,6 @@ function requirementHasPassingExecutionRef(report: VerificationReport, evidenceR
       /\b(test|spec|unit|integration|e2e|pytest|jest|vitest|ci|build)\b/i.test(`${item.label} ${item.summary}`) &&
       /\b(pass|passed|success|succeeded|green)\b/i.test(item.summary);
   });
-}
-
-function isEvaluationCase(value: unknown): value is EvaluationCase {
-  if (!isRecord(value) || !isRecord(value.source) || !isRecord(value.input) || !isRecord(value.oracle)) {
-    return false;
-  }
-
-  return typeof value.id === "string" &&
-    typeof value.source.id === "string" &&
-    Array.isArray(value.input.changedFiles) &&
-    Array.isArray(value.oracle.hiddenLabels) &&
-    Array.isArray(value.oracle.visibleChangedFiles);
 }
 
 function learningAreaForMetric(id: string): EvaluationLearningArea {

@@ -22,7 +22,9 @@ This document defines the MVP evaluation approach for AgentProof. The goal is no
 
 ## Commands
 
-Fetch a small real SWE-bench Verified sample into a git-ignored local directory. The fetcher writes normalized evaluation cases by default, not raw dataset rows:
+The repository includes one small committed SWE-bench Verified fixture under `eval/fixtures/` so CI can run without network access. The manifest pins the fixture file hash and records the dataset/source metadata.
+
+Fetch a larger real SWE-bench Verified sample into a git-ignored local directory. The fetcher writes normalized evaluation cases by default, not raw dataset rows:
 
 ```bash
 pnpm eval:fetch:swebench -- --length 10
@@ -34,13 +36,28 @@ Run the evaluation harness tests:
 pnpm eval:pack
 ```
 
-Print a learning summary for the generated cases:
+Print a learning summary. In a clean checkout this uses the committed fixture; if local generated cases exist, they are preferred:
 
 ```bash
 pnpm eval:summary
 ```
 
+Force the committed fixture path even when `eval/generated/` exists:
+
+```bash
+pnpm eval:summary:fixture
+```
+
 Generated benchmark cases are written to `eval/generated/` and must not be committed because they still contain short patch excerpts and separated oracle labels.
+
+## Committed Fixture Contract
+
+- Fixtures must be normalized `EvaluationCase` records, not raw benchmark rows.
+- `input` must not contain dataset names, benchmark URLs, gold-patch wording, `FAIL_TO_PASS`, `PASS_TO_PASS`, hidden labels, or hidden values.
+- `oracle` may contain source-provided labels, but those labels are used only after report generation.
+- Patch excerpts must stay bounded; the current CI fixture keeps each patch at or below 80 lines and the total patch text below 1,500 bytes.
+- The manifest must record dataset revision, row API URL, source offset/length, source row hash, fixture hash, normalizer version, and privacy notes.
+- Do not add invented pass/fail labels, quality scores, expected prose reviews, or LLM judgments to fixtures.
 
 ## Learning Loop
 

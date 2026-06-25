@@ -13,7 +13,8 @@
     "smoke:openai": "node scripts/smoke-openai-verifier.mjs",
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
     "eval:pack": "vitest run src/lib/evaluation-pack.test.ts",
-    "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose"
+    "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
+    "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

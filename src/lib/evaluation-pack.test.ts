@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   EVALUATION_DATA_SOURCES,
   evaluationCaseFromRecord,
   evaluateReportAgainstCase,
+  isNormalizedEvaluationCase,
   summarizeEvaluationResults,
   summarizeEvaluationLearning,
   sweBenchRowToEvaluationCase
@@ -175,8 +177,8 @@ describe("real-dataset evaluation pack", () => {
     expect(result.metrics.find((item) => item.id === "missing_test_calibration")?.status).toBe("fail");
   });
 
-  it("can evaluate locally fetched real SWE-bench rows when generated data exists", () => {
-    const rows = loadGeneratedSweBenchRecords(3);
+  it("can evaluate generated or committed real SWE-bench cases", () => {
+    const rows = loadAvailableEvaluationRecords(3);
 
     if (rows.length === 0) {
       expect(rows).toEqual([]);
@@ -195,6 +197,76 @@ describe("real-dataset evaluation pack", () => {
     expect(results.flatMap((result) => result.metrics).filter((metric) => metric.status === "fail")).toEqual([]);
     expect(summary.failedCount).toBe(0);
   });
+
+  it("keeps the committed SWE-bench fixture reproducible by manifest hash", () => {
+    const fixtureUrl = new URL("../../eval/fixtures/swebench-verified.small.jsonl", import.meta.url);
+    const manifestUrl = new URL("../../eval/fixtures/swebench-verified.small.manifest.json", import.meta.url);
+    const fixture = readFileSync(fixtureUrl);
+    const manifest = JSON.parse(readFileSync(manifestUrl, "utf8")) as {
+      caseCount: number;
+      caseIds: string[];
+      datasetRevision: string;
+      sourceOffset: number;
+      sourceLength: number;
+      sourceRowSha256: string;
+      normalizerVersion: string;
+      sha256: string;
+      privacy: string;
+    };
+
+    expect(manifest.caseCount).toBe(1);
+    expect(manifest.caseIds).toEqual(["astropy__astropy-12907"]);
+    expect(manifest.datasetRevision).toMatch(/^[a-f0-9]{40}$/);
+    expect(manifest.sourceOffset).toBe(0);
+    expect(manifest.sourceLength).toBe(1);
+    expect(manifest.sourceRowSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(manifest.normalizerVersion).toBe("evaluation-pack-v1");
+    expect(manifest.privacy).toContain("raw dataset rows are not committed");
+    expect(createHash("sha256").update(fixture).digest("hex")).toBe(manifest.sha256);
+    expect(JSON.parse(fixture.toString("utf8")).id).toBe("astropy__astropy-12907");
+  });
+
+  it("evaluates the committed SWE-bench fixture without generated data", () => {
+    const fixtureUrl = new URL("../../eval/fixtures/swebench-verified.small.jsonl", import.meta.url);
+    const fixtureRecord = readJsonlRecord(fixtureUrl);
+
+    expect(isNormalizedEvaluationCase(fixtureRecord)).toBe(true);
+    expect(Object.keys(fixtureRecord as unknown as Record<string, unknown>)).not.toEqual(expect.arrayContaining([
+      "repo",
+      "patch",
+      "test_patch",
+      "problem_statement",
+      "FAIL_TO_PASS",
+      "PASS_TO_PASS"
+    ]));
+
+    const testCase = fixtureRecord;
+    const report = generateVerificationReport(testCase.input);
+    const result = evaluateReportAgainstCase(report, testCase);
+    const inputText = JSON.stringify(testCase.input);
+    const fixtureText = readFileSync(fixtureUrl, "utf8");
+    const patchLineCounts = testCase.input.changedFiles.map((file) =>
+      (file.patch ?? "").split(/\r?\n/).filter(Boolean).length
+    );
+    const patchByteCount = testCase.input.changedFiles.reduce(
+      (total, file) => total + Buffer.byteLength(file.patch ?? "", "utf8"),
+      0
+    );
+
+    expect(result.caseId).toBe("astropy__astropy-12907");
+    expect(result.metrics.filter((metricItem) => metricItem.status === "fail")).toEqual([]);
+    expect(testCase.oracle.visibleChangedFiles).toEqual(testCase.input.changedFiles.map((file) => file.path));
+    expect(inputText).not.toMatch(/SWE-bench|benchmark|gold|FAIL_TO_PASS|PASS_TO_PASS|huggingface/i);
+    expect(testCase.oracle.hiddenLabels.every((label) => !inputText.includes(label))).toBe(true);
+    expect(testCase.oracle.hiddenValues.every((value) => !inputText.includes(value))).toBe(true);
+    expect(Math.max(...patchLineCounts)).toBeLessThanOrEqual(80);
+    expect(patchByteCount).toBeLessThanOrEqual(1_500);
+    expect(fixtureText).not.toMatch(/\bgh[pousr]_[A-Za-z0-9_]{20,}/);
+    expect(fixtureText).not.toMatch(/\bgithub_pat_[A-Za-z0-9_]{20,}/);
+    expect(fixtureText).not.toMatch(/\bsk-[A-Za-z0-9_-]{20,}/);
+    expect(fixtureText).not.toMatch(/https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]+/);
+    expect(fixtureText).not.toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/);
+  });
 });
 
 function metric(id: string, status: EvaluationMetric["status"], detail = ""): EvaluationMetric {
@@ -206,8 +278,8 @@ function metric(id: string, status: EvaluationMetric["status"], detail = ""): Ev
   };
 }
 
-function loadGeneratedSweBenchRecords(limit: number): unknown[] {
-  const fixtureUrl = generatedFixtureUrl();
+function loadAvailableEvaluationRecords(limit: number): unknown[] {
+  const fixtureUrl = availableFixtureUrl();
 
   if (!existsSync(fixtureUrl)) {
     return [];
@@ -221,12 +293,29 @@ function loadGeneratedSweBenchRecords(limit: number): unknown[] {
     .map((line) => JSON.parse(line) as unknown);
 }
 
-function generatedFixtureUrl(): URL {
+function availableFixtureUrl(): URL {
   const casesUrl = new URL("../../eval/generated/swebench-verified.cases.jsonl", import.meta.url);
 
   if (existsSync(casesUrl)) {
     return casesUrl;
   }
 
+  const committedFixtureUrl = new URL("../../eval/fixtures/swebench-verified.small.jsonl", import.meta.url);
+
+  if (existsSync(committedFixtureUrl)) {
+    return committedFixtureUrl;
+  }
+
   return new URL("../../eval/generated/swebench-verified.rows.jsonl", import.meta.url);
+}
+
+function readJsonlRecord(url: URL): ReturnType<typeof evaluationCaseFromRecord> {
+  const line = readFileSync(url, "utf8").trim().split(/\n+/)[0];
+  const parsed = JSON.parse(line);
+
+  if (!isNormalizedEvaluationCase(parsed)) {
+    throw new Error("Committed fixture must already be a normalized EvaluationCase.");
+  }
+
+  return parsed;
 }

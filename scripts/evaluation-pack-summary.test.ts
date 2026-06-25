@@ -9,10 +9,10 @@ import { generateVerificationReport } from "../src/lib/verifier";
 
 describe("evaluation pack summary", () => {
   it("prints the current generated-pack learning summary", () => {
-    const rows = loadGeneratedSweBenchRows();
+    const rows = loadAvailableEvaluationRecords();
 
     if (rows.length === 0) {
-      console.info("No generated SWE-bench rows found. Run `pnpm eval:fetch:swebench -- --length 10` first.");
+      console.info("No generated or committed SWE-bench evaluation cases found. Run `pnpm eval:fetch:swebench -- --length 10` first.");
       expect(rows).toEqual([]);
       return;
     }
@@ -31,8 +31,8 @@ describe("evaluation pack summary", () => {
   });
 });
 
-function loadGeneratedSweBenchRows(): unknown[] {
-  const fixtureUrl = generatedFixtureUrl();
+function loadAvailableEvaluationRecords(): unknown[] {
+  const fixtureUrl = availableFixtureUrl();
 
   if (!existsSync(fixtureUrl)) {
     return [];
@@ -45,11 +45,21 @@ function loadGeneratedSweBenchRows(): unknown[] {
     .map((line) => JSON.parse(line) as unknown);
 }
 
-function generatedFixtureUrl(): URL {
+function availableFixtureUrl(): URL {
+  if (process.env.AGENTPROOF_EVAL_FIXTURE_ONLY === "1") {
+    return new URL("../eval/fixtures/swebench-verified.small.jsonl", import.meta.url);
+  }
+
   const casesUrl = new URL("../eval/generated/swebench-verified.cases.jsonl", import.meta.url);
 
   if (existsSync(casesUrl)) {
     return casesUrl;
+  }
+
+  const committedFixtureUrl = new URL("../eval/fixtures/swebench-verified.small.jsonl", import.meta.url);
+
+  if (existsSync(committedFixtureUrl)) {
+    return committedFixtureUrl;
   }
 
   return new URL("../eval/generated/swebench-verified.rows.jsonl", import.meta.url);

@@ -117,12 +117,20 @@ For a fuller review prompt and mobile/manual test checklist, use `docs/review-ha
 AgentProof evaluation starts from real benchmark data instead of invented labels. The MVP harness uses SWE-bench Verified rows for issue text, visible patch/test evidence, schema validity, provenance coverage, future-label leakage checks, and false-verified detection. Benchmark outcome labels are used only after report generation.
 
 ```bash
+pnpm eval:pack
+pnpm eval:summary
+pnpm eval:summary:fixture
+```
+
+Fetch a larger local sample when network is available:
+
+```bash
 pnpm eval:fetch:swebench -- --length 10
 pnpm eval:pack
 pnpm eval:summary
 ```
 
-Generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
+One small normalized SWE-bench fixture is committed under `eval/fixtures/` with a manifest hash so CI can run without network. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
 
 ## Deployed Demo
 
