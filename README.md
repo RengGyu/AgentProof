@@ -119,9 +119,10 @@ AgentProof evaluation starts from real benchmark data instead of invented labels
 ```bash
 pnpm eval:fetch:swebench -- --length 10
 pnpm eval:pack
+pnpm eval:summary
 ```
 
-Generated rows live under `eval/generated/` and are ignored by git because they may contain raw patch text. See `docs/evaluation-pack.md` for source caveats and the learning loop.
+Generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
 
 ## Deployed Demo
 

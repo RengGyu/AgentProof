@@ -36,6 +36,9 @@ export interface EvaluationCase {
   oracle: {
     description: string;
     hiddenLabels: string[];
+    hiddenValues: string[];
+    deniedReportTerms: string[];
+    visibleImplementationFiles: string[];
     visibleChangedFiles: string[];
     visibleTestFiles: string[];
     failToPassTests: string[];
@@ -54,9 +57,52 @@ export interface EvaluationResult {
   caseId: string;
   dataset: string;
   passed: boolean;
+  calibrated: boolean;
   metrics: EvaluationMetric[];
   learningActions: string[];
 }
+
+export type EvaluationLearningArea =
+  | "requirement_calibration"
+  | "missing_test_detection"
+  | "evidence_indexing"
+  | "oracle_boundary"
+  | "privacy"
+  | "schema";
+
+export interface EvaluationLearningTask {
+  id: string;
+  area: EvaluationLearningArea;
+  priority: "blocker" | "high" | "medium" | "low";
+  metricIds: string[];
+  caseIds: string[];
+  recommendation: string;
+  acceptanceCriteria: string[];
+  sampleDetails: string[];
+}
+
+export interface EvaluationMetricRollup {
+  id: string;
+  label: string;
+  status: EvaluationMetricStatus;
+  count: number;
+  caseIds: string[];
+  sampleDetails: string[];
+}
+
+export interface EvaluationRunSummary {
+  caseCount: number;
+  passedCount: number;
+  failedCount: number;
+  calibratedCount: number;
+  uncalibratedCount: number;
+  statusCounts: Record<EvaluationMetricStatus, number>;
+  metricRollups: EvaluationMetricRollup[];
+  learningTasks: EvaluationLearningTask[];
+  learningActions: string[];
+}
+
+const NO_BLOCKING_ACTION = "No blocking harness failure; inspect warnings and add more real benchmark cases.";
 
 export const EVALUATION_DATA_SOURCES: EvaluationDataSource[] = [
   {
@@ -145,6 +191,16 @@ export function sweBenchRowToEvaluationCase(row: unknown): EvaluationCase {
   const changedFiles = mergeChangedFiles([...implementationFiles, ...testFiles]);
   const failToPassTests = normalizeStringList(value.FAIL_TO_PASS);
   const passToPassTests = normalizeStringList(value.PASS_TO_PASS);
+  const visibleText = [
+    problemStatement,
+    hintsText,
+    ...changedFiles.map((file) => `${file.path}\n${file.patch ?? ""}`)
+  ].join("\n");
+  const hiddenValues = Array.from(new Set([...failToPassTests, ...passToPassTests]))
+    .filter((label) => label.length > 4 && !visibleText.includes(label));
+  const visibleImplementationFiles = changedFiles
+    .filter((file) => !isLikelyTestPath(file.path))
+    .map((file) => file.path);
   const visibleTestFiles = changedFiles.filter((file) => isLikelyTestPath(file.path)).map((file) => file.path);
 
   return {
@@ -158,26 +214,37 @@ export function sweBenchRowToEvaluationCase(row: unknown): EvaluationCase {
       oracleStrength: "strong"
     },
     input: {
-      title: `SWE-bench issue ${instanceId}`,
+      title: `Issue-linked PR ${instanceId}`,
       url: `https://github.com/${repo}`,
       description: hintsText
-        ? `Benchmark PR context from pre-fix discussion: ${redactSecrets(hintsText)}`
-        : "Benchmark PR context was not provided; evaluation uses the issue text and visible patch metadata only.",
-      author: "benchmark",
+        ? `PR discussion context: ${redactSecrets(hintsText)}`
+        : "PR discussion context was not provided; evaluation uses the issue text and visible patch metadata only.",
       baseBranch: baseCommit ? `base:${baseCommit.slice(0, 12)}` : undefined,
-      headBranch: "benchmark-gold-patch",
+      headBranch: "candidate-fix",
       taskText: redactSecrets(problemStatement),
       changedFiles,
       checks: [],
       logs: [],
       limitations: [
-        "SWE-bench oracle labels are withheld from report input to avoid future-label leakage.",
         "No live CI log was provided; passing behavior must stay unclear unless visible evidence proves it."
       ]
     },
     oracle: {
       description: "SWE-bench provides issue text, a developer patch, a test patch, and fail-to-pass/pass-to-pass test labels.",
       hiddenLabels: ["FAIL_TO_PASS", "PASS_TO_PASS"],
+      hiddenValues,
+      deniedReportTerms: [
+        "SWE-bench",
+        "SWEbench",
+        "benchmark",
+        "gold-patch",
+        "gold patch",
+        "FAIL_TO_PASS",
+        "PASS_TO_PASS",
+        "princeton-nlp/SWE-bench",
+        "huggingface.co/datasets/princeton-nlp/SWE-bench_Verified"
+      ],
+      visibleImplementationFiles,
       visibleChangedFiles: changedFiles.map((file) => file.path),
       visibleTestFiles,
       failToPassTests,
@@ -186,25 +253,137 @@ export function sweBenchRowToEvaluationCase(row: unknown): EvaluationCase {
   };
 }
 
+export function evaluationCaseFromRecord(record: unknown): EvaluationCase {
+  if (isEvaluationCase(record)) {
+    return record;
+  }
+
+  return sweBenchRowToEvaluationCase(record);
+}
+
 export function evaluateReportAgainstCase(report: VerificationReport, testCase: EvaluationCase): EvaluationResult {
   const metrics: EvaluationMetric[] = [
     schemaMetric(report),
     evidenceKindsMetric(report, ["task"]),
     changedFileEvidenceMetric(report, testCase.oracle.visibleChangedFiles),
     testFileEvidenceMetric(report, testCase.oracle.visibleTestFiles),
-    noOracleLeakageMetric(report, testCase.oracle.hiddenLabels),
+    executionUncertaintyMetric(report, testCase),
+    requirementCalibrationMetric(report, testCase),
+    missingTestCalibrationMetric(report, testCase),
+    noOracleLeakageMetric(report, testCase),
     noUnsupportedVerifiedMetric(report),
     privacyPatternMetric(report)
   ];
   const failedMetrics = metrics.filter((metric) => metric.status === "fail");
+  const nonPassMetrics = metrics.filter((metric) => metric.status !== "pass");
 
   return {
     caseId: testCase.id,
     dataset: testCase.source.id,
     passed: failedMetrics.length === 0,
+    calibrated: nonPassMetrics.length === 0,
     metrics,
     learningActions: summarizeEvaluationLearning(metrics)
   };
+}
+
+export function summarizeEvaluationResults(results: EvaluationResult[]): EvaluationRunSummary {
+  const statusCounts: Record<EvaluationMetricStatus, number> = {
+    pass: 0,
+    fail: 0,
+    warning: 0,
+    unknown: 0
+  };
+  const rollups = new Map<string, EvaluationMetricRollup>();
+  const actionSet = new Set<string>();
+
+  for (const result of results) {
+    for (const metric of result.metrics) {
+      statusCounts[metric.status] += 1;
+
+      if (metric.status === "pass") {
+        continue;
+      }
+
+      const key = `${metric.id}:${metric.status}`;
+      const existing = rollups.get(key);
+
+      if (existing) {
+        existing.count += 1;
+        existing.caseIds.push(result.caseId);
+        if (existing.sampleDetails.length < 3) {
+          existing.sampleDetails.push(metric.detail);
+        }
+      } else {
+        rollups.set(key, {
+          id: metric.id,
+          label: metric.label,
+          status: metric.status,
+          count: 1,
+          caseIds: [result.caseId],
+          sampleDetails: [metric.detail]
+        });
+      }
+    }
+
+    for (const action of result.learningActions) {
+      if (action !== NO_BLOCKING_ACTION) {
+        actionSet.add(action);
+      }
+    }
+  }
+
+  if (statusCounts.warning > 0) {
+    actionSet.add("Review warning metrics before treating the benchmark run as calibrated.");
+  }
+
+  if (statusCounts.unknown > 0) {
+    actionSet.add("Resolve unknown metrics before treating the benchmark run as fully calibrated.");
+  }
+
+  if (results.length === 0) {
+    actionSet.add("Fetch or define evaluation cases before drawing verifier-quality conclusions.");
+  }
+
+  const metricRollups = Array.from(rollups.values()).sort((left, right) =>
+    statusRank(left.status) - statusRank(right.status) ||
+    right.count - left.count ||
+    left.id.localeCompare(right.id)
+  );
+
+  if (results.length > 0 && metricRollups.length === 0) {
+    actionSet.add(NO_BLOCKING_ACTION);
+  }
+
+  return {
+    caseCount: results.length,
+    passedCount: results.filter((result) => result.passed).length,
+    failedCount: results.filter((result) => !result.passed).length,
+    calibratedCount: results.filter((result) => result.calibrated).length,
+    uncalibratedCount: results.filter((result) => !result.calibrated).length,
+    statusCounts,
+    metricRollups,
+    learningTasks: buildEvaluationLearningTasks(metricRollups),
+    learningActions: Array.from(actionSet)
+  };
+}
+
+export function buildEvaluationLearningTasks(rollups: EvaluationMetricRollup[]): EvaluationLearningTask[] {
+  return rollups.map((rollup) => {
+    const area = learningAreaForMetric(rollup.id);
+    const priority = priorityForRollup(rollup);
+
+    return {
+      id: `${area}:${rollup.id}:${rollup.status}`,
+      area,
+      priority,
+      metricIds: [rollup.id],
+      caseIds: rollup.caseIds,
+      recommendation: recommendationForMetric(rollup.id),
+      acceptanceCriteria: acceptanceCriteriaForMetric(rollup.id),
+      sampleDetails: rollup.sampleDetails
+    };
+  });
 }
 
 export function summarizeEvaluationLearning(metrics: EvaluationMetric[]): string[] {
@@ -226,6 +405,10 @@ export function summarizeEvaluationLearning(metrics: EvaluationMetric[]): string
     actions.push("Remove benchmark labels from report inputs; future outcome labels must only be used after report generation.");
   }
 
+  if (hasFailed(metrics, "execution_uncertainty")) {
+    actions.push("Lower confidence or require execution evidence before presenting high-coverage benchmark reports.");
+  }
+
   if (hasFailed(metrics, "unsupported_verified")) {
     actions.push("Tighten requirement scoring so visible diff/test patches without passing execution evidence remain partial or unclear.");
   }
@@ -235,7 +418,7 @@ export function summarizeEvaluationLearning(metrics: EvaluationMetric[]): string
   }
 
   if (actions.length === 0) {
-    actions.push("No blocking harness failure; inspect warnings and add more real benchmark cases.");
+    actions.push(NO_BLOCKING_ACTION);
   }
 
   return actions;
@@ -276,8 +459,12 @@ function changedFileEvidenceMetric(report: VerificationReport, expectedFiles: st
     };
   }
 
-  const evidenceText = report.evidenceIndex.map((item) => `${item.label} ${item.locator ?? ""}`).join("\n");
-  const missingFiles = expectedFiles.filter((path) => !evidenceText.includes(path));
+  const indexedFiles = new Set(
+    report.evidenceIndex
+      .filter((item) => item.kind === "changed_file" || item.kind === "diff" || item.kind === "test")
+      .flatMap((item) => [item.label, item.locator].filter((value): value is string => typeof value === "string"))
+  );
+  const missingFiles = expectedFiles.filter((path) => !indexedFiles.has(path));
 
   return {
     id: "changed_file_evidence",
@@ -299,11 +486,10 @@ function testFileEvidenceMetric(report: VerificationReport, expectedTestFiles: s
     };
   }
 
-  const testEvidence = report.evidenceIndex
+  const indexedTestFiles = new Set(report.evidenceIndex
     .filter((item) => item.kind === "test")
-    .map((item) => `${item.label} ${item.locator ?? ""}`)
-    .join("\n");
-  const missingFiles = expectedTestFiles.filter((path) => !testEvidence.includes(path));
+    .flatMap((item) => [item.label, item.locator].filter((value): value is string => typeof value === "string")));
+  const missingFiles = expectedTestFiles.filter((path) => !indexedTestFiles.has(path));
 
   return {
     id: "test_file_evidence",
@@ -315,29 +501,143 @@ function testFileEvidenceMetric(report: VerificationReport, expectedTestFiles: s
   };
 }
 
-function noOracleLeakageMetric(report: VerificationReport, hiddenLabels: string[]): EvaluationMetric {
+function executionUncertaintyMetric(report: VerificationReport, testCase: EvaluationCase): EvaluationMetric {
+  if (testCase.source.oracleType !== "test_transition" && testCase.source.oracleType !== "ci_transition") {
+    return {
+      id: "execution_uncertainty",
+      label: "Execution-evidence uncertainty",
+      status: "unknown",
+      detail: "This case does not provide a test or CI transition oracle."
+    };
+  }
+
+  const hasExecutionEvidence = hasAnyExecutionEvidence(report);
+
+  if (hasExecutionEvidence) {
+    return {
+      id: "execution_uncertainty",
+      label: "Execution-evidence uncertainty",
+      status: "pass",
+      detail: "Report contains visible check or log evidence for execution status."
+    };
+  }
+
+  const tooConfident = report.summary.confidence >= 0.85 || report.summary.evidenceCoverage >= 100;
+
+  return {
+    id: "execution_uncertainty",
+    label: "Execution-evidence uncertainty",
+    status: tooConfident ? "fail" : "pass",
+    detail: tooConfident
+      ? "Report is too confident even though no visible execution evidence was provided."
+      : "Report stays below high-confidence/high-coverage thresholds without visible execution evidence."
+  };
+}
+
+function requirementCalibrationMetric(report: VerificationReport, testCase: EvaluationCase): EvaluationMetric {
+  const metWithoutExecutionRefs = report.requirements.filter((requirement) =>
+    requirement.status === "met" && !requirementHasPassingExecutionRef(report, requirement.evidenceRefs)
+  );
+
+  if (metWithoutExecutionRefs.length > 0) {
+    return {
+      id: "requirement_calibration",
+      label: "Requirement calibration",
+      status: "fail",
+      detail: `${metWithoutExecutionRefs.length} met requirement(s) lack passing execution evidence in their evidenceRefs.`
+    };
+  }
+
+  const hasVisibleImplementationOrTest = testCase.oracle.visibleImplementationFiles.length > 0 ||
+    testCase.oracle.visibleTestFiles.length > 0;
+  const allWeak = report.requirements.length > 0 &&
+    report.requirements.every((requirement) => requirement.status === "missing" || requirement.status === "unclear");
+
+  if (hasVisibleImplementationOrTest && allWeak) {
+    return {
+      id: "requirement_calibration",
+      label: "Requirement calibration",
+      status: "warning",
+      detail: "Visible implementation or test evidence exists, but every requirement is still missing or unclear."
+    };
+  }
+
+  return {
+    id: "requirement_calibration",
+    label: "Requirement calibration",
+    status: "pass",
+    detail: "Requirement statuses stay aligned with visible execution evidence."
+  };
+}
+
+function missingTestCalibrationMetric(report: VerificationReport, testCase: EvaluationCase): EvaluationMetric {
+  const implementationFiles = testCase.oracle.visibleImplementationFiles;
+
+  if (implementationFiles.length === 0) {
+    return {
+      id: "missing_test_calibration",
+      label: "Missing-test calibration",
+      status: "unknown",
+      detail: "No visible implementation files were present in the evaluation case."
+    };
+  }
+
+  const missingTestPaths = new Set(report.testing.missingTests.map((missing) => missing.path));
+  const implementationFilesWithoutMissingTestSignal = implementationFiles.filter((path) => !missingTestPaths.has(path));
+  const hasVisibleTestArtifact = testCase.oracle.visibleTestFiles.length > 0;
+  const hasExecutionEvidence = hasAnyExecutionEvidence(report);
+
+  if (!hasVisibleTestArtifact && implementationFilesWithoutMissingTestSignal.length > 0) {
+    return {
+      id: "missing_test_calibration",
+      label: "Missing-test calibration",
+      status: "fail",
+      detail: `Implementation file(s) lack visible tests but were not flagged: ${implementationFilesWithoutMissingTestSignal.slice(0, 5).join(", ")}.`
+    };
+  }
+
+  if (hasVisibleTestArtifact && !hasExecutionEvidence && implementationFilesWithoutMissingTestSignal.length > 0) {
+    return {
+      id: "missing_test_calibration",
+      label: "Missing-test calibration",
+      status: "fail",
+      detail: `Visible test files exist, but no execution evidence was provided and implementation file(s) were not flagged: ${implementationFilesWithoutMissingTestSignal.slice(0, 5).join(", ")}.`
+    };
+  }
+
+  return {
+    id: "missing_test_calibration",
+    label: "Missing-test calibration",
+    status: "pass",
+    detail: hasVisibleTestArtifact
+      ? "Visible test artifacts without execution proof are preserved as missing-test evidence."
+      : "Implementation files without visible tests are flagged as missing-test evidence."
+  };
+}
+
+function noOracleLeakageMetric(report: VerificationReport, testCase: EvaluationCase): EvaluationMetric {
   const serialized = JSON.stringify(report);
-  const leakedLabels = hiddenLabels.filter((label) => serialized.includes(label));
+  const leakedLabels = testCase.oracle.hiddenLabels.filter((label) => serialized.includes(label));
+  const leakedValues = testCase.oracle.hiddenValues.filter((value) => serialized.includes(value));
+  const deniedTerms = testCase.oracle.deniedReportTerms.filter((term) =>
+    serialized.toLowerCase().includes(term.toLowerCase())
+  );
+  const leaks = [...leakedLabels, ...leakedValues, ...deniedTerms];
 
   return {
     id: "oracle_leakage",
     label: "Future-label leakage",
-    status: leakedLabels.length === 0 ? "pass" : "fail",
-    detail: leakedLabels.length === 0
-      ? "No benchmark oracle label names were present in the report."
-      : `Report leaked benchmark label(s): ${leakedLabels.join(", ")}.`
+    status: leaks.length === 0 ? "pass" : "fail",
+    detail: leaks.length === 0
+      ? "No benchmark oracle labels, hidden values, or dataset cues were present in the report."
+      : `Report leaked oracle value(s) or dataset cue(s): ${leaks.slice(0, 5).join(", ")}.`
   };
 }
 
 function noUnsupportedVerifiedMetric(report: VerificationReport): EvaluationMetric {
-  const hasPassingExecutionEvidence = report.evidenceIndex.some((item) =>
-    (item.kind === "check" || item.kind === "log") &&
-    /\b(test|spec|unit|integration|e2e|pytest|jest|vitest)\b/i.test(`${item.label} ${item.summary}`) &&
-    /\b(pass|passed|success|succeeded|green)\b/i.test(item.summary)
+  const unsupportedMet = report.requirements.filter((requirement) =>
+    requirement.status === "met" && !requirementHasPassingExecutionRef(report, requirement.evidenceRefs)
   );
-  const unsupportedMet = !hasPassingExecutionEvidence
-    ? report.requirements.filter((requirement) => requirement.status === "met")
-    : [];
 
   return {
     id: "unsupported_verified",
@@ -373,6 +673,95 @@ function privacyPatternMetric(report: VerificationReport): EvaluationMetric {
 
 function hasFailed(metrics: EvaluationMetric[], id: string): boolean {
   return metrics.some((metric) => metric.id === id && metric.status === "fail");
+}
+
+function hasAnyExecutionEvidence(report: VerificationReport): boolean {
+  return report.evidenceIndex.some((item) =>
+    (item.kind === "check" || item.kind === "log") &&
+    /\b(test|spec|unit|integration|e2e|pytest|jest|vitest|ci|build)\b/i.test(`${item.label} ${item.summary}`)
+  );
+}
+
+function requirementHasPassingExecutionRef(report: VerificationReport, evidenceRefs: string[]): boolean {
+  const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
+
+  return evidenceRefs.some((ref) => {
+    const item = evidenceById.get(ref);
+
+    return Boolean(item) &&
+      (item?.kind === "check" || item?.kind === "log") &&
+      /\b(test|spec|unit|integration|e2e|pytest|jest|vitest|ci|build)\b/i.test(`${item.label} ${item.summary}`) &&
+      /\b(pass|passed|success|succeeded|green)\b/i.test(item.summary);
+  });
+}
+
+function isEvaluationCase(value: unknown): value is EvaluationCase {
+  if (!isRecord(value) || !isRecord(value.source) || !isRecord(value.input) || !isRecord(value.oracle)) {
+    return false;
+  }
+
+  return typeof value.id === "string" &&
+    typeof value.source.id === "string" &&
+    Array.isArray(value.input.changedFiles) &&
+    Array.isArray(value.oracle.hiddenLabels) &&
+    Array.isArray(value.oracle.visibleChangedFiles);
+}
+
+function learningAreaForMetric(id: string): EvaluationLearningArea {
+  if (id === "schema_valid") return "schema";
+  if (id === "changed_file_evidence" || id === "test_file_evidence" || id === "required_evidence_kinds") return "evidence_indexing";
+  if (id === "oracle_leakage") return "oracle_boundary";
+  if (id === "privacy_patterns") return "privacy";
+  if (id === "missing_test_calibration") return "missing_test_detection";
+  return "requirement_calibration";
+}
+
+function priorityForRollup(rollup: EvaluationMetricRollup): EvaluationLearningTask["priority"] {
+  if (rollup.status === "fail" && (rollup.id === "schema_valid" || rollup.id === "oracle_leakage" || rollup.id === "privacy_patterns")) {
+    return "blocker";
+  }
+  if (rollup.status === "fail") return "high";
+  if (rollup.status === "warning") return "medium";
+  return "low";
+}
+
+function recommendationForMetric(id: string): string {
+  const recommendations: Record<string, string> = {
+    schema_valid: "Fix report generation or validation before trusting evaluation quality.",
+    changed_file_evidence: "Improve diff parsing and evidence indexing so visible changed files are cited exactly.",
+    test_file_evidence: "Improve test-file detection and evidence kind assignment.",
+    execution_uncertainty: "Keep confidence and coverage below high thresholds until check or log evidence is visible.",
+    requirement_calibration: "Calibrate requirement statuses so `met` requires requirement-linked execution evidence.",
+    missing_test_calibration: "Separate visible test artifacts from proof that those tests executed.",
+    oracle_leakage: "Keep dataset names, hidden labels, hidden values, and future outcomes outside report inputs.",
+    unsupported_verified: "Prevent requirements from being marked met without passing execution evidence in their evidenceRefs.",
+    privacy_patterns: "Extend redaction before persisting or printing evaluation artifacts."
+  };
+
+  return recommendations[id] ?? "Inspect this non-pass metric and add a targeted regression test.";
+}
+
+function acceptanceCriteriaForMetric(id: string): string[] {
+  const criteria: Record<string, string[]> = {
+    schema_valid: ["Generated reports pass validateVerificationReport(report, { mode: \"full\" })."],
+    changed_file_evidence: ["Each visible changed file has an exact label or locator match in the evidence index."],
+    test_file_evidence: ["Each visible test file is indexed with evidence kind `test`."],
+    execution_uncertainty: ["Reports without visible execution evidence do not claim high confidence or complete coverage."],
+    requirement_calibration: ["Every `met` requirement cites passing check or log evidence in its own evidenceRefs."],
+    missing_test_calibration: ["Implementation changes without executed related tests remain visible as missing-test or execution-proof gaps."],
+    oracle_leakage: ["Reports contain no dataset names, hidden label keys, hidden label values, or oracle wording."],
+    unsupported_verified: ["No requirement is marked `met` unless it cites relevant passing execution evidence."],
+    privacy_patterns: ["Evaluation outputs contain no high-risk secret-looking strings."]
+  };
+
+  return criteria[id] ?? ["A focused test covers the non-pass metric before closing the learning task."];
+}
+
+function statusRank(status: EvaluationMetricStatus): number {
+  if (status === "fail") return 0;
+  if (status === "warning") return 1;
+  if (status === "unknown") return 2;
+  return 3;
 }
 
 function parseUnifiedDiff(diffText: string): ChangedFile[] {

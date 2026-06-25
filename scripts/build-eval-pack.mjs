@@ -5,7 +5,7 @@ const DEFAULT_DATASET = "princeton-nlp/SWE-bench_Verified";
 const DEFAULT_CONFIG = "default";
 const DEFAULT_SPLIT = "test";
 const DEFAULT_LENGTH = 10;
-const DEFAULT_OUTPUT = "eval/generated/swebench-verified.rows.jsonl";
+const DEFAULT_OUTPUT = "eval/generated/swebench-verified.cases.jsonl";
 
 const options = parseArgs(process.argv.slice(2));
 const dataset = options.dataset ?? DEFAULT_DATASET;
@@ -36,14 +36,88 @@ if (rows.length === 0) {
 }
 
 await mkdir(dirname(output), { recursive: true });
+const cases = rows.map(sweBenchRowToEvaluationCase);
 await writeFile(
   output,
-  rows.map((row) => JSON.stringify(row)).join("\n") + "\n",
+  cases.map((testCase) => JSON.stringify(testCase)).join("\n") + "\n",
   "utf8"
 );
 
-console.log(`Wrote ${rows.length} ${dataset} row(s) to ${output}`);
-console.log("Generated files under eval/generated are ignored by git; do not commit raw benchmark patches or logs.");
+console.log(`Wrote ${cases.length} normalized ${dataset} evaluation case(s) to ${output}`);
+console.log("Generated files under eval/generated are ignored by git; cases contain short patch excerpts and separated oracle labels, not raw dataset rows.");
+
+function sweBenchRowToEvaluationCase(row) {
+  const repo = stringValue(row.repo, "unknown/repo");
+  const instanceId = stringValue(row.instance_id, `swebench_${hashText(JSON.stringify(row)).slice(0, 10)}`);
+  const problemStatement = stringValue(row.problem_statement, "");
+  const hintsText = stringValue(row.hints_text, "");
+  const baseCommit = stringValue(row.base_commit, "");
+  const implementationFiles = parseUnifiedDiff(stringValue(row.patch, ""));
+  const testFiles = parseUnifiedDiff(stringValue(row.test_patch, ""));
+  const changedFiles = mergeChangedFiles([...implementationFiles, ...testFiles]);
+  const failToPassTests = normalizeStringList(row.FAIL_TO_PASS);
+  const passToPassTests = normalizeStringList(row.PASS_TO_PASS);
+  const visibleText = [
+    problemStatement,
+    hintsText,
+    ...changedFiles.map((file) => `${file.path}\n${file.patch ?? ""}`)
+  ].join("\n");
+  const hiddenValues = Array.from(new Set([...failToPassTests, ...passToPassTests]))
+    .filter((label) => label.length > 4 && !visibleText.includes(label));
+  const visibleImplementationFiles = changedFiles
+    .filter((file) => !isLikelyTestPath(file.path))
+    .map((file) => file.path);
+  const visibleTestFiles = changedFiles.filter((file) => isLikelyTestPath(file.path)).map((file) => file.path);
+
+  return {
+    id: instanceId,
+    source: {
+      id: "swebench-verified",
+      name: "SWE-bench Verified",
+      url: "https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified",
+      licenseNote: "Public Hugging Face dataset; verify current dataset card before redistribution.",
+      oracleType: "test_transition",
+      oracleStrength: "strong"
+    },
+    input: {
+      title: `Issue-linked PR ${instanceId}`,
+      url: `https://github.com/${repo}`,
+      description: hintsText
+        ? `PR discussion context: ${redactSecrets(hintsText)}`
+        : "PR discussion context was not provided; evaluation uses the issue text and visible patch metadata only.",
+      baseBranch: baseCommit ? `base:${baseCommit.slice(0, 12)}` : undefined,
+      headBranch: "candidate-fix",
+      taskText: redactSecrets(problemStatement),
+      changedFiles,
+      checks: [],
+      logs: [],
+      limitations: [
+        "No live CI log was provided; passing behavior must stay unclear unless visible evidence proves it."
+      ]
+    },
+    oracle: {
+      description: "SWE-bench provides issue text, a developer patch, a test patch, and fail-to-pass/pass-to-pass test labels.",
+      hiddenLabels: ["FAIL_TO_PASS", "PASS_TO_PASS"],
+      hiddenValues,
+      deniedReportTerms: [
+        "SWE-bench",
+        "SWEbench",
+        "benchmark",
+        "gold-patch",
+        "gold patch",
+        "FAIL_TO_PASS",
+        "PASS_TO_PASS",
+        "princeton-nlp/SWE-bench",
+        "huggingface.co/datasets/princeton-nlp/SWE-bench_Verified"
+      ],
+      visibleImplementationFiles,
+      visibleChangedFiles: changedFiles.map((file) => file.path),
+      visibleTestFiles,
+      failToPassTests,
+      passToPassTests
+    }
+  };
+}
 
 function parseArgs(args) {
   const parsed = {};
@@ -75,4 +149,173 @@ function numberOption(value, fallback) {
   const parsed = Number(value);
 
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parseUnifiedDiff(diffText) {
+  const normalized = redactSecrets(diffText).trim();
+
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized
+    .split(/(?=^diff --git\s+)/m)
+    .map((section) => section.trim())
+    .filter(Boolean)
+    .flatMap((section) => {
+      const lines = section.split(/\r?\n/);
+      const header = lines.find((line) => line.startsWith("diff --git "));
+      const path = pathFromDiffHeader(header) ?? pathFromPatchHeaders(lines);
+
+      if (!path) {
+        return [];
+      }
+
+      let additions = 0;
+      let deletions = 0;
+
+      for (const line of lines) {
+        if (line.startsWith("+++") || line.startsWith("---")) {
+          continue;
+        }
+        if (line.startsWith("+")) {
+          additions += 1;
+        } else if (line.startsWith("-")) {
+          deletions += 1;
+        }
+      }
+
+      return [{
+        path,
+        additions,
+        deletions,
+        status: statusFromDiff(lines),
+        patch: compactPatch(lines)
+      }];
+    });
+}
+
+function pathFromDiffHeader(header) {
+  if (!header) {
+    return null;
+  }
+
+  const match = header.match(/^diff --git a\/(.+?) b\/(.+)$/);
+  const path = match?.[2] || match?.[1];
+
+  return path && path !== "/dev/null" ? path : null;
+}
+
+function pathFromPatchHeaders(lines) {
+  const newPath = lines.find((line) => line.startsWith("+++ b/"))?.replace(/^\+\+\+ b\//, "");
+  const oldPath = lines.find((line) => line.startsWith("--- a/"))?.replace(/^--- a\//, "");
+  const path = newPath || oldPath;
+
+  return path && path !== "/dev/null" ? path : null;
+}
+
+function statusFromDiff(lines) {
+  if (lines.some((line) => line.startsWith("new file mode"))) {
+    return "added";
+  }
+  if (lines.some((line) => line.startsWith("deleted file mode"))) {
+    return "removed";
+  }
+  if (lines.some((line) => line.startsWith("rename from") || line.startsWith("rename to"))) {
+    return "renamed";
+  }
+
+  return "modified";
+}
+
+function compactPatch(lines) {
+  return lines
+    .filter((line) =>
+      line.startsWith("@@") ||
+      (line.startsWith("+") && !line.startsWith("+++")) ||
+      (line.startsWith("-") && !line.startsWith("---"))
+    )
+    .slice(0, 80)
+    .join("\n");
+}
+
+function mergeChangedFiles(files) {
+  const byPath = new Map();
+
+  for (const file of files) {
+    const existing = byPath.get(file.path);
+
+    if (!existing) {
+      byPath.set(file.path, file);
+      continue;
+    }
+
+    byPath.set(file.path, {
+      ...existing,
+      additions: (existing.additions ?? 0) + (file.additions ?? 0),
+      deletions: (existing.deletions ?? 0) + (file.deletions ?? 0),
+      patch: [existing.patch, file.patch].filter(Boolean).join("\n")
+    });
+  }
+
+  return Array.from(byPath.values());
+}
+
+function normalizeStringList(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string");
+  }
+
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item) => typeof item === "string");
+    }
+  } catch {
+    // SWE-bench mirrors may serialize Python-style lists; fall through to a safe best effort.
+  }
+
+  return trimmed
+    .replace(/^\[|\]$/g, "")
+    .split(/,\s*/)
+    .map((item) => item.trim().replace(/^['"]|['"]$/g, ""))
+    .filter(Boolean);
+}
+
+function isLikelyTestPath(path) {
+  return /(\.test\.|\.spec\.|__tests__|\/tests?\/|test_|_test\.|spec_)/i.test(path);
+}
+
+function stringValue(value, fallback) {
+  return typeof value === "string" ? value : fallback;
+}
+
+function redactSecrets(value) {
+  return String(value)
+    .replace(/\bgh[pousr]_[A-Za-z0-9_]{20,}/g, "[REDACTED_SECRET]")
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "[REDACTED_SECRET]")
+    .replace(/\bsk-[A-Za-z0-9_-]{20,}/g, "[REDACTED_SECRET]")
+    .replace(/https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]+/g, "[REDACTED_SECRET]")
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED_SECRET]")
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_SECRET]");
+}
+
+function hashText(value) {
+  let hash = 5381;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+
+  return (hash >>> 0).toString(16);
 }

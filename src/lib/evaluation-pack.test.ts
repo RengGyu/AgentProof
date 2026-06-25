@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   EVALUATION_DATA_SOURCES,
+  evaluationCaseFromRecord,
   evaluateReportAgainstCase,
+  summarizeEvaluationResults,
   summarizeEvaluationLearning,
   sweBenchRowToEvaluationCase
 } from "./evaluation-pack";
@@ -58,10 +60,16 @@ describe("real-dataset evaluation pack", () => {
       "src/invoice/export.py",
       "tests/test_invoice_export.py"
     ]);
+    expect(testCase.oracle.visibleImplementationFiles).toEqual(["src/invoice/export.py"]);
+    expect(testCase.input.title).not.toContain("SWE-bench");
+    expect(testCase.input.description).not.toContain("Benchmark");
+    expect(testCase.input.headBranch).toBe("candidate-fix");
     expect(testCase.input.checks).toEqual([]);
     expect(testCase.input.logs).toEqual([]);
     expect(JSON.stringify(testCase.input)).not.toContain("FAIL_TO_PASS");
     expect(JSON.stringify(testCase.input)).not.toContain("PASS_TO_PASS");
+    expect(JSON.stringify(testCase.input)).not.toContain("benchmark");
+    expect(JSON.stringify(testCase.input)).not.toContain("gold");
     expect(testCase.oracle.failToPassTests).toEqual([
       "tests/test_invoice_export.py::test_custom_field_order_is_preserved"
     ]);
@@ -76,6 +84,9 @@ describe("real-dataset evaluation pack", () => {
     expect(result.metrics.find((metric) => metric.id === "schema_valid")?.status).toBe("pass");
     expect(result.metrics.find((metric) => metric.id === "changed_file_evidence")?.status).toBe("pass");
     expect(result.metrics.find((metric) => metric.id === "test_file_evidence")?.status).toBe("pass");
+    expect(result.metrics.find((metric) => metric.id === "execution_uncertainty")?.status).toBe("pass");
+    expect(result.metrics.find((metric) => metric.id === "requirement_calibration")?.status).toBe("pass");
+    expect(result.metrics.find((metric) => metric.id === "missing_test_calibration")?.status).toBe("pass");
     expect(result.metrics.find((metric) => metric.id === "oracle_leakage")?.status).toBe("pass");
     expect(result.metrics.find((metric) => metric.id === "unsupported_verified")?.status).toBe("pass");
     expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
@@ -88,16 +99,84 @@ describe("real-dataset evaluation pack", () => {
     const actions = summarizeEvaluationLearning([
       metric("schema_valid", "fail"),
       metric("unsupported_verified", "fail"),
-      metric("oracle_leakage", "fail")
+      metric("oracle_leakage", "fail"),
+      metric("execution_uncertainty", "fail")
     ]);
 
     expect(actions).toContain("Fix report generation or runtime validation before evaluating quality.");
     expect(actions).toContain("Tighten requirement scoring so visible diff/test patches without passing execution evidence remain partial or unclear.");
     expect(actions).toContain("Remove benchmark labels from report inputs; future outcome labels must only be used after report generation.");
+    expect(actions).toContain("Lower confidence or require execution evidence before presenting high-coverage benchmark reports.");
+  });
+
+  it("summarizes evaluation results into a learning-focused run summary", () => {
+    const passingCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const passingReport = generateVerificationReport(passingCase.input);
+    const passingResult = evaluateReportAgainstCase(passingReport, passingCase);
+    const failingResult = {
+      caseId: "leaky_case",
+      dataset: "swebench-verified",
+      passed: false,
+      calibrated: false,
+      metrics: [
+        metric("schema_valid", "pass"),
+        metric("oracle_leakage", "fail", "Report leaked FAIL_TO_PASS.")
+      ],
+      learningActions: ["Remove benchmark labels from report inputs; future outcome labels must only be used after report generation."]
+    };
+    const summary = summarizeEvaluationResults([passingResult, failingResult]);
+
+    expect(summary.caseCount).toBe(2);
+    expect(summary.passedCount).toBe(1);
+    expect(summary.failedCount).toBe(1);
+    expect(summary.statusCounts.fail).toBe(1);
+    expect(summary.learningActions).not.toContain("No blocking harness failure; inspect warnings and add more real benchmark cases.");
+    expect(summary.learningTasks[0]).toMatchObject({
+      area: "oracle_boundary",
+      priority: "blocker"
+    });
+    expect(summary.metricRollups[0]).toMatchObject({
+      id: "oracle_leakage",
+      status: "fail",
+      count: 1,
+      caseIds: ["leaky_case"]
+    });
+    expect(summary.metricRollups[0]?.sampleDetails).toEqual(["Report leaked FAIL_TO_PASS."]);
+    expect(summary.learningActions).toContain("Remove benchmark labels from report inputs; future outcome labels must only be used after report generation.");
+  });
+
+  it("creates requirement calibration tasks for met requirements without linked execution evidence", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const report = generateVerificationReport(testCase.input);
+    report.requirements[0] = {
+      ...report.requirements[0],
+      status: "met",
+      confidence: 0.95,
+      evidenceRefs: report.evidenceIndex.filter((item) => item.kind === "diff").map((item) => item.id)
+    };
+    const result = evaluateReportAgainstCase(report, testCase);
+    const summary = summarizeEvaluationResults([result]);
+
+    expect(result.metrics.find((item) => item.id === "requirement_calibration")?.status).toBe("fail");
+    expect(summary.learningTasks.some((task) => task.area === "requirement_calibration" && task.priority === "high")).toBe(true);
+  });
+
+  it("fails missing-test calibration when implementation changes have no visible test signal", () => {
+    const testCase = sweBenchRowToEvaluationCase({
+      ...SWE_BENCH_ROW,
+      test_patch: "",
+      FAIL_TO_PASS: "[]",
+      PASS_TO_PASS: "[]"
+    });
+    const report = generateVerificationReport(testCase.input);
+    report.testing.missingTests = [];
+    const result = evaluateReportAgainstCase(report, testCase);
+
+    expect(result.metrics.find((item) => item.id === "missing_test_calibration")?.status).toBe("fail");
   });
 
   it("can evaluate locally fetched real SWE-bench rows when generated data exists", () => {
-    const rows = loadGeneratedSweBenchRows(3);
+    const rows = loadGeneratedSweBenchRecords(3);
 
     if (rows.length === 0) {
       expect(rows).toEqual([]);
@@ -105,28 +184,30 @@ describe("real-dataset evaluation pack", () => {
     }
 
     const results = rows.map((row) => {
-      const testCase = sweBenchRowToEvaluationCase(row);
+      const testCase = evaluationCaseFromRecord(row);
       const report = generateVerificationReport(testCase.input);
 
       return evaluateReportAgainstCase(report, testCase);
     });
+    const summary = summarizeEvaluationResults(results);
 
     expect(results).toHaveLength(rows.length);
     expect(results.flatMap((result) => result.metrics).filter((metric) => metric.status === "fail")).toEqual([]);
+    expect(summary.failedCount).toBe(0);
   });
 });
 
-function metric(id: string, status: EvaluationMetric["status"]): EvaluationMetric {
+function metric(id: string, status: EvaluationMetric["status"], detail = ""): EvaluationMetric {
   return {
     id,
     label: id,
     status,
-    detail: ""
+    detail
   };
 }
 
-function loadGeneratedSweBenchRows(limit: number): unknown[] {
-  const fixtureUrl = new URL("../../eval/generated/swebench-verified.rows.jsonl", import.meta.url);
+function loadGeneratedSweBenchRecords(limit: number): unknown[] {
+  const fixtureUrl = generatedFixtureUrl();
 
   if (!existsSync(fixtureUrl)) {
     return [];
@@ -138,4 +219,14 @@ function loadGeneratedSweBenchRows(limit: number): unknown[] {
     .filter(Boolean)
     .slice(0, limit)
     .map((line) => JSON.parse(line) as unknown);
+}
+
+function generatedFixtureUrl(): URL {
+  const casesUrl = new URL("../../eval/generated/swebench-verified.cases.jsonl", import.meta.url);
+
+  if (existsSync(casesUrl)) {
+    return casesUrl;
+  }
+
+  return new URL("../../eval/generated/swebench-verified.rows.jsonl", import.meta.url);
 }
