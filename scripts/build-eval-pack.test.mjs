@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { buildEvalPack, buildEvalPackFromCli } from "./build-eval-pack.mjs";
 import { evaluateReportAgainstCase, isNormalizedEvaluationCase } from "../src/lib/evaluation-pack";
@@ -36,6 +37,23 @@ const SWE_BENCH_ROW = {
 };
 
 describe("build eval pack script", () => {
+  it("can be imported without fetching rows or writing files", async () => {
+    const output = execFileSync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      [
+        "globalThis.fetch = async () => { throw new Error('import should not fetch'); };",
+        "const imported = await import(new URL('./scripts/build-eval-pack.mjs', `file://${process.cwd()}/`).href);",
+        "console.log(Object.keys(imported).sort().join(','));"
+      ].join("\n")
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8"
+    });
+
+    expect(output.trim()).toBe("buildEvalPack,buildEvalPackFromCli");
+  });
+
   it("builds the rows API URL from CLI args without live network", async () => {
     const requestedUrls = [];
     const writes = [];
