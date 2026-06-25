@@ -164,9 +164,55 @@ describe("buildPullRequestInput", () => {
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
     const limitations = input.limitations?.join(" ");
 
-    expect(input.changedFiles).toHaveLength(300);
-    expect(limitations).toContain("capped at 300 files");
-    expect(limitations).toContain("did not return patch text for 300 changed file");
+    expect(input.changedFiles).toHaveLength(120);
+    expect(limitations).toContain("capped at 120 files");
+    expect(limitations).toContain("did not return patch text for 120 changed file");
+  });
+
+  it("classifies subfetch permission and secondary rate-limit failures", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Subfetch failures",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(new Response("forbidden", { status: 403 }));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(new Response("secondary limit", {
+          status: 403,
+          headers: { "retry-after": "30" }
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      githubToken: "ghs_secret_should_not_leak_1234567890"
+    });
+    const limitations = input.limitations?.join(" ") ?? "";
+
+    expect(limitations).toContain("provided GitHub token may lack permission");
+    expect(limitations).toContain("secondary rate limit");
+    expect(limitations).toContain("not found or is not visible");
+    expect(JSON.stringify(input)).not.toContain("ghs_secret_should_not_leak_1234567890");
   });
 
   it("keeps partial live evidence when GitHub subfetches fail", async () => {

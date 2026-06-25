@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "smoke:analyze-pr": "node scripts/smoke-analyze-pr-url.mjs",
     "smoke:openai": "node scripts/smoke-openai-verifier.mjs",
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
     "eval:pack": "vitest run src/lib/evaluation-pack.test.ts scripts/build-eval-pack.test.mjs",

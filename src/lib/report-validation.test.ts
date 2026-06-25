@@ -97,6 +97,23 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("test requirement cannot be met without passing test execution evidence");
   });
 
+  it("rejects supported execution claims without passing check or log evidence", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.claims = [
+      {
+        id: "claim_1",
+        text: "Tested password reset validation",
+        evidenceRefs: report.evidenceIndex.filter((item) => item.kind === "test").map((item) => item.id),
+        supported: true
+      }
+    ];
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("execution claim cannot be supported without passing test or CI execution evidence");
+  });
+
   it("rejects missing nested fields and unknown report properties", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     delete (report.summary as Partial<typeof report.summary>).oneLine;

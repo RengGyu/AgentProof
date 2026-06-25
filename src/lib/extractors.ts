@@ -107,15 +107,15 @@ export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem
   const sentences = redactSecrets(prDescription)
     .split(/(?<=\.)\s+|\n/)
     .map((line) => line.trim())
-    .filter((line) => /\b(added|implemented|fixed|updated|created|changed|removed|validated|tested)\b/i.test(line))
+    .filter((line) => /\b(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed)\b/i.test(line))
     .flatMap(expandClaimClauses)
     .slice(0, 6);
 
   return sentences.map((text, index) => {
     const keywords = extractKeywords(text);
-    const independentEvidence = evidenceIndex.filter(isClaimSupportEvidence);
-    const evidenceRefs = evidenceIndex
-      .filter(isClaimSupportEvidence)
+    const supportPredicate = isExecutionClaim(text) ? isPassingExecutionClaimEvidence : isClaimSupportEvidence;
+    const independentEvidence = evidenceIndex.filter(supportPredicate);
+    const evidenceRefs = independentEvidence
       .filter((item) => keywords.some((keyword) => item.summary.toLowerCase().includes(keyword)))
       .slice(0, 3)
       .map((item) => item.id);
@@ -134,7 +134,7 @@ export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem
 }
 
 function expandClaimClauses(sentence: string): string[] {
-  const match = sentence.match(/^\s*(added|implemented|fixed|updated|created|changed|removed|validated|tested)\s+(.+)$/i);
+  const match = sentence.match(/^\s*(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed)\s+(.+)$/i);
 
   if (!match) {
     return [sentence];
@@ -152,10 +152,16 @@ function expandClaimClauses(sentence: string): string[] {
   }
 
   return clauses.map((clause) =>
-    /^(added|implemented|fixed|updated|created|changed|removed|validated|tested|cleaned)\b/i.test(clause)
+    /^(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed|cleaned)\b/i.test(clause)
       ? clause
       : `${verb} ${clause}`
   );
+}
+
+function isExecutionClaim(text: string): boolean {
+  return /\btested\b/i.test(text) ||
+    /\b(verified|validated).{0,80}\b(tests?|spec|unit|integration|e2e|ci|build|coverage)\b/i.test(text) ||
+    /\b(tests?|spec|unit|integration|e2e|ci|build|coverage).{0,80}\b(pass|passed|verified|validated|succeeded|green)\b/i.test(text);
 }
 
 function isVagueRequirementLine(line: string, sourceText: string): boolean {
@@ -168,6 +174,14 @@ function isVagueRequirementLine(line: string, sourceText: string): boolean {
 
 function isClaimSupportEvidence(item: EvidenceItem): boolean {
   return item.kind === "diff" || item.kind === "test" || item.kind === "check" || item.kind === "log";
+}
+
+function isPassingExecutionClaimEvidence(item: EvidenceItem): boolean {
+  const text = `${item.label} ${item.summary}`;
+
+  return (item.kind === "check" || item.kind === "log") &&
+    /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage|ci|build)\b/i.test(text) &&
+    /\b(pass|passed|success|succeeded|green)\b/i.test(text);
 }
 
 export function buildEvidenceIndex(

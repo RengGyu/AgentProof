@@ -393,6 +393,31 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`requirements[${index}] test requirement cannot be met without passing test execution evidence.`);
     }
   });
+
+  if (!Array.isArray(report.claims)) {
+    return;
+  }
+
+  report.claims.forEach((item, index) => {
+    if (!isRecord(item) || item.supported !== true || typeof item.text !== "string" || !isExecutionClaim(item.text)) {
+      return;
+    }
+
+    const refs = getStringArray(item.evidenceRefs);
+    const hasPassingTestExecution = refs
+      .map((ref) => evidenceById.get(ref))
+      .some((evidence) => evidence ? isPassingTestExecutionEvidence(evidence) : false);
+
+    if (!hasPassingTestExecution) {
+      errors.push(`claims[${index}] execution claim cannot be supported without passing test or CI execution evidence.`);
+    }
+  });
+}
+
+function isExecutionClaim(text: string): boolean {
+  return /\btested\b/i.test(text) ||
+    /\b(verified|validated).{0,80}\b(tests?|spec|unit|integration|e2e|ci|build|coverage)\b/i.test(text) ||
+    /\b(tests?|spec|unit|integration|e2e|ci|build|coverage).{0,80}\b(pass|passed|verified|validated|succeeded|green)\b/i.test(text);
 }
 
 function isPassingTestExecutionEvidence(item: RecordValue): boolean {
@@ -400,7 +425,7 @@ function isPassingTestExecutionEvidence(item: RecordValue): boolean {
   const text = `${typeof item.label === "string" ? item.label : ""} ${typeof item.summary === "string" ? item.summary : ""}`;
 
   return (kind === "check" || kind === "log") &&
-    /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage)\b/i.test(text) &&
+    /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage|ci|build)\b/i.test(text) &&
     /\b(pass|passed|success|succeeded|green)\b/i.test(text);
 }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
 import { buildPullRequestInput, parseGitHubPullUrl } from "@/lib/github";
+import { validateVerificationReport } from "@/lib/report-validation";
 import { generateVerificationReport } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
 import { redactSecrets } from "@/lib/redact";
@@ -65,6 +66,17 @@ export async function POST(request: Request) {
       : await buildPullRequestInput(body);
 
     const report = generateVerificationReport(input);
+    const validation = validateVerificationReport(report, { mode: "full" });
+
+    if (!validation.valid) {
+      return jsonNoStore(
+        {
+          error: "Generated report failed runtime validation.",
+          details: validation.errors.map((item) => redactSecrets(item))
+        },
+        500
+      );
+    }
 
     return jsonNoStore({ report });
   } catch (error) {

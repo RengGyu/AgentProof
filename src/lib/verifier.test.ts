@@ -250,6 +250,29 @@ describe("generateVerificationReport", () => {
     expect(report.claims[0]?.evidenceRefs).toEqual([]);
   });
 
+  it("does not support tested claims without passing check or log evidence", () => {
+    const report = generateVerificationReport({
+      title: "Test reset validation",
+      description: "Tested password reset validation.",
+      taskText: "Acceptance criteria: validate expired reset tokens.",
+      changedFiles: [
+        {
+          path: "src/features/auth/reset.test.ts",
+          additions: 8,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it('rejects expired reset tokens', () => {})"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.claims[0]?.text).toBe("Tested password reset validation");
+    expect(report.claims[0]?.supported).toBe(false);
+    expect(report.claims[0]?.evidenceRefs).toEqual([]);
+  });
+
   it("penalizes summary coverage and confidence for scope, missing tests, and failed CI", () => {
     const clean = generateVerificationReport(demoScenarios.clean);
     const scope = generateVerificationReport(demoScenarios["scope-creep"]);

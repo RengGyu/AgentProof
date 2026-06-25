@@ -4,6 +4,9 @@ import { compactText, redactSecrets } from "./redact";
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
 const GITHUB_PAGE_SIZE = 100;
 const GITHUB_MAX_PAGES = 3;
+const GITHUB_MAX_CHANGED_FILES = 120;
+const GITHUB_MAX_CHECK_RUNS = 60;
+const GITHUB_MAX_COMMIT_STATUSES = 30;
 
 class GitHubFetchError extends Error {
   constructor(
@@ -144,9 +147,9 @@ async function fetchGitHubPullRequest(
   const pr = await prResponse.json();
   const limitations: string[] = [];
   const [files, checkRuns, statuses] = await Promise.all([
-    fetchPullFiles(pr.url + "/files", headers, limitations),
-    fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations),
-    fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations)
+    fetchPullFiles(pr.url + "/files", headers, limitations, Boolean(token?.trim())),
+    fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, Boolean(token?.trim())),
+    fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, Boolean(token?.trim()))
   ]);
   const missingPatchCount = files.filter((file) => !file.patch).length;
 
@@ -199,10 +202,15 @@ function classifyGitHubFailure(response: Response, hasToken: boolean): string {
   const status = response.status;
   const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
   const rateLimitReset = response.headers.get("x-ratelimit-reset");
+  const retryAfter = response.headers.get("retry-after");
 
   if ((status === 403 || status === 429) && rateLimitRemaining === "0") {
     const resetAt = formatGitHubRateLimitReset(rateLimitReset);
     return `GitHub API rate limit was reached${resetAt ? ` until ${resetAt}` : ""}.`;
+  }
+
+  if ((status === 403 || status === 429) && retryAfter) {
+    return `GitHub API secondary rate limit or abuse protection was reached; retry after ${retryAfter} second(s).`;
   }
 
   if (status === 401) {
@@ -277,7 +285,8 @@ function githubFetch(url: string, headers: Record<string, string>): Promise<Resp
 async function fetchPullFiles(
   baseUrl: string,
   headers: Record<string, string>,
-  limitations: string[]
+  limitations: string[],
+  hasToken: boolean
 ): Promise<GitHubFileResponse[]> {
   const files: GitHubFileResponse[] = [];
 
@@ -292,26 +301,32 @@ async function fetchPullFiles(
     }
 
     if (!response.ok) {
-      limitations.push(`GitHub changed-file fetch failed with status ${response.status}; file evidence may be incomplete.`);
+      limitations.push(`GitHub changed-file fetch failed: ${classifyGitHubFailure(response, hasToken)} File evidence may be incomplete.`);
       return files;
     }
 
     const pageItems = (await response.json()) as GitHubFileResponse[];
     files.push(...pageItems);
 
+    if (files.length >= GITHUB_MAX_CHANGED_FILES) {
+      limitations.push(`GitHub changed-file evidence was capped at ${GITHUB_MAX_CHANGED_FILES} files.`);
+      return files.slice(0, GITHUB_MAX_CHANGED_FILES);
+    }
+
     if (pageItems.length < GITHUB_PAGE_SIZE) {
       return files;
     }
   }
 
-  limitations.push(`GitHub changed-file fetch was capped at ${GITHUB_PAGE_SIZE * GITHUB_MAX_PAGES} files.`);
+  limitations.push(`GitHub changed-file evidence was capped at ${GITHUB_MAX_CHANGED_FILES} files.`);
   return files;
 }
 
 async function fetchCheckRuns(
   baseUrl: string,
   headers: Record<string, string>,
-  limitations: string[]
+  limitations: string[],
+  hasToken: boolean
 ): Promise<GitHubCheckRunResponse[]> {
   const checks: GitHubCheckRunResponse[] = [];
   let totalCount: number | undefined;
@@ -327,7 +342,7 @@ async function fetchCheckRuns(
     }
 
     if (!response.ok) {
-      limitations.push(`GitHub check-run fetch failed with status ${response.status}; CI evidence may be incomplete.`);
+      limitations.push(`GitHub check-run fetch failed: ${classifyGitHubFailure(response, hasToken)} CI evidence may be incomplete.`);
       return checks;
     }
 
@@ -336,22 +351,28 @@ async function fetchCheckRuns(
     const pageItems = (pageJson.check_runs ?? []) as GitHubCheckRunResponse[];
     checks.push(...pageItems);
 
+    if (checks.length >= GITHUB_MAX_CHECK_RUNS) {
+      limitations.push(`GitHub check-run evidence was capped at ${GITHUB_MAX_CHECK_RUNS} checks.`);
+      return checks.slice(0, GITHUB_MAX_CHECK_RUNS);
+    }
+
     if (pageItems.length < GITHUB_PAGE_SIZE || (totalCount !== undefined && checks.length >= totalCount)) {
       return checks;
     }
   }
 
   if (totalCount === undefined || checks.length < totalCount) {
-    limitations.push(`GitHub check-run fetch was capped at ${GITHUB_PAGE_SIZE * GITHUB_MAX_PAGES} checks.`);
+    limitations.push(`GitHub check-run evidence was capped at ${GITHUB_MAX_CHECK_RUNS} checks.`);
   }
 
-  return checks;
+  return checks.slice(0, GITHUB_MAX_CHECK_RUNS);
 }
 
 async function fetchCommitStatuses(
   url: string,
   headers: Record<string, string>,
-  limitations: string[]
+  limitations: string[],
+  hasToken: boolean
 ): Promise<GitHubStatusResponse[]> {
   let response: Response;
 
@@ -363,12 +384,18 @@ async function fetchCommitStatuses(
   }
 
   if (!response.ok) {
-    limitations.push(`GitHub commit-status fetch failed with status ${response.status}; legacy status evidence may be incomplete.`);
+    limitations.push(`GitHub commit-status fetch failed: ${classifyGitHubFailure(response, hasToken)} Legacy status evidence may be incomplete.`);
     return [];
   }
 
   const json = await response.json();
-  return (json.statuses ?? []) as GitHubStatusResponse[];
+  const statuses = (json.statuses ?? []) as GitHubStatusResponse[];
+
+  if (statuses.length > GITHUB_MAX_COMMIT_STATUSES) {
+    limitations.push(`GitHub commit-status evidence was capped at ${GITHUB_MAX_COMMIT_STATUSES} statuses.`);
+  }
+
+  return statuses.slice(0, GITHUB_MAX_COMMIT_STATUSES);
 }
 
 function parseChangedFiles(input: string): ChangedFile[] {
