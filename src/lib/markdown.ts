@@ -96,6 +96,7 @@ export function reportToGitHubComment(
   const missingTestLines = report.testing.missingTests.slice(0, 5).map(
     (item) => `- \`${item.path}\`: ${item.why}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
   );
+  const limitationLines = report.limitations.slice(0, 4).map((limitation) => `- ${limitation}`);
   const scopeLines = report.scope.suspected
     ? [
         ...report.scope.reasons.slice(0, 5).map((reason) => `- ${reason}`),
@@ -134,6 +135,14 @@ export function reportToGitHubComment(
     `- Lint: ${report.testing.lintStatus}`,
     `- Typecheck: ${report.testing.typecheckStatus}`,
     ...(missingTestLines.length > 0 ? missingTestLines : ["- No missing test evidence detected."]),
+    ...(limitationLines.length > 0
+      ? [
+          "",
+          "### Evidence Limits",
+          "",
+          ...limitationLines
+        ]
+      : []),
     ...(options.includeReprompt
       ? [
           "",

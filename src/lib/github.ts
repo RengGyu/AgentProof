@@ -5,6 +5,15 @@ const GITHUB_FETCH_TIMEOUT_MS = 8000;
 const GITHUB_PAGE_SIZE = 100;
 const GITHUB_MAX_PAGES = 3;
 
+class GitHubFetchError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly reason: string
+  ) {
+    super(`GitHub PR fetch failed: ${reason} (HTTP ${status}).`);
+  }
+}
+
 interface GitHubPullUrl {
   owner: string;
   repo: string;
@@ -80,9 +89,17 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
       if (!hasPastedEvidence(request)) {
         throw error;
       }
+
+      return buildPastedPullRequestInput(request, [
+        githubFallbackLimitation(error)
+      ]);
     }
   }
 
+  return buildPastedPullRequestInput(request);
+}
+
+function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: string[] = []): PullRequestInput {
   return {
     url: request.prUrl,
     title: request.prUrl ? `PR analysis for ${request.prUrl}` : "Pasted PR evidence",
@@ -91,7 +108,7 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
     changedFiles: parseChangedFiles(request.changedFiles ?? ""),
     checks: parseChecks(request.checks ?? ""),
     logs: parseLogs(request.logs ?? ""),
-    limitations: request.inputLimitations ?? []
+    limitations: [...(request.inputLimitations ?? []), ...extraLimitations]
   };
 }
 
@@ -121,11 +138,7 @@ async function fetchGitHubPullRequest(
   );
 
   if (!prResponse.ok) {
-    throw new Error(
-      token?.trim()
-        ? `GitHub PR fetch failed: ${prResponse.status}`
-        : `GitHub PR fetch failed: ${prResponse.status}. Public PRs work without a token, but private repos require a fine-grained token.`
-    );
+    throw new GitHubFetchError(prResponse.status, classifyGitHubFailure(prResponse, Boolean(token?.trim())));
   }
 
   const pr = await prResponse.json();
@@ -135,6 +148,13 @@ async function fetchGitHubPullRequest(
     fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations),
     fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations)
   ]);
+  const missingPatchCount = files.filter((file) => !file.patch).length;
+
+  if (missingPatchCount > 0) {
+    limitations.push(
+      `GitHub did not return patch text for ${missingPatchCount} changed file(s); file metadata was collected, but diff evidence is unavailable for those files.`
+    );
+  }
 
   return {
     url: prUrl,
@@ -165,6 +185,58 @@ async function fetchGitHubPullRequest(
     logs: [],
     limitations
   };
+}
+
+function githubFallbackLimitation(error: unknown): string {
+  if (error instanceof GitHubFetchError) {
+    return `Live GitHub evidence could not be collected: ${error.reason} Report uses pasted evidence only.`;
+  }
+
+  return "Live GitHub evidence could not be collected: GitHub metadata request failed before evidence could be collected. Report uses pasted evidence only.";
+}
+
+function classifyGitHubFailure(response: Response, hasToken: boolean): string {
+  const status = response.status;
+  const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
+  const rateLimitReset = response.headers.get("x-ratelimit-reset");
+
+  if ((status === 403 || status === 429) && rateLimitRemaining === "0") {
+    const resetAt = formatGitHubRateLimitReset(rateLimitReset);
+    return `GitHub API rate limit was reached${resetAt ? ` until ${resetAt}` : ""}.`;
+  }
+
+  if (status === 401) {
+    return hasToken
+      ? "the provided GitHub token was rejected."
+      : "GitHub authentication is required for this PR.";
+  }
+
+  if (status === 403) {
+    return hasToken
+      ? "the provided GitHub token may lack permission to read this repository or PR."
+      : "GitHub denied access; the repository may be private or require a fine-grained token.";
+  }
+
+  if (status === 404) {
+    return hasToken
+      ? "the repository or PR was not found or is not visible to the provided token."
+      : "the repository or PR was not found or is not visible without authentication.";
+  }
+
+  return `GitHub returned HTTP ${status}.`;
+}
+
+function formatGitHubRateLimitReset(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds)) {
+    return null;
+  }
+
+  return new Date(seconds * 1000).toISOString();
 }
 
 function mergePastedOverrides(live: PullRequestInput, request: AnalyzeRequest): PullRequestInput {
@@ -210,7 +282,14 @@ async function fetchPullFiles(
   const files: GitHubFileResponse[] = [];
 
   for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
-    const response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
+    let response: Response;
+
+    try {
+      response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
+    } catch {
+      limitations.push("GitHub changed-file evidence unavailable: request timed out or network failed.");
+      return files;
+    }
 
     if (!response.ok) {
       limitations.push(`GitHub changed-file fetch failed with status ${response.status}; file evidence may be incomplete.`);
@@ -238,7 +317,14 @@ async function fetchCheckRuns(
   let totalCount: number | undefined;
 
   for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
-    const response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
+    let response: Response;
+
+    try {
+      response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
+    } catch {
+      limitations.push("GitHub check-run evidence unavailable: request timed out or network failed.");
+      return checks;
+    }
 
     if (!response.ok) {
       limitations.push(`GitHub check-run fetch failed with status ${response.status}; CI evidence may be incomplete.`);
@@ -267,7 +353,14 @@ async function fetchCommitStatuses(
   headers: Record<string, string>,
   limitations: string[]
 ): Promise<GitHubStatusResponse[]> {
-  const response = await githubFetch(url, headers);
+  let response: Response;
+
+  try {
+    response = await githubFetch(url, headers);
+  } catch {
+    limitations.push("GitHub commit-status evidence unavailable: request timed out or network failed.");
+    return [];
+  }
 
   if (!response.ok) {
     limitations.push(`GitHub commit-status fetch failed with status ${response.status}; legacy status evidence may be incomplete.`);

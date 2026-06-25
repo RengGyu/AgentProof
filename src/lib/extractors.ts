@@ -181,7 +181,7 @@ export function buildEvidenceIndex(
 
     items.push({
       id: `ev_${items.length + 1}`,
-      kind: file.patch ? "diff" : isTestFile(file.path) ? "test" : "changed_file",
+      kind: isTestFile(file.path) ? "test" : file.patch ? "diff" : "changed_file",
       label: file.path,
       locator: file.path,
       summary: `${status}${file.path}${stats}.${testSignal}${riskSignal}${patchSummary}`.trim(),

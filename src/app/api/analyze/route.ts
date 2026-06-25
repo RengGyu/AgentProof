@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
 import { buildPullRequestInput, parseGitHubPullUrl } from "@/lib/github";
 import { generateVerificationReport } from "@/lib/verifier";
+import { redactSecrets } from "@/lib/redact";
 import type { AnalyzeRequest, DemoScenarioId } from "@/lib/types";
 
 const MAX_BODY_BYTES = 80_000;
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
 
     return jsonNoStore({ report });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Analysis failed";
+    const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
 
     return jsonNoStore(
       {

@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
+import { buildEvidenceIndex } from "./extractors";
 import { generateVerificationReport } from "./verifier";
 import type { PullRequestInput, VerificationReport } from "./types";
 
 describe("generateVerificationReport", () => {
+  it("classifies patched test files as test evidence", () => {
+    const evidence = buildEvidenceIndex("", "", [
+      {
+        path: "src/features/auth/PasswordResetForm.test.tsx",
+        additions: 8,
+        deletions: 0,
+        status: "modified",
+        patch: "+ it('shows inline error', async () => {})"
+      }
+    ], [], []);
+
+    expect(evidence[0]?.kind).toBe("test");
+    expect(evidence[0]?.summary).toContain("Patch excerpt");
+  });
+
   it("does not mark a requirement met from a filename-only match", () => {
     const report = generateVerificationReport({
       title: "Add billing validation",
@@ -75,6 +91,129 @@ describe("generateVerificationReport", () => {
 
     expect(report.requirements[0]?.status).not.toBe("met");
     expect(report.reviewPriority.some((item) => item.path === "Requirement evidence")).toBe(true);
+  });
+
+  it("does not mark a requirement met from diff-only implementation evidence", () => {
+    const report = generateVerificationReport({
+      title: "Add billing validation",
+      description: "Implemented billing email validation.",
+      taskText: "Acceptance criteria: validate billing email format before submit.",
+      changedFiles: [
+        {
+          path: "src/billing/BillingForm.tsx",
+          additions: 12,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidBillingEmail(email)) setError('Enter a valid billing email')"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("no matching test, log, or check evidence");
+  });
+
+  it("does not let unrelated passing tests hide missing implementation coverage", () => {
+    const report = generateVerificationReport({
+      title: "Add password reset validation",
+      description: "Added password reset validation and updated billing tests.",
+      taskText: "Acceptance criteria: validate password reset email before submit.",
+      changedFiles: [
+        {
+          path: "src/features/auth/PasswordResetForm.tsx",
+          additions: 12,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidEmail(email)) setError('Enter a valid email address')"
+        },
+        {
+          path: "src/features/billing/BillingPanel.test.tsx",
+          additions: 8,
+          deletions: 1,
+          status: "modified",
+          patch: "+ it('renders billing panel totals', async () => {})"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "BillingPanel tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests).toHaveLength(1);
+    expect(report.testing.missingTests[0]?.path).toBe("src/features/auth/PasswordResetForm.tsx");
+    expect(report.testing.missingTests[0]?.why).toContain("none clearly maps");
+  });
+
+  it("does not treat a patched test file as implementation proof", () => {
+    const report = generateVerificationReport({
+      title: "Add inline reset error",
+      description: "Added inline reset error tests.",
+      taskText: "Acceptance criteria: show inline error for invalid reset email.",
+      changedFiles: [
+        {
+          path: "src/features/auth/PasswordResetForm.test.tsx",
+          additions: 18,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it('shows inline error for invalid reset email', async () => {})"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "PasswordResetForm tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).not.toBe("met");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("No changed-file evidence");
+  });
+
+  it("clears missing tests when matching test evidence and passing execution exist", () => {
+    const report = generateVerificationReport({
+      title: "Add invoice export",
+      description: "Added invoice export.",
+      taskText: "Acceptance criteria: add invoice export.",
+      changedFiles: [
+        {
+          path: "src/billing/invoiceExport.ts",
+          additions: 20,
+          deletions: 1,
+          status: "modified",
+          patch: "+ export function invoiceExport() { return csv }"
+        },
+        {
+          path: "src/billing/invoiceExport.test.ts",
+          additions: 16,
+          deletions: 0,
+          status: "added",
+          patch: "+ it('exports invoice CSV', async () => {})"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "invoiceExport tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/billing/invoiceExport.ts")).toBe(false);
+  });
+
+  it("never emits met with evidence gaps", () => {
+    const report = generateVerificationReport({
+      title: "Add billing validation",
+      description: "Implemented billing email validation.",
+      taskText: "Acceptance criteria: validate billing email format before submit.",
+      changedFiles: [
+        {
+          path: "src/billing/BillingForm.tsx",
+          additions: 12,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidBillingEmail(email)) setError('Enter a valid billing email')"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements.filter((finding) => finding.status === "met").every((finding) => finding.gaps.length === 0)).toBe(true);
   });
 
   it("treats failed pasted logs as failed CI evidence", () => {

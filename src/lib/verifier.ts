@@ -108,10 +108,10 @@ function evaluateRequirement(
   const refs = matches.map(({ item }) => item.id);
 
   const implementationMatches = matches.filter(({ item }) =>
-    item.kind === "changed_file" || item.kind === "diff" || item.kind === "test"
+    item.kind === "changed_file" || item.kind === "diff"
   );
   const strongImplementationRefs = implementationMatches
-    .filter(({ item, match }) => item.kind !== "changed_file" && match.strong)
+    .filter(({ item, match }) => item.kind === "diff" && match.strong)
     .map(({ item }) => item.id);
   const hasImplementationEvidence = implementationMatches.length > 0;
   const hasStrongImplementationEvidence = strongImplementationRefs.length > 0;
@@ -163,16 +163,26 @@ function evaluateRequirement(
   }
 
   if (hasStrongImplementationEvidence && refs.length > 0 && (hasDiffEvidence || hasTestEvidence)) {
+    if (!hasTestEvidence) {
+      return {
+        requirementId: requirement.id,
+        requirementText: requirement.text,
+        status: "partial",
+        evidenceRefs: refsForReport(matches, strongImplementationRefs),
+        gaps: ["Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion."],
+        reviewerNote: "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        confidence: 0.62
+      };
+    }
+
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "met",
       evidenceRefs: refsForReport(matches, strongImplementationRefs),
-      gaps: hasTestEvidence ? [] : ["Implementation evidence exists, but test coverage is not strongly tied to this criterion."],
-      reviewerNote: hasTestEvidence
-        ? "Evidence appears connected to this criterion."
-        : "Check the changed code path manually if this behavior is important.",
-      confidence: hasTestEvidence ? 0.85 : 0.68
+      gaps: [],
+      reviewerNote: "Evidence appears connected to this criterion.",
+      confidence: 0.85
     };
   }
 
@@ -275,25 +285,69 @@ function detectScopeCreep(
 }
 
 function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem[]): MissingTestFinding[] {
-  const hasTestFileChange = input.changedFiles.some((file) => isTestFile(file.path));
-  const hasPassingTestCheck = input.checks.some((check) => /test|spec/i.test(check.name) && check.status === "passed");
+  const testFiles = input.changedFiles.filter((file) => isTestFile(file.path));
+  const hasTestFileChange = testFiles.length > 0;
+  const hasPassingTestSignal =
+    input.checks.some((check) => /test|spec/i.test(`${check.name} ${check.summary ?? ""}`) && check.status === "passed") ||
+    input.logs.some((log) => /test|spec/i.test(`${log.source} ${log.text}`) && log.status === "passed");
   const changedImplementationFiles = input.changedFiles.filter(
     (file) => !isTestFile(file.path) && /\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|cs)$/.test(file.path)
   );
 
-  if (changedImplementationFiles.length === 0 || (hasTestFileChange && hasPassingTestCheck)) {
+  if (changedImplementationFiles.length === 0) {
     return [];
   }
 
   const testEvidenceRefs = evidenceIndex.filter((item) => item.kind === "test" || /test/i.test(item.summary)).map((item) => item.id);
 
-  return changedImplementationFiles.slice(0, 8).map((file) => ({
-    path: file.path,
-    why: hasTestFileChange
-      ? "A test file changed, but no passing test check was provided."
-      : "Behavior-affecting file changed without matching test-file evidence.",
-    evidenceRefs: uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5)
-  }));
+  return changedImplementationFiles
+    .filter((file) => !hasMatchingVerifiedTestEvidence(file.path, testFiles, hasPassingTestSignal))
+    .slice(0, 8)
+    .map((file) => {
+      const hasRelatedTestFile = testFiles.some((testFile) => pathsLookRelated(file.path, testFile.path));
+
+      return {
+        path: file.path,
+        why: hasRelatedTestFile
+          ? "A related test file changed, but no passing test check or log was provided."
+          : hasTestFileChange
+            ? "Test evidence changed, but none clearly maps to this implementation file."
+            : "Behavior-affecting file changed without matching test-file evidence.",
+        evidenceRefs: uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5)
+      };
+    });
+}
+
+function hasMatchingVerifiedTestEvidence(
+  implementationPath: string,
+  testFiles: PullRequestInput["changedFiles"],
+  hasPassingTestSignal: boolean
+): boolean {
+  return hasPassingTestSignal && testFiles.some((testFile) => pathsLookRelated(implementationPath, testFile.path));
+}
+
+function pathsLookRelated(implementationPath: string, testPath: string): boolean {
+  const implementationStem = fileStem(implementationPath);
+  const testStem = fileStem(testPath);
+
+  if (implementationStem && testStem && (testStem.includes(implementationStem) || implementationStem.includes(testStem))) {
+    return true;
+  }
+
+  const implementationKeywords = new Set(fileKeywords(implementationPath).filter((keyword) => keyword.length >= 4));
+  const sharedKeywords = fileKeywords(testPath).filter((keyword) => implementationKeywords.has(keyword) && keyword.length >= 4);
+
+  return sharedKeywords.length >= 2;
+}
+
+function fileStem(path: string): string {
+  const filename = path.split(/[\\/]/).pop() ?? path;
+
+  return filename
+    .replace(/\.(test|spec)\.[^.]+$/i, "")
+    .replace(/\.[^.]+$/i, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
 }
 
 function buildReviewPriority(

@@ -44,4 +44,23 @@ describe("reportToGitHubComment", () => {
     expect(comment).not.toContain("@team");
     expect(comment).toContain("@\u200Bteam");
   });
+
+  it("includes capped evidence limitations in PR comments", () => {
+    const report = generateVerificationReport({
+      ...demoScenarios.clean,
+      limitations: [
+        "Live GitHub evidence could not be collected: GitHub API rate limit was reached. Report uses pasted evidence only.",
+        "GitHub changed-file evidence was capped at 300 files.",
+        "No CI or test logs were available.",
+        "Fourth limitation.",
+        "Fifth limitation should be omitted."
+      ]
+    });
+    const comment = reportToGitHubComment(report);
+
+    expect(comment).toContain("### Evidence Limits");
+    expect(comment).toContain("Live GitHub evidence could not be collected");
+    expect(comment).toContain("Fourth limitation.");
+    expect(comment).not.toContain("Fifth limitation should be omitted.");
+  });
 });
