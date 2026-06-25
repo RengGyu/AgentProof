@@ -54,9 +54,9 @@ Generated benchmark cases are written to `eval/generated/` and must not be commi
 
 - Fixtures must be normalized `EvaluationCase` records, not raw benchmark rows.
 - `input` must not contain dataset names, benchmark URLs, gold-patch wording, `FAIL_TO_PASS`, `PASS_TO_PASS`, hidden labels, or hidden values.
-- `oracle` may contain source-provided labels, but those labels are used only after report generation.
+- Generated local cases may contain source-provided raw oracle labels under `oracle`; committed fixtures must strip raw hidden oracle labels and keep only manifest counts/hashes.
 - Patch excerpts must stay bounded; the current CI fixture keeps each patch at or below 80 lines and the total patch text below 1,500 bytes.
-- The manifest must record dataset revision, row API URL, source offset/length, source row hash, fixture hash, normalizer version, and privacy notes.
+- The manifest must record dataset revision, row API URL, source offset/length, source row hash, oracle label count/hash, fixture hash, normalizer version, and privacy notes.
 - Do not add invented pass/fail labels, quality scores, expected prose reviews, or LLM judgments to fixtures.
 
 ## Learning Loop

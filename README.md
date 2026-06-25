@@ -130,7 +130,7 @@ pnpm eval:pack
 pnpm eval:summary
 ```
 
-One small normalized SWE-bench fixture is committed under `eval/fixtures/` with a manifest hash so CI can run without network. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
+One small normalized SWE-bench fixture is committed under `eval/fixtures/` with manifest hashes so CI can run without network; raw hidden oracle labels are not committed. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
 
 ## Deployed Demo
 

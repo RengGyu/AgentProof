@@ -209,6 +209,8 @@ describe("real-dataset evaluation pack", () => {
       sourceOffset: number;
       sourceLength: number;
       sourceRowSha256: string;
+      oracleLabelCount: number;
+      oracleLabelSha256: string;
       normalizerVersion: string;
       sha256: string;
       privacy: string;
@@ -220,8 +222,10 @@ describe("real-dataset evaluation pack", () => {
     expect(manifest.sourceOffset).toBe(0);
     expect(manifest.sourceLength).toBe(1);
     expect(manifest.sourceRowSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(manifest.oracleLabelCount).toBeGreaterThan(0);
+    expect(manifest.oracleLabelSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(manifest.normalizerVersion).toBe("evaluation-pack-v1");
-    expect(manifest.privacy).toContain("raw dataset rows are not committed");
+    expect(manifest.privacy).toContain("raw hidden oracle labels are not committed");
     expect(createHash("sha256").update(fixture).digest("hex")).toBe(manifest.sha256);
     expect(JSON.parse(fixture.toString("utf8")).id).toBe("astropy__astropy-12907");
   });
@@ -255,6 +259,9 @@ describe("real-dataset evaluation pack", () => {
 
     expect(result.caseId).toBe("astropy__astropy-12907");
     expect(result.metrics.filter((metricItem) => metricItem.status === "fail")).toEqual([]);
+    expect(testCase.oracle.hiddenValues).toEqual([]);
+    expect(testCase.oracle.failToPassTests).toEqual([]);
+    expect(testCase.oracle.passToPassTests).toEqual([]);
     expect(testCase.oracle.visibleChangedFiles).toEqual(testCase.input.changedFiles.map((file) => file.path));
     expect(inputText).not.toMatch(/SWE-bench|benchmark|gold|FAIL_TO_PASS|PASS_TO_PASS|huggingface/i);
     expect(testCase.oracle.hiddenLabels.every((label) => !inputText.includes(label))).toBe(true);

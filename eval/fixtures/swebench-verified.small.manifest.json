@@ -19,6 +19,9 @@
     "astropy__astropy-12907"
   ],
   "fixtureFile": "swebench-verified.small.jsonl",
-  "sha256": "b799edfc6a1fee384df1b489c8094e57152f31b318cdcca1e8235624f5ca5750",
-  "privacy": "Normalized evaluation case with short patch excerpts and separated oracle labels; raw dataset rows are not committed."
+  "sha256": "00009011b982695c3156635d108a5feb62bf36ebd7ef5504acce1d047369c551",
+  "privacy": "Normalized evaluation case with short patch excerpts; raw dataset rows and raw hidden oracle labels are not committed.",
+  "oracleLabelCount": 15,
+  "oracleLabelSha256": "a7cd5309cf21add955be049da34108655988a2a18a283968f48a3b505bc2764a",
+  "oracleLabelHashAlgorithm": "sha256 over sorted unique hidden label values, then sha256 over JSON array of label hashes"
 }
