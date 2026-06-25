@@ -23,13 +23,13 @@ export const verificationReportSchema = {
       source: {
         type: "object",
         additionalProperties: false,
-        required: ["title"],
+        required: ["title", "url", "author", "baseBranch", "headBranch"],
         properties: {
           title: { type: "string", maxLength: 600 },
-          url: { type: "string", maxLength: 500 },
-          author: { type: "string", maxLength: 120 },
-          baseBranch: { type: "string", maxLength: 120 },
-          headBranch: { type: "string", maxLength: 120 }
+          url: { type: ["string", "null"], maxLength: 500 },
+          author: { type: ["string", "null"], maxLength: 120 },
+          baseBranch: { type: ["string", "null"], maxLength: 120 },
+          headBranch: { type: ["string", "null"], maxLength: 120 }
         }
       },
       summary: {
@@ -80,7 +80,7 @@ export const verificationReportSchema = {
       scope: {
         type: "object",
         additionalProperties: false,
-        required: ["suspected", "outOfScopeFiles", "reasons"],
+        required: ["suspected", "outOfScopeFiles", "reasons", "evidenceRefs"],
         properties: {
           suspected: { type: "boolean" },
           outOfScopeFiles: { type: "array", maxItems: 100, items: { type: "string", maxLength: 500 } },
@@ -118,7 +118,7 @@ export const verificationReportSchema = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["path", "reason", "priority"],
+          required: ["path", "reason", "priority", "evidenceRefs"],
           properties: {
             path: { type: "string", maxLength: 500 },
             reason: { type: "string", maxLength: 600 },
@@ -142,13 +142,13 @@ export const verificationReportSchema = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["id", "kind", "label", "summary", "confidence"],
+          required: ["id", "kind", "label", "summary", "locator", "confidence"],
           properties: {
             id: { type: "string", maxLength: 600 },
             kind: { type: "string", enum: ["task", "pr_description", "diff", "changed_file", "check", "log", "test", "inference"] },
             label: { type: "string", maxLength: 600 },
             summary: { type: "string", maxLength: 3000 },
-            locator: { type: "string", maxLength: 1000 },
+            locator: { type: ["string", "null"], maxLength: 1000 },
             confidence: { type: "number", minimum: 0, maximum: 1 }
           }
         }

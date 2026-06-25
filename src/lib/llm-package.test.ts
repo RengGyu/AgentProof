@@ -16,4 +16,37 @@ describe("buildLlmVerifierPackage", () => {
     expect(JSON.stringify(pkg.schema.schema.properties.reviewPriority)).toContain('"evidenceRefs"');
     expect(JSON.stringify(pkg)).not.toContain("githubToken");
   });
+
+  it("keeps every structured-output object property required for OpenAI strict mode", () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const pkg = buildLlmVerifierPackage(input, report);
+
+    expectObjectPropertiesRequired(pkg.schema.schema, "schema");
+  });
 });
+
+function expectObjectPropertiesRequired(schema: unknown, path: string) {
+  if (!isRecord(schema)) {
+    return;
+  }
+
+  if (schema.type === "object") {
+    const properties = isRecord(schema.properties) ? Object.keys(schema.properties).sort() : [];
+    const required = Array.isArray(schema.required) ? [...schema.required].sort() : [];
+
+    expect(required, `${path}.required`).toEqual(properties);
+
+    for (const key of properties) {
+      expectObjectPropertiesRequired((schema.properties as Record<string, unknown>)[key], `${path}.${key}`);
+    }
+  }
+
+  if (schema.type === "array") {
+    expectObjectPropertiesRequired(schema.items, `${path}[]`);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
+}

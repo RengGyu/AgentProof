@@ -35,6 +35,43 @@ describe("openai verifier adapter", () => {
     expect(requestBody.store).toBe(false);
   });
 
+  it("normalizes nullable optional fields returned for OpenAI strict schemas", async () => {
+    const input = { ...demoScenarios.clean };
+    delete input.url;
+    delete input.author;
+    delete input.baseBranch;
+    delete input.headBranch;
+
+    const report = generateVerificationReport(input);
+    const output = structuredClone(report) as unknown as Record<string, unknown>;
+    output.source = {
+      ...(output.source as Record<string, unknown>),
+      url: null,
+      author: null,
+      baseBranch: null,
+      headBranch: null
+    };
+    output.evidenceIndex = (output.evidenceIndex as Record<string, unknown>[]).map((item) =>
+      item.locator === undefined ? { ...item, locator: null } : item
+    );
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(output) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    const result = await verifyReportWithOpenAI(input, report, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+
+    expect(result.source.url).toBeUndefined();
+    expect(Object.hasOwn(result.source, "url")).toBe(false);
+    expect(result.evidenceIndex.some((item) => item.locator === null)).toBe(false);
+  });
+
   it("rejects invalid structured model output", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);

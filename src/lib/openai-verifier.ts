@@ -67,6 +67,8 @@ export async function verifyReportWithOpenAI(
     throw new Error("OpenAI verifier returned invalid JSON.");
   }
 
+  report = normalizeOpenAIReport(report);
+
   const validation = validateVerificationReport(report, { requireFullProvenance: true });
   if (!validation.valid) {
     throw new Error(`OpenAI verifier output failed validation: ${validation.errors.join(" ")}`);
@@ -78,6 +80,38 @@ export async function verifyReportWithOpenAI(
   }
 
   return report as VerificationReport;
+}
+
+function normalizeOpenAIReport(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const report: Record<string, unknown> = { ...value };
+
+  if (isRecord(report.source)) {
+    const source: Record<string, unknown> = { ...report.source };
+    for (const key of ["url", "author", "baseBranch", "headBranch"]) {
+      if (source[key] === null) {
+        delete source[key];
+      }
+    }
+    report.source = source;
+  }
+
+  if (Array.isArray(report.evidenceIndex)) {
+    report.evidenceIndex = report.evidenceIndex.map((item) => {
+      if (!isRecord(item) || item.locator !== null) {
+        return item;
+      }
+
+      const normalized: Record<string, unknown> = { ...item };
+      delete normalized.locator;
+      return normalized;
+    });
+  }
+
+  return report;
 }
 
 function validateOutputEvidenceMatchesBaseline(
