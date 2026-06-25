@@ -10,7 +10,9 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "smoke:openai": "node scripts/smoke-openai-verifier.mjs"
+    "smoke:openai": "node scripts/smoke-openai-verifier.mjs",
+    "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
+    "eval:pack": "vitest run src/lib/evaluation-pack.test.ts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

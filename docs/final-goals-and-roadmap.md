@@ -45,6 +45,7 @@ Priority work:
 - Strengthen requirement extraction from task text and PR descriptions.
 - Strengthen agent claim extraction from PR descriptions and agent-written summaries.
 - Add clearer provenance to evidence items, including source type, locator, confidence, and short evidence text.
+- Add a real-dataset evaluation pack using SWE-bench Verified first, with benchmark outcome labels withheld from report inputs.
 - Improve requirement findings so `met`, `partial`, `missing`, and `unclear` are easier to justify from evidence.
 - Improve missing-test detection beyond simple test-file presence.
 - Reduce scope-creep false positives by comparing changed file clusters with requirement keywords and risk-sensitive paths.
@@ -54,6 +55,7 @@ Completion criteria:
 - Every requirement finding has evidence references or an explicit gap.
 - Every missing-test and scope-creep finding includes file path, source, confidence, and evidence text.
 - Demo scenarios produce visibly different and explainable reports.
+- `pnpm eval:pack` validates schema, provenance, visible file/test evidence, leakage controls, and false-verified behavior against the evaluation harness.
 - Unsupported or weak claims are marked `unclear`, `partial`, or `unproven`, never verified.
 
 ## Phase 2: 30-Second Reviewer Experience
@@ -126,10 +128,13 @@ Completion criteria:
 3. **Requirement finding calibration**
    - Acceptance: demo scenarios have expected `met`, `partial`, `missing`, and `unclear` outcomes with tests.
 
-4. **Missing-test finder v2**
+4. **Real-dataset evaluation harness**
+   - Acceptance: SWE-bench Verified rows can be fetched into git-ignored local data and evaluated without leaking `FAIL_TO_PASS` or `PASS_TO_PASS` into report inputs.
+
+5. **Missing-test finder v2**
    - Acceptance: behavior-affecting files without matching test evidence are flagged with fewer false positives.
 
-5. **Reviewer card UI pass**
+6. **Reviewer card UI pass**
    - Acceptance: requirement coverage, gaps, scope creep, and next action are visible without scrolling deeply on desktop.
 
 ## Non-Goals Until After MVP

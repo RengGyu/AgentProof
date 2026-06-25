@@ -86,6 +86,7 @@ It avoids:
 - `src/lib/report-history.ts`: browser-local summary-only recent report history
 - `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
 - `src/lib/openai-verifier.ts`: optional OpenAI Responses API structured-output adapter
+- `src/lib/evaluation-pack.ts`: real-dataset evaluation harness for benchmark-grounded verifier checks
 - `src/lib/github-app.ts`: GitHub App webhook signature/config helpers
 - `src/lib/slack.ts`: summary-only Slack notification formatter
 - `src/components/*`: reviewer-focused UI
@@ -110,6 +111,17 @@ Prioritize bugs, false positives, security issues, missing tests, and workflow g
 ```
 
 For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+
+## Evaluation Pack
+
+AgentProof evaluation starts from real benchmark data instead of invented labels. The MVP harness uses SWE-bench Verified rows for issue text, visible patch/test evidence, schema validity, provenance coverage, future-label leakage checks, and false-verified detection. Benchmark outcome labels are used only after report generation.
+
+```bash
+pnpm eval:fetch:swebench -- --length 10
+pnpm eval:pack
+```
+
+Generated rows live under `eval/generated/` and are ignored by git because they may contain raw patch text. See `docs/evaluation-pack.md` for source caveats and the learning loop.
 
 ## Deployed Demo
 
