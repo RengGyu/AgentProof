@@ -2,6 +2,7 @@ import { sanitizeReportForShare } from "./report-share";
 import type { VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
+export const MAX_SERVER_REPORTS = 100;
 
 export interface StoredServerReport {
   id: string;
@@ -26,6 +27,7 @@ export function createSavedReport(report: VerificationReport, ttlMs = SERVER_REP
   };
 
   reportStore().set(saved.id, saved);
+  trimReportStore();
   return saved;
 }
 
@@ -67,4 +69,14 @@ function reportStore() {
   globalStore.__agentproofReportStore ??= new Map<string, StoredServerReport>();
 
   return globalStore.__agentproofReportStore;
+}
+
+function trimReportStore() {
+  const store = reportStore();
+
+  while (store.size > MAX_SERVER_REPORTS) {
+    const oldest = store.keys().next().value as string | undefined;
+    if (!oldest) return;
+    store.delete(oldest);
+  }
 }

@@ -1,4 +1,4 @@
-import { noStoreJson, parseJsonSafely } from "@/lib/http";
+import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { verifyReportWithOpenAI } from "@/lib/openai-verifier";
 import type { PullRequestInput, VerificationReport } from "@/lib/types";
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   }
 
   const bodyText = await request.text();
-  if (bodyText.length > MAX_LLM_REQUEST_BYTES) {
+  if (utf8ByteLength(bodyText) > MAX_LLM_REQUEST_BYTES) {
     return noStoreJson({ error: "LLM verifier payload is too large." }, { status: 413 });
   }
 
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "input and report are required." }, { status: 400 });
   }
 
-  const validation = validateVerificationReport(body.report, { requireFullProvenance: true });
+  const validation = validateVerificationReport(body.report, { mode: "full" });
   if (!validation.valid) {
     return noStoreJson({ error: "Report failed validation.", details: validation.errors }, { status: 422 });
   }

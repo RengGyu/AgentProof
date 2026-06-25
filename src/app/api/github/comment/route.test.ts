@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENTPROOF_COMMENT_MARKER } from "@/lib/markdown";
+import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
 import { POST } from "./route";
@@ -67,6 +68,30 @@ describe("POST /api/github/comment", () => {
 
     expect(response.status).toBe(422);
     expect(json.details.join("\n")).toContain("scope.evidenceRefs is required");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects summary-only reports before calling GitHub", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fullReport = reportFor("https://github.com/org/repo/pull/1");
+    const summaryOnlyReport = decodeSharedReport(encodeReportForShare(fullReport));
+    summaryOnlyReport.source.url = "https://github.com/org/repo/pull/1";
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          prUrl: "https://github.com/org/repo/pull/1",
+          githubToken: "token",
+          report: summaryOnlyReport
+        })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(json.details.join("\n")).toContain("evidenceIndex must contain evidence items for full reports");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

@@ -4,7 +4,8 @@ import {
   clearSavedReportsForTests,
   cleanupExpiredReports,
   createSavedReport,
-  getSavedReport
+  getSavedReport,
+  MAX_SERVER_REPORTS
 } from "./server-report-store";
 import { generateVerificationReport } from "./verifier";
 
@@ -34,5 +35,13 @@ describe("server report store", () => {
 
     expect(getSavedReport(saved.id)).toBeNull();
     expect(cleanupExpiredReports()).toBe(0);
+  });
+
+  it("caps in-memory saved reports by removing oldest entries", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    const saved = Array.from({ length: MAX_SERVER_REPORTS + 1 }, () => createSavedReport(report));
+
+    expect(getSavedReport(saved[0].id)).toBeNull();
+    expect(getSavedReport(saved.at(-1)?.id ?? "")).not.toBeNull();
   });
 });

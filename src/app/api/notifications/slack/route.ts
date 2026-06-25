@@ -1,4 +1,4 @@
-import { noStoreJson, parseJsonSafely } from "@/lib/http";
+import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { isAllowedSlackWebhookUrl, reportToSlackPayload } from "@/lib/slack";
 import type { VerificationReport } from "@/lib/types";
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   const bodyText = await request.text();
-  if (bodyText.length > MAX_SLACK_REQUEST_BYTES) {
+  if (utf8ByteLength(bodyText) > MAX_SLACK_REQUEST_BYTES) {
     return noStoreJson({ error: "Slack notification payload is too large." }, { status: 413 });
   }
 
@@ -43,15 +43,20 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "report is required." }, { status: 400 });
   }
 
-  const validation = validateVerificationReport(body.report, { requireFullProvenance: true });
+  const validation = validateVerificationReport(body.report, { mode: reportValidationMode(body.report) });
   if (!validation.valid) {
     return noStoreJson({ error: "Report failed validation.", details: validation.errors }, { status: 422 });
+  }
+
+  const reportUrl = normalizeSlackReportUrl(body.reportUrl, request.url);
+  if (body.reportUrl && !reportUrl) {
+    return noStoreJson({ error: "reportUrl must be an HTTPS URL or a same-origin AgentProof report URL." }, { status: 400 });
   }
 
   const slackResponse = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reportToSlackPayload(body.report, body.reportUrl)),
+    body: JSON.stringify(reportToSlackPayload(body.report, reportUrl)),
     signal: AbortSignal.timeout(SLACK_TIMEOUT_MS)
   });
 
@@ -60,4 +65,29 @@ export async function POST(request: Request) {
   }
 
   return noStoreJson({ sent: true });
+}
+
+function reportValidationMode(report: unknown): "full" | "summary" {
+  return isRecord(report) && Array.isArray(report.evidenceIndex) && report.evidenceIndex.length === 0 ? "summary" : "full";
+}
+
+function normalizeSlackReportUrl(value: string | undefined, requestUrl: string): string | undefined {
+  if (!value) return undefined;
+
+  try {
+    const parsed = new URL(value, requestUrl);
+    const requestOrigin = new URL(requestUrl).origin;
+
+    if (parsed.origin === requestOrigin || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

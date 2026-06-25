@@ -1,5 +1,5 @@
 import { getGitHubAppConfigStatus, normalizeGitHubWebhookEvent, verifyGitHubWebhookSignature } from "@/lib/github-app";
-import { noStoreJson, parseJsonSafely } from "@/lib/http";
+import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 
 const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping"]);
 const MAX_WEBHOOK_BODY_BYTES = 400_000;
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
   const rawBody = await request.text();
 
-  if (new TextEncoder().encode(rawBody).length > MAX_WEBHOOK_BODY_BYTES) {
+  if (utf8ByteLength(rawBody) > MAX_WEBHOOK_BODY_BYTES) {
     return noStoreJson({ error: "GitHub webhook payload is too large." }, { status: 413 });
   }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment } from "@/lib/markdown";
 import { parseGitHubPullUrl } from "@/lib/github";
+import { utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
 import type { PostGitHubCommentRequest, VerificationReport } from "@/lib/types";
 
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   try {
     const rawText = await request.text();
 
-    if (new TextEncoder().encode(rawText).length > MAX_BODY_BYTES) {
+    if (utf8ByteLength(rawText) > MAX_BODY_BYTES) {
       return jsonNoStore({ error: "Request is too large to post as a PR comment." }, 413);
     }
 
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       return jsonNoStore({ error: "PR URL, write token, and report are required." }, 400);
     }
 
-    const validation = validateVerificationReport(body.report, { requireFullProvenance: true });
+    const validation = validateVerificationReport(body.report, { mode: "full" });
     if (!validation.valid) {
       return jsonNoStore({ error: "Report failed validation.", details: validation.errors }, 422);
     }

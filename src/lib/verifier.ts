@@ -37,7 +37,15 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const typecheckStatus = statusForCheck(input.checks, /type(check|script)/i);
   const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex);
   const priority = highestPriority(reviewPriority);
-  const evidenceCoverage = computeEvidenceCoverage(requirementFindings, input.changedFiles.length);
+  const limitations = buildLimitations(input, requirementFindings, ciStatus);
+  const evidenceCoverage = computeEvidenceCoverage(
+    requirementFindings,
+    input.changedFiles.length,
+    missingTests.length,
+    scope.outOfScopeFiles.length,
+    ciStatus,
+    limitations.length
+  );
   const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
   const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
   const claims = extractClaims(input.description, evidenceIndex);
@@ -54,7 +62,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     },
     summary: {
       oneLine: summarize(priority, evidenceCoverage, topRisks),
-      confidence: round2(Math.max(0.2, evidenceCoverage / 100)),
+      confidence: computeSummaryConfidence(evidenceCoverage, priority, limitations.length),
       priority,
       evidenceCoverage,
       topRisks
@@ -79,7 +87,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
       prompt: reprompt
     },
     evidenceIndex,
-    limitations: buildLimitations(input, requirementFindings, ciStatus)
+    limitations
   };
 }
 
@@ -115,13 +123,10 @@ function evaluateRequirement(
     .map(({ item }) => item.id);
   const hasImplementationEvidence = implementationMatches.length > 0;
   const hasStrongImplementationEvidence = strongImplementationRefs.length > 0;
-  const hasDiffEvidence = matches.some(({ item, match }) => item.kind === "diff" && match.strong);
   const asksForTests = /\b(tests?|coverage|specs?)\b/i.test(requirement.text);
-  const hasTestEvidence = matches.some(({ item, match }) =>
-    item.kind !== "task" &&
-    item.kind !== "pr_description" &&
-    match.strong &&
-    (item.kind === "test" || /test|spec/i.test(`${item.label} ${item.summary}`))
+  const hasMatchingTestArtifactEvidence = matches.some(({ item, match }) => item.kind === "test" && match.strong);
+  const hasMatchingPassingTestExecutionEvidence = matches.some(({ item, match }) =>
+    match.strong && isPassingTestExecutionEvidence(item)
   );
   const failedCheck = input.checks.some((check) => check.status === "failed") ||
     input.logs.some((log) => log.status === "failed");
@@ -138,7 +143,7 @@ function evaluateRequirement(
     };
   }
 
-  if (asksForTests && hasTestEvidence && !failedCheck) {
+  if (asksForTests && hasMatchingTestArtifactEvidence && hasMatchingPassingTestExecutionEvidence && !failedCheck) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -150,7 +155,19 @@ function evaluateRequirement(
     };
   }
 
-  if (asksForTests && !hasTestEvidence) {
+  if (asksForTests && hasMatchingTestArtifactEvidence && !hasMatchingPassingTestExecutionEvidence) {
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "partial",
+      evidenceRefs: refsForReport(matches, strongImplementationRefs),
+      gaps: ["Test files changed, but no passing test check or log proves those tests executed."],
+      reviewerNote: "Request the exact passing test command or CI check tied to this criterion.",
+      confidence: 0.52
+    };
+  }
+
+  if (asksForTests && !hasMatchingTestArtifactEvidence) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -162,8 +179,8 @@ function evaluateRequirement(
     };
   }
 
-  if (hasStrongImplementationEvidence && refs.length > 0 && (hasDiffEvidence || hasTestEvidence)) {
-    if (!hasTestEvidence) {
+  if (hasStrongImplementationEvidence && refs.length > 0) {
+    if (!hasMatchingPassingTestExecutionEvidence) {
       return {
         requirementId: requirement.id,
         requirementText: requirement.text,
@@ -251,12 +268,29 @@ const WEAK_SINGLE_MATCH_KEYWORDS = new Set([
   "user"
 ]);
 
+const TEST_EXECUTION_PATTERN = /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage)\b/i;
+
+function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
+  return (item.kind === "check" || item.kind === "log") &&
+    TEST_EXECUTION_PATTERN.test(`${item.label} ${item.summary}`) &&
+    /\b(pass|passed|success|succeeded|green)\b/i.test(item.summary);
+}
+
 function detectScopeCreep(
   requirements: Requirement[],
   files: PullRequestInput["changedFiles"],
   evidenceIndex: EvidenceItem[]
 ) {
   const requirementKeywords = new Set(requirements.flatMap((requirement) => requirement.keywords));
+
+  if (requirementKeywords.size === 0) {
+    return {
+      outOfScopeFiles: [],
+      evidenceRefs: [],
+      reasons: []
+    };
+  }
+
   const outOfScopeFiles = files
     .filter((file) => !isTestFile(file.path))
     .filter((file) => {
@@ -425,10 +459,11 @@ function buildReviewPriority(
 
   for (const file of input.changedFiles.filter((changed) => isRiskFile(changed.path) && !isTestFile(changed.path)).slice(0, 6)) {
     if (!items.some((item) => item.path === file.path)) {
+      const hasSpecificRisk = outOfScopeFiles.includes(file.path) || missingTests.some((missing) => missing.path === file.path);
       items.push({
         path: file.path,
         reason: "Risk-sensitive path changed; verify manually even if other evidence passes.",
-        priority: "high",
+        priority: hasSpecificRisk ? "high" : "medium",
         evidenceRefs: evidenceRefsForPath(evidenceIndex, file.path)
       });
     }
@@ -543,7 +578,14 @@ function highestPriority(items: ReviewPriorityItem[]): PriorityLevel {
   return order.find((level) => items.some((item) => item.priority === level)) ?? "low";
 }
 
-function computeEvidenceCoverage(requirements: RequirementFinding[], changedFileCount: number): number {
+function computeEvidenceCoverage(
+  requirements: RequirementFinding[],
+  changedFileCount: number,
+  missingTestCount: number,
+  outOfScopeFileCount: number,
+  ciStatus: CheckStatus,
+  limitationCount: number
+): number {
   if (requirements.length === 0) {
     return 0;
   }
@@ -556,8 +598,25 @@ function computeEvidenceCoverage(requirements: RequirementFinding[], changedFile
       return score;
     }, 0) / requirements.length;
   const filePenalty = changedFileCount > 25 ? 0.75 : changedFileCount > 10 ? 0.9 : 1;
+  const missingTestPenalty = Math.max(0.65, 1 - missingTestCount * 0.1);
+  const scopePenalty = Math.max(0.7, 1 - outOfScopeFileCount * 0.1);
+  const ciPenalty = ciStatus === "failed" ? 0.55 : ciStatus === "unknown" || ciStatus === "pending" ? 0.85 : 1;
+  const limitationPenalty = Math.max(0.85, 1 - limitationCount * 0.04);
 
-  return Math.round(requirementScore * filePenalty * 100);
+  return Math.round(requirementScore * filePenalty * missingTestPenalty * scopePenalty * ciPenalty * limitationPenalty * 100);
+}
+
+function computeSummaryConfidence(evidenceCoverage: number, priority: PriorityLevel, limitationCount: number): number {
+  const priorityCap: Record<PriorityLevel, number> = {
+    low: 0.95,
+    medium: 0.82,
+    high: 0.72,
+    blocker: 0.45
+  };
+  const limitationPenalty = Math.max(0.85, 1 - limitationCount * 0.03);
+  const confidence = Math.min(evidenceCoverage / 100, priorityCap[priority]) * limitationPenalty;
+
+  return round2(Math.max(0.2, confidence));
 }
 
 function buildTopRisks(
@@ -571,6 +630,7 @@ function buildTopRisks(
   if (ciStatus === "failed") risks.push("CI failed, so the PR is not proven ready.");
   if (requirements.some((finding) => finding.status === "missing")) risks.push("One or more requirements have no matching implementation evidence.");
   if (requirements.some((finding) => finding.status === "unclear")) risks.push("Some requirements are too vague or weakly evidenced.");
+  if (requirements.some((finding) => finding.status === "partial")) risks.push("Some requirements have only partial evidence.");
   if (missingTests.length > 0) risks.push("Behavior changed without strong test evidence.");
   if (outOfScopeFiles.length > 0) risks.push("Potential scope creep in changed files.");
 

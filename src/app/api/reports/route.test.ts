@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { clearSavedReportsForTests } from "@/lib/server-report-store";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
@@ -49,5 +50,21 @@ describe("POST /api/reports", () => {
 
     expect(response.status).toBe(422);
     expect(json.details.join("\n")).toContain("scope.evidenceRefs is required");
+  });
+
+  it("accepts already summary-only reports for summary storage", async () => {
+    const fullReport = generateVerificationReport(demoScenarios["scope-creep"]);
+    const summaryOnlyReport = decodeSharedReport(encodeReportForShare(fullReport));
+
+    const response = await POST(
+      new Request("http://localhost/api/reports", {
+        method: "POST",
+        body: JSON.stringify({ report: summaryOnlyReport })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.privacy).toBe("summary-only");
   });
 });

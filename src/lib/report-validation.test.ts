@@ -48,19 +48,23 @@ describe("validateVerificationReport", () => {
     delete report.scope.evidenceRefs;
     delete report.reviewPriority[0].evidenceRefs;
 
-    const result = validateVerificationReport(report, { requireFullProvenance: true });
+    const result = validateVerificationReport(report, { mode: "full" });
 
     expect(result.valid).toBe(false);
     expect(result.errors.join("\n")).toContain("scope.evidenceRefs is required");
     expect(result.errors.join("\n")).toContain("reviewPriority[0].evidenceRefs is required");
   });
 
-  it("allows strict validation for summary-only reports without an evidence index", () => {
+  it("separates full-report validation from summary-only validation", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     const shared = decodeSharedReport(encodeReportForShare(report));
 
     expect(shared.evidenceIndex).toHaveLength(0);
-    expect(validateVerificationReport(shared, { requireFullProvenance: true })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(shared, { mode: "summary" })).toEqual({ valid: true, errors: [] });
+
+    const result = validateVerificationReport(shared, { mode: "full" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("evidenceIndex must contain evidence items for full reports");
   });
 
   it("allows strict validation when a full report explicitly says evidence was unavailable", () => {
@@ -69,7 +73,28 @@ describe("validateVerificationReport", () => {
     delete report.reviewPriority[0].evidenceRefs;
     report.limitations.push("File-level priority evidence was unavailable from the imported report source.");
 
-    expect(validateVerificationReport(report, { requireFullProvenance: true })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects semantically overconfident full reports", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.summary.confidence = 1;
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("summary.confidence must be capped");
+  });
+
+  it("rejects met test requirements without passing execution evidence", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.requirements[2].status = "met";
+    report.requirements[2].gaps = [];
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("test requirement cannot be met without passing test execution evidence");
   });
 
   it("rejects missing nested fields and unknown report properties", () => {

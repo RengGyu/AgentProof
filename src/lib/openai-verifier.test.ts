@@ -113,7 +113,7 @@ describe("openai verifier adapter", () => {
         apiKey: "test-key",
         fetchFn: fetchMock as unknown as typeof fetch
       })
-    ).rejects.toThrow("Invalid schema for response_format with key [REDACTED]");
+    ).rejects.toThrow("Invalid schema for response_format with key [redacted]");
   });
 
   it("rejects structured model output that omits full-report provenance", async () => {
@@ -134,6 +134,28 @@ describe("openai verifier adapter", () => {
         fetchFn: fetchMock as unknown as typeof fetch
       })
     ).rejects.toThrow("scope.evidenceRefs is required");
+  });
+
+  it("rejects structured model output that upgrades weak test evidence to met", async () => {
+    const input = demoScenarios["missing-tests"];
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    invalid.requirements[2].status = "met";
+    invalid.requirements[2].gaps = [];
+    invalid.summary.confidence = 1;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("test requirement cannot be met without passing test execution evidence");
   });
 
   it("rejects structured model output that changes deterministic evidence", async () => {

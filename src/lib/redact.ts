@@ -3,7 +3,7 @@ const SECRET_PATTERNS = [
   /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/g,
   /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}/g,
   /github_pat_[A-Za-z0-9_]{20,}/g,
-  /sk-[A-Za-z0-9_-]{20,}/g,
+  /sk-[A-Za-z0-9_-]{8,}/g,
   /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
   /authorization\s*:\s*bearer\s+[A-Za-z0-9._~+/-]+=*/gi,
   /(api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi

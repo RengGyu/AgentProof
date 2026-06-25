@@ -38,6 +38,7 @@ export interface ReportValidationResult {
 }
 
 export interface ReportValidationOptions {
+  mode?: "default" | "full" | "summary";
   requireFullProvenance?: boolean;
 }
 
@@ -45,6 +46,7 @@ type RecordValue = Record<string, unknown>;
 
 export function validateVerificationReport(report: unknown, options: ReportValidationOptions = {}): ReportValidationResult {
   const errors: string[] = [];
+  const mode = options.mode ?? (options.requireFullProvenance ? "full" : "default");
 
   if (!isRecord(report)) {
     return { valid: false, errors: ["Report must be an object."] };
@@ -83,8 +85,12 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateReviewPriority(report.reviewPriority, evidenceIds, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
-  if (options.requireFullProvenance) {
+  if (mode === "summary") {
+    validateSummaryOnlyReport(report, errors);
+  }
+  if (mode === "full") {
     validateFullReportProvenance(report, evidenceIds, errors);
+    validateFullReportSemantics(report, evidenceIds, errors);
   }
 
   return { valid: errors.length === 0, errors };
@@ -277,7 +283,12 @@ function validateEvidenceRefs(value: unknown, path: string, evidenceIds: Set<str
 }
 
 function validateFullReportProvenance(report: RecordValue, evidenceIds: Set<string>, errors: string[]) {
-  if (evidenceIds.size === 0 || hasEvidenceUnavailableNote(report.limitations)) {
+  if (evidenceIds.size === 0) {
+    errors.push("evidenceIndex must contain evidence items for full reports.");
+    return;
+  }
+
+  if (hasEvidenceUnavailableNote(report.limitations)) {
     return;
   }
 
@@ -302,6 +313,95 @@ function validateFullReportProvenance(report: RecordValue, evidenceIds: Set<stri
       errors.push(`reviewPriority[${index}].evidenceRefs is required for full reports with high-risk or file-specific priority items.`);
     }
   });
+}
+
+function validateSummaryOnlyReport(report: RecordValue, errors: string[]) {
+  if (Array.isArray(report.evidenceIndex) && report.evidenceIndex.length > 0) {
+    errors.push("summary-only reports must omit evidenceIndex items.");
+  }
+
+  if (Array.isArray(report.claims) && report.claims.length > 0) {
+    errors.push("summary-only reports must omit claims.");
+  }
+
+  if (isRecord(report.reprompt) && typeof report.reprompt.prompt === "string" && !/omit|shared summary|summary/i.test(report.reprompt.prompt)) {
+    errors.push("summary-only reports must not include raw re-prompt text.");
+  }
+}
+
+function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<string>, errors: string[]) {
+  if (evidenceIds.size === 0) return;
+
+  const summary = isRecord(report.summary) ? report.summary : null;
+  const testing = isRecord(report.testing) ? report.testing : null;
+  const scope = isRecord(report.scope) ? report.scope : null;
+  const evidenceById = new Map<string, RecordValue>();
+
+  if (Array.isArray(report.evidenceIndex)) {
+    for (const item of report.evidenceIndex) {
+      if (isRecord(item) && typeof item.id === "string") {
+        evidenceById.set(item.id, item);
+      }
+    }
+  }
+
+  if (summary && testing?.ciStatus === "failed") {
+    if (summary.priority !== "blocker") {
+      errors.push("summary.priority must be blocker when CI status is failed.");
+    }
+    if (typeof summary.confidence === "number" && summary.confidence > 0.55) {
+      errors.push("summary.confidence must be capped when CI status is failed.");
+    }
+  }
+
+  const missingTests = Array.isArray(testing?.missingTests) ? testing.missingTests.length : 0;
+  const hasScopeRisk = scope?.suspected === true;
+  if (summary && (missingTests > 0 || hasScopeRisk) && typeof summary.confidence === "number" && summary.confidence > 0.9) {
+    errors.push("summary.confidence must be capped when missing-test or scope-creep risks exist.");
+  }
+
+  if (
+    summary &&
+    (testing?.ciStatus === "unknown" || testing?.ciStatus === "pending") &&
+    typeof summary.confidence === "number" &&
+    summary.confidence > 0.85
+  ) {
+    errors.push("summary.confidence must be capped when CI status is unknown or pending.");
+  }
+
+  if (!Array.isArray(report.requirements)) {
+    return;
+  }
+
+  report.requirements.forEach((item, index) => {
+    if (!isRecord(item)) return;
+
+    if (item.status === "met" && Array.isArray(item.gaps) && item.gaps.length > 0) {
+      errors.push(`requirements[${index}] cannot be met while evidence gaps are present.`);
+    }
+
+    if (item.status !== "met" || typeof item.requirementText !== "string" || !/\b(tests?|coverage|specs?)\b/i.test(item.requirementText)) {
+      return;
+    }
+
+    const refs = getStringArray(item.evidenceRefs);
+    const hasPassingTestExecution = refs
+      .map((ref) => evidenceById.get(ref))
+      .some((evidence) => evidence ? isPassingTestExecutionEvidence(evidence) : false);
+
+    if (!hasPassingTestExecution) {
+      errors.push(`requirements[${index}] test requirement cannot be met without passing test execution evidence.`);
+    }
+  });
+}
+
+function isPassingTestExecutionEvidence(item: RecordValue): boolean {
+  const kind = item.kind;
+  const text = `${typeof item.label === "string" ? item.label : ""} ${typeof item.summary === "string" ? item.summary : ""}`;
+
+  return (kind === "check" || kind === "log") &&
+    /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage)\b/i.test(text) &&
+    /\b(pass|passed|success|succeeded|green)\b/i.test(text);
 }
 
 function requiresPriorityEvidence(item: RecordValue): boolean {

@@ -1,5 +1,6 @@
 import { buildLlmVerifierPackage } from "./llm-package";
 import { validateVerificationReport } from "./report-validation";
+import { redactSecrets } from "./redact";
 import type { PullRequestInput, VerificationReport } from "./types";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
@@ -70,7 +71,7 @@ export async function verifyReportWithOpenAI(
 
   report = normalizeOpenAIReport(report);
 
-  const validation = validateVerificationReport(report, { requireFullProvenance: true });
+  const validation = validateVerificationReport(report, { mode: "full" });
   if (!validation.valid) {
     throw new Error(`OpenAI verifier output failed validation: ${validation.errors.join(" ")}`);
   }
@@ -149,7 +150,7 @@ function validateOutputEvidenceMatchesBaseline(
 }
 
 function summarizeOpenAIError(value: string): string {
-  const redacted = value.replace(/sk-[A-Za-z0-9_-]+/g, "[REDACTED]");
+  const redacted = redactSecrets(value);
 
   try {
     const parsed = JSON.parse(redacted) as unknown;

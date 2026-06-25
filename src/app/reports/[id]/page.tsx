@@ -29,7 +29,7 @@ export default async function SavedReportPage({ params }: SavedReportPageProps) 
       <div className="notice">
         Summary-only saved report. Raw evidence, claims, and re-prompt text are intentionally omitted.
       </div>
-      <ReportView report={saved.report} />
+      <ReportView report={saved.report} mode="summary" />
     </main>
   );
 }

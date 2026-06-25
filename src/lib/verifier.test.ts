@@ -71,6 +71,31 @@ describe("generateVerificationReport", () => {
     expect(report.requirements[2]?.status).toBe("met");
   });
 
+  it("does not mark test requirements met from test-file patches without passing execution evidence", () => {
+    const report = generateVerificationReport({
+      title: "Add invalid email tests",
+      description: "Added invalid email tests.",
+      taskText: "Acceptance criteria: add tests for invalid email.",
+      changedFiles: [
+        {
+          path: "src/features/auth/PasswordResetForm.test.tsx",
+          additions: 8,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it.skip('rejects invalid email', async () => {})"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("no passing test check or log");
+    expect(report.summary.evidenceCoverage).toBeLessThan(100);
+    expect(report.summary.confidence).toBeLessThan(0.85);
+  });
+
   it("does not mark a requirement met from one broad keyword in a diff", () => {
     const report = generateVerificationReport({
       title: "Fix user settings",
@@ -193,6 +218,56 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(report.testing.missingTests.some((item) => item.path === "src/billing/invoiceExport.ts")).toBe(false);
+  });
+
+  it("keeps vague tasks unclear instead of treating path overlap as proof", () => {
+    const report = generateVerificationReport(demoScenarios["vague-task"]);
+
+    expect(report.requirements[0]?.status).toBe("unclear");
+    expect(report.requirements[0]?.confidence).toBeLessThanOrEqual(0.25);
+    expect(report.scope.suspected).toBe(false);
+    expect(report.limitations).toContain("At least one requirement needs human interpretation.");
+  });
+
+  it("does not support agent claims from filename-only changed-file evidence", () => {
+    const report = generateVerificationReport({
+      title: "Update billing validation",
+      description: "Updated billing validation.",
+      taskText: "Acceptance criteria: validate billing email format.",
+      changedFiles: [
+        {
+          path: "src/billing/validation.ts",
+          additions: 5,
+          deletions: 1,
+          status: "modified"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.claims[0]?.supported).toBe(false);
+    expect(report.claims[0]?.evidenceRefs).toEqual([]);
+  });
+
+  it("penalizes summary coverage and confidence for scope, missing tests, and failed CI", () => {
+    const clean = generateVerificationReport(demoScenarios.clean);
+    const scope = generateVerificationReport(demoScenarios["scope-creep"]);
+    const failed = generateVerificationReport(demoScenarios["failed-ci"]);
+
+    expect(scope.summary.evidenceCoverage).toBeLessThan(100);
+    expect(scope.summary.confidence).toBeLessThan(clean.summary.confidence);
+    expect(failed.summary.priority).toBe("blocker");
+    expect(failed.summary.confidence).toBeLessThanOrEqual(0.45);
+  });
+
+  it("does not escalate clean demo risk-sensitive files to high priority by default", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+
+    expect(report.summary.priority).not.toBe("high");
+    if (report.summary.topRisks.join(" ").includes("No major blocker")) {
+      expect(report.summary.priority).toBe("low");
+    }
   });
 
   it("never emits met with evidence gaps", () => {

@@ -17,3 +17,7 @@ export function parseJsonSafely<T>(value: string): T | null {
     return null;
   }
 }
+
+export function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}

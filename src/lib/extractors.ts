@@ -47,6 +47,9 @@ const STOP_WORDS = new Set([
 
 const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|\/tests?\/|test_|_test\.|spec_)/i;
 const RISK_FILE_PATTERN = /(auth|permission|billing|payment|migration|schema|infra|session|security|token|secret|admin)/i;
+const VAGUE_TASK_PATTERN = /\b(improve|better|fewer problems|more reliable|clean\s*up|cleanup|polish|enhance|optimi[sz]e|make .* easier|make .* nicer)\b/i;
+const CONCRETE_ACTION_PATTERN =
+  /\b(add|allow|block|create|delete|display|export|fix|handle|hide|implement|prevent|preserve|reject|remove|require|return|save|send|show|validate)\b/i;
 
 export function extractRequirements(taskText: string, prDescription: string): Requirement[] {
   const sourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
@@ -60,6 +63,7 @@ export function extractRequirements(taskText: string, prDescription: string): Re
 
   const requirements = candidateLines
     .filter((line) => line.length > 12)
+    .filter((line) => !isVagueRequirementLine(line, sourceText))
     .slice(0, 8)
     .map((text, index) => ({
       id: `req_${index + 1}`,
@@ -94,9 +98,9 @@ export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem
 
   return sentences.map((text, index) => {
     const keywords = extractKeywords(text);
-    const independentEvidence = evidenceIndex.filter((item) => item.kind !== "task" && item.kind !== "pr_description");
+    const independentEvidence = evidenceIndex.filter(isClaimSupportEvidence);
     const evidenceRefs = evidenceIndex
-      .filter((item) => item.kind !== "task" && item.kind !== "pr_description")
+      .filter(isClaimSupportEvidence)
       .filter((item) => keywords.some((keyword) => item.summary.toLowerCase().includes(keyword)))
       .slice(0, 3)
       .map((item) => item.id);
@@ -137,6 +141,18 @@ function expandClaimClauses(sentence: string): string[] {
       ? clause
       : `${verb} ${clause}`
   );
+}
+
+function isVagueRequirementLine(line: string, sourceText: string): boolean {
+  if (/acceptance criteria|must|required|given|when|then/i.test(sourceText)) {
+    return false;
+  }
+
+  return VAGUE_TASK_PATTERN.test(line) && !CONCRETE_ACTION_PATTERN.test(line);
+}
+
+function isClaimSupportEvidence(item: EvidenceItem): boolean {
+  return item.kind === "diff" || item.kind === "test" || item.kind === "check" || item.kind === "log";
 }
 
 export function buildEvidenceIndex(

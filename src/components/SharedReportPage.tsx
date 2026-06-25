@@ -38,7 +38,7 @@ export function SharedReportPage() {
       </header>
       <div className="shared-layout">
         {report ? (
-          <ReportView report={report} />
+          <ReportView report={report} mode="summary" />
         ) : (
           <section className="panel empty-state">
             <div>

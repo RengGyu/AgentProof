@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
 import { POST } from "./route";
@@ -69,6 +70,31 @@ describe("POST /api/llm/verify", () => {
 
     expect(response.status).toBe(422);
     expect(json.details.join("\n")).toContain("scope.evidenceRefs is required");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects summary-only reports before model calls", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("AGENTPROOF_LLM_TOKEN", "secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fullReport = generateVerificationReport(demoScenarios["scope-creep"]);
+    const summaryOnlyReport = decodeSharedReport(encodeReportForShare(fullReport));
+
+    const response = await POST(
+      new Request("http://localhost/api/llm/verify", {
+        method: "POST",
+        headers: { "x-agentproof-llm-token": "secret" },
+        body: JSON.stringify({
+          input: demoScenarios["scope-creep"],
+          report: summaryOnlyReport
+        })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(json.details.join("\n")).toContain("evidenceIndex must contain evidence items for full reports");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

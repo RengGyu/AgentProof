@@ -60,7 +60,7 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: `<${reportUrl}|Open summary report>`
+                text: `<${escapeSlackLinkUrl(reportUrl)}|Open summary report>`
               }
             }
           ]
@@ -97,4 +97,8 @@ export function neutralizeSlackMentions(value: string): string {
 function truncateSlackText(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
   return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function escapeSlackLinkUrl(value: string): string {
+  return value.replace(/[|>\n\r]/g, encodeURIComponent);
 }

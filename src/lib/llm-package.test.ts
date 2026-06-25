@@ -17,6 +17,20 @@ describe("buildLlmVerifierPackage", () => {
     expect(JSON.stringify(pkg)).not.toContain("githubToken");
   });
 
+  it("redacts secrets from direct input before packaging for the LLM", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "Use github_pat_abcdefghijklmnopqrstuvwxyz123456 and sk-testsecretabcdefghijklmnopqrstuvwxyz for this task."
+    };
+    const report = generateVerificationReport(input);
+    const pkg = buildLlmVerifierPackage(input, report);
+    const serialized = JSON.stringify(pkg);
+
+    expect(serialized).not.toContain("github_pat_");
+    expect(serialized).not.toContain("sk-testsecret");
+    expect(serialized).toContain("[redacted]");
+  });
+
   it("keeps every structured-output object property required for OpenAI strict mode", () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);

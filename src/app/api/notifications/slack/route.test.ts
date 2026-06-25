@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
 import { POST } from "./route";
@@ -60,6 +61,46 @@ describe("POST /api/notifications/slack", () => {
 
     expect(response.status).toBe(422);
     expect(json.details.join("\n")).toContain("scope.evidenceRefs is required");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts summary-only reports for summary notifications", async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const report = decodeSharedReport(encodeReportForShare(generateVerificationReport(demoScenarios["scope-creep"])));
+
+    const response = await POST(
+      new Request("http://localhost/api/notifications/slack", {
+        method: "POST",
+        headers: { "x-agentproof-notify-token": "secret" },
+        body: JSON.stringify({ report })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("rejects unsafe report URLs before sending", async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/notifications/slack", {
+        method: "POST",
+        headers: { "x-agentproof-notify-token": "secret" },
+        body: JSON.stringify({
+          report: generateVerificationReport(demoScenarios.clean),
+          reportUrl: "javascript:alert(1)"
+        })
+      })
+    );
+
+    expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

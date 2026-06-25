@@ -23,9 +23,11 @@ import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport 
 
 interface ReportViewProps {
   report: VerificationReport;
+  mode?: "full" | "summary";
 }
 
-export function ReportView({ report }: ReportViewProps) {
+export function ReportView({ report, mode = "full" }: ReportViewProps) {
+  const isSummaryMode = mode === "summary";
   const markdown = useMemo(() => reportToMarkdown(report), [report]);
   const githubComment = useMemo(() => reportToGitHubComment(report), [report]);
   const evidenceById = useMemo(
@@ -137,22 +139,28 @@ export function ReportView({ report }: ReportViewProps) {
         </div>
 
         <div className="report-actions" aria-label="Report export actions">
-          <button className="button compact" onClick={() => copyText(markdown, "report")}>
-            {copiedAction === "report" ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
-            {copiedAction === "report" ? "Copied" : "Copy Report"}
-          </button>
-          <button className="button compact" onClick={() => copyText(githubComment, "comment")}>
-            {copiedAction === "comment" ? <CheckCircle2 size={15} /> : <MessageSquareText size={15} />}
-            {copiedAction === "comment" ? "Copied" : "Copy PR Comment"}
-          </button>
+          {!isSummaryMode ? (
+            <>
+              <button className="button compact" onClick={() => copyText(markdown, "report")}>
+                {copiedAction === "report" ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
+                {copiedAction === "report" ? "Copied" : "Copy Report"}
+              </button>
+              <button className="button compact" onClick={() => copyText(githubComment, "comment")}>
+                {copiedAction === "comment" ? <CheckCircle2 size={15} /> : <MessageSquareText size={15} />}
+                {copiedAction === "comment" ? "Copied" : "Copy PR Comment"}
+              </button>
+            </>
+          ) : null}
           <button className="button compact" onClick={copyShareLink}>
             {copiedAction === "share" ? <CheckCircle2 size={15} /> : <Link2 size={15} />}
             {copiedAction === "share" ? "Copied" : "Copy Share Link"}
           </button>
-          <button className="button compact" onClick={downloadMarkdown}>
-            <Download size={15} />
-            Download
-          </button>
+          {!isSummaryMode ? (
+            <button className="button compact" onClick={downloadMarkdown}>
+              <Download size={15} />
+              Download
+            </button>
+          ) : null}
         </div>
         {actionMessage ? <p className={`action-feedback ${actionMessage.tone}`}>{actionMessage.text}</p> : null}
 
@@ -189,26 +197,28 @@ export function ReportView({ report }: ReportViewProps) {
             ))}
           </div>
 
-          <div className="card">
-            <h2>Agent Claims</h2>
-            {report.claims.length > 0 ? (
-              <ul className="plain-list">
-                {report.claims.map((claim) => (
-                  <li key={claim.id}>
-                    <span className={claim.supported ? "evidence-label status-met" : "evidence-label status-unclear"}>
-                      {claim.supported ? "SUPPORTED" : "UNPROVEN"} - {claim.id}
-                    </span>
-                    {claim.text}
-                    {claim.evidenceRefs.length > 0 ? (
-                      <span className="muted small"> Evidence: {claim.evidenceRefs.join(", ")}</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted small">No explicit implementation claims were found in the PR description.</p>
-            )}
-          </div>
+          {!isSummaryMode ? (
+            <div className="card">
+              <h2>Agent Claims</h2>
+              {report.claims.length > 0 ? (
+                <ul className="plain-list">
+                  {report.claims.map((claim) => (
+                    <li key={claim.id}>
+                      <span className={claim.supported ? "evidence-label status-met" : "evidence-label status-unclear"}>
+                        {claim.supported ? "SUPPORTED" : "UNPROVEN"} - {claim.id}
+                      </span>
+                      {claim.text}
+                      {claim.evidenceRefs.length > 0 ? (
+                        <span className="muted small"> Evidence: {claim.evidenceRefs.join(", ")}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted small">No explicit implementation claims were found in the PR description.</p>
+              )}
+            </div>
+          ) : null}
 
           <div className="card">
             <h2>Review Priority</h2>
@@ -223,19 +233,21 @@ export function ReportView({ report }: ReportViewProps) {
             </ul>
           </div>
 
-          <div className="card">
-            <h2>Evidence Index</h2>
-            <ul className="evidence-list">
-              {report.evidenceIndex.slice(0, 12).map((item) => (
-                <li key={item.id}>
-                  <span className="evidence-label">
-                    {item.id} - {item.kind} - {item.locator ?? item.label} - {Math.round(item.confidence * 100)}%
-                  </span>
-                  {item.summary}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {!isSummaryMode ? (
+            <div className="card">
+              <h2>Evidence Index</h2>
+              <ul className="evidence-list">
+                {report.evidenceIndex.slice(0, 12).map((item) => (
+                  <li key={item.id}>
+                    <span className="evidence-label">
+                      {item.id} - {item.kind} - {item.locator ?? item.label} - {Math.round(item.confidence * 100)}%
+                    </span>
+                    {item.summary}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
 
         <div className="stack">
@@ -285,7 +297,7 @@ export function ReportView({ report }: ReportViewProps) {
             </ul>
           </div>
 
-          {report.source.url ? (
+          {!isSummaryMode && report.source.url ? (
             <div className="card">
               <div className="card-title-row">
                 <h2>GitHub PR Comment</h2>
@@ -314,16 +326,18 @@ export function ReportView({ report }: ReportViewProps) {
             </div>
           ) : null}
 
-          <div className="card">
-            <div className="card-title-row">
-              <h2>Agent Re-prompt</h2>
-              <button className="button compact" onClick={() => copyText(report.reprompt.prompt, "reprompt")}>
-                {copiedAction === "reprompt" ? <CheckCircle2 size={15} /> : <Bot size={15} />}
-                {copiedAction === "reprompt" ? "Copied" : "Copy"}
-              </button>
+          {!isSummaryMode ? (
+            <div className="card">
+              <div className="card-title-row">
+                <h2>Agent Re-prompt</h2>
+                <button className="button compact" onClick={() => copyText(report.reprompt.prompt, "reprompt")}>
+                  {copiedAction === "reprompt" ? <CheckCircle2 size={15} /> : <Bot size={15} />}
+                  {copiedAction === "reprompt" ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <pre className="reprompt">{report.reprompt.prompt}</pre>
             </div>
-            <pre className="reprompt">{report.reprompt.prompt}</pre>
-          </div>
+          ) : null}
 
           <div className="card">
             <h2>Limitations</h2>

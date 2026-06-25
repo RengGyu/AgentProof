@@ -20,6 +20,14 @@ describe("slack helpers", () => {
     expect(payloadText).toContain("summary report");
   });
 
+  it("escapes Slack markdown link delimiters in report URLs", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    const payloadText = JSON.stringify(reportToSlackPayload(report, "https://agentproof.example/reports/1|bad>"));
+
+    expect(payloadText).toContain("https://agentproof.example/reports/1%7Cbad%3E");
+    expect(payloadText).not.toContain("1|bad>");
+  });
+
   it("neutralizes broad Slack mentions", () => {
     expect(neutralizeSlackMentions("@channel <!here> @teammate")).toBe("@​channel @​here @​teammate");
   });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
 import { buildPullRequestInput, parseGitHubPullUrl } from "@/lib/github";
 import { generateVerificationReport } from "@/lib/verifier";
+import { utf8ByteLength } from "@/lib/http";
 import { redactSecrets } from "@/lib/redact";
 import type { AnalyzeRequest, DemoScenarioId } from "@/lib/types";
 
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
 
     const rawText = await request.text();
 
-    if (new TextEncoder().encode(rawText).length > MAX_BODY_BYTES) {
+    if (utf8ByteLength(rawText) > MAX_BODY_BYTES) {
       return jsonNoStore(
         { error: "Request is too large. Paste shorter logs or use a PR URL." },
         413

@@ -1,4 +1,5 @@
 import { llmBoundaryPrompt, verificationReportSchema } from "./structured-output";
+import { compactText } from "./redact";
 import type { PullRequestInput, VerificationReport } from "./types";
 
 export interface LlmVerifierPackage {
@@ -27,7 +28,7 @@ export function buildLlmVerifierPackage(
     schema: verificationReportSchema,
     input: {
       source: deterministicReport.source,
-      taskText: input.taskText,
+      taskText: compactText(input.taskText, 4000),
       evidenceIndex: deterministicReport.evidenceIndex,
       deterministicReport,
       limitations: deterministicReport.limitations

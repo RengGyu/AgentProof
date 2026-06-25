@@ -19,7 +19,7 @@ describe("report share", () => {
     expect(shared.reviewPriority.every((item) => !item.evidenceRefs || item.evidenceRefs.length === 0)).toBe(true);
     expect(JSON.stringify(shared)).not.toContain("Patch excerpt");
     expect(JSON.stringify(shared)).not.toContain("ev_");
-    expect(validateVerificationReport(shared, { requireFullProvenance: true })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(shared, { mode: "summary" })).toEqual({ valid: true, errors: [] });
   });
 
   it("builds a portable share URL", () => {
