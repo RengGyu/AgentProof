@@ -393,8 +393,8 @@ export function buildEvaluationLearningTasks(rollups: EvaluationMetricRollup[]):
       priority,
       metricIds: [rollup.id],
       caseIds: rollup.caseIds,
-      recommendation: recommendationForMetric(rollup.id),
-      acceptanceCriteria: acceptanceCriteriaForMetric(rollup.id),
+      recommendation: recommendationForRollup(rollup),
+      acceptanceCriteria: acceptanceCriteriaForRollup(rollup),
       sampleDetails: rollup.sampleDetails
     };
   });
@@ -644,7 +644,7 @@ function noOracleLeakageMetric(report: VerificationReport, testCase: EvaluationC
     status: leaks.length === 0 ? "pass" : "fail",
     detail: leaks.length === 0
       ? "No benchmark oracle labels, hidden values, or dataset cues were present in the report."
-      : `Report leaked oracle value(s) or dataset cue(s): ${leaks.slice(0, 5).join(", ")}.`
+      : `Report leaked ${leaks.length} oracle value(s) or dataset cue(s); exact values are redacted from evaluation output.`
   };
 }
 
@@ -743,6 +743,14 @@ function recommendationForMetric(id: string): string {
   return recommendations[id] ?? "Inspect this non-pass metric and add a targeted regression test.";
 }
 
+function recommendationForRollup(rollup: EvaluationMetricRollup): string {
+  if (rollup.id === "requirement_calibration" && rollup.status === "warning") {
+    return "Improve requirement extraction and evidence matching so visible implementation or test signals become partial instead of missing or unclear.";
+  }
+
+  return recommendationForMetric(rollup.id);
+}
+
 function acceptanceCriteriaForMetric(id: string): string[] {
   const criteria: Record<string, string[]> = {
     schema_valid: ["Generated reports pass validateVerificationReport(report, { mode: \"full\" })."],
@@ -757,6 +765,17 @@ function acceptanceCriteriaForMetric(id: string): string[] {
   };
 
   return criteria[id] ?? ["A focused test covers the non-pass metric before closing the learning task."];
+}
+
+function acceptanceCriteriaForRollup(rollup: EvaluationMetricRollup): string[] {
+  if (rollup.id === "requirement_calibration" && rollup.status === "warning") {
+    return [
+      "A requirement with visible implementation or test evidence is reported as `partial` instead of only `missing` or `unclear`.",
+      "`met` still requires relevant passing check or log evidence."
+    ];
+  }
+
+  return acceptanceCriteriaForMetric(rollup.id);
 }
 
 function statusRank(status: EvaluationMetricStatus): number {

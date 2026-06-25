@@ -52,14 +52,13 @@ const CONCRETE_ACTION_PATTERN =
   /\b(add|allow|block|create|delete|display|export|fix|handle|hide|implement|prevent|preserve|reject|remove|require|return|save|send|show|validate)\b/i;
 
 export function extractRequirements(taskText: string, prDescription: string): Requirement[] {
-  const sourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
+  const sourceText = cleanRequirementSourceText(redactSecrets(taskText).trim() || redactSecrets(prDescription).trim());
   const explicit = sourceText.match(/acceptance criteria:?([\s\S]*)/i)?.[1] ?? sourceText;
   const candidateLines = explicit
     .split(/\n|;|(?<=\.)\s+|(?:^|\s)(?:-|\*|\d+\.)\s+/)
     .map((line) => line.trim().replace(/^[-*]\s*/, ""))
     .filter(Boolean)
-    .filter((line) => !/^#+\s*(summary|verification|testing|test plan)\s*$/i.test(line))
-    .filter((line) => !/^<!--[\s\S]*-->$/.test(line));
+    .filter((line) => !isIssueTemplateNoiseLine(line));
 
   const requirements = candidateLines
     .filter((line) => line.length > 12)
@@ -86,6 +85,22 @@ export function extractRequirements(taskText: string, prDescription: string): Re
       priority: "must"
     }
   ];
+}
+
+function cleanRequirementSourceText(text: string): string {
+  return text
+    .replace(/<!--[\s\S]*?-->/g, "\n")
+    .replace(/```[\s\S]*?```/g, "\n")
+    .replace(/~~~[\s\S]*?~~~/g, "\n")
+    .trim();
+}
+
+function isIssueTemplateNoiseLine(line: string): boolean {
+  const normalized = line.replace(/^#+\s*/, "").trim();
+
+  return /^<!--|-->$/.test(normalized) ||
+    /^https?:\/\/\S+$/i.test(normalized) ||
+    /^(summary|verification|testing|test plan|description|steps to reproduce|system details|actual behavior|expected behavior|additional context)$/i.test(normalized);
 }
 
 export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem[]): AgentClaim[] {
@@ -193,7 +208,7 @@ export function buildEvidenceIndex(
     const testSignal = isTestFile(file.path) ? " Test evidence file." : "";
     const riskSignal = isRiskFile(file.path) ? " Risk-sensitive path." : "";
 
-    const patchSummary = file.patch ? ` Patch excerpt: ${compactText(file.patch, 500)}` : "";
+    const patchSummary = file.patch ? ` Patch excerpt: ${compactPatchExcerpt(file.patch)}` : "";
 
     items.push({
       id: `ev_${items.length + 1}`,
@@ -241,6 +256,21 @@ export function extractKeywords(text: string): string[] {
         .slice(0, 12)
     )
   );
+}
+
+function compactPatchExcerpt(patch: string, maxLength = 500): string {
+  const clean = redactSecrets(patch.trim().replace(/\r\n/g, "\n"));
+
+  if (clean.length <= maxLength) {
+    return clean;
+  }
+
+  const marker = "\n...[middle truncated for privacy and token control]\n";
+  const available = maxLength - marker.length;
+  const headLength = Math.max(120, Math.floor(available / 2));
+  const tailLength = Math.max(120, available - headLength);
+
+  return `${clean.slice(0, headLength).trimEnd()}${marker}${clean.slice(-tailLength).trimStart()}`;
 }
 
 export function isTestFile(path: string): boolean {

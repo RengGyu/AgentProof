@@ -97,6 +97,63 @@ describe("real-dataset evaluation pack", () => {
     ]);
   });
 
+  it("calibrates noisy issue-template bug reports against visible diff evidence", () => {
+    const testCase = sweBenchRowToEvaluationCase({
+      ...SWE_BENCH_ROW,
+      instance_id: "example__issue-template-1",
+      problem_statement: [
+        "IndexError: tuple index out of range in identify_format (io.registry)",
+        "<!-- This comments are hidden when you submit the issue,",
+        "so you do not need to remove them! -->",
+        "<!-- Please be sure to check out our contributing guidelines,",
+        "https://github.com/astropy/astropy/blob/main/CONTRIBUTING.md . -->",
+        "### Description",
+        "Cron tests using identify_format started failing with IndexError.",
+        "Citing the maintainer: when `filepath` is a string without a FITS extension, the function executes `isinstance(args[0], ...)`.",
+        "### Steps to Reproduce",
+        "```",
+        "Traceback (most recent call last):",
+        "  File \"connect.py\", line 72, in is_fits",
+        "IndexError: tuple index out of range",
+        "```",
+        "### System Details",
+        "Python 3.10"
+      ].join("\n"),
+      patch: [
+        "diff --git a/astropy/io/fits/connect.py b/astropy/io/fits/connect.py",
+        "index 1111111..2222222 100644",
+        "--- a/astropy/io/fits/connect.py",
+        "+++ b/astropy/io/fits/connect.py",
+        "@@ -65,10 +65,9 @@ def is_fits(origin, filepath, fileobj, *args, **kwargs):",
+        "-        if filepath.lower().endswith(",
+        "+        return filepath.lower().endswith(",
+        "-        ):",
+        "-            return True",
+        "+        )"
+      ].join("\n"),
+      test_patch: [
+        "diff --git a/astropy/io/fits/tests/test_connect.py b/astropy/io/fits/tests/test_connect.py",
+        "index 3333333..4444444 100644",
+        "--- a/astropy/io/fits/tests/test_connect.py",
+        "+++ b/astropy/io/fits/tests/test_connect.py",
+        "@@ -1002,3 +1009,8 @@ def test_meta_not_modified(tmp_path):",
+        "+def test_is_fits_without_extension():",
+        "+    assert not connect.is_fits(\"\", \"foo.bar\", None)"
+      ].join("\n"),
+      FAIL_TO_PASS: "[]",
+      PASS_TO_PASS: "[]"
+    });
+    const report = generateVerificationReport(testCase.input);
+    const result = evaluateReportAgainstCase(report, testCase);
+    const requirementText = report.requirements.map((requirement) => requirement.requirementText).join("\n");
+
+    expect(result.metrics.find((metricItem) => metricItem.id === "requirement_calibration")?.status).toBe("pass");
+    expect(result.metrics.filter((metricItem) => metricItem.status === "fail")).toEqual([]);
+    expect(report.requirements.some((requirement) => requirement.status === "partial")).toBe(true);
+    expect(requirementText).toContain("filepath");
+    expect(requirementText).not.toMatch(/hidden when|contributing guidelines|Traceback|System Details|Steps to Reproduce/i);
+  });
+
   it("turns failed metrics into a learning backlog instead of an LLM judge score", () => {
     const actions = summarizeEvaluationLearning([
       metric("schema_valid", "fail"),
@@ -145,6 +202,51 @@ describe("real-dataset evaluation pack", () => {
     });
     expect(summary.metricRollups[0]?.sampleDetails).toEqual(["Report leaked FAIL_TO_PASS."]);
     expect(summary.learningActions).toContain("Remove benchmark labels from report inputs; future outcome labels must only be used after report generation.");
+  });
+
+  it("redacts oracle leakage details from metrics and learning summaries", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    testCase.oracle.hiddenValues = ["tests/private_oracle.py::test_future_behavior"];
+    const report = generateVerificationReport(testCase.input);
+    report.limitations.push("Debug note mentioned tests/private_oracle.py::test_future_behavior and FAIL_TO_PASS.");
+    const result = evaluateReportAgainstCase(report, testCase);
+    const leakageMetric = result.metrics.find((item) => item.id === "oracle_leakage");
+    const summary = summarizeEvaluationResults([result]);
+    const serializedSummary = JSON.stringify(summary);
+
+    expect(leakageMetric?.status).toBe("fail");
+    expect(leakageMetric?.detail).toContain("exact values are redacted");
+    expect(leakageMetric?.detail).not.toContain("tests/private_oracle.py");
+    expect(leakageMetric?.detail).not.toContain("FAIL_TO_PASS");
+    expect(serializedSummary).not.toContain("tests/private_oracle.py");
+    expect(serializedSummary).not.toContain("FAIL_TO_PASS");
+  });
+
+  it("uses extraction-focused learning guidance for weak requirement warnings", () => {
+    const warningResult = {
+      caseId: "weak_case",
+      dataset: "swebench-verified",
+      passed: true,
+      calibrated: false,
+      metrics: [
+        metric(
+          "requirement_calibration",
+          "warning",
+          "Visible implementation or test evidence exists, but every requirement is still missing or unclear."
+        )
+      ],
+      learningActions: ["No blocking harness failure; inspect warnings and add more real benchmark cases."]
+    };
+    const summary = summarizeEvaluationResults([warningResult]);
+    const task = summary.learningTasks[0];
+
+    expect(task).toMatchObject({
+      area: "requirement_calibration",
+      priority: "medium"
+    });
+    expect(task?.recommendation).toContain("requirement extraction");
+    expect(task?.acceptanceCriteria.join(" ")).toContain("partial");
+    expect(task?.acceptanceCriteria.join(" ")).toContain("met");
   });
 
   it("creates requirement calibration tasks for met requirements without linked execution evidence", () => {
