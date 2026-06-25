@@ -1,5 +1,6 @@
+import { pathToFileURL } from "node:url";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 const DEFAULT_DATASET = "princeton-nlp/SWE-bench_Verified";
 const DEFAULT_CONFIG = "default";
@@ -7,44 +8,80 @@ const DEFAULT_SPLIT = "test";
 const DEFAULT_LENGTH = 10;
 const DEFAULT_OUTPUT = "eval/generated/swebench-verified.cases.jsonl";
 
-const options = parseArgs(process.argv.slice(2));
-const dataset = options.dataset ?? DEFAULT_DATASET;
-const config = options.config ?? DEFAULT_CONFIG;
-const split = options.split ?? DEFAULT_SPLIT;
-const offset = numberOption(options.offset, 0);
-const length = numberOption(options.length, DEFAULT_LENGTH);
-const output = resolve(options.output ?? DEFAULT_OUTPUT);
-
-const url = new URL("https://datasets-server.huggingface.co/rows");
-url.searchParams.set("dataset", dataset);
-url.searchParams.set("config", config);
-url.searchParams.set("split", split);
-url.searchParams.set("offset", String(offset));
-url.searchParams.set("length", String(length));
-
-const response = await fetch(url);
-
-if (!response.ok) {
-  throw new Error(`Failed to fetch ${dataset}: HTTP ${response.status} ${response.statusText}`);
+if (isCliEntryPoint()) {
+  await buildEvalPackFromCli(process.argv.slice(2));
 }
 
-const payload = await response.json();
-const rows = Array.isArray(payload.rows) ? payload.rows.map((item) => item.row).filter(Boolean) : [];
+export async function buildEvalPackFromCli(args, dependencies = {}) {
+  const options = parseArgs(args);
 
-if (rows.length === 0) {
-  throw new Error(`No rows returned for ${dataset}/${config}/${split}.`);
+  return buildEvalPack({
+    dataset: options.dataset,
+    config: options.config,
+    split: options.split,
+    offset: options.offset,
+    length: options.length,
+    output: options.output
+  }, dependencies);
 }
 
-await mkdir(dirname(output), { recursive: true });
-const cases = rows.map(sweBenchRowToEvaluationCase);
-await writeFile(
-  output,
-  cases.map((testCase) => JSON.stringify(testCase)).join("\n") + "\n",
-  "utf8"
-);
+export async function buildEvalPack(options = {}, dependencies = {}) {
+  const fetchRows = dependencies.fetchRows ?? ((request) => fetchSweBenchRows(request, dependencies));
+  const mkdirImpl = dependencies.mkdir ?? mkdir;
+  const writeFileImpl = dependencies.writeFile ?? writeFile;
+  const logger = dependencies.logger ?? console;
+  const dataset = options.dataset ?? DEFAULT_DATASET;
+  const config = options.config ?? DEFAULT_CONFIG;
+  const split = options.split ?? DEFAULT_SPLIT;
+  const offset = numberOption(options.offset, 0);
+  const length = numberOption(options.length, DEFAULT_LENGTH);
+  const output = resolve(options.output ?? DEFAULT_OUTPUT);
 
-console.log(`Wrote ${cases.length} normalized ${dataset} evaluation case(s) to ${output}`);
-console.log("Generated files under eval/generated are ignored by git; cases contain short patch excerpts and separated oracle labels, not raw dataset rows.");
+  assertGeneratedOutputPath(output);
+
+  const rows = await fetchRows({ dataset, config, split, offset, length });
+
+  if (rows.length === 0) {
+    throw new Error(`No rows returned for ${dataset}/${config}/${split}.`);
+  }
+
+  const cases = rows.map(sweBenchRowToEvaluationCase);
+
+  await mkdirImpl(dirname(output), { recursive: true });
+  await writeFileImpl(
+    output,
+    cases.map((testCase) => JSON.stringify(testCase)).join("\n") + "\n",
+    "utf8"
+  );
+
+  logger.log(`Wrote ${cases.length} normalized evaluation case(s) to ${output}`);
+  logger.log("Generated files under eval/generated are ignored by git; fetch logs omit raw rows, oracle values, and secret-looking text.");
+
+  return {
+    caseCount: cases.length,
+    output
+  };
+}
+
+async function fetchSweBenchRows({ dataset, config, split, offset, length }, dependencies = {}) {
+  const fetchImpl = dependencies.fetch ?? globalThis.fetch;
+  const url = new URL("https://datasets-server.huggingface.co/rows");
+  url.searchParams.set("dataset", dataset);
+  url.searchParams.set("config", config);
+  url.searchParams.set("split", split);
+  url.searchParams.set("offset", String(offset));
+  url.searchParams.set("length", String(length));
+
+  const response = await fetchImpl(url);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${dataset}: HTTP ${response.status} ${response.statusText}`);
+  }
+
+  const payload = await response.json();
+
+  return Array.isArray(payload.rows) ? payload.rows.map((item) => item.row).filter(Boolean) : [];
+}
 
 function sweBenchRowToEvaluationCase(row) {
   const repo = stringValue(row.repo, "unknown/repo");
@@ -149,6 +186,15 @@ function numberOption(value, fallback) {
   const parsed = Number(value);
 
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function assertGeneratedOutputPath(output) {
+  const generatedDir = resolve("eval/generated");
+  const outputRelativePath = relative(generatedDir, output);
+
+  if (outputRelativePath.startsWith("..") || outputRelativePath === "" || isAbsolute(outputRelativePath)) {
+    throw new Error("Evaluation fetch output must be written under ignored eval/generated.");
+  }
 }
 
 function parseUnifiedDiff(diffText) {
@@ -318,4 +364,8 @@ function hashText(value) {
   }
 
   return (hash >>> 0).toString(16);
+}
+
+function isCliEntryPoint() {
+  return import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
 }
