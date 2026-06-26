@@ -1,4 +1,5 @@
 import type { VerificationReport } from "./types";
+import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
@@ -434,10 +435,11 @@ function isExecutionClaim(text: string): boolean {
 function isPassingTestExecutionEvidence(item: RecordValue): boolean {
   const kind = item.kind;
   const text = `${typeof item.label === "string" ? item.label : ""} ${typeof item.summary === "string" ? item.summary : ""}`;
+  const summary = typeof item.summary === "string" ? item.summary : "";
 
   return (kind === "check" || kind === "log") &&
-    /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage|ci|build)\b/i.test(text) &&
-    /\b(pass|passed|success|succeeded|green)\b/i.test(text);
+    isExecutionSignalText(text) &&
+    hasPassingEvidenceStatusPrefix(summary);
 }
 
 function requiresPriorityEvidence(item: RecordValue): boolean {

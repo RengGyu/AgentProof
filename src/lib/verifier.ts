@@ -6,6 +6,8 @@ import {
   isRiskFile,
   isTestFile
 } from "./extractors";
+import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
+import { redactSecrets } from "./redact";
 import type {
   CheckStatus,
   EvidenceItem,
@@ -129,8 +131,7 @@ function evaluateRequirement(
   const hasMatchingPassingTestExecutionEvidence = matches.some(({ item, match }) =>
     match.strong && isPassingTestExecutionEvidence(item)
   );
-  const failedCheck = input.checks.some((check) => check.status === "failed") ||
-    input.logs.some((log) => log.status === "failed");
+  const failedCheck = hasFailingExecutionEvidence(input);
 
   if (failedCheck) {
     return {
@@ -269,13 +270,10 @@ const WEAK_SINGLE_MATCH_KEYWORDS = new Set([
   "user"
 ]);
 
-const TEST_EXECUTION_PATTERN = /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage|ci|build)\b/i;
-const PASSING_EXECUTION_PATTERN = /\b(pass|passed|success|succeeded|green)\b/i;
-
 function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
   return (item.kind === "check" || item.kind === "log") &&
-    TEST_EXECUTION_PATTERN.test(`${item.label} ${item.summary}`) &&
-    PASSING_EXECUTION_PATTERN.test(item.summary);
+    isExecutionSignal(`${item.label} ${item.summary}`) &&
+    hasPassingEvidenceStatusPrefix(item.summary);
 }
 
 function detectScopeCreep(
@@ -589,7 +587,12 @@ function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestIn
 }
 
 function isExecutionSignal(text: string): boolean {
-  return TEST_EXECUTION_PATTERN.test(text);
+  return isExecutionSignalText(text);
+}
+
+function hasFailingExecutionEvidence(input: PullRequestInput): boolean {
+  return input.checks.some((check) => check.status === "failed" && isExecutionSignal(`${check.name} ${check.summary ?? ""}`)) ||
+    input.logs.some((log) => log.status === "failed" && isExecutionSignal(`${log.source} ${log.text}`));
 }
 
 function nonExecutionFailures(input: PullRequestInput): string[] {
@@ -606,10 +609,10 @@ function nonExecutionFailures(input: PullRequestInput): string[] {
 function nonExecutionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
   const failedCheckLabels = new Set(input.checks
     .filter((check) => check.status === "failed" && !isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
-    .map((check) => check.name));
+    .map((check) => redactSecrets(check.name)));
   const failedLogLabels = new Set(input.logs
     .filter((log) => log.status === "failed" && !isExecutionSignal(`${log.source} ${log.text}`))
-    .map((log) => log.source));
+    .map((log) => redactSecrets(log.source)));
 
   return evidenceIndex
     .filter((item) =>
@@ -622,10 +625,10 @@ function nonExecutionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex:
 function executionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
   const failedCheckLabels = new Set(input.checks
     .filter((check) => check.status === "failed" && isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
-    .map((check) => check.name));
+    .map((check) => redactSecrets(check.name)));
   const failedLogLabels = new Set(input.logs
     .filter((log) => log.status === "failed" && isExecutionSignal(`${log.source} ${log.text}`))
-    .map((log) => log.source));
+    .map((log) => redactSecrets(log.source)));
 
   return evidenceIndex
     .filter((item) =>

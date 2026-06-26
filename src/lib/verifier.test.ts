@@ -161,6 +161,7 @@ describe("generateVerificationReport", () => {
     expect(report.testing.ciStatus).toBe("unknown");
     expect(report.summary.priority).toBe("high");
     expect(report.summary.topRisks).toContain("Static or merge-gate checks failed outside test/build proof.");
+    expect(report.requirements.flatMap((requirement) => requirement.gaps).join(" ")).not.toContain("CI has a failing check");
     expect(report.reviewPriority).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -172,6 +173,72 @@ describe("generateVerificationReport", () => {
       ])
     );
     expect(report.reprompt.prompt).toContain("Address failing static or merge-gate checks separately");
+  });
+
+  it("does not classify CI policy or build provenance gates as test/build execution failures", () => {
+    const report = generateVerificationReport({
+      title: "Fix malformed origin handling",
+      description: "Handled malformed Origin headers and added a regression test.",
+      taskText: "Acceptance criteria: handle malformed Origin headers and include regression coverage.",
+      changedFiles: [
+        {
+          path: "packages/next/src/server/app-render/action-handler.ts",
+          additions: 6,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidOriginHeader(origin)) return rejectAction()"
+        },
+        {
+          path: "test/e2e/app-dir/actions-allowed-origins/app-action-malformed-origin.test.ts",
+          additions: 18,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it('handles malformed origin headers', async () => {})"
+        }
+      ],
+      checks: [
+        { name: "CI policy", status: "failed", summary: "merge policy failed" },
+        { name: "build provenance attestation", status: "failed", summary: "attestation was not created" }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.summary.priority).toBe("high");
+    expect(report.summary.topRisks).toContain("Static or merge-gate checks failed outside test/build proof.");
+    expect(report.requirements.flatMap((requirement) => requirement.gaps).join(" ")).not.toContain("CI has a failing check");
+    expect(report.reviewPriority.some((item) => item.path === "Test/build checks")).toBe(false);
+  });
+
+  it("preserves failure evidence refs when check labels are redacted", () => {
+    const report = generateVerificationReport({
+      title: "Add invoice export",
+      description: "Added invoice export.",
+      taskText: "Acceptance criteria: add invoice export.",
+      changedFiles: [
+        {
+          path: "src/billing/invoiceExport.ts",
+          additions: 20,
+          deletions: 1,
+          status: "modified",
+          patch: "+ export function invoiceExport() { return csv }"
+        }
+      ],
+      checks: [
+        {
+          name: "unit tests ghp_abcdefghijklmnopqrstuvwxyz123456",
+          status: "failed",
+          summary: "invoice export test failed"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+    const blocker = report.reviewPriority.find((item) => item.path === "Test/build checks");
+
+    expect(JSON.stringify(report)).not.toContain("ghp_");
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(blocker?.evidenceRefs?.length).toBeGreaterThan(0);
+    expect(refsToEvidence(report, blocker?.evidenceRefs ?? []).some((item) => item.kind === "check")).toBe(true);
   });
 
   it("marks test/build passed when execution-relevant checks pass", () => {
@@ -203,6 +270,43 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(report.testing.ciStatus).toBe("passed");
+  });
+
+  it("does not trust passing words when execution status is unknown", () => {
+    const report = generateVerificationReport({
+      title: "Add invoice export",
+      description: "Added invoice export and tested it.",
+      taskText: "Acceptance criteria: add invoice export and tests.",
+      changedFiles: [
+        {
+          path: "src/billing/invoiceExport.ts",
+          additions: 20,
+          deletions: 1,
+          status: "modified",
+          patch: "+ export function invoiceExport() { return csv }"
+        },
+        {
+          path: "src/billing/invoiceExport.test.ts",
+          additions: 16,
+          deletions: 0,
+          status: "added",
+          patch: "+ it('exports invoice CSV', async () => {})"
+        }
+      ],
+      checks: [
+        {
+          name: "unit tests: passed",
+          status: "unknown",
+          summary: "This check name says passed, but GitHub status is unknown."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("no passing test check or log");
+    expect(report.claims.find((claim) => /tested/i.test(claim.text))?.supported).toBe(false);
   });
 
   it("does not mark a requirement met from one broad keyword in a diff", () => {

@@ -6,6 +6,7 @@ import type {
   LogSnippet,
   Requirement
 } from "./types";
+import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
 import { compactText } from "./redact";
 import { redactSecrets } from "./redact";
 
@@ -180,8 +181,8 @@ function isPassingExecutionClaimEvidence(item: EvidenceItem): boolean {
   const text = `${item.label} ${item.summary}`;
 
   return (item.kind === "check" || item.kind === "log") &&
-    /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage|ci|build)\b/i.test(text) &&
-    /\b(pass|passed|success|succeeded|green)\b/i.test(text);
+    isExecutionSignalText(text) &&
+    hasPassingEvidenceStatusPrefix(item.summary);
 }
 
 export function buildEvidenceIndex(
@@ -198,7 +199,7 @@ export function buildEvidenceIndex(
       id: `ev_${items.length + 1}`,
       kind: "task",
       label: "Original task",
-      summary: compactText(taskText, 700),
+      summary: compactText(redactSecrets(taskText), 700),
       confidence: 0.95
     });
   }
@@ -208,7 +209,7 @@ export function buildEvidenceIndex(
       id: `ev_${items.length + 1}`,
       kind: "pr_description",
       label: "PR description",
-      summary: compactText(prDescription, 700),
+      summary: compactText(redactSecrets(prDescription), 700),
       confidence: 0.7
     });
   }
@@ -235,23 +236,29 @@ export function buildEvidenceIndex(
   }
 
   for (const check of checks) {
+    const safeName = redactSecrets(check.name);
+    const safeSummary = check.summary ? redactSecrets(check.summary) : undefined;
+
     items.push({
       id: `ev_${items.length + 1}`,
       kind: "check",
-      label: check.name,
-      locator: check.url,
-      summary: `${check.name}: ${check.status}${check.summary ? ` - ${compactText(check.summary, 350)}` : ""}`,
+      label: safeName,
+      locator: sanitizeEvidenceLocator(check.url),
+      summary: `Status: ${check.status}. ${safeName}${safeSummary ? ` - ${compactText(safeSummary, 350)}` : ""}`,
       confidence: check.status === "unknown" ? 0.45 : 0.9
     });
   }
 
   for (const log of logs) {
+    const safeSource = redactSecrets(log.source);
+    const status = log.status ?? "unknown";
+
     items.push({
       id: `ev_${items.length + 1}`,
       kind: "log",
-      label: log.source,
-      summary: `${log.source}${log.status ? ` (${log.status})` : ""}: ${compactText(log.text, 450)}`,
-      confidence: log.status === "unknown" ? 0.45 : 0.75
+      label: safeSource,
+      summary: `Status: ${status}. ${safeSource}: ${compactText(redactSecrets(log.text), 450)}`,
+      confidence: status === "unknown" ? 0.45 : 0.75
     });
   }
 
@@ -285,6 +292,23 @@ function compactPatchExcerpt(patch: string, maxLength = 500): string {
   const tailLength = Math.max(120, available - headLength);
 
   return `${clean.slice(0, headLength).trimEnd()}${marker}${clean.slice(-tailLength).trimStart()}`;
+}
+
+function sanitizeEvidenceLocator(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+
+  const redacted = redactSecrets(value);
+
+  try {
+    const url = new URL(redacted);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return redacted;
+  }
 }
 
 export function isTestFile(path: string): boolean {

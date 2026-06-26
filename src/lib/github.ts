@@ -1,4 +1,5 @@
 import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput } from "./types";
+import { isExecutionSignalText } from "./evidence-status";
 import { compactText, redactSecrets } from "./redact";
 
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
@@ -7,6 +8,9 @@ const GITHUB_MAX_PAGES = 3;
 const GITHUB_MAX_CHANGED_FILES = 120;
 const GITHUB_MAX_CHECK_RUNS = 60;
 const GITHUB_MAX_COMMIT_STATUSES = 30;
+const GITHUB_MAX_ACTION_RUNS = 3;
+const GITHUB_MAX_ACTION_JOB_SUMMARIES = 12;
+const GITHUB_MAX_ACTION_STEPS_PER_JOB = 8;
 
 class GitHubFetchError extends Error {
   constructor(
@@ -36,6 +40,7 @@ interface GitHubCheckRunResponse {
   status: string;
   conclusion: string | null;
   html_url?: string;
+  details_url?: string;
   output?: {
     title?: string;
     summary?: string;
@@ -47,6 +52,20 @@ interface GitHubStatusResponse {
   state: string;
   target_url?: string;
   description?: string;
+}
+
+interface GitHubActionJobResponse {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url?: string;
+  steps?: GitHubActionStepResponse[];
+}
+
+interface GitHubActionStepResponse {
+  name: string;
+  status: string;
+  conclusion: string | null;
 }
 
 export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
@@ -151,6 +170,7 @@ async function fetchGitHubPullRequest(
     fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, Boolean(token?.trim())),
     fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, Boolean(token?.trim()))
   ]);
+  const actionJobLogs = await fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, limitations, Boolean(token?.trim()));
   const missingPatchCount = files.filter((file) => !file.patch).length;
 
   if (missingPatchCount > 0) {
@@ -178,14 +198,14 @@ async function fetchGitHubPullRequest(
       name: check.name,
       status: mapGitHubCheckStatus(check.status, check.conclusion),
       summary: check.output?.summary || check.output?.title,
-      url: check.html_url
+      url: sanitizeGitHubEvidenceUrl(check.html_url)
     })).concat(statuses.map((status) => ({
       name: status.context,
       status: mapGitHubCommitStatus(status.state),
       summary: status.description,
-      url: status.target_url
+      url: sanitizeGitHubEvidenceUrl(status.target_url)
     }))),
-    logs: [],
+    logs: actionJobLogs,
     limitations
   };
 }
@@ -398,6 +418,124 @@ async function fetchCommitStatuses(
   return statuses.slice(0, GITHUB_MAX_COMMIT_STATUSES);
 }
 
+async function fetchActionJobSummaries(
+  owner: string,
+  repo: string,
+  checkRuns: GitHubCheckRunResponse[],
+  headers: Record<string, string>,
+  limitations: string[],
+  hasToken: boolean
+): Promise<LogSnippet[]> {
+  const runIds = Array.from(new Set(checkRuns
+    .filter((check) => isExecutionCheckRun(check))
+    .map((check) => actionRunIdFromCheckRun(check, owner, repo))
+    .filter((id): id is string => Boolean(id))))
+    .slice(0, GITHUB_MAX_ACTION_RUNS);
+
+  if (runIds.length === 0) {
+    return [];
+  }
+
+  const logs: LogSnippet[] = [];
+
+  for (const runId of runIds) {
+    if (logs.length >= GITHUB_MAX_ACTION_JOB_SUMMARIES) {
+      break;
+    }
+
+    let response: Response;
+
+    try {
+      response = await githubFetch(
+        `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=${GITHUB_PAGE_SIZE}`,
+        headers
+      );
+    } catch {
+      limitations.push("GitHub Actions job-step metadata unavailable: request timed out or network failed.");
+      continue;
+    }
+
+    if (!response.ok) {
+      limitations.push(`GitHub Actions job-step metadata fetch failed: ${classifyGitHubFailure(response, hasToken)} Test/build evidence may be incomplete.`);
+      continue;
+    }
+
+    const json = await response.json();
+    const jobs = ((json.jobs ?? []) as GitHubActionJobResponse[])
+      .filter(isExecutionActionJob)
+      .slice(0, Math.max(0, GITHUB_MAX_ACTION_JOB_SUMMARIES - logs.length));
+
+    for (const job of jobs) {
+      const status = mapGitHubCheckStatus(job.status, job.conclusion);
+      const steps = (job.steps ?? [])
+        .filter((step) => step.name)
+        .slice(0, GITHUB_MAX_ACTION_STEPS_PER_JOB)
+        .map((step) => `${step.name}: ${mapGitHubCheckStatus(step.status, step.conclusion)}`)
+        .join("; ");
+
+      logs.push({
+        source: `GitHub Actions job: ${job.name}`,
+        status,
+        text: redactSecrets(compactText(`GitHub Actions job ${job.name}: ${status}${steps ? `. Steps: ${steps}` : ""}`, 900))
+      });
+    }
+  }
+
+  if (logs.length > 0) {
+    limitations.push("GitHub Actions job-step metadata was collected; raw log archives were not fetched or stored.");
+  }
+
+  return logs;
+}
+
+function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
+  return isExecutionSignalText(`${check.name} ${check.output?.title ?? ""} ${check.output?.summary ?? ""}`);
+}
+
+function isExecutionActionJob(job: GitHubActionJobResponse): boolean {
+  const stepText = (job.steps ?? []).map((step) => step.name).join(" ");
+
+  return isExecutionSignalText(`${job.name} ${stepText}`);
+}
+
+function actionRunIdFromCheckRun(check: GitHubCheckRunResponse, owner: string, repo: string): string | null {
+  const value = check.details_url || check.html_url;
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    const parts = url.pathname.split("/").filter(Boolean);
+
+    if (
+      url.hostname.toLowerCase() !== "github.com" ||
+      parts[0]?.toLowerCase() !== owner.toLowerCase() ||
+      parts[1]?.toLowerCase() !== repo.toLowerCase()
+    ) {
+      return null;
+    }
+
+    const match = url.pathname.match(/\/actions\/runs\/(\d+)(?:\/|$)/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeGitHubEvidenceUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+
+  try {
+    const url = new URL(redactSecrets(value));
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return redactSecrets(value);
+  }
+}
+
 function parseChangedFiles(input: string): ChangedFile[] {
   return input
     .split(/\n|,/)
@@ -414,14 +552,7 @@ function parseChecks(input: string): CheckRun[] {
     .filter(Boolean)
     .slice(0, 30)
     .map((line) => {
-      const lowered = line.toLowerCase();
-      const status = lowered.includes("fail")
-        ? "failed"
-        : lowered.includes("pass") || lowered.includes("success")
-          ? "passed"
-          : lowered.includes("pending")
-            ? "pending"
-            : "unknown";
+      const status = parsePastedEvidenceStatus(line);
 
       return { name: line.split(":")[0] || "check", status, summary: line };
     });
@@ -432,9 +563,33 @@ function parseLogs(input: string): LogSnippet[] {
     return [];
   }
 
-  const status = /fail|error/i.test(input) ? "failed" : /pass|success/i.test(input) ? "passed" : "unknown";
+  const status = parsePastedEvidenceStatus(input);
 
   return [{ source: "pasted logs", status, text: compactText(input, 1600) }];
+}
+
+const PASTED_STATUS_AMBIGUITY_PATTERN =
+  /\b(previous|previously|prior|last|old|historical|history|baseline|base branch|main branch|other branch|not current|current status is unknown|status is unknown|unknown|incomplete|not provided|unavailable|not available|not run|not executed)\b/i;
+const PASTED_EXPLICIT_PENDING_PATTERN = /\b(status|conclusion|result)\s*[:=]\s*(pending|queued|in[_ -]?progress)\b/i;
+const PASTED_EXPLICIT_FAILURE_PATTERN = /\b(status|conclusion|result)\s*[:=]\s*(failed|failure|error|errored)\b/i;
+const PASTED_EXPLICIT_PASS_PATTERN = /\b(status|conclusion|result)\s*[:=]\s*(passed|pass|success|succeeded)\b/i;
+const PASTED_FAILURE_PATTERN = /\b(failed|failure|failing|error|errored|failures?)\b/i;
+const PASTED_NO_FAILURE_PATTERN = /\b(no|without|zero|0)\s+(failures?|errors?)\b/i;
+const PASTED_PASS_PATTERN =
+  /(?:^|\b)(?:tests?|checks?|specs?|build|ci|typecheck|lint)\b.{0,80}\b(passed|pass|success|succeeded)\b/i;
+const PASTED_PREFIX_PASS_PATTERN = /^(?:[^:\n]{1,120}:\s*)?(passed|pass|success|succeeded)\b/i;
+
+function parsePastedEvidenceStatus(text: string): CheckRun["status"] {
+  if (!text.trim()) return "unknown";
+  if (PASTED_STATUS_AMBIGUITY_PATTERN.test(text)) return "unknown";
+  if (PASTED_EXPLICIT_PENDING_PATTERN.test(text)) return "pending";
+  if (PASTED_EXPLICIT_FAILURE_PATTERN.test(text)) return "failed";
+  if (PASTED_EXPLICIT_PASS_PATTERN.test(text)) return "passed";
+  if (PASTED_FAILURE_PATTERN.test(text) && !PASTED_NO_FAILURE_PATTERN.test(text)) return "failed";
+  if (PASTED_NO_FAILURE_PATTERN.test(text)) return "passed";
+  if (PASTED_PREFIX_PASS_PATTERN.test(text) || PASTED_PASS_PATTERN.test(text)) return "passed";
+
+  return "unknown";
 }
 
 function mapGitHubCheckStatus(status: string, conclusion: string | null): CheckRun["status"] {

@@ -157,6 +157,23 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("testing.ciStatus cannot be passed without passing test, build, or CI execution evidence");
   });
 
+  it("rejects passed CI status when passed appears only in unstructured summary text", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.testing.ciStatus = "passed";
+    report.evidenceIndex.push({
+      id: "ev_unit_tests_unknown",
+      kind: "check",
+      label: "unit tests: passed",
+      summary: "unit tests: passed on a previous branch, but current status is unknown",
+      confidence: 0.45
+    });
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("testing.ciStatus cannot be passed without passing test, build, or CI execution evidence");
+  });
+
   it("rejects missing nested fields and unknown report properties", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     delete (report.summary as Partial<typeof report.summary>).oneLine;

@@ -73,6 +73,7 @@ AgentProof separates test/build execution proof from other GitHub checks:
 - Failing non-test/build checks are still surfaced as high-priority static or merge-gate risks.
 - Lint and typecheck remain separate status fields, even when they come from GitHub checks.
 - Requirement `met` status still requires passing execution evidence linked through evidence IDs.
+- GitHub Actions fallback collects bounded job/step metadata when available; raw log archives are not fetched or stored in this MVP.
 
 ## Product Position
 
