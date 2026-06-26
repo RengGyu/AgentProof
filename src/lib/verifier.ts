@@ -35,6 +35,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const ciStatus = aggregateStatus(input.checks, input.logs);
   const lintStatus = statusForCheck(input.checks, /lint/i);
   const typecheckStatus = statusForCheck(input.checks, /type(check|script)/i);
+  const failedNonExecutionChecks = nonExecutionFailures(input);
   const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex);
   const priority = highestPriority(reviewPriority);
   const limitations = buildLimitations(input, requirementFindings, ciStatus);
@@ -46,8 +47,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     ciStatus,
     limitations.length
   );
-  const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
-  const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
+  const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks.length > 0);
+  const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks);
   const claims = extractClaims(input.description, evidenceIndex);
 
   return {
@@ -398,12 +399,20 @@ function buildReviewPriority(
 
   if (ciStatus === "failed") {
     items.push({
-      path: "CI checks",
-      reason: "At least one check failed; requirement satisfaction is not proven.",
+      path: "Test/build checks",
+      reason: "At least one test, build, or CI execution check failed; requirement satisfaction is not proven.",
       priority: "blocker",
-      evidenceRefs: evidenceIndex
-        .filter((item) => (item.kind === "check" || item.kind === "log") && /\bfailed\b/i.test(item.summary))
-        .map((item) => item.id)
+      evidenceRefs: executionFailureEvidenceRefs(input, evidenceIndex)
+    });
+  }
+
+  const nonExecutionFailureRefs = nonExecutionFailureEvidenceRefs(input, evidenceIndex);
+  if (nonExecutionFailureRefs.length > 0) {
+    items.push({
+      path: "Static or merge-gate checks",
+      reason: "A non-test/build check failed; review merge policy separately from requirement and execution proof.",
+      priority: "high",
+      evidenceRefs: nonExecutionFailureRefs
     });
   }
 
@@ -511,7 +520,8 @@ function buildReprompt(
   requirements: RequirementFinding[],
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
-  ciStatus: CheckStatus
+  ciStatus: CheckStatus,
+  failedNonExecutionChecks: string[]
 ): string {
   const actions: string[] = [];
   const weakRequirements = requirements.filter((finding) => finding.status !== "met");
@@ -529,7 +539,11 @@ function buildReprompt(
   }
 
   if (ciStatus === "failed") {
-    actions.push("Fix the failing CI check and summarize the exact log line that proves it now passes.");
+    actions.push("Fix the failing test/build check and summarize the exact log line that proves it now passes.");
+  }
+
+  if (failedNonExecutionChecks.length > 0) {
+    actions.push(`Address failing static or merge-gate checks separately: ${failedNonExecutionChecks.slice(0, 5).join(", ")}.`);
   }
 
   if (actions.length === 0) {
@@ -545,10 +559,6 @@ function buildReprompt(
 }
 
 function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestInput["logs"] = []): CheckStatus {
-  const allStatuses = [
-    ...checks.map((check) => check.status),
-    ...logs.map((log) => log.status).filter((status): status is CheckStatus => Boolean(status))
-  ];
   const executionStatuses = [
     ...checks
       .filter((check) => isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
@@ -559,11 +569,11 @@ function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestIn
       .filter((status): status is CheckStatus => Boolean(status))
   ];
 
-  if (allStatuses.length === 0) {
+  if (executionStatuses.length === 0) {
     return "unknown";
   }
 
-  if (allStatuses.some((status) => status === "failed")) {
+  if (executionStatuses.some((status) => status === "failed")) {
     return "failed";
   }
 
@@ -580,6 +590,49 @@ function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestIn
 
 function isExecutionSignal(text: string): boolean {
   return TEST_EXECUTION_PATTERN.test(text);
+}
+
+function nonExecutionFailures(input: PullRequestInput): string[] {
+  return [
+    ...input.checks
+      .filter((check) => check.status === "failed" && !isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+      .map((check) => check.name),
+    ...input.logs
+      .filter((log) => log.status === "failed" && !isExecutionSignal(`${log.source} ${log.text}`))
+      .map((log) => log.source)
+  ];
+}
+
+function nonExecutionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
+  const failedCheckLabels = new Set(input.checks
+    .filter((check) => check.status === "failed" && !isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+    .map((check) => check.name));
+  const failedLogLabels = new Set(input.logs
+    .filter((log) => log.status === "failed" && !isExecutionSignal(`${log.source} ${log.text}`))
+    .map((log) => log.source));
+
+  return evidenceIndex
+    .filter((item) =>
+      (item.kind === "check" && failedCheckLabels.has(item.label)) ||
+      (item.kind === "log" && failedLogLabels.has(item.label))
+    )
+    .map((item) => item.id);
+}
+
+function executionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
+  const failedCheckLabels = new Set(input.checks
+    .filter((check) => check.status === "failed" && isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+    .map((check) => check.name));
+  const failedLogLabels = new Set(input.logs
+    .filter((log) => log.status === "failed" && isExecutionSignal(`${log.source} ${log.text}`))
+    .map((log) => log.source));
+
+  return evidenceIndex
+    .filter((item) =>
+      (item.kind === "check" && failedCheckLabels.has(item.label)) ||
+      (item.kind === "log" && failedLogLabels.has(item.label))
+    )
+    .map((item) => item.id);
 }
 
 function statusForCheck(checks: PullRequestInput["checks"], pattern: RegExp): CheckStatus {
@@ -637,11 +690,13 @@ function buildTopRisks(
   requirements: RequirementFinding[],
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
-  ciStatus: CheckStatus
+  ciStatus: CheckStatus,
+  hasNonExecutionCheckFailures: boolean
 ): string[] {
   const risks: string[] = [];
 
-  if (ciStatus === "failed") risks.push("CI failed, so the PR is not proven ready.");
+  if (ciStatus === "failed") risks.push("Test/build execution failed, so the PR is not proven ready.");
+  if (hasNonExecutionCheckFailures) risks.push("Static or merge-gate checks failed outside test/build proof.");
   if (requirements.some((finding) => finding.status === "missing")) risks.push("One or more requirements have no matching implementation evidence.");
   if (requirements.some((finding) => finding.status === "unclear")) risks.push("Some requirements are too vague or weakly evidenced.");
   if (requirements.some((finding) => finding.status === "partial")) risks.push("Some requirements have only partial evidence.");

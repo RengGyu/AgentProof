@@ -64,6 +64,16 @@ Browser recent history, portable share links, Slack payloads, and short-lived sa
 
 Short-lived saved reports use in-memory storage. This is suitable for local demos, but not durable on serverless deployments. Production sharing needs Postgres/Supabase, ownership/auth, encryption, and retention policy.
 
+## Check Evidence Taxonomy
+
+AgentProof separates test/build execution proof from other GitHub checks:
+
+- `Test/Build` status is backed only by check or log names/summaries that look like test, spec, unit, integration, e2e, coverage, CI, or build execution.
+- Passing security reports, code-owner checks, dependency scans, deploy previews, and AI review checks do not prove tests or builds ran.
+- Failing non-test/build checks are still surfaced as high-priority static or merge-gate risks.
+- Lint and typecheck remain separate status fields, even when they come from GitHub checks.
+- Requirement `met` status still requires passing execution evidence linked through evidence IDs.
+
 ## Product Position
 
 It avoids:

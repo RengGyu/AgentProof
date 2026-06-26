@@ -38,7 +38,7 @@ Return findings first, ordered by severity, with file paths and exact suggested 
 - Confirm the priority, evidence coverage, missing-test count, and re-prompt change between scenarios.
 - Switch to manual mode and analyze a public GitHub PR URL without a token.
 - For live PR smoke testing, run `AGENTPROOF_SMOKE_PR_URL=<public PR URL> AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:analyze-pr` and confirm it prints only report metadata plus summary-only saved-report privacy counts.
-- Confirm public PR URL analysis shows explicit limitations when CI/logs are unavailable and does not claim tests passed without check/log evidence.
+- Confirm public PR URL analysis shows explicit limitations when test/build logs are unavailable and does not claim tests passed from security, code-owner, deploy-preview, or AI-review checks.
 - Paste task text plus changed file names, then confirm the report still works without GitHub access.
 - Use Copy Report, Copy PR Comment, Download, and Copy re-prompt.
 - Use Copy Share Link and confirm the opened shared page omits raw evidence.

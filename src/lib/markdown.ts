@@ -39,7 +39,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     "",
     `## Testing`,
     "",
-    `- CI: ${report.testing.ciStatus}`,
+    `- Test/build: ${report.testing.ciStatus}`,
     `- Lint: ${report.testing.lintStatus}`,
     `- Typecheck: ${report.testing.typecheckStatus}`,
     ...report.testing.missingTests.flatMap((item) => [
@@ -110,7 +110,7 @@ export function reportToGitHubComment(
     options.includeMarker === false ? undefined : AGENTPROOF_COMMENT_MARKER,
     "## AgentProof Evidence Check",
     "",
-    `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **CI:** ${report.testing.ciStatus}`,
+    `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **Test/Build:** ${report.testing.ciStatus}`,
     "",
     report.summary.oneLine,
     "",

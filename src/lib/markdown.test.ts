@@ -26,9 +26,11 @@ describe("reportToGitHubComment", () => {
     expect(markdown).toContain("locator=src/features/auth/PasswordResetForm.tsx");
     expect(markdown).toContain("confidence=85%");
     expect(markdown).toContain("text=modified src/features/auth/PasswordResetForm.tsx");
+    expect(markdown).toContain("- Test/build:");
     expect(markdown).toContain("src/server/auth/sessionExpiry.ts is risk-sensitive");
     expect(markdown).toContain("Evidence: ev_");
     expect(comment).toContain("### Scope");
+    expect(comment).toContain("**Test/Build:**");
     expect(comment).toContain("Evidence: ev_");
     expect(comment).toContain("diff src/features/auth/PasswordResetForm.tsx 85%");
   });

@@ -130,7 +130,51 @@ describe("generateVerificationReport", () => {
     expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
   });
 
-  it("marks CI passed when execution-relevant checks pass", () => {
+  it("does not mark test/build failed from non-execution check failures", () => {
+    const report = generateVerificationReport({
+      title: "Fix malformed origin handling",
+      description: "Handled malformed Origin headers and added a regression test.",
+      taskText: "Acceptance criteria: handle malformed Origin headers and include regression coverage.",
+      changedFiles: [
+        {
+          path: "packages/next/src/server/app-render/action-handler.ts",
+          additions: 6,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidOriginHeader(origin)) return rejectAction()"
+        },
+        {
+          path: "test/e2e/app-dir/actions-allowed-origins/app-action-malformed-origin.test.ts",
+          additions: 18,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it('handles malformed origin headers', async () => {})"
+        }
+      ],
+      checks: [
+        { name: "Socket Security: Project Report", status: "failed", summary: "Project report found dependency risks" },
+        { name: "Vercel - Code Owners", status: "passed", summary: "There are no code owners defined" }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.summary.priority).toBe("high");
+    expect(report.summary.topRisks).toContain("Static or merge-gate checks failed outside test/build proof.");
+    expect(report.reviewPriority).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "Static or merge-gate checks",
+          priority: "high",
+          reason: "A non-test/build check failed; review merge policy separately from requirement and execution proof.",
+          evidenceRefs: expect.arrayContaining(["ev_5"])
+        })
+      ])
+    );
+    expect(report.reprompt.prompt).toContain("Address failing static or merge-gate checks separately");
+  });
+
+  it("marks test/build passed when execution-relevant checks pass", () => {
     const report = generateVerificationReport({
       title: "Fix malformed origin handling",
       description: "Handled malformed Origin headers and added a regression test.",
