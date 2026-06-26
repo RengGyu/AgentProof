@@ -63,6 +63,27 @@ describe("smoke-analyze-pr-url", () => {
 
     expect(() => assertSummaryOnlyReport(savedReport)).toThrow("Saved report retained evidenceRefs");
   });
+
+  it("rejects passed CI smoke reports without status-prefixed passing execution evidence", async () => {
+    const report = reportFixture();
+    report.testing.ciStatus = "passed";
+    report.evidenceIndex = [
+      {
+        id: "ev_1",
+        kind: "check",
+        label: "unit tests: passed",
+        summary: "unit tests: passed on a previous branch, but current status is unknown",
+        confidence: 0.45
+      }
+    ];
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      fetchImpl: fetchMock
+    })).rejects.toThrow("Report claimed passed CI without passing check/log evidence");
+  });
 });
 
 function jsonResponse(payload, status = 200) {

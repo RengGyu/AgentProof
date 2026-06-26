@@ -69,10 +69,28 @@ export function passingExecutionEvidence(report) {
   return Array.isArray(report.evidenceIndex)
     ? report.evidenceIndex.filter((item) =>
       (item.kind === "check" || item.kind === "log") &&
-        /\b(test|tests|spec|unit|integration|e2e|ci|build|coverage)\b/i.test(`${item.label} ${item.summary}`) &&
-        /\b(pass|passed|success|succeeded|green)\b/i.test(`${item.label} ${item.summary}`)
+        isExecutionSignal(`${item.label} ${item.summary}`) &&
+        hasPassingEvidenceStatusPrefix(item.summary)
     )
     : [];
+}
+
+const STRONG_EXECUTION_EVIDENCE_PATTERN =
+  /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage)\b/i;
+const WEAK_EXECUTION_EVIDENCE_PATTERN = /\b(ci|build)\b/i;
+const NON_EXECUTION_GATE_PATTERN =
+  /\b(policy|policies|provenance|attestation|security|scan|sast|secret|secrets|dependency|dependencies|license|licenses|code owners?|owners|review|report|preview|deploy|deployment|merge[- ]?gate|required checks?)\b/i;
+
+function isExecutionSignal(text) {
+  if (STRONG_EXECUTION_EVIDENCE_PATTERN.test(text)) {
+    return true;
+  }
+
+  return WEAK_EXECUTION_EVIDENCE_PATTERN.test(text) && !NON_EXECUTION_GATE_PATTERN.test(text);
+}
+
+function hasPassingEvidenceStatusPrefix(summary) {
+  return /^Status:\s*passed\b/i.test(String(summary ?? "").trim());
 }
 
 export function assertSummaryOnlyReport(report, options = {}) {
