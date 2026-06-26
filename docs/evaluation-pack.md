@@ -22,7 +22,7 @@ This document defines the MVP evaluation approach for AgentProof. The goal is no
 
 ## Commands
 
-The repository includes committed SWE-bench Verified fixtures under `eval/fixtures/` so CI can run without network access: a small smoke case and a representative four-case pack. Each manifest pins the fixture file hash and records the dataset/source metadata.
+The repository includes committed SWE-bench Verified fixtures under `eval/fixtures/` so CI can run without network access: a small smoke case, a representative four-case pack, and a diverse ten-repository pack. Each manifest pins the fixture file hash and records the dataset/source metadata.
 
 Fetch a larger real SWE-bench Verified sample into a git-ignored local directory. The fetcher writes normalized evaluation cases by default, not raw dataset rows:
 
@@ -51,6 +51,7 @@ pnpm eval:summary:fixture:strict
 ```
 
 The promotion tool only accepts normalized JSONL input under `eval/generated/` and writes paired `.jsonl` plus `.manifest.json` files under `eval/fixtures/`. It strips raw hidden oracle labels from committed fixtures and keeps only manifest counts/hashes.
+The current diverse fixture intentionally uses ten non-`astropy`/`django` repositories and includes one implementation-only case so missing-test calibration is exercised without relying on tidy visible test patches in every sample.
 
 Print a learning summary. In a clean checkout this uses all committed fixtures; if local generated cases exist, they are preferred:
 

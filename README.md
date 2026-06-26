@@ -157,7 +157,7 @@ pnpm eval:promote:fixture -- \
 pnpm eval:summary:fixture:strict
 ```
 
-Committed normalized SWE-bench fixtures live under `eval/fixtures/` with manifest hashes so CI can run without network: one small smoke case plus a representative four-case pack. Raw hidden oracle labels are not committed. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
+Committed normalized SWE-bench fixtures live under `eval/fixtures/` with manifest hashes so CI can run without network: one small smoke case, a representative four-case pack, and a diverse ten-repository pack. Raw hidden oracle labels are not committed. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
 
 ## Deployed Demo
 

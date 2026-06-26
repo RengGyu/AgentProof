@@ -522,8 +522,8 @@ function testFileEvidenceMetric(report: VerificationReport, expectedTestFiles: s
     return {
       id: "test_file_evidence",
       label: "Visible test-file evidence",
-      status: "unknown",
-      detail: "No visible test files were present in the evaluation case."
+      status: "pass",
+      detail: "No visible test files were expected; missing-test calibration covers the implementation coverage gap."
     };
   }
 

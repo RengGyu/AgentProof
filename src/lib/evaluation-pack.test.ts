@@ -399,6 +399,20 @@ describe("real-dataset evaluation pack", () => {
     expect(result.metrics.find((item) => item.id === "missing_test_calibration")?.status).toBe("fail");
   });
 
+  it("does not mark absent visible test files as an indexing unknown", () => {
+    const testCase = sweBenchRowToEvaluationCase({
+      ...SWE_BENCH_ROW,
+      test_patch: "",
+      FAIL_TO_PASS: "[]",
+      PASS_TO_PASS: "[]"
+    });
+    const report = generateVerificationReport(testCase.input);
+    const result = evaluateReportAgainstCase(report, testCase);
+
+    expect(result.metrics.find((item) => item.id === "test_file_evidence")?.status).toBe("pass");
+    expect(result.metrics.find((item) => item.id === "missing_test_calibration")?.status).toBe("pass");
+  });
+
   it("can evaluate generated or committed real SWE-bench cases", () => {
     const testCases = loadAvailableEvaluationRecords(3);
 

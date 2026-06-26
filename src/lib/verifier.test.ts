@@ -383,6 +383,64 @@ describe("generateVerificationReport", () => {
     expect(report.testing.missingTests[0]?.why).toContain("none clearly maps");
   });
 
+  it("keeps config changes visible as execution-proof gaps", () => {
+    const report = generateVerificationReport({
+      title: "Update pylint option parsing",
+      description: "Updated setup.cfg parsing and added config coverage.",
+      taskText: "Acceptance criteria: support the new config option and include regression coverage.",
+      changedFiles: [
+        {
+          path: "setup.cfg",
+          additions: 3,
+          deletions: 1,
+          status: "modified",
+          patch: "+ new-option=yes"
+        },
+        {
+          path: "tests/config/test_config.py",
+          additions: 12,
+          deletions: 1,
+          status: "modified",
+          patch: "+ def test_new_option_is_loaded(): pass"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "setup.cfg")).toBe(true);
+    expect(report.testing.missingTests.find((item) => item.path === "setup.cfg")?.why).toMatch(/Test evidence changed|no passing test check or log/);
+  });
+
+  it("keeps all implementation files when execution proof is missing", () => {
+    const changedFiles = Array.from({ length: 10 }, (_value, index) => ({
+      path: `src/module_${index}.py`,
+      additions: 2,
+      deletions: 1,
+      status: "modified" as const,
+      patch: `+ def behavior_${index}(): return ${index}`
+    }));
+    const report = generateVerificationReport({
+      title: "Update module behavior",
+      description: "Updated several behavior modules and added a visible test artifact.",
+      taskText: "Acceptance criteria: update module behavior and include regression coverage.",
+      changedFiles: [
+        ...changedFiles,
+        {
+          path: "tests/test_modules.py",
+          additions: 5,
+          deletions: 0,
+          status: "modified",
+          patch: "+ def test_modules(): pass"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.map((item) => item.path)).toEqual(changedFiles.map((file) => file.path));
+  });
+
   it("does not treat a patched test file as implementation proof", () => {
     const report = generateVerificationReport({
       title: "Add inline reset error",

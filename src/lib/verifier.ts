@@ -20,6 +20,8 @@ import type {
   VerificationReport
 } from "./types";
 
+const MAX_MISSING_TEST_FINDINGS = 100;
+
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
   const evidenceIndex = buildEvidenceIndex(
     input.taskText,
@@ -324,8 +326,8 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
   const hasPassingTestSignal =
     input.checks.some((check) => /test|spec/i.test(`${check.name} ${check.summary ?? ""}`) && check.status === "passed") ||
     input.logs.some((log) => /test|spec/i.test(`${log.source} ${log.text}`) && log.status === "passed");
-  const changedImplementationFiles = input.changedFiles.filter(
-    (file) => !isTestFile(file.path) && /\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|cs)$/.test(file.path)
+  const changedImplementationFiles = input.changedFiles.filter((file) =>
+    !isTestFile(file.path) && isBehaviorAffectingPath(file.path)
   );
 
   if (changedImplementationFiles.length === 0) {
@@ -336,7 +338,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
 
   return changedImplementationFiles
     .filter((file) => !hasMatchingVerifiedTestEvidence(file.path, testFiles, hasPassingTestSignal))
-    .slice(0, 8)
+    .slice(0, MAX_MISSING_TEST_FINDINGS)
     .map((file) => {
       const hasRelatedTestFile = testFiles.some((testFile) => pathsLookRelated(file.path, testFile.path));
 
@@ -350,6 +352,11 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
         evidenceRefs: uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5)
       };
     });
+}
+
+function isBehaviorAffectingPath(path: string): boolean {
+  return /\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|cs|cfg|ini|toml|ya?ml|json)$/.test(path) ||
+    /(^|\/)(setup\.cfg|pyproject\.toml|tox\.ini|noxfile\.py|setup\.py|package\.json)$/.test(path);
 }
 
 function hasMatchingVerifiedTestEvidence(

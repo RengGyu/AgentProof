@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "dataset": "princeton-nlp/SWE-bench_Verified",
+  "datasetRevision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+  "config": "default",
+  "split": "test",
+  "source": "https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified",
+  "generatedFrom": "normalized eval/generated case JSONL promoted into privacy-trimmed committed fixture",
+  "rowsApiUrl": "https://datasets-server.huggingface.co/rows?dataset=princeton-nlp%2FSWE-bench_Verified&config=default&split=test&offset=200&length=300",
+  "rowsApiETag": null,
+  "sourceOffset": 200,
+  "sourceLength": 300,
+  "sourceRowSha256": "fe14f0944e2c5f3fcf91921d4a7ed9113fc1ec2100255b3be5294bec65278c22",
+  "normalizerVersion": "evaluation-pack-v1",
+  "generatedAt": "2026-06-26T11:06:23.596Z",
+  "caseCount": 10,
+  "caseIds": [
+    "matplotlib__matplotlib-14623",
+    "mwaskom__seaborn-3187",
+    "pallets__flask-5014",
+    "psf__requests-5414",
+    "pydata__xarray-4687",
+    "pylint-dev__pylint-6386",
+    "pytest-dev__pytest-5631",
+    "scikit-learn__scikit-learn-13142",
+    "sphinx-doc__sphinx-7462",
+    "sympy__sympy-19783"
+  ],
+  "fixtureFile": "swebench-verified.diverse.jsonl",
+  "sha256": "452c12d0e0a0ed4566b49c62ee406bae610a54167f29a2cf2831a39de6b30bcb",
+  "privacy": "Normalized evaluation cases with bounded patch excerpts; raw hidden oracle labels are not committed.",
+  "oracleLabelCount": 2702,
+  "oracleLabelSha256": "0fa0debd249729b51d3defd8bfff0feb5b3af2ed46b0f11a73e352a7b11e3ae4",
+  "oracleLabelHashAlgorithm": "sha256 over sorted unique hidden label values, then sha256 over JSON array of label hashes",
+  "selectionCriteria": [
+    "One non-astropy/django repository per selected case from offsets 200-499.",
+    "Nine cases include visible implementation and test files; one pytest case is implementation-only to exercise missing-test calibration.",
+    "Patch excerpts remain bounded while preserving changed paths, additions, deletions, and status."
+  ],
+  "patchExcerptPolicy": "Patch excerpts are compacted to at most 900 bytes per file, 80 lines per file, and 1500 bytes per case."
+}
