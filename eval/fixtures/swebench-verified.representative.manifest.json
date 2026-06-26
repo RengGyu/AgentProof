@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "dataset": "princeton-nlp/SWE-bench_Verified",
+  "datasetRevision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+  "config": "default",
+  "split": "test",
+  "source": "https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified",
+  "generatedFrom": "datasets-server rows API normalized into local eval/generated sample, then privacy-trimmed into representative fixture",
+  "rowsApiUrl": "https://datasets-server.huggingface.co/rows?dataset=princeton-nlp%2FSWE-bench_Verified&config=default&split=test&offset=0&length=100",
+  "rowsApiETag": null,
+  "sourceOffset": 0,
+  "sourceLength": 100,
+  "sourceRowSha256": "a2a4ff6496d5665275aedd32b2573dec92d366036fcbefb286c8ebbc941a1971",
+  "normalizerVersion": "evaluation-pack-v1",
+  "generatedAt": "2026-06-26T06:35:49.757Z",
+  "caseCount": 4,
+  "caseIds": [
+    "astropy__astropy-14539",
+    "django__django-10097",
+    "django__django-12741",
+    "django__django-12965"
+  ],
+  "fixtureFile": "swebench-verified.representative.jsonl",
+  "sha256": "039b6d3f0a1cf38c89ecf5548e1428c4de552cc3a1dc137c240d635dffbcb83a",
+  "privacy": "Normalized evaluation cases with bounded patch excerpts; raw hidden oracle labels are not committed.",
+  "oracleLabelCount": 2040,
+  "oracleLabelSha256": "0daa185acf7f622cdf47664c9556f91085d582b3549a8286c90bd43ecf3a2bf4",
+  "oracleLabelHashAlgorithm": "sha256 over sorted unique hidden label values, then sha256 over JSON array of label hashes",
+  "selectionCriteria": [
+    "Astropy FITS format edge case with visible test patch evidence.",
+    "Django validator case with top-level tests directory data files.",
+    "Django multi-file backend change with implementation and test coverage across directories.",
+    "Django compiler/delete case that previously protected denied-term false positives."
+  ],
+  "patchExcerptPolicy": "Patch excerpts are compacted only when a selected file exceeds 900 bytes; paths, additions, deletions, and status are preserved."
+}

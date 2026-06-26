@@ -1,5 +1,6 @@
 import { validateVerificationReport } from "./report-validation";
-import { redactSecrets } from "./redact";
+import { isExecutionSignalText, hasPassingEvidenceStatusPrefix } from "./evidence-status";
+import { containsSecretPattern, redactSecrets } from "./redact";
 import type {
   ChangedFile,
   EvidenceKind,
@@ -252,6 +253,10 @@ export function sweBenchRowToEvaluationCase(row: unknown): EvaluationCase {
         "benchmark oracle",
         "gold-patch",
         "gold patch",
+        "fail-to-pass",
+        "pass-to-pass",
+        "fail to pass",
+        "pass to pass",
         "FAIL_TO_PASS",
         "PASS_TO_PASS",
         "princeton-nlp/SWE-bench",
@@ -706,15 +711,7 @@ function noUnsupportedVerifiedMetric(report: VerificationReport): EvaluationMetr
 
 function privacyPatternMetric(report: VerificationReport): EvaluationMetric {
   const serialized = JSON.stringify(report);
-  const secretPatterns = [
-    /\bgh[pousr]_[A-Za-z0-9_]{20,}/,
-    /\bgithub_pat_[A-Za-z0-9_]{20,}/,
-    /\bsk-[A-Za-z0-9_-]{20,}/,
-    /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]+/,
-    /\bAKIA[0-9A-Z]{16}\b/,
-    /-----BEGIN [A-Z ]*PRIVATE KEY-----/
-  ];
-  const leaked = secretPatterns.some((pattern) => pattern.test(serialized));
+  const leaked = containsSecretPattern(serialized);
 
   return {
     id: "privacy_patterns",
@@ -733,7 +730,7 @@ function hasFailed(metrics: EvaluationMetric[], id: string): boolean {
 function hasAnyExecutionEvidence(report: VerificationReport): boolean {
   return report.evidenceIndex.some((item) =>
     (item.kind === "check" || item.kind === "log") &&
-    /\b(test|spec|unit|integration|e2e|pytest|jest|vitest|ci|build)\b/i.test(`${item.label} ${item.summary}`)
+    isExecutionSignalText(`${item.label} ${item.summary}`)
   );
 }
 
@@ -745,8 +742,8 @@ function requirementHasPassingExecutionRef(report: VerificationReport, evidenceR
 
     return Boolean(item) &&
       (item?.kind === "check" || item?.kind === "log") &&
-      /\b(test|spec|unit|integration|e2e|pytest|jest|vitest|ci|build)\b/i.test(`${item.label} ${item.summary}`) &&
-      /\b(pass|passed|success|succeeded|green)\b/i.test(item.summary);
+      isExecutionSignalText(`${item.label} ${item.summary}`) &&
+      hasPassingEvidenceStatusPrefix(item.summary);
   });
 }
 

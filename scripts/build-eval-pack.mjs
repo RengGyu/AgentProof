@@ -143,6 +143,10 @@ function sweBenchRowToEvaluationCase(row) {
         "benchmark oracle",
         "gold-patch",
         "gold patch",
+        "fail-to-pass",
+        "pass-to-pass",
+        "fail to pass",
+        "pass to pass",
         "FAIL_TO_PASS",
         "PASS_TO_PASS",
         "princeton-nlp/SWE-bench",
@@ -349,12 +353,14 @@ function stringValue(value, fallback) {
 
 function redactSecrets(value) {
   return String(value)
-    .replace(/\bgh[pousr]_[A-Za-z0-9_]{20,}/g, "[REDACTED_SECRET]")
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_SECRET]")
+    .replace(/https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/g, "[REDACTED_SECRET]")
     .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "[REDACTED_SECRET]")
-    .replace(/\bsk-[A-Za-z0-9_-]{20,}/g, "[REDACTED_SECRET]")
-    .replace(/https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]+/g, "[REDACTED_SECRET]")
-    .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED_SECRET]")
-    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_SECRET]");
+    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}/g, "[REDACTED_SECRET]")
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, "[REDACTED_SECRET]")
+    .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, "[REDACTED_SECRET]")
+    .replace(/authorization\s*:\s*bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "[REDACTED_SECRET]")
+    .replace(/(api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi, "[REDACTED_SECRET]");
 }
 
 function hashText(value) {

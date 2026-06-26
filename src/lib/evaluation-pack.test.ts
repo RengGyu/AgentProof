@@ -262,6 +262,21 @@ describe("real-dataset evaluation pack", () => {
     expect(serializedSummary).not.toContain("FAIL_TO_PASS");
   });
 
+  it("treats natural-language future-label variants as oracle leakage", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const report = generateVerificationReport(testCase.input);
+
+    report.limitations.push("Future fail-to-pass and pass-to-pass tests were used as scoring labels.");
+
+    const result = evaluateReportAgainstCase(report, testCase);
+    const leakageMetric = result.metrics.find((item) => item.id === "oracle_leakage");
+
+    expect(leakageMetric?.status).toBe("fail");
+    expect(leakageMetric?.detail).toContain("exact values are redacted");
+    expect(leakageMetric?.detail).not.toContain("fail-to-pass");
+    expect(leakageMetric?.detail).not.toContain("pass-to-pass");
+  });
+
   it("fails input oracle boundary checks before report generation when inputs leak hidden values", () => {
     const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
     const hiddenValue = "tests/private_oracle.py::test_future_behavior";
@@ -336,6 +351,38 @@ describe("real-dataset evaluation pack", () => {
 
     expect(result.metrics.find((item) => item.id === "requirement_calibration")?.status).toBe("fail");
     expect(summary.learningTasks.some((task) => task.area === "requirement_calibration" && task.priority === "high")).toBe(true);
+  });
+
+  it("does not treat non-execution build gates as passing execution evidence", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const report = generateVerificationReport(testCase.input);
+
+    report.summary.confidence = 0.95;
+    report.summary.evidenceCoverage = 100;
+    report.evidenceIndex.push({
+      id: "ev_build_policy",
+      kind: "check",
+      label: "Build policy report",
+      summary: "Status: passed - build policy and deployment preview completed.",
+      confidence: 0.8
+    });
+
+    const result = evaluateReportAgainstCase(report, testCase);
+
+    expect(result.metrics.find((item) => item.id === "execution_uncertainty")?.status).toBe("fail");
+  });
+
+  it("uses the broad app secret patterns for evaluation privacy checks", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const report = generateVerificationReport(testCase.input);
+
+    report.limitations.push("Debug header authorization: bearer abcdefghijklmnopqrstuvwxyz012345");
+
+    const result = evaluateReportAgainstCase(report, testCase);
+    const privacyMetric = result.metrics.find((item) => item.id === "privacy_patterns");
+
+    expect(privacyMetric?.status).toBe("fail");
+    expect(privacyMetric?.detail).not.toContain("authorization");
   });
 
   it("fails missing-test calibration when implementation changes have no visible test signal", () => {
@@ -469,7 +516,7 @@ describe("real-dataset evaluation pack", () => {
     expect(testCase.oracle.failToPassTests).toEqual([]);
     expect(testCase.oracle.passToPassTests).toEqual([]);
     expect(testCase.oracle.visibleChangedFiles).toEqual(testCase.input.changedFiles.map((file) => file.path));
-    expect(inputText).not.toMatch(/SWE-bench|benchmark|gold|FAIL_TO_PASS|PASS_TO_PASS|huggingface/i);
+    expect(inputText).not.toMatch(/SWE-bench|SWEbench|benchmark dataset|benchmark oracle|gold-patch|gold patch|FAIL_TO_PASS|PASS_TO_PASS|huggingface/i);
     expect(testCase.oracle.hiddenLabels.every((label) => !inputText.includes(label))).toBe(true);
     expect(testCase.oracle.hiddenValues.every((value) => !inputText.includes(value))).toBe(true);
     expect(Math.max(...patchLineCounts)).toBeLessThanOrEqual(80);
@@ -529,7 +576,7 @@ describe("real-dataset evaluation pack", () => {
         expect(record.oracle.hiddenValues).toEqual([]);
         expect(record.oracle.failToPassTests).toEqual([]);
         expect(record.oracle.passToPassTests).toEqual([]);
-        expect(JSON.stringify(record.input)).not.toMatch(/SWE-bench|benchmark|gold|FAIL_TO_PASS|PASS_TO_PASS|huggingface/i);
+        expect(JSON.stringify(record.input)).not.toMatch(/SWE-bench|SWEbench|benchmark dataset|benchmark oracle|gold-patch|gold patch|FAIL_TO_PASS|PASS_TO_PASS|huggingface/i);
       }
     }
   });

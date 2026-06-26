@@ -25,6 +25,10 @@ describe("redaction", () => {
     expect(redacted).not.toContain("BEGIN PRIVATE KEY");
   });
 
+  it("does not mistake risk-sensitive prose for an OpenAI-style key", () => {
+    expect(redactSecrets("Risk-sensitive path changed.")).toBe("Risk-sensitive path changed.");
+  });
+
   it("redacts secrets before requirement and claim extraction", () => {
     const requirements = extractRequirements(
       "Acceptance criteria: keep token=github_pat_abcdefghijklmnopqrstuvwxyz123456 out of reports.",

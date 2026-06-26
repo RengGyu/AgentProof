@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   evaluateReportAgainstCase,
@@ -54,13 +54,15 @@ describe("evaluation pack summary", () => {
 });
 
 function loadAvailableEvaluationRecords(): EvaluationCase[] {
-  const fixtureUrl = availableFixtureUrl();
+  const fixtureUrls = availableFixtureUrls();
 
-  if (!fixtureUrl || !existsSync(fixtureUrl)) {
+  if (fixtureUrls.length === 0) {
     return [];
   }
 
-  return parseNormalizedEvaluationRecords(readFileSync(fixtureUrl, "utf8"), fixtureUrl.pathname);
+  return fixtureUrls.flatMap((fixtureUrl) =>
+    parseNormalizedEvaluationRecords(readFileSync(fixtureUrl, "utf8"), fixtureUrl.pathname)
+  );
 }
 
 function parseNormalizedEvaluationRecords(text: string, sourceLabel: string): EvaluationCase[] {
@@ -79,22 +81,24 @@ function parseNormalizedEvaluationRecords(text: string, sourceLabel: string): Ev
     });
 }
 
-function availableFixtureUrl(): URL | null {
-  const committedFixtureUrl = new URL("../eval/fixtures/swebench-verified.small.jsonl", import.meta.url);
+function availableFixtureUrls(): URL[] {
+  const fixturesDir = new URL("../eval/fixtures/", import.meta.url);
+  const committedFixtureUrls = existsSync(fixturesDir)
+    ? readdirSync(fixturesDir)
+      .filter((name) => name.endsWith(".jsonl"))
+      .sort()
+      .map((name) => new URL(name, fixturesDir))
+    : [];
 
   if (process.env.AGENTPROOF_EVAL_FIXTURE_ONLY === "1") {
-    return committedFixtureUrl;
+    return committedFixtureUrls;
   }
 
   const casesUrl = new URL("../eval/generated/swebench-verified.cases.jsonl", import.meta.url);
 
   if (existsSync(casesUrl)) {
-    return casesUrl;
+    return [casesUrl];
   }
 
-  if (existsSync(committedFixtureUrl)) {
-    return committedFixtureUrl;
-  }
-
-  return null;
+  return committedFixtureUrls;
 }

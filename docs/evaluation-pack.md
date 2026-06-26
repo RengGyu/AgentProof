@@ -22,7 +22,7 @@ This document defines the MVP evaluation approach for AgentProof. The goal is no
 
 ## Commands
 
-The repository includes one small committed SWE-bench Verified fixture under `eval/fixtures/` so CI can run without network access. The manifest pins the fixture file hash and records the dataset/source metadata.
+The repository includes committed SWE-bench Verified fixtures under `eval/fixtures/` so CI can run without network access: a small smoke case and a representative four-case pack. Each manifest pins the fixture file hash and records the dataset/source metadata.
 
 Fetch a larger real SWE-bench Verified sample into a git-ignored local directory. The fetcher writes normalized evaluation cases by default, not raw dataset rows:
 
@@ -37,7 +37,7 @@ Run the evaluation harness tests:
 pnpm eval:pack
 ```
 
-Print a learning summary. In a clean checkout this uses the committed fixture; if local generated cases exist, they are preferred:
+Print a learning summary. In a clean checkout this uses all committed fixtures; if local generated cases exist, they are preferred:
 
 ```bash
 pnpm eval:summary
@@ -47,7 +47,7 @@ pnpm eval:summary:strict
 The summary harness accepts only normalized `EvaluationCase` JSONL. It intentionally refuses raw dataset rows so hidden oracle labels and raw benchmark fields cannot be converted or printed by accident.
 Strict mode additionally fails on warning or unknown metrics, which is useful before promoting generated samples into committed fixtures.
 
-Force the committed fixture path even when `eval/generated/` exists:
+Force the committed fixture path even when `eval/generated/` exists. This reads every committed `.jsonl` fixture under `eval/fixtures/`:
 
 ```bash
 pnpm eval:summary:fixture
@@ -61,7 +61,7 @@ Generated benchmark cases are written to `eval/generated/` and must not be commi
 - Fixtures must be normalized `EvaluationCase` records, not raw benchmark rows.
 - `input` must not contain dataset names, benchmark URLs, gold-patch wording, `FAIL_TO_PASS`, `PASS_TO_PASS`, hidden labels, or hidden values.
 - Generated local cases may contain source-provided raw oracle labels under `oracle`; committed fixtures must strip raw hidden oracle labels and keep only manifest counts/hashes.
-- Patch excerpts must stay bounded; the current CI fixture keeps each patch at or below 80 lines and the total patch text below 1,500 bytes.
+- Patch excerpts must stay bounded; committed cases should keep each patch at or below 80 lines and each case's total patch text below 1,500 bytes.
 - The manifest must record dataset revision, row API URL, source offset/length, source row hash, oracle label count/hash, fixture hash, normalizer version, and privacy notes.
 - Do not add invented pass/fail labels, quality scores, expected prose reviews, or LLM judgments to fixtures.
 

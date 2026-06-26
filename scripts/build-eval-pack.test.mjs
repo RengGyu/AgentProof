@@ -5,14 +5,17 @@ import { evaluateReportAgainstCase, isNormalizedEvaluationCase } from "../src/li
 import { generateVerificationReport } from "../src/lib/verifier";
 
 const SECRET_TEXT = "sk-testsecret012345678901234567890";
+const AWS_SESSION_KEY = "ASIA1234567890ABCDEF";
+const BEARER_SECRET = "authorization: bearer abcdefghijklmnopqrstuvwxyz012345";
+const GENERIC_SECRET = "password=super-secret-value";
 const HIDDEN_TEST = "tests/private_oracle.py::test_future_behavior";
 
 const SWE_BENCH_ROW = {
   repo: "example/project",
   instance_id: "example__project-privacy-1",
   base_commit: "abc1234567890",
-  problem_statement: `Fix export ordering. Debug token: ${SECRET_TEXT}`,
-  hints_text: "Reviewer context should be visible after redaction.",
+  problem_statement: `Fix export ordering. Debug token: ${SECRET_TEXT}. AWS session ${AWS_SESSION_KEY}.`,
+  hints_text: `Reviewer context should be visible after redaction. ${BEARER_SECRET}. ${GENERIC_SECRET}.`,
   patch: [
     "diff --git a/src/export.py b/src/export.py",
     "index 1111111..2222222 100644",
@@ -143,10 +146,16 @@ describe("build eval pack script", () => {
       "PASS_TO_PASS"
     ]));
     expect(serializedInput).not.toContain(SECRET_TEXT);
+    expect(serializedInput).not.toContain(AWS_SESSION_KEY);
+    expect(serializedInput).not.toContain(BEARER_SECRET);
+    expect(serializedInput).not.toContain(GENERIC_SECRET);
     expect(serializedInput).not.toContain(HIDDEN_TEST);
     expect(serializedInput).not.toContain("FAIL_TO_PASS");
     expect(serializedInput).not.toContain("PASS_TO_PASS");
     expect(serializedReport).not.toContain(SECRET_TEXT);
+    expect(serializedReport).not.toContain(AWS_SESSION_KEY);
+    expect(serializedReport).not.toContain(BEARER_SECRET);
+    expect(serializedReport).not.toContain(GENERIC_SECRET);
     expect(serializedReport).not.toContain(HIDDEN_TEST);
     expect(resultFromReportInput.metrics.find((metric) => metric.id === "oracle_leakage")?.status).toBe("pass");
     expect(resultFromReportInput.metrics.find((metric) => metric.id === "privacy_patterns")?.status).toBe("pass");
@@ -222,6 +231,9 @@ describe("build eval pack script", () => {
     expect(serializedLogs).not.toContain("PASS_TO_PASS");
     expect(serializedLogs).not.toContain(HIDDEN_TEST);
     expect(serializedLogs).not.toContain(SECRET_TEXT);
+    expect(serializedLogs).not.toContain(AWS_SESSION_KEY);
+    expect(serializedLogs).not.toContain(BEARER_SECRET);
+    expect(serializedLogs).not.toContain(GENERIC_SECRET);
   });
 
   it("rejects output paths outside ignored eval/generated before fetching rows", async () => {
