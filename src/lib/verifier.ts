@@ -129,7 +129,10 @@ function evaluateRequirement(
   const hasImplementationEvidence = implementationMatches.length > 0;
   const hasStrongImplementationEvidence = strongImplementationRefs.length > 0;
   const asksForTests = /\b(tests?|coverage|specs?)\b/i.test(requirement.text);
-  const hasMatchingTestArtifactEvidence = matches.some(({ item, match }) => item.kind === "test" && match.strong);
+  const matchingTestArtifactRefs = matches
+    .filter(({ item, match }) => item.kind === "test" && isUsefulArtifactMatch(match))
+    .map(({ item }) => item.id);
+  const hasMatchingTestArtifactEvidence = matchingTestArtifactRefs.length > 0;
   const hasMatchingPassingTestExecutionEvidence = matches.some(({ item, match }) =>
     match.strong && isPassingTestExecutionEvidence(item)
   );
@@ -183,6 +186,18 @@ function evaluateRequirement(
     };
   }
 
+  if (hasMatchingTestArtifactEvidence && !hasStrongImplementationEvidence) {
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "partial",
+      evidenceRefs: refsForReport(matches, matchingTestArtifactRefs),
+      gaps: ["A matching test artifact changed, but no passing test check or implementation diff proves this criterion."],
+      reviewerNote: "Treat test-file changes as reviewer leads until execution and implementation evidence are connected.",
+      confidence: 0.48
+    };
+  }
+
   if (hasStrongImplementationEvidence && refs.length > 0) {
     if (!hasMatchingPassingTestExecutionEvidence) {
       return {
@@ -233,7 +248,7 @@ function evaluateRequirement(
 function requirementEvidenceMatch(
   requirement: Requirement,
   item: EvidenceItem
-): { score: number; strong: boolean } {
+): { score: number; strong: boolean; meaningfulScore: number } {
   const text = `${item.label} ${item.summary}`.toLowerCase();
   const hits = requirement.keywords.filter((keyword) => text.includes(keyword));
   const meaningfulHits = hits.filter((keyword) => keyword.length >= 4 && !WEAK_SINGLE_MATCH_KEYWORDS.has(keyword));
@@ -241,7 +256,11 @@ function requirementEvidenceMatch(
   const canProve = item.kind === "diff" || item.kind === "test" || item.kind === "log" || item.kind === "check";
   const strong = canProve && (meaningfulHits.length >= 2 || meaningfulHits.some((keyword) => keyword.length >= 8));
 
-  return { score, strong };
+  return { score, strong, meaningfulScore: meaningfulHits.length };
+}
+
+function isUsefulArtifactMatch(match: { score: number; strong: boolean; meaningfulScore: number }): boolean {
+  return match.strong || match.meaningfulScore > 0;
 }
 
 function refsForReport(
@@ -296,7 +315,7 @@ function detectScopeCreep(
   const outOfScopeFiles = files
     .filter((file) => !isTestFile(file.path))
     .filter((file) => {
-      const keywords = fileKeywords(file.path);
+      const keywords = pathRelationKeywords(file.path);
       const directMatch = keywords.some((keyword) =>
         Array.from(requirementKeywords).some(
           (requirementKeyword) =>
@@ -375,11 +394,37 @@ function pathsLookRelated(implementationPath: string, testPath: string): boolean
     return true;
   }
 
-  const implementationKeywords = new Set(fileKeywords(implementationPath).filter((keyword) => keyword.length >= 4));
-  const sharedKeywords = fileKeywords(testPath).filter((keyword) => implementationKeywords.has(keyword) && keyword.length >= 4);
+  const implementationKeywords = new Set(pathRelationKeywords(implementationPath));
+  const sharedKeywords = pathRelationKeywords(testPath).filter((keyword) => implementationKeywords.has(keyword));
 
   return sharedKeywords.length >= 2;
 }
+
+function pathRelationKeywords(path: string): string[] {
+  return fileKeywords(path).filter((keyword) => keyword.length >= 4 && !GENERIC_PATH_KEYWORDS.has(keyword));
+}
+
+const GENERIC_PATH_KEYWORDS = new Set([
+  "app",
+  "apps",
+  "component",
+  "components",
+  "feature",
+  "features",
+  "lib",
+  "libs",
+  "module",
+  "modules",
+  "package",
+  "packages",
+  "server",
+  "source",
+  "src",
+  "test",
+  "tests",
+  "util",
+  "utils"
+]);
 
 function fileStem(path: string): string {
   const filename = path.split(/[\\/]/).pop() ?? path;

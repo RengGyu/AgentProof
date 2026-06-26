@@ -90,4 +90,59 @@ describe("extractRequirements", () => {
       expect.arrayContaining(["fits", "diff", "variable", "length", "arrays"])
     );
   });
+
+  it("keeps common technical aliases for issue-to-patch matching", () => {
+    expect(extractKeywords("NumPy proxy authentication pickling failures")).toEqual(
+      expect.arrayContaining(["numpy", "np", "proxy", "authentication", "auth", "pickling", "pickle"])
+    );
+  });
+
+  it("drops issue-template headings without dropping useful expected behavior", () => {
+    const requirements = extractRequirements(
+      [
+        "[Bug]: Unable to pickle figure with aligned labels",
+        "### Bug summary",
+        "Unable to pickle figure after calling `align_labels()`.",
+        "### Code for reproduction",
+        "```python",
+        "fig.align_ylabels()",
+        "pickle.dumps(fig)",
+        "```",
+        "### Expected outcome",
+        "Pickling successful.",
+        "### Additional information",
+        "_No response_"
+      ].join("\n"),
+      ""
+    );
+    const text = requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(text).toContain("Unable to pickle figure");
+    expect(text).toContain("Pickling successful");
+    expect(text).not.toMatch(/Bug summary|Code for reproduction|Expected outcome|Additional information|No response/i);
+  });
+
+  it("drops REPL prompts from requirement text", () => {
+    const requirements = extractRequirements(
+      [
+        "Latex parsing of fractions yields wrong expression due to missing brackets.",
+        "## Reproduce:",
+        "```",
+        "root@example:/# python3",
+        "Python 3.11.0",
+        ">>> from sympy.parsing.latex import parse_latex",
+        ">>> parse_latex('x')",
+        "x",
+        "```",
+        "Expected is a correctly grouped denominator."
+      ].join("\n"),
+      ""
+    );
+    const text = requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(text).toContain("Latex parsing");
+    expect(text).toContain("Expected is a correctly grouped denominator");
+    expect(text).not.toContain("parse_latex");
+    expect(text).not.toContain("python3");
+  });
 });

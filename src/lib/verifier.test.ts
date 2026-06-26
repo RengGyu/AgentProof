@@ -441,7 +441,7 @@ describe("generateVerificationReport", () => {
     expect(report.testing.missingTests.map((item) => item.path)).toEqual(changedFiles.map((file) => file.path));
   });
 
-  it("does not treat a patched test file as implementation proof", () => {
+  it("treats a related patched test file as partial evidence, not implementation proof", () => {
     const report = generateVerificationReport({
       title: "Add inline reset error",
       description: "Added inline reset error tests.",
@@ -459,8 +459,63 @@ describe("generateVerificationReport", () => {
       logs: []
     } satisfies PullRequestInput);
 
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.status).not.toBe("met");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("matching test artifact changed");
+    expect(report.requirements[0]?.reviewerNote).toContain("test-file changes");
+  });
+
+  it("does not treat unrelated patched test files as requirement evidence", () => {
+    const report = generateVerificationReport({
+      title: "Add inline reset error",
+      description: "Updated unrelated billing tests.",
+      taskText: "Acceptance criteria: show inline error for invalid reset email.",
+      changedFiles: [
+        {
+          path: "src/features/billing/BillingPanel.test.tsx",
+          additions: 18,
+          deletions: 0,
+          status: "modified",
+          patch: "+ it('renders the billing total', async () => {})"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "BillingPanel tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).not.toBe("partial");
+    expect(report.requirements[0]?.status).not.toBe("met");
+  });
+
+  it("keeps unmatched small-PR requirements unclear while preserving missing-test evidence", () => {
+    const report = generateVerificationReport({
+      title: "Fix latex parsing of nested fractions",
+      description: "Updated string rendering around nested powers.",
+      taskText: "Latex parsing of fractions yields wrong expression due to missing brackets in the denominator.",
+      changedFiles: [
+        {
+          path: "sympy/printing/str.py",
+          additions: 1,
+          deletions: 1,
+          status: "modified",
+          patch: "+ isinstance(item.base, (Mul, Pow))"
+        },
+        {
+          path: "sympy/printing/tests/test_str.py",
+          additions: 2,
+          deletions: 0,
+          status: "modified",
+          patch: "+ assert str(Mul(x, Pow(1/y, -1, evaluate=False), evaluate=False)) == 'x/(1/y)'"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements.every((requirement) => requirement.status === "unclear" || requirement.status === "missing")).toBe(true);
     expect(report.requirements[0]?.status).not.toBe("met");
     expect(report.requirements[0]?.gaps.join(" ")).toContain("No changed-file evidence");
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("sympy/printing/str.py");
   });
 
   it("clears missing tests when matching test evidence and passing execution exist", () => {

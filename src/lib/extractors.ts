@@ -53,7 +53,9 @@ const CONCRETE_ACTION_PATTERN =
   /\b(add|allow|block|create|delete|display|export|fix|handle|hide|implement|prevent|preserve|reject|remove|require|return|save|send|show|validate)\b/i;
 
 export function extractRequirements(taskText: string, prDescription: string): Requirement[] {
-  const sourceText = cleanRequirementSourceText(redactSecrets(taskText).trim() || redactSecrets(prDescription).trim());
+  const rawSourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
+  const sourceText = cleanRequirementSourceText(rawSourceText);
+  const contextKeywords = extractKeywords(collectUsefulFencedContent(rawSourceText));
   const explicit = sourceText.match(/acceptance criteria:?([\s\S]*)/i)?.[1] ?? sourceText;
   const candidateLines = explicit
     .split(/\n|;|(?<=\.)\s+|(?:^|\s)(?:-|\*|\d+\.)\s+/)
@@ -69,7 +71,7 @@ export function extractRequirements(taskText: string, prDescription: string): Re
       id: `req_${index + 1}`,
       source: taskText.trim() ? "task" : "pr_description",
       text: normalizeSentence(text),
-      keywords: extractKeywords(text),
+      keywords: mergeKeywords(extractKeywords(text), contextKeywords),
       priority: /\b(must|required|acceptance|criteria)\b/i.test(text) ? "must" : "should"
     })) satisfies Requirement[];
 
@@ -97,11 +99,37 @@ function cleanRequirementSourceText(text: string): string {
 }
 
 function isIssueTemplateNoiseLine(line: string): boolean {
-  const normalized = line.replace(/^#+\s*/, "").trim();
+  const normalized = line.replace(/^#+\s*/, "").trim().replace(/^_+|_+$/g, "").replace(/:$/, "");
 
   return /^<!--|-->$/.test(normalized) ||
     /^https?:\/\/\S+$/i.test(normalized) ||
-    /^(summary|verification|testing|test plan|description|steps to reproduce|system details|actual behavior|expected behavior|additional context)$/i.test(normalized);
+    /^(summary|bug summary|verification|testing|test plan|description|steps to reproduce|code for reproduction|reproduce|system details|system information|actual behavior|actual outcome|expected behavior|expected outcome|additional context|additional information|no response)$/i.test(normalized) ||
+    /^Python \d+\.\d+/i.test(normalized) ||
+    /^\[GCC [\d.]+\]/i.test(normalized) ||
+    /^Type "help", "copyright", "credits" or "license"/i.test(normalized) ||
+    /^root@[\w.-]+:/i.test(normalized) ||
+    /^(>>>|In \[\d+\]:|Out\[\d+\]:)/.test(normalized);
+}
+
+function collectUsefulFencedContent(text: string): string {
+  return Array.from(text.matchAll(/```([\s\S]*?)```|~~~([\s\S]*?)~~~/g))
+    .map((match) => usefulFencedContent(match[1] ?? match[2] ?? ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function usefulFencedContent(content: string): string {
+  const clean = content.trim().replace(/^(python|py|typescript|ts|javascript|js|text|sh|shell|bash)\n/i, "");
+
+  if (!clean || /Traceback \(most recent call last\)|^\s*File ".*", line \d+/m.test(clean)) {
+    return "";
+  }
+
+  return clean;
+}
+
+function mergeKeywords(primary: string[], context: string[]): string[] {
+  return Array.from(new Set([...primary, ...context])).slice(0, 12);
 }
 
 export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem[]): AgentClaim[] {
@@ -267,20 +295,46 @@ export function buildEvidenceIndex(
 
 export function extractKeywords(text: string): string[] {
   const keywords = text
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .toLowerCase()
-    .replace(/[^a-z0-9_/.-]+/g, " ")
+    .replace(/[^a-z0-9_/.-]+/gi, " ")
     .split(/\s+/)
     .flatMap((word) => {
-      const trimmed = word.replace(/^[._/-]+|[._/-]+$/g, "");
-      const parts = trimmed.split(/[._/-]+/).filter(Boolean);
+      const original = word.replace(/^[._/-]+|[._/-]+$/g, "").toLowerCase();
+      const camelSplit = word
+        .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .toLowerCase();
+      const parts = camelSplit
+        .replace(/^[._/-]+|[._/-]+$/g, "")
+        .split(/[._/-]+|\s+/)
+        .filter(Boolean);
 
-      return [trimmed, ...parts];
+      return [original, ...parts].flatMap(keywordVariants);
     })
-    .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
+    .filter((word) => (word.length > 2 || SHORT_TECH_KEYWORDS.has(word)) && !STOP_WORDS.has(word));
 
   return Array.from(new Set(keywords)).slice(0, 12);
+}
+
+const SHORT_TECH_KEYWORDS = new Set(["np", "py", "js", "ts"]);
+
+const KEYWORD_ALIASES = new Map<string, string[]>([
+  ["authentication", ["auth"]],
+  ["indices", ["index"]],
+  ["numpy", ["np"]],
+  ["pickling", ["pickle"]],
+  ["proxies", ["proxy"]]
+]);
+
+function keywordVariants(word: string): string[] {
+  const variants = [word, ...(KEYWORD_ALIASES.get(word) ?? [])];
+
+  if (word.endsWith("ies") && word.length > 5) {
+    variants.push(`${word.slice(0, -3)}y`);
+  } else if (word.endsWith("s") && word.length > 4) {
+    variants.push(word.slice(0, -1));
+  }
+
+  return variants;
 }
 
 function compactPatchExcerpt(patch: string, maxLength = 500): string {

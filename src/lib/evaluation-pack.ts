@@ -594,7 +594,7 @@ function requirementCalibrationMetric(report: VerificationReport, testCase: Eval
   const allWeak = report.requirements.length > 0 &&
     report.requirements.every((requirement) => requirement.status === "missing" || requirement.status === "unclear");
 
-  if (hasVisibleImplementationOrTest && allWeak) {
+  if (hasVisibleImplementationOrTest && allWeak && !visibleArtifactsPreservedAsExecutionGap(report, testCase)) {
     return {
       id: "requirement_calibration",
       label: "Requirement calibration",
@@ -607,8 +607,24 @@ function requirementCalibrationMetric(report: VerificationReport, testCase: Eval
     id: "requirement_calibration",
     label: "Requirement calibration",
     status: "pass",
-    detail: "Requirement statuses stay aligned with visible execution evidence."
+    detail: allWeak
+      ? "Requirement statuses stay weak, but visible artifacts are preserved as execution-proof gaps."
+      : "Requirement statuses stay aligned with visible execution evidence."
   };
+}
+
+function visibleArtifactsPreservedAsExecutionGap(report: VerificationReport, testCase: EvaluationCase): boolean {
+  if (testCase.oracle.visibleImplementationFiles.length === 0 || testCase.oracle.visibleTestFiles.length === 0) {
+    return false;
+  }
+
+  const missingTestPaths = new Set(report.testing.missingTests.map((missing) => missing.path));
+  const indexedTestPaths = new Set(report.evidenceIndex
+    .filter((item) => item.kind === "test")
+    .flatMap((item) => [item.label, item.locator].filter((value): value is string => typeof value === "string")));
+
+  return testCase.oracle.visibleImplementationFiles.every((path) => missingTestPaths.has(path)) &&
+    testCase.oracle.visibleTestFiles.every((path) => indexedTestPaths.has(path));
 }
 
 function missingTestCalibrationMetric(report: VerificationReport, testCase: EvaluationCase): EvaluationMetric {
@@ -784,7 +800,7 @@ function recommendationForMetric(id: string): string {
 
 function recommendationForRollup(rollup: EvaluationMetricRollup): string {
   if (rollup.id === "requirement_calibration" && rollup.status === "warning") {
-    return "Improve requirement extraction and evidence matching so visible implementation or test signals become partial instead of missing or unclear.";
+    return "Improve requirement extraction and evidence matching, or preserve weakly matched visible artifacts as explicit execution-proof gaps.";
   }
 
   return recommendationForMetric(rollup.id);
@@ -810,7 +826,7 @@ function acceptanceCriteriaForMetric(id: string): string[] {
 function acceptanceCriteriaForRollup(rollup: EvaluationMetricRollup): string[] {
   if (rollup.id === "requirement_calibration" && rollup.status === "warning") {
     return [
-      "A requirement with visible implementation or test evidence is reported as `partial` instead of only `missing` or `unclear`.",
+      "A requirement with visible implementation or test evidence is reported as `partial`, or the visible implementation/test artifacts are preserved as execution-proof gaps.",
       "`met` still requires relevant passing check or log evidence."
     ];
   }

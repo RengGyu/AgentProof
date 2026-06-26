@@ -192,6 +192,42 @@ describe("real-dataset evaluation pack", () => {
     expect(requirementText).not.toMatch(/hidden when|contributing guidelines|Traceback|System Details|Steps to Reproduce/i);
   });
 
+  it("passes requirement calibration when weak requirements are preserved as execution gaps", () => {
+    const testCase = sweBenchRowToEvaluationCase({
+      ...SWE_BENCH_ROW,
+      instance_id: "example__weak-requirement-execution-gap",
+      problem_statement:
+        "Latex parsing of fractions yields wrong expression due to missing brackets in the denominator.",
+      patch: [
+        "diff --git a/sympy/printing/str.py b/sympy/printing/str.py",
+        "index 1111111..2222222 100644",
+        "--- a/sympy/printing/str.py",
+        "+++ b/sympy/printing/str.py",
+        "@@ -333,7 +333,7 @@ def apow(i):",
+        "-                            isinstance(item.base, Mul)):",
+        "+                            isinstance(item.base, (Mul, Pow))):"
+      ].join("\n"),
+      test_patch: [
+        "diff --git a/sympy/printing/tests/test_str.py b/sympy/printing/tests/test_str.py",
+        "index 3333333..4444444 100644",
+        "--- a/sympy/printing/tests/test_str.py",
+        "+++ b/sympy/printing/tests/test_str.py",
+        "@@ -252,6 +252,8 @@ def test_Mul():",
+        "+    assert str(Mul(x, Pow(1/y, -1, evaluate=False), evaluate=False)) == 'x/(1/y)'"
+      ].join("\n"),
+      FAIL_TO_PASS: "[]",
+      PASS_TO_PASS: "[]"
+    });
+    const report = generateVerificationReport(testCase.input);
+    const result = evaluateReportAgainstCase(report, testCase);
+    const requirementCalibration = result.metrics.find((metricItem) => metricItem.id === "requirement_calibration");
+
+    expect(report.requirements.every((requirement) => requirement.status === "missing" || requirement.status === "unclear")).toBe(true);
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("sympy/printing/str.py");
+    expect(requirementCalibration?.status).toBe("pass");
+    expect(requirementCalibration?.detail).toContain("execution-proof gaps");
+  });
+
   it("turns failed metrics into a learning backlog instead of an LLM judge score", () => {
     const actions = summarizeEvaluationLearning([
       metric("schema_valid", "fail"),
