@@ -86,6 +86,35 @@ describe("real-dataset evaluation pack", () => {
     ]);
   });
 
+  it("treats top-level tests directory paths as visible test files", () => {
+    const testCase = sweBenchRowToEvaluationCase({
+      ...SWE_BENCH_ROW,
+      instance_id: "example__project-top-level-tests",
+      patch: [
+        "diff --git a/src/validators/url.py b/src/validators/url.py",
+        "index 1111111..2222222 100644",
+        "--- a/src/validators/url.py",
+        "+++ b/src/validators/url.py",
+        "@@ -1,2 +1,3 @@",
+        "+def validate_url(value):",
+        "+    return value.startswith('https://')"
+      ].join("\n"),
+      test_patch: [
+        "diff --git a/tests/validators/invalid_urls.txt b/tests/validators/invalid_urls.txt",
+        "index 3333333..4444444 100644",
+        "--- a/tests/validators/invalid_urls.txt",
+        "+++ b/tests/validators/invalid_urls.txt",
+        "@@ -1,2 +1,3 @@",
+        "+http://invalid example"
+      ].join("\n"),
+      FAIL_TO_PASS: "[\"tests/validators/invalid_urls.txt\"]",
+      PASS_TO_PASS: "[]"
+    });
+
+    expect(testCase.oracle.visibleImplementationFiles).toEqual(["src/validators/url.py"]);
+    expect(testCase.oracle.visibleTestFiles).toEqual(["tests/validators/invalid_urls.txt"]);
+  });
+
   it("scores generated reports for schema, provenance, visible evidence, and no future-label leakage", () => {
     const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
     const report = generateVerificationReport(testCase.input);
@@ -168,12 +197,14 @@ describe("real-dataset evaluation pack", () => {
       metric("schema_valid", "fail"),
       metric("unsupported_verified", "fail"),
       metric("oracle_leakage", "fail"),
+      metric("input_oracle_boundary", "fail"),
       metric("execution_uncertainty", "fail")
     ]);
 
     expect(actions).toContain("Fix report generation or runtime validation before evaluating quality.");
     expect(actions).toContain("Tighten requirement scoring so visible diff/test patches without passing execution evidence remain partial or unclear.");
     expect(actions).toContain("Remove benchmark labels from report inputs; future outcome labels must only be used after report generation.");
+    expect(actions).toContain("Fix evaluation case normalization before report generation; oracle labels must not enter report inputs.");
     expect(actions).toContain("Lower confidence or require execution evidence before presenting high-coverage benchmark reports.");
   });
 
@@ -229,6 +260,39 @@ describe("real-dataset evaluation pack", () => {
     expect(leakageMetric?.detail).not.toContain("FAIL_TO_PASS");
     expect(serializedSummary).not.toContain("tests/private_oracle.py");
     expect(serializedSummary).not.toContain("FAIL_TO_PASS");
+  });
+
+  it("fails input oracle boundary checks before report generation when inputs leak hidden values", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const hiddenValue = "tests/private_oracle.py::test_future_behavior";
+    testCase.oracle.hiddenValues = [hiddenValue];
+    testCase.input.taskText = `${testCase.input.taskText}\nDo not mention ${hiddenValue} or FAIL_TO_PASS.`;
+    const report = generateVerificationReport(testCase.input);
+    const result = evaluateReportAgainstCase(report, testCase);
+    const inputBoundaryMetric = result.metrics.find((item) => item.id === "input_oracle_boundary");
+    const summary = summarizeEvaluationResults([result]);
+    const serializedSummary = JSON.stringify(summary);
+
+    expect(inputBoundaryMetric?.status).toBe("fail");
+    expect(inputBoundaryMetric?.detail).toContain("exact values are redacted");
+    expect(inputBoundaryMetric?.detail).not.toContain(hiddenValue);
+    expect(inputBoundaryMetric?.detail).not.toContain("FAIL_TO_PASS");
+    expect(serializedSummary).not.toContain(hiddenValue);
+    expect(serializedSummary).not.toContain("FAIL_TO_PASS");
+    expect(summary.learningTasks[0]?.priority).toBe("blocker");
+  });
+
+  it("allows ordinary product issue text to mention performance benchmarks", () => {
+    const testCase = sweBenchRowToEvaluationCase({
+      ...SWE_BENCH_ROW,
+      instance_id: "example__benchmark-word",
+      problem_statement: "Fix a performance regression. I benchmarked delete() with 100k rows and it is slower."
+    });
+    const report = generateVerificationReport(testCase.input);
+    const result = evaluateReportAgainstCase(report, testCase);
+
+    expect(result.metrics.find((item) => item.id === "input_oracle_boundary")?.status).toBe("pass");
+    expect(result.metrics.find((item) => item.id === "oracle_leakage")?.status).toBe("pass");
   });
 
   it("uses extraction-focused learning guidance for weak requirement warnings", () => {
@@ -431,8 +495,35 @@ describe("real-dataset evaluation pack", () => {
 
     for (const fixtureFile of fixtureFiles) {
       const fixtureUrl = new URL(fixtureFile, fixturesDir);
-      const records = parseNormalizedEvaluationRecords(readFileSync(fixtureUrl, "utf8"), fixtureFile);
+      const manifestUrl = new URL(fixtureFile.replace(/\.jsonl$/, ".manifest.json"), fixturesDir);
+      const fixture = readFileSync(fixtureUrl);
+      const manifest = JSON.parse(readFileSync(manifestUrl, "utf8")) as {
+        fixtureFile: string;
+        sha256: string;
+        caseCount: number;
+        caseIds: string[];
+        sourceOffset: number;
+        sourceLength: number;
+        sourceRowSha256: string;
+        oracleLabelCount: number;
+        oracleLabelSha256: string;
+        normalizerVersion: string;
+        privacy: string;
+      };
+      const records = parseNormalizedEvaluationRecords(fixture.toString("utf8"), fixtureFile);
 
+      expect(existsSync(manifestUrl)).toBe(true);
+      expect(manifest.fixtureFile).toBe(fixtureFile);
+      expect(manifest.sha256).toBe(createHash("sha256").update(fixture).digest("hex"));
+      expect(manifest.caseCount).toBe(records.length);
+      expect(manifest.caseIds).toEqual(records.map((record) => record.id));
+      expect(Number.isInteger(manifest.sourceOffset)).toBe(true);
+      expect(Number.isInteger(manifest.sourceLength)).toBe(true);
+      expect(manifest.sourceRowSha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(manifest.oracleLabelCount).toBeGreaterThanOrEqual(0);
+      expect(manifest.oracleLabelSha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(manifest.normalizerVersion).toBe("evaluation-pack-v1");
+      expect(manifest.privacy).toContain("raw hidden oracle labels are not committed");
       for (const record of records) {
         expect(Object.keys(record)).not.toEqual(expect.arrayContaining(RAW_ROW_KEYS));
         expect(record.oracle.hiddenValues).toEqual([]);

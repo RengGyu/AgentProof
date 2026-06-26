@@ -15,7 +15,9 @@
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
     "eval:pack": "vitest run src/lib/evaluation-pack.test.ts scripts/build-eval-pack.test.mjs",
     "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
-    "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose"
+    "eval:summary:strict": "AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
+    "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
+    "eval:summary:fixture:strict": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

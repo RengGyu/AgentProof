@@ -139,7 +139,8 @@ function sweBenchRowToEvaluationCase(row) {
       deniedReportTerms: [
         "SWE-bench",
         "SWEbench",
-        "benchmark",
+        "benchmark dataset",
+        "benchmark oracle",
         "gold-patch",
         "gold patch",
         "FAIL_TO_PASS",
@@ -339,7 +340,7 @@ function normalizeStringList(value) {
 }
 
 function isLikelyTestPath(path) {
-  return /(\.test\.|\.spec\.|__tests__|\/tests?\/|test_|_test\.|spec_)/i.test(path);
+  return /(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/|test_|_test\.|spec_)/i.test(path);
 }
 
 function stringValue(value, fallback) {

@@ -130,15 +130,19 @@ AgentProof evaluation starts from real benchmark data instead of invented labels
 ```bash
 pnpm eval:pack
 pnpm eval:summary
+pnpm eval:summary:strict
 pnpm eval:summary:fixture
+pnpm eval:summary:fixture:strict
 ```
 
 Fetch a larger local sample when network is available:
 
 ```bash
-pnpm eval:fetch:swebench -- --length 10
+pnpm eval:fetch:swebench -- --length 10   # quick local smoke
+pnpm eval:fetch:swebench -- --length 100  # broader local check
 pnpm eval:pack
 pnpm eval:summary
+pnpm eval:summary:strict
 ```
 
 One small normalized SWE-bench fixture is committed under `eval/fixtures/` with manifest hashes so CI can run without network; raw hidden oracle labels are not committed. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.

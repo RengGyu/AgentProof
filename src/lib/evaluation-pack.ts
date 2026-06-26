@@ -248,7 +248,8 @@ export function sweBenchRowToEvaluationCase(row: unknown): EvaluationCase {
       deniedReportTerms: [
         "SWE-bench",
         "SWEbench",
-        "benchmark",
+        "benchmark dataset",
+        "benchmark oracle",
         "gold-patch",
         "gold patch",
         "FAIL_TO_PASS",
@@ -300,6 +301,7 @@ export function evaluateReportAgainstCase(report: VerificationReport, testCase: 
     executionUncertaintyMetric(report, testCase),
     requirementCalibrationMetric(report, testCase),
     missingTestCalibrationMetric(report, testCase),
+    inputOracleBoundaryMetric(testCase),
     noOracleLeakageMetric(report, testCase),
     noUnsupportedVerifiedMetric(report),
     privacyPatternMetric(report)
@@ -433,6 +435,10 @@ export function summarizeEvaluationLearning(metrics: EvaluationMetric[]): string
 
   if (hasFailed(metrics, "oracle_leakage")) {
     actions.push("Remove benchmark labels from report inputs; future outcome labels must only be used after report generation.");
+  }
+
+  if (hasFailed(metrics, "input_oracle_boundary")) {
+    actions.push("Fix evaluation case normalization before report generation; oracle labels must not enter report inputs.");
   }
 
   if (hasFailed(metrics, "execution_uncertainty")) {
@@ -664,6 +670,25 @@ function noOracleLeakageMetric(report: VerificationReport, testCase: EvaluationC
   };
 }
 
+function inputOracleBoundaryMetric(testCase: EvaluationCase): EvaluationMetric {
+  const serialized = JSON.stringify(testCase.input);
+  const leakedLabels = testCase.oracle.hiddenLabels.filter((label) => serialized.includes(label));
+  const leakedValues = testCase.oracle.hiddenValues.filter((value) => serialized.includes(value));
+  const deniedTerms = testCase.oracle.deniedReportTerms.filter((term) =>
+    serialized.toLowerCase().includes(term.toLowerCase())
+  );
+  const leaks = [...leakedLabels, ...leakedValues, ...deniedTerms];
+
+  return {
+    id: "input_oracle_boundary",
+    label: "Input oracle boundary",
+    status: leaks.length === 0 ? "pass" : "fail",
+    detail: leaks.length === 0
+      ? "Report input contains no benchmark oracle labels, hidden values, or dataset cues."
+      : `Report input leaked ${leaks.length} oracle value(s) or dataset cue(s); exact values are redacted from evaluation output.`
+  };
+}
+
 function noUnsupportedVerifiedMetric(report: VerificationReport): EvaluationMetric {
   const unsupportedMet = report.requirements.filter((requirement) =>
     requirement.status === "met" && !requirementHasPassingExecutionRef(report, requirement.evidenceRefs)
@@ -728,14 +753,14 @@ function requirementHasPassingExecutionRef(report: VerificationReport, evidenceR
 function learningAreaForMetric(id: string): EvaluationLearningArea {
   if (id === "schema_valid") return "schema";
   if (id === "changed_file_evidence" || id === "test_file_evidence" || id === "required_evidence_kinds") return "evidence_indexing";
-  if (id === "oracle_leakage") return "oracle_boundary";
+  if (id === "oracle_leakage" || id === "input_oracle_boundary") return "oracle_boundary";
   if (id === "privacy_patterns") return "privacy";
   if (id === "missing_test_calibration") return "missing_test_detection";
   return "requirement_calibration";
 }
 
 function priorityForRollup(rollup: EvaluationMetricRollup): EvaluationLearningTask["priority"] {
-  if (rollup.status === "fail" && (rollup.id === "schema_valid" || rollup.id === "oracle_leakage" || rollup.id === "privacy_patterns")) {
+  if (rollup.status === "fail" && (rollup.id === "schema_valid" || rollup.id === "oracle_leakage" || rollup.id === "input_oracle_boundary" || rollup.id === "privacy_patterns")) {
     return "blocker";
   }
   if (rollup.status === "fail") return "high";
@@ -751,6 +776,7 @@ function recommendationForMetric(id: string): string {
     execution_uncertainty: "Keep confidence and coverage below high thresholds until check or log evidence is visible.",
     requirement_calibration: "Calibrate requirement statuses so `met` requires requirement-linked execution evidence.",
     missing_test_calibration: "Separate visible test artifacts from proof that those tests executed.",
+    input_oracle_boundary: "Fix evaluation case normalization before report generation.",
     oracle_leakage: "Keep dataset names, hidden labels, hidden values, and future outcomes outside report inputs.",
     unsupported_verified: "Prevent requirements from being marked met without passing execution evidence in their evidenceRefs.",
     privacy_patterns: "Extend redaction before persisting or printing evaluation artifacts."
@@ -775,6 +801,7 @@ function acceptanceCriteriaForMetric(id: string): string[] {
     execution_uncertainty: ["Reports without visible execution evidence do not claim high confidence or complete coverage."],
     requirement_calibration: ["Every `met` requirement cites passing check or log evidence in its own evidenceRefs."],
     missing_test_calibration: ["Implementation changes without executed related tests remain visible as missing-test or execution-proof gaps."],
+    input_oracle_boundary: ["Evaluation case inputs contain no dataset names, hidden label keys, hidden label values, or oracle wording before report generation."],
     oracle_leakage: ["Reports contain no dataset names, hidden label keys, hidden label values, or oracle wording."],
     unsupported_verified: ["No requirement is marked `met` unless it cites relevant passing execution evidence."],
     privacy_patterns: ["Evaluation outputs contain no high-risk secret-looking strings."]
@@ -944,7 +971,7 @@ function normalizeStringList(value: unknown): string[] {
 }
 
 function isLikelyTestPath(path: string): boolean {
-  return /(\.test\.|\.spec\.|__tests__|\/tests?\/|test_|_test\.|spec_)/i.test(path);
+  return /(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/|test_|_test\.|spec_)/i.test(path);
 }
 
 function stringValue(value: unknown, fallback: string): string {

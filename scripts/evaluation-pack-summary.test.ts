@@ -28,6 +28,13 @@ describe("evaluation pack summary", () => {
     console.info(JSON.stringify(summary, null, 2));
 
     expect(summary.failedCount).toBe(0);
+    if (process.env.AGENTPROOF_EVAL_STRICT === "1") {
+      expect(summary.uncalibratedCount).toBe(0);
+      expect(summary.statusCounts.warning).toBe(0);
+      expect(summary.statusCounts.unknown).toBe(0);
+      expect(summary.metricRollups).toEqual([]);
+      expect(summary.learningTasks).toEqual([]);
+    }
   });
 
   it("rejects raw dataset rows before printing evaluation summaries", () => {

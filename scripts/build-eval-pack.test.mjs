@@ -153,6 +153,48 @@ describe("build eval pack script", () => {
     expect(logs.join("\n")).toContain("Wrote 1 normalized evaluation case");
   });
 
+  it("normalizes top-level tests directory paths as visible test files", async () => {
+    const writes = [];
+
+    await buildEvalPack({
+      output: "eval/generated/unit/top-level-tests.cases.jsonl",
+      length: "1"
+    }, {
+      fetchRows: async () => [{
+        ...SWE_BENCH_ROW,
+        patch: [
+          "diff --git a/src/validators/url.py b/src/validators/url.py",
+          "index 1111111..2222222 100644",
+          "--- a/src/validators/url.py",
+          "+++ b/src/validators/url.py",
+          "@@ -1,2 +1,3 @@",
+          "+def validate_url(value):",
+          "+    return value.startswith('https://')"
+        ].join("\n"),
+        test_patch: [
+          "diff --git a/tests/validators/invalid_urls.txt b/tests/validators/invalid_urls.txt",
+          "index 3333333..4444444 100644",
+          "--- a/tests/validators/invalid_urls.txt",
+          "+++ b/tests/validators/invalid_urls.txt",
+          "@@ -1,2 +1,3 @@",
+          "+http://invalid example"
+        ].join("\n")
+      }],
+      mkdir: async () => undefined,
+      writeFile: async (_path, text) => {
+        writes.push(text);
+      },
+      logger: {
+        log: () => undefined
+      }
+    });
+
+    const [record] = writes[0].trim().split(/\n+/).map((line) => JSON.parse(line));
+
+    expect(record.oracle.visibleImplementationFiles).toEqual(["src/validators/url.py"]);
+    expect(record.oracle.visibleTestFiles).toEqual(["tests/validators/invalid_urls.txt"]);
+  });
+
   it("prints only summary logs without raw rows, oracle labels, oracle values, or secrets", async () => {
     const logs = [];
 

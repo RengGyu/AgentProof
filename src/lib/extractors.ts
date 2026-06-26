@@ -46,7 +46,7 @@ const STOP_WORDS = new Set([
   "existing"
 ]);
 
-const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|\/tests?\/|test_|_test\.|spec_)/i;
+const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/|test_|_test\.|spec_)/i;
 const RISK_FILE_PATTERN = /(auth|permission|billing|payment|migration|schema|infra|session|security|token|secret|admin)/i;
 const VAGUE_TASK_PATTERN = /\b(improve|better|fewer problems|more reliable|clean\s*up|cleanup|polish|enhance|optimi[sz]e|make .* easier|make .* nicer)\b/i;
 const CONCRETE_ACTION_PATTERN =
@@ -266,17 +266,21 @@ export function buildEvidenceIndex(
 }
 
 export function extractKeywords(text: string): string[] {
-  return Array.from(
-    new Set(
-      text
-        .toLowerCase()
-        .replace(/[^a-z0-9_/.-]+/g, " ")
-        .split(/\s+/)
-        .map((word) => word.replace(/^[._/-]+|[._/-]+$/g, ""))
-        .filter((word) => word.length > 2 && !STOP_WORDS.has(word))
-        .slice(0, 12)
-    )
-  );
+  const keywords = text
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .replace(/[^a-z0-9_/.-]+/g, " ")
+    .split(/\s+/)
+    .flatMap((word) => {
+      const trimmed = word.replace(/^[._/-]+|[._/-]+$/g, "");
+      const parts = trimmed.split(/[._/-]+/).filter(Boolean);
+
+      return [trimmed, ...parts];
+    })
+    .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
+
+  return Array.from(new Set(keywords)).slice(0, 12);
 }
 
 function compactPatchExcerpt(patch: string, maxLength = 500): string {

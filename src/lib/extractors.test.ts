@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEvidenceIndex, extractRequirements } from "./extractors";
+import { buildEvidenceIndex, extractKeywords, extractRequirements } from "./extractors";
 
 describe("extractRequirements", () => {
   it("ignores GitHub issue template comments and fenced traces", () => {
@@ -65,5 +65,29 @@ describe("extractRequirements", () => {
     expect(checkEvidence?.locator).toBe("https://github.com/acme/repo/actions/runs/1");
     expect(checkEvidence?.summary).toMatch(/^Status: unknown\./);
     expect(logEvidence?.summary).toMatch(/^Status: passed\./);
+  });
+
+  it("classifies files under top-level tests directories as test evidence", () => {
+    const evidence = buildEvidenceIndex(
+      "",
+      "",
+      [
+        {
+          path: "tests/validators/invalid_urls.txt",
+          status: "modified",
+          patch: "+ http://invalid example"
+        }
+      ],
+      [],
+      []
+    );
+
+    expect(evidence[0]?.kind).toBe("test");
+  });
+
+  it("splits dotted and CamelCase API identifiers into matchable keywords", () => {
+    expect(extractKeywords("io.fits.FITSDiff should handle variable-length arrays.")).toEqual(
+      expect.arrayContaining(["fits", "diff", "variable", "length", "arrays"])
+    );
   });
 });

@@ -27,7 +27,8 @@ The repository includes one small committed SWE-bench Verified fixture under `ev
 Fetch a larger real SWE-bench Verified sample into a git-ignored local directory. The fetcher writes normalized evaluation cases by default, not raw dataset rows:
 
 ```bash
-pnpm eval:fetch:swebench -- --length 10
+pnpm eval:fetch:swebench -- --length 10   # quick local smoke
+pnpm eval:fetch:swebench -- --length 100  # broader local check
 ```
 
 Run the evaluation harness tests:
@@ -40,14 +41,17 @@ Print a learning summary. In a clean checkout this uses the committed fixture; i
 
 ```bash
 pnpm eval:summary
+pnpm eval:summary:strict
 ```
 
 The summary harness accepts only normalized `EvaluationCase` JSONL. It intentionally refuses raw dataset rows so hidden oracle labels and raw benchmark fields cannot be converted or printed by accident.
+Strict mode additionally fails on warning or unknown metrics, which is useful before promoting generated samples into committed fixtures.
 
 Force the committed fixture path even when `eval/generated/` exists:
 
 ```bash
 pnpm eval:summary:fixture
+pnpm eval:summary:fixture:strict
 ```
 
 Generated benchmark cases are written to `eval/generated/` and must not be committed because they still contain short patch excerpts and separated oracle labels.
