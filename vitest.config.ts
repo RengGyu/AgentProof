@@ -7,6 +7,7 @@ export default defineConfig({
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
       "scripts/build-eval-pack.test.mjs",
+      "scripts/promote-eval-fixture.test.mjs",
       "scripts/smoke-analyze-pr-url.test.mjs"
     ]
   },

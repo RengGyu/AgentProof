@@ -145,6 +145,18 @@ pnpm eval:summary
 pnpm eval:summary:strict
 ```
 
+Promote selected generated cases into committed fixtures only after reviewing case IDs and source metadata:
+
+```bash
+pnpm eval:promote:fixture -- \
+  --input eval/generated/swebench-verified.cases.jsonl \
+  --output eval/fixtures/swebench-verified.example.jsonl \
+  --case astropy__astropy-12907 \
+  --source-offset 0 \
+  --source-length 100
+pnpm eval:summary:fixture:strict
+```
+
 Committed normalized SWE-bench fixtures live under `eval/fixtures/` with manifest hashes so CI can run without network: one small smoke case plus a representative four-case pack. Raw hidden oracle labels are not committed. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
 
 ## Deployed Demo

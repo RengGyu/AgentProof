@@ -37,6 +37,21 @@ Run the evaluation harness tests:
 pnpm eval:pack
 ```
 
+Promote reviewed generated cases into committed fixtures:
+
+```bash
+pnpm eval:promote:fixture -- \
+  --input eval/generated/swebench-verified.cases.jsonl \
+  --output eval/fixtures/swebench-verified.example.jsonl \
+  --case astropy__astropy-12907 \
+  --source-offset 0 \
+  --source-length 100 \
+  --selection "Representative requirement/evidence coverage case."
+pnpm eval:summary:fixture:strict
+```
+
+The promotion tool only accepts normalized JSONL input under `eval/generated/` and writes paired `.jsonl` plus `.manifest.json` files under `eval/fixtures/`. It strips raw hidden oracle labels from committed fixtures and keeps only manifest counts/hashes.
+
 Print a learning summary. In a clean checkout this uses all committed fixtures; if local generated cases exist, they are preferred:
 
 ```bash
