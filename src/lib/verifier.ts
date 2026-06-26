@@ -139,11 +139,13 @@ function evaluateRequirement(
   const failedCheck = hasFailingExecutionEvidence(input);
 
   if (failedCheck) {
+    const failedExecutionRefs = executionFailureEvidenceRefs(input, evidenceIndex);
+
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: hasImplementationEvidence ? "partial" : "unclear",
-      evidenceRefs: refs,
+      evidenceRefs: uniqueRefs([...refs, ...failedExecutionRefs]).slice(0, 5),
       gaps: ["CI has a failing check, so requirement satisfaction is not proven."],
       reviewerNote: "Review failed checks before relying on implementation evidence.",
       confidence: hasImplementationEvidence ? 0.45 : 0.25

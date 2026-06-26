@@ -663,6 +663,36 @@ describe("generateVerificationReport", () => {
     expect(report.requirements[0]?.gaps.join(" ")).toContain("failing check");
   });
 
+  it("cites failed execution evidence on requirement findings even without keyword overlap", () => {
+    const report = generateVerificationReport({
+      title: "Validate invoice export",
+      description: "Implemented invoice export validation.",
+      taskText: "Acceptance criteria: validate invoice export format.",
+      changedFiles: [
+        {
+          path: "src/billing/invoiceExport.ts",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ export function invoiceExport() { return csv }"
+        }
+      ],
+      checks: [
+        {
+          name: "unit tests",
+          status: "failed",
+          summary: "1 suite failed"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+    const failedRefs = refsToEvidence(report, report.requirements[0]?.evidenceRefs ?? [])
+      .filter((item) => item.kind === "check" && item.summary.startsWith("Status: failed"));
+
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("CI has a failing check");
+    expect(failedRefs.map((item) => item.label)).toContain("unit tests");
+  });
+
   it("keeps generated findings tied to evidence refs or explicit gaps", () => {
     for (const input of Object.values(demoScenarios)) {
       const report = generateVerificationReport(input);

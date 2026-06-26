@@ -50,7 +50,7 @@ pnpm eval:promote:fixture -- \
 pnpm eval:summary:fixture:strict
 ```
 
-The promotion tool only accepts normalized JSONL input under `eval/generated/` and writes paired `.jsonl` plus `.manifest.json` files under `eval/fixtures/`. It strips raw hidden oracle labels from committed fixtures and keeps only manifest counts/hashes.
+The promotion tool only accepts normalized JSONL input under `eval/generated/` and writes paired `.jsonl` plus `.manifest.json` files under `eval/fixtures/`. It strips raw hidden oracle test values from committed fixtures and keeps only manifest counts/hashes for those values.
 The current diverse fixture intentionally uses ten non-`astropy`/`django` repositories and includes one implementation-only case so missing-test calibration is exercised without relying on tidy visible test patches in every sample.
 
 Print a learning summary. In a clean checkout this uses all committed fixtures; if local generated cases exist, they are preferred:
@@ -76,7 +76,7 @@ Generated benchmark cases are written to `eval/generated/` and must not be commi
 
 - Fixtures must be normalized `EvaluationCase` records, not raw benchmark rows.
 - `input` must not contain dataset names, benchmark URLs, gold-patch wording, `FAIL_TO_PASS`, `PASS_TO_PASS`, hidden labels, or hidden values.
-- Generated local cases may contain source-provided raw oracle labels under `oracle`; committed fixtures must strip raw hidden oracle labels and keep only manifest counts/hashes.
+- Generated local cases may contain source-provided raw oracle labels and test values under `oracle`; committed fixtures must strip raw hidden oracle test values and keep only manifest counts/hashes for those values.
 - Patch excerpts must stay bounded; committed cases should keep each patch at or below 80 lines and each case's total patch text below 1,500 bytes.
 - The manifest must record dataset revision, row API URL, source offset/length, source row hash, oracle label count/hash, fixture hash, normalizer version, and privacy notes.
 - Do not add invented pass/fail labels, quality scores, expected prose reviews, or LLM judgments to fixtures.
