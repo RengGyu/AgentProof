@@ -17,6 +17,7 @@ import {
   TestTube2
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { getExecutionEvidenceItems } from "@/lib/execution-evidence";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
 import { buildShareUrl } from "@/lib/report-share";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
@@ -34,6 +35,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     () => new Map(report.evidenceIndex.map((item) => [item.id, item])),
     [report.evidenceIndex]
   );
+  const executionEvidence = useMemo(() => getExecutionEvidenceItems(report.evidenceIndex), [report.evidenceIndex]);
   const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | "share" | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [commentToken, setCommentToken] = useState("");
@@ -305,6 +307,27 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               ))}
             </ul>
           </div>
+
+          {!isSummaryMode ? (
+            <div className="card">
+              <h2>Execution Evidence</h2>
+              {executionEvidence.length > 0 ? (
+                <ul className="evidence-list">
+                  {executionEvidence.map((item) => (
+                    <li key={item.id}>
+                      <span className={`evidence-label status-${item.status}`}>
+                        {item.status.toUpperCase()} - {item.id} - {item.kind} - {item.locator ?? item.label} -{" "}
+                        {Math.round(item.confidence * 100)}%
+                      </span>
+                      {item.summary}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted small">No test/build check or log evidence was available.</p>
+              )}
+            </div>
+          ) : null}
 
           {!isSummaryMode && report.source.url ? (
             <div className="card">

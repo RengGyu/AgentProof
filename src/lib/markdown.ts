@@ -1,3 +1,4 @@
+import { getExecutionEvidenceItems } from "./execution-evidence";
 import type { VerificationReport } from "./types";
 
 export const AGENTPROOF_COMMENT_MARKER = "<!-- agentproof:evidence-check:v1 -->";
@@ -5,6 +6,7 @@ const MAX_GITHUB_COMMENT_LENGTH = 12_000;
 
 export function reportToMarkdown(report: VerificationReport): string {
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
+  const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex);
   const lines = [
     `# AgentProof Evidence Report`,
     "",
@@ -47,6 +49,12 @@ export function reportToMarkdown(report: VerificationReport): string {
       ...evidenceLines(item.evidenceRefs, evidenceById, "  ")
     ]),
     "",
+    `## Execution Evidence`,
+    "",
+    ...(executionEvidence.length > 0
+      ? executionEvidence.map((item) => formatExecutionEvidenceLine(item))
+      : ["- No test/build check or log evidence was available."]),
+    "",
     `## Review Priority`,
     "",
     ...report.reviewPriority.flatMap((item) => [
@@ -80,6 +88,7 @@ export function reportToGitHubComment(
   options: { includeReprompt?: boolean; includeMarker?: boolean } = {}
 ): string {
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
+  const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex, 5);
   const requirementLines = report.requirements.slice(0, 8).map((requirement) => {
     const evidence = requirement.evidenceRefs.length > 0
       ? ` Evidence: ${formatEvidenceRefs(requirement.evidenceRefs, evidenceById)}`
@@ -135,6 +144,12 @@ export function reportToGitHubComment(
     `- Lint: ${report.testing.lintStatus}`,
     `- Typecheck: ${report.testing.typecheckStatus}`,
     ...(missingTestLines.length > 0 ? missingTestLines : ["- No missing test evidence detected."]),
+    "",
+    "### Execution Evidence",
+    "",
+    ...(executionEvidence.length > 0
+      ? executionEvidence.map((item) => formatExecutionEvidenceLine(item))
+      : ["- No test/build check or log evidence was available."]),
     ...(limitationLines.length > 0
       ? [
           "",
@@ -159,6 +174,13 @@ export function reportToGitHubComment(
   ].filter((line): line is string => typeof line === "string");
 
   return truncateComment(neutralizeGitHubMentions(lines.join("\n")));
+}
+
+function formatExecutionEvidenceLine(item: ReturnType<typeof getExecutionEvidenceItems>[number]): string {
+  const locator = item.locator ?? item.label;
+  const confidence = `${Math.round(item.confidence * 100)}%`;
+
+  return `- **${item.status.toUpperCase()}** \`${item.id}\` ${item.kind} \`${locator}\` (${confidence}): ${item.summary}`;
 }
 
 function evidenceLines(
