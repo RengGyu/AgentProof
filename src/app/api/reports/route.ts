@@ -1,6 +1,6 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
-import { createSavedReport } from "@/lib/server-report-store";
+import { createSavedReport, SAVED_REPORT_DURABILITY, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
 import type { VerificationReport } from "@/lib/types";
 
 const MAX_REPORT_REQUEST_BYTES = 120_000;
@@ -37,7 +37,9 @@ export async function POST(request: Request) {
     id: saved.id,
     url,
     expiresAt: saved.expiresAt,
-    privacy: "summary-only"
+    privacy: "summary-only",
+    durability: SAVED_REPORT_DURABILITY,
+    durabilityWarning: SAVED_REPORT_DURABILITY_WARNING
   });
 }
 

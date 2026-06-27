@@ -1,6 +1,8 @@
 import type { VerificationReport } from "./types";
 
 export const MAX_SHARE_PAYLOAD_LENGTH = 18_000;
+export const SUMMARY_ONLY_LIMITATION =
+  "Shared report omits raw evidence, patch/log excerpts, claims, and re-prompt text.";
 
 interface ShareableReport {
   version: 1;
@@ -62,10 +64,7 @@ function toShareableReport(report: VerificationReport): ShareableReport {
       reason: item.reason,
       priority: item.priority
     })),
-    limitations: [
-      ...report.limitations,
-      "Shared report omits raw evidence, patch/log excerpts, claims, and re-prompt text."
-    ]
+    limitations: appendSummaryOnlyLimitation(report.limitations)
   };
 }
 
@@ -138,4 +137,10 @@ function base64Decode(value: string): string {
   }
 
   return Buffer.from(value, "base64").toString("binary");
+}
+
+function appendSummaryOnlyLimitation(limitations: string[]): string[] {
+  return limitations.some((limitation) => limitation === SUMMARY_ONLY_LIMITATION)
+    ? limitations
+    : [...limitations, SUMMARY_ONLY_LIMITATION];
 }

@@ -2,6 +2,7 @@ const baseUrl = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "http://localhost:3000
 const prUrl = process.env.AGENTPROOF_SMOKE_PR_URL;
 const taskText = process.env.AGENTPROOF_SMOKE_TASK_TEXT ?? "";
 const githubToken = process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN;
+const SAVED_REPORT_DURABILITY = "short-lived-in-memory";
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -57,6 +58,8 @@ export async function runAnalyzePrSmoke({
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
     savedReportPrivacy: saveResult.privacy,
+    savedReportDurability: saveResult.durability,
+    savedReportDurabilityWarning: Boolean(saveResult.durabilityWarning),
     savedEvidenceCount: Array.isArray(savedReport.evidenceIndex) ? savedReport.evidenceIndex.length : null,
     savedClaimCount: Array.isArray(savedReport.claims) ? savedReport.claims.length : null,
     savedRepromptOmitted: /omit|shared summary|summary/i.test(savedReport.reprompt?.prompt ?? ""),
@@ -162,6 +165,8 @@ async function saveSummaryOnlyReport({ baseUrl, report, fetchImpl }) {
   if (
     !saveResponse.ok ||
     savePayload.privacy !== "summary-only" ||
+    savePayload.durability !== SAVED_REPORT_DURABILITY ||
+    typeof savePayload.durabilityWarning !== "string" ||
     typeof savePayload.id !== "string" ||
     typeof savePayload.expiresAt !== "string" ||
     typeof savePayload.url !== "string" ||
@@ -180,7 +185,13 @@ async function saveSummaryOnlyReport({ baseUrl, report, fetchImpl }) {
     throw smokeError("Saved-report round-trip response was not marked no-store.", getResponse.status);
   }
 
-  if (!getResponse.ok || getPayload.privacy !== "summary-only" || !getPayload.report) {
+  if (
+    !getResponse.ok ||
+    getPayload.privacy !== "summary-only" ||
+    getPayload.durability !== SAVED_REPORT_DURABILITY ||
+    typeof getPayload.durabilityWarning !== "string" ||
+    !getPayload.report
+  ) {
     throw smokeError(
       typeof getPayload.error === "string" ? getPayload.error : "Saved-report round-trip failed.",
       getResponse.status
@@ -202,6 +213,8 @@ async function saveSummaryOnlyReport({ baseUrl, report, fetchImpl }) {
 
   return {
     privacy: getPayload.privacy,
+    durability: getPayload.durability,
+    durabilityWarning: getPayload.durabilityWarning,
     savedReport: getPayload.report,
     deleted
   };

@@ -3,6 +3,9 @@ import type { VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_SERVER_REPORTS = 100;
+export const SAVED_REPORT_DURABILITY = "short-lived-in-memory";
+export const SAVED_REPORT_DURABILITY_WARNING =
+  "Saved reports are summary-only, short-lived, and stored in memory; they may expire or disappear after a serverless instance change.";
 
 export interface StoredServerReport {
   id: string;

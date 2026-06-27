@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildShareUrl, decodeSharedReport, encodeReportForShare } from "./report-share";
+import { buildShareUrl, decodeSharedReport, encodeReportForShare, sanitizeReportForShare, SUMMARY_ONLY_LIMITATION } from "./report-share";
 import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
@@ -27,5 +27,13 @@ describe("report share", () => {
     const url = buildShareUrl(report, "https://agentproof.example");
 
     expect(url).toContain("https://agentproof.example/reports/share#report=");
+  });
+
+  it("does not duplicate the summary-only limitation when re-sharing sanitized reports", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    const reshared = sanitizeReportForShare(sanitizeReportForShare(report));
+    const summaryOnlyLimitations = reshared.limitations.filter((limitation) => limitation === SUMMARY_ONLY_LIMITATION);
+
+    expect(summaryOnlyLimitations).toHaveLength(1);
   });
 });

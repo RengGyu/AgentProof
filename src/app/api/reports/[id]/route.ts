@@ -1,5 +1,5 @@
 import { noStoreJson } from "@/lib/http";
-import { deleteSavedReport, getSavedReport } from "@/lib/server-report-store";
+import { deleteSavedReport, getSavedReport, SAVED_REPORT_DURABILITY, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -17,7 +17,9 @@ export async function GET(_request: Request, context: RouteContext) {
     report: saved.report,
     createdAt: saved.createdAt,
     expiresAt: saved.expiresAt,
-    privacy: "summary-only"
+    privacy: "summary-only",
+    durability: SAVED_REPORT_DURABILITY,
+    durabilityWarning: SAVED_REPORT_DURABILITY_WARNING
   });
 }
 

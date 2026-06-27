@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
-import { clearSavedReportsForTests } from "@/lib/server-report-store";
+import { clearSavedReportsForTests, SAVED_REPORT_DURABILITY, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
+import { GET } from "./[id]/route";
 import { POST } from "./route";
 
 describe("POST /api/reports", () => {
@@ -23,6 +24,28 @@ describe("POST /api/reports", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(json.url).toMatch(/^http:\/\/localhost\/reports\//);
     expect(json.privacy).toBe("summary-only");
+    expect(json.durability).toBe(SAVED_REPORT_DURABILITY);
+    expect(json.durabilityWarning).toBe(SAVED_REPORT_DURABILITY_WARNING);
+  });
+
+  it("returns durability metadata when reading a saved report", async () => {
+    const saveResponse = await POST(
+      new Request("http://localhost/api/reports", {
+        method: "POST",
+        body: JSON.stringify({ report: generateVerificationReport(demoScenarios["scope-creep"]) })
+      })
+    );
+    const saved = await saveResponse.json();
+    const getResponse = await GET(new Request(`http://localhost/api/reports/${saved.id}`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    const json = await getResponse.json();
+
+    expect(getResponse.status).toBe(200);
+    expect(json.privacy).toBe("summary-only");
+    expect(json.expiresAt).toBe(saved.expiresAt);
+    expect(json.durability).toBe(SAVED_REPORT_DURABILITY);
+    expect(json.durabilityWarning).toBe(SAVED_REPORT_DURABILITY_WARNING);
   });
 
   it("rejects invalid reports", async () => {

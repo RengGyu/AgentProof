@@ -540,6 +540,18 @@ button {
   line-height: 1.35;
 }
 
+.summary-mode-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.summary-mode-notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
 .integration-head {
   display: flex;
   align-items: flex-start;
