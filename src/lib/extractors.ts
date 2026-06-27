@@ -6,7 +6,7 @@ import type {
   LogSnippet,
   Requirement
 } from "./types";
-import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
+import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText } from "./redact";
 import { redactSecrets } from "./redact";
 
@@ -206,10 +206,8 @@ function isClaimSupportEvidence(item: EvidenceItem): boolean {
 }
 
 function isPassingExecutionClaimEvidence(item: EvidenceItem): boolean {
-  const text = `${item.label} ${item.summary}`;
-
   return (item.kind === "check" || item.kind === "log") &&
-    isExecutionSignalText(text) &&
+    isExecutionEvidenceSignal(item.label, item.summary, item.locator) &&
     hasPassingEvidenceStatusPrefix(item.summary);
 }
 

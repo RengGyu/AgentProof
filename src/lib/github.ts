@@ -1,5 +1,5 @@
 import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput } from "./types";
-import { isExecutionSignalText } from "./evidence-status";
+import { isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText, redactSecrets } from "./redact";
 
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
@@ -489,13 +489,13 @@ async function fetchActionJobSummaries(
 }
 
 function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
-  return isExecutionSignalText(`${check.name} ${check.output?.title ?? ""} ${check.output?.summary ?? ""}`);
+  return isExecutionEvidenceSignal(check.name, `${check.output?.title ?? ""} ${check.output?.summary ?? ""}`, check.details_url ?? check.html_url);
 }
 
 function isExecutionActionJob(job: GitHubActionJobResponse): boolean {
   const stepText = (job.steps ?? []).map((step) => step.name).join(" ");
 
-  return isExecutionSignalText(`${job.name} ${stepText}`);
+  return isExecutionEvidenceSignal(job.name, stepText, job.html_url);
 }
 
 function actionRunIdFromCheckRun(check: GitHubCheckRunResponse, owner: string, repo: string): string | null {

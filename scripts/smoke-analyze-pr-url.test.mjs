@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   assertSummaryOnlyReport,
+  passingExecutionEvidence,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
 
@@ -89,6 +90,35 @@ describe("smoke-analyze-pr-url", () => {
       prUrl: "https://github.com/org/repo/pull/1",
       fetchImpl: fetchMock
     })).rejects.toThrow("Report claimed passed CI without passing check/log evidence");
+  });
+
+  it("does not count preview or security checks as passing execution evidence even with test words", () => {
+    const report = reportFixture();
+    report.evidenceIndex = [
+      {
+        id: "ev_preview",
+        kind: "check",
+        label: "Vercel Preview tests",
+        summary: "Status: passed. Vercel Preview tests completed",
+        confidence: 0.9
+      },
+      {
+        id: "ev_security",
+        kind: "check",
+        label: "Socket Security coverage tests report",
+        summary: "Status: passed. security coverage tests completed",
+        confidence: 0.9
+      },
+      {
+        id: "ev_unit",
+        kind: "check",
+        label: "unit tests",
+        summary: "Status: passed. unit tests completed",
+        confidence: 0.9
+      }
+    ];
+
+    expect(passingExecutionEvidence(report).map((item) => item.id)).toEqual(["ev_unit"]);
   });
 });
 

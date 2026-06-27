@@ -12,6 +12,14 @@ export function isExecutionSignalText(text: string): boolean {
   return WEAK_EXECUTION_EVIDENCE_PATTERN.test(text) && !NON_EXECUTION_GATE_PATTERN.test(text);
 }
 
+export function isExecutionEvidenceSignal(label: string, text = "", locator = ""): boolean {
+  if (NON_EXECUTION_GATE_PATTERN.test(label)) {
+    return false;
+  }
+
+  return isExecutionSignalText(`${label} ${text}`);
+}
+
 export function hasPassingEvidenceStatusPrefix(summary: string): boolean {
   return /^Status:\s*passed\b/i.test(summary.trim());
 }

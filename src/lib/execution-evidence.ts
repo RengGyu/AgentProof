@@ -1,7 +1,6 @@
 import {
   hasPassingEvidenceStatusPrefix,
-  isExecutionSignalText,
-  NON_EXECUTION_GATE_PATTERN
+  isExecutionEvidenceSignal
 } from "./evidence-status";
 import type { CheckStatus, EvidenceItem } from "./types";
 
@@ -45,17 +44,8 @@ export function getExecutionEvidenceItems(
 }
 
 export function isExecutionEvidenceItem(item: EvidenceItem): boolean {
-  if (item.kind !== "check" && item.kind !== "log") {
-    return false;
-  }
-
-  const sourceLabel = `${item.label} ${item.locator ?? ""}`;
-
-  if (NON_EXECUTION_GATE_PATTERN.test(sourceLabel)) {
-    return false;
-  }
-
-  return isExecutionSignalText(`${item.label} ${item.summary}`);
+  return (item.kind === "check" || item.kind === "log") &&
+    isExecutionEvidenceSignal(item.label, item.summary, item.locator);
 }
 
 export function statusFromEvidenceSummary(summary: string): CheckStatus {

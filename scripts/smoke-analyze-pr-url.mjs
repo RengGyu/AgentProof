@@ -72,7 +72,7 @@ export function passingExecutionEvidence(report) {
   return Array.isArray(report.evidenceIndex)
     ? report.evidenceIndex.filter((item) =>
       (item.kind === "check" || item.kind === "log") &&
-        isExecutionSignal(`${item.label} ${item.summary}`) &&
+        isExecutionSignal(item.label, item.summary, item.locator) &&
         hasPassingEvidenceStatusPrefix(item.summary)
     )
     : [];
@@ -84,12 +84,20 @@ const WEAK_EXECUTION_EVIDENCE_PATTERN = /\b(ci|build)\b/i;
 const NON_EXECUTION_GATE_PATTERN =
   /\b(policy|policies|provenance|attestation|security|scan|sast|secret|secrets|dependency|dependencies|license|licenses|code owners?|owners|review|report|preview|deploy|deployment|merge[- ]?gate|required checks?)\b/i;
 
-function isExecutionSignal(text) {
-  if (STRONG_EXECUTION_EVIDENCE_PATTERN.test(text)) {
+function isExecutionSignal(label, text = "", locator = "") {
+  const sourceLabel = `${label ?? ""} ${locator ?? ""}`;
+
+  if (NON_EXECUTION_GATE_PATTERN.test(sourceLabel)) {
+    return false;
+  }
+
+  const combined = `${label ?? ""} ${text ?? ""}`;
+
+  if (STRONG_EXECUTION_EVIDENCE_PATTERN.test(combined)) {
     return true;
   }
 
-  return WEAK_EXECUTION_EVIDENCE_PATTERN.test(text) && !NON_EXECUTION_GATE_PATTERN.test(text);
+  return WEAK_EXECUTION_EVIDENCE_PATTERN.test(combined) && !NON_EXECUTION_GATE_PATTERN.test(combined);
 }
 
 function hasPassingEvidenceStatusPrefix(summary) {

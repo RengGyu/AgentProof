@@ -1,5 +1,5 @@
 import type { VerificationReport } from "./types";
-import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
+import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
@@ -434,11 +434,12 @@ function isExecutionClaim(text: string): boolean {
 
 function isPassingTestExecutionEvidence(item: RecordValue): boolean {
   const kind = item.kind;
-  const text = `${typeof item.label === "string" ? item.label : ""} ${typeof item.summary === "string" ? item.summary : ""}`;
+  const label = typeof item.label === "string" ? item.label : "";
   const summary = typeof item.summary === "string" ? item.summary : "";
+  const locator = typeof item.locator === "string" ? item.locator : "";
 
   return (kind === "check" || kind === "log") &&
-    isExecutionSignalText(text) &&
+    isExecutionEvidenceSignal(label, summary, locator) &&
     hasPassingEvidenceStatusPrefix(summary);
 }
 
