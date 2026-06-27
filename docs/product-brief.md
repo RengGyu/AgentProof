@@ -49,7 +49,7 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 - Share links contain only summary-level report data.
 - Server saved reports are summary-only, short-lived, and currently in-memory.
 - GitHub PR comments use a short marker comment and update the prior AgentProof comment when present.
-- GitHub App webhook intake verifies `X-Hub-Signature-256` when configured, but automated App actions remain disabled until installation-token handling and idempotency storage exist.
+- GitHub App webhook intake verifies `X-Hub-Signature-256` when `GITHUB_WEBHOOK_SECRET` is configured and returns dry-run metadata only. Automated App actions remain disabled until App credentials, installation-token handling, idempotency storage, and explicit opt-in exist.
 - Slack notifications require a server webhook plus `AGENTPROOF_NOTIFY_TOKEN`, and send summary-only payloads.
 - LLM mode requires `OPENAI_API_KEY` plus `AGENTPROOF_LLM_TOKEN`; structured output must pass runtime report validation before it is trusted.
 
