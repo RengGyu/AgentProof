@@ -8,6 +8,7 @@ export default defineConfig({
       "src/**/*.test.tsx",
       "scripts/build-eval-pack.test.mjs",
       "scripts/promote-eval-fixture.test.mjs",
+      "scripts/smoke-github-comment.test.mjs",
       "scripts/smoke-analyze-pr-url.test.mjs"
     ]
   },

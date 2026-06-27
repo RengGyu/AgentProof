@@ -61,6 +61,16 @@ pnpm smoke:openai
 This command calls the configured deployment and prints only pass/fail metadata, not prompts, reports, or secret values.
 If Vercel stores a secret as unreadable/sensitive, `vercel env pull` may create a blank placeholder; export the needed value in your shell for that smoke run instead.
 
+Run the live GitHub comment smoke only when you intentionally want to create or update an AgentProof marker comment on a target PR:
+
+```bash
+AGENTPROOF_COMMENT_SMOKE_PR_URL=https://github.com/org/repo/pull/123 \
+AGENTPROOF_COMMENT_SMOKE_GITHUB_TOKEN=<fine-grained comment write token> \
+pnpm smoke:github-comment
+```
+
+The comment smoke first analyzes the PR, then posts through `/api/github/comment`. It prints only metadata such as action, URL, priority, and evidence coverage. It does not print the token or full report. For private PR analysis, set `AGENTPROOF_COMMENT_SMOKE_ANALYZE_TOKEN` separately.
+
 Browser recent history, portable share links, Slack payloads, and short-lived saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, and raw re-prompt text. Full Markdown export remains an explicit user action.
 
 Short-lived saved reports use in-memory storage. This is suitable for local demos, but not durable on serverless deployments. Production sharing needs Postgres/Supabase, ownership/auth, encryption, and retention policy.
