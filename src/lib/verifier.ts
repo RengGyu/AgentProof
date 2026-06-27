@@ -59,11 +59,11 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     analysisId: `ap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     source: {
-      title: input.title,
-      url: input.url,
-      author: input.author,
-      baseBranch: input.baseBranch,
-      headBranch: input.headBranch
+      title: redactSecrets(input.title),
+      url: sanitizeSourceUrl(input.url),
+      author: input.author ? redactSecrets(input.author) : undefined,
+      baseBranch: input.baseBranch ? redactSecrets(input.baseBranch) : undefined,
+      headBranch: input.headBranch ? redactSecrets(input.headBranch) : undefined
     },
     summary: {
       oneLine: summarize(priority, evidenceCoverage, topRisks),
@@ -94,6 +94,23 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     evidenceIndex,
     limitations
   };
+}
+
+function sanitizeSourceUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+
+  const redacted = redactSecrets(value);
+
+  try {
+    const url = new URL(redacted);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return redacted;
+  }
 }
 
 function evaluateRequirement(

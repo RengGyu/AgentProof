@@ -23,11 +23,15 @@ describe("buildLlmVerifierPackage", () => {
       taskText: "Use github_pat_abcdefghijklmnopqrstuvwxyz123456 and sk-testsecretabcdefghijklmnopqrstuvwxyz for this task."
     };
     const report = generateVerificationReport(input);
+    report.source.title = "Fix auth with token=super-secret-value and sk-testsecretabcdefghijklmnopqrstuvwxyz";
+    report.evidenceIndex[0].summary = "Task mentioned Authorization: Bearer secret-header-value";
     const pkg = buildLlmVerifierPackage(input, report);
     const serialized = JSON.stringify(pkg);
 
     expect(serialized).not.toContain("github_pat_");
     expect(serialized).not.toContain("sk-testsecret");
+    expect(serialized).not.toContain("super-secret-value");
+    expect(serialized).not.toContain("secret-header-value");
     expect(serialized).toContain("[redacted]");
   });
 

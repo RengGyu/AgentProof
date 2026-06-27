@@ -6,6 +6,28 @@ import { generateVerificationReport } from "./verifier";
 import type { PullRequestInput, VerificationReport } from "./types";
 
 describe("generateVerificationReport", () => {
+  it("redacts source metadata and strips URL query data before report surfaces", () => {
+    const report = generateVerificationReport({
+      title: "Fix auth token=super-secret-value",
+      url: "https://user:ghp_secret_should_not_leak@github.com/acme/repo/pull/12?token=sk-secret#files",
+      author: "bot-token=super-secret-value",
+      baseBranch: "main",
+      headBranch: "agent/secret=super-secret-value",
+      description: "Implemented validation.",
+      taskText: "Acceptance criteria: add validation.",
+      changedFiles: [],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const serialized = JSON.stringify(report.source);
+    expect(report.source.url).toBe("https://github.com/acme/repo/pull/12");
+    expect(serialized).not.toContain("super-secret-value");
+    expect(serialized).not.toContain("ghp_secret_should_not_leak");
+    expect(serialized).not.toContain("sk-secret");
+    expect(serialized).not.toContain("#files");
+  });
+
   it("classifies patched test files as test evidence", () => {
     const evidence = buildEvidenceIndex("", "", [
       {

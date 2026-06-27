@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment } from "@/lib/markdown";
-import { parseGitHubPullUrl } from "@/lib/github";
+import { normalizeGitHubPullUrl, parseGitHubPullUrl } from "@/lib/github";
 import { utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
+import { redactSecrets } from "@/lib/redact";
 import type { PostGitHubCommentRequest, VerificationReport } from "@/lib/types";
 
 const MAX_BODY_BYTES = 220_000;
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
 
     const validation = validateVerificationReport(body.report, { mode: "full" });
     if (!validation.valid) {
-      return jsonNoStore({ error: "Report failed validation.", details: validation.errors }, 422);
+      return jsonNoStore({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, 422);
     }
 
     const parsed = parseGitHubPullUrl(body.prUrl);
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
       return jsonNoStore({ error: "PR URL must be a GitHub pull request URL." }, 400);
     }
 
-    const report = body.report as VerificationReport;
+    const report = sanitizeReportSource(body.report as VerificationReport);
     const reportSource = report.source.url ? parseGitHubPullUrl(report.source.url) : null;
 
     if (report.source.url && !reportSource) {
@@ -96,17 +97,31 @@ export async function POST(request: Request) {
     const json = (await response.json()) as GitHubIssueComment;
     return jsonNoStore({
       action: existing ? "updated" : "created",
-      url: json.html_url ?? body.prUrl,
+      url: json.html_url ?? normalizeGitHubPullUrl(body.prUrl) ?? redactSecrets(body.prUrl),
       warning: existingResult.capped
         ? "AgentProof checked 500 existing comments and did not find a prior marker comment."
         : undefined
     });
   } catch (error) {
     return jsonNoStore(
-      { error: error instanceof Error ? error.message : "GitHub comment post failed." },
+      { error: redactSecrets(error instanceof Error ? error.message : "GitHub comment post failed.") },
       400
     );
   }
+}
+
+function sanitizeReportSource(report: VerificationReport): VerificationReport {
+  return {
+    ...report,
+    source: {
+      ...report.source,
+      title: redactSecrets(report.source.title),
+      url: report.source.url ? normalizeGitHubPullUrl(report.source.url) ?? redactSecrets(report.source.url) : undefined,
+      author: report.source.author ? redactSecrets(report.source.author) : undefined,
+      baseBranch: report.source.baseBranch ? redactSecrets(report.source.baseBranch) : undefined,
+      headBranch: report.source.headBranch ? redactSecrets(report.source.headBranch) : undefined
+    }
+  };
 }
 
 async function findExistingAgentProofComment(

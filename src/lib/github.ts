@@ -95,6 +95,13 @@ export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
   }
 }
 
+export function normalizeGitHubPullUrl(url: string): string | null {
+  const parsed = parseGitHubPullUrl(url);
+  if (!parsed) return null;
+
+  return `https://github.com/${parsed.owner}/${parsed.repo}/pull/${parsed.number}`;
+}
+
 export async function buildPullRequestInput(request: AnalyzeRequest): Promise<PullRequestInput> {
   if (request.prUrl) {
     if (!parseGitHubPullUrl(request.prUrl)) {
@@ -122,9 +129,11 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
 }
 
 function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: string[] = []): PullRequestInput {
+  const safePrUrl = request.prUrl ? normalizeGitHubPullUrl(request.prUrl) ?? redactSecrets(request.prUrl) : undefined;
+
   return {
-    url: request.prUrl,
-    title: request.prUrl ? `PR analysis for ${request.prUrl}` : "Pasted PR evidence",
+    url: safePrUrl,
+    title: safePrUrl ? `PR analysis for ${safePrUrl}` : "Pasted PR evidence",
     description: redactSecrets(request.prDescription ?? ""),
     taskText: redactSecrets(request.taskText ?? ""),
     changedFiles: parseChangedFiles(request.changedFiles ?? ""),
@@ -144,6 +153,8 @@ async function fetchGitHubPullRequest(
   if (!parsed) {
     return null;
   }
+
+  const safePrUrl = normalizeGitHubPullUrl(prUrl) ?? redactSecrets(prUrl);
 
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -180,7 +191,7 @@ async function fetchGitHubPullRequest(
   }
 
   return {
-    url: prUrl,
+    url: safePrUrl,
     title: pr.title ?? `PR #${parsed.number}`,
     description: redactSecrets(pr.body ?? ""),
     author: pr.user?.login,

@@ -85,8 +85,16 @@ if (!llmResponse.ok) {
 }
 
 const llmJson = await llmResponse.json();
-if (!llmJson.report?.analysisId || llmJson.source !== "openai") {
+if (!llmJson.report?.analysisId) {
   console.error("OpenAI verifier response did not include the expected report metadata.");
+  process.exit(1);
+}
+
+if (llmJson.source !== "openai") {
+  console.error(`OpenAI verifier returned ${llmJson.source ?? "unknown"} instead of openai.`);
+  if (llmJson.warning) {
+    console.error(redactForConsole(String(llmJson.warning)).slice(0, 800));
+  }
   process.exit(1);
 }
 
@@ -97,11 +105,23 @@ console.log(`Priority: ${llmJson.report.summary?.priority ?? "unknown"}`);
 
 async function failWithStatus(label, response) {
   const body = await response.text();
-  const safeBody = body.replace(/gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_-]+/g, "[REDACTED]");
+  const safeBody = redactForConsole(body);
 
   console.error(`${label} failed with HTTP ${response.status}.`);
   console.error(safeBody.slice(0, 800));
   process.exit(1);
+}
+
+function redactForConsole(value) {
+  return value
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED]")
+    .replace(/https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/g, "[REDACTED]")
+    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}/g, "[REDACTED]")
+    .replace(/github_pat_[A-Za-z0-9_]{20,}/g, "[REDACTED]")
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, "[REDACTED]")
+    .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, "[REDACTED]")
+    .replace(/authorization\s*:\s*bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "[REDACTED]")
+    .replace(/(api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi, "[REDACTED]");
 }
 
 function loadEnvLocal() {

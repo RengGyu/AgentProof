@@ -35,6 +35,40 @@ describe("openai verifier adapter", () => {
     expect(requestBody.store).toBe(false);
   });
 
+  it("trusts only the redacted deterministic baseline when source evidence contains secrets", async () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "Use sk-input_secret_should_not_leak for this task."
+    };
+    const report = generateVerificationReport(input);
+    report.source.title = "Fix token=source-secret-value";
+    report.evidenceIndex[0].summary = "Authorization: Bearer evidence-secret-value";
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as {
+        input: Array<{ content: Array<{ text: string }> }>;
+      };
+      const userPayload = JSON.parse(requestBody.input[1].content[0].text) as {
+        deterministicReport: unknown;
+      };
+
+      return new Response(JSON.stringify({ output_text: JSON.stringify(userPayload.deterministicReport) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    });
+
+    const result = await verifyReportWithOpenAI(input, report, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(serialized).not.toContain("source-secret-value");
+    expect(serialized).not.toContain("evidence-secret-value");
+    expect(serialized).not.toContain("sk-input_secret_should_not_leak");
+    expect(serialized).toContain("[redacted]");
+  });
+
   it("normalizes nullable optional fields returned for OpenAI strict schemas", async () => {
     const input = { ...demoScenarios.clean };
     delete input.url;
@@ -176,5 +210,94 @@ describe("openai verifier adapter", () => {
         fetchFn: fetchMock as unknown as typeof fetch
       })
     ).rejects.toThrow("changed deterministic evidence");
+  });
+
+  it("rejects structured model output that changes deterministic metadata", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    invalid.analysisId = "ap_fabricated";
+    invalid.source.title = "Different PR title";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("analysisId changed");
+  });
+
+  it("rejects structured model output that rewrites extracted requirement or claim identity", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    invalid.requirements[0].requirementText = "Invent a different acceptance criterion.";
+    if (invalid.claims[0]) {
+      invalid.claims[0].text = "Invented agent claim.";
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("requirement");
+  });
+
+  it("rejects structured model output that rewrites deterministic testing status", async () => {
+    const input = demoScenarios["missing-tests"];
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    invalid.testing.missingTests = [];
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("testing changed");
+  });
+
+  it("allows deterministic testing fields when only JSON object key order changes", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const output = structuredClone(report);
+    output.testing = {
+      missingTests: report.testing.missingTests,
+      typecheckStatus: report.testing.typecheckStatus,
+      lintStatus: report.testing.lintStatus,
+      ciStatus: report.testing.ciStatus
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(output) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).resolves.toEqual(report);
   });
 });
