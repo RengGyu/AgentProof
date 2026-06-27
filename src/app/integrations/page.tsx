@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { getGitHubAppConfigStatus } from "@/lib/github-app";
 
 const rows = [
   {
     name: "GitHub App webhook",
-    purpose: "Verify signed GitHub pull_request/check/status events before future automated analysis.",
-    requiredEnv: ["GITHUB_APP_ID", "GITHUB_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET"]
+    purpose: "Dry-run only: verify signed GitHub pull_request/check/status events before future automated analysis. No automatic comments or analysis are triggered.",
+    requiredEnv: ["GITHUB_WEBHOOK_SECRET"],
+    optionalEnv: ["GITHUB_APP_ID", "GITHUB_PRIVATE_KEY"]
   },
   {
     name: "Slack notifications",
@@ -26,8 +26,6 @@ const rows = [
 ];
 
 export default function IntegrationsPage() {
-  const github = getGitHubAppConfigStatus();
-
   return (
     <main className="shared-layout">
       <header className="integration-head">
@@ -66,18 +64,18 @@ export default function IntegrationsPage() {
       </section>
 
       <section className="card">
-        <h2>Current GitHub App Config</h2>
+        <h2>GitHub App Boundary</h2>
+        <p className="muted">
+          Public readiness pages do not expose live secret configuration. The webhook endpoint verifies signatures and returns bounded metadata only.
+        </p>
         <ul className="plain-list">
-          <li>App ID: {github.appIdConfigured ? "configured" : "missing"}</li>
+          <li>Signed intake requires <code>GITHUB_WEBHOOK_SECRET</code>.</li>
           <li>
-            Private key: {github.privateKeyConfigured
-              ? github.privateKeyFormatValid
-                ? "configured, valid PEM"
-                : "configured, invalid PEM"
-              : "missing"}
+            Future App automation additionally requires <code>GITHUB_APP_ID</code> and a valid{" "}
+            <code>GITHUB_PRIVATE_KEY</code>.
           </li>
-          <li>Webhook secret: {github.webhookSecretConfigured ? "configured" : "missing"}</li>
-          <li>Ready: {github.ready ? "yes" : "no"}</li>
+          <li>Automation ready: no</li>
+          <li>Automatic comments and analysis remain disabled.</li>
         </ul>
       </section>
     </main>
