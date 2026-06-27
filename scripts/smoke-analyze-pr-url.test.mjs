@@ -92,6 +92,43 @@ describe("smoke-analyze-pr-url", () => {
     })).rejects.toThrow("Report claimed passed CI without passing check/log evidence");
   });
 
+  it("treats saved-report cleanup as best-effort after summary-only validation", async () => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: fullReport }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: "saved_123",
+        url: "https://agentproof.example/reports/saved_123",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        report: savedReport,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: false }));
+
+    const result = await runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      fetchImpl: fetchMock
+    });
+
+    expect(result.savedReportDeleted).toBe(false);
+    expect(result.savedReportDeleteWarning).toContain("best-effort");
+    expect(result.savedEvidenceCount).toBe(0);
+    expect(result.savedClaimCount).toBe(0);
+    expect(result.savedRepromptOmitted).toBe(true);
+    expect(result.savedEvidenceRefsCleared).toBe(true);
+  });
+
   it("does not count preview or security checks as passing execution evidence even with test words", () => {
     const report = reportFixture();
     report.evidenceIndex = [
