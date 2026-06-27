@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
 import { buildEvidenceIndex } from "./extractors";
+import { validateVerificationReport } from "./report-validation";
 import { generateVerificationReport } from "./verifier";
 import type { PullRequestInput, VerificationReport } from "./types";
 
@@ -270,6 +271,36 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(report.testing.ciStatus).toBe("passed");
+  });
+
+  it("keeps passing execution evidence on met requirements when diff refs hit the cap", () => {
+    const report = generateVerificationReport({
+      title: "Validate export evidence report",
+      description: "Implemented export evidence report validation.",
+      taskText: "Acceptance criteria: validate export evidence report.",
+      changedFiles: Array.from({ length: 7 }, (_value, index) => ({
+        path: `src/reports/exportEvidenceReport${index}.ts`,
+        additions: 8,
+        deletions: 1,
+        status: "modified" as const,
+        patch: "+ validateExportEvidenceReport(exportEvidenceReport)"
+      })),
+      checks: [
+        {
+          name: "CI test/build evidence verification",
+          status: "passed",
+          summary: "validate export evidence report tests passed"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+    const requirement = report.requirements[0];
+    const requirementEvidence = refsToEvidence(report, requirement?.evidenceRefs ?? []);
+    const validation = validateVerificationReport(report, { mode: "full" });
+
+    expect(requirement?.status).toBe("met");
+    expect(requirementEvidence.some((item) => item.kind === "check" && item.summary.startsWith("Status: passed"))).toBe(true);
+    expect(validation).toEqual({ valid: true, errors: [] });
   });
 
   it("does not trust passing words when execution status is unknown", () => {

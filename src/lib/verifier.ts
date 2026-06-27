@@ -133,9 +133,10 @@ function evaluateRequirement(
     .filter(({ item, match }) => item.kind === "test" && isUsefulArtifactMatch(match))
     .map(({ item }) => item.id);
   const hasMatchingTestArtifactEvidence = matchingTestArtifactRefs.length > 0;
-  const hasMatchingPassingTestExecutionEvidence = matches.some(({ item, match }) =>
-    match.strong && isPassingTestExecutionEvidence(item)
-  );
+  const matchingPassingExecutionRefs = matches
+    .filter(({ item, match }) => match.strong && isPassingTestExecutionEvidence(item))
+    .map(({ item }) => item.id);
+  const hasMatchingPassingTestExecutionEvidence = matchingPassingExecutionRefs.length > 0;
   const failedCheck = hasFailingExecutionEvidence(input);
 
   if (failedCheck) {
@@ -157,7 +158,11 @@ function evaluateRequirement(
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "met",
-      evidenceRefs: refsForReport(matches, strongImplementationRefs),
+      evidenceRefs: refsForReport(matches, [
+        ...matchingPassingExecutionRefs,
+        ...matchingTestArtifactRefs,
+        ...strongImplementationRefs
+      ]),
       gaps: [],
       reviewerNote: "Test evidence appears connected to this criterion.",
       confidence: 0.82
@@ -217,7 +222,7 @@ function evaluateRequirement(
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "met",
-      evidenceRefs: refsForReport(matches, strongImplementationRefs),
+      evidenceRefs: refsForReport(matches, [...matchingPassingExecutionRefs, ...strongImplementationRefs]),
       gaps: [],
       reviewerNote: "Evidence appears connected to this criterion.",
       confidence: 0.85
