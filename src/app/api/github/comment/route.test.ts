@@ -173,6 +173,37 @@ describe("POST /api/github/comment", () => {
     );
   });
 
+  it("canonicalizes source URLs before posting or returning comment metadata", async () => {
+    const report = reportFor(
+      "https://user:ghp_secret_should_not_leak@github.com/org/repo/pull/1?token=sk-secret#files"
+    );
+    report.source.title = "Fix auth token=source_secret_should_not_leak";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ id: 301 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          prUrl: "https://user:ghp_secret_should_not_leak@github.com/org/repo/pull/1?token=sk-secret#files",
+          githubToken: "write-token",
+          report
+        })
+      })
+    );
+    const json = await response.json();
+    const postedBody = String(fetchMock.mock.calls.at(-1)?.[1]?.body);
+
+    expect(response.status).toBe(200);
+    expect(json.url).toBe("https://github.com/org/repo/pull/1");
+    expect(postedBody).not.toContain("ghp_secret_should_not_leak");
+    expect(postedBody).not.toContain("sk-secret");
+    expect(postedBody).not.toContain("source_secret_should_not_leak");
+  });
+
   it("patches an existing AgentProof marker comment found on page 2", async () => {
     const report = reportFor("https://github.com/org/repo/pull/1");
     const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: index + 1, body: "ordinary comment" }));

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildPullRequestInput, parseGitHubPullUrl } from "./github";
+import { buildPullRequestInput, normalizeGitHubPullUrl, parseGitHubPullUrl } from "./github";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -27,6 +27,12 @@ describe("parseGitHubPullUrl", () => {
     expect(parseGitHubPullUrl("https://example.com/vercel/next.js/pull/1")).toBeNull();
     expect(parseGitHubPullUrl("https://github.com/vercel/next.js/pull/1/files")).toBeNull();
     expect(parseGitHubPullUrl("not a url")).toBeNull();
+  });
+
+  it("canonicalizes PR URLs before they are persisted in reports", () => {
+    expect(
+      normalizeGitHubPullUrl("https://user:ghp_secret_should_not_leak@github.com/acme/repo/pull/12?token=sk-secret#files")
+    ).toBe("https://github.com/acme/repo/pull/12");
   });
 });
 
@@ -63,6 +69,22 @@ describe("buildPullRequestInput", () => {
     expect(input.limitations?.join(" ")).toContain("rate limit");
     expect(input.limitations?.join(" ")).toContain("pasted evidence only");
     expect(JSON.stringify(input)).not.toContain("ghp_secret_should_not_leak");
+  });
+
+  it("strips userinfo, query, and hash from pasted fallback PR source URLs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("rate limit", { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://user:ghp_secret_should_not_leak@github.com/acme/private-repo/pull/12?token=sk-secret#files",
+      changedFiles: "src/features/auth/PasswordResetForm.tsx"
+    });
+
+    expect(input.url).toBe("https://github.com/acme/private-repo/pull/12");
+    expect(input.title).toBe("PR analysis for https://github.com/acme/private-repo/pull/12");
+    expect(JSON.stringify(input)).not.toContain("ghp_secret_should_not_leak");
+    expect(JSON.stringify(input)).not.toContain("sk-secret");
+    expect(JSON.stringify(input)).not.toContain("#files");
   });
 
   it("classifies private or missing PR failures when no pasted evidence is available", async () => {

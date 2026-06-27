@@ -1,6 +1,7 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { verifyReportWithOpenAI } from "@/lib/openai-verifier";
+import { redactSecrets } from "@/lib/redact";
 import type { PullRequestInput, VerificationReport } from "@/lib/types";
 
 const MAX_LLM_REQUEST_BYTES = 220_000;
@@ -29,6 +30,11 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "Invalid LLM verifier token." }, { status: 401 });
   }
 
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_LLM_REQUEST_BYTES) {
+    return noStoreJson({ error: "LLM verifier payload is too large." }, { status: 413 });
+  }
+
   const bodyText = await request.text();
   if (utf8ByteLength(bodyText) > MAX_LLM_REQUEST_BYTES) {
     return noStoreJson({ error: "LLM verifier payload is too large." }, { status: 413 });
@@ -41,7 +47,7 @@ export async function POST(request: Request) {
 
   const validation = validateVerificationReport(body.report, { mode: "full" });
   if (!validation.valid) {
-    return noStoreJson({ error: "Report failed validation.", details: validation.errors }, { status: 422 });
+    return noStoreJson({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, { status: 422 });
   }
 
   try {
@@ -54,10 +60,29 @@ export async function POST(request: Request) {
   } catch (error) {
     return noStoreJson(
       {
-        error: error instanceof Error ? error.message : "LLM verifier failed.",
-        fallback: "Use the deterministic verifier report."
-      },
-      { status: 502 }
+        report: redactReportStrings(body.report),
+        source: "deterministic-fallback",
+        warning: redactSecrets(error instanceof Error ? error.message : "LLM verifier failed."),
+        fallback: "OpenAI output was not trusted; deterministic verifier report returned."
+      }
     );
   }
+}
+
+function redactReportStrings<T>(value: T): T {
+  if (typeof value === "string") {
+    return redactSecrets(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactReportStrings(item)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [key, redactReportStrings(nestedValue)])
+    ) as T;
+  }
+
+  return value;
 }

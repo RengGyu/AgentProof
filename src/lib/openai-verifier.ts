@@ -18,6 +18,7 @@ export async function verifyReportWithOpenAI(
   options: OpenAIVerifierOptions
 ): Promise<VerificationReport> {
   const llmPackage = buildLlmVerifierPackage(input, deterministicReport);
+  const baselineReport = llmPackage.input.deterministicReport;
   const fetchImpl = options.fetchFn ?? fetch;
   const response = await fetchImpl(OPENAI_RESPONSES_URL, {
     method: "POST",
@@ -73,10 +74,10 @@ export async function verifyReportWithOpenAI(
 
   const validation = validateVerificationReport(report, { mode: "full" });
   if (!validation.valid) {
-    throw new Error(`OpenAI verifier output failed validation: ${validation.errors.join(" ")}`);
+    throw new Error(`OpenAI verifier output failed validation: ${validation.errors.map(redactSecrets).join(" ")}`);
   }
 
-  const baselineErrors = validateOutputEvidenceMatchesBaseline(report as VerificationReport, deterministicReport);
+  const baselineErrors = validateOutputMatchesDeterministicBaseline(report as VerificationReport, baselineReport);
   if (baselineErrors.length > 0) {
     throw new Error(`OpenAI verifier output changed deterministic evidence: ${baselineErrors.join(" ")}`);
   }
@@ -116,13 +117,29 @@ function normalizeOpenAIReport(value: unknown): unknown {
   return report;
 }
 
-function validateOutputEvidenceMatchesBaseline(
+function validateOutputMatchesDeterministicBaseline(
   report: VerificationReport,
   deterministicReport: VerificationReport
 ): string[] {
   const errors: string[] = [];
-  const baselineById = new Map(deterministicReport.evidenceIndex.map((item) => [item.id, item]));
 
+  compareValue(report.analysisId, deterministicReport.analysisId, "analysisId", errors);
+  compareValue(report.createdAt, deterministicReport.createdAt, "createdAt", errors);
+  compareSource(report.source, deterministicReport.source, errors);
+  compareRequirementIdentity(report, deterministicReport, errors);
+  compareClaimIdentity(report, deterministicReport, errors);
+  compareJson(report.testing, deterministicReport.testing, "testing", errors);
+  compareEvidenceIndex(report, deterministicReport, errors);
+
+  return errors;
+}
+
+function compareEvidenceIndex(
+  report: VerificationReport,
+  deterministicReport: VerificationReport,
+  errors: string[]
+) {
+  const baselineById = new Map(deterministicReport.evidenceIndex.map((item) => [item.id, item]));
   if (report.evidenceIndex.length !== deterministicReport.evidenceIndex.length) {
     errors.push("evidenceIndex length changed.");
   }
@@ -145,8 +162,93 @@ function validateOutputEvidenceMatchesBaseline(
       errors.push(`evidenceIndex item ${item.id} differs from deterministic baseline.`);
     }
   }
+}
 
-  return errors;
+function compareSource(
+  source: VerificationReport["source"],
+  baselineSource: VerificationReport["source"],
+  errors: string[]
+) {
+  compareValue(source.title, baselineSource.title, "source.title", errors);
+  compareValue(source.url, baselineSource.url, "source.url", errors);
+  compareValue(source.author, baselineSource.author, "source.author", errors);
+  compareValue(source.baseBranch, baselineSource.baseBranch, "source.baseBranch", errors);
+  compareValue(source.headBranch, baselineSource.headBranch, "source.headBranch", errors);
+}
+
+function compareRequirementIdentity(
+  report: VerificationReport,
+  baselineReport: VerificationReport,
+  errors: string[]
+) {
+  const baselineById = new Map(baselineReport.requirements.map((item) => [item.requirementId, item]));
+
+  if (report.requirements.length !== baselineReport.requirements.length) {
+    errors.push("requirements length changed.");
+  }
+
+  for (const item of report.requirements) {
+    const baseline = baselineById.get(item.requirementId);
+    if (!baseline) {
+      errors.push(`requirements includes non-baseline requirement ${item.requirementId}.`);
+      continue;
+    }
+
+    if (item.requirementText !== baseline.requirementText) {
+      errors.push(`requirement ${item.requirementId} text changed.`);
+    }
+  }
+}
+
+function compareClaimIdentity(
+  report: VerificationReport,
+  baselineReport: VerificationReport,
+  errors: string[]
+) {
+  const baselineById = new Map(baselineReport.claims.map((item) => [item.id, item]));
+
+  if (report.claims.length !== baselineReport.claims.length) {
+    errors.push("claims length changed.");
+  }
+
+  for (const item of report.claims) {
+    const baseline = baselineById.get(item.id);
+    if (!baseline) {
+      errors.push(`claims includes non-baseline claim ${item.id}.`);
+      continue;
+    }
+
+    if (item.text !== baseline.text) {
+      errors.push(`claim ${item.id} text changed.`);
+    }
+  }
+}
+
+function compareJson(value: unknown, baseline: unknown, path: string, errors: string[]) {
+  if (stableStringify(value) !== stableStringify(baseline)) {
+    errors.push(`${path} changed.`);
+  }
+}
+
+function compareValue(value: unknown, baseline: unknown, path: string, errors: string[]) {
+  if (value !== baseline) {
+    errors.push(`${path} changed.`);
+  }
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
 }
 
 function summarizeOpenAIError(value: string): string {
