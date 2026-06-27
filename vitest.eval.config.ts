@@ -4,11 +4,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: [
-      "src/**/*.test.ts",
-      "src/**/*.test.tsx",
+      "scripts/evaluation-pack-summary.test.ts",
       "scripts/build-eval-pack.test.mjs",
-      "scripts/promote-eval-fixture.test.mjs",
-      "scripts/smoke-analyze-pr-url.test.mjs"
+      "scripts/promote-eval-fixture.test.mjs"
     ]
   },
   resolve: {

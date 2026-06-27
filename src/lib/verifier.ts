@@ -6,6 +6,8 @@ import {
   isRiskFile,
   isTestFile
 } from "./extractors";
+import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
+import { redactSecrets } from "./redact";
 import type {
   CheckStatus,
   EvidenceItem,
@@ -17,6 +19,8 @@ import type {
   ReviewPriorityItem,
   VerificationReport
 } from "./types";
+
+const MAX_MISSING_TEST_FINDINGS = 100;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
   const evidenceIndex = buildEvidenceIndex(
@@ -35,6 +39,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const ciStatus = aggregateStatus(input.checks, input.logs);
   const lintStatus = statusForCheck(input.checks, /lint/i);
   const typecheckStatus = statusForCheck(input.checks, /type(check|script)/i);
+  const failedNonExecutionChecks = nonExecutionFailures(input);
   const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex);
   const priority = highestPriority(reviewPriority);
   const limitations = buildLimitations(input, requirementFindings, ciStatus);
@@ -46,8 +51,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     ciStatus,
     limitations.length
   );
-  const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
-  const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus);
+  const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks.length > 0);
+  const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks);
   const claims = extractClaims(input.description, evidenceIndex);
 
   return {
@@ -124,19 +129,24 @@ function evaluateRequirement(
   const hasImplementationEvidence = implementationMatches.length > 0;
   const hasStrongImplementationEvidence = strongImplementationRefs.length > 0;
   const asksForTests = /\b(tests?|coverage|specs?)\b/i.test(requirement.text);
-  const hasMatchingTestArtifactEvidence = matches.some(({ item, match }) => item.kind === "test" && match.strong);
-  const hasMatchingPassingTestExecutionEvidence = matches.some(({ item, match }) =>
-    match.strong && isPassingTestExecutionEvidence(item)
-  );
-  const failedCheck = input.checks.some((check) => check.status === "failed") ||
-    input.logs.some((log) => log.status === "failed");
+  const matchingTestArtifactRefs = matches
+    .filter(({ item, match }) => item.kind === "test" && isUsefulArtifactMatch(match))
+    .map(({ item }) => item.id);
+  const hasMatchingTestArtifactEvidence = matchingTestArtifactRefs.length > 0;
+  const matchingPassingExecutionRefs = matches
+    .filter(({ item, match }) => match.strong && isPassingTestExecutionEvidence(item))
+    .map(({ item }) => item.id);
+  const hasMatchingPassingTestExecutionEvidence = matchingPassingExecutionRefs.length > 0;
+  const failedCheck = hasFailingExecutionEvidence(input);
 
   if (failedCheck) {
+    const failedExecutionRefs = executionFailureEvidenceRefs(input, evidenceIndex);
+
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: hasImplementationEvidence ? "partial" : "unclear",
-      evidenceRefs: refs,
+      evidenceRefs: uniqueRefs([...refs, ...failedExecutionRefs]).slice(0, 5),
       gaps: ["CI has a failing check, so requirement satisfaction is not proven."],
       reviewerNote: "Review failed checks before relying on implementation evidence.",
       confidence: hasImplementationEvidence ? 0.45 : 0.25
@@ -148,7 +158,11 @@ function evaluateRequirement(
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "met",
-      evidenceRefs: refsForReport(matches, strongImplementationRefs),
+      evidenceRefs: refsForReport(matches, [
+        ...matchingPassingExecutionRefs,
+        ...matchingTestArtifactRefs,
+        ...strongImplementationRefs
+      ]),
       gaps: [],
       reviewerNote: "Test evidence appears connected to this criterion.",
       confidence: 0.82
@@ -179,6 +193,18 @@ function evaluateRequirement(
     };
   }
 
+  if (hasMatchingTestArtifactEvidence && !hasStrongImplementationEvidence) {
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "partial",
+      evidenceRefs: refsForReport(matches, matchingTestArtifactRefs),
+      gaps: ["A matching test artifact changed, but no passing test check or implementation diff proves this criterion."],
+      reviewerNote: "Treat test-file changes as reviewer leads until execution and implementation evidence are connected.",
+      confidence: 0.48
+    };
+  }
+
   if (hasStrongImplementationEvidence && refs.length > 0) {
     if (!hasMatchingPassingTestExecutionEvidence) {
       return {
@@ -196,7 +222,7 @@ function evaluateRequirement(
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: "met",
-      evidenceRefs: refsForReport(matches, strongImplementationRefs),
+      evidenceRefs: refsForReport(matches, [...matchingPassingExecutionRefs, ...strongImplementationRefs]),
       gaps: [],
       reviewerNote: "Evidence appears connected to this criterion.",
       confidence: 0.85
@@ -229,7 +255,7 @@ function evaluateRequirement(
 function requirementEvidenceMatch(
   requirement: Requirement,
   item: EvidenceItem
-): { score: number; strong: boolean } {
+): { score: number; strong: boolean; meaningfulScore: number } {
   const text = `${item.label} ${item.summary}`.toLowerCase();
   const hits = requirement.keywords.filter((keyword) => text.includes(keyword));
   const meaningfulHits = hits.filter((keyword) => keyword.length >= 4 && !WEAK_SINGLE_MATCH_KEYWORDS.has(keyword));
@@ -237,7 +263,11 @@ function requirementEvidenceMatch(
   const canProve = item.kind === "diff" || item.kind === "test" || item.kind === "log" || item.kind === "check";
   const strong = canProve && (meaningfulHits.length >= 2 || meaningfulHits.some((keyword) => keyword.length >= 8));
 
-  return { score, strong };
+  return { score, strong, meaningfulScore: meaningfulHits.length };
+}
+
+function isUsefulArtifactMatch(match: { score: number; strong: boolean; meaningfulScore: number }): boolean {
+  return match.strong || match.meaningfulScore > 0;
 }
 
 function refsForReport(
@@ -268,12 +298,10 @@ const WEAK_SINGLE_MATCH_KEYWORDS = new Set([
   "user"
 ]);
 
-const TEST_EXECUTION_PATTERN = /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage)\b/i;
-
 function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
   return (item.kind === "check" || item.kind === "log") &&
-    TEST_EXECUTION_PATTERN.test(`${item.label} ${item.summary}`) &&
-    /\b(pass|passed|success|succeeded|green)\b/i.test(item.summary);
+    isExecutionSignal(`${item.label} ${item.summary}`) &&
+    hasPassingEvidenceStatusPrefix(item.summary);
 }
 
 function detectScopeCreep(
@@ -294,7 +322,7 @@ function detectScopeCreep(
   const outOfScopeFiles = files
     .filter((file) => !isTestFile(file.path))
     .filter((file) => {
-      const keywords = fileKeywords(file.path);
+      const keywords = pathRelationKeywords(file.path);
       const directMatch = keywords.some((keyword) =>
         Array.from(requirementKeywords).some(
           (requirementKeyword) =>
@@ -324,8 +352,8 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
   const hasPassingTestSignal =
     input.checks.some((check) => /test|spec/i.test(`${check.name} ${check.summary ?? ""}`) && check.status === "passed") ||
     input.logs.some((log) => /test|spec/i.test(`${log.source} ${log.text}`) && log.status === "passed");
-  const changedImplementationFiles = input.changedFiles.filter(
-    (file) => !isTestFile(file.path) && /\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|cs)$/.test(file.path)
+  const changedImplementationFiles = input.changedFiles.filter((file) =>
+    !isTestFile(file.path) && isBehaviorAffectingPath(file.path)
   );
 
   if (changedImplementationFiles.length === 0) {
@@ -336,7 +364,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
 
   return changedImplementationFiles
     .filter((file) => !hasMatchingVerifiedTestEvidence(file.path, testFiles, hasPassingTestSignal))
-    .slice(0, 8)
+    .slice(0, MAX_MISSING_TEST_FINDINGS)
     .map((file) => {
       const hasRelatedTestFile = testFiles.some((testFile) => pathsLookRelated(file.path, testFile.path));
 
@@ -350,6 +378,11 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
         evidenceRefs: uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5)
       };
     });
+}
+
+function isBehaviorAffectingPath(path: string): boolean {
+  return /\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|cs|cfg|ini|toml|ya?ml|json)$/.test(path) ||
+    /(^|\/)(setup\.cfg|pyproject\.toml|tox\.ini|noxfile\.py|setup\.py|package\.json)$/.test(path);
 }
 
 function hasMatchingVerifiedTestEvidence(
@@ -368,11 +401,37 @@ function pathsLookRelated(implementationPath: string, testPath: string): boolean
     return true;
   }
 
-  const implementationKeywords = new Set(fileKeywords(implementationPath).filter((keyword) => keyword.length >= 4));
-  const sharedKeywords = fileKeywords(testPath).filter((keyword) => implementationKeywords.has(keyword) && keyword.length >= 4);
+  const implementationKeywords = new Set(pathRelationKeywords(implementationPath));
+  const sharedKeywords = pathRelationKeywords(testPath).filter((keyword) => implementationKeywords.has(keyword));
 
   return sharedKeywords.length >= 2;
 }
+
+function pathRelationKeywords(path: string): string[] {
+  return fileKeywords(path).filter((keyword) => keyword.length >= 4 && !GENERIC_PATH_KEYWORDS.has(keyword));
+}
+
+const GENERIC_PATH_KEYWORDS = new Set([
+  "app",
+  "apps",
+  "component",
+  "components",
+  "feature",
+  "features",
+  "lib",
+  "libs",
+  "module",
+  "modules",
+  "package",
+  "packages",
+  "server",
+  "source",
+  "src",
+  "test",
+  "tests",
+  "util",
+  "utils"
+]);
 
 function fileStem(path: string): string {
   const filename = path.split(/[\\/]/).pop() ?? path;
@@ -397,12 +456,20 @@ function buildReviewPriority(
 
   if (ciStatus === "failed") {
     items.push({
-      path: "CI checks",
-      reason: "At least one check failed; requirement satisfaction is not proven.",
+      path: "Test/build checks",
+      reason: "At least one test, build, or CI execution check failed; requirement satisfaction is not proven.",
       priority: "blocker",
-      evidenceRefs: evidenceIndex
-        .filter((item) => (item.kind === "check" || item.kind === "log") && /\bfailed\b/i.test(item.summary))
-        .map((item) => item.id)
+      evidenceRefs: executionFailureEvidenceRefs(input, evidenceIndex)
+    });
+  }
+
+  const nonExecutionFailureRefs = nonExecutionFailureEvidenceRefs(input, evidenceIndex);
+  if (nonExecutionFailureRefs.length > 0) {
+    items.push({
+      path: "Static or merge-gate checks",
+      reason: "A non-test/build check failed; review merge policy separately from requirement and execution proof.",
+      priority: "high",
+      evidenceRefs: nonExecutionFailureRefs
     });
   }
 
@@ -510,7 +577,8 @@ function buildReprompt(
   requirements: RequirementFinding[],
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
-  ciStatus: CheckStatus
+  ciStatus: CheckStatus,
+  failedNonExecutionChecks: string[]
 ): string {
   const actions: string[] = [];
   const weakRequirements = requirements.filter((finding) => finding.status !== "met");
@@ -528,7 +596,11 @@ function buildReprompt(
   }
 
   if (ciStatus === "failed") {
-    actions.push("Fix the failing CI check and summarize the exact log line that proves it now passes.");
+    actions.push("Fix the failing test/build check and summarize the exact log line that proves it now passes.");
+  }
+
+  if (failedNonExecutionChecks.length > 0) {
+    actions.push(`Address failing static or merge-gate checks separately: ${failedNonExecutionChecks.slice(0, 5).join(", ")}.`);
   }
 
   if (actions.length === 0) {
@@ -544,28 +616,85 @@ function buildReprompt(
 }
 
 function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestInput["logs"] = []): CheckStatus {
-  const statuses = [
-    ...checks.map((check) => check.status),
-    ...logs.map((log) => log.status).filter((status): status is CheckStatus => Boolean(status))
+  const executionStatuses = [
+    ...checks
+      .filter((check) => isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+      .map((check) => check.status),
+    ...logs
+      .filter((log) => isExecutionSignal(`${log.source} ${log.text}`))
+      .map((log) => log.status)
+      .filter((status): status is CheckStatus => Boolean(status))
   ];
 
-  if (statuses.length === 0) {
+  if (executionStatuses.length === 0) {
     return "unknown";
   }
 
-  if (statuses.some((status) => status === "failed")) {
+  if (executionStatuses.some((status) => status === "failed")) {
     return "failed";
   }
 
-  if (statuses.some((status) => status === "pending")) {
+  if (executionStatuses.some((status) => status === "pending")) {
     return "pending";
   }
 
-  if (statuses.every((status) => status === "passed")) {
+  if (executionStatuses.length > 0 && executionStatuses.every((status) => status === "passed")) {
     return "passed";
   }
 
   return "unknown";
+}
+
+function isExecutionSignal(text: string): boolean {
+  return isExecutionSignalText(text);
+}
+
+function hasFailingExecutionEvidence(input: PullRequestInput): boolean {
+  return input.checks.some((check) => check.status === "failed" && isExecutionSignal(`${check.name} ${check.summary ?? ""}`)) ||
+    input.logs.some((log) => log.status === "failed" && isExecutionSignal(`${log.source} ${log.text}`));
+}
+
+function nonExecutionFailures(input: PullRequestInput): string[] {
+  return [
+    ...input.checks
+      .filter((check) => check.status === "failed" && !isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+      .map((check) => check.name),
+    ...input.logs
+      .filter((log) => log.status === "failed" && !isExecutionSignal(`${log.source} ${log.text}`))
+      .map((log) => log.source)
+  ];
+}
+
+function nonExecutionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
+  const failedCheckLabels = new Set(input.checks
+    .filter((check) => check.status === "failed" && !isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+    .map((check) => redactSecrets(check.name)));
+  const failedLogLabels = new Set(input.logs
+    .filter((log) => log.status === "failed" && !isExecutionSignal(`${log.source} ${log.text}`))
+    .map((log) => redactSecrets(log.source)));
+
+  return evidenceIndex
+    .filter((item) =>
+      (item.kind === "check" && failedCheckLabels.has(item.label)) ||
+      (item.kind === "log" && failedLogLabels.has(item.label))
+    )
+    .map((item) => item.id);
+}
+
+function executionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
+  const failedCheckLabels = new Set(input.checks
+    .filter((check) => check.status === "failed" && isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+    .map((check) => redactSecrets(check.name)));
+  const failedLogLabels = new Set(input.logs
+    .filter((log) => log.status === "failed" && isExecutionSignal(`${log.source} ${log.text}`))
+    .map((log) => redactSecrets(log.source)));
+
+  return evidenceIndex
+    .filter((item) =>
+      (item.kind === "check" && failedCheckLabels.has(item.label)) ||
+      (item.kind === "log" && failedLogLabels.has(item.label))
+    )
+    .map((item) => item.id);
 }
 
 function statusForCheck(checks: PullRequestInput["checks"], pattern: RegExp): CheckStatus {
@@ -623,11 +752,13 @@ function buildTopRisks(
   requirements: RequirementFinding[],
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
-  ciStatus: CheckStatus
+  ciStatus: CheckStatus,
+  hasNonExecutionCheckFailures: boolean
 ): string[] {
   const risks: string[] = [];
 
-  if (ciStatus === "failed") risks.push("CI failed, so the PR is not proven ready.");
+  if (ciStatus === "failed") risks.push("Test/build execution failed, so the PR is not proven ready.");
+  if (hasNonExecutionCheckFailures) risks.push("Static or merge-gate checks failed outside test/build proof.");
   if (requirements.some((finding) => finding.status === "missing")) risks.push("One or more requirements have no matching implementation evidence.");
   if (requirements.some((finding) => finding.status === "unclear")) risks.push("Some requirements are too vague or weakly evidenced.");
   if (requirements.some((finding) => finding.status === "partial")) risks.push("Some requirements have only partial evidence.");

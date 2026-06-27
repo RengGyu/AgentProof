@@ -60,7 +60,7 @@ Internal research supports a conditional build: broad AI code review is crowded,
 The differentiation stays narrow:
 
 - Requirement-to-evidence traceability, not generic review comments.
-- CI, lint, typecheck, test, and diff evidence before model judgment.
+- Test/build execution, lint, typecheck, static check, and diff evidence before model judgment.
 - Scope creep and missing proof signals that help a human decide where to look first.
 - Re-prompt output for the coding agent when evidence is weak.
 

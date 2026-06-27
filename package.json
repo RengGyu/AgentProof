@@ -10,7 +10,15 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "smoke:openai": "node scripts/smoke-openai-verifier.mjs"
+    "smoke:analyze-pr": "node scripts/smoke-analyze-pr-url.mjs",
+    "smoke:openai": "node scripts/smoke-openai-verifier.mjs",
+    "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
+    "eval:promote:fixture": "node scripts/promote-eval-fixture.mjs",
+    "eval:pack": "vitest run src/lib/evaluation-pack.test.ts scripts/build-eval-pack.test.mjs scripts/promote-eval-fixture.test.mjs",
+    "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
+    "eval:summary:strict": "AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
+    "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
+    "eval:summary:fixture:strict": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

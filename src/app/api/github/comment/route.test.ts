@@ -145,6 +145,34 @@ describe("POST /api/github/comment", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("accepts report source PR matches with different owner and repo casing", async () => {
+    const report = reportFor("https://github.com/RengGyu/AgentProof/pull/1");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ id: 300, html_url: "https://github.com/renggyu/agentproof/pull/1#issuecomment-300" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          prUrl: "https://github.com/renggyu/agentproof/pull/1",
+          githubToken: "write-token",
+          report
+        })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.action).toBe("created");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/repos/renggyu/agentproof/issues/1/comments?per_page=100&page=1",
+      expect.objectContaining({ cache: "no-store" })
+    );
+  });
+
   it("patches an existing AgentProof marker comment found on page 2", async () => {
     const report = reportFor("https://github.com/org/repo/pull/1");
     const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: index + 1, body: "ordinary comment" }));

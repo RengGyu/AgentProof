@@ -53,10 +53,7 @@ export async function POST(request: Request) {
       return jsonNoStore({ error: "Report source URL must be a GitHub pull request URL before posting to GitHub." }, 422);
     }
 
-    if (
-      reportSource &&
-      (reportSource.owner !== parsed.owner || reportSource.repo !== parsed.repo || reportSource.number !== parsed.number)
-    ) {
+    if (reportSource && !sameGitHubPull(reportSource, parsed)) {
       return jsonNoStore({ error: "Report source PR does not match the target PR URL." }, 422);
     }
 
@@ -149,6 +146,15 @@ function jsonNoStore(payload: unknown, status = 200) {
       "Referrer-Policy": "no-referrer"
     }
   });
+}
+
+function sameGitHubPull(
+  left: NonNullable<ReturnType<typeof parseGitHubPullUrl>>,
+  right: NonNullable<ReturnType<typeof parseGitHubPullUrl>>
+): boolean {
+  return left.owner.toLowerCase() === right.owner.toLowerCase() &&
+    left.repo.toLowerCase() === right.repo.toLowerCase() &&
+    left.number === right.number;
 }
 
 function mapGitHubError(status: number, action: string): string {

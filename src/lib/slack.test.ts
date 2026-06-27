@@ -17,6 +17,7 @@ describe("slack helpers", () => {
     expect(payloadText).not.toContain("Patch excerpt");
     expect(payloadText).not.toContain(report.reprompt.prompt);
     expect(payloadText).not.toContain("Added raw claim");
+    expect(payloadText).toContain("Test/build:");
     expect(payloadText).toContain("summary report");
   });
 

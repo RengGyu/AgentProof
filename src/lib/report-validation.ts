@@ -1,4 +1,5 @@
 import type { VerificationReport } from "./types";
+import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
@@ -288,10 +289,6 @@ function validateFullReportProvenance(report: RecordValue, evidenceIds: Set<stri
     return;
   }
 
-  if (hasEvidenceUnavailableNote(report.limitations)) {
-    return;
-  }
-
   if (isRecord(report.scope) && report.scope.suspected === true) {
     const refs = getStringArray(report.scope.evidenceRefs);
     if (refs.length === 0 && !hasEvidenceUnavailableNote(report.scope.reasons)) {
@@ -369,6 +366,13 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     errors.push("summary.confidence must be capped when CI status is unknown or pending.");
   }
 
+  if (
+    testing?.ciStatus === "passed" &&
+    !Array.from(evidenceById.values()).some((evidence) => isPassingTestExecutionEvidence(evidence))
+  ) {
+    errors.push("testing.ciStatus cannot be passed without passing test, build, or CI execution evidence.");
+  }
+
   if (!Array.isArray(report.requirements)) {
     return;
   }
@@ -380,7 +384,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`requirements[${index}] cannot be met while evidence gaps are present.`);
     }
 
-    if (item.status !== "met" || typeof item.requirementText !== "string" || !/\b(tests?|coverage|specs?)\b/i.test(item.requirementText)) {
+    if (item.status !== "met") {
       return;
     }
 
@@ -390,18 +394,52 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       .some((evidence) => evidence ? isPassingTestExecutionEvidence(evidence) : false);
 
     if (!hasPassingTestExecution) {
+      errors.push(`requirements[${index}] cannot be met without passing test, build, or CI execution evidence.`);
+    }
+
+    if (typeof item.requirementText !== "string" || !/\b(tests?|coverage|specs?)\b/i.test(item.requirementText)) {
+      return;
+    }
+
+    if (!hasPassingTestExecution) {
       errors.push(`requirements[${index}] test requirement cannot be met without passing test execution evidence.`);
     }
   });
+
+  if (!Array.isArray(report.claims)) {
+    return;
+  }
+
+  report.claims.forEach((item, index) => {
+    if (!isRecord(item) || item.supported !== true || typeof item.text !== "string" || !isExecutionClaim(item.text)) {
+      return;
+    }
+
+    const refs = getStringArray(item.evidenceRefs);
+    const hasPassingTestExecution = refs
+      .map((ref) => evidenceById.get(ref))
+      .some((evidence) => evidence ? isPassingTestExecutionEvidence(evidence) : false);
+
+    if (!hasPassingTestExecution) {
+      errors.push(`claims[${index}] execution claim cannot be supported without passing test or CI execution evidence.`);
+    }
+  });
+}
+
+function isExecutionClaim(text: string): boolean {
+  return /\btested\b/i.test(text) ||
+    /\b(verified|validated).{0,80}\b(tests?|spec|unit|integration|e2e|ci|build|coverage)\b/i.test(text) ||
+    /\b(tests?|spec|unit|integration|e2e|ci|build|coverage).{0,80}\b(pass|passed|verified|validated|succeeded|green)\b/i.test(text);
 }
 
 function isPassingTestExecutionEvidence(item: RecordValue): boolean {
   const kind = item.kind;
   const text = `${typeof item.label === "string" ? item.label : ""} ${typeof item.summary === "string" ? item.summary : ""}`;
+  const summary = typeof item.summary === "string" ? item.summary : "";
 
   return (kind === "check" || kind === "log") &&
-    /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|coverage)\b/i.test(text) &&
-    /\b(pass|passed|success|succeeded|green)\b/i.test(text);
+    isExecutionSignalText(text) &&
+    hasPassingEvidenceStatusPrefix(summary);
 }
 
 function requiresPriorityEvidence(item: RecordValue): boolean {

@@ -167,7 +167,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
         <div className="metric-grid">
           <Metric label="Coverage" value={`${report.summary.evidenceCoverage}%`} icon={<Gauge size={17} />} />
           <Metric label="Confidence" value={`${Math.round(report.summary.confidence * 100)}%`} icon={<CheckCircle2 size={17} />} />
-          <Metric label="CI" value={report.testing.ciStatus} icon={<GitCommitVertical size={17} />} tone={statusClass(report.testing.ciStatus)} />
+          <Metric label="Test/Build" value={report.testing.ciStatus} icon={<GitCommitVertical size={17} />} tone={statusClass(report.testing.ciStatus)} />
           <Metric label="Missing Tests" value={String(report.testing.missingTests.length)} icon={<TestTube2 size={17} />} />
         </div>
       </div>
@@ -285,7 +285,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <div className="card">
             <h2>Testing</h2>
             <ul className="plain-list">
-              <li>CI: {report.testing.ciStatus}</li>
+              <li>Test/build: {report.testing.ciStatus}</li>
               <li>Lint: {report.testing.lintStatus}</li>
               <li>Typecheck: {report.testing.typecheckStatus}</li>
               {report.testing.missingTests.map((item) => (

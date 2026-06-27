@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "dataset": "princeton-nlp/SWE-bench_Verified",
+  "datasetRevision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+  "config": "default",
+  "split": "test",
+  "source": "https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified",
+  "generatedFrom": "datasets-server rows API",
+  "rowsApiUrl": "https://datasets-server.huggingface.co/rows?dataset=princeton-nlp%2FSWE-bench_Verified&config=default&split=test&offset=0&length=1",
+  "rowsApiETag": null,
+  "rowsResponseSha256": "0af8d1ee6bb7acec719864dfd74311c9a925fe7a78facfda08786de089341f1a",
+  "sourceOffset": 0,
+  "sourceLength": 1,
+  "sourceRowSha256": "bcadb9e2ee9c01d1951516eeb31a5864abb90adc8e3bedc5419ce4eb414517db",
+  "normalizerVersion": "evaluation-pack-v1",
+  "generatedAt": "2026-06-26T00:44:00+09:00",
+  "caseCount": 1,
+  "caseIds": [
+    "astropy__astropy-12907"
+  ],
+  "fixtureFile": "swebench-verified.small.jsonl",
+  "sha256": "d1b4d20be5358e7990985d1557ee3bba450d3c548e4f2a72520dbcb8b79e5908",
+  "privacy": "Normalized evaluation case with short patch excerpts; raw dataset rows and raw hidden oracle labels are not committed.",
+  "oracleLabelCount": 15,
+  "oracleLabelSha256": "a7cd5309cf21add955be049da34108655988a2a18a283968f48a3b505bc2764a",
+  "oracleLabelHashAlgorithm": "sha256 over sorted unique hidden label values, then sha256 over JSON array of label hashes"
+}

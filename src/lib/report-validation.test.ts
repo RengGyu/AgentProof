@@ -67,13 +67,27 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("evidenceIndex must contain evidence items for full reports");
   });
 
-  it("allows strict validation when a full report explicitly says evidence was unavailable", () => {
+  it("allows strict validation when missing provenance is explained at the item level", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    delete report.scope.evidenceRefs;
+    delete report.reviewPriority[0].evidenceRefs;
+    report.scope.reasons = ["Scope evidence was unavailable from the imported report source."];
+    report.reviewPriority[0].reason = "File-level priority evidence was unavailable from the imported report source.";
+
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("does not let a global limitation bypass full-report provenance checks", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     delete report.scope.evidenceRefs;
     delete report.reviewPriority[0].evidenceRefs;
     report.limitations.push("File-level priority evidence was unavailable from the imported report source.");
 
-    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("scope.evidenceRefs is required");
+    expect(result.errors.join("\n")).toContain("reviewPriority[0].evidenceRefs is required");
   });
 
   it("rejects semantically overconfident full reports", () => {
@@ -95,6 +109,69 @@ describe("validateVerificationReport", () => {
 
     expect(result.valid).toBe(false);
     expect(result.errors.join("\n")).toContain("test requirement cannot be met without passing test execution evidence");
+  });
+
+  it("rejects met non-test requirements without passing execution evidence", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.requirements[0].status = "met";
+    report.requirements[0].gaps = [];
+    report.requirements[0].evidenceRefs = report.evidenceIndex.filter((item) => item.kind === "diff").map((item) => item.id).slice(0, 1);
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("cannot be met without passing test, build, or CI execution evidence");
+  });
+
+  it("rejects supported execution claims without passing check or log evidence", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.claims = [
+      {
+        id: "claim_1",
+        text: "Tested password reset validation",
+        evidenceRefs: report.evidenceIndex.filter((item) => item.kind === "test").map((item) => item.id),
+        supported: true
+      }
+    ];
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("execution claim cannot be supported without passing test or CI execution evidence");
+  });
+
+  it("rejects passed CI status without passing execution evidence", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.testing.ciStatus = "passed";
+    report.evidenceIndex.push({
+      id: "ev_security_check",
+      kind: "check",
+      label: "Socket Security: Project Report",
+      summary: "Socket Security: Project Report: passed",
+      confidence: 0.9
+    });
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("testing.ciStatus cannot be passed without passing test, build, or CI execution evidence");
+  });
+
+  it("rejects passed CI status when passed appears only in unstructured summary text", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.testing.ciStatus = "passed";
+    report.evidenceIndex.push({
+      id: "ev_unit_tests_unknown",
+      kind: "check",
+      label: "unit tests: passed",
+      summary: "unit tests: passed on a previous branch, but current status is unknown",
+      confidence: 0.45
+    });
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("testing.ciStatus cannot be passed without passing test, build, or CI execution evidence");
   });
 
   it("rejects missing nested fields and unknown report properties", () => {

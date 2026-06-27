@@ -64,6 +64,17 @@ Browser recent history, portable share links, Slack payloads, and short-lived sa
 
 Short-lived saved reports use in-memory storage. This is suitable for local demos, but not durable on serverless deployments. Production sharing needs Postgres/Supabase, ownership/auth, encryption, and retention policy.
 
+## Check Evidence Taxonomy
+
+AgentProof separates test/build execution proof from other GitHub checks:
+
+- `Test/Build` status is backed only by check or log names/summaries that look like test, spec, unit, integration, e2e, coverage, CI, or build execution.
+- Passing security reports, code-owner checks, dependency scans, deploy previews, and AI review checks do not prove tests or builds ran.
+- Failing non-test/build checks are still surfaced as high-priority static or merge-gate risks.
+- Lint and typecheck remain separate status fields, even when they come from GitHub checks.
+- Requirement `met` status still requires passing execution evidence linked through evidence IDs.
+- GitHub Actions fallback collects bounded job/step metadata when available; raw log archives are not fetched or stored in this MVP.
+
 ## Product Position
 
 It avoids:
@@ -86,6 +97,7 @@ It avoids:
 - `src/lib/report-history.ts`: browser-local summary-only recent report history
 - `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
 - `src/lib/openai-verifier.ts`: optional OpenAI Responses API structured-output adapter
+- `src/lib/evaluation-pack.ts`: real-dataset evaluation harness for benchmark-grounded verifier checks
 - `src/lib/github-app.ts`: GitHub App webhook signature/config helpers
 - `src/lib/slack.ts`: summary-only Slack notification formatter
 - `src/components/*`: reviewer-focused UI
@@ -110,6 +122,42 @@ Prioritize bugs, false positives, security issues, missing tests, and workflow g
 ```
 
 For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+
+## Evaluation Pack
+
+AgentProof evaluation starts from real benchmark data instead of invented labels. The MVP harness uses SWE-bench Verified rows for issue text, visible patch/test evidence, schema validity, provenance coverage, future-label leakage checks, and false-verified detection. Benchmark outcome labels are used only after report generation.
+
+```bash
+pnpm eval:pack
+pnpm eval:summary
+pnpm eval:summary:strict
+pnpm eval:summary:fixture
+pnpm eval:summary:fixture:strict
+```
+
+Fetch a larger local sample when network is available:
+
+```bash
+pnpm eval:fetch:swebench -- --length 10   # quick local smoke
+pnpm eval:fetch:swebench -- --length 100  # broader local check
+pnpm eval:pack
+pnpm eval:summary
+pnpm eval:summary:strict
+```
+
+Promote selected generated cases into committed fixtures only after reviewing case IDs and source metadata:
+
+```bash
+pnpm eval:promote:fixture -- \
+  --input eval/generated/swebench-verified.cases.jsonl \
+  --output eval/fixtures/swebench-verified.example.jsonl \
+  --case astropy__astropy-12907 \
+  --source-offset 0 \
+  --source-length 100
+pnpm eval:summary:fixture:strict
+```
+
+Committed normalized SWE-bench fixtures live under `eval/fixtures/` with manifest hashes so CI can run without network: one small smoke case, a representative four-case pack, and a diverse ten-repository pack. Raw hidden oracle labels are not committed. Larger generated normalized cases live under `eval/generated/` and are ignored by git because they may contain short patch excerpts and separated oracle labels. See `docs/evaluation-pack.md` for source caveats and the learning loop.
 
 ## Deployed Demo
 

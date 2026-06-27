@@ -6,6 +6,7 @@ import type {
   LogSnippet,
   Requirement
 } from "./types";
+import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
 import { compactText } from "./redact";
 import { redactSecrets } from "./redact";
 
@@ -45,21 +46,22 @@ const STOP_WORDS = new Set([
   "existing"
 ]);
 
-const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|\/tests?\/|test_|_test\.|spec_)/i;
+const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/|test_|_test\.|spec_)/i;
 const RISK_FILE_PATTERN = /(auth|permission|billing|payment|migration|schema|infra|session|security|token|secret|admin)/i;
 const VAGUE_TASK_PATTERN = /\b(improve|better|fewer problems|more reliable|clean\s*up|cleanup|polish|enhance|optimi[sz]e|make .* easier|make .* nicer)\b/i;
 const CONCRETE_ACTION_PATTERN =
   /\b(add|allow|block|create|delete|display|export|fix|handle|hide|implement|prevent|preserve|reject|remove|require|return|save|send|show|validate)\b/i;
 
 export function extractRequirements(taskText: string, prDescription: string): Requirement[] {
-  const sourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
+  const rawSourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
+  const sourceText = cleanRequirementSourceText(rawSourceText);
+  const contextKeywords = extractKeywords(collectUsefulFencedContent(rawSourceText));
   const explicit = sourceText.match(/acceptance criteria:?([\s\S]*)/i)?.[1] ?? sourceText;
   const candidateLines = explicit
     .split(/\n|;|(?<=\.)\s+|(?:^|\s)(?:-|\*|\d+\.)\s+/)
     .map((line) => line.trim().replace(/^[-*]\s*/, ""))
     .filter(Boolean)
-    .filter((line) => !/^#+\s*(summary|verification|testing|test plan)\s*$/i.test(line))
-    .filter((line) => !/^<!--[\s\S]*-->$/.test(line));
+    .filter((line) => !isIssueTemplateNoiseLine(line));
 
   const requirements = candidateLines
     .filter((line) => line.length > 12)
@@ -69,7 +71,7 @@ export function extractRequirements(taskText: string, prDescription: string): Re
       id: `req_${index + 1}`,
       source: taskText.trim() ? "task" : "pr_description",
       text: normalizeSentence(text),
-      keywords: extractKeywords(text),
+      keywords: mergeKeywords(extractKeywords(text), contextKeywords),
       priority: /\b(must|required|acceptance|criteria)\b/i.test(text) ? "must" : "should"
     })) satisfies Requirement[];
 
@@ -88,19 +90,61 @@ export function extractRequirements(taskText: string, prDescription: string): Re
   ];
 }
 
+function cleanRequirementSourceText(text: string): string {
+  return text
+    .replace(/<!--[\s\S]*?-->/g, "\n")
+    .replace(/```[\s\S]*?```/g, "\n")
+    .replace(/~~~[\s\S]*?~~~/g, "\n")
+    .trim();
+}
+
+function isIssueTemplateNoiseLine(line: string): boolean {
+  const normalized = line.replace(/^#+\s*/, "").trim().replace(/^_+|_+$/g, "").replace(/:$/, "");
+
+  return /^<!--|-->$/.test(normalized) ||
+    /^https?:\/\/\S+$/i.test(normalized) ||
+    /^(summary|bug summary|verification|testing|test plan|description|steps to reproduce|code for reproduction|reproduce|system details|system information|actual behavior|actual outcome|expected behavior|expected outcome|additional context|additional information|no response)$/i.test(normalized) ||
+    /^Python \d+\.\d+/i.test(normalized) ||
+    /^\[GCC [\d.]+\]/i.test(normalized) ||
+    /^Type "help", "copyright", "credits" or "license"/i.test(normalized) ||
+    /^root@[\w.-]+:/i.test(normalized) ||
+    /^(>>>|In \[\d+\]:|Out\[\d+\]:)/.test(normalized);
+}
+
+function collectUsefulFencedContent(text: string): string {
+  return Array.from(text.matchAll(/```([\s\S]*?)```|~~~([\s\S]*?)~~~/g))
+    .map((match) => usefulFencedContent(match[1] ?? match[2] ?? ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function usefulFencedContent(content: string): string {
+  const clean = content.trim().replace(/^(python|py|typescript|ts|javascript|js|text|sh|shell|bash)\n/i, "");
+
+  if (!clean || /Traceback \(most recent call last\)|^\s*File ".*", line \d+/m.test(clean)) {
+    return "";
+  }
+
+  return clean;
+}
+
+function mergeKeywords(primary: string[], context: string[]): string[] {
+  return Array.from(new Set([...primary, ...context])).slice(0, 12);
+}
+
 export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem[]): AgentClaim[] {
   const sentences = redactSecrets(prDescription)
     .split(/(?<=\.)\s+|\n/)
     .map((line) => line.trim())
-    .filter((line) => /\b(added|implemented|fixed|updated|created|changed|removed|validated|tested)\b/i.test(line))
+    .filter((line) => /\b(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed)\b/i.test(line))
     .flatMap(expandClaimClauses)
     .slice(0, 6);
 
   return sentences.map((text, index) => {
     const keywords = extractKeywords(text);
-    const independentEvidence = evidenceIndex.filter(isClaimSupportEvidence);
-    const evidenceRefs = evidenceIndex
-      .filter(isClaimSupportEvidence)
+    const supportPredicate = isExecutionClaim(text) ? isPassingExecutionClaimEvidence : isClaimSupportEvidence;
+    const independentEvidence = evidenceIndex.filter(supportPredicate);
+    const evidenceRefs = independentEvidence
       .filter((item) => keywords.some((keyword) => item.summary.toLowerCase().includes(keyword)))
       .slice(0, 3)
       .map((item) => item.id);
@@ -119,7 +163,7 @@ export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem
 }
 
 function expandClaimClauses(sentence: string): string[] {
-  const match = sentence.match(/^\s*(added|implemented|fixed|updated|created|changed|removed|validated|tested)\s+(.+)$/i);
+  const match = sentence.match(/^\s*(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed)\s+(.+)$/i);
 
   if (!match) {
     return [sentence];
@@ -137,10 +181,16 @@ function expandClaimClauses(sentence: string): string[] {
   }
 
   return clauses.map((clause) =>
-    /^(added|implemented|fixed|updated|created|changed|removed|validated|tested|cleaned)\b/i.test(clause)
+    /^(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed|cleaned)\b/i.test(clause)
       ? clause
       : `${verb} ${clause}`
   );
+}
+
+function isExecutionClaim(text: string): boolean {
+  return /\btested\b/i.test(text) ||
+    /\b(verified|validated).{0,80}\b(tests?|spec|unit|integration|e2e|ci|build|coverage)\b/i.test(text) ||
+    /\b(tests?|spec|unit|integration|e2e|ci|build|coverage).{0,80}\b(pass|passed|verified|validated|succeeded|green)\b/i.test(text);
 }
 
 function isVagueRequirementLine(line: string, sourceText: string): boolean {
@@ -153,6 +203,14 @@ function isVagueRequirementLine(line: string, sourceText: string): boolean {
 
 function isClaimSupportEvidence(item: EvidenceItem): boolean {
   return item.kind === "diff" || item.kind === "test" || item.kind === "check" || item.kind === "log";
+}
+
+function isPassingExecutionClaimEvidence(item: EvidenceItem): boolean {
+  const text = `${item.label} ${item.summary}`;
+
+  return (item.kind === "check" || item.kind === "log") &&
+    isExecutionSignalText(text) &&
+    hasPassingEvidenceStatusPrefix(item.summary);
 }
 
 export function buildEvidenceIndex(
@@ -169,7 +227,7 @@ export function buildEvidenceIndex(
       id: `ev_${items.length + 1}`,
       kind: "task",
       label: "Original task",
-      summary: compactText(taskText, 700),
+      summary: compactText(redactSecrets(taskText), 700),
       confidence: 0.95
     });
   }
@@ -179,7 +237,7 @@ export function buildEvidenceIndex(
       id: `ev_${items.length + 1}`,
       kind: "pr_description",
       label: "PR description",
-      summary: compactText(prDescription, 700),
+      summary: compactText(redactSecrets(prDescription), 700),
       confidence: 0.7
     });
   }
@@ -193,7 +251,7 @@ export function buildEvidenceIndex(
     const testSignal = isTestFile(file.path) ? " Test evidence file." : "";
     const riskSignal = isRiskFile(file.path) ? " Risk-sensitive path." : "";
 
-    const patchSummary = file.patch ? ` Patch excerpt: ${compactText(file.patch, 500)}` : "";
+    const patchSummary = file.patch ? ` Patch excerpt: ${compactPatchExcerpt(file.patch)}` : "";
 
     items.push({
       id: `ev_${items.length + 1}`,
@@ -206,23 +264,29 @@ export function buildEvidenceIndex(
   }
 
   for (const check of checks) {
+    const safeName = redactSecrets(check.name);
+    const safeSummary = check.summary ? redactSecrets(check.summary) : undefined;
+
     items.push({
       id: `ev_${items.length + 1}`,
       kind: "check",
-      label: check.name,
-      locator: check.url,
-      summary: `${check.name}: ${check.status}${check.summary ? ` - ${compactText(check.summary, 350)}` : ""}`,
+      label: safeName,
+      locator: sanitizeEvidenceLocator(check.url),
+      summary: `Status: ${check.status}. ${safeName}${safeSummary ? ` - ${compactText(safeSummary, 350)}` : ""}`,
       confidence: check.status === "unknown" ? 0.45 : 0.9
     });
   }
 
   for (const log of logs) {
+    const safeSource = redactSecrets(log.source);
+    const status = log.status ?? "unknown";
+
     items.push({
       id: `ev_${items.length + 1}`,
       kind: "log",
-      label: log.source,
-      summary: `${log.source}${log.status ? ` (${log.status})` : ""}: ${compactText(log.text, 450)}`,
-      confidence: log.status === "unknown" ? 0.45 : 0.75
+      label: safeSource,
+      summary: `Status: ${status}. ${safeSource}: ${compactText(redactSecrets(log.text), 450)}`,
+      confidence: status === "unknown" ? 0.45 : 0.75
     });
   }
 
@@ -230,17 +294,79 @@ export function buildEvidenceIndex(
 }
 
 export function extractKeywords(text: string): string[] {
-  return Array.from(
-    new Set(
-      text
-        .toLowerCase()
-        .replace(/[^a-z0-9_/.-]+/g, " ")
-        .split(/\s+/)
-        .map((word) => word.replace(/^[._/-]+|[._/-]+$/g, ""))
-        .filter((word) => word.length > 2 && !STOP_WORDS.has(word))
-        .slice(0, 12)
-    )
-  );
+  const keywords = text
+    .replace(/[^a-z0-9_/.-]+/gi, " ")
+    .split(/\s+/)
+    .flatMap((word) => {
+      const original = word.replace(/^[._/-]+|[._/-]+$/g, "").toLowerCase();
+      const camelSplit = word
+        .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .toLowerCase();
+      const parts = camelSplit
+        .replace(/^[._/-]+|[._/-]+$/g, "")
+        .split(/[._/-]+|\s+/)
+        .filter(Boolean);
+
+      return [original, ...parts].flatMap(keywordVariants);
+    })
+    .filter((word) => (word.length > 2 || SHORT_TECH_KEYWORDS.has(word)) && !STOP_WORDS.has(word));
+
+  return Array.from(new Set(keywords)).slice(0, 12);
+}
+
+const SHORT_TECH_KEYWORDS = new Set(["np", "py", "js", "ts"]);
+
+const KEYWORD_ALIASES = new Map<string, string[]>([
+  ["authentication", ["auth"]],
+  ["indices", ["index"]],
+  ["numpy", ["np"]],
+  ["pickling", ["pickle"]],
+  ["proxies", ["proxy"]]
+]);
+
+function keywordVariants(word: string): string[] {
+  const variants = [word, ...(KEYWORD_ALIASES.get(word) ?? [])];
+
+  if (word.endsWith("ies") && word.length > 5) {
+    variants.push(`${word.slice(0, -3)}y`);
+  } else if (word.endsWith("s") && word.length > 4) {
+    variants.push(word.slice(0, -1));
+  }
+
+  return variants;
+}
+
+function compactPatchExcerpt(patch: string, maxLength = 500): string {
+  const clean = redactSecrets(patch.trim().replace(/\r\n/g, "\n"));
+
+  if (clean.length <= maxLength) {
+    return clean;
+  }
+
+  const marker = "\n...[middle truncated for privacy and token control]\n";
+  const available = maxLength - marker.length;
+  const headLength = Math.max(120, Math.floor(available / 2));
+  const tailLength = Math.max(120, available - headLength);
+
+  return `${clean.slice(0, headLength).trimEnd()}${marker}${clean.slice(-tailLength).trimStart()}`;
+}
+
+function sanitizeEvidenceLocator(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+
+  const redacted = redactSecrets(value);
+
+  try {
+    const url = new URL(redacted);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return redacted;
+  }
 }
 
 export function isTestFile(path: string): boolean {

@@ -36,7 +36,7 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
         fields: [
           { type: "plain_text", text: `Coverage: ${safeReport.summary.evidenceCoverage}%` },
           { type: "plain_text", text: `Confidence: ${Math.round(safeReport.summary.confidence * 100)}%` },
-          { type: "plain_text", text: `CI: ${safeReport.testing.ciStatus}` },
+          { type: "plain_text", text: `Test/build: ${safeReport.testing.ciStatus}` },
           { type: "plain_text", text: `Missing tests: ${safeReport.testing.missingTests.length}` }
         ]
       },
