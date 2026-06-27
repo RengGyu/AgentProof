@@ -14,11 +14,19 @@ interface GitHubIssueComment {
   id: number;
   body?: string;
   html_url?: string;
+  user?: {
+    login?: string;
+  };
 }
 
 interface ExistingCommentResult {
   comment: GitHubIssueComment | null;
   capped: boolean;
+  errorStatus?: number;
+}
+
+interface GitHubViewerResult {
+  login: string | null;
   errorStatus?: number;
 }
 
@@ -50,7 +58,11 @@ export async function POST(request: Request) {
     const report = sanitizeReportSource(body.report as VerificationReport);
     const reportSource = report.source.url ? parseGitHubPullUrl(report.source.url) : null;
 
-    if (report.source.url && !reportSource) {
+    if (!report.source.url) {
+      return jsonNoStore({ error: "Report source URL is required before posting to GitHub." }, 422);
+    }
+
+    if (!reportSource) {
       return jsonNoStore({ error: "Report source URL must be a GitHub pull request URL before posting to GitHub." }, 422);
     }
 
@@ -58,7 +70,7 @@ export async function POST(request: Request) {
       return jsonNoStore({ error: "Report source PR does not match the target PR URL." }, 422);
     }
 
-    const commentBody = reportToGitHubComment(report);
+    const commentBody = redactSecrets(reportToGitHubComment(report));
     const headers = {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${body.githubToken.trim()}`,
@@ -66,7 +78,16 @@ export async function POST(request: Request) {
       "X-GitHub-Api-Version": "2022-11-28"
     };
     const commentsUrl = `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/issues/${parsed.number}/comments`;
-    const existingResult = await findExistingAgentProofComment(commentsUrl, headers);
+    const viewer = await fetchGitHubViewer(headers);
+
+    if (viewer.errorStatus) {
+      return jsonNoStore(
+        { error: mapGitHubError(viewer.errorStatus, "read token identity") },
+        viewer.errorStatus
+      );
+    }
+
+    const existingResult = await findExistingAgentProofComment(commentsUrl, headers, viewer.login);
 
     if (existingResult.errorStatus) {
       return jsonNoStore(
@@ -126,7 +147,8 @@ function sanitizeReportSource(report: VerificationReport): VerificationReport {
 
 async function findExistingAgentProofComment(
   commentsUrl: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  viewerLogin: string | null
 ): Promise<ExistingCommentResult> {
   for (let page = 1; page <= MAX_COMMENT_PAGES; page += 1) {
     const response = await fetch(`${commentsUrl}?per_page=${COMMENTS_PAGE_SIZE}&page=${page}`, {
@@ -139,7 +161,10 @@ async function findExistingAgentProofComment(
     }
 
     const comments = (await response.json()) as GitHubIssueComment[];
-    const existing = comments.find((comment) => comment.body?.includes(AGENTPROOF_COMMENT_MARKER));
+    const existing = comments.find((comment) =>
+      comment.body?.includes(AGENTPROOF_COMMENT_MARKER) &&
+      sameLogin(comment.user?.login, viewerLogin)
+    );
 
     if (existing) {
       return { comment: existing, capped: false };
@@ -151,6 +176,20 @@ async function findExistingAgentProofComment(
   }
 
   return { comment: null, capped: true };
+}
+
+async function fetchGitHubViewer(headers: Record<string, string>): Promise<GitHubViewerResult> {
+  const response = await fetch("https://api.github.com/user", {
+    headers,
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    return { login: null, errorStatus: response.status };
+  }
+
+  const json = (await response.json()) as { login?: string };
+  return { login: typeof json.login === "string" ? json.login : null };
 }
 
 function jsonNoStore(payload: unknown, status = 200) {
@@ -170,6 +209,10 @@ function sameGitHubPull(
   return left.owner.toLowerCase() === right.owner.toLowerCase() &&
     left.repo.toLowerCase() === right.repo.toLowerCase() &&
     left.number === right.number;
+}
+
+function sameLogin(left: string | undefined, right: string | null): boolean {
+  return Boolean(left && right && left.toLowerCase() === right.toLowerCase());
 }
 
 function mapGitHubError(status: number, action: string): string {
