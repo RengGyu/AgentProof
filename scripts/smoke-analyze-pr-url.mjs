@@ -64,7 +64,8 @@ export async function runAnalyzePrSmoke({
     savedClaimCount: Array.isArray(savedReport.claims) ? savedReport.claims.length : null,
     savedRepromptOmitted: /omit|shared summary|summary/i.test(savedReport.reprompt?.prompt ?? ""),
     savedEvidenceRefsCleared: evidenceRefsCleared(savedReport),
-    savedReportDeleted: saveResult.deleted
+    savedReportDeleted: saveResult.deleted,
+    savedReportDeleteWarning: saveResult.deleteWarning
   };
 }
 
@@ -215,16 +216,15 @@ async function saveSummaryOnlyReport({ baseUrl, report, fetchImpl }) {
     deleted = false;
   }
 
-  if (!deleted) {
-    throw smokeError("Saved-report cleanup failed.");
-  }
-
   return {
     privacy: getPayload.privacy,
     durability: getPayload.durability,
     durabilityWarning: getPayload.durabilityWarning,
     savedReport: getPayload.report,
-    deleted
+    deleted,
+    deleteWarning: deleted
+      ? undefined
+      : "Saved-report cleanup was best-effort and did not confirm deletion; short-lived in-memory reports may already be on another serverless instance."
   };
 }
 

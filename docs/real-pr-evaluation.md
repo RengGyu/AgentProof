@@ -12,6 +12,8 @@ AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:real-pr
 
 The command intentionally does not read `AGENTPROOF_SMOKE_GITHUB_TOKEN`. These public PR cases should run without forwarding a local GitHub token to production. If a private self-evaluation case is added later, pass `AGENTPROOF_REAL_PR_SMOKE_GITHUB_TOKEN` explicitly.
 
+Saved-report deletion in this smoke is best-effort. The privacy gate is the save/get round trip proving summary-only data; deletion may report `false` on Vercel when short-lived in-memory data is served by a different serverless instance.
+
 ## Method
 
 Original issue or prompt text was not available for these PRs, so each evaluation uses the merged PR body as a proxy task. That is a limitation: PR bodies can describe the implementation after the fact, so they are easier than a true issue-to-PR verification task.

@@ -57,7 +57,8 @@ export async function runRealPrEvaluationSmoke({
       savedClaimCount: result.savedClaimCount,
       savedRepromptOmitted: result.savedRepromptOmitted,
       savedEvidenceRefsCleared: result.savedEvidenceRefsCleared,
-      savedReportDeleted: result.savedReportDeleted
+      savedReportDeleted: result.savedReportDeleted,
+      savedReportDeleteWarning: result.savedReportDeleteWarning
     });
   }
 
