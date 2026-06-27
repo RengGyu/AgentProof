@@ -398,8 +398,8 @@ describe("real-dataset evaluation pack", () => {
     report.evidenceIndex.push({
       id: "ev_build_policy",
       kind: "check",
-      label: "Build policy report",
-      summary: "Status: passed - build policy and deployment preview completed.",
+      label: "Build policy coverage tests report",
+      summary: "Status: passed. build policy coverage tests and deployment preview completed.",
       confidence: 0.8
     });
 

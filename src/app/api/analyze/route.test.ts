@@ -181,16 +181,16 @@ describe("POST /api/analyze", () => {
             total_count: 3,
             check_runs: [
               {
-                name: "Socket Security: Project Report",
+                name: "Socket Security coverage tests report",
                 status: "completed",
                 conclusion: "success",
-                output: { summary: "Project report passed" }
+                output: { summary: "Project report passed after policy tests" }
               },
               {
-                name: "Vercel Agent Review",
+                name: "Vercel Preview tests",
                 status: "completed",
                 conclusion: "success",
-                output: { summary: "Analysis completed successfully" }
+                output: { summary: "Preview smoke tests completed" }
               },
               {
                 name: "Vercel - Code Owners",

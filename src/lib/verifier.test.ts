@@ -119,8 +119,8 @@ describe("generateVerificationReport", () => {
         }
       ],
       checks: [
-        { name: "Socket Security: Project Report", status: "passed", summary: "Project report passed" },
-        { name: "Vercel Agent Review", status: "passed", summary: "Analysis completed successfully" },
+        { name: "Socket Security coverage tests report", status: "passed", summary: "Project report passed after policy tests" },
+        { name: "Vercel Preview tests", status: "passed", summary: "Preview smoke tests completed" },
         { name: "Vercel - Code Owners", status: "passed", summary: "There are no code owners defined" }
       ],
       logs: []

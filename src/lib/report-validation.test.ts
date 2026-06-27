@@ -146,8 +146,8 @@ describe("validateVerificationReport", () => {
     report.evidenceIndex.push({
       id: "ev_security_check",
       kind: "check",
-      label: "Socket Security: Project Report",
-      summary: "Socket Security: Project Report: passed",
+      label: "Socket Security coverage tests report",
+      summary: "Status: passed. Socket Security coverage tests report - policy checks passed",
       confidence: 0.9
     });
 

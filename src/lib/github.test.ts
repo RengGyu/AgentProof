@@ -253,7 +253,7 @@ describe("buildPullRequestInput", () => {
           total_count: 1,
           check_runs: [
             {
-              name: "Socket Security: Project Report",
+              name: "Socket Security coverage tests report",
               status: "completed",
               conclusion: "success",
               details_url: "https://github.com/acme/repo/actions/runs/123456/job/999"

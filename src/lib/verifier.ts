@@ -6,7 +6,7 @@ import {
   isRiskFile,
   isTestFile
 } from "./extractors";
-import { hasPassingEvidenceStatusPrefix, isExecutionSignalText } from "./evidence-status";
+import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 import { redactSecrets } from "./redact";
 import type {
   CheckStatus,
@@ -300,7 +300,7 @@ const WEAK_SINGLE_MATCH_KEYWORDS = new Set([
 
 function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
   return (item.kind === "check" || item.kind === "log") &&
-    isExecutionSignal(`${item.label} ${item.summary}`) &&
+    isEvidenceExecutionSignal(item) &&
     hasPassingEvidenceStatusPrefix(item.summary);
 }
 
@@ -350,8 +350,8 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
   const testFiles = input.changedFiles.filter((file) => isTestFile(file.path));
   const hasTestFileChange = testFiles.length > 0;
   const hasPassingTestSignal =
-    input.checks.some((check) => /test|spec/i.test(`${check.name} ${check.summary ?? ""}`) && check.status === "passed") ||
-    input.logs.some((log) => /test|spec/i.test(`${log.source} ${log.text}`) && log.status === "passed");
+    input.checks.some((check) => isCheckExecutionSignal(check) && /test|spec/i.test(`${check.name} ${check.summary ?? ""}`) && check.status === "passed") ||
+    input.logs.some((log) => isLogExecutionSignal(log) && /test|spec/i.test(`${log.source} ${log.text}`) && log.status === "passed");
   const changedImplementationFiles = input.changedFiles.filter((file) =>
     !isTestFile(file.path) && isBehaviorAffectingPath(file.path)
   );
@@ -618,10 +618,10 @@ function buildReprompt(
 function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestInput["logs"] = []): CheckStatus {
   const executionStatuses = [
     ...checks
-      .filter((check) => isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+      .filter((check) => isCheckExecutionSignal(check))
       .map((check) => check.status),
     ...logs
-      .filter((log) => isExecutionSignal(`${log.source} ${log.text}`))
+      .filter((log) => isLogExecutionSignal(log))
       .map((log) => log.status)
       .filter((status): status is CheckStatus => Boolean(status))
   ];
@@ -645,32 +645,40 @@ function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestIn
   return "unknown";
 }
 
-function isExecutionSignal(text: string): boolean {
-  return isExecutionSignalText(text);
+function isCheckExecutionSignal(check: PullRequestInput["checks"][number]): boolean {
+  return isExecutionEvidenceSignal(check.name, check.summary ?? "", check.url);
+}
+
+function isLogExecutionSignal(log: PullRequestInput["logs"][number]): boolean {
+  return isExecutionEvidenceSignal(log.source, log.text);
+}
+
+function isEvidenceExecutionSignal(item: EvidenceItem): boolean {
+  return isExecutionEvidenceSignal(item.label, item.summary, item.locator);
 }
 
 function hasFailingExecutionEvidence(input: PullRequestInput): boolean {
-  return input.checks.some((check) => check.status === "failed" && isExecutionSignal(`${check.name} ${check.summary ?? ""}`)) ||
-    input.logs.some((log) => log.status === "failed" && isExecutionSignal(`${log.source} ${log.text}`));
+  return input.checks.some((check) => check.status === "failed" && isCheckExecutionSignal(check)) ||
+    input.logs.some((log) => log.status === "failed" && isLogExecutionSignal(log));
 }
 
 function nonExecutionFailures(input: PullRequestInput): string[] {
   return [
     ...input.checks
-      .filter((check) => check.status === "failed" && !isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+      .filter((check) => check.status === "failed" && !isCheckExecutionSignal(check))
       .map((check) => check.name),
     ...input.logs
-      .filter((log) => log.status === "failed" && !isExecutionSignal(`${log.source} ${log.text}`))
+      .filter((log) => log.status === "failed" && !isLogExecutionSignal(log))
       .map((log) => log.source)
   ];
 }
 
 function nonExecutionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
   const failedCheckLabels = new Set(input.checks
-    .filter((check) => check.status === "failed" && !isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+    .filter((check) => check.status === "failed" && !isCheckExecutionSignal(check))
     .map((check) => redactSecrets(check.name)));
   const failedLogLabels = new Set(input.logs
-    .filter((log) => log.status === "failed" && !isExecutionSignal(`${log.source} ${log.text}`))
+    .filter((log) => log.status === "failed" && !isLogExecutionSignal(log))
     .map((log) => redactSecrets(log.source)));
 
   return evidenceIndex
@@ -683,10 +691,10 @@ function nonExecutionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex:
 
 function executionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
   const failedCheckLabels = new Set(input.checks
-    .filter((check) => check.status === "failed" && isExecutionSignal(`${check.name} ${check.summary ?? ""}`))
+    .filter((check) => check.status === "failed" && isCheckExecutionSignal(check))
     .map((check) => redactSecrets(check.name)));
   const failedLogLabels = new Set(input.logs
-    .filter((log) => log.status === "failed" && isExecutionSignal(`${log.source} ${log.text}`))
+    .filter((log) => log.status === "failed" && isLogExecutionSignal(log))
     .map((log) => redactSecrets(log.source)));
 
   return evidenceIndex

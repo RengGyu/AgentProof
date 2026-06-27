@@ -78,4 +78,19 @@ describe("getExecutionEvidenceItems", () => {
     expect(statusFromEvidenceSummary("Status: unknown. no CI log")).toBe("unknown");
     expect(statusFromEvidenceSummary("all good, probably passed")).toBe("unknown");
   });
+
+  it("does not reject real execution checks because a locator URL contains gate words", () => {
+    const evidenceIndex: EvidenceItem[] = [
+      {
+        id: "ev_unit",
+        kind: "check",
+        label: "unit tests",
+        locator: "https://github.com/acme/security-preview-app/actions/runs/123",
+        summary: "Status: passed. unit tests completed",
+        confidence: 0.9
+      }
+    ];
+
+    expect(getExecutionEvidenceItems(evidenceIndex).map((item) => item.id)).toEqual(["ev_unit"]);
+  });
 });
