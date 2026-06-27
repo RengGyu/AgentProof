@@ -138,6 +138,15 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <PriorityChip priority={report.summary.priority} />
         </div>
 
+        {isSummaryMode ? (
+          <div className="notice summary-mode-notice">
+            <AlertCircle size={15} />
+            <span>
+              Summary-only view: raw evidence, patch/log excerpts, agent claims, evidence references, and re-prompt text are omitted.
+            </span>
+          </div>
+        ) : null}
+
         <div className="report-actions" aria-label="Report export actions">
           {!isSummaryMode ? (
             <>

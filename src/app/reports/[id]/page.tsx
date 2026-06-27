@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ReportView } from "@/components/ReportView";
-import { getSavedReport } from "@/lib/server-report-store";
+import { getSavedReport, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
 
 interface SavedReportPageProps {
   params: Promise<{ id: string }>;
@@ -27,7 +27,7 @@ export default async function SavedReportPage({ params }: SavedReportPageProps) 
   return (
     <main className="shared-layout">
       <div className="notice">
-        Summary-only saved report. Raw evidence, claims, and re-prompt text are intentionally omitted.
+        {SAVED_REPORT_DURABILITY_WARNING} Expires at {saved.expiresAt}.
       </div>
       <ReportView report={saved.report} mode="summary" />
     </main>

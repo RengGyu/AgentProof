@@ -14,13 +14,17 @@ describe("smoke-analyze-pr-url", () => {
         id: "saved_123",
         url: "https://agentproof.example/reports/saved_123",
         expiresAt: "2026-06-27T00:00:00.000Z",
-        privacy: "summary-only"
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
       }))
       .mockResolvedValueOnce(jsonResponse({
         report: savedReport,
         createdAt: "2026-06-26T00:00:00.000Z",
         expiresAt: "2026-06-27T00:00:00.000Z",
-        privacy: "summary-only"
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
       }))
       .mockResolvedValueOnce(jsonResponse({ deleted: true }));
 
@@ -36,6 +40,8 @@ describe("smoke-analyze-pr-url", () => {
       ok: true,
       status: 200,
       savedReportPrivacy: "summary-only",
+      savedReportDurability: "short-lived-in-memory",
+      savedReportDurabilityWarning: true,
       savedEvidenceCount: 0,
       savedClaimCount: 0,
       savedRepromptOmitted: true,
