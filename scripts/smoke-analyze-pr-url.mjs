@@ -2,6 +2,7 @@ const baseUrl = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "http://localhost:3000
 const prUrl = process.env.AGENTPROOF_SMOKE_PR_URL;
 const taskText = process.env.AGENTPROOF_SMOKE_TASK_TEXT ?? "";
 const githubToken = process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN;
+const allowProductionGithubToken = process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1";
 const SAVED_REPORT_DURABILITY = "short-lived-in-memory";
 
 export async function runAnalyzePrSmoke({
@@ -9,11 +10,15 @@ export async function runAnalyzePrSmoke({
   prUrl,
   taskText = "",
   githubToken,
+  allowProductionGithubToken = false,
+  expectations,
   fetchImpl = fetch
 }) {
   if (!prUrl) {
     throw smokeError("Set AGENTPROOF_SMOKE_PR_URL to a GitHub pull request URL.");
   }
+
+  assertGithubTokenBoundary({ baseUrl, githubToken, allowProductionGithubToken });
 
   const response = await fetchImpl(`${baseUrl}/api/analyze`, {
     method: "POST",
@@ -35,6 +40,8 @@ export async function runAnalyzePrSmoke({
 
   const report = payload.report;
   const executionEvidence = passingExecutionEvidence(report);
+  const failedCheckLocations = failedCheckAnnotationLocations(report);
+  const expectationResult = assertReportExpectations(report, expectations);
 
   if (report.testing?.ciStatus === "passed" && executionEvidence.length === 0) {
     throw smokeError("Report claimed passed CI without passing check/log evidence.", response.status);
@@ -44,7 +51,8 @@ export async function runAnalyzePrSmoke({
   const savedReport = saveResult.savedReport;
   assertSummaryOnlyReport(savedReport, {
     originalReprompt: report.reprompt?.prompt,
-    githubToken
+    githubToken,
+    failedCheckLocations
   });
 
   return {
@@ -57,6 +65,12 @@ export async function runAnalyzePrSmoke({
     requirementCount: Array.isArray(report.requirements) ? report.requirements.length : 0,
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
+    expectationCheckCount: expectationResult.checks.length,
+    expectationChecks: expectationResult.checks,
+    failedCheckLocationCount: failedCheckLocations.length,
+    savedFailedCheckLocationsOmitted: true,
+    githubTokenForwarded: Boolean(githubToken),
+    productionTokenForwarded: Boolean(githubToken && isRemoteProductionLikeBaseUrl(baseUrl)),
     savedReportPrivacy: saveResult.privacy,
     savedReportDurability: saveResult.durability,
     savedReportDurabilityWarning: Boolean(saveResult.durabilityWarning),
@@ -122,6 +136,135 @@ function hasPassingEvidenceStatusPrefix(summary) {
   return /^Status:\s*passed\b/i.test(String(summary ?? "").trim());
 }
 
+export function failedCheckAnnotationLocations(report) {
+  if (!Array.isArray(report?.evidenceIndex)) {
+    return [];
+  }
+
+  const locations = report.evidenceIndex.flatMap((item) => annotationLocationsFromSummary(item?.summary));
+
+  return Array.from(new Set(locations));
+}
+
+function annotationLocationsFromSummary(summary) {
+  const value = String(summary ?? "");
+  const markerIndex = value.indexOf("Check annotations:");
+  if (markerIndex < 0) {
+    return [];
+  }
+
+  const rawSegment = value
+    .slice(markerIndex + "Check annotations:".length)
+    .split(/\. Raw annotation messages/i)[0];
+
+  return rawSegment
+    .split(",")
+    .map((item) => item.trim())
+    .map((item) => item.match(/^(notice|warning|failure|annotation)\s+at\s+(.+)$/i))
+    .filter(Boolean)
+    .map((match) => match[2]?.trim())
+    .filter((location) => typeof location === "string" && location.length > 0);
+}
+
+export function assertReportExpectations(report, expectations = {}) {
+  const checks = [];
+
+  if (!expectations || typeof expectations !== "object") {
+    return { checks };
+  }
+
+  if (expectations.ciStatus && report.testing?.ciStatus !== expectations.ciStatus) {
+    throw smokeError(`Expected ciStatus ${expectations.ciStatus}, received ${report.testing?.ciStatus ?? "unknown"}.`);
+  }
+  if (expectations.ciStatus) {
+    checks.push({ name: "ciStatus", expected: expectations.ciStatus });
+  }
+
+  if (Array.isArray(expectations.priorityIn) && !expectations.priorityIn.includes(report.summary?.priority)) {
+    throw smokeError(`Expected priority in ${expectations.priorityIn.join(", ")}, received ${report.summary?.priority ?? "unknown"}.`);
+  }
+  if (Array.isArray(expectations.priorityIn)) {
+    checks.push({ name: "priorityIn", expected: expectations.priorityIn.join("|") });
+  }
+
+  const requirementCount = Array.isArray(report.requirements) ? report.requirements.length : 0;
+  if (typeof expectations.minRequirementCount === "number" && requirementCount < expectations.minRequirementCount) {
+    throw smokeError(`Expected at least ${expectations.minRequirementCount} requirements, received ${requirementCount}.`);
+  }
+  if (typeof expectations.minRequirementCount === "number") {
+    checks.push({ name: "minRequirementCount", expected: expectations.minRequirementCount });
+  }
+
+  const evidenceCount = Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0;
+  if (typeof expectations.minEvidenceCount === "number" && evidenceCount < expectations.minEvidenceCount) {
+    throw smokeError(`Expected at least ${expectations.minEvidenceCount} evidence items, received ${evidenceCount}.`);
+  }
+  if (typeof expectations.minEvidenceCount === "number") {
+    checks.push({ name: "minEvidenceCount", expected: expectations.minEvidenceCount });
+  }
+
+  if (expectations.requireVisualUnverified === true) {
+    assertVisualRequirementsStayUnverifiedWithoutVisualEvidence(report);
+    checks.push({ name: "visualRequirementsUnverifiedWithoutVisualEvidence", expected: true });
+  }
+
+  return { checks };
+}
+
+function assertVisualRequirementsStayUnverifiedWithoutVisualEvidence(report) {
+  const requirements = Array.isArray(report.requirements) ? report.requirements : [];
+  const visualRequirements = requirements.filter((requirement) =>
+    /\b(visual|mobile|layout|overlap|readable|readability|responsive|viewport|browser|screenshot|ux)\b/i.test(requirement.requirementText ?? "")
+  );
+
+  if (visualRequirements.length === 0) {
+    throw smokeError("Expected at least one visual/mobile requirement, received none.");
+  }
+
+  if (hasVisualQaEvidence(report)) {
+    return;
+  }
+
+  const incorrectlyMet = visualRequirements.filter((requirement) => requirement.status === "met");
+  if (incorrectlyMet.length > 0) {
+    throw smokeError("Visual/mobile requirements were marked met without browser, screenshot, or visual QA evidence.");
+  }
+}
+
+function hasVisualQaEvidence(report) {
+  return Array.isArray(report.evidenceIndex) && report.evidenceIndex.some((item) =>
+    /\b(playwright|cypress|browser qa|screenshot|viewport|visual regression|mobile screenshot)\b/i.test(`${item.label ?? ""} ${item.summary ?? ""}`)
+  );
+}
+
+function assertGithubTokenBoundary({ baseUrl, githubToken, allowProductionGithubToken }) {
+  if (!githubToken || allowProductionGithubToken || !isRemoteProductionLikeBaseUrl(baseUrl)) {
+    return;
+  }
+
+  throw smokeError(
+    "Forwarding a GitHub token to a remote AgentProof base URL requires AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN=1."
+  );
+}
+
+function isRemoteProductionLikeBaseUrl(baseUrl) {
+  try {
+    const hostname = new URL(baseUrl).hostname;
+
+    return !(
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".example") ||
+      hostname.endsWith(".test") ||
+      hostname.endsWith(".invalid")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function assertSummaryOnlyReport(report, options = {}) {
   if (!report || typeof report !== "object" || Array.isArray(report)) {
     throw smokeError("Saved report payload was not an object.");
@@ -173,6 +316,12 @@ export function assertSummaryOnlyReport(report, options = {}) {
   for (const value of forbiddenValues) {
     if (serialized.includes(value)) {
       throw smokeError("Saved report retained raw re-prompt or token value.");
+    }
+  }
+
+  for (const location of options.failedCheckLocations ?? []) {
+    if (serialized.includes(location)) {
+      throw smokeError("Saved report retained failed check annotation location.");
     }
   }
 }
@@ -264,7 +413,7 @@ function smokeError(message, status) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runAnalyzePrSmoke({ baseUrl, prUrl, taskText, githubToken })
+  runAnalyzePrSmoke({ baseUrl, prUrl, taskText, githubToken, allowProductionGithubToken })
     .then((result) => {
       console.log(JSON.stringify(result, null, 2));
     })

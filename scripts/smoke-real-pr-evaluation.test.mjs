@@ -53,23 +53,28 @@ describe("smoke-real-pr-evaluation", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.caseCount).toBe(5);
-    expect(result.results.map((item) => item.id)).toEqual(["PR-1", "PR-2", "PR-3", "PR-9", "PR-12"]);
-    expect(result.results).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          ciStatus: "passed",
-          savedReportPrivacy: "summary-only",
-          savedReportDurability: "short-lived-in-memory",
-          savedEvidenceCount: 0,
-          savedClaimCount: 0,
-          savedRepromptOmitted: true,
-          savedEvidenceRefsCleared: true,
-          savedReportDeleted: true
-        })
-      ])
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(20);
+    expect(result.caseCount).toBe(6);
+    expect(result.results.map((item) => item.id)).toEqual(["PR-1", "PR-2", "PR-3", "PR-9", "PR-12", "PR-15"]);
+    for (const item of result.results) {
+      expect(item).toEqual(expect.objectContaining({
+        ciStatus: "passed",
+        savedReportPrivacy: "summary-only",
+        savedReportDurability: "short-lived-in-memory",
+        savedEvidenceCount: 0,
+        savedClaimCount: 0,
+        savedRepromptOmitted: true,
+        savedEvidenceRefsCleared: true,
+        savedFailedCheckLocationsOmitted: true,
+        savedReportDeleted: true,
+        productionTokenForwarded: false
+      }));
+      expect(item.expectationCheckCount).toBeGreaterThan(0);
+    }
+    expect(result.results.find((item) => item.id === "PR-15")).toEqual(expect.objectContaining({
+      failedCheckLocationCount: 1,
+      savedFailedCheckLocationsOmitted: true
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(24);
     const analyzeBodies = fetchMock.mock.calls
       .filter(([url]) => String(url).endsWith("/api/analyze"))
       .map(([, init]) => JSON.parse(String(init.body)));
@@ -117,6 +122,7 @@ describe("smoke-real-pr-evaluation", () => {
       baseUrl: "https://agentproof.example",
       cases: [DEFAULT_REAL_PR_EVALUATION_CASES[0]],
       githubToken: "explicit_token_for_private_case",
+      allowProductionGithubToken: true,
       fetchImpl: fetchMock
     });
 
@@ -136,6 +142,101 @@ function jsonResponse(payload, status = 200) {
 }
 
 function reportFixture(prUrl) {
+  const isVisualCase = prUrl.endsWith("/pull/9") || prUrl.endsWith("/pull/12");
+  const isFailedLocationCase = prUrl.endsWith("/pull/15");
+  const requirements = [
+    {
+      requirementId: "req_1",
+      requirementText: "verify real PR evidence",
+      status: "met",
+      evidenceRefs: ["ev_1"],
+      gaps: [],
+      reviewerNote: "Passing execution evidence is present.",
+      confidence: 0.85
+    },
+    ...Array.from({ length: 5 }, (_, index) => ({
+      requirementId: `req_${index + 2}`,
+      requirementText: `preserve evidence boundary ${index + 2}`,
+      status: "partial",
+      evidenceRefs: ["ev_1"],
+      gaps: ["Reviewer should spot-check requirement mapping."],
+      reviewerNote: "Evidence is partial but grounded.",
+      confidence: 0.62
+    })),
+    ...(isVisualCase
+      ? [
+          {
+            requirementId: "req_visual",
+            requirementText: "keep mobile layout readable without browser QA evidence",
+            status: "partial",
+            evidenceRefs: ["ev_1"],
+            gaps: ["No browser, screenshot, or visual QA artifact verifies this UX criterion."],
+            reviewerNote: "Visual evidence was not present.",
+            confidence: 0.55
+          }
+        ]
+      : []),
+    ...(isFailedLocationCase
+      ? [
+          {
+            requirementId: "req_failed_locations",
+            requirementText: "keep summary-only saved reports free of failed check locations",
+            status: "partial",
+            evidenceRefs: ["ev_2"],
+            gaps: ["Summary-only save must prove annotation paths are stripped."],
+            reviewerNote: "Smoke should compare full failed locations against saved summary data.",
+            confidence: 0.62
+          },
+          {
+            requirementId: "req_positioning",
+            requirementText: "preserve evidence-based verifier positioning",
+            status: "met",
+            evidenceRefs: ["ev_1"],
+            gaps: [],
+            reviewerNote: "Positioning evidence is present.",
+            confidence: 0.82
+          },
+          {
+            requirementId: "req_full_surfaces",
+            requirementText: "show failed check locations only in full report surfaces",
+            status: "partial",
+            evidenceRefs: ["ev_2"],
+            gaps: ["Full UI rendering is not exercised by this API smoke."],
+            reviewerNote: "Keep as reviewer lead until browser QA exists.",
+            confidence: 0.58
+          }
+        ]
+      : [])
+  ];
+  const evidenceIndex = [
+    {
+      id: "ev_1",
+      kind: "check",
+      label: "unit tests",
+      summary: "Status: passed. unit tests completed",
+      confidence: 0.9
+    },
+    ...(isFailedLocationCase
+      ? [
+          {
+            id: "ev_2",
+            kind: "check",
+            label: "unit tests",
+            summary:
+              "Status: failed. unit tests - Vitest failed. Check annotations: failure at src/app/api/analyze/route.test.ts:42. Raw annotation messages and raw annotation details omitted.",
+            confidence: 0.9
+          }
+        ]
+      : []),
+    ...Array.from({ length: isFailedLocationCase ? 10 : 11 }, (_, index) => ({
+      id: `ev_extra_${index + 1}`,
+      kind: "diff",
+      label: `src/example/file${index + 1}.ts`,
+      summary: `Changed file evidence ${index + 1}.`,
+      confidence: 0.7
+    }))
+  ];
+
   return {
     analysisId: "ap_real_pr_smoke",
     createdAt: "2026-06-26T00:00:00.000Z",
@@ -150,17 +251,7 @@ function reportFixture(prUrl) {
       evidenceCoverage: 74,
       topRisks: ["Some requirements have only partial evidence."]
     },
-    requirements: [
-      {
-        requirementId: "req_1",
-        requirementText: "verify real PR evidence",
-        status: "met",
-        evidenceRefs: ["ev_1"],
-        gaps: [],
-        reviewerNote: "Passing execution evidence is present.",
-        confidence: 0.85
-      }
-    ],
+    requirements,
     claims: [],
     scope: {
       suspected: false,
@@ -186,15 +277,7 @@ function reportFixture(prUrl) {
       targetAgent: "codex",
       prompt: "Summarize how each acceptance criterion maps to the changed files and test evidence."
     },
-    evidenceIndex: [
-      {
-        id: "ev_1",
-        kind: "check",
-        label: "unit tests",
-        summary: "Status: passed. unit tests completed",
-        confidence: 0.9
-      }
-    ],
+    evidenceIndex,
     limitations: []
   };
 }
