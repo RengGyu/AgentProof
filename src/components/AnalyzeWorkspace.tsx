@@ -28,7 +28,7 @@ const scenarioOptions: { id: DemoScenarioId; label: string; summary: string; exp
     id: "scope-creep",
     label: "Scope creep",
     summary: "Password reset work that also touches shared auth session and permissions files.",
-    expected: "Out-of-scope risk plus focused review files."
+    expected: "Out-of-scope risk plus priority files."
   },
   {
     id: "missing-tests",
@@ -215,6 +215,9 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
                     type="password"
                     placeholder="Optional fine-grained token"
                   />
+                  <p className="muted small credential-note">
+                    Used only for this analysis request and cleared after the report is generated.
+                  </p>
                 </div>
               </section>
 

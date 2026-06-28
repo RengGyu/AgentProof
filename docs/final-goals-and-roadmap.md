@@ -103,13 +103,21 @@ Goal:
 
 Make the repository demonstrate product judgment, engineering judgment, and AI-era review awareness.
 
-Priority work:
+Status: MVP portfolio readiness is implemented as of 2026-06-29. Remaining work is launch polish, not MVP scope.
 
-- Add example reports for clean, missing-test, failed-CI, scope-creep, and vague-task scenarios.
-- Add screenshots or a short demo GIF after the UI is stable.
-- Expand README with a concise "Why not an AI code reviewer?" section.
-- Keep market validation as an internal summary until public source URLs are re-verified.
-- Add a deployment smoke-test checklist for `/`, `/integrations`, demo analysis, share links, and GitHub comment preview.
+Completed MVP work:
+
+- Added example reports for clean, missing-test, failed-CI, scope-creep, and vague-task scenarios in `docs/example-reports.md`.
+- Added desktop and mobile screenshots under `docs/assets/`.
+- Expanded README with a concise "Why not an AI code reviewer?" section.
+- Kept market validation as an internal summary until public source URLs are re-verified.
+- Added a deployment smoke-test checklist for `/`, `/integrations`, demo analysis, saved reports, live integrations, and GitHub comment smoke in `docs/deployment-smoke.md`.
+
+Launch polish still available:
+
+- Add a short demo GIF or video after final UI copy stabilizes.
+- Add public URL-backed market validation citations.
+- Add richer non-secret integration readiness status without exposing env values.
 
 Completion criteria:
 

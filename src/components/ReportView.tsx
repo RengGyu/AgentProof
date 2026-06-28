@@ -63,6 +63,13 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     () => getVerificationAnswer(report.summary.priority, report.summary.evidenceCoverage, report.testing.ciStatus),
     [report.summary.evidenceCoverage, report.summary.priority, report.testing.ciStatus]
   );
+  const firstPriorityFiles = useMemo(
+    () =>
+      report.reviewPriority
+        .filter((item) => item.path !== "Requirement evidence" && item.path !== "Test/build checks")
+        .slice(0, 3),
+    [report.reviewPriority]
+  );
 
   async function copyText(text: string, action: "report" | "comment" | "reprompt" | "share") {
     try {
@@ -184,8 +191,11 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <div className="risk-strip">
             <span className="risk-strip-title">Inspect first</span>
             <ul>
-              {report.summary.topRisks.slice(0, 3).map((risk) => (
+              {report.summary.topRisks.slice(0, 2).map((risk) => (
                 <li key={risk}>{risk}</li>
+              ))}
+              {firstPriorityFiles.map((item) => (
+                <li key={`${item.path}-${item.priority}`}>{formatPriorityLabel(item.priority)}: {item.path}</li>
               ))}
             </ul>
           </div>
@@ -252,7 +262,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                 <h2>Requirement Evidence</h2>
               </div>
               <span className="muted small">
-                {requirementStats.partial + requirementStats.missing + requirementStats.unclear} need review
+                {requirementStats.partial + requirementStats.missing + requirementStats.unclear} need verification
               </span>
             </div>
             {report.requirements.map((requirement) => (
@@ -473,6 +483,9 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                   type="password"
                   placeholder="Fine-grained token"
                 />
+                <p className="muted small credential-note">
+                  Used once to create or update this AgentProof marker comment. The token is not stored.
+                </p>
               </div>
               <button className="button primary" onClick={postGitHubComment} disabled={postingComment || !commentToken.trim()}>
                 <Send size={16} />
@@ -696,7 +709,7 @@ function getVerificationAnswer(priority: PriorityLevel, evidenceCoverage: number
 
   return {
     title: "Mostly supported by available evidence",
-    body: "The report found aligned proof, but this remains a human review handoff rather than an approval."
+    body: "The report found aligned proof, but this remains a human decision handoff rather than an approval."
   };
 }
 

@@ -249,6 +249,11 @@ summary:focus-visible {
   font-weight: 650;
 }
 
+.credential-note {
+  margin: -2px 0 0;
+  line-height: 1.35;
+}
+
 .input,
 .textarea,
 .select {
@@ -932,11 +937,11 @@ code {
     position: static;
   }
 
-  .has-report .report {
+  .has-report .intake {
     order: 1;
   }
 
-  .has-report .intake {
+  .has-report .report {
     order: 2;
   }
 
@@ -958,6 +963,8 @@ code {
   }
 
   .topbar-actions {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
     width: 100%;
   }
 

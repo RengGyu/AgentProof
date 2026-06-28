@@ -48,6 +48,23 @@ describe("POST /api/github/comment", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects oversized comment payloads before calling GitHub", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: "x".repeat(221_000)
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(413);
+    expect(json.error).toContain("too large");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects full reports with missing provenance before calling GitHub", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

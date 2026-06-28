@@ -37,6 +37,9 @@ export default function IntegrationsPage() {
         <div>
           <h1>Integration Readiness</h1>
           <p>Live credentials are intentionally disabled unless the required environment variables are present.</p>
+          <p className="muted small">
+            Last production smoke: 2026-06-29. Supabase, OpenAI, Slack, signed webhook, and explicit GitHub comment paths were verified without exposing secret values.
+          </p>
         </div>
         <Link className="button" href="/">
           Back
