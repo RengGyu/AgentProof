@@ -47,9 +47,7 @@ Production alias:
 
 https://agentproof-pearl.vercel.app
 
-Last verified deployment:
-
-`dpl_9CFgN1s6PPF12nERfuk2eKEHd9m7`
+Last no-secret production gate: 2026-06-29, after the MVP readiness changes were merged to `main`.
 
 Verified outcomes:
 
@@ -58,6 +56,12 @@ Verified outcomes:
 - `/api/analyze` rejected GET with 405.
 - Production regression smoke passed for six public AgentProof PRs.
 - Saved reports used `summary-only-supabase`.
+- Unauthenticated OpenAI verifier requests returned 401.
+- Unauthenticated Slack notification requests returned 401.
+- Unsigned GitHub webhook requests returned 401.
+
+Most recent credentialed live integration pass:
+
 - OpenAI verifier returned `source: openai`.
 - Slack notification returned `{ "sent": true }`.
 - GitHub signed webhook returned `dryRun: true`, `automationEnabled: false`, `willAnalyze: false`, `willComment: false`.

@@ -6,7 +6,9 @@ Production alias:
 
 https://agentproof-pearl.vercel.app
 
-Last full live integration pass: 2026-06-29
+Last no-secret production gate: 2026-06-29
+
+Last credentialed live integration pass: 2026-06-29
 
 ## No-Secret Production Checks
 
@@ -47,6 +49,14 @@ Most recent live pass:
 - GitHub signed webhook ping: passed, dry-run only.
 - Slack notification smoke: passed, sent one summary-only message.
 - GitHub PR comment smoke: passed on PR #18, created an AgentProof marker comment.
+
+Most recent no-secret production gate:
+
+- `/` returned 200.
+- `/integrations` returned 200.
+- `/api/analyze` rejected GET with 405.
+- Production regression smoke passed for six public AgentProof PRs.
+- `/api/llm/verify`, `/api/notifications/slack`, and `/api/github/webhook` returned 401 without trusted caller credentials or signatures.
 
 ## Manual Demo Checks
 
