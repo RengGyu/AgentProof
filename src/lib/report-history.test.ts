@@ -35,6 +35,7 @@ describe("report history", () => {
   it("stores summary-only reports locally without request tokens or raw evidence", () => {
     const storage = new MemoryStorage();
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.source.title = "Report title with github_pat_secret_should_not_leak_1234567890";
     report.evidenceIndex.push({
       id: "ev_annotation_secret",
       kind: "check",
@@ -53,6 +54,8 @@ describe("report history", () => {
     const serialized = JSON.stringify(history);
 
     expect(history).toHaveLength(1);
+    expect(history[0]?.title).toContain("[redacted]");
+    expect(history[0]?.title).not.toContain("github_pat_secret");
     expect(serialized).not.toContain("githubToken");
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("raw_details");
@@ -63,7 +66,7 @@ describe("report history", () => {
     expect(history[0]?.report.claims).toEqual([]);
     expect(history[0]?.report.evidenceIndex).toEqual([]);
     expect(history[0]?.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
-    expect(readReportHistory(storage)[0]?.report.source.title).toBe(report.source.title);
+    expect(readReportHistory(storage)[0]?.report.source.title).toBe(history[0]?.report.source.title);
     expect(clearReportHistory(storage)).toEqual([]);
   });
 

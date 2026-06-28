@@ -56,6 +56,43 @@ describe("smoke-analyze-pr-url", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(4, "https://agentproof.example/api/reports/saved_123", { method: "DELETE" });
   });
 
+  it("accepts durable Supabase saved-report metadata while keeping summary-only checks", async () => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: fullReport }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: "saved_123",
+        url: "https://agentproof.example/reports/saved_123",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "summary-only-supabase",
+        durabilityWarning: "Saved reports are summary-only and durable."
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        report: savedReport,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "summary-only-supabase",
+        durabilityWarning: "Saved reports are summary-only and durable."
+      }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    const result = await runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      taskText: "Acceptance criteria: add invoice export and tests.",
+      fetchImpl: fetchMock
+    });
+
+    expect(result.savedReportDurability).toBe("summary-only-supabase");
+    expect(result.savedReportPrivacy).toBe("summary-only");
+    expect(result.savedEvidenceCount).toBe(0);
+    expect(result.savedClaimCount).toBe(0);
+    expect(result.savedEvidenceRefsCleared).toBe(true);
+  });
+
   it("rejects saved reports that retain raw evidence or re-prompt data", () => {
     const fullReport = reportFixture();
 

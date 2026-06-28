@@ -41,9 +41,9 @@ export function saveReportToHistory(storage: Storage, report: VerificationReport
     {
       id: report.analysisId,
       savedAt: new Date().toISOString(),
-      title: report.source.title,
-      priority: report.summary.priority,
-      evidenceCoverage: report.summary.evidenceCoverage,
+      title: safeReport.source.title,
+      priority: safeReport.summary.priority,
+      evidenceCoverage: safeReport.summary.evidenceCoverage,
       report: safeReport
     },
     ...current

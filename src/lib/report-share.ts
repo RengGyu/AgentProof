@@ -1,4 +1,5 @@
 import type { VerificationReport } from "./types";
+import { redactSecrets } from "./redact";
 
 export const MAX_SHARE_PAYLOAD_LENGTH = 18_000;
 export const SUMMARY_ONLY_LIMITATION =
@@ -40,31 +41,43 @@ export function buildShareUrl(report: VerificationReport, origin: string): strin
 function toShareableReport(report: VerificationReport): ShareableReport {
   return {
     version: 1,
-    createdAt: report.createdAt,
-    source: report.source,
-    summary: report.summary,
+    createdAt: redactSecrets(report.createdAt),
+    source: {
+      title: redactSecrets(report.source.title),
+      url: report.source.url ? redactSecrets(report.source.url) : undefined,
+      author: report.source.author ? redactSecrets(report.source.author) : undefined,
+      baseBranch: report.source.baseBranch ? redactSecrets(report.source.baseBranch) : undefined,
+      headBranch: report.source.headBranch ? redactSecrets(report.source.headBranch) : undefined
+    },
+    summary: {
+      oneLine: redactSecrets(report.summary.oneLine),
+      confidence: report.summary.confidence,
+      priority: report.summary.priority,
+      evidenceCoverage: report.summary.evidenceCoverage,
+      topRisks: report.summary.topRisks.map(redactSecrets)
+    },
     requirements: report.requirements.map((requirement) => ({
-      requirementId: requirement.requirementId,
-      requirementText: requirement.requirementText,
+      requirementId: redactSecrets(requirement.requirementId),
+      requirementText: redactSecrets(requirement.requirementText),
       status: requirement.status,
-      gaps: requirement.gaps,
-      reviewerNote: requirement.reviewerNote,
+      gaps: requirement.gaps.map(redactSecrets),
+      reviewerNote: redactSecrets(requirement.reviewerNote),
       confidence: requirement.confidence
     })),
     testing: {
       ...report.testing,
       missingTests: report.testing.missingTests.map((item) => ({
-        path: item.path,
-        why: item.why,
+        path: redactSecrets(item.path),
+        why: redactSecrets(item.why),
         evidenceRefs: []
       }))
     },
     reviewPriority: report.reviewPriority.map((item) => ({
-      path: item.path,
-      reason: item.reason,
+      path: redactSecrets(item.path),
+      reason: redactSecrets(item.reason),
       priority: item.priority
     })),
-    limitations: appendSummaryOnlyLimitation(report.limitations)
+    limitations: appendSummaryOnlyLimitation(report.limitations.map(redactSecrets))
   };
 }
 

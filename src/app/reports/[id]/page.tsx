@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ReportView } from "@/components/ReportView";
-import { getSavedReport, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
+import { getSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
 
 interface SavedReportPageProps {
   params: Promise<{ id: string }>;
@@ -8,14 +8,26 @@ interface SavedReportPageProps {
 
 export default async function SavedReportPage({ params }: SavedReportPageProps) {
   const { id } = await params;
-  const saved = getSavedReport(id);
+  let saved;
+
+  try {
+    saved = await getSavedReport(id);
+  } catch (error) {
+    if (error instanceof SavedReportStoreError) {
+      saved = null;
+    } else {
+      throw error;
+    }
+  }
+
+  const status = getSavedReportStoreStatus();
 
   if (!saved) {
     return (
       <main className="shared-layout">
         <section className="panel empty-state">
           <h1>Report unavailable</h1>
-          <p>This saved report was not found, expired, or belongs to another serverless instance.</p>
+          <p>This saved report was not found, expired, or is temporarily unavailable.</p>
           <Link className="button primary" href="/">
             Open AgentProof
           </Link>
@@ -27,7 +39,7 @@ export default async function SavedReportPage({ params }: SavedReportPageProps) 
   return (
     <main className="shared-layout">
       <div className="notice">
-        {SAVED_REPORT_DURABILITY_WARNING} Expires at {saved.expiresAt}.
+        {status.durabilityWarning} Expires at {saved.expiresAt}.
       </div>
       <ReportView report={saved.report} mode="summary" />
     </main>

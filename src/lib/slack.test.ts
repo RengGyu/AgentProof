@@ -6,6 +6,18 @@ import { generateVerificationReport } from "./verifier";
 describe("slack helpers", () => {
   it("formats summary-only payloads", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.summary.oneLine = "@channel verify github_pat_secret_should_not_leak_1234567890";
+    report.summary.topRisks = ["Risk has sk-secret_should_not_leak"];
+    report.testing.missingTests.push({
+      path: "src/github_pat_secret_should_not_leak_1234567890/test.ts",
+      why: "Needs api_key=secret_should_not_leak",
+      evidenceRefs: []
+    });
+    report.reviewPriority.push({
+      path: "src/review.ts",
+      reason: "Review has https://hooks.slack.com/services/T000/B000/secret",
+      priority: "high"
+    });
     report.claims.push({
       id: "claim_raw",
       text: "Added raw claim that should not leave the report boundary.",
@@ -17,6 +29,12 @@ describe("slack helpers", () => {
     expect(payloadText).not.toContain("Patch excerpt");
     expect(payloadText).not.toContain(report.reprompt.prompt);
     expect(payloadText).not.toContain("Added raw claim");
+    expect(payloadText).not.toContain("github_pat_secret");
+    expect(payloadText).not.toContain("sk-secret");
+    expect(payloadText).not.toContain("hooks.slack.com/services");
+    expect(payloadText).not.toContain("secret_should_not_leak");
+    expect(payloadText).toContain("[redacted]");
+    expect(payloadText).toContain("@​channel");
     expect(payloadText).toContain("Test/build:");
     expect(payloadText).toContain("summary report");
   });

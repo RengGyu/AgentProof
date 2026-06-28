@@ -15,7 +15,7 @@ It is deliberately not a generic AI code reviewer. AgentProof maps the original 
 - Demo mode with realistic sample data
 - Summary-only recent report history in the browser
 - Summary-only share links
-- Short-lived summary-only saved report API
+- Summary-only saved report API with in-memory demo mode and optional Supabase durability
 - Optional GitHub PR comment posting with a one-time write token
 - Env-gated GitHub App webhook, Slack notification, and OpenAI verifier adapters
 - LLM structured-output boundary and runtime report validation
@@ -64,6 +64,7 @@ Optional server integrations are off by default:
 - `GITHUB_WEBHOOK_SECRET`: enables signed GitHub webhook dry-run intake only.
 - `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`: future GitHub App automation readiness only. `GITHUB_PRIVATE_KEY` must be a valid PEM private key; local env files may use escaped `\n` newlines. Automated App actions still need installation-token handling, idempotency storage, and explicit opt-in.
 - `SLACK_WEBHOOK_URL`, `AGENTPROOF_NOTIFY_TOKEN`: enables summary-only Slack notifications from trusted internal callers.
+- `AGENTPROOF_REPORTS_SUPABASE_URL`, `AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_REPORTS_TABLE`: enables durable summary-only saved reports through Supabase REST. Generic `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are also accepted. Never expose the service-role key with a `NEXT_PUBLIC_` prefix.
 - `OPENAI_API_KEY`, `AGENTPROOF_LLM_TOKEN`, optional `OPENAI_MODEL`: enables the structured-output verifier adapter. Missing or invalid output falls back to the deterministic report.
 
 After pulling trusted env into `.env.local`, run the live OpenAI smoke test explicitly:
@@ -85,9 +86,9 @@ pnpm smoke:github-comment
 
 The comment smoke first analyzes the PR, then posts through `/api/github/comment`. It prints only metadata such as action, URL, priority, and evidence coverage. It does not print the token or full report. For private PR analysis, set `AGENTPROOF_COMMENT_SMOKE_ANALYZE_TOKEN` separately.
 
-Browser recent history, portable share links, Slack payloads, and short-lived saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, and raw re-prompt text. Full Markdown export remains an explicit user action.
+Browser recent history, portable share links, Slack payloads, and saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, and raw re-prompt text. Retained summary fields are redacted before sharing or storage. Full Markdown export remains an explicit user action.
 
-Short-lived saved reports use in-memory storage. This is suitable for local demos, but not durable on serverless deployments. Production sharing needs Postgres/Supabase, ownership/auth, encryption, and retention policy.
+Saved reports use in-memory storage when durable env is absent. This is suitable for local demos, but may disappear on serverless deployments. Optional Supabase storage is durable for the same summary-only projection; it still does not store raw evidence, claims, raw re-prompt text, patch excerpts, or raw logs. See `docs/saved-report-storage.md` for schema and env setup.
 
 ## Check Evidence Taxonomy
 
@@ -111,7 +112,7 @@ It avoids:
 - Auto-merge decisions
 - Security scanning claims without evidence
 - Long-term raw source retention
-- Durable server-side report persistence before auth and database are added
+- Long-term raw source, log, or full-report retention
 
 ## Architecture
 
@@ -121,7 +122,7 @@ It avoids:
 - `src/lib/structured-output.ts`: JSON schema contract for future LLM calls
 - `src/lib/report-validation.ts`: runtime report validation and evidence-ref integrity checks
 - `src/lib/report-share.ts`: summary-only portable share links
-- `src/lib/server-report-store.ts`: short-lived summary-only saved report store
+- `src/lib/server-report-store.ts`: summary-only saved report store with in-memory and optional Supabase backends
 - `src/lib/report-history.ts`: browser-local summary-only recent report history
 - `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
 - `src/lib/openai-verifier.ts`: optional OpenAI Responses API structured-output adapter
@@ -149,7 +150,7 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
-For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For GitHub App webhook dry-run boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook dry-run boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
 
 ## Evaluation Pack
 

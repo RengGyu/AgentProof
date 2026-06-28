@@ -42,6 +42,35 @@ describe("report share", () => {
     expect(validateVerificationReport(shared, { mode: "summary" })).toEqual({ valid: true, errors: [] });
   });
 
+  it("redacts retained summary fields before sharing", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.source.title = "PR with github_pat_secret_should_not_leak_1234567890";
+    report.summary.oneLine = "Summary with sk-secret_should_not_leak";
+    report.summary.topRisks = ["Risk includes https://hooks.slack.com/services/T000/B000/secret"];
+    report.requirements[0].requirementText = "Requirement has token=secret_should_not_leak";
+    report.requirements[0].gaps = ["Gap has Bearer abc.def.ghi"];
+    report.requirements[0].reviewerNote = "Note has AKIAABCDEFGHIJKLMNOP";
+    report.testing.missingTests.push({ path: "src/test.ts", why: "Needs test", evidenceRefs: [] });
+    report.reviewPriority.push({ path: "src/review.ts", reason: "Needs review", priority: "medium" });
+    report.testing.missingTests[0].path = "src/github_pat_secret_should_not_leak_1234567890/test.ts";
+    report.testing.missingTests[0].why = "Reason has api_key=secret_should_not_leak";
+    report.reviewPriority[0].reason = "Review has -----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----";
+    report.limitations.push("Limitation has password=secret_should_not_leak");
+
+    const shared = decodeSharedReport(encodeReportForShare(report));
+    const serialized = JSON.stringify(shared);
+
+    expect(serialized).toContain("[redacted]");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("sk-secret");
+    expect(serialized).not.toContain("hooks.slack.com/services");
+    expect(serialized).not.toContain("Bearer abc");
+    expect(serialized).not.toContain("AKIA");
+    expect(serialized).not.toContain("BEGIN PRIVATE KEY");
+    expect(serialized).not.toContain("secret_should_not_leak");
+    expect(validateVerificationReport(shared, { mode: "summary" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("builds a portable share URL", () => {
     const report = generateVerificationReport(demoScenarios["clean"]);
     const url = buildShareUrl(report, "https://agentproof.example");

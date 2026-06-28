@@ -19,7 +19,7 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 - Re-prompt generator for Codex, Claude Code, Cursor, or Copilot
 - Browser-local summary-only recent report history
 - Summary-only share links that omit raw evidence and re-prompt text
-- Short-lived summary-only saved report API for local demos
+- Summary-only saved report API with in-memory demo mode and optional Supabase durability
 - Optional GitHub PR comment posting with a one-time write token
 - Env-gated GitHub App webhook, Slack notification, and OpenAI verifier adapters
 - Runtime report validation before future LLM output is trusted
@@ -32,7 +32,7 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 - Native mobile app
 - GitHub App installation
 - Long-term raw source retention
-- Durable server-side share/report persistence before auth and database are added
+- Long-term raw evidence, claims, re-prompt, patch, or log retention
 
 ## First Demo Cases
 
@@ -47,7 +47,7 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 - GitHub tokens are accepted per request and are not stored.
 - Recent history is local to the browser and stores only the summary-safe report projection.
 - Share links contain only summary-level report data.
-- Server saved reports are summary-only, short-lived, and currently in-memory.
+- Server saved reports are summary-only. They use in-memory demo storage unless server-only Supabase credentials are configured.
 - GitHub PR comments use a short marker comment and update the prior AgentProof comment when present.
 - GitHub App webhook intake verifies `X-Hub-Signature-256` when `GITHUB_WEBHOOK_SECRET` is configured and returns dry-run metadata only. Automated App actions remain disabled until App credentials, installation-token handling, idempotency storage, and explicit opt-in exist.
 - Slack notifications require a server webhook plus `AGENTPROOF_NOTIFY_TOKEN`, and send summary-only payloads.
