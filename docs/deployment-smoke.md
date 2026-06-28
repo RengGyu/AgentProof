@@ -1,0 +1,72 @@
+# Deployment Smoke Checklist
+
+This checklist is the MVP deployment gate for AgentProof. It proves the deployed app can run the no-secret demo path, preserve summary-only saved reports, and keep optional integrations behind explicit trust boundaries.
+
+Production alias:
+
+https://agentproof-pearl.vercel.app
+
+Last full live integration pass: 2026-06-29
+
+## No-Secret Production Checks
+
+Run these after every production deployment:
+
+```bash
+curl -sS -o /tmp/agentproof-home.html -w "home:%{http_code}\n" https://agentproof-pearl.vercel.app/
+curl -sS -o /tmp/agentproof-integrations.html -w "integrations:%{http_code}\n" https://agentproof-pearl.vercel.app/integrations
+curl -sS -o /tmp/agentproof-api-analyze.txt -w "api_analyze_get:%{http_code}\n" https://agentproof-pearl.vercel.app/api/analyze
+AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app CI=true corepack pnpm smoke:production-regression
+```
+
+Expected:
+
+- `/` returns 200.
+- `/integrations` returns 200.
+- `/api/analyze` rejects GET with 405.
+- Production regression smoke passes for the public AgentProof PR set.
+- Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
+- Saved reports retain zero evidence items, zero claims, no raw re-prompt text, and cleared evidence references.
+
+## Live Integration Checks
+
+These checks use server-side env and caller tokens. They should never print secret values.
+
+| Integration | Command or request | Expected proof | Side effect |
+| --- | --- | --- | --- |
+| Supabase saved reports | POST demo report to `/api/reports`, GET `/api/reports/{id}`, DELETE `/api/reports/{id}` | 200 for save/get/delete, `summary-only-supabase`, zero evidence items and claims | Creates then deletes one summary-only row |
+| OpenAI verifier | `AGENTPROOF_LLM_TOKEN=<caller token> AGENTPROOF_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:openai` | `Source: openai`, priority metadata only | Calls OpenAI Responses with `store: false` |
+| GitHub webhook | Signed `ping` request to `/api/github/webhook` | `accepted: true`, `dryRun: true`, `automationEnabled: false`, `willAnalyze: false`, `willComment: false` | No GitHub write |
+| Slack notification | POST a demo report to `/api/notifications/slack` with `x-agentproof-notify-token` | `{ "sent": true }` | Sends one summary-only Slack message |
+| GitHub PR comment | `pnpm smoke:github-comment` with an intentional target PR and write token | `action: "created"` or `"updated"`, comment URL, priority metadata only | Creates or updates one AgentProof marker comment |
+
+Most recent live pass:
+
+- Supabase saved report round trip: passed, `summary-only-supabase`.
+- OpenAI verifier smoke: passed, `source: openai`.
+- GitHub signed webhook ping: passed, dry-run only.
+- Slack notification smoke: passed, sent one summary-only message.
+- GitHub PR comment smoke: passed on PR #18, created an AgentProof marker comment.
+
+## Manual Demo Checks
+
+- Open the deployed app on desktop and mobile.
+- Run the five demo scenarios: Clean PR, Scope creep, Missing tests, Failed CI, Vague task.
+- Confirm the priority, evidence coverage, missing-test count, scope signal, and re-prompt change between scenarios.
+- Copy a share link and confirm the shared page omits raw evidence, claims, evidence references, patch/log excerpts, and raw re-prompt text.
+- Use the Markdown export only as an explicit full-report action.
+- Confirm GitHub PR comments are explicit user actions and marker-based.
+
+## Fail-Closed Expectations
+
+- Missing or invalid OpenAI caller token returns 401 or deterministic fallback metadata.
+- Missing or invalid Slack caller token returns 401.
+- Missing or invalid GitHub webhook signature returns 401.
+- Missing Supabase env falls back to `short-lived-in-memory` with a warning.
+- Misconfigured Supabase env returns 503 instead of silently using unsafe storage.
+
+## Non-Goals
+
+- No automated GitHub App analysis or comments.
+- No auto-merge or merge-blocking decision.
+- No durable raw diff, raw log, raw annotation detail, token, claim, or raw re-prompt storage.

@@ -74,6 +74,19 @@ describe("POST /api/reports", () => {
     expect(response.status).toBe(422);
   });
 
+  it("rejects oversized saved-report payloads before validation or storage", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/reports", {
+        method: "POST",
+        body: "x".repeat(121_000)
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(413);
+    expect(json.error).toContain("too large");
+  });
+
   it("rejects full reports that omit required provenance", async () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     delete report.scope.evidenceRefs;

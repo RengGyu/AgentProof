@@ -43,6 +43,8 @@ Use the left demo selector to compare the intended verifier signals:
 
 The demo is a verification handoff, not an approval gate. Share links and Recent history are summary-only; full Markdown export and PR comment copy are explicit user actions.
 
+For frozen portfolio artifacts, see `docs/example-reports.md`. For the MVP completion record and the latest deployment smoke checklist, see `docs/mvp-completion.md` and `docs/deployment-smoke.md`.
+
 ## Validate
 
 ```bash
@@ -111,8 +113,13 @@ It avoids:
 - Generic style review comments
 - Auto-merge decisions
 - Security scanning claims without evidence
-- Long-term raw source retention
 - Long-term raw source, log, or full-report retention
+
+## Why Not An AI Code Reviewer?
+
+Generic AI code reviewers usually start from the diff and produce review comments. AgentProof starts from the original issue, task, or prompt and asks whether the agent-authored PR has enough evidence to satisfy it.
+
+AgentProof does not decide whether to merge. It gives a human reviewer a compact evidence report: requirement coverage, missing proof, scope creep, risky files, test/build signals, and the next prompt to send back to the coding agent.
 
 ## Architecture
 
@@ -150,7 +157,7 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
-For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook dry-run boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For example report artifacts, use `docs/example-reports.md`. For deployment smoke checks, use `docs/deployment-smoke.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook dry-run boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
 
 ## Evaluation Pack
 
