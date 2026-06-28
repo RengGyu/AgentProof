@@ -1591,6 +1591,18 @@ describe("generateVerificationReport", () => {
     expect(scopeEvidence.map((item) => item.locator)).toEqual(
       expect.arrayContaining(["src/server/auth/sessionExpiry.ts", "src/server/auth/permissions.ts"])
     );
+    expect(scopeReport.scope.provenance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceRef: expect.stringMatching(/^ev_/),
+          sourceType: "changed_file",
+          locator: "src/server/auth/sessionExpiry.ts",
+          confidence: expect.any(Number),
+          evidenceText: expect.stringContaining("src/server/auth/sessionExpiry.ts")
+        })
+      ])
+    );
+    expect(scopeReport.scope.provenance?.every((item) => item.evidenceText.length <= 240)).toBe(true);
 
     const missingTestReport = generateVerificationReport(demoScenarios["missing-tests"]);
     const missingTest = missingTestReport.testing.missingTests[0];
@@ -1598,6 +1610,14 @@ describe("generateVerificationReport", () => {
 
     expect(missingTest?.path).toBe("src/billing/InvoiceExportButton.tsx");
     expect(missingEvidence.some((item) => item.locator === missingTest?.path)).toBe(true);
+    expect(missingTest?.provenance?.some((item) =>
+      item.evidenceRef.startsWith("ev_") &&
+      (item.sourceType === "changed_file" || item.sourceType === "diff") &&
+      item.locator === "src/billing/InvoiceExportButton.tsx" &&
+      typeof item.confidence === "number" &&
+      item.evidenceText.includes("src/billing/InvoiceExportButton.tsx")
+    )).toBe(true);
+    expect(missingTest?.provenance?.every((item) => item.evidenceText.length <= 240)).toBe(true);
   });
 });
 

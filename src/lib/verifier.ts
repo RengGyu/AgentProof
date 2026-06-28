@@ -11,6 +11,7 @@ import { redactSecrets } from "./redact";
 import type {
   CheckStatus,
   EvidenceItem,
+  FindingProvenance,
   MissingTestFinding,
   PriorityLevel,
   PullRequestInput,
@@ -21,6 +22,8 @@ import type {
 } from "./types";
 
 const MAX_MISSING_TEST_FINDINGS = 100;
+const MAX_FINDING_PROVENANCE_ITEMS = 5;
+const MAX_FINDING_PROVENANCE_TEXT = 240;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
   const evidenceIndex = buildEvidenceIndex(
@@ -78,7 +81,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
       suspected: scope.outOfScopeFiles.length > 0,
       outOfScopeFiles: scope.outOfScopeFiles,
       reasons: scope.reasons,
-      evidenceRefs: scope.evidenceRefs
+      evidenceRefs: scope.evidenceRefs,
+      provenance: scope.provenance
     },
     testing: {
       ciStatus,
@@ -394,10 +398,12 @@ function detectScopeCreep(
       return !directMatch && (isRiskFile(file.path) || files.length > 3);
     })
     .map((file) => file.path);
+  const evidenceRefs = uniqueRefs(outOfScopeFiles.flatMap((path) => evidenceRefsForPath(evidenceIndex, path)));
 
   return {
     outOfScopeFiles,
-    evidenceRefs: uniqueRefs(outOfScopeFiles.flatMap((path) => evidenceRefsForPath(evidenceIndex, path))),
+    evidenceRefs,
+    provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs),
     reasons: outOfScopeFiles.map((path) =>
       isRiskFile(path)
         ? `${path} is risk-sensitive and does not clearly map to the stated criteria.`
@@ -431,13 +437,49 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
     .slice(0, MAX_MISSING_TEST_FINDINGS)
     .map((file) => {
       const hasRelatedTestFile = testFiles.some((testFile) => testEvidenceLooksRelated(file, testFile));
+      const evidenceRefs = uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5);
 
       return {
         path: file.path,
         why: missingTestReason(hasRelatedTestFile, hasTestFileChange, hasPassingTestSignal),
-        evidenceRefs: uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5)
+        evidenceRefs,
+        provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs)
       };
     });
+}
+
+function findingProvenanceForRefs(evidenceIndex: EvidenceItem[], refs: string[]): FindingProvenance[] {
+  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
+  const provenance: FindingProvenance[] = [];
+
+  for (const ref of uniqueRefs(refs)) {
+    const evidence = evidenceById.get(ref);
+    if (!evidence) continue;
+
+    provenance.push({
+      evidenceRef: ref,
+      sourceType: evidence.kind,
+      locator: evidence.locator ?? evidence.label,
+      confidence: evidence.confidence,
+      evidenceText: shortEvidenceText(evidence.summary)
+    });
+
+    if (provenance.length >= MAX_FINDING_PROVENANCE_ITEMS) {
+      break;
+    }
+  }
+
+  return provenance;
+}
+
+function shortEvidenceText(value: string): string {
+  const text = redactSecrets(value).replace(/\s+/g, " ").trim();
+
+  if (text.length <= MAX_FINDING_PROVENANCE_TEXT) {
+    return text;
+  }
+
+  return `${text.slice(0, MAX_FINDING_PROVENANCE_TEXT - 3).trim()}...`;
 }
 
 function missingTestReason(

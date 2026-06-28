@@ -1,3 +1,20 @@
+const findingProvenanceSchema = {
+  type: "array",
+  maxItems: 20,
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["evidenceRef", "sourceType", "locator", "confidence", "evidenceText"],
+    properties: {
+      evidenceRef: { type: "string", maxLength: 600 },
+      sourceType: { type: "string", enum: ["task", "pr_description", "diff", "changed_file", "check", "log", "test", "inference"] },
+      locator: { type: ["string", "null"], maxLength: 1000 },
+      confidence: { type: "number", minimum: 0, maximum: 1 },
+      evidenceText: { type: "string", maxLength: 600 }
+    }
+  }
+} as const;
+
 export const verificationReportSchema = {
   name: "agentproof_verification_report",
   schema: {
@@ -80,12 +97,13 @@ export const verificationReportSchema = {
       scope: {
         type: "object",
         additionalProperties: false,
-        required: ["suspected", "outOfScopeFiles", "reasons", "evidenceRefs"],
+        required: ["suspected", "outOfScopeFiles", "reasons", "evidenceRefs", "provenance"],
         properties: {
           suspected: { type: "boolean" },
           outOfScopeFiles: { type: "array", maxItems: 100, items: { type: "string", maxLength: 500 } },
           reasons: { type: "array", maxItems: 100, items: { type: "string", maxLength: 600 } },
-          evidenceRefs: { type: "array", maxItems: 50, items: { type: "string", maxLength: 600 } }
+          evidenceRefs: { type: "array", maxItems: 50, items: { type: "string", maxLength: 600 } },
+          provenance: findingProvenanceSchema
         }
       },
       testing: {
@@ -102,11 +120,12 @@ export const verificationReportSchema = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["path", "why", "evidenceRefs"],
+              required: ["path", "why", "evidenceRefs", "provenance"],
               properties: {
                 path: { type: "string", maxLength: 500 },
                 why: { type: "string", maxLength: 600 },
-                evidenceRefs: { type: "array", maxItems: 50, items: { type: "string", maxLength: 600 } }
+                evidenceRefs: { type: "array", maxItems: 50, items: { type: "string", maxLength: 600 } },
+                provenance: findingProvenanceSchema
               }
             }
           }

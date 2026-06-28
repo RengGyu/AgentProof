@@ -29,6 +29,8 @@ const LIMITS = {
   evidenceLocator: 1000,
   evidenceSummary: 3000,
   evidenceRefs: 50,
+  provenanceCount: 20,
+  provenanceText: 600,
   limitationCount: 50,
   shortText: 600
 };
@@ -172,12 +174,15 @@ function validateScope(value: unknown, evidenceIds: Set<string>, errors: string[
     return;
   }
 
-  requireKeys(value, ["suspected", "outOfScopeFiles", "reasons"], "scope", errors, ["evidenceRefs"]);
+  requireKeys(value, ["suspected", "outOfScopeFiles", "reasons"], "scope", errors, ["evidenceRefs", "provenance"]);
   validateBoolean(value.suspected, "scope.suspected", errors);
   validateStringArray(value.outOfScopeFiles, "scope.outOfScopeFiles", LIMITS.scopeFiles, LIMITS.sourceUrl, errors);
   validateStringArray(value.reasons, "scope.reasons", LIMITS.scopeFiles, LIMITS.shortText, errors);
   if (value.evidenceRefs !== undefined) {
     validateEvidenceRefs(value.evidenceRefs, "scope.evidenceRefs", evidenceIds, errors);
+  }
+  if (value.provenance !== undefined) {
+    validateFindingProvenance(value.provenance, "scope.provenance", evidenceIds, errors);
   }
 }
 
@@ -202,10 +207,13 @@ function validateTesting(value: unknown, evidenceIds: Set<string>, errors: strin
       continue;
     }
 
-    requireKeys(item, ["path", "why", "evidenceRefs"], path, errors);
+    requireKeys(item, ["path", "why", "evidenceRefs"], path, errors, ["provenance"]);
     validateString(item.path, `${path}.path`, LIMITS.sourceUrl, errors);
     validateString(item.why, `${path}.why`, LIMITS.shortText, errors);
     validateEvidenceRefs(item.evidenceRefs, `${path}.evidenceRefs`, evidenceIds, errors);
+    if (item.provenance !== undefined) {
+      validateFindingProvenance(item.provenance, `${path}.provenance`, evidenceIds, errors);
+    }
   }
 }
 
@@ -283,6 +291,29 @@ function validateEvidenceRefs(value: unknown, path: string, evidenceIds: Set<str
   }
 }
 
+function validateFindingProvenance(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {
+  const items = validateArray(value, path, LIMITS.provenanceCount, errors);
+  if (!items) return;
+
+  for (const [index, item] of items.entries()) {
+    const itemPath = `${path}[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${itemPath} must be an object.`);
+      continue;
+    }
+
+    requireKeys(item, ["evidenceRef", "sourceType", "confidence", "evidenceText"], itemPath, errors, ["locator"]);
+    validateString(item.evidenceRef, `${itemPath}.evidenceRef`, LIMITS.shortText, errors);
+    if (typeof item.evidenceRef === "string" && !evidenceIds.has(item.evidenceRef)) {
+      errors.push(`${itemPath}.evidenceRef cites missing evidence ${item.evidenceRef}.`);
+    }
+    validateEnum(item.sourceType, `${itemPath}.sourceType`, EVIDENCE_KINDS, errors);
+    validateOptionalString(item.locator, `${itemPath}.locator`, LIMITS.evidenceLocator, errors);
+    validateRange(item.confidence, `${itemPath}.confidence`, 0, 1, errors);
+    validateString(item.evidenceText, `${itemPath}.evidenceText`, LIMITS.provenanceText, errors);
+  }
+}
+
 function validateFullReportProvenance(report: RecordValue, evidenceIds: Set<string>, errors: string[]) {
   if (evidenceIds.size === 0) {
     errors.push("evidenceIndex must contain evidence items for full reports.");
@@ -323,6 +354,18 @@ function validateSummaryOnlyReport(report: RecordValue, errors: string[]) {
 
   if (isRecord(report.reprompt) && typeof report.reprompt.prompt === "string" && !/omit|shared summary|summary/i.test(report.reprompt.prompt)) {
     errors.push("summary-only reports must not include raw re-prompt text.");
+  }
+
+  if (isRecord(report.scope) && "provenance" in report.scope) {
+    errors.push("summary-only reports must omit finding provenance.");
+  }
+
+  if (isRecord(report.testing) && Array.isArray(report.testing.missingTests)) {
+    report.testing.missingTests.forEach((item, index) => {
+      if (isRecord(item) && "provenance" in item) {
+        errors.push(`summary-only reports must omit testing.missingTests[${index}].provenance.`);
+      }
+    });
   }
 }
 
@@ -506,7 +549,7 @@ function validateString(value: unknown, path: string, maxLength: number, errors:
 }
 
 function validateOptionalString(value: unknown, path: string, maxLength: number, errors: string[]) {
-  if (value === undefined) return;
+  if (value === undefined || value === null) return;
   validateString(value, path, maxLength, errors);
 }
 

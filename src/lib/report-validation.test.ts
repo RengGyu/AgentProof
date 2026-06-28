@@ -11,6 +11,19 @@ describe("validateVerificationReport", () => {
     expect(validateVerificationReport(report)).toEqual({ valid: true, errors: [] });
   });
 
+  it("validates every no-secret demo report in full and summary modes", () => {
+    for (const [scenarioId, input] of Object.entries(demoScenarios)) {
+      const report = generateVerificationReport(input);
+      const shared = decodeSharedReport(encodeReportForShare(report));
+
+      expect(validateVerificationReport(report, { mode: "full" }), scenarioId).toEqual({ valid: true, errors: [] });
+      expect(validateVerificationReport(shared, { mode: "summary" }), scenarioId).toEqual({ valid: true, errors: [] });
+      expect(JSON.stringify(shared), scenarioId).not.toContain("provenance");
+      expect(shared.evidenceIndex, scenarioId).toEqual([]);
+      expect(shared.claims, scenarioId).toEqual([]);
+    }
+  });
+
   it("rejects missing evidence references and invalid confidence", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     report.requirements[0].evidenceRefs = ["ev_missing"];
@@ -33,6 +46,24 @@ describe("validateVerificationReport", () => {
     expect(result.valid).toBe(false);
     expect(result.errors.join("\n")).toContain("scope.evidenceRefs cites missing evidence ev_missing_scope");
     expect(result.errors.join("\n")).toContain("reviewPriority[0].evidenceRefs cites missing evidence ev_missing_priority");
+  });
+
+  it("rejects malformed finding provenance", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.scope.provenance = [
+      {
+        evidenceRef: "ev_missing_provenance",
+        sourceType: "diff",
+        locator: "src/server/auth/sessionExpiry.ts",
+        confidence: 0.7,
+        evidenceText: "Missing provenance should fail."
+      }
+    ];
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("scope.provenance[0].evidenceRef cites missing evidence ev_missing_provenance");
   });
 
   it("keeps default validation backward-compatible for optional provenance", () => {
@@ -65,6 +96,43 @@ describe("validateVerificationReport", () => {
     const result = validateVerificationReport(shared, { mode: "full" });
     expect(result.valid).toBe(false);
     expect(result.errors.join("\n")).toContain("evidenceIndex must contain evidence items for full reports");
+  });
+
+  it("rejects finding provenance on summary-only reports", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    const shared = decodeSharedReport(encodeReportForShare(report));
+    shared.scope.provenance = [];
+    shared.testing.missingTests[0].provenance = [];
+
+    const result = validateVerificationReport(shared, { mode: "summary" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("summary-only reports must omit finding provenance");
+    expect(result.errors.join("\n")).toContain("summary-only reports must omit testing.missingTests[0].provenance");
+  });
+
+  it("accepts nullable optional fields produced by strict structured-output schemas", () => {
+    const report = generateVerificationReport(demoScenarios.clean) as unknown as Record<string, unknown>;
+    const source = report.source as Record<string, unknown>;
+    const evidenceIndex = report.evidenceIndex as Array<Record<string, unknown>>;
+    const scope = report.scope as Record<string, unknown>;
+
+    source.url = null;
+    source.author = null;
+    source.baseBranch = null;
+    source.headBranch = null;
+    evidenceIndex[0].locator = null;
+    scope.provenance = [
+      {
+        evidenceRef: evidenceIndex[0].id,
+        sourceType: evidenceIndex[0].kind,
+        locator: null,
+        confidence: 0.7,
+        evidenceText: "Short structured-output provenance."
+      }
+    ];
+
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
   it("allows strict validation when missing provenance is explained at the item level", () => {
