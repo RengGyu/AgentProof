@@ -92,9 +92,9 @@ PR #9 surfaced a separate evidence class: mobile layout, overlap, readability, a
    - Keep unrelated risky files flagged when only patch text mentions requirement words.
 
 3. Improve missing-test file matching.
-   - Current v2 links API route files to smoke tests that exercise the same endpoint and generic test files that name the changed component symbol.
-   - Remaining gap: unchanged existing tests are still invisible unless GitHub check/log evidence names them.
-   - Keep broad test evidence as a reviewer lead, not proof, when no endpoint, path, or symbol match exists.
+   - Current v3 links API route files to smoke tests that exercise the same endpoint, generic test files that name the changed component symbol, and passing CI/check metadata that names an unchanged test path, endpoint, or component symbol.
+   - Broad test evidence such as `pnpm test` remains a reviewer lead, not proof, when no endpoint, path, or symbol match exists.
+   - Generic CI/build summaries and job steps that only describe preview, deployment, security, policy, or report gates stay outside execution proof.
 
 4. Add post-deploy self-check for PR #1-#3 and PR #9.
    - Verify `/api/analyze` accepts each PR URL with proxy task text.
@@ -104,4 +104,4 @@ PR #9 surfaced a separate evidence class: mobile layout, overlap, readability, a
 
 5. Keep GitHub Actions raw log ingestion out of MVP unless privacy/cost controls are designed.
    - Raw logs can contain secrets and noisy output.
-   - Prefer bounded job-step metadata until a retention/redaction policy exists.
+   - Prefer bounded job-step metadata until a retention/redaction policy exists; keep filtering setup, artifact, preview, deploy, and report steps out of execution evidence.

@@ -75,6 +75,7 @@ export interface LogSnippet {
   source: string;
   text: string;
   status?: CheckStatus;
+  url?: string;
 }
 
 export interface Requirement {

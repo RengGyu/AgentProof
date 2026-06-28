@@ -361,7 +361,7 @@ function isVisualVerificationEvidence(item: EvidenceItem): boolean {
   }
 
   return hasPassingEvidenceStatusPrefix(item.summary) &&
-    /\b(browser qa|browser|desktop|mobile|overflow|playwright|screenshot|visual|viewport)\b/i.test(`${item.label} ${item.summary} ${item.locator ?? ""}`);
+    isVisualVerificationSignal(item.label, item.summary, item.locator);
 }
 
 function detectScopeCreep(
@@ -425,7 +425,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
 
   return changedImplementationFiles
     .filter((file) =>
-      !hasMatchingVerifiedTestEvidence(file, testFiles, hasPassingTestSignal) &&
+      !hasMatchingVerifiedTestEvidence(file, testFiles, hasPassingTestSignal, evidenceIndex) &&
       !hasVisualVerifiedPresentationEvidence(file, input, asksForTestEvidence)
     )
     .slice(0, MAX_MISSING_TEST_FINDINGS)
@@ -461,6 +461,10 @@ function missingTestReason(
     return "Test evidence changed, but none clearly maps to this implementation file.";
   }
 
+  if (hasPassingTestSignal) {
+    return "Passing test evidence exists, but no targeted test evidence clearly maps to this file.";
+  }
+
   return "Behavior-affecting file changed without matching test-file evidence.";
 }
 
@@ -490,10 +494,18 @@ function isVisualSurfacePath(path: string): boolean {
 }
 
 function hasPassingVisualVerification(input: PullRequestInput): boolean {
-  const visualPattern = /\b(browser qa|browser|desktop|mobile|overflow|playwright|screenshot|visual|viewport)\b/i;
+  return input.checks.some((check) => check.status === "passed" && isVisualVerificationSignal(check.name, check.summary ?? "", check.url)) ||
+    input.logs.some((log) => log.status === "passed" && isVisualVerificationSignal(log.source, log.text, log.url));
+}
 
-  return input.checks.some((check) => check.status === "passed" && visualPattern.test(`${check.name} ${check.summary ?? ""}`)) ||
-    input.logs.some((log) => log.status === "passed" && visualPattern.test(`${log.source} ${log.text}`));
+function isVisualVerificationSignal(label: string, text = "", locator = ""): boolean {
+  const combined = `${label} ${text} ${locator}`;
+  const visualPattern = /\b(browser qa|browser|desktop|mobile|overflow|playwright|cypress|screenshot|visual|viewport)\b/i;
+  const provenBrowserRunner = /\b(browser qa|playwright|cypress)\b/i.test(combined);
+  const nonProofVisualGate =
+    /\b(preview|deploy|deployment|security|scan|sast|policy|provenance|attestation|code owners?|review|report)\b/i.test(combined);
+
+  return visualPattern.test(combined) && (!nonProofVisualGate || provenBrowserRunner);
 }
 
 function isPresentationOnlyPatch(patch: string): boolean {
@@ -518,9 +530,50 @@ function isPresentationOnlyPatch(patch: string): boolean {
 function hasMatchingVerifiedTestEvidence(
   implementationFile: PullRequestInput["changedFiles"][number],
   testFiles: PullRequestInput["changedFiles"],
-  hasPassingTestSignal: boolean
+  hasPassingTestSignal: boolean,
+  evidenceIndex: EvidenceItem[]
 ): boolean {
-  return hasPassingTestSignal && testFiles.some((testFile) => testEvidenceLooksRelated(implementationFile, testFile));
+  return hasPassingTestSignal && (
+    testFiles.some((testFile) => testEvidenceLooksRelated(implementationFile, testFile)) ||
+    hasMatchingPassingExecutionEvidenceForFile(implementationFile, evidenceIndex)
+  );
+}
+
+function hasMatchingPassingExecutionEvidenceForFile(
+  implementationFile: PullRequestInput["changedFiles"][number],
+  evidenceIndex: EvidenceItem[]
+): boolean {
+  return evidenceIndex.some((item) =>
+    isPassingTestExecutionEvidence(item) &&
+      executionEvidenceLooksRelated(implementationFile, item)
+  );
+}
+
+function executionEvidenceLooksRelated(
+  implementationFile: PullRequestInput["changedFiles"][number],
+  item: EvidenceItem
+): boolean {
+  const evidenceText = `${item.label} ${item.summary} ${item.locator ?? ""}`.toLowerCase();
+
+  if (!/\b(tests?|spec|vitest|jest|playwright|cypress|pytest|smoke|e2e)\b/i.test(evidenceText)) {
+    return false;
+  }
+
+  return apiRouteEvidenceMatches(implementationFile.path, evidenceText) ||
+    symbolEvidenceMatches(implementationFile.path, evidenceText) ||
+    executionEvidenceMentionsRelatedTestPath(implementationFile.path, evidenceText);
+}
+
+function executionEvidenceMentionsRelatedTestPath(implementationPath: string, evidenceText: string): boolean {
+  const candidates = evidenceText.match(
+    /\b[a-z0-9_./\-[\]]*(?:(?:\/tests?\/[a-z0-9_./\-[\]]+\.[a-z0-9]+)|(?:[a-z0-9_./\-[\]]+\.(?:test|spec)\.[cm]?[jt]sx?)|(?:test_[a-z0-9_.-]+\.py))\b/gi
+  ) ?? [];
+
+  return candidates.some((testPath) =>
+    pathsLookRelated(implementationPath, testPath) ||
+      apiRouteEvidenceMatches(implementationPath, testPath) ||
+      symbolEvidenceMatches(implementationPath, testPath)
+  );
 }
 
 function pathsLookRelated(implementationPath: string, testPath: string): boolean {

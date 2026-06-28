@@ -95,10 +95,11 @@ AgentProof separates test/build execution proof from other GitHub checks:
 
 - `Test/Build` status is backed only by check or log names/summaries that look like test, spec, unit, integration, e2e, coverage, CI, or build execution.
 - Passing security reports, code-owner checks, dependency scans, deploy previews, and AI review checks do not prove tests or builds ran.
+- Generic `CI` or `build` checks are not promoted when their summaries only mention preview, deployment, security, policy, or report gates.
 - Failing non-test/build checks are still surfaced as high-priority static or merge-gate risks.
 - Lint and typecheck remain separate status fields, even when they come from GitHub checks.
 - Requirement `met` status still requires passing execution evidence linked through evidence IDs.
-- GitHub Actions fallback collects bounded job/step metadata when available; raw log archives are not fetched or stored in this MVP.
+- GitHub Actions fallback collects bounded job/step metadata when available, keeps only execution-like steps such as test/build commands, and never fetches or stores raw log archives in this MVP.
 
 ## Product Position
 

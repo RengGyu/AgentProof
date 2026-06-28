@@ -93,4 +93,32 @@ describe("getExecutionEvidenceItems", () => {
 
     expect(getExecutionEvidenceItems(evidenceIndex).map((item) => item.id)).toEqual(["ev_unit"]);
   });
+
+  it("does not promote generic CI checks when only the summary mentions preview or report tests", () => {
+    const evidenceIndex: EvidenceItem[] = [
+      {
+        id: "ev_preview_summary",
+        kind: "check",
+        label: "CI",
+        summary: "Status: passed. Vercel Preview tests passed after deployment",
+        confidence: 0.9
+      },
+      {
+        id: "ev_report_summary",
+        kind: "check",
+        label: "build",
+        summary: "Status: passed. security coverage tests report published",
+        confidence: 0.9
+      },
+      {
+        id: "ev_actual_step",
+        kind: "log",
+        label: "GitHub Actions job: CI",
+        summary: "Status: passed. GitHub Actions job CI: passed. Steps: pnpm test: passed",
+        confidence: 0.75
+      }
+    ];
+
+    expect(getExecutionEvidenceItems(evidenceIndex).map((item) => item.id)).toEqual(["ev_actual_step"]);
+  });
 });
