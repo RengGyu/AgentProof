@@ -1,6 +1,7 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
-import { createSavedReport, SAVED_REPORT_DURABILITY, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
+import { redactSecrets } from "@/lib/redact";
+import { createSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
 import type { VerificationReport } from "@/lib/types";
 
 const MAX_REPORT_REQUEST_BYTES = 120_000;
@@ -27,10 +28,22 @@ export async function POST(request: Request) {
 
   const validation = validateVerificationReport(body.report, { mode: reportValidationMode(body.report) });
   if (!validation.valid) {
-    return noStoreJson({ error: "Report failed validation.", details: validation.errors }, { status: 422 });
+    return noStoreJson({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, { status: 422 });
   }
 
-  const saved = createSavedReport(body.report);
+  const status = getSavedReportStoreStatus();
+  let saved;
+
+  try {
+    saved = await createSavedReport(body.report);
+  } catch (error) {
+    if (error instanceof SavedReportStoreError) {
+      return noStoreJson({ error: "Saved report storage failed.", detail: redactSecrets(error.message) }, { status: 503 });
+    }
+
+    throw error;
+  }
+
   const url = new URL(`/reports/${saved.id}`, request.url).toString();
 
   return noStoreJson({
@@ -38,8 +51,8 @@ export async function POST(request: Request) {
     url,
     expiresAt: saved.expiresAt,
     privacy: "summary-only",
-    durability: SAVED_REPORT_DURABILITY,
-    durabilityWarning: SAVED_REPORT_DURABILITY_WARNING
+    durability: status.durability,
+    durabilityWarning: status.durabilityWarning
   });
 }
 

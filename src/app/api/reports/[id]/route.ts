@@ -1,5 +1,6 @@
 import { noStoreJson } from "@/lib/http";
-import { deleteSavedReport, getSavedReport, SAVED_REPORT_DURABILITY, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
+import { redactSecrets } from "@/lib/redact";
+import { deleteSavedReport, getSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -7,7 +8,18 @@ interface RouteContext {
 
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const saved = getSavedReport(id);
+  const status = getSavedReportStoreStatus();
+  let saved;
+
+  try {
+    saved = await getSavedReport(id);
+  } catch (error) {
+    if (error instanceof SavedReportStoreError) {
+      return noStoreJson({ error: "Saved report lookup failed.", detail: redactSecrets(error.message) }, { status: 503 });
+    }
+
+    throw error;
+  }
 
   if (!saved) {
     return noStoreJson({ error: "Saved report was not found or has expired." }, { status: 404 });
@@ -18,14 +30,24 @@ export async function GET(_request: Request, context: RouteContext) {
     createdAt: saved.createdAt,
     expiresAt: saved.expiresAt,
     privacy: "summary-only",
-    durability: SAVED_REPORT_DURABILITY,
-    durabilityWarning: SAVED_REPORT_DURABILITY_WARNING
+    durability: status.durability,
+    durabilityWarning: status.durabilityWarning
   });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const deleted = deleteSavedReport(id);
+  let deleted;
+
+  try {
+    deleted = await deleteSavedReport(id);
+  } catch (error) {
+    if (error instanceof SavedReportStoreError) {
+      return noStoreJson({ error: "Saved report delete failed.", detail: redactSecrets(error.message) }, { status: 503 });
+    }
+
+    throw error;
+  }
 
   return noStoreJson({ deleted });
 }

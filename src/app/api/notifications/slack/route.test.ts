@@ -64,6 +64,29 @@ describe("POST /api/notifications/slack", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("redacts validation details before returning them", async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.requirements[0].evidenceRefs = ["github_pat_secret_should_not_leak_1234567890"];
+
+    const response = await POST(
+      new Request("http://localhost/api/notifications/slack", {
+        method: "POST",
+        headers: { "x-agentproof-notify-token": "secret" },
+        body: JSON.stringify({ report })
+      })
+    );
+    const serialized = JSON.stringify(await response.json());
+
+    expect(response.status).toBe(422);
+    expect(serialized).toContain("[redacted]");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("accepts summary-only reports for summary notifications", async () => {
     vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
     vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");

@@ -3,7 +3,7 @@ const prUrl = process.env.AGENTPROOF_SMOKE_PR_URL;
 const taskText = process.env.AGENTPROOF_SMOKE_TASK_TEXT ?? "";
 const githubToken = process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN;
 const allowProductionGithubToken = process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1";
-const SAVED_REPORT_DURABILITY = "short-lived-in-memory";
+const ALLOWED_SAVED_REPORT_DURABILITY = new Set(["short-lived-in-memory", "summary-only-supabase"]);
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -341,7 +341,7 @@ async function saveSummaryOnlyReport({ baseUrl, report, fetchImpl }) {
   if (
     !saveResponse.ok ||
     savePayload.privacy !== "summary-only" ||
-    savePayload.durability !== SAVED_REPORT_DURABILITY ||
+    !ALLOWED_SAVED_REPORT_DURABILITY.has(savePayload.durability) ||
     typeof savePayload.durabilityWarning !== "string" ||
     typeof savePayload.id !== "string" ||
     typeof savePayload.expiresAt !== "string" ||
@@ -364,7 +364,7 @@ async function saveSummaryOnlyReport({ baseUrl, report, fetchImpl }) {
   if (
     !getResponse.ok ||
     getPayload.privacy !== "summary-only" ||
-    getPayload.durability !== SAVED_REPORT_DURABILITY ||
+    !ALLOWED_SAVED_REPORT_DURABILITY.has(getPayload.durability) ||
     typeof getPayload.durabilityWarning !== "string" ||
     !getPayload.report
   ) {

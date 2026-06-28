@@ -1,5 +1,6 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
+import { redactSecrets } from "@/lib/redact";
 import { isAllowedSlackWebhookUrl, reportToSlackPayload } from "@/lib/slack";
 import type { VerificationReport } from "@/lib/types";
 
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
 
   const validation = validateVerificationReport(body.report, { mode: reportValidationMode(body.report) });
   if (!validation.valid) {
-    return noStoreJson({ error: "Report failed validation.", details: validation.errors }, { status: 422 });
+    return noStoreJson({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, { status: 422 });
   }
 
   const reportUrl = normalizeSlackReportUrl(body.reportUrl, request.url);

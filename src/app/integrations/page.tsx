@@ -20,8 +20,13 @@ const rows = [
   },
   {
     name: "Server saved reports",
-    purpose: "Short-lived summary-only saved report API. Durable production storage still needs a database.",
-    requiredEnv: ["DATABASE_URL or Supabase credentials for production"]
+    purpose: "Summary-only saved report API. Uses in-memory demo storage by default, or Supabase REST when server credentials are configured.",
+    requiredEnv: ["None for demo mode"],
+    optionalEnv: [
+      "AGENTPROOF_REPORTS_SUPABASE_URL or SUPABASE_URL",
+      "AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY",
+      "AGENTPROOF_REPORTS_TABLE"
+    ]
   }
 ];
 

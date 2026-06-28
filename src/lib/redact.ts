@@ -6,6 +6,7 @@ const SECRET_PATTERNS = [
   /\bsk-[A-Za-z0-9_-]{8,}/g,
   /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
   /authorization\s*:\s*bearer\s+[A-Za-z0-9._~+/-]+=*/gi,
+  /\bbearer\s+[A-Za-z0-9._~+/-]{8,}=*/gi,
   /(api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi
 ];
 
