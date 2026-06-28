@@ -24,7 +24,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     "",
     ...report.requirements.flatMap((requirement) => [
       `- **${requirement.status.toUpperCase()}** ${requirement.requirementText}`,
-      requirement.reviewerNote ? `  - Reviewer note: ${requirement.reviewerNote}` : undefined,
+      requirement.reviewerNote ? `  - Evidence note: ${requirement.reviewerNote}` : undefined,
       requirement.gaps.length > 0 ? `  - Gaps: ${requirement.gaps.join("; ")}` : undefined,
       ...evidenceLines(requirement.evidenceRefs, evidenceById, "  ")
     ]),
@@ -55,7 +55,7 @@ export function reportToMarkdown(report: VerificationReport): string {
       ? executionEvidence.map((item) => formatExecutionEvidenceLine(item))
       : ["- No test/build check or log evidence was available."]),
     "",
-    `## Review Priority`,
+    `## Verification Priority`,
     "",
     ...report.reviewPriority.flatMap((item) => [
       `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}`,
@@ -135,7 +135,7 @@ export function reportToGitHubComment(
     "",
     ...scopeLines,
     "",
-    "### Review Priority",
+    "### Verification Priority",
     "",
     ...(priorityLines.length > 0 ? priorityLines : ["- No priority files detected."]),
     "",

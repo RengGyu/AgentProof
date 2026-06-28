@@ -13,7 +13,7 @@ Deployed demo:
 ## Review Prompt
 
 ```text
-Review this repository as a product-quality code review.
+Audit this repository as an AgentProof product-quality verification tool.
 
 Project context:
 AgentProof is an evidence-based verifier for AI-generated PRs. It should not behave like a generic AI code reviewer. Its job is to map issue/task requirements to PR evidence, identify weak proof, detect scope creep, surface missing test evidence, and generate a concise re-prompt for a coding agent.

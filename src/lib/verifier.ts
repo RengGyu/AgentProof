@@ -790,7 +790,7 @@ function buildTopRisks(
   if (missingTests.length > 0) risks.push("Behavior changed without strong test evidence.");
   if (outOfScopeFiles.length > 0) risks.push("Potential scope creep in changed files.");
 
-  return risks.length > 0 ? risks.slice(0, 4) : ["No major blocker found from available evidence."];
+  return risks.length > 0 ? risks.slice(0, 4) : ["No major evidence gap found from available evidence."];
 }
 
 function buildLimitations(
@@ -813,11 +813,11 @@ function buildLimitations(
 
 function summarize(priority: PriorityLevel, evidenceCoverage: number, topRisks: string[]): string {
   if (priority === "blocker") {
-    return `Blocked by evidence failure. Coverage ${evidenceCoverage}%. ${topRisks[0]}`;
+    return `Critical evidence gap found. Coverage ${evidenceCoverage}%. ${topRisks[0]}`;
   }
 
   if (priority === "high") {
-    return `High-priority review needed. Coverage ${evidenceCoverage}%. ${topRisks[0]}`;
+    return `High-priority verification needed. Coverage ${evidenceCoverage}%. ${topRisks[0]}`;
   }
 
   if (priority === "medium") {

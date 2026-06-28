@@ -8,12 +8,16 @@ import {
   ClipboardList,
   Download,
   ExternalLink,
+  FileText,
   FileWarning,
   Gauge,
   GitCommitVertical,
   Link2,
+  ListChecks,
+  LockKeyhole,
   MessageSquareText,
   Send,
+  ShieldAlert,
   TestTube2
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -41,6 +45,24 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
   const [commentToken, setCommentToken] = useState("");
   const [postingComment, setPostingComment] = useState(false);
   const [postedCommentUrl, setPostedCommentUrl] = useState<string | null>(null);
+  const requirementStats = useMemo(() => {
+    const counts: Record<RequirementStatus, number> = {
+      met: 0,
+      partial: 0,
+      missing: 0,
+      unclear: 0
+    };
+
+    for (const requirement of report.requirements) {
+      counts[requirement.status] += 1;
+    }
+
+    return counts;
+  }, [report.requirements]);
+  const verificationAnswer = useMemo(
+    () => getVerificationAnswer(report.summary.priority, report.summary.evidenceCoverage, report.testing.ciStatus),
+    [report.summary.evidenceCoverage, report.summary.priority, report.testing.ciStatus]
+  );
 
   async function copyText(text: string, action: "report" | "comment" | "reprompt" | "share") {
     try {
@@ -131,9 +153,10 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
 
   return (
     <section className="report">
-      <div className="panel summary-card">
+      <div className="panel summary-card decision-card">
         <div className="summary-head">
           <div className="summary-title">
+            <p className="eyebrow">Verification report</p>
             <h1>{report.source.title}</h1>
             <p>{report.summary.oneLine}</p>
           </div>
@@ -149,50 +172,100 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           </div>
         ) : null}
 
-        <div className="report-actions" aria-label="Report export actions">
-          {!isSummaryMode ? (
-            <>
-              <button className="button compact" onClick={() => copyText(markdown, "report")}>
-                {copiedAction === "report" ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
-                {copiedAction === "report" ? "Copied" : "Copy Report"}
-              </button>
-              <button className="button compact" onClick={() => copyText(githubComment, "comment")}>
-                {copiedAction === "comment" ? <CheckCircle2 size={15} /> : <MessageSquareText size={15} />}
-                {copiedAction === "comment" ? "Copied" : "Copy PR Comment"}
-              </button>
-            </>
-          ) : null}
-          <button className="button compact" onClick={copyShareLink}>
-            {copiedAction === "share" ? <CheckCircle2 size={15} /> : <Link2 size={15} />}
-            {copiedAction === "share" ? "Copied" : "Copy Share Link"}
-          </button>
-          {!isSummaryMode ? (
-            <button className="button compact" onClick={downloadMarkdown}>
-              <Download size={15} />
-              Download
-            </button>
-          ) : null}
+        <div className="decision-strip">
+          <div className="decision-copy">
+            <span>
+              <ShieldAlert size={15} />
+              Evidence answer
+            </span>
+            <strong>{verificationAnswer.title}</strong>
+            <p>{verificationAnswer.body}</p>
+          </div>
+          <div className="risk-strip">
+            <span className="risk-strip-title">Inspect first</span>
+            <ul>
+              {report.summary.topRisks.slice(0, 3).map((risk) => (
+                <li key={risk}>{risk}</li>
+              ))}
+            </ul>
+          </div>
         </div>
-        {actionMessage ? <p className={`action-feedback ${actionMessage.tone}`}>{actionMessage.text}</p> : null}
 
         <div className="metric-grid">
+          <Metric
+            label="Requirements"
+            value={`${requirementStats.met}/${report.requirements.length}`}
+            icon={<ListChecks size={17} />}
+          />
           <Metric label="Coverage" value={`${report.summary.evidenceCoverage}%`} icon={<Gauge size={17} />} />
-          <Metric label="Confidence" value={`${Math.round(report.summary.confidence * 100)}%`} icon={<CheckCircle2 size={17} />} />
-          <Metric label="Test/Build" value={report.testing.ciStatus} icon={<GitCommitVertical size={17} />} tone={statusClass(report.testing.ciStatus)} />
+          <Metric
+            label="Test/Build"
+            value={formatStatus(report.testing.ciStatus)}
+            icon={<GitCommitVertical size={17} />}
+            tone={statusClass(report.testing.ciStatus)}
+          />
           <Metric label="Missing Tests" value={String(report.testing.missingTests.length)} icon={<TestTube2 size={17} />} />
         </div>
+
+        <div className="action-dock">
+          <div className="action-dock-copy">
+            <span>
+              <LockKeyhole size={14} />
+              Human handoff
+            </span>
+            <small>Share surfaces stay summary-only; full export is explicit.</small>
+          </div>
+          <div className="report-actions" aria-label="Report export actions">
+            {!isSummaryMode ? (
+              <>
+                <button className="button compact" onClick={() => copyText(markdown, "report")}>
+                  {copiedAction === "report" ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
+                  {copiedAction === "report" ? "Copied" : "Copy Report"}
+                </button>
+                <button className="button compact" onClick={() => copyText(githubComment, "comment")}>
+                  {copiedAction === "comment" ? <CheckCircle2 size={15} /> : <MessageSquareText size={15} />}
+                  {copiedAction === "comment" ? "Copied" : "Copy PR Comment"}
+                </button>
+              </>
+            ) : null}
+            <button className="button compact" onClick={copyShareLink}>
+              {copiedAction === "share" ? <CheckCircle2 size={15} /> : <Link2 size={15} />}
+              {copiedAction === "share" ? "Copied" : "Copy Share Link"}
+            </button>
+            {!isSummaryMode ? (
+              <button className="button compact" onClick={downloadMarkdown}>
+                <Download size={15} />
+                Download
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {actionMessage ? <p className={`action-feedback ${actionMessage.tone}`}>{actionMessage.text}</p> : null}
       </div>
 
-      <div className="grid-two">
-        <div className="stack">
-          <div className="card">
-            <h2>Requirement Coverage</h2>
+      <div className="report-body">
+        <div className="stack report-main">
+          <div className="card section-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Coverage</p>
+                <h2>Requirement Evidence</h2>
+              </div>
+              <span className="muted small">
+                {requirementStats.partial + requirementStats.missing + requirementStats.unclear} need review
+              </span>
+            </div>
             {report.requirements.map((requirement) => (
               <div className="requirement" key={requirement.requirementId}>
-                <StatusChip status={requirement.status} />
+                <div className="requirement-status">
+                  <StatusChip status={requirement.status} />
+                  <span>{Math.round(requirement.confidence * 100)}% confidence</span>
+                </div>
                 <div className="requirement-body">
                   <p>{requirement.requirementText}</p>
-                  <p className="muted small">{requirement.reviewerNote}</p>
+                  <p className="muted small requirement-note">
+                    <span>Evidence note:</span> {requirement.reviewerNote}
+                  </p>
                   {requirement.gaps.length > 0 ? (
                     <ul className="plain-list">
                       {requirement.gaps.map((gap) => (
@@ -200,17 +273,47 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                       ))}
                     </ul>
                   ) : null}
-                  {requirement.evidenceRefs.length > 0 ? (
-                    <EvidenceRefs refs={requirement.evidenceRefs} evidenceById={evidenceById} />
+                  {!isSummaryMode && requirement.evidenceRefs.length > 0 ? (
+                    <EvidenceRefDetails refs={requirement.evidenceRefs} evidenceById={evidenceById} />
                   ) : null}
                 </div>
               </div>
             ))}
           </div>
 
+          <div className="card section-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Human verification</p>
+                <h2>Verification Priority</h2>
+              </div>
+            </div>
+            <ul className="plain-list">
+              {report.reviewPriority.length > 0 ? (
+                report.reviewPriority.map((item) => (
+                  <li key={`${item.path}-${item.reason}`}>
+                    <span className={`evidence-label priority-${item.priority}`}>
+                      {formatPriorityLabel(item.priority)} - {item.path}
+                    </span>
+                    {item.reason}
+                    {!isSummaryMode ? <EvidenceRefDetails refs={item.evidenceRefs} evidenceById={evidenceById} /> : null}
+                  </li>
+                ))
+              ) : (
+                <li>No priority files detected from available evidence.</li>
+              )}
+            </ul>
+          </div>
+
           {!isSummaryMode ? (
-            <div className="card">
-              <h2>Agent Claims</h2>
+            <details className="card disclosure-card">
+              <summary>
+                <span>
+                  <FileText size={15} />
+                  Agent Claims
+                </span>
+                <small>{report.claims.length} extracted</small>
+              </summary>
               {report.claims.length > 0 ? (
                 <ul className="plain-list">
                   {report.claims.map((claim) => (
@@ -228,25 +331,18 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               ) : (
                 <p className="muted small">No explicit implementation claims were found in the PR description.</p>
               )}
-            </div>
+            </details>
           ) : null}
 
-          <div className="card">
-            <h2>Review Priority</h2>
-            <ul className="plain-list">
-              {report.reviewPriority.map((item) => (
-                <li key={`${item.path}-${item.reason}`}>
-                  <span className={`evidence-label priority-${item.priority}`}>{item.priority.toUpperCase()} - {item.path}</span>
-                  {item.reason}
-                  <EvidenceRefs refs={item.evidenceRefs} evidenceById={evidenceById} compact />
-                </li>
-              ))}
-            </ul>
-          </div>
-
           {!isSummaryMode ? (
-            <div className="card">
-              <h2>Evidence Index</h2>
+            <details className="card disclosure-card">
+              <summary>
+                <span>
+                  <ClipboardList size={15} />
+                  Evidence Index
+                </span>
+                <small>{report.evidenceIndex.length} items</small>
+              </summary>
               <ul className="evidence-list">
                 {report.evidenceIndex.slice(0, 12).map((item) => (
                   <li key={item.id}>
@@ -257,60 +353,73 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                   </li>
                 ))}
               </ul>
-            </div>
+            </details>
           ) : null}
         </div>
 
-        <div className="stack">
-          <div className="card">
-            <h2>Top Risks</h2>
+        <aside className="stack report-rail">
+          <div className="card section-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Risk</p>
+                <h2>Risks & Scope</h2>
+              </div>
+            </div>
             <ul className="plain-list">
               {report.summary.topRisks.map((risk) => (
                 <li key={risk}>
                   <AlertCircle size={14} /> {risk}
                 </li>
               ))}
-            </ul>
-          </div>
-
-          <div className="card">
-            <h2>Scope</h2>
-            {report.scope.suspected ? (
-              <ul className="plain-list">
-                {report.scope.reasons.map((reason) => (
+              {report.scope.suspected ? (
+                report.scope.reasons.map((reason) => (
                   <li key={reason}>
                     <FileWarning size={14} /> {reason}
                   </li>
-                ))}
-                {report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0 ? (
-                  <li>
-                    <EvidenceRefs refs={report.scope.evidenceRefs} evidenceById={evidenceById} compact />
-                  </li>
-                ) : null}
-              </ul>
-            ) : (
-              <p className="muted small">No out-of-scope file cluster found from available evidence.</p>
-            )}
+                ))
+              ) : (
+                <li>No out-of-scope file cluster found from available evidence.</li>
+              )}
+            </ul>
+            {!isSummaryMode && report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0 ? (
+              <EvidenceRefDetails refs={report.scope.evidenceRefs} evidenceById={evidenceById} />
+            ) : null}
           </div>
 
-          <div className="card">
-            <h2>Testing</h2>
+          <div className="card section-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Execution</p>
+                <h2>Testing Evidence</h2>
+              </div>
+            </div>
             <ul className="plain-list">
-              <li>Test/build: {report.testing.ciStatus}</li>
-              <li>Lint: {report.testing.lintStatus}</li>
-              <li>Typecheck: {report.testing.typecheckStatus}</li>
-              {report.testing.missingTests.map((item) => (
-                <li key={item.path}>
-                  {item.path}: {item.why}
-                  <EvidenceRefs refs={item.evidenceRefs} evidenceById={evidenceById} compact />
-                </li>
-              ))}
+              <li>Test/build: {formatStatus(report.testing.ciStatus)}</li>
+              <li>Lint: {formatStatus(report.testing.lintStatus)}</li>
+              <li>Typecheck: {formatStatus(report.testing.typecheckStatus)}</li>
+              {report.testing.missingTests.length > 0 ? (
+                report.testing.missingTests.map((item) => (
+                  <li key={item.path}>
+                    <span className="evidence-label">{item.path}</span>
+                    {item.why}
+                    {!isSummaryMode ? <EvidenceRefDetails refs={item.evidenceRefs} evidenceById={evidenceById} /> : null}
+                  </li>
+                ))
+              ) : (
+                <li>No missing test evidence detected.</li>
+              )}
             </ul>
           </div>
 
           {!isSummaryMode ? (
-            <div className="card">
-              <h2>Execution Evidence</h2>
+            <details className="card disclosure-card">
+              <summary>
+                <span>
+                  <GitCommitVertical size={15} />
+                  Execution Evidence
+                </span>
+                <small>{executionEvidence.length} items</small>
+              </summary>
               {executionEvidence.length > 0 ? (
                 <ul className="evidence-list">
                   {executionEvidence.map((item) => (
@@ -326,13 +435,16 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               ) : (
                 <p className="muted small">No test/build check or log evidence was available.</p>
               )}
-            </div>
+            </details>
           ) : null}
 
           {!isSummaryMode && report.source.url ? (
-            <div className="card">
+            <div className="card section-card">
               <div className="card-title-row">
-                <h2>GitHub PR Comment</h2>
+                <div>
+                  <p className="eyebrow">Handoff</p>
+                  <h2>GitHub PR Comment</h2>
+                </div>
                 {postedCommentUrl ? (
                   <a className="icon-link" href={postedCommentUrl} target="_blank" rel="noreferrer">
                     <ExternalLink size={15} />
@@ -359,9 +471,12 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           ) : null}
 
           {!isSummaryMode ? (
-            <div className="card">
+            <div className="card section-card">
               <div className="card-title-row">
-                <h2>Agent Re-prompt</h2>
+                <div>
+                  <p className="eyebrow">Next agent task</p>
+                  <h2>Agent Re-prompt</h2>
+                </div>
                 <button className="button compact" onClick={() => copyText(report.reprompt.prompt, "reprompt")}>
                   {copiedAction === "reprompt" ? <CheckCircle2 size={15} /> : <Bot size={15} />}
                   {copiedAction === "reprompt" ? "Copied" : "Copy"}
@@ -371,8 +486,13 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             </div>
           ) : null}
 
-          <div className="card">
-            <h2>Limitations</h2>
+          <div className="card section-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Boundary</p>
+                <h2>Limitations</h2>
+              </div>
+            </div>
             {report.limitations.length > 0 ? (
               <ul className="plain-list">
                 {report.limitations.map((limitation) => (
@@ -383,7 +503,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               <p className="muted small">No major data limitations detected.</p>
             )}
           </div>
-        </div>
+        </aside>
       </div>
     </section>
   );
@@ -409,7 +529,7 @@ function Metric({
 }
 
 function PriorityChip({ priority }: { priority: PriorityLevel }) {
-  return <span className={`priority-chip priority-${priority}`}>{priority.toUpperCase()}</span>;
+  return <span className={`priority-chip priority-${priority}`}>{formatPriorityLabel(priority)}</span>;
 }
 
 function StatusChip({ status }: { status: RequirementStatus }) {
@@ -418,6 +538,23 @@ function StatusChip({ status }: { status: RequirementStatus }) {
       <ClipboardList size={14} />
       {status.toUpperCase()}
     </span>
+  );
+}
+
+function EvidenceRefDetails({
+  refs,
+  evidenceById
+}: {
+  refs?: string[];
+  evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>;
+}) {
+  if (!refs || refs.length === 0) return null;
+
+  return (
+    <details className="evidence-details">
+      <summary>Cited evidence ({refs.length})</summary>
+      <EvidenceRefs refs={refs} evidenceById={evidenceById} compact />
+    </details>
   );
 }
 
@@ -458,6 +595,43 @@ function EvidenceRefs({
 
 function statusClass(status: CheckStatus): string {
   return `status-${status}`;
+}
+
+function formatStatus(status: CheckStatus): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatPriorityLabel(priority: PriorityLevel): string {
+  if (priority === "blocker") return "Critical evidence gap";
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
+function getVerificationAnswer(priority: PriorityLevel, evidenceCoverage: number, ciStatus: CheckStatus) {
+  if (priority === "blocker") {
+    return {
+      title: "Not enough evidence yet",
+      body: "A critical evidence gap or failed execution signal needs human verification before this PR can be trusted."
+    };
+  }
+
+  if (priority === "high") {
+    return {
+      title: "Evidence is weak in key areas",
+      body: "Start with the priority files and test/build proof before deciding whether the request is satisfied."
+    };
+  }
+
+  if (priority === "medium") {
+    return {
+      title: "Partially supported",
+      body: `Coverage is ${evidenceCoverage}% with ${formatStatus(ciStatus).toLowerCase()} test/build evidence. Check the listed gaps first.`
+    };
+  }
+
+  return {
+    title: "Mostly supported by available evidence",
+    body: "The report found aligned proof, but this remains a human review handoff rather than an approval."
+  };
 }
 
 async function writeClipboardText(text: string) {
