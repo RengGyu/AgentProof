@@ -632,6 +632,11 @@ summary:focus-visible {
   font-size: 13px;
 }
 
+code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .evidence-list,
 .plain-list {
   display: grid;

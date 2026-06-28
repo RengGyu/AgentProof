@@ -128,4 +128,25 @@ describe("getExecutionEvidenceItems", () => {
 
     expect(getExecutionEvidenceItems(evidenceIndex).map((item) => item.id)).toEqual(["ev_actual_step"]);
   });
+
+  it("extracts failed check locations without keeping annotation trailers in display summaries", () => {
+    const evidenceIndex: EvidenceItem[] = [
+      {
+        id: "ev_failed",
+        kind: "check",
+        label: "unit tests",
+        summary:
+          "Status: failed. unit tests - Vitest failed. Check annotations: failure at src/app/api/analyze/route.test.ts:42, warning at src/lib/verifier.test.ts:77. Raw annotation messages and raw annotation details omitted.",
+        confidence: 0.9
+      }
+    ];
+
+    const [item] = getExecutionEvidenceItems(evidenceIndex);
+
+    expect(item?.displaySummary).toBe("Status: failed. unit tests - Vitest failed.");
+    expect(item?.failureLocations).toEqual([
+      { level: "failure", path: "src/app/api/analyze/route.test.ts", line: 42 },
+      { level: "warning", path: "src/lib/verifier.test.ts", line: 77 }
+    ]);
+  });
 });
