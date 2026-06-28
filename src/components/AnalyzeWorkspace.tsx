@@ -120,12 +120,12 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
             <Database size={18} aria-hidden="true" />
           </div>
 
-          <div className="mode-tabs" role="tablist" aria-label="Analysis source">
+          <div className="mode-tabs" role="group" aria-label="Analysis source">
             <button
               type="button"
               className={mode === "demo" ? "mode-tab active" : "mode-tab"}
               onClick={() => setMode("demo")}
-              aria-selected={mode === "demo"}
+              aria-pressed={mode === "demo"}
             >
               Demo
             </button>
@@ -133,7 +133,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
               type="button"
               className={mode === "manual" ? "mode-tab active" : "mode-tab"}
               onClick={() => setMode("manual")}
-              aria-selected={mode === "manual"}
+              aria-pressed={mode === "manual"}
             >
               PR evidence
             </button>
