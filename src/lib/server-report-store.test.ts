@@ -16,6 +16,20 @@ describe("server report store", () => {
 
   it("stores only the summary-safe report projection", () => {
     const fullReport = generateVerificationReport(demoScenarios["scope-creep"]);
+    fullReport.evidenceIndex.push({
+      id: "ev_annotation_secret",
+      kind: "check",
+      label: "unit tests",
+      summary: "raw_details annotation message with ghp_secret_should_not_leak",
+      confidence: 0.9
+    });
+    fullReport.claims.push({
+      id: "claim_annotation_secret",
+      text: "Annotation raw_details retained sk-secret_should_not_leak",
+      evidenceRefs: ["ev_annotation_secret"],
+      supported: false
+    });
+    fullReport.reprompt.prompt = "raw_details re-prompt with github_pat_secret_should_not_leak";
     const saved = createSavedReport(fullReport);
     const serialized = JSON.stringify(saved.report);
 
@@ -23,6 +37,10 @@ describe("server report store", () => {
     expect(saved.report.claims).toEqual([]);
     expect(saved.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
     expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("raw_details");
+    expect(serialized).not.toContain("ghp_secret_should_not_leak");
+    expect(serialized).not.toContain("sk-secret_should_not_leak");
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
     expect(serialized).not.toContain(fullReport.reprompt.prompt);
     expect(saved.report.limitations).toContain(
       "Shared report omits raw evidence, patch/log excerpts, claims, and re-prompt text."

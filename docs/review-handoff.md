@@ -42,6 +42,7 @@ Return findings first, ordered by severity, with file paths and exact suggested 
 - For live GitHub comment smoke testing, run `AGENTPROOF_COMMENT_SMOKE_PR_URL=<target PR URL> AGENTPROOF_COMMENT_SMOKE_GITHUB_TOKEN=<fine-grained comment write token> pnpm smoke:github-comment` only when you intentionally want to create or update an AgentProof marker comment. Confirm output includes only action, URL, priority, and evidence metadata.
 - Review `docs/github-app-webhook.md` and confirm the GitHub App webhook remains dry-run only: no automatic analysis, comments, installation tokens, or raw payload persistence.
 - Confirm public PR URL analysis shows explicit limitations when test/build logs are unavailable and does not claim tests passed from security, code-owner, deploy-preview, or AI-review checks.
+- Confirm failed execution check annotations, when present, are summarized only as bounded `path:line` locations and never include raw annotation messages or raw details.
 - Paste task text plus changed file names, then confirm the report still works without GitHub access.
 - Use Copy Report, Copy PR Comment, Download, and Copy re-prompt.
 - Use Copy Share Link and confirm the opened shared page omits raw evidence.

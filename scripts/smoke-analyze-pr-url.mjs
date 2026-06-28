@@ -111,7 +111,7 @@ function isExecutionSignal(label, text = "", locator = "") {
   }
 
   const supportingText = String(text ?? "").trim();
-  if (supportingText && NON_EXECUTION_GATE_PATTERN.test(supportingText) && !DIRECT_EXECUTION_COMMAND_PATTERN.test(supportingText)) {
+  if (supportingText && NON_EXECUTION_GATE_PATTERN.test(supportingText)) {
     return false;
   }
 
@@ -150,6 +150,7 @@ export function assertSummaryOnlyReport(report, options = {}) {
   const serialized = JSON.stringify(report);
   const forbiddenPatterns = [
     /Patch excerpt/i,
+    /raw_details/i,
     /github_pat_[A-Za-z0-9_]+/,
     /\bgh[opsur]_[A-Za-z0-9_]+/,
     /\bsk-[A-Za-z0-9_-]+/,

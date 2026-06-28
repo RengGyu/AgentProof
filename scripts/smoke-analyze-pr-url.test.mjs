@@ -154,6 +154,13 @@ describe("smoke-analyze-pr-url", () => {
         confidence: 0.9
       },
       {
+        id: "ev_security_command",
+        kind: "check",
+        label: "CI",
+        summary: "Status: passed. Security report annotation: pnpm test src/app/api/analyze/route.test.ts passed",
+        confidence: 0.9
+      },
+      {
         id: "ev_actual_step",
         kind: "log",
         label: "GitHub Actions job: CI",

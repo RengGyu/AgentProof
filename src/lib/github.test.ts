@@ -189,7 +189,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json([]));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({
           total_count: 1,
           check_runs: [
@@ -272,7 +272,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json([]));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({
           total_count: 1,
           check_runs: [
@@ -322,7 +322,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json([]));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({
           total_count: 1,
           check_runs: [
@@ -379,6 +379,285 @@ describe("buildPullRequestInput", () => {
     expect(JSON.stringify(input)).not.toContain("ghp_secret");
   });
 
+  it("collects bounded failed check annotations without raw details or secrets", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Failed test annotation PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              id: 1234,
+              name: "unit tests",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/acme/repo/actions/runs/123456/job/999",
+              output: {
+                summary: "Vitest failed."
+              }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/check-runs/1234/annotations")) {
+        return Promise.resolve(Response.json([
+          {
+            path: "src/app/api/analyze/route.test.ts",
+            start_line: 42,
+            annotation_level: "failure",
+            title: "Assertion failed",
+            message: "expected status 400 with token=ghp_secret_should_not_leak",
+            raw_details: "raw stack trace with sk-secret_should_not_leak"
+          },
+          {
+            path: "src/lib/verifier.test.ts",
+            start_line: 77,
+            annotation_level: "failure",
+            message: "expected missing test evidence to include route"
+          },
+          {
+            path: "src/ignored-1.test.ts",
+            start_line: 1,
+            annotation_level: "warning",
+            message: "extra annotation 1"
+          },
+          {
+            path: "src/ignored-2.test.ts",
+            start_line: 2,
+            annotation_level: "warning",
+            message: "extra annotation 2"
+          },
+          {
+            path: "src/ignored-3.test.ts",
+            start_line: 3,
+            annotation_level: "warning",
+            message: "extra annotation 3"
+          },
+          {
+            path: "src/ignored-4.test.ts",
+            start_line: 4,
+            annotation_level: "warning",
+            message: "extra annotation 4"
+          }
+        ]));
+      }
+
+      if (url.includes("/actions/runs/123456/jobs")) {
+        return Promise.resolve(Response.json({ jobs: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const summary = input.checks[0]?.summary ?? "";
+    const serialized = JSON.stringify(input);
+
+    expect(summary).toContain("Check annotations:");
+    expect(summary).toContain("failure at src/app/api/analyze/route.test.ts:42");
+    expect(summary).toContain("failure at src/lib/verifier.test.ts:77");
+    expect(summary).not.toContain("expected status 400");
+    expect(summary).not.toContain("Assertion failed");
+    expect(summary).not.toContain("extra annotation");
+    expect(serialized).not.toContain("raw_details");
+    expect(serialized).not.toContain("raw stack trace");
+    expect(serialized).not.toContain("expected status 400");
+    expect(serialized).not.toContain("ghp_secret_should_not_leak");
+    expect(serialized).not.toContain("sk-secret_should_not_leak");
+    expect(input.limitations?.join(" ")).toContain("check annotation metadata was collected");
+    expect(input.limitations?.join(" ")).toContain("raw annotation details and raw log archives were not fetched or stored");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/logs"))).toBe(false);
+  });
+
+  it("does not fetch annotations for failed non-execution check runs", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Security annotation PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              id: 5678,
+              name: "Socket Security coverage tests report",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/acme/repo/actions/runs/123456/job/999",
+              output: {
+                summary: "Dependency report failed."
+              }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.checks[0]?.summary).toBe("Dependency report failed.");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/check-runs/5678/annotations"))).toBe(false);
+  });
+
+  it("keeps check evidence when annotation metadata fetch fails", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Annotation failure PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              id: 1234,
+              name: "unit tests",
+              status: "completed",
+              conclusion: "failure",
+              output: { summary: "Vitest failed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/check-runs/1234/annotations")) {
+        return Promise.resolve(new Response("forbidden", { status: 403 }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.checks[0]).toEqual(expect.objectContaining({
+      name: "unit tests",
+      status: "failed",
+      summary: "Vitest failed."
+    }));
+    expect(input.limitations?.join(" ")).toContain("check annotation metadata fetch failed");
+  });
+
+  it("drops unsafe annotation paths before adding check summaries", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Unsafe annotation path PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              id: 1234,
+              name: "unit tests",
+              status: "completed",
+              conclusion: "failure",
+              output: { summary: "Vitest failed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/check-runs/1234/annotations")) {
+        return Promise.resolve(Response.json([
+          { path: "../secret.ts", start_line: 1, annotation_level: "failure", message: "bad" },
+          { path: "/tmp/secret.ts", start_line: 2, annotation_level: "failure", message: "bad" },
+          { path: "https://evil.example/file.ts", start_line: 3, annotation_level: "failure", message: "bad" },
+          { path: "src/safe.test.ts", start_line: 4, annotation_level: "failure", message: "ok" }
+        ]));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const summary = input.checks[0]?.summary ?? "";
+
+    expect(summary).toContain("failure at src/safe.test.ts:4");
+    expect(summary).not.toContain("../secret.ts");
+    expect(summary).not.toContain("/tmp/secret.ts");
+    expect(summary).not.toContain("evil.example");
+  });
+
   it("does not collect generic CI jobs with only preview or report steps", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
@@ -398,7 +677,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json([]));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({
           total_count: 1,
           check_runs: [
@@ -460,7 +739,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json([]));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({
           total_count: 1,
           check_runs: [
@@ -507,7 +786,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json([]));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({
           total_count: 2,
           check_runs: [
@@ -567,7 +846,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json(filePage));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
       }
 
@@ -606,7 +885,7 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(new Response("forbidden", { status: 403 }));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(new Response("secondary limit", {
           status: 403,
           headers: { "retry-after": "30" }
@@ -652,7 +931,7 @@ describe("buildPullRequestInput", () => {
         return Promise.reject(new Error("network timeout github_pat_1234567890abcdef1234567890"));
       }
 
-      if (url.includes("/check-runs")) {
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
         return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
       }
 

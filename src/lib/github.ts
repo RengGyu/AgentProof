@@ -11,6 +11,9 @@ const GITHUB_MAX_COMMIT_STATUSES = 30;
 const GITHUB_MAX_ACTION_RUNS = 3;
 const GITHUB_MAX_ACTION_JOB_SUMMARIES = 12;
 const GITHUB_MAX_ACTION_STEPS_PER_JOB = 8;
+const GITHUB_MAX_ANNOTATED_CHECK_RUNS = 3;
+const GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL = 20;
+const GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN = 10;
 const NON_PROOF_ACTION_STEP_PATTERN =
   /\b(checkout|setup|cache|install dependencies|upload|download|artifact|publish|preview|deploy|deployment|report|notify)\b/i;
 const GENERIC_ACTION_JOB_NAME_PATTERN = /^\s*(ci|checks?|workflow|github actions)\s*$/i;
@@ -39,6 +42,7 @@ interface GitHubFileResponse {
 }
 
 interface GitHubCheckRunResponse {
+  id?: number;
   name: string;
   status: string;
   conclusion: string | null;
@@ -48,6 +52,7 @@ interface GitHubCheckRunResponse {
     title?: string;
     summary?: string;
   };
+  annotations?: GitHubCheckAnnotationSummary[];
 }
 
 interface GitHubStatusResponse {
@@ -69,6 +74,22 @@ interface GitHubActionStepResponse {
   name: string;
   status: string;
   conclusion: string | null;
+}
+
+interface GitHubCheckAnnotationResponse {
+  path?: string;
+  start_line?: number;
+  end_line?: number;
+  annotation_level?: string;
+  title?: string;
+  message?: string;
+  raw_details?: string;
+}
+
+interface GitHubCheckAnnotationSummary {
+  path: string;
+  line?: number;
+  level: string;
 }
 
 export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
@@ -184,7 +205,8 @@ async function fetchGitHubPullRequest(
     fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, Boolean(token?.trim())),
     fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, Boolean(token?.trim()))
   ]);
-  const actionJobLogs = await fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, limitations, Boolean(token?.trim()));
+  const annotatedCheckRuns = await fetchCheckRunAnnotations(parsed.owner, parsed.repo, checkRuns, headers, limitations, Boolean(token?.trim()));
+  const actionJobLogs = await fetchActionJobSummaries(parsed.owner, parsed.repo, annotatedCheckRuns, headers, limitations, Boolean(token?.trim()));
   const missingPatchCount = files.filter((file) => !file.patch).length;
 
   if (missingPatchCount > 0) {
@@ -208,10 +230,10 @@ async function fetchGitHubPullRequest(
       status: file.status,
       patch: file.patch ? compactText(file.patch, 1000) : undefined
     })),
-    checks: checkRuns.map((check) => ({
+    checks: annotatedCheckRuns.map((check) => ({
       name: check.name,
       status: mapGitHubCheckStatus(check.status, check.conclusion),
-      summary: check.output?.summary || check.output?.title,
+      summary: checkSummaryWithAnnotations(check),
       url: sanitizeGitHubEvidenceUrl(check.html_url)
     })).concat(statuses.map((status) => ({
       name: status.context,
@@ -430,6 +452,154 @@ async function fetchCommitStatuses(
   }
 
   return statuses.slice(0, GITHUB_MAX_COMMIT_STATUSES);
+}
+
+async function fetchCheckRunAnnotations(
+  owner: string,
+  repo: string,
+  checkRuns: GitHubCheckRunResponse[],
+  headers: Record<string, string>,
+  limitations: string[],
+  hasToken: boolean
+): Promise<GitHubCheckRunResponse[]> {
+  const eligibleChecks = checkRuns
+    .filter((check) => shouldFetchCheckAnnotations(check))
+    .slice(0, GITHUB_MAX_ANNOTATED_CHECK_RUNS);
+
+  if (eligibleChecks.length === 0) {
+    return checkRuns;
+  }
+
+  if (checkRuns.filter(shouldFetchCheckAnnotations).length > GITHUB_MAX_ANNOTATED_CHECK_RUNS) {
+    limitations.push(`GitHub check annotation metadata was capped at ${GITHUB_MAX_ANNOTATED_CHECK_RUNS} failed execution checks.`);
+  }
+
+  const annotationsByCheckId = new Map<number, GitHubCheckAnnotationSummary[]>();
+  let annotationCount = 0;
+
+  for (const check of eligibleChecks) {
+    if (typeof check.id !== "number" || annotationCount >= GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL) {
+      continue;
+    }
+
+    let response: Response;
+    const perPage = Math.min(
+      GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN,
+      Math.max(0, GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL - annotationCount)
+    );
+
+    try {
+      response = await githubFetch(
+        `https://api.github.com/repos/${owner}/${repo}/check-runs/${check.id}/annotations?per_page=${perPage}`,
+        headers
+      );
+    } catch {
+      limitations.push("GitHub check annotation metadata unavailable: request timed out or network failed.");
+      continue;
+    }
+
+    if (!response.ok) {
+      limitations.push(`GitHub check annotation metadata fetch failed: ${classifyGitHubFailure(response, hasToken)} File-level check evidence may be incomplete.`);
+      continue;
+    }
+
+    const annotations = ((await response.json()) as GitHubCheckAnnotationResponse[])
+      .map(summarizeCheckAnnotation)
+      .filter((annotation): annotation is GitHubCheckAnnotationSummary => Boolean(annotation))
+      .slice(0, perPage);
+
+    if (annotations.length > 0) {
+      annotationsByCheckId.set(check.id, annotations);
+      annotationCount += annotations.length;
+    }
+  }
+
+  if (annotationsByCheckId.size > 0) {
+    limitations.push("GitHub check annotation metadata was collected; raw annotation details and raw log archives were not fetched or stored.");
+  }
+
+  return checkRuns.map((check) =>
+    typeof check.id === "number" && annotationsByCheckId.has(check.id)
+      ? { ...check, annotations: annotationsByCheckId.get(check.id) }
+      : check
+  );
+}
+
+function shouldFetchCheckAnnotations(check: GitHubCheckRunResponse): boolean {
+  return typeof check.id === "number" &&
+    mapGitHubCheckStatus(check.status, check.conclusion) === "failed" &&
+    isExecutionCheckRun(check);
+}
+
+function summarizeCheckAnnotation(annotation: GitHubCheckAnnotationResponse): GitHubCheckAnnotationSummary | null {
+  const path = normalizeAnnotationPath(annotation.path);
+  if (!path) {
+    return null;
+  }
+
+  const level = normalizeAnnotationLevel(annotation.annotation_level);
+  const line = typeof annotation.start_line === "number" && Number.isFinite(annotation.start_line) && annotation.start_line > 0
+    ? Math.floor(annotation.start_line)
+    : undefined;
+
+  return {
+    path,
+    line,
+    level
+  };
+}
+
+function normalizeAnnotationPath(value: string | undefined): string | null {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    trimmed.length > 240 ||
+    trimmed.startsWith("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("?") ||
+    trimmed.includes("#") ||
+    /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)
+  ) {
+    return null;
+  }
+
+  const parts = trimmed.split("/");
+  if (parts.some((part) => part === "." || part === ".." || part.trim() === "")) {
+    return null;
+  }
+
+  return redactSecrets(compactText(trimmed, 240));
+}
+
+function normalizeAnnotationLevel(value: string | undefined): string {
+  const normalized = (value ?? "").toLowerCase();
+
+  return normalized === "notice" || normalized === "warning" || normalized === "failure"
+    ? normalized
+    : "annotation";
+}
+
+function checkSummaryWithAnnotations(check: GitHubCheckRunResponse): string | undefined {
+  const baseSummary = check.output?.summary || check.output?.title;
+  const annotations = check.annotations ?? [];
+
+  if (annotations.length === 0) {
+    return baseSummary;
+  }
+
+  const annotationText = annotations
+    .map((annotation) => {
+      const locator = annotation.line ? `${annotation.path}:${annotation.line}` : annotation.path;
+      return `${annotation.level} at ${locator}`;
+    })
+    .join(", ");
+
+  return compactText(
+    `${baseSummary ?? "Check annotations available."} Check annotations: ${annotationText}. Raw annotation messages and raw annotation details omitted.`,
+    900
+  );
 }
 
 async function fetchActionJobSummaries(

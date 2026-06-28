@@ -35,12 +35,30 @@ describe("report history", () => {
   it("stores summary-only reports locally without request tokens or raw evidence", () => {
     const storage = new MemoryStorage();
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.evidenceIndex.push({
+      id: "ev_annotation_secret",
+      kind: "check",
+      label: "unit tests",
+      summary: "raw_details annotation message with ghp_secret_should_not_leak",
+      confidence: 0.9
+    });
+    report.claims.push({
+      id: "claim_annotation_secret",
+      text: "Annotation raw_details retained sk-secret_should_not_leak",
+      evidenceRefs: ["ev_annotation_secret"],
+      supported: false
+    });
+    report.reprompt.prompt = "raw_details re-prompt with github_pat_secret_should_not_leak";
     const history = saveReportToHistory(storage, report);
     const serialized = JSON.stringify(history);
 
     expect(history).toHaveLength(1);
     expect(serialized).not.toContain("githubToken");
     expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("raw_details");
+    expect(serialized).not.toContain("ghp_secret_should_not_leak");
+    expect(serialized).not.toContain("sk-secret_should_not_leak");
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
     expect(history[0]?.report.claims).toEqual([]);
     expect(history[0]?.report.evidenceIndex).toEqual([]);
     expect(history[0]?.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
