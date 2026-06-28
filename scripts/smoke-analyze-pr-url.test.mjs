@@ -147,6 +147,20 @@ describe("smoke-analyze-pr-url", () => {
         confidence: 0.9
       },
       {
+        id: "ev_generic_preview",
+        kind: "check",
+        label: "CI",
+        summary: "Status: passed. Vercel Preview tests passed after deployment",
+        confidence: 0.9
+      },
+      {
+        id: "ev_actual_step",
+        kind: "log",
+        label: "GitHub Actions job: CI",
+        summary: "Status: passed. GitHub Actions job CI: passed. Steps: pnpm test: passed",
+        confidence: 0.75
+      },
+      {
         id: "ev_unit",
         kind: "check",
         label: "unit tests",
@@ -155,7 +169,7 @@ describe("smoke-analyze-pr-url", () => {
       }
     ];
 
-    expect(passingExecutionEvidence(report).map((item) => item.id)).toEqual(["ev_unit"]);
+    expect(passingExecutionEvidence(report).map((item) => item.id)).toEqual(["ev_actual_step", "ev_unit"]);
   });
 });
 

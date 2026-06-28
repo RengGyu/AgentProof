@@ -53,8 +53,8 @@ describe("smoke-real-pr-evaluation", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.caseCount).toBe(4);
-    expect(result.results.map((item) => item.id)).toEqual(["PR-1", "PR-2", "PR-3", "PR-9"]);
+    expect(result.caseCount).toBe(5);
+    expect(result.results.map((item) => item.id)).toEqual(["PR-1", "PR-2", "PR-3", "PR-9", "PR-12"]);
     expect(result.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -69,7 +69,7 @@ describe("smoke-real-pr-evaluation", () => {
         })
       ])
     );
-    expect(fetchMock).toHaveBeenCalledTimes(16);
+    expect(fetchMock).toHaveBeenCalledTimes(20);
     const analyzeBodies = fetchMock.mock.calls
       .filter(([url]) => String(url).endsWith("/api/analyze"))
       .map(([, init]) => JSON.parse(String(init.body)));
