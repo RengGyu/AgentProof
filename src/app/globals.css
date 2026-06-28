@@ -278,6 +278,31 @@ summary:focus-visible {
   min-height: 70px;
 }
 
+.scenario-note {
+  display: grid;
+  gap: 5px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.scenario-note strong,
+.scenario-note span {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.scenario-note strong {
+  font-size: 13px;
+}
+
+.scenario-note span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .input:focus,
 .textarea:focus,
 .select:focus {

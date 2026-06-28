@@ -38,7 +38,7 @@ Return findings first, ordered by severity, with file paths and exact suggested 
 - Confirm the priority, evidence coverage, missing-test count, and re-prompt change between scenarios.
 - Switch to manual mode and analyze a public GitHub PR URL without a token.
 - For live PR smoke testing, run `AGENTPROOF_SMOKE_PR_URL=<public PR URL> AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:analyze-pr` and confirm it prints only report metadata plus summary-only saved-report privacy counts.
-- For AgentProof self-evaluation smoke testing, run `AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:real-prs` and confirm PR #1-#3 all analyze successfully with summary-only saved-report boundaries.
+- For AgentProof self-evaluation smoke testing, run `AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:real-prs` and confirm PR #1-#3 plus PR #9 all analyze successfully with summary-only saved-report boundaries.
 - For live GitHub comment smoke testing, run `AGENTPROOF_COMMENT_SMOKE_PR_URL=<target PR URL> AGENTPROOF_COMMENT_SMOKE_GITHUB_TOKEN=<fine-grained comment write token> pnpm smoke:github-comment` only when you intentionally want to create or update an AgentProof marker comment. Confirm output includes only action, URL, priority, and evidence metadata.
 - Review `docs/github-app-webhook.md` and confirm the GitHub App webhook remains dry-run only: no automatic analysis, comments, installation tokens, or raw payload persistence.
 - Confirm public PR URL analysis shows explicit limitations when test/build logs are unavailable and does not claim tests passed from security, code-owner, deploy-preview, or AI-review checks.

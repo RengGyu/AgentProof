@@ -433,7 +433,40 @@ describe("generateVerificationReport", () => {
 
     expect(report.testing.missingTests).toHaveLength(1);
     expect(report.testing.missingTests[0]?.path).toBe("src/features/auth/PasswordResetForm.tsx");
-    expect(report.testing.missingTests[0]?.why).toContain("none clearly maps");
+    expect(report.testing.missingTests[0]?.why).toContain("no targeted test evidence clearly maps");
+  });
+
+  it("keeps broad passing test evidence from hiding missing targeted test mapping", () => {
+    const report = generateVerificationReport({
+      title: "Refresh report workspace",
+      description: "Refreshed report UI and ran the project checks.",
+      taskText: "Acceptance criteria: improve report layout and keep export actions readable.",
+      changedFiles: [
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 24,
+          deletions: 8,
+          status: "modified",
+          patch: "+ export function ReportView() { return <section className=\"report\">evidence</section> }"
+        },
+        {
+          path: "src/lib/markdown.test.ts",
+          additions: 8,
+          deletions: 1,
+          status: "modified",
+          patch: "+ it('exports the evidence report markdown', () => {})"
+        }
+      ],
+      checks: [
+        { name: "unit tests", status: "passed", summary: "markdown tests passed" },
+        { name: "build", status: "passed", summary: "Next.js build passed" }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/components/ReportView.tsx")).toBe(true);
+    expect(report.testing.missingTests[0]?.why).toContain("Passing test evidence exists");
+    expect(report.summary.topRisks).toContain("Some changed files have broad test evidence, but no targeted test mapping.");
   });
 
   it("keeps config changes visible as execution-proof gaps", () => {
@@ -463,6 +496,209 @@ describe("generateVerificationReport", () => {
 
     expect(report.testing.missingTests.some((item) => item.path === "setup.cfg")).toBe(true);
     expect(report.testing.missingTests.find((item) => item.path === "setup.cfg")?.why).toMatch(/Test evidence changed|no passing test check or log/);
+  });
+
+  it("does not flag report UI/docs/style files as scope creep when the task names those surfaces", () => {
+    const report = generateVerificationReport({
+      title: "Refresh AgentProof report UX",
+      description:
+        "Reframe the workspace around evidence. Rework report sections. Align export and comment copy.",
+      taskText:
+        "Refresh AgentProof UI/UX for mobile and portfolio readiness. Acceptance criteria: preserve evidence-based verifier positioning; make the report readable in 30 seconds; improve mobile layout without overlapping text/buttons; keep summary-only privacy boundaries visible; keep GitHub comment/export flows explicit and human-triggered; avoid generic AI code reviewer language.",
+      changedFiles: [
+        {
+          path: "src/app/globals.css",
+          additions: 90,
+          deletions: 24,
+          status: "modified",
+          patch: "+ .report-actions { flex-wrap: wrap; }"
+        },
+        {
+          path: "src/components/AnalyzeWorkspace.tsx",
+          additions: 45,
+          deletions: 18,
+          status: "modified",
+          patch: "+ <small>Share surfaces stay summary-only; full export is explicit.</small>"
+        },
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 120,
+          deletions: 42,
+          status: "modified",
+          patch: "+ <p className=\"eyebrow\">Verification report</p>"
+        },
+        {
+          path: "src/lib/markdown.ts",
+          additions: 12,
+          deletions: 4,
+          status: "modified",
+          patch: "+ lines.push('Evidence-based verification report')"
+        },
+        {
+          path: "docs/review-handoff.md",
+          additions: 20,
+          deletions: 5,
+          status: "modified",
+          patch: "+ Confirm mobile layout and summary-only sharing."
+        }
+      ],
+      checks: [
+        { name: "unit tests", status: "passed", summary: "report tests passed" },
+        { name: "build", status: "passed", summary: "Next.js build passed" }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.scope.outOfScopeFiles).not.toEqual(
+      expect.arrayContaining([
+        "src/app/globals.css",
+        "src/components/AnalyzeWorkspace.tsx",
+        "src/components/ReportView.tsx",
+        "src/lib/markdown.ts",
+        "docs/review-handoff.md"
+      ])
+    );
+  });
+
+  it("still flags risky out-of-scope files when patch text only incidentally mentions requirement words", () => {
+    const report = generateVerificationReport({
+      title: "Add invoice CSV export",
+      description: "Added invoice CSV export and cleaned up auth session expiry.",
+      taskText: "Acceptance criteria: export invoices as CSV.",
+      changedFiles: [
+        {
+          path: "src/billing/exportInvoiceCsv.ts",
+          additions: 24,
+          deletions: 2,
+          status: "modified",
+          patch: "+ export function exportInvoiceCsv() { return csv }"
+        },
+        {
+          path: "src/server/auth/sessionExpiry.ts",
+          additions: 12,
+          deletions: 4,
+          status: "modified",
+          patch: "+ // refresh session after invoice export completes"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "invoice export tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.scope.outOfScopeFiles).toContain("src/server/auth/sessionExpiry.ts");
+  });
+
+  it("does not require visual QA for functional button requirements with targeted test evidence", () => {
+    const report = generateVerificationReport({
+      title: "Add invoice export button",
+      description: "Added invoice export button and tests.",
+      taskText: "Acceptance criteria: add invoice export button and tests.",
+      changedFiles: [
+        {
+          path: "src/billing/InvoiceExportButton.tsx",
+          additions: 24,
+          deletions: 4,
+          status: "modified",
+          patch: "+ <button onClick={exportInvoices}>Export invoices</button>"
+        },
+        {
+          path: "src/billing/InvoiceExportButton.test.tsx",
+          additions: 18,
+          deletions: 0,
+          status: "added",
+          patch: "+ it('exports invoices from the export button', async () => {})"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "InvoiceExportButton tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.gaps.join(" ")).not.toContain("visual QA");
+  });
+
+  it("keeps visual UX requirements partial without browser or screenshot evidence", () => {
+    const report = generateVerificationReport({
+      title: "Improve mobile report layout",
+      description: "Improved mobile layout and readable buttons.",
+      taskText: "Acceptance criteria: improve mobile layout without overlapping text/buttons.",
+      changedFiles: [
+        {
+          path: "src/app/globals.css",
+          additions: 24,
+          deletions: 6,
+          status: "modified",
+          patch:
+            "+ /* mobile layout: prevent overlapping report text and buttons */\n+ .report-actions { display: grid; grid-template-columns: 1fr; }"
+        }
+      ],
+      checks: [
+        { name: "unit tests", status: "passed", summary: "tests passed" },
+        { name: "build", status: "passed", summary: "build passed" }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("visual QA");
+    expect(report.requirements[0]?.reviewerNote).toContain("CI/build evidence");
+  });
+
+  it("marks visual UX requirements met only when implementation and visual QA evidence both match", () => {
+    const report = generateVerificationReport({
+      title: "Improve mobile report layout",
+      description: "Improved mobile layout and readable buttons.",
+      taskText: "Acceptance criteria: improve mobile layout without overlapping text/buttons.",
+      changedFiles: [
+        {
+          path: "src/app/globals.css",
+          additions: 24,
+          deletions: 6,
+          status: "modified",
+          patch: "+ .report-actions { display: grid; grid-template-columns: 1fr; }\n+ .mobile-layout { overflow-wrap: anywhere; }"
+        }
+      ],
+      checks: [
+        {
+          name: "browser QA",
+          status: "passed",
+          summary: "Playwright mobile viewport confirmed no overlapping text or buttons"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.reviewerNote).toContain("visual QA evidence");
+  });
+
+  it("does not let visual QA satisfy an explicit visual test requirement by itself", () => {
+    const report = generateVerificationReport({
+      title: "Add responsive layout tests",
+      description: "Added responsive layout changes and browser QA.",
+      taskText: "Acceptance criteria: add responsive layout tests.",
+      changedFiles: [
+        {
+          path: "src/app/globals.css",
+          additions: 16,
+          deletions: 4,
+          status: "modified",
+          patch: "+ /* responsive layout changes need tests */\n+ .report-grid { grid-template-columns: 1fr; }"
+        }
+      ],
+      checks: [
+        {
+          name: "browser QA",
+          status: "passed",
+          summary: "Playwright mobile viewport confirmed responsive layout"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("asks for tests");
+    expect(report.requirements[0]?.reviewerNote).toContain("Request test evidence");
   });
 
   it("keeps all implementation files when execution proof is missing", () => {
@@ -663,6 +899,25 @@ describe("generateVerificationReport", () => {
     expect(failed.summary.confidence).toBeLessThanOrEqual(0.45);
   });
 
+  it("keeps demo scenarios visibly distinct for portfolio evaluation", () => {
+    const clean = generateVerificationReport(demoScenarios.clean);
+    const scope = generateVerificationReport(demoScenarios["scope-creep"]);
+    const missing = generateVerificationReport(demoScenarios["missing-tests"]);
+    const failed = generateVerificationReport(demoScenarios["failed-ci"]);
+    const vague = generateVerificationReport(demoScenarios["vague-task"]);
+
+    expect(clean.summary.priority).not.toBe("blocker");
+    expect(scope.scope.outOfScopeFiles).toEqual(
+      expect.arrayContaining(["src/server/auth/sessionExpiry.ts", "src/server/auth/permissions.ts"])
+    );
+    expect(missing.testing.missingTests.map((item) => item.path)).toEqual(
+      expect.arrayContaining(["src/billing/InvoiceExportButton.tsx", "src/billing/exportInvoiceCsv.ts"])
+    );
+    expect(failed.summary.priority).toBe("blocker");
+    expect(failed.testing.ciStatus).toBe("failed");
+    expect(vague.requirements[0]?.status).toBe("unclear");
+  });
+
   it("does not escalate clean demo risk-sensitive files to high priority by default", () => {
     const report = generateVerificationReport(demoScenarios.clean);
 
@@ -784,7 +1039,7 @@ describe("generateVerificationReport", () => {
     const missingTest = missingTestReport.testing.missingTests[0];
     const missingEvidence = refsToEvidence(missingTestReport, missingTest?.evidenceRefs ?? []);
 
-    expect(missingTest?.path).toBe("src/features/auth/PasswordResetForm.tsx");
+    expect(missingTest?.path).toBe("src/billing/InvoiceExportButton.tsx");
     expect(missingEvidence.some((item) => item.locator === missingTest?.path)).toBe(true);
   });
 });

@@ -51,6 +51,10 @@ const RISK_FILE_PATTERN = /(auth|permission|billing|payment|migration|schema|inf
 const VAGUE_TASK_PATTERN = /\b(improve|better|fewer problems|more reliable|clean\s*up|cleanup|polish|enhance|optimi[sz]e|make .* easier|make .* nicer)\b/i;
 const CONCRETE_ACTION_PATTERN =
   /\b(add|allow|block|create|delete|display|export|fix|handle|hide|implement|prevent|preserve|reject|remove|require|return|save|send|show|validate)\b/i;
+const CLAIM_VERB_PATTERN =
+  /\b(add(?:ed)?|align(?:ed)?|implement(?:ed)?|fix(?:ed)?|update(?:d)?|create(?:d)?|change(?:d)?|remove(?:d)?|redesign(?:ed)?|reframe(?:d)?|refresh(?:ed)?|rename(?:d)?|rework(?:ed)?|validate(?:d)?|verif(?:y|ied)|test(?:ed)?|pass(?:ed)?)\b/i;
+const CLAIM_START_PATTERN =
+  /^\s*(add(?:ed)?|align(?:ed)?|implement(?:ed)?|fix(?:ed)?|update(?:d)?|create(?:d)?|change(?:d)?|remove(?:d)?|redesign(?:ed)?|reframe(?:d)?|refresh(?:ed)?|rename(?:d)?|rework(?:ed)?|validate(?:d)?|verif(?:y|ied)|test(?:ed)?|pass(?:ed)?)\s+(.+)$/i;
 
 export function extractRequirements(taskText: string, prDescription: string): Requirement[] {
   const rawSourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
@@ -103,7 +107,8 @@ function isIssueTemplateNoiseLine(line: string): boolean {
 
   return /^<!--|-->$/.test(normalized) ||
     /^https?:\/\/\S+$/i.test(normalized) ||
-    /^(summary|bug summary|verification|testing|test plan|description|steps to reproduce|code for reproduction|reproduce|system details|system information|actual behavior|actual outcome|expected behavior|expected outcome|additional context|additional information|no response)$/i.test(normalized) ||
+    /^(summary|bug summary|validation|verification|testing|test plan|description|steps to reproduce|code for reproduction|reproduce|system details|system information|actual behavior|actual outcome|expected behavior|expected outcome|additional context|additional information|no response)$/i.test(normalized) ||
+    /^(corepack\s+)?pnpm\s+\S+|^npm\s+\S+|^yarn\s+\S+|^bun\s+\S+|^npx\s+\S+|^node\s+[\w./-]+\.(?:[cm]?[jt]s|json)\b|^node\s+(?:--[\w-]+|-e\b|--eval\b)|^tsc\b|^next\s+build/i.test(normalized) ||
     /^Python \d+\.\d+/i.test(normalized) ||
     /^\[GCC [\d.]+\]/i.test(normalized) ||
     /^Type "help", "copyright", "credits" or "license"/i.test(normalized) ||
@@ -136,7 +141,7 @@ export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem
   const sentences = redactSecrets(prDescription)
     .split(/(?<=\.)\s+|\n/)
     .map((line) => line.trim())
-    .filter((line) => /\b(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed)\b/i.test(line))
+    .filter((line) => CLAIM_VERB_PATTERN.test(line))
     .flatMap(expandClaimClauses)
     .slice(0, 6);
 
@@ -163,7 +168,7 @@ export function extractClaims(prDescription: string, evidenceIndex: EvidenceItem
 }
 
 function expandClaimClauses(sentence: string): string[] {
-  const match = sentence.match(/^\s*(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed)\s+(.+)$/i);
+  const match = sentence.match(CLAIM_START_PATTERN);
 
   if (!match) {
     return [sentence];
@@ -181,7 +186,7 @@ function expandClaimClauses(sentence: string): string[] {
   }
 
   return clauses.map((clause) =>
-    /^(added|implemented|fixed|updated|created|changed|removed|validated|verified|tested|passed|cleaned)\b/i.test(clause)
+    CLAIM_START_PATTERN.test(clause)
       ? clause
       : `${verb} ${clause}`
   );

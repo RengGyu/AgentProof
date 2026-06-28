@@ -21,6 +21,12 @@ export const DEFAULT_REAL_PR_EVALUATION_CASES = [
     prUrl: "https://github.com/RengGyu/AgentProof/pull/3",
     taskText:
       "Add execution evidence to verification reports. Acceptance criteria: add an Execution Evidence section to full reports, Markdown exports, and GitHub PR comments; surface bounded check/log evidence from existing redacted evidence summaries; exclude preview/security/non-execution gates from execution evidence, including labels containing test or coverage words; update CI workflow actions to Node 24-based v5 releases; preserve summary-only privacy by not showing execution evidence in summary mode and not adding raw log or patch persistence."
+  },
+  {
+    id: "PR-9",
+    prUrl: "https://github.com/RengGyu/AgentProof/pull/9",
+    taskText:
+      "Refresh AgentProof UI/UX for mobile and portfolio readiness. Acceptance criteria: preserve evidence-based verifier positioning; make the report readable in 30 seconds; improve mobile layout without overlapping text/buttons; keep summary-only privacy boundaries visible; keep GitHub comment/export flows explicit and human-triggered; avoid generic AI code reviewer language."
   }
 ];
 

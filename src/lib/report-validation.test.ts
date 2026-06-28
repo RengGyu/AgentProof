@@ -108,7 +108,7 @@ describe("validateVerificationReport", () => {
     const result = validateVerificationReport(report, { mode: "full" });
 
     expect(result.valid).toBe(false);
-    expect(result.errors.join("\n")).toContain("test requirement cannot be met without passing test execution evidence");
+    expect(result.errors.join("\n")).toContain("cannot be met without passing test, build, or CI execution evidence");
   });
 
   it("rejects met non-test requirements without passing execution evidence", () => {

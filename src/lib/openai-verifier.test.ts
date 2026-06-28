@@ -189,7 +189,7 @@ describe("openai verifier adapter", () => {
         apiKey: "test-key",
         fetchFn: fetchMock as unknown as typeof fetch
       })
-    ).rejects.toThrow("test requirement cannot be met without passing test execution evidence");
+    ).rejects.toThrow("cannot be met without passing test, build, or CI execution evidence");
   });
 
   it("rejects structured model output that changes deterministic evidence", async () => {

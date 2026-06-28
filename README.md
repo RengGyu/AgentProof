@@ -29,6 +29,20 @@ pnpm dev
 
 Open `http://localhost:3000`.
 
+## Demo Path
+
+The deployed demo works without secrets: `https://agentproof-pearl.vercel.app`.
+
+Use the left demo selector to compare the intended verifier signals:
+
+- `Clean PR`: password reset work with matching tests and passing checks. Expect low risk and mostly met requirements.
+- `Scope creep`: password reset work plus unrelated auth/session files. Expect out-of-scope file warnings.
+- `Missing tests`: invoice CSV export with lint/typecheck only. Expect missing targeted test evidence.
+- `Failed CI`: workspace invite validation with a failing unit-test log. Expect a blocker from failed execution evidence.
+- `Vague task`: dashboard polish without concrete acceptance criteria. Expect unclear coverage and low confidence.
+
+The demo is a verification handoff, not an approval gate. Share links and Recent history are summary-only; full Markdown export and PR comment copy are explicit user actions.
+
 ## Validate
 
 ```bash
