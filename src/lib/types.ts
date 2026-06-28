@@ -102,6 +102,14 @@ export interface EvidenceItem {
   confidence: number;
 }
 
+export interface FindingProvenance {
+  evidenceRef: string;
+  sourceType: EvidenceKind;
+  locator?: string;
+  confidence: number;
+  evidenceText: string;
+}
+
 export interface RequirementFinding {
   requirementId: string;
   requirementText: string;
@@ -117,12 +125,14 @@ export interface ScopeFinding {
   outOfScopeFiles: string[];
   reasons: string[];
   evidenceRefs?: string[];
+  provenance?: FindingProvenance[];
 }
 
 export interface MissingTestFinding {
   path: string;
   why: string;
   evidenceRefs: string[];
+  provenance?: FindingProvenance[];
 }
 
 export interface ReviewPriorityItem {

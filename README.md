@@ -150,7 +150,7 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
-For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook dry-run boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook dry-run boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
 
 ## Evaluation Pack
 

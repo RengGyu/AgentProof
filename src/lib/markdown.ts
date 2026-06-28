@@ -36,7 +36,11 @@ export function reportToMarkdown(report: VerificationReport): string {
     `## Scope`,
     "",
     report.scope.suspected
-      ? [...report.scope.reasons.map((reason) => `- ${reason}`), ...evidenceLines(report.scope.evidenceRefs ?? [], evidenceById)].join("\n")
+      ? [
+          ...report.scope.reasons.map((reason) => `- ${reason}`),
+          ...provenanceLines(report.scope.provenance),
+          ...evidenceLines(report.scope.evidenceRefs ?? [], evidenceById)
+        ].join("\n")
       : "- No out-of-scope file cluster found from available evidence.",
     "",
     `## Testing`,
@@ -46,6 +50,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     `- Typecheck: ${report.testing.typecheckStatus}`,
     ...report.testing.missingTests.flatMap((item) => [
       `- Missing test evidence for \`${item.path}\`: ${item.why}`,
+      ...provenanceLines(item.provenance, "  "),
       ...evidenceLines(item.evidenceRefs, evidenceById, "  ")
     ]),
     "",
@@ -103,12 +108,13 @@ export function reportToGitHubComment(
       `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
   );
   const missingTestLines = report.testing.missingTests.slice(0, 5).map(
-    (item) => `- \`${item.path}\`: ${item.why}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
+    (item) => `- \`${item.path}\`: ${item.why}${formatOptionalProvenance(item.provenance)}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
   );
   const limitationLines = report.limitations.slice(0, 4).map((limitation) => `- ${limitation}`);
   const scopeLines = report.scope.suspected
     ? [
         ...report.scope.reasons.slice(0, 5).map((reason) => `- ${reason}`),
+        ...provenanceLines(report.scope.provenance, "", { concise: true, limit: 3 }),
         ...(report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0
           ? [`- Evidence: ${formatEvidenceRefs(report.scope.evidenceRefs, evidenceById)}`]
           : [])
@@ -196,6 +202,38 @@ function evidenceLines(
   if (!refs || refs.length === 0) return [];
 
   return refs.map((ref) => `${indent}- Evidence: ${formatEvidenceRef(ref, evidenceById)}`);
+}
+
+function provenanceLines(
+  provenance: VerificationReport["testing"]["missingTests"][number]["provenance"] | VerificationReport["scope"]["provenance"],
+  indent = "",
+  options: { concise?: boolean; limit?: number } = {}
+): string[] {
+  if (!provenance || provenance.length === 0) return [];
+
+  return provenance.slice(0, options.limit ?? 5).map((item) => {
+    const locator = item.locator ?? "unknown locator";
+    const confidence = `${Math.round(item.confidence * 100)}%`;
+
+    if (options.concise) {
+      return `${indent}- Provenance: ${item.sourceType} \`${locator}\` ${confidence}`;
+    }
+
+    return `${indent}- Provenance: ${item.evidenceRef} source=${item.sourceType}; locator=${locator}; confidence=${confidence}; text=${item.evidenceText}`;
+  });
+}
+
+function formatOptionalProvenance(
+  provenance: VerificationReport["testing"]["missingTests"][number]["provenance"]
+): string {
+  if (!provenance || provenance.length === 0) return "";
+
+  const shown = provenance.slice(0, 2).map((item) => {
+    const locator = item.locator ?? "unknown locator";
+    return `${item.sourceType} ${locator} ${Math.round(item.confidence * 100)}%`;
+  });
+
+  return ` Provenance: ${shown.join("; ")}`;
 }
 
 function formatOptionalEvidence(

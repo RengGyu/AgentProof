@@ -382,7 +382,11 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               )}
             </ul>
             {!isSummaryMode && report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0 ? (
-              <EvidenceRefDetails refs={report.scope.evidenceRefs} evidenceById={evidenceById} />
+              report.scope.provenance && report.scope.provenance.length > 0 ? (
+                <FindingProvenanceDetails provenance={report.scope.provenance} />
+              ) : (
+                <EvidenceRefDetails refs={report.scope.evidenceRefs} evidenceById={evidenceById} />
+              )
             ) : null}
           </div>
 
@@ -402,7 +406,13 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                   <li key={item.path}>
                     <span className="evidence-label">{item.path}</span>
                     {item.why}
-                    {!isSummaryMode ? <EvidenceRefDetails refs={item.evidenceRefs} evidenceById={evidenceById} /> : null}
+                    {!isSummaryMode ? (
+                      item.provenance && item.provenance.length > 0 ? (
+                        <FindingProvenanceDetails provenance={item.provenance} />
+                      ) : (
+                        <EvidenceRefDetails refs={item.evidenceRefs} evidenceById={evidenceById} />
+                      )
+                    ) : null}
                   </li>
                 ))
               ) : (
@@ -555,6 +565,33 @@ function EvidenceRefDetails({
     <details className="evidence-details">
       <summary>Cited evidence ({refs.length})</summary>
       <EvidenceRefs refs={refs} evidenceById={evidenceById} compact />
+    </details>
+  );
+}
+
+function FindingProvenanceDetails({
+  provenance
+}: {
+  provenance?: VerificationReport["testing"]["missingTests"][number]["provenance"] | VerificationReport["scope"]["provenance"];
+}) {
+  if (!provenance || provenance.length === 0) return null;
+
+  return (
+    <details className="evidence-details">
+      <summary>Finding provenance ({provenance.length})</summary>
+      <div className="evidence-ref-block">
+        <span className="evidence-label">Resolved source evidence</span>
+        <ul className="evidence-list compact-list">
+          {provenance.map((item) => (
+            <li key={`${item.evidenceRef}-${item.locator ?? item.sourceType}`}>
+              <span className="evidence-label">
+                {item.evidenceRef} - {item.sourceType} - {item.locator ?? "unknown locator"} - {Math.round(item.confidence * 100)}%
+              </span>
+              {item.evidenceText}
+            </li>
+          ))}
+        </ul>
+      </div>
     </details>
   );
 }
