@@ -1,4 +1,4 @@
-import { getExecutionEvidenceItems } from "./execution-evidence";
+import { getExecutionEvidenceItems, statusFromEvidenceSummary } from "./execution-evidence";
 import type { VerificationReport } from "./types";
 
 export const AGENTPROOF_COMMENT_MARKER = "<!-- agentproof:evidence-check:v1 -->";
@@ -52,7 +52,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     `## Execution Evidence`,
     "",
     ...(executionEvidence.length > 0
-      ? executionEvidence.map((item) => formatExecutionEvidenceLine(item))
+      ? executionEvidence.map((item) => formatExecutionEvidenceLine(item, { locationLimit: 6 }))
       : ["- No test/build check or log evidence was available."]),
     "",
     `## Verification Priority`,
@@ -148,7 +148,7 @@ export function reportToGitHubComment(
     "### Execution Evidence",
     "",
     ...(executionEvidence.length > 0
-      ? executionEvidence.map((item) => formatExecutionEvidenceLine(item))
+      ? executionEvidence.map((item) => formatExecutionEvidenceLine(item, { locationLimit: 2, compactLocations: true }))
       : ["- No test/build check or log evidence was available."]),
     ...(limitationLines.length > 0
       ? [
@@ -176,11 +176,16 @@ export function reportToGitHubComment(
   return truncateComment(neutralizeGitHubMentions(lines.join("\n")));
 }
 
-function formatExecutionEvidenceLine(item: ReturnType<typeof getExecutionEvidenceItems>[number]): string {
+function formatExecutionEvidenceLine(
+  item: ReturnType<typeof getExecutionEvidenceItems>[number],
+  options: { locationLimit?: number; compactLocations?: boolean } = {}
+): string {
   const locator = item.locator ?? item.label;
   const confidence = `${Math.round(item.confidence * 100)}%`;
+  const baseLine = `- **${item.status.toUpperCase()}** \`${item.id}\` ${item.kind} \`${locator}\` (${confidence}): ${item.displaySummary}`;
+  const locations = formatFailureLocations(item.failureLocations, options.locationLimit ?? 5, options.compactLocations);
 
-  return `- **${item.status.toUpperCase()}** \`${item.id}\` ${item.kind} \`${locator}\` (${confidence}): ${item.summary}`;
+  return locations ? `${baseLine}\n  - Failure locations: ${locations}` : baseLine;
 }
 
 function evidenceLines(
@@ -220,12 +225,33 @@ function formatEvidenceRef(
 
   const locator = evidence.locator ?? evidence.label;
   const confidence = `${Math.round(evidence.confidence * 100)}%`;
+  const executionStatus = evidence.kind === "check" || evidence.kind === "log"
+    ? ` ${statusFromEvidenceSummary(evidence.summary)}`
+    : "";
 
   if (options.concise) {
-    return `${ref} ${evidence.kind} ${locator} ${confidence}`;
+    return `${ref} ${evidence.kind}${executionStatus} ${locator} ${confidence}`;
   }
 
   return `${ref} source=${evidence.kind}; locator=${locator}; confidence=${confidence}; text=${evidence.summary}`;
+}
+
+function formatFailureLocations(
+  locations: ReturnType<typeof getExecutionEvidenceItems>[number]["failureLocations"],
+  limit: number,
+  compact = false
+): string {
+  if (locations.length === 0) {
+    return "";
+  }
+
+  const shown = locations.slice(0, limit).map((location) => {
+    const locator = location.line ? `${location.path}:${location.line}` : location.path;
+    return compact ? `\`${locator}\`` : `\`${location.level} at ${locator}\``;
+  });
+  const hiddenCount = Math.max(0, locations.length - shown.length);
+
+  return hiddenCount > 0 ? `${shown.join(", ")}, +${hiddenCount} more` : shown.join(", ");
 }
 
 export function neutralizeGitHubMentions(value: string): string {

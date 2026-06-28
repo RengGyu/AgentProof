@@ -101,6 +101,7 @@ AgentProof separates test/build execution proof from other GitHub checks:
 - Requirement `met` status still requires passing execution evidence linked through evidence IDs.
 - GitHub Actions fallback collects bounded job/step metadata when available, keeps only execution-like steps such as test/build commands, and never fetches or stores raw log archives in this MVP.
 - Failed execution checks may include bounded Check Run annotation locations such as `path:line`; full annotation messages, raw annotation details, and raw log archives are not fetched or stored.
+- Failed check locations appear only in full reports, Markdown exports, and intentional PR comments; summary share links and saved reports remain summary-only.
 
 ## Product Position
 

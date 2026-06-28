@@ -20,7 +20,7 @@ describe("server report store", () => {
       id: "ev_annotation_secret",
       kind: "check",
       label: "unit tests",
-      summary: "raw_details annotation message with ghp_secret_should_not_leak",
+      summary: "Check annotations: failure at src/private/auth.test.ts:42. raw_details annotation message with ghp_secret_should_not_leak",
       confidence: 0.9
     });
     fullReport.claims.push({
@@ -38,6 +38,7 @@ describe("server report store", () => {
     expect(saved.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("raw_details");
+    expect(serialized).not.toContain("src/private/auth.test.ts:42");
     expect(serialized).not.toContain("ghp_secret_should_not_leak");
     expect(serialized).not.toContain("sk-secret_should_not_leak");
     expect(serialized).not.toContain("github_pat_secret_should_not_leak");

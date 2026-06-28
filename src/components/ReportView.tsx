@@ -428,7 +428,8 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                         {item.status.toUpperCase()} - {item.id} - {item.kind} - {item.locator ?? item.label} -{" "}
                         {Math.round(item.confidence * 100)}%
                       </span>
-                      {item.summary}
+                      {item.displaySummary}
+                      <FailureLocationLine locations={item.failureLocations} />
                     </li>
                   ))}
                 </ul>
@@ -590,6 +591,34 @@ function EvidenceRefs({
         })}
       </ul>
     </div>
+  );
+}
+
+function FailureLocationLine({
+  locations
+}: {
+  locations: ReturnType<typeof getExecutionEvidenceItems>[number]["failureLocations"];
+}) {
+  if (locations.length === 0) return null;
+
+  const shown = locations.slice(0, 3);
+  const hiddenCount = Math.max(0, locations.length - shown.length);
+
+  return (
+    <p className="muted small requirement-note">
+      <span>Failure locations:</span>{" "}
+      {shown.map((location, index) => {
+        const locator = location.line ? `${location.path}:${location.line}` : location.path;
+
+        return (
+          <span key={`${location.level}-${locator}`}>
+            {index > 0 ? ", " : ""}
+            <code>{locator}</code>
+          </span>
+        );
+      })}
+      {hiddenCount > 0 ? `, +${hiddenCount} more` : ""}
+    </p>
   );
 }
 

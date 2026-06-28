@@ -211,6 +211,36 @@ describe("generateVerificationReport", () => {
     expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
   });
 
+  it("does not mark requirements met from failed annotation-bearing execution evidence", () => {
+    const report = generateVerificationReport({
+      title: "Tighten analyze route validation",
+      description: "Updated analyze route validation.",
+      taskText: "Acceptance criteria: reject invalid analyze requests.",
+      changedFiles: [
+        {
+          path: "src/app/api/analyze/route.ts",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ error: 'Provide evidence before analysis.' }, 400)"
+        }
+      ],
+      checks: [
+        {
+          name: "unit tests",
+          status: "failed",
+          summary:
+            "Vitest failed. Check annotations: failure at src/app/api/analyze/route.test.ts:42. Raw annotation messages and raw annotation details omitted."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(report.summary.priority).toBe("blocker");
+    expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
+  });
+
   it("does not mark test/build failed from non-execution check failures", () => {
     const report = generateVerificationReport({
       title: "Fix malformed origin handling",

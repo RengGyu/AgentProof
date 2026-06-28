@@ -106,4 +106,4 @@ PR #9 surfaced a separate evidence class: mobile layout, overlap, readability, a
 5. Keep GitHub Actions raw log ingestion out of MVP unless privacy/cost controls are designed.
    - Raw logs can contain secrets and noisy output.
    - Prefer bounded job-step metadata until a retention/redaction policy exists; keep filtering setup, artifact, preview, deploy, and report steps out of execution evidence.
-   - Failed execution check annotations can localize failures by `path:line`, but raw annotation messages and details should stay omitted from report evidence.
+   - Failed execution check annotations can localize failures by `path:line` in full reports, exports, and intentional comments, but raw annotation messages/details and summary-share surfaces should stay omitted.

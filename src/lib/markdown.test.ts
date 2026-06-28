@@ -122,6 +122,39 @@ describe("reportToGitHubComment", () => {
     expect(commentExecution).not.toContain("Vercel Preview tests");
     expect(commentExecution).not.toContain("security coverage scan");
   });
+
+  it("renders failed check locations without raw annotation messages", () => {
+    const report = generateVerificationReport({
+      ...demoScenarios.clean,
+      checks: [
+        {
+          name: "unit tests",
+          status: "failed",
+          summary:
+            "Vitest failed. Check annotations: failure at src/private/auth.test.ts:42, warning at src/lib/verifier.test.ts:77, failure at src/app/api/analyze/route.test.ts:31. Raw annotation messages and raw annotation details omitted."
+        }
+      ],
+      logs: []
+    });
+    const markdown = reportToMarkdown(report);
+    const comment = reportToGitHubComment(report);
+    const markdownExecution = sectionBetween(markdown, "## Execution Evidence", "## Verification Priority");
+    const commentExecution = sectionBetween(comment, "### Execution Evidence", "### Evidence Limits");
+
+    expect(markdownExecution).toContain("**FAILED**");
+    expect(markdownExecution).toContain("Failure locations:");
+    expect(markdownExecution).toContain("failure at src/private/auth.test.ts:42");
+    expect(markdownExecution).toContain("warning at src/lib/verifier.test.ts:77");
+    expect(markdownExecution).not.toContain("Raw annotation messages");
+    expect(markdownExecution).not.toContain("raw_details");
+
+    expect(commentExecution).toContain("**FAILED**");
+    expect(commentExecution).toContain("Failure locations:");
+    expect(commentExecution).toContain("`src/private/auth.test.ts:42`");
+    expect(commentExecution).toContain("+1 more");
+    expect(commentExecution).not.toContain("Raw annotation messages");
+    expect(commentExecution).not.toContain("raw_details");
+  });
 });
 
 function sectionBetween(value: string, start: string, end: string): string {

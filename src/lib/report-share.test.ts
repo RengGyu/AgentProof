@@ -11,7 +11,7 @@ describe("report share", () => {
       id: "ev_annotation_secret",
       kind: "check",
       label: "unit tests",
-      summary: "raw_details annotation message with ghp_secret_should_not_leak",
+      summary: "Check annotations: failure at src/private/auth.test.ts:42. raw_details annotation message with ghp_secret_should_not_leak",
       confidence: 0.9
     });
     report.claims.push({
@@ -34,6 +34,7 @@ describe("report share", () => {
     expect(shared.reviewPriority.every((item) => !item.evidenceRefs || item.evidenceRefs.length === 0)).toBe(true);
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("raw_details");
+    expect(serialized).not.toContain("src/private/auth.test.ts:42");
     expect(serialized).not.toContain("ghp_secret_should_not_leak");
     expect(serialized).not.toContain("sk-secret_should_not_leak");
     expect(serialized).not.toContain("github_pat_secret_should_not_leak");
