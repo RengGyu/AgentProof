@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       !body.logs?.trim()
     ) {
       return jsonNoStore(
-        { error: "Provide a PR URL, demo scenario, or pasted PR evidence before analysis." },
+        { error: "Provide a PR URL, demo scenario, or pasted PR evidence before generating a verification report." },
         400
       );
     }

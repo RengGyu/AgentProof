@@ -12,7 +12,7 @@ describe("reportToGitHubComment", () => {
     expect(comment).toContain("## AgentProof Evidence Check");
     expect(comment).toContain("**Priority:** HIGH");
     expect(comment).toContain("### Requirement Coverage");
-    expect(comment).toContain("### Review Priority");
+    expect(comment).toContain("### Verification Priority");
     expect(comment).not.toContain("<summary>Agent re-prompt</summary>");
     expect(comment.length).toBeLessThan(5000);
   });
@@ -101,7 +101,7 @@ describe("reportToGitHubComment", () => {
     });
     const markdown = reportToMarkdown(report);
     const comment = reportToGitHubComment(report);
-    const markdownExecution = sectionBetween(markdown, "## Execution Evidence", "## Review Priority");
+    const markdownExecution = sectionBetween(markdown, "## Execution Evidence", "## Verification Priority");
     const commentExecution = sectionBetween(comment, "### Execution Evidence", "### Evidence Limits");
 
     expect(markdownExecution).toContain("**FAILED**");

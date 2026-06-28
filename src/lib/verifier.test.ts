@@ -667,7 +667,7 @@ describe("generateVerificationReport", () => {
     const report = generateVerificationReport(demoScenarios.clean);
 
     expect(report.summary.priority).not.toBe("high");
-    if (report.summary.topRisks.join(" ").includes("No major blocker")) {
+    if (report.summary.topRisks.join(" ").includes("No major evidence gap")) {
       expect(report.summary.priority).toBe("low");
     }
   });

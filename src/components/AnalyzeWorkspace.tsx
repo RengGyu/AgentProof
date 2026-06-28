@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   ClipboardCheck,
+  Database,
   GitPullRequest,
   History,
   Plug,
@@ -93,7 +94,10 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
           <div className="brand-mark" aria-hidden="true">
             <ShieldCheck size={18} />
           </div>
-          <span>AgentProof</span>
+          <div className="brand-copy">
+            <span>AgentProof</span>
+            <small>Evidence verifier</small>
+          </div>
         </div>
         <div className="topbar-actions">
           <a className="icon-link" href="/integrations" aria-label="Integration readiness">
@@ -106,116 +110,142 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
         </div>
       </header>
 
-      <div className="layout">
+      <div className={report ? "layout has-report" : "layout"}>
         <aside className="panel intake">
-          <h2 className="section-title">Analysis Intake</h2>
+          <div className="intake-head">
+            <div>
+              <p className="eyebrow">Workspace</p>
+              <h2 className="section-title">Evidence intake</h2>
+            </div>
+            <Database size={18} aria-hidden="true" />
+          </div>
 
-          <div className="field">
-            <label htmlFor="mode">Source</label>
-            <select
-              id="mode"
-              className="select"
-              value={mode}
-              onChange={(event) => setMode(event.target.value as "demo" | "manual")}
+          <div className="mode-tabs" role="group" aria-label="Analysis source">
+            <button
+              type="button"
+              className={mode === "demo" ? "mode-tab active" : "mode-tab"}
+              onClick={() => setMode("demo")}
+              aria-pressed={mode === "demo"}
             >
-              <option value="demo">Demo scenario</option>
-              <option value="manual">PR URL or pasted evidence</option>
-            </select>
+              Demo
+            </button>
+            <button
+              type="button"
+              className={mode === "manual" ? "mode-tab active" : "mode-tab"}
+              onClick={() => setMode("manual")}
+              aria-pressed={mode === "manual"}
+            >
+              PR evidence
+            </button>
           </div>
 
           {mode === "demo" ? (
-            <div className="field">
-              <label htmlFor="scenario">Scenario</label>
-              <select
-                id="scenario"
-                className="select"
-                value={demoScenario}
-                onChange={(event) => setDemoScenario(event.target.value as DemoScenarioId)}
-              >
-                {scenarioLabels.map((scenario) => (
-                  <option key={scenario.id} value={scenario.id}>
-                    {scenario.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <section className="input-section" aria-labelledby="demo-source-title">
+              <h3 id="demo-source-title">Scenario</h3>
+              <div className="field">
+                <label htmlFor="scenario">Demo case</label>
+                <select
+                  id="scenario"
+                  className="select"
+                  value={demoScenario}
+                  onChange={(event) => setDemoScenario(event.target.value as DemoScenarioId)}
+                >
+                  {scenarioLabels.map((scenario) => (
+                    <option key={scenario.id} value={scenario.id}>
+                      {scenario.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
           ) : (
             <>
-              <div className="field">
-                <label htmlFor="prUrl">PR URL</label>
-                <input
-                  id="prUrl"
-                  className="input"
-                  value={form.prUrl}
-                  onChange={(event) => updateForm("prUrl", event.target.value)}
-                  placeholder="https://github.com/org/repo/pull/123"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="githubToken">GitHub token</label>
-                <input
-                  id="githubToken"
-                  className="input"
-                  value={form.githubToken}
-                  onChange={(event) => updateForm("githubToken", event.target.value)}
-                  type="password"
-                  placeholder="Optional fine-grained token"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="taskText">Issue or task text</label>
-                <textarea
-                  id="taskText"
-                  className="textarea"
-                  value={form.taskText}
-                  onChange={(event) => updateForm("taskText", event.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="prDescription">PR description</label>
-                <textarea
-                  id="prDescription"
-                  className="textarea"
-                  value={form.prDescription}
-                  onChange={(event) => updateForm("prDescription", event.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="changedFiles">Changed files</label>
-                <textarea
-                  id="changedFiles"
-                  className="textarea"
-                  value={form.changedFiles}
-                  onChange={(event) => updateForm("changedFiles", event.target.value)}
-                  placeholder="One file path per line"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="checks">Checks</label>
-                <textarea
-                  id="checks"
-                  className="textarea"
-                  value={form.checks}
-                  onChange={(event) => updateForm("checks", event.target.value)}
-                  placeholder="lint: passed"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="logs">Logs</label>
-                <textarea
-                  id="logs"
-                  className="textarea"
-                  value={form.logs}
-                  onChange={(event) => updateForm("logs", event.target.value)}
-                />
-              </div>
+              <section className="input-section" aria-labelledby="pull-request-title">
+                <h3 id="pull-request-title">Pull request</h3>
+                <div className="field">
+                  <label htmlFor="prUrl">PR URL</label>
+                  <input
+                    id="prUrl"
+                    className="input"
+                    value={form.prUrl}
+                    onChange={(event) => updateForm("prUrl", event.target.value)}
+                    placeholder="https://github.com/org/repo/pull/123"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="githubToken">Read token</label>
+                  <input
+                    id="githubToken"
+                    className="input"
+                    value={form.githubToken}
+                    onChange={(event) => updateForm("githubToken", event.target.value)}
+                    type="password"
+                    placeholder="Optional fine-grained token"
+                  />
+                </div>
+              </section>
+
+              <section className="input-section" aria-labelledby="request-evidence-title">
+                <h3 id="request-evidence-title">Request evidence</h3>
+                <div className="field">
+                  <label htmlFor="taskText">Issue or task text</label>
+                  <textarea
+                    id="taskText"
+                    className="textarea"
+                    value={form.taskText}
+                    onChange={(event) => updateForm("taskText", event.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="prDescription">PR description</label>
+                  <textarea
+                    id="prDescription"
+                    className="textarea"
+                    value={form.prDescription}
+                    onChange={(event) => updateForm("prDescription", event.target.value)}
+                  />
+                </div>
+              </section>
+
+              <section className="input-section" aria-labelledby="execution-evidence-title">
+                <h3 id="execution-evidence-title">Execution evidence</h3>
+                <div className="field">
+                  <label htmlFor="changedFiles">Changed files</label>
+                  <textarea
+                    id="changedFiles"
+                    className="textarea"
+                    value={form.changedFiles}
+                    onChange={(event) => updateForm("changedFiles", event.target.value)}
+                    placeholder="One file path per line"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="checks">Checks</label>
+                  <textarea
+                    id="checks"
+                    className="textarea compact-textarea"
+                    value={form.checks}
+                    onChange={(event) => updateForm("checks", event.target.value)}
+                    placeholder="test: passed"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="logs">Logs</label>
+                  <textarea
+                    id="logs"
+                    className="textarea compact-textarea"
+                    value={form.logs}
+                    onChange={(event) => updateForm("logs", event.target.value)}
+                  />
+                </div>
+              </section>
             </>
           )}
 
           <div className="button-row">
             <button className="button primary" onClick={runAnalysis} disabled={loading}>
               <Play size={16} />
-              {loading ? "Analyzing" : "Analyze"}
+              {loading ? "Generating" : "Generate report"}
             </button>
             <button className="button" onClick={() => setReport(null)} disabled={loading}>
               <RotateCcw size={16} />
@@ -239,7 +269,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
                 <Trash2 size={14} />
               </button>
             </div>
-            <p className="muted small">Summary-only reports stored in this browser.</p>
+            <p className="muted small">Local summary-only history. Raw evidence is not saved here.</p>
             {history.length > 0 ? (
               <ul className="history-list">
                 {history.map((item) => (
@@ -265,8 +295,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
               <GitPullRequest size={36} />
               <h1>Evidence report workspace</h1>
               <p>
-                Select a scenario or submit PR evidence to generate requirement coverage, weak proof,
-                scope creep, and a re-prompt.
+                Submit PR evidence to map the original request against proof, gaps, tests, and review priority.
               </p>
             </div>
           </section>
