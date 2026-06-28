@@ -76,7 +76,7 @@ This branch closes that gap by routing check/log decisions through a source-labe
 
 ### 5. Current evidence is enough for MVP evaluation, not enough for full launch confidence
 
-The reports are useful for portfolio/MVP review, but they are not yet a launch-grade verifier. The biggest remaining limitation is that GitHub Actions raw log archives are not ingested. AgentProof sees check names, summaries, statuses, and bounded job-step metadata, not full command output.
+The reports are useful for portfolio/MVP review, but they are not yet a launch-grade verifier. The biggest remaining limitation is that GitHub Actions raw log archives are not ingested. AgentProof sees check names, summaries, statuses, bounded job-step metadata, and bounded failed-check annotation locations, not full command output or raw annotation messages.
 
 ### 6. Visual UX criteria need browser or screenshot evidence
 
@@ -106,3 +106,4 @@ PR #9 surfaced a separate evidence class: mobile layout, overlap, readability, a
 5. Keep GitHub Actions raw log ingestion out of MVP unless privacy/cost controls are designed.
    - Raw logs can contain secrets and noisy output.
    - Prefer bounded job-step metadata until a retention/redaction policy exists; keep filtering setup, artifact, preview, deploy, and report steps out of execution evidence.
+   - Failed execution check annotations can localize failures by `path:line`, but raw annotation messages and details should stay omitted from report evidence.

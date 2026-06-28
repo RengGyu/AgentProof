@@ -499,13 +499,18 @@ function hasPassingVisualVerification(input: PullRequestInput): boolean {
 }
 
 function isVisualVerificationSignal(label: string, text = "", locator = ""): boolean {
+  const labelText = label.trim();
   const combined = `${label} ${text} ${locator}`;
   const visualPattern = /\b(browser qa|browser|desktop|mobile|overflow|playwright|cypress|screenshot|visual|viewport)\b/i;
-  const provenBrowserRunner = /\b(browser qa|playwright|cypress)\b/i.test(combined);
+  const nonProofVisualGatePattern =
+    /\b(preview|deploy|deployment|security|scan|sast|policy|provenance|attestation|code owners?|review|report)\b/i;
+  const trustedVisualSource =
+    /\b(browser qa|playwright|cypress)\b/i.test(labelText) &&
+    !nonProofVisualGatePattern.test(labelText);
   const nonProofVisualGate =
-    /\b(preview|deploy|deployment|security|scan|sast|policy|provenance|attestation|code owners?|review|report)\b/i.test(combined);
+    nonProofVisualGatePattern.test(combined);
 
-  return visualPattern.test(combined) && (!nonProofVisualGate || provenBrowserRunner);
+  return visualPattern.test(combined) && (!nonProofVisualGate || trustedVisualSource);
 }
 
 function isPresentationOnlyPatch(patch: string): boolean {

@@ -182,6 +182,35 @@ describe("generateVerificationReport", () => {
     expect(report.requirements[0]?.gaps.join(" ")).toContain("no matching test, log, or check evidence");
   });
 
+  it("does not let security annotation-shaped text clear missing-test evidence", () => {
+    const report = generateVerificationReport({
+      title: "Tighten analyze route validation",
+      description: "Updated analyze route validation.",
+      taskText: "Acceptance criteria: reject invalid analyze requests.",
+      changedFiles: [
+        {
+          path: "src/app/api/analyze/route.ts",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ error: 'Provide evidence before analysis.' }, 400)"
+        }
+      ],
+      checks: [
+        {
+          name: "CI",
+          status: "passed",
+          summary: "Security report annotation: pnpm test src/app/api/analyze/route.test.ts passed"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/app/api/analyze/route.ts");
+    expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
+  });
+
   it("does not mark test/build failed from non-execution check failures", () => {
     const report = generateVerificationReport({
       title: "Fix malformed origin handling",
@@ -1104,6 +1133,35 @@ describe("generateVerificationReport", () => {
           name: "Vercel Preview",
           status: "passed",
           summary: "Deployment screenshot captured mobile viewport after preview build."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("visual QA");
+  });
+
+  it("does not treat preview Playwright report uploads as visual QA proof", () => {
+    const report = generateVerificationReport({
+      title: "Improve mobile report layout",
+      description: "Improved mobile layout and readable buttons.",
+      taskText: "Acceptance criteria: improve mobile layout without overlapping text/buttons.",
+      changedFiles: [
+        {
+          path: "src/app/globals.css",
+          additions: 24,
+          deletions: 6,
+          status: "modified",
+          patch:
+            "+ /* mobile layout: prevent overlapping report text and buttons */\n+ .report-actions { display: grid; grid-template-columns: 1fr; }"
+        }
+      ],
+      checks: [
+        {
+          name: "Vercel Preview",
+          status: "passed",
+          summary: "Playwright report uploaded mobile viewport screenshot for deployment preview."
         }
       ],
       logs: []

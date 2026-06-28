@@ -30,7 +30,7 @@ export function isExecutionEvidenceSignal(label: string, text = "", locator = ""
   }
 
   const supportingText = text.trim();
-  if (supportingText && NON_EXECUTION_GATE_PATTERN.test(supportingText) && !DIRECT_EXECUTION_COMMAND_PATTERN.test(supportingText)) {
+  if (supportingText && NON_EXECUTION_GATE_PATTERN.test(supportingText)) {
     return false;
   }
 
