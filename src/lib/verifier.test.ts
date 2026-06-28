@@ -469,6 +469,335 @@ describe("generateVerificationReport", () => {
     expect(report.summary.topRisks).toContain("Some changed files have broad test evidence, but no targeted test mapping.");
   });
 
+  it("matches API route changes to smoke tests that exercise the same endpoint", () => {
+    const report = generateVerificationReport({
+      title: "Tighten analyze route validation",
+      description: "Updated analyze route validation and smoke coverage.",
+      taskText: "Acceptance criteria: reject invalid analyze requests and keep smoke coverage.",
+      changedFiles: [
+        {
+          path: "src/app/api/analyze/route.ts",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ error: 'Provide evidence before analysis.' }, 400)"
+        },
+        {
+          path: "scripts/smoke-analyze-pr-url.test.mjs",
+          additions: 12,
+          deletions: 1,
+          status: "modified",
+          patch: "+ await fetch(`${baseUrl}/api/analyze`, { method: 'POST', body: JSON.stringify(payload) })"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "smoke-analyze-pr-url tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/app/api/analyze/route.ts")).toBe(false);
+  });
+
+  it("does not match API routes to smoke tests for a different endpoint", () => {
+    const report = generateVerificationReport({
+      title: "Tighten analyze route validation",
+      description: "Updated analyze route validation while report save smoke changed.",
+      taskText: "Acceptance criteria: reject invalid analyze requests.",
+      changedFiles: [
+        {
+          path: "src/app/api/analyze/route.ts",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ error: 'Provide evidence before analysis.' }, 400)"
+        },
+        {
+          path: "scripts/smoke-analyze-pr-url.test.mjs",
+          additions: 12,
+          deletions: 1,
+          status: "modified",
+          patch: "+ await fetch(`${baseUrl}/api/reports`, { method: 'POST', body: JSON.stringify(report) })"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "report save smoke tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/app/api/analyze/route.ts");
+  });
+
+  it("does not let generic Next route test names clear unrelated API routes", () => {
+    const report = generateVerificationReport({
+      title: "Update saved reports route",
+      description: "Updated saved reports route while analyze route tests changed.",
+      taskText: "Acceptance criteria: update saved report creation.",
+      changedFiles: [
+        {
+          path: "src/app/api/reports/route.ts",
+          additions: 10,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ id, privacy: 'summary-only' }, 201)"
+        },
+        {
+          path: "src/app/api/analyze/route.test.ts",
+          additions: 12,
+          deletions: 1,
+          status: "modified",
+          patch: "+ expect(await postAnalyze()).toHaveStatus(400)"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "analyze route tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/app/api/reports/route.ts");
+  });
+
+  it("matches API route families to route tests in the same endpoint family", () => {
+    const report = generateVerificationReport({
+      title: "Update saved reports route",
+      description: "Updated saved reports route and route test coverage.",
+      taskText: "Acceptance criteria: update saved report creation.",
+      changedFiles: [
+        {
+          path: "src/app/api/reports/route.ts",
+          additions: 10,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ id, privacy: 'summary-only' }, 201)"
+        },
+        {
+          path: "src/app/api/reports/route.test.ts",
+          additions: 14,
+          deletions: 1,
+          status: "modified",
+          patch: "+ expect(await postReports()).toMatchObject({ privacy: 'summary-only' })"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "reports route tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/app/api/reports/route.ts")).toBe(false);
+  });
+
+  it("matches dynamic API routes to smoke tests that call the route prefix", () => {
+    const report = generateVerificationReport({
+      title: "Update saved report lookup route",
+      description: "Updated saved report lookup and smoke coverage.",
+      taskText: "Acceptance criteria: fetch saved reports by id.",
+      changedFiles: [
+        {
+          path: "src/app/api/reports/[id]/route.ts",
+          additions: 10,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ report, privacy: 'summary-only' }, 200)"
+        },
+        {
+          path: "scripts/smoke-analyze-pr-url.test.mjs",
+          additions: 12,
+          deletions: 1,
+          status: "modified",
+          patch: "+ await fetch(`${baseUrl}/api/reports/saved_1`, { method: 'GET' })"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "saved report smoke tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/app/api/reports/[id]/route.ts")).toBe(false);
+  });
+
+  it("matches component changes to generic test files only when the test patch names the component symbol", () => {
+    const report = generateVerificationReport({
+      title: "Refresh report view copy",
+      description: "Updated ReportView behavior and test coverage.",
+      taskText: "Acceptance criteria: keep ReportView copy actions working.",
+      changedFiles: [
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 14,
+          deletions: 3,
+          status: "modified",
+          patch: "+ <button onClick={() => copyText(markdown, 'report')}>Copy Report</button>"
+        },
+        {
+          path: "src/lib/verifier.test.ts",
+          additions: 10,
+          deletions: 1,
+          status: "modified",
+          patch: "+ expect(renderedReportViewText).toContain('Copy Report')\n+ expect(ReportView).toBeDefined()"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "ReportView copy tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/components/ReportView.tsx")).toBe(false);
+  });
+
+  it("keeps component changes visible when a generic test file does not name the component", () => {
+    const report = generateVerificationReport({
+      title: "Refresh report view copy",
+      description: "Updated ReportView behavior while markdown tests changed.",
+      taskText: "Acceptance criteria: keep ReportView copy actions working.",
+      changedFiles: [
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 14,
+          deletions: 3,
+          status: "modified",
+          patch: "+ <button onClick={() => copyText(markdown, 'report')}>Copy Report</button>"
+        },
+        {
+          path: "src/lib/markdown.test.ts",
+          additions: 10,
+          deletions: 1,
+          status: "modified",
+          patch: "+ expect(markdown).toContain('Verification Priority')"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "markdown tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/components/ReportView.tsx");
+  });
+
+  it("does not let generic component test names clear specific behavior components", () => {
+    const report = generateVerificationReport({
+      title: "Add invoice export button",
+      description: "Added invoice export button while generic button tests changed.",
+      taskText: "Acceptance criteria: export invoices from the invoice export button.",
+      changedFiles: [
+        {
+          path: "src/billing/InvoiceExportButton.tsx",
+          additions: 18,
+          deletions: 3,
+          status: "modified",
+          patch: "+ <button onClick={exportInvoices}>Export invoices</button>"
+        },
+        {
+          path: "src/components/Button.test.tsx",
+          additions: 8,
+          deletions: 1,
+          status: "modified",
+          patch: "+ expect(Button).toRenderWithIcon()"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "Button tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/billing/InvoiceExportButton.tsx");
+  });
+
+  it("does not require unit-test evidence for visual-only component changes with browser QA", () => {
+    const report = generateVerificationReport({
+      title: "Improve mobile report layout",
+      description: "Adjusted ReportView spacing and browser QA.",
+      taskText: "Acceptance criteria: improve mobile layout without overlapping text/buttons.",
+      changedFiles: [
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 18,
+          deletions: 6,
+          status: "modified",
+          patch: "+ <section className=\"report compact-mobile-layout\">\n+ <p className=\"muted\">Evidence stays readable on mobile.</p>"
+        }
+      ],
+      checks: [
+        {
+          name: "browser QA",
+          status: "passed",
+          summary: "Playwright mobile viewport confirmed no overlapping text or buttons"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.testing.missingTests.some((item) => item.path === "src/components/ReportView.tsx")).toBe(false);
+  });
+
+  it("still flags explicit test requirements when only browser QA exists for component changes", () => {
+    const report = generateVerificationReport({
+      title: "Add responsive report tests",
+      description: "Changed ReportView layout and browser QA.",
+      taskText: "Acceptance criteria: add responsive ReportView layout tests.",
+      changedFiles: [
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 18,
+          deletions: 6,
+          status: "modified",
+          patch: "+ <section className=\"report compact-mobile-layout\">\n+ <p className=\"muted\">Evidence stays readable on mobile.</p>"
+        }
+      ],
+      checks: [
+        {
+          name: "browser QA",
+          status: "passed",
+          summary: "Playwright mobile viewport confirmed responsive report layout"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/components/ReportView.tsx");
+  });
+
+  it("does not add missing-test findings for docs and style-only changes", () => {
+    const report = generateVerificationReport({
+      title: "Refresh review handoff docs and mobile styles",
+      description: "Updated docs and CSS only.",
+      taskText: "Acceptance criteria: improve mobile spacing and review handoff wording.",
+      changedFiles: [
+        {
+          path: "docs/review-handoff.md",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ Run the demo on mobile and desktop."
+        },
+        {
+          path: "src/app/globals.css",
+          additions: 12,
+          deletions: 3,
+          status: "modified",
+          patch: "+ .report-actions { grid-template-columns: 1fr; }"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests).toEqual([]);
+  });
+
+  it("treats changed mjs scripts as behavior-affecting when no test evidence exists", () => {
+    const report = generateVerificationReport({
+      title: "Update analyze smoke script",
+      description: "Changed the analyze smoke request parser.",
+      taskText: "Acceptance criteria: keep analyze smoke requests valid.",
+      changedFiles: [
+        {
+          path: "scripts/smoke-analyze-pr-url.mjs",
+          additions: 14,
+          deletions: 5,
+          status: "modified",
+          patch: "+ const payload = buildAnalyzePayload(process.env.AGENTPROOF_SMOKE_PR_URL)"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("scripts/smoke-analyze-pr-url.mjs");
+  });
+
   it("keeps config changes visible as execution-proof gaps", () => {
     const report = generateVerificationReport({
       title: "Update pylint option parsing",
