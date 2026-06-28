@@ -610,7 +610,7 @@ function getVerificationAnswer(priority: PriorityLevel, evidenceCoverage: number
   if (priority === "blocker") {
     return {
       title: "Not enough evidence yet",
-      body: "A critical evidence gap or failed execution signal needs human verification before this PR can be trusted."
+      body: "A critical evidence gap or failed execution signal needs human verification before this PR has enough evidence."
     };
   }
 

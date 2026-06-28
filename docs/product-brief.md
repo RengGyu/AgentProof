@@ -38,9 +38,9 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 
 1. Clean AI PR with task, implementation, tests, and passing checks.
 2. PR that implements the task but changes unrelated auth or session files.
-3. PR with implementation changes and no meaningful test evidence.
-4. PR with plausible implementation but failed CI.
-5. Vague task where criteria and conclusions stay low-confidence.
+3. Invoice CSV export PR with implementation changes and no meaningful test evidence.
+4. Workspace invite validation PR with plausible implementation but failed CI.
+5. Dashboard polish PR where criteria and conclusions stay low-confidence.
 
 ## Current Security Boundary
 

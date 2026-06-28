@@ -3,7 +3,7 @@ import type { DemoScenarioId, PullRequestInput } from "./types";
 const base: Pick<PullRequestInput, "author" | "baseBranch" | "headBranch"> = {
   author: "ai-agent[bot]",
   baseBranch: "main",
-  headBranch: "agent/password-reset"
+  headBranch: "agent/evidence-demo"
 };
 
 export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
@@ -74,21 +74,29 @@ export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
   },
   "missing-tests": {
     ...base,
-    title: "Add password reset email validation",
-    url: "https://github.com/example/saas-app/pull/44",
+    title: "Add invoice CSV export",
+    url: "https://github.com/example/billing-app/pull/44",
     taskText:
-      "Add password reset email validation. Acceptance criteria: validate email format before sending reset email; show inline error; add tests for invalid and valid paths.",
+      "Add invoice CSV export. Acceptance criteria: let admins export the current invoice table as CSV; include invoice number, customer, amount, and status columns; show an inline error when export permissions fail; add tests for CSV generation and permission errors.",
     description:
-      "Added email validation and inline errors. No test files were changed because behavior is simple.",
+      "Added the invoice CSV export button and permission error handling. No test files were changed because the export helper is small.",
     changedFiles: [
       {
-        path: "src/features/auth/PasswordResetForm.tsx",
-        additions: 42,
-        deletions: 11,
+        path: "src/billing/InvoiceExportButton.tsx",
+        additions: 52,
+        deletions: 8,
         status: "modified",
-        patch: "+ if (!email.includes('@')) setError('Invalid email')"
+        patch:
+          "+ const result = await exportInvoicesToCsv(selectedInvoices)\n+ if (!result.ok) setError('You do not have permission to export invoices')"
       },
-      { path: "src/features/auth/passwordReset.ts", additions: 16, deletions: 2, status: "modified" }
+      {
+        path: "src/billing/exportInvoiceCsv.ts",
+        additions: 36,
+        deletions: 0,
+        status: "added",
+        patch:
+          "+ return rows.map((invoice) => [invoice.number, invoice.customerName, invoice.amount, invoice.status].join(','))"
+      }
     ],
     checks: [
       { name: "lint", status: "passed", summary: "No lint errors" },
@@ -98,43 +106,62 @@ export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
   },
   "failed-ci": {
     ...base,
-    title: "Add password reset email validation",
-    url: "https://github.com/example/saas-app/pull/45",
+    title: "Validate workspace invite emails",
+    url: "https://github.com/example/collab-app/pull/45",
     taskText:
-      "Add password reset email validation. Acceptance criteria: validate email format; preserve successful reset; add tests.",
+      "Validate workspace invite emails. Acceptance criteria: reject malformed invite emails before sending; keep valid invites working; add tests for invalid and valid invite paths.",
     description:
-      "Added validation and tests for password reset email handling.",
+      "Added invite email validation and tests for invalid invite addresses.",
     changedFiles: [
       {
-        path: "src/features/auth/PasswordResetForm.tsx",
-        additions: 35,
-        deletions: 10,
+        path: "src/team/InviteMemberForm.tsx",
+        additions: 39,
+        deletions: 12,
         status: "modified",
-        patch: "+ if (!isValidEmail(email)) setError('Enter a valid email address')"
+        patch: "+ if (!isValidInviteEmail(email)) setError('Enter a valid invite email')"
       },
       {
-        path: "src/features/auth/PasswordResetForm.test.tsx",
-        additions: 51,
+        path: "src/team/InviteMemberForm.test.tsx",
+        additions: 48,
         deletions: 0,
         status: "added",
-        patch: "+ it('shows inline error for invalid email', async () => {})"
+        patch:
+          "+ it('shows inline error for malformed invite emails', async () => {})\n+ it('submits a valid invite email', async () => {})"
       }
     ],
     checks: [
       { name: "lint", status: "passed", summary: "No lint errors" },
-      { name: "unit tests", status: "failed", summary: "1 failing test in PasswordResetForm" }
+      { name: "unit tests", status: "failed", summary: "1 failing test in InviteMemberForm" }
     ],
-    logs: [{ source: "unit tests", status: "failed", text: "FAIL PasswordResetForm.test.tsx\nExpected inline error to be visible, received null" }]
+    logs: [
+      {
+        source: "unit tests",
+        status: "failed",
+        text: "FAIL InviteMemberForm.test.tsx\nExpected inline error to be visible, received null"
+      }
+    ]
   },
   "vague-task": {
     ...base,
-    title: "Improve reset flow",
-    url: "https://github.com/example/saas-app/pull/46",
-    taskText: "Improve the password reset flow so users have fewer problems.",
-    description: "Made several UX improvements to the reset flow and auth copy.",
+    title: "Improve project dashboard",
+    url: "https://github.com/example/ops-app/pull/46",
+    taskText: "Improve the project dashboard so teams understand work faster.",
+    description: "Made several UX improvements to the dashboard summary and empty-state copy.",
     changedFiles: [
-      { path: "src/features/auth/PasswordResetForm.tsx", additions: 29, deletions: 24, status: "modified" },
-      { path: "src/features/auth/resetEmailCopy.ts", additions: 17, deletions: 8, status: "modified" }
+      {
+        path: "src/dashboard/DashboardHome.tsx",
+        additions: 31,
+        deletions: 22,
+        status: "modified",
+        patch: "+ <h1>Projects needing attention</h1>\n+ <ProjectSummary density=\"compact\" />"
+      },
+      {
+        path: "src/dashboard/dashboardCopy.ts",
+        additions: 14,
+        deletions: 6,
+        status: "modified",
+        patch: "+ export const emptyStateCopy = 'No blocked work needs review right now.'"
+      }
     ],
     checks: [{ name: "unit tests", status: "unknown", summary: "No check data was provided" }],
     logs: []

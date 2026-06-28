@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEvidenceIndex, extractKeywords, extractRequirements } from "./extractors";
+import { buildEvidenceIndex, extractClaims, extractKeywords, extractRequirements } from "./extractors";
 
 describe("extractRequirements", () => {
   it("ignores GitHub issue template comments and fenced traces", () => {
@@ -144,5 +144,61 @@ describe("extractRequirements", () => {
     expect(text).toContain("Expected is a correctly grouped denominator");
     expect(text).not.toContain("parse_latex");
     expect(text).not.toContain("python3");
+  });
+
+  it("does not extract PR validation commands as requirements when task text is absent", () => {
+    const requirements = extractRequirements(
+      "",
+      [
+        "## Summary",
+        "Rework report UI around evidence cards.",
+        "",
+        "## Validation",
+        "- corepack pnpm test",
+        "- corepack pnpm typecheck",
+        "- corepack pnpm build"
+      ].join("\n")
+    );
+    const text = requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(text).toContain("Rework report UI around evidence cards");
+    expect(text).not.toMatch(/Validation|corepack|pnpm|typecheck|build/i);
+  });
+
+  it("keeps Node runtime requirements while still dropping node command lines", () => {
+    const requirements = extractRequirements(
+      [
+        "Acceptance criteria:",
+        "- Node should handle malformed input without crashing.",
+        "- node scripts/repro.js"
+      ].join("\n"),
+      ""
+    );
+    const text = requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(text).toContain("Node should handle malformed input without crashing");
+    expect(text).not.toContain("node scripts/repro.js");
+  });
+});
+
+describe("extractClaims", () => {
+  it("captures product and UX claim verbs used by agent-authored PRs", () => {
+    const evidence = buildEvidenceIndex("", "", [
+      {
+        path: "src/components/ReportView.tsx",
+        status: "modified",
+        patch: "+ Reframe the workspace around evidence cards and rework the report into sections."
+      }
+    ], [], []);
+
+    const claims = extractClaims(
+      "Reframe the workspace around evidence cards. Rework the report into sections. Align UI and export copy.",
+      evidence
+    );
+    const text = claims.map((claim) => claim.text).join("\n");
+
+    expect(text).toContain("Reframe the workspace around evidence cards");
+    expect(text).toContain("Rework the report into sections");
+    expect(text).toContain("Align UI");
   });
 });

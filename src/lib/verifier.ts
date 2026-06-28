@@ -154,6 +154,11 @@ function evaluateRequirement(
     .filter(({ item, match }) => match.strong && isPassingTestExecutionEvidence(item))
     .map(({ item }) => item.id);
   const hasMatchingPassingTestExecutionEvidence = matchingPassingExecutionRefs.length > 0;
+  const asksForVisualProof = isVisualRequirement(requirement.text);
+  const matchingVisualEvidenceRefs = matches
+    .filter(({ item, match }) => match.strong && isVisualVerificationEvidence(item))
+    .map(({ item }) => item.id);
+  const hasMatchingVisualEvidence = matchingVisualEvidenceRefs.length > 0;
   const failedCheck = hasFailingExecutionEvidence(input);
 
   if (failedCheck) {
@@ -207,6 +212,30 @@ function evaluateRequirement(
       gaps: ["The requirement asks for tests, but no matching test evidence was found."],
       reviewerNote: "Request test evidence tied to this criterion.",
       confidence: hasImplementationEvidence ? 0.55 : 0.3
+    };
+  }
+
+  if (asksForVisualProof && hasImplementationEvidence && !hasMatchingVisualEvidence) {
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "partial",
+      evidenceRefs: refsForReport(matches, strongImplementationRefs),
+      gaps: ["Implementation evidence exists, but no browser, screenshot, or visual QA artifact verifies this UX criterion."],
+      reviewerNote: "Treat CI/build evidence as execution proof, not visual proof for this requirement.",
+      confidence: hasStrongImplementationEvidence ? 0.6 : 0.48
+    };
+  }
+
+  if (asksForVisualProof && hasStrongImplementationEvidence && hasMatchingVisualEvidence) {
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "met",
+      evidenceRefs: refsForReport(matches, [...matchingVisualEvidenceRefs, ...strongImplementationRefs]),
+      gaps: [],
+      reviewerNote: "Implementation evidence and visual QA evidence both appear connected to this criterion.",
+      confidence: 0.84
     };
   }
 
@@ -321,6 +350,20 @@ function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
     hasPassingEvidenceStatusPrefix(item.summary);
 }
 
+function isVisualRequirement(text: string): boolean {
+  return /\b(accessibility|browser|desktop|layout|mobile|overlap|overflow|responsive|screenshot|screen|visual|viewport|ui|ux)\b/i.test(text) ||
+    /\b(readable|readability|30 seconds?)\b/i.test(text);
+}
+
+function isVisualVerificationEvidence(item: EvidenceItem): boolean {
+  if (item.kind !== "check" && item.kind !== "log") {
+    return false;
+  }
+
+  return hasPassingEvidenceStatusPrefix(item.summary) &&
+    /\b(browser qa|browser|desktop|mobile|overflow|playwright|screenshot|visual|viewport)\b/i.test(`${item.label} ${item.summary} ${item.locator ?? ""}`);
+}
+
 function detectScopeCreep(
   requirements: Requirement[],
   files: PullRequestInput["changedFiles"],
@@ -339,7 +382,7 @@ function detectScopeCreep(
   const outOfScopeFiles = files
     .filter((file) => !isTestFile(file.path))
     .filter((file) => {
-      const keywords = pathRelationKeywords(file.path);
+      const keywords = fileRelationKeywords(file);
       const directMatch = keywords.some((keyword) =>
         Array.from(requirementKeywords).some(
           (requirementKeyword) =>
@@ -387,14 +430,34 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
 
       return {
         path: file.path,
-        why: hasRelatedTestFile
-          ? "A related test file changed, but no passing test check or log was provided."
-          : hasTestFileChange
-            ? "Test evidence changed, but none clearly maps to this implementation file."
-            : "Behavior-affecting file changed without matching test-file evidence.",
+        why: missingTestReason(hasRelatedTestFile, hasTestFileChange, hasPassingTestSignal),
         evidenceRefs: uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5)
       };
     });
+}
+
+function missingTestReason(
+  hasRelatedTestFile: boolean,
+  hasTestFileChange: boolean,
+  hasPassingTestSignal: boolean
+): string {
+  if (hasRelatedTestFile && hasPassingTestSignal) {
+    return "Related test evidence and passing execution exist; verify the test actually covers this file.";
+  }
+
+  if (hasRelatedTestFile) {
+    return "A related test file changed, but no passing test check or log was provided.";
+  }
+
+  if (hasTestFileChange && hasPassingTestSignal) {
+    return "Passing test evidence exists, but no targeted test evidence clearly maps to this file.";
+  }
+
+  if (hasTestFileChange) {
+    return "Test evidence changed, but none clearly maps to this implementation file.";
+  }
+
+  return "Behavior-affecting file changed without matching test-file evidence.";
 }
 
 function isBehaviorAffectingPath(path: string): boolean {
@@ -426,6 +489,44 @@ function pathsLookRelated(implementationPath: string, testPath: string): boolean
 
 function pathRelationKeywords(path: string): string[] {
   return fileKeywords(path).filter((keyword) => keyword.length >= 4 && !GENERIC_PATH_KEYWORDS.has(keyword));
+}
+
+function fileRelationKeywords(file: PullRequestInput["changedFiles"][number]): string[] {
+  return uniqueRefs([
+    ...pathRelationKeywords(file.path),
+    ...fileRoleKeywords(file.path)
+  ]);
+}
+
+function fileRoleKeywords(path: string): string[] {
+  const lower = path.toLowerCase();
+  const roles: string[] = [];
+
+  if (/\.(css|scss|sass|less)$/.test(lower)) {
+    roles.push("style", "styles", "layout", "mobile", "responsive", "button", "text", "ui", "ux", "visual", "screen");
+  }
+
+  if (/\.(tsx|jsx)$/.test(lower) || lower.includes("/components/")) {
+    roles.push("component", "components", "ui", "ux", "screen", "mobile", "layout", "button", "text");
+  }
+
+  if (/report|markdown|comment|share|history/.test(lower)) {
+    roles.push("report", "evidence", "handoff", "export", "comment", "copy", "share", "summary", "privacy");
+  }
+
+  if (/readme|docs?\//.test(lower)) {
+    roles.push("docs", "documentation", "handoff", "language", "position", "portfolio", "generic", "reviewer");
+  }
+
+  if (/api\/analyze|route\.ts$/.test(lower)) {
+    roles.push("api", "analysis", "verification", "report", "language", "copy", "evidence");
+  }
+
+  if (/verifier|extractor|validation/.test(lower)) {
+    roles.push("verifier", "verification", "evidence", "requirement", "coverage", "scope", "test");
+  }
+
+  return roles.filter((keyword) => keyword.length >= 4 && !GENERIC_PATH_KEYWORDS.has(keyword));
 }
 
 const GENERIC_PATH_KEYWORDS = new Set([
@@ -787,7 +888,13 @@ function buildTopRisks(
   if (requirements.some((finding) => finding.status === "missing")) risks.push("One or more requirements have no matching implementation evidence.");
   if (requirements.some((finding) => finding.status === "unclear")) risks.push("Some requirements are too vague or weakly evidenced.");
   if (requirements.some((finding) => finding.status === "partial")) risks.push("Some requirements have only partial evidence.");
-  if (missingTests.length > 0) risks.push("Behavior changed without strong test evidence.");
+  if (missingTests.length > 0) {
+    risks.push(
+      missingTests.some((finding) => /^Passing test evidence exists/.test(finding.why))
+        ? "Some changed files have broad test evidence, but no targeted test mapping."
+        : "Behavior changed without strong test evidence."
+    );
+  }
   if (outOfScopeFiles.length > 0) risks.push("Potential scope creep in changed files.");
 
   return risks.length > 0 ? risks.slice(0, 4) : ["No major evidence gap found from available evidence."];

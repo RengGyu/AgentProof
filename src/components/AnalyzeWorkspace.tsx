@@ -17,12 +17,37 @@ import { ReportView } from "@/components/ReportView";
 import { clearReportHistory, readReportHistory, saveReportToHistory, type StoredReport } from "@/lib/report-history";
 import type { AnalyzeRequest, DemoScenarioId, VerificationReport } from "@/lib/types";
 
-const scenarioLabels: { id: DemoScenarioId; label: string }[] = [
-  { id: "clean", label: "Clean PR" },
-  { id: "scope-creep", label: "Scope creep" },
-  { id: "missing-tests", label: "Missing tests" },
-  { id: "failed-ci", label: "Failed CI" },
-  { id: "vague-task", label: "Vague task" }
+const scenarioOptions: { id: DemoScenarioId; label: string; summary: string; expected: string }[] = [
+  {
+    id: "clean",
+    label: "Clean PR",
+    summary: "Password reset validation with matching tests and passing checks.",
+    expected: "Low risk; most requirements met."
+  },
+  {
+    id: "scope-creep",
+    label: "Scope creep",
+    summary: "Password reset work that also touches shared auth session and permissions files.",
+    expected: "Out-of-scope risk plus focused review files."
+  },
+  {
+    id: "missing-tests",
+    label: "Missing tests",
+    summary: "Invoice CSV export changes with lint/typecheck only.",
+    expected: "Missing targeted test evidence."
+  },
+  {
+    id: "failed-ci",
+    label: "Failed CI",
+    summary: "Workspace invite validation with a failing unit-test log.",
+    expected: "Blocker from failed execution evidence."
+  },
+  {
+    id: "vague-task",
+    label: "Vague task",
+    summary: "Dashboard polish request without concrete acceptance criteria.",
+    expected: "Unclear requirement coverage."
+  }
 ];
 
 export function AnalyzeWorkspace({ initialReport }: { initialReport: VerificationReport }) {
@@ -46,6 +71,10 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
     if (!report) return "No report";
     return `${report.summary.priority.toUpperCase()} - ${report.summary.evidenceCoverage}% evidence`;
   }, [report]);
+  const selectedScenario = useMemo(
+    () => scenarioOptions.find((scenario) => scenario.id === demoScenario) ?? scenarioOptions[0],
+    [demoScenario]
+  );
 
   useEffect(() => {
     setHistory(readReportHistory(window.localStorage));
@@ -150,12 +179,16 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
                   value={demoScenario}
                   onChange={(event) => setDemoScenario(event.target.value as DemoScenarioId)}
                 >
-                  {scenarioLabels.map((scenario) => (
+                  {scenarioOptions.map((scenario) => (
                     <option key={scenario.id} value={scenario.id}>
                       {scenario.label}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="scenario-note" aria-live="polite">
+                <strong>{selectedScenario.summary}</strong>
+                <span>{selectedScenario.expected}</span>
               </div>
             </section>
           ) : (
