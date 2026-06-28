@@ -412,6 +412,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
   const hasPassingTestSignal =
     input.checks.some((check) => isCheckExecutionSignal(check) && /test|spec/i.test(`${check.name} ${check.summary ?? ""}`) && check.status === "passed") ||
     input.logs.some((log) => isLogExecutionSignal(log) && /test|spec/i.test(`${log.source} ${log.text}`) && log.status === "passed");
+  const asksForTestEvidence = /\b(tests?|coverage|specs?)\b/i.test(`${input.taskText} ${input.description}`);
   const changedImplementationFiles = input.changedFiles.filter((file) =>
     !isTestFile(file.path) && isBehaviorAffectingPath(file.path)
   );
@@ -423,10 +424,13 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
   const testEvidenceRefs = evidenceIndex.filter((item) => item.kind === "test" || /test/i.test(item.summary)).map((item) => item.id);
 
   return changedImplementationFiles
-    .filter((file) => !hasMatchingVerifiedTestEvidence(file.path, testFiles, hasPassingTestSignal))
+    .filter((file) =>
+      !hasMatchingVerifiedTestEvidence(file, testFiles, hasPassingTestSignal) &&
+      !hasVisualVerifiedPresentationEvidence(file, input, asksForTestEvidence)
+    )
     .slice(0, MAX_MISSING_TEST_FINDINGS)
     .map((file) => {
-      const hasRelatedTestFile = testFiles.some((testFile) => pathsLookRelated(file.path, testFile.path));
+      const hasRelatedTestFile = testFiles.some((testFile) => testEvidenceLooksRelated(file, testFile));
 
       return {
         path: file.path,
@@ -461,23 +465,75 @@ function missingTestReason(
 }
 
 function isBehaviorAffectingPath(path: string): boolean {
-  return /\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|cs|cfg|ini|toml|ya?ml|json)$/.test(path) ||
+  return /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|rb|go|rs|java|kt|cs|cfg|ini|toml|ya?ml|json)$/.test(path) ||
     /(^|\/)(setup\.cfg|pyproject\.toml|tox\.ini|noxfile\.py|setup\.py|package\.json)$/.test(path);
 }
 
+function hasVisualVerifiedPresentationEvidence(
+  file: PullRequestInput["changedFiles"][number],
+  input: PullRequestInput,
+  asksForTestEvidence: boolean
+): boolean {
+  if (asksForTestEvidence || !isVisualSurfacePath(file.path)) {
+    return false;
+  }
+
+  if (!isVisualRequirement(`${input.taskText} ${input.description}`) || !hasPassingVisualVerification(input)) {
+    return false;
+  }
+
+  return isPresentationOnlyPatch(file.patch ?? "");
+}
+
+function isVisualSurfacePath(path: string): boolean {
+  return /\.(tsx|jsx)$/.test(path) || /(^|\/)components?\//i.test(path);
+}
+
+function hasPassingVisualVerification(input: PullRequestInput): boolean {
+  const visualPattern = /\b(browser qa|browser|desktop|mobile|overflow|playwright|screenshot|visual|viewport)\b/i;
+
+  return input.checks.some((check) => check.status === "passed" && visualPattern.test(`${check.name} ${check.summary ?? ""}`)) ||
+    input.logs.some((log) => log.status === "passed" && visualPattern.test(`${log.source} ${log.text}`));
+}
+
+function isPresentationOnlyPatch(patch: string): boolean {
+  if (!patch.trim()) {
+    return false;
+  }
+
+  const changedLines = patch
+    .split(/\r?\n/)
+    .filter((line) => /^[+-]/.test(line) && !/^(\+\+\+|---)/.test(line))
+    .join("\n");
+
+  if (!changedLines.trim()) {
+    return false;
+  }
+
+  const behaviorPattern = /\b(fetch|localStorage|sessionStorage|navigator|createObjectURL|onClick|onSubmit|onChange|useEffect|useState|async|await|POST|PUT|PATCH|DELETE|copyText|downloadMarkdown|copyShareLink|postGitHubComment|set[A-Z][A-Za-z0-9_]*)\b/;
+
+  return !behaviorPattern.test(changedLines);
+}
+
 function hasMatchingVerifiedTestEvidence(
-  implementationPath: string,
+  implementationFile: PullRequestInput["changedFiles"][number],
   testFiles: PullRequestInput["changedFiles"],
   hasPassingTestSignal: boolean
 ): boolean {
-  return hasPassingTestSignal && testFiles.some((testFile) => pathsLookRelated(implementationPath, testFile.path));
+  return hasPassingTestSignal && testFiles.some((testFile) => testEvidenceLooksRelated(implementationFile, testFile));
 }
 
 function pathsLookRelated(implementationPath: string, testPath: string): boolean {
   const implementationStem = fileStem(implementationPath);
   const testStem = fileStem(testPath);
 
-  if (implementationStem && testStem && (testStem.includes(implementationStem) || implementationStem.includes(testStem))) {
+  if (
+    implementationStem &&
+    testStem &&
+    !GENERIC_FILE_STEMS.has(implementationStem) &&
+    !GENERIC_FILE_STEMS.has(testStem) &&
+    (testStem.includes(implementationStem) || implementationStem.includes(testStem))
+  ) {
     return true;
   }
 
@@ -485,6 +541,74 @@ function pathsLookRelated(implementationPath: string, testPath: string): boolean
   const sharedKeywords = pathRelationKeywords(testPath).filter((keyword) => implementationKeywords.has(keyword));
 
   return sharedKeywords.length >= 2;
+}
+
+function testEvidenceLooksRelated(
+  implementationFile: PullRequestInput["changedFiles"][number],
+  testFile: PullRequestInput["changedFiles"][number]
+): boolean {
+  if (pathsLookRelated(implementationFile.path, testFile.path)) {
+    return true;
+  }
+
+  const testText = `${testFile.path} ${testFile.patch ?? ""}`.toLowerCase();
+  const testPatchText = (testFile.patch ?? "").toLowerCase();
+
+  return apiRouteEvidenceMatches(implementationFile.path, testPatchText) ||
+    symbolEvidenceMatches(implementationFile.path, testText);
+}
+
+function apiRouteEvidenceMatches(implementationPath: string, testText: string): boolean {
+  const match = implementationPath.match(/(?:^|\/)app\/api\/(.+)\/route\.[jt]s$/i);
+  if (!match) return false;
+
+  const route = match[1];
+  const staticSegments = route
+    .split("/")
+    .filter((segment) => segment && !/^\[.+\]$/.test(segment))
+    .map((segment) => segment.toLowerCase());
+
+  if (staticSegments.length === 0) return false;
+
+  const endpoint = `/api/${route}`.toLowerCase();
+  const normalizedEndpoint = endpoint.replace(/\[[^\]]+\]/g, "");
+  const slashlessEndpoint = normalizedEndpoint.replace(/\/+/g, "/");
+
+  return testText.includes(slashlessEndpoint) ||
+    staticSegments.every((segment) => testText.includes(segment)) && /\b(api|route|endpoint|request|response|fetch)\b/.test(testText);
+}
+
+function symbolEvidenceMatches(implementationPath: string, testText: string): boolean {
+  const symbols = implementationSymbols(implementationPath);
+
+  if (symbols.compact && !GENERIC_FILE_STEMS.has(symbols.compact) && testText.includes(symbols.compact)) {
+    return true;
+  }
+
+  if (symbols.words.length < 2) {
+    return false;
+  }
+
+  const distinctiveWords = symbols.words.filter((word) => word.length >= 5 && !GENERIC_PATH_KEYWORDS.has(word));
+
+  return distinctiveWords.length >= 1 &&
+    symbols.words.every((word) => testText.includes(word));
+}
+
+function implementationSymbols(path: string): { compact: string; words: string[] } {
+  const filename = path.split(/[\\/]/).pop() ?? path;
+  const stem = filename
+    .replace(/\.(test|spec)\.[^.]+$/i, "")
+    .replace(/\.[^.]+$/i, "");
+  const compact = stem.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const words = stem
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 4 && !GENERIC_PATH_KEYWORDS.has(word) && !GENERIC_FILE_STEMS.has(word));
+
+  return { compact, words: Array.from(new Set(words)) };
 }
 
 function pathRelationKeywords(path: string): string[] {
@@ -549,6 +673,16 @@ const GENERIC_PATH_KEYWORDS = new Set([
   "tests",
   "util",
   "utils"
+]);
+
+const GENERIC_FILE_STEMS = new Set([
+  "button",
+  "form",
+  "index",
+  "layout",
+  "page",
+  "route",
+  "view"
 ]);
 
 function fileStem(path: string): string {

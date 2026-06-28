@@ -92,7 +92,9 @@ PR #9 surfaced a separate evidence class: mobile layout, overlap, readability, a
    - Keep unrelated risky files flagged when only patch text mentions requirement words.
 
 3. Improve missing-test file matching.
-   - Link API route files to route tests, smoke scripts, and report-share/server-store tests by symbol/path family rather than filename only.
+   - Current v2 links API route files to smoke tests that exercise the same endpoint and generic test files that name the changed component symbol.
+   - Remaining gap: unchanged existing tests are still invisible unless GitHub check/log evidence names them.
+   - Keep broad test evidence as a reviewer lead, not proof, when no endpoint, path, or symbol match exists.
 
 4. Add post-deploy self-check for PR #1-#3 and PR #9.
    - Verify `/api/analyze` accepts each PR URL with proxy task text.
