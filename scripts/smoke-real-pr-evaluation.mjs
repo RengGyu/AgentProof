@@ -27,6 +27,12 @@ export const DEFAULT_REAL_PR_EVALUATION_CASES = [
     prUrl: "https://github.com/RengGyu/AgentProof/pull/9",
     taskText:
       "Refresh AgentProof UI/UX for mobile and portfolio readiness. Acceptance criteria: preserve evidence-based verifier positioning; make the report readable in 30 seconds; improve mobile layout without overlapping text/buttons; keep summary-only privacy boundaries visible; keep GitHub comment/export flows explicit and human-triggered; avoid generic AI code reviewer language."
+  },
+  {
+    id: "PR-12",
+    prUrl: "https://github.com/RengGyu/AgentProof/pull/12",
+    taskText:
+      "Improve GitHub execution evidence matching. Acceptance criteria: tighten execution-evidence classification so generic CI/build summaries about preview, deployment, security, policy, or report gates do not prove tests/builds; filter GitHub Actions job-step metadata to execution-like steps without fetching raw Actions logs; allow missing-test matching to use passing CI/check evidence that explicitly names an unchanged test path, endpoint, or component symbol while keeping broad pnpm test as a reviewer lead; keep visual UX requirements partial unless browser QA, Playwright, or Cypress-style evidence is present."
   }
 ];
 

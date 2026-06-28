@@ -42,6 +42,7 @@ Strict gate:
 | [#2](https://github.com/RengGyu/AgentProof/pull/2) | Saved report durability disclosure and summary-only warning. | `medium`, 39% coverage, `ciStatus: passed`, 6 extracted requirements, 1 `met`, 5 `partial`, CSS scope warning. | Useful but overly conservative. It correctly highlights weak per-requirement execution proof, but misses that API route tests and smoke tests support durability metadata. CSS scope warning is a tolerable false positive. |
 | [#3](https://github.com/RengGyu/AgentProof/pull/3) | Add Execution Evidence section and update CI actions. | `medium`, 77% coverage, `ciStatus: passed`, 5 extracted requirements, all `met`, missing-test warnings for workflow and UI file. | Strongest self-check. Requirement matching is good. Missing-test warnings are slightly noisy for workflow/UI display changes, but they are acceptable reviewer prompts rather than blockers. |
 | [#9](https://github.com/RengGyu/AgentProof/pull/9) | Refresh AgentProof UI/UX for mobile and portfolio readiness while preserving evidence-verifier positioning and summary-only privacy. | Pre-fix production run: `medium`, 29% coverage, `ciStatus: passed`, 1 `met`, 5 `partial`, scope warnings on UI/docs/report files. Local post-fix run: `medium`, 42% coverage, `ciStatus: passed`, no scope warnings, visual requirements remain `partial` without browser/screenshot evidence. | Useful and now better calibrated. The report correctly refuses to treat CI as visual proof, but no longer over-flags in-scope UI/docs/report files. Missing-test warnings remain conservative for UI/API files with only broad test evidence. |
+| [#12](https://github.com/RengGyu/AgentProof/pull/12) | Improve GitHub execution evidence matching and false-positive guards for CI/job-step metadata. | Production dogfood run: `medium`, 61% coverage, `ciStatus: passed`, 4 extracted requirements, summary-only save round trip passed. | Good regression case for the current evidence boundary. It checks that GitHub job-step metadata can support execution proof while broad or non-execution gates stay reviewer leads. |
 
 ## Findings
 
@@ -96,7 +97,7 @@ PR #9 surfaced a separate evidence class: mobile layout, overlap, readability, a
    - Broad test evidence such as `pnpm test` remains a reviewer lead, not proof, when no endpoint, path, or symbol match exists.
    - Generic CI/build summaries and job steps that only describe preview, deployment, security, policy, or report gates stay outside execution proof.
 
-4. Add post-deploy self-check for PR #1-#3 and PR #9.
+4. Add post-deploy self-check for PR #1-#3, PR #9, and PR #12.
    - Verify `/api/analyze` accepts each PR URL with proxy task text.
    - Assert `ciStatus` is never derived from preview/security/code-owner gates.
    - Assert summary-only saved report remains empty of evidence, claims, and re-prompt text.
