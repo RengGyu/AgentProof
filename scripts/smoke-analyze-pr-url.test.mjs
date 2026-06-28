@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   assertSummaryOnlyReport,
+  assertReportExpectations,
+  failedCheckAnnotationLocations,
   passingExecutionEvidence,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
@@ -69,6 +71,69 @@ describe("smoke-analyze-pr-url", () => {
     savedReport.requirements[0].evidenceRefs = ["ev_1"];
 
     expect(() => assertSummaryOnlyReport(savedReport)).toThrow("Saved report retained evidenceRefs");
+  });
+
+  it("rejects saved reports that retain failed check annotation locations", () => {
+    const fullReport = reportFixture();
+    fullReport.evidenceIndex.push({
+      id: "ev_failed_annotation",
+      kind: "check",
+      label: "unit tests",
+      summary:
+        "Status: failed. unit tests - Vitest failed. Check annotations: failure at src/app/api/analyze/route.test.ts:42. Raw annotation messages and raw annotation details omitted.",
+      confidence: 0.9
+    });
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    savedReport.limitations.push("Debug note: src/app/api/analyze/route.test.ts:42");
+
+    expect(failedCheckAnnotationLocations(fullReport)).toEqual(["src/app/api/analyze/route.test.ts:42"]);
+    expect(() => assertSummaryOnlyReport(savedReport, {
+      failedCheckLocations: failedCheckAnnotationLocations(fullReport)
+    })).toThrow("Saved report retained failed check annotation location");
+  });
+
+  it("blocks GitHub tokens from remote production-like smoke URLs unless explicitly allowed", async () => {
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof-pearl.vercel.app",
+      prUrl: "https://github.com/org/repo/pull/1",
+      githubToken: "github_pat_secret_should_not_leak_123",
+      fetchImpl: vi.fn()
+    })).rejects.toThrow("Forwarding a GitHub token to a remote AgentProof base URL requires");
+  });
+
+  it("reports explicit production token forwarding when allowed", async () => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: fullReport }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: "saved_123",
+        url: "https://agentproof-pearl.vercel.app/reports/saved_123",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        report: savedReport,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    const result = await runAnalyzePrSmoke({
+      baseUrl: "https://agentproof-pearl.vercel.app",
+      prUrl: "https://github.com/org/repo/pull/1",
+      githubToken: "github_pat_secret_should_not_leak_123",
+      allowProductionGithubToken: true,
+      fetchImpl: fetchMock
+    });
+
+    expect(result.githubTokenForwarded).toBe(true);
+    expect(result.productionTokenForwarded).toBe(true);
   });
 
   it("rejects passed CI smoke reports without status-prefixed passing execution evidence", async () => {
@@ -177,6 +242,29 @@ describe("smoke-analyze-pr-url", () => {
     ];
 
     expect(passingExecutionEvidence(report).map((item) => item.id)).toEqual(["ev_actual_step", "ev_unit"]);
+  });
+
+  it("keeps visual requirements unverified without browser or screenshot evidence", () => {
+    const report = reportFixture();
+    report.requirements = [
+      {
+        requirementId: "req_visual",
+        requirementText: "improve mobile layout without overlapping text/buttons",
+        status: "partial",
+        evidenceRefs: ["ev_1"],
+        gaps: ["No browser, screenshot, or visual QA artifact verifies this UX criterion."],
+        reviewerNote: "Visual evidence was not present.",
+        confidence: 0.55
+      }
+    ];
+
+    expect(assertReportExpectations(report, { requireVisualUnverified: true }).checks).toEqual([
+      { name: "visualRequirementsUnverifiedWithoutVisualEvidence", expected: true }
+    ]);
+
+    report.requirements[0].status = "met";
+    expect(() => assertReportExpectations(report, { requireVisualUnverified: true }))
+      .toThrow("Visual/mobile requirements were marked met without browser, screenshot, or visual QA evidence");
   });
 });
 
