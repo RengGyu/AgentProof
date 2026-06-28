@@ -247,8 +247,198 @@ describe("buildPullRequestInput", () => {
       })
     ]);
     expect(input.logs[0]?.text).toContain("pnpm build: passed");
+    expect(input.logs[0]?.text).not.toContain("checkout");
+    expect(input.logs[0]?.url).toBeUndefined();
     expect(input.logs[0]?.text).not.toContain("docs preview");
     expect(input.limitations?.join(" ")).toContain("raw log archives were not fetched or stored");
+  });
+
+  it("does not fetch Actions job metadata when generic CI summaries only mention preview tests", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Preview summary PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/acme/repo/actions/runs/123456/job/999",
+              output: {
+                summary: "Vercel Preview tests passed after deployment."
+              }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.logs).toEqual([]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/jobs"))).toBe(false);
+  });
+
+  it("keeps only execution-like Actions steps for generic CI jobs", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "CI step PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/acme/repo/actions/runs/123456/job/999"
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/actions/runs/123456/jobs")) {
+        return Promise.resolve(Response.json({
+          jobs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "success",
+              html_url: "https://github.com/acme/repo/actions/runs/123456/job/999?token=ghp_secret#step",
+              steps: [
+                { name: "Checkout", status: "completed", conclusion: "success" },
+                { name: "Upload test report", status: "completed", conclusion: "success" },
+                { name: "pnpm test src/app/api/analyze/route.test.ts", status: "completed", conclusion: "success" },
+                { name: "pnpm build", status: "completed", conclusion: "success" }
+              ]
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.logs).toEqual([
+      expect.objectContaining({
+        source: "GitHub Actions job: CI",
+        status: "passed",
+        url: "https://github.com/acme/repo/actions/runs/123456/job/999",
+        text: expect.stringContaining("pnpm test src/app/api/analyze/route.test.ts: passed")
+      })
+    ]);
+    expect(input.logs[0]?.text).toContain("pnpm build: passed");
+    expect(input.logs[0]?.text).not.toContain("Checkout");
+    expect(input.logs[0]?.text).not.toContain("Upload test report");
+    expect(JSON.stringify(input)).not.toContain("ghp_secret");
+  });
+
+  it("does not collect generic CI jobs with only preview or report steps", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Preview step PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/acme/repo/actions/runs/123456/job/999"
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/actions/runs/123456/jobs")) {
+        return Promise.resolve(Response.json({
+          jobs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "success",
+              steps: [
+                { name: "Deploy preview", status: "completed", conclusion: "success" },
+                { name: "Upload test report", status: "completed", conclusion: "success" }
+              ]
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.logs).toEqual([]);
   });
 
   it("does not fetch Actions job metadata for non-execution check runs", async () => {

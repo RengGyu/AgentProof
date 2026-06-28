@@ -11,6 +11,9 @@ const GITHUB_MAX_COMMIT_STATUSES = 30;
 const GITHUB_MAX_ACTION_RUNS = 3;
 const GITHUB_MAX_ACTION_JOB_SUMMARIES = 12;
 const GITHUB_MAX_ACTION_STEPS_PER_JOB = 8;
+const NON_PROOF_ACTION_STEP_PATTERN =
+  /\b(checkout|setup|cache|install dependencies|upload|download|artifact|publish|preview|deploy|deployment|report|notify)\b/i;
+const GENERIC_ACTION_JOB_NAME_PATTERN = /^\s*(ci|checks?|workflow|github actions)\s*$/i;
 
 class GitHubFetchError extends Error {
   constructor(
@@ -478,16 +481,18 @@ async function fetchActionJobSummaries(
 
     for (const job of jobs) {
       const status = mapGitHubCheckStatus(job.status, job.conclusion);
-      const steps = (job.steps ?? [])
+      const safeJobName = redactSecrets(compactText(job.name, 160));
+      const steps = actionExecutionSteps(job)
         .filter((step) => step.name)
         .slice(0, GITHUB_MAX_ACTION_STEPS_PER_JOB)
-        .map((step) => `${step.name}: ${mapGitHubCheckStatus(step.status, step.conclusion)}`)
+        .map((step) => `${redactSecrets(compactText(step.name, 160))}: ${mapGitHubCheckStatus(step.status, step.conclusion)}`)
         .join("; ");
 
       logs.push({
-        source: `GitHub Actions job: ${job.name}`,
+        source: `GitHub Actions job: ${safeJobName}`,
         status,
-        text: redactSecrets(compactText(`GitHub Actions job ${job.name}: ${status}${steps ? `. Steps: ${steps}` : ""}`, 900))
+        url: sanitizeGitHubEvidenceUrl(job.html_url),
+        text: redactSecrets(compactText(`GitHub Actions job ${safeJobName}: ${status}${steps ? `. Steps: ${steps}` : ""}`, 900))
       });
     }
   }
@@ -504,9 +509,30 @@ function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
 }
 
 function isExecutionActionJob(job: GitHubActionJobResponse): boolean {
-  const stepText = (job.steps ?? []).map((step) => step.name).join(" ");
+  const executionSteps = actionExecutionSteps(job);
+  const stepText = executionSteps.map((step) => step.name).join(" ");
+
+  if (executionSteps.length > 0) {
+    return true;
+  }
+
+  if (GENERIC_ACTION_JOB_NAME_PATTERN.test(job.name)) {
+    return false;
+  }
 
   return isExecutionEvidenceSignal(job.name, stepText, job.html_url);
+}
+
+function actionExecutionSteps(job: GitHubActionJobResponse): GitHubActionStepResponse[] {
+  return (job.steps ?? []).filter(isExecutionActionStep);
+}
+
+function isExecutionActionStep(step: GitHubActionStepResponse): boolean {
+  if (!step.name.trim() || NON_PROOF_ACTION_STEP_PATTERN.test(step.name)) {
+    return false;
+  }
+
+  return isExecutionEvidenceSignal(step.name);
 }
 
 function actionRunIdFromCheckRun(check: GitHubCheckRunResponse, owner: string, repo: string): string | null {

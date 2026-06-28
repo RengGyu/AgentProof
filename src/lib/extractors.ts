@@ -288,6 +288,7 @@ export function buildEvidenceIndex(
       id: `ev_${items.length + 1}`,
       kind: "log",
       label: safeSource,
+      locator: sanitizeEvidenceLocator(log.url),
       summary: `Status: ${status}. ${safeSource}: ${compactText(redactSecrets(log.text), 450)}`,
       confidence: status === "unknown" ? 0.45 : 0.75
     });

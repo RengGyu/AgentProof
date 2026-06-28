@@ -153,6 +153,35 @@ describe("generateVerificationReport", () => {
     expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
   });
 
+  it("does not mark generic CI summaries about preview tests as execution proof", () => {
+    const report = generateVerificationReport({
+      title: "Fix malformed origin handling",
+      description: "Handled malformed Origin headers.",
+      taskText: "Acceptance criteria: handle malformed Origin headers.",
+      changedFiles: [
+        {
+          path: "packages/next/src/server/app-render/action-handler.ts",
+          additions: 6,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if (!isValidOriginHeader(origin)) return rejectAction()"
+        }
+      ],
+      checks: [
+        {
+          name: "CI",
+          status: "passed",
+          summary: "Vercel Preview tests passed after deployment."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("no matching test, log, or check evidence");
+  });
+
   it("does not mark test/build failed from non-execution check failures", () => {
     const report = generateVerificationReport({
       title: "Fix malformed origin handling",
@@ -609,6 +638,88 @@ describe("generateVerificationReport", () => {
     expect(report.testing.missingTests.some((item) => item.path === "src/app/api/reports/[id]/route.ts")).toBe(false);
   });
 
+  it("uses passing CI step evidence that names an unchanged route test file", () => {
+    const report = generateVerificationReport({
+      title: "Tighten analyze route validation",
+      description: "Updated analyze route validation and ran the existing route test.",
+      taskText: "Acceptance criteria: reject invalid analyze requests.",
+      changedFiles: [
+        {
+          path: "src/app/api/analyze/route.ts",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ return jsonNoStore({ error: 'Provide evidence before analysis.' }, 400)"
+        }
+      ],
+      checks: [],
+      logs: [
+        {
+          source: "GitHub Actions job: CI",
+          status: "passed",
+          text: "GitHub Actions job CI: passed. Steps: pnpm test src/app/api/analyze/route.test.ts: passed"
+        }
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/app/api/analyze/route.ts")).toBe(false);
+  });
+
+  it("keeps broad CI test steps from clearing unchanged targeted test mapping", () => {
+    const report = generateVerificationReport({
+      title: "Refresh report view copy",
+      description: "Updated ReportView behavior and ran the full test suite.",
+      taskText: "Acceptance criteria: keep ReportView copy actions working.",
+      changedFiles: [
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 14,
+          deletions: 3,
+          status: "modified",
+          patch: "+ <button onClick={() => copyText(markdown, 'report')}>Copy Report</button>"
+        }
+      ],
+      checks: [],
+      logs: [
+        {
+          source: "GitHub Actions job: CI",
+          status: "passed",
+          text: "GitHub Actions job CI: passed. Steps: pnpm test: passed"
+        }
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/components/ReportView.tsx");
+    expect(report.testing.missingTests[0]?.why).toContain("Passing test evidence exists");
+  });
+
+  it("uses passing CI step evidence that names an unchanged component test", () => {
+    const report = generateVerificationReport({
+      title: "Refresh report view copy",
+      description: "Updated ReportView behavior and ran the existing component test.",
+      taskText: "Acceptance criteria: keep ReportView copy actions working.",
+      changedFiles: [
+        {
+          path: "src/components/ReportView.tsx",
+          additions: 14,
+          deletions: 3,
+          status: "modified",
+          patch: "+ <button onClick={() => copyText(markdown, 'report')}>Copy Report</button>"
+        }
+      ],
+      checks: [],
+      logs: [
+        {
+          source: "GitHub Actions job: unit tests",
+          status: "passed",
+          text: "Vitest passed src/components/ReportView.test.tsx"
+        }
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.missingTests.some((item) => item.path === "src/components/ReportView.tsx")).toBe(false);
+  });
+
   it("matches component changes to generic test files only when the test patch names the component symbol", () => {
     const report = generateVerificationReport({
       title: "Refresh report view copy",
@@ -971,6 +1082,35 @@ describe("generateVerificationReport", () => {
     expect(report.requirements[0]?.status).toBe("partial");
     expect(report.requirements[0]?.gaps.join(" ")).toContain("visual QA");
     expect(report.requirements[0]?.reviewerNote).toContain("CI/build evidence");
+  });
+
+  it("does not treat deployment preview screenshots as visual QA proof", () => {
+    const report = generateVerificationReport({
+      title: "Improve mobile report layout",
+      description: "Improved mobile layout and readable buttons.",
+      taskText: "Acceptance criteria: improve mobile layout without overlapping text/buttons.",
+      changedFiles: [
+        {
+          path: "src/app/globals.css",
+          additions: 24,
+          deletions: 6,
+          status: "modified",
+          patch:
+            "+ /* mobile layout: prevent overlapping report text and buttons */\n+ .report-actions { display: grid; grid-template-columns: 1fr; }"
+        }
+      ],
+      checks: [
+        {
+          name: "Vercel Preview",
+          status: "passed",
+          summary: "Deployment screenshot captured mobile viewport after preview build."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("visual QA");
   });
 
   it("marks visual UX requirements met only when implementation and visual QA evidence both match", () => {
