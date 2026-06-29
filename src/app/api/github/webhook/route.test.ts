@@ -559,6 +559,212 @@ describe("POST /api/github/webhook", () => {
     expect(fetchMock).toHaveBeenCalledTimes(callCount);
   });
 
+  it("does not treat changed PR head SHA or action as duplicate automation", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = await POST(signedRequest(JSON.stringify(automationPayload({
+      action: "opened"
+    })), {
+      event: "pull_request",
+      delivery: "delivery-dimensions-1",
+      secret: "secret"
+    }));
+    const second = await POST(signedRequest(JSON.stringify(automationPayload({
+      action: "synchronize",
+      pull_request: {
+        number: 7,
+        html_url: "https://github.com/RengGyu/AgentProof/pull/7",
+        title: "Webhook title should not be trusted",
+        head: { sha: "def456" }
+      }
+    })), {
+      event: "pull_request",
+      delivery: "delivery-dimensions-2",
+      secret: "secret"
+    }));
+    const firstJson = await first.json();
+    const secondJson = await second.json();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(firstJson.duplicate).not.toBe(true);
+    expect(secondJson.duplicate).not.toBe(true);
+    expect(firstJson.analysis.status).toBe("completed");
+    expect(secondJson.analysis.status).toBe("completed");
+    expect(fetchMock.mock.calls.filter((call) =>
+      String(call[0]) === "https://api.github.com/app/installations/321/access_tokens"
+    )).toHaveLength(2);
+  });
+
+  it("fails closed before token fetch when durable webhook idempotency storage is unavailable", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+
+      return new Response(null, { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174000",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual({
+      error: "GitHub App idempotency store is unavailable.",
+      code: "github_app_idempotency_unavailable",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock.mock.calls.some((call) =>
+      String(call[0]) === "https://api.github.com/app/installations/321/access_tokens"
+    )).toBe(false);
+  });
+
+  it("skips duplicate pull_request automation from durable webhook idempotency before token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (init?.method === "POST") return new Response(null, { status: 409 });
+      if (init?.method === "GET") return Response.json([{ status: "processing" }]);
+
+      return new Response(null, { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890",
+        installation: { id: 321, token: "payload-token-should-not-leak" }
+      })), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174000",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json.duplicate).toBe(true);
+    expect(json.willAnalyze).toBe(false);
+    expect(json.analysis.status).toBe("skipped");
+    expect(json.analysis.reason).toContain("already in progress");
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(fetchMock.mock.calls.some((call) =>
+      String(call[0]) === "https://api.github.com/app/installations/321/access_tokens"
+    )).toBe(false);
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("payload-token");
+  });
+
+  it("records completed durable webhook idempotency metadata without raw payloads", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE", "webhook_deliveries_test");
+    const githubFetch = mockAutomationFetch();
+    const supabaseCalls: Array<[string, RequestInit | undefined]> = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+
+      if (href.startsWith("https://agentproof-test.supabase.co/rest/v1/webhook_deliveries_test")) {
+        supabaseCalls.push([href, init]);
+        if (init?.method === "DELETE") return new Response(null, { status: 204 });
+        if (init?.method === "POST") return new Response(null, { status: 201 });
+        if (init?.method === "PATCH") return new Response(null, { status: 204 });
+      }
+
+      if (href.startsWith("https://agentproof-test.supabase.co/rest/v1/agentproof_saved_reports")) {
+        const row = JSON.parse(String(init?.body));
+
+        return Response.json([row]);
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890",
+        installation: { id: 321, token: "payload-token-should-not-leak" }
+      })), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174000",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const postBody = JSON.parse(String(supabaseCalls.find((call) => call[1]?.method === "POST")?.[1]?.body));
+    const patchBody = JSON.parse(String(supabaseCalls.find((call) => call[1]?.method === "PATCH")?.[1]?.body));
+    const serialized = JSON.stringify({ postBody, patchBody, json });
+
+    expect(response.status).toBe(200);
+    expect(json.analysis.status).toBe("completed");
+    expect(postBody).toMatchObject({
+      status: "processing",
+      event: "pull_request",
+      delivery_id: "123e4567-e89b-12d3-a456-426614174000",
+      installation_id: 321,
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7,
+      head_sha: "abc123",
+      action: "opened"
+    });
+    expect(postBody.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(patchBody).toMatchObject({
+      status: "completed",
+      result_summary: {
+        status: "completed",
+        repository: "RengGyu/AgentProof",
+        pullRequestNumber: 7,
+        headSha: "abc123",
+        priority: expect.any(String),
+        evidenceCoverage: expect.any(Number),
+        savedReport: {
+          privacy: "summary-only"
+        }
+      }
+    });
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("payload-token");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
   it("creates a GitHub App marker comment only when comment opt-in is enabled", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");

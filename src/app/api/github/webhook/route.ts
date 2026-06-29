@@ -1,12 +1,14 @@
 import { buildGitHubPullRequestInput } from "@/lib/github";
 import {
+  completeGitHubWebhookDelivery,
   createGitHubInstallationAccessToken,
-  forgetGitHubWebhookDelivery,
+  failGitHubWebhookDelivery,
+  GitHubWebhookIdempotencyError,
   getGitHubAppAutomationSettings,
   getGitHubAppConfigStatus,
   isGitHubAppRepoAllowed,
-  markGitHubWebhookDelivery,
   normalizeGitHubWebhookEvent,
+  reserveGitHubWebhookDelivery,
   shouldHandlePullRequestAction,
   verifyGitHubWebhookSignature
 } from "@/lib/github-app";
@@ -170,7 +172,32 @@ async function handlePullRequestAutomation(
     context.action
   ].join(":");
 
-  if (!markGitHubWebhookDelivery(idempotencyKey)) {
+  let reservation;
+  try {
+    reservation = await reserveGitHubWebhookDelivery({
+      key: idempotencyKey,
+      event: context.event,
+      delivery: context.delivery,
+      installationId: automation.installationId,
+      repositoryFullName: automation.repositoryFullName,
+      pullRequestNumber: automation.pullRequestNumber,
+      headSha: automation.headSha,
+      action: context.action ?? "unknown"
+    });
+  } catch (error) {
+    if (error instanceof GitHubWebhookIdempotencyError) {
+      return noStoreJson({
+        error: "GitHub App idempotency store is unavailable.",
+        code: "github_app_idempotency_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+
+    throw error;
+  }
+
+  if (!reservation.accepted) {
     return noStoreJson({
       ok: true,
       accepted: true,
@@ -187,7 +214,9 @@ async function handlePullRequestAutomation(
         repository: automation.repositoryFullName,
         pullRequestNumber: automation.pullRequestNumber,
         headSha: automation.headSha,
-        reason: "Duplicate delivery for this PR head SHA and action."
+        reason: reservation.duplicateStatus === "processing"
+          ? "Analysis is already in progress for this PR head SHA and action."
+          : "Duplicate delivery for this PR head SHA and action."
       }
     });
   }
@@ -218,6 +247,32 @@ async function handlePullRequestAutomation(
     const comment = context.commentEnabled
       ? await postGitHubAppMarkerComment(automation, token, report)
       : undefined;
+    const analysis = {
+      status: "completed",
+      repository: automation.repositoryFullName,
+      pullRequestNumber: automation.pullRequestNumber,
+      headSha: automation.headSha,
+      priority: report.summary.priority,
+      evidenceCoverage: report.summary.evidenceCoverage,
+      savedReport: saved,
+      comment
+    };
+
+    await completeGitHubWebhookDelivery({ key: idempotencyKey }, {
+      status: "completed",
+      repository: analysis.repository,
+      pullRequestNumber: analysis.pullRequestNumber,
+      headSha: analysis.headSha,
+      priority: analysis.priority,
+      evidenceCoverage: analysis.evidenceCoverage,
+      savedReport: saved ? {
+        privacy: saved.privacy,
+        durability: saved.durability
+      } : undefined,
+      comment: comment ? {
+        action: comment.action
+      } : undefined
+    }).catch(() => undefined);
 
     return noStoreJson({
       ok: true,
@@ -229,21 +284,18 @@ async function handlePullRequestAutomation(
       automationEnabled: true,
       willAnalyze: true,
       willComment: context.commentEnabled,
-      analysis: {
-        status: "completed",
-        repository: automation.repositoryFullName,
-        pullRequestNumber: automation.pullRequestNumber,
-        headSha: automation.headSha,
-        priority: report.summary.priority,
-        evidenceCoverage: report.summary.evidenceCoverage,
-        savedReport: saved,
-        comment
-      }
+      analysis
     });
   } catch (error) {
-    forgetGitHubWebhookDelivery(idempotencyKey);
+    const errorMessage = redactSecrets(error instanceof Error ? error.message : "GitHub App automation failed.");
+    await failGitHubWebhookDelivery({
+      key: idempotencyKey
+    }, {
+      code: error instanceof SavedReportStoreError ? "saved_report_store_error" : "github_app_automation_failed",
+      summary: errorMessage
+    }).catch(() => undefined);
     return noStoreJson({
-      error: redactSecrets(error instanceof Error ? error.message : "GitHub App automation failed."),
+      error: errorMessage,
       code: "github_app_automation_failed"
     }, { status: error instanceof SavedReportStoreError ? 503 : 502 });
   }
@@ -305,7 +357,7 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
   const headSha = getString(head, "sha");
   const installationId = getNumber(installation, "id");
 
-  if (!repositoryFullName || !pullRequestNumber || !pullRequestUrl || !headSha || !installationId) {
+  if (!repositoryFullName || !pullRequestNumber || !pullRequestUrl || !headSha || !isGitHubSha(headSha) || !installationId) {
     return null;
   }
 
@@ -344,6 +396,10 @@ function parseGitHubPullRequestUrl(value: string) {
   } catch {
     return null;
   }
+}
+
+function isGitHubSha(value: string): boolean {
+  return /^[a-f0-9]{6,64}$/i.test(value);
 }
 
 async function maybeCreateAutomationSavedReport(report: VerificationReport, requestUrl: string) {

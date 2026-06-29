@@ -1,8 +1,11 @@
-import { createHmac, createPrivateKey, createSign, timingSafeEqual } from "crypto";
+import { createHash, createHmac, createPrivateKey, createSign, timingSafeEqual } from "crypto";
 
 const GITHUB_APP_FETCH_TIMEOUT_MS = 8000;
 const GITHUB_WEBHOOK_IDEMPOTENCY_TTL_MS = 30 * 60 * 1000;
+const GITHUB_WEBHOOK_PROCESSING_LEASE_MS = 30 * 60 * 1000;
+const GITHUB_WEBHOOK_IDEMPOTENCY_DURABLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const GITHUB_WEBHOOK_IDEMPOTENCY_MAX = 500;
+export const DEFAULT_GITHUB_WEBHOOK_DELIVERIES_TABLE = "agentproof_github_webhook_deliveries";
 
 export interface GitHubAppConfigStatus {
   appIdConfigured: boolean;
@@ -42,14 +45,105 @@ export interface PublicGitHubAppReadinessStatus {
   cautions: string[];
 }
 
+export interface GitHubWebhookDeliveryInput {
+  key: string;
+  event: string;
+  delivery: string;
+  installationId: number;
+  repositoryFullName: string;
+  pullRequestNumber: number;
+  headSha: string;
+  action: string;
+}
+
+export interface GitHubWebhookDeliveryReservation {
+  accepted: boolean;
+  store: "memory" | "supabase";
+  durable: boolean;
+  duplicateStatus?: GitHubWebhookDeliveryStatus;
+}
+
+export type GitHubWebhookDeliveryStatus = "processing" | "completed" | "failed_retryable";
+
+export interface GitHubWebhookDeliveryResultSummary {
+  status: "completed";
+  repository: string;
+  pullRequestNumber: number;
+  headSha: string;
+  priority: string;
+  evidenceCoverage: number;
+  savedReport?: {
+    privacy?: string;
+    durability?: string;
+  };
+  comment?: {
+    action?: string;
+  };
+}
+
+export interface GitHubWebhookIdempotencyStoreStatus {
+  mode: "memory" | "supabase";
+  configured: boolean;
+  durable: boolean;
+  table: string;
+  missingEnv: string[];
+}
+
 type GlobalWithWebhookIdempotency = typeof globalThis & {
   __agentproofGitHubWebhookDeliveries?: Map<string, number>;
 };
+
+interface SupabaseWebhookDeliveryConfig {
+  url: string;
+  serviceRoleKey: string;
+  table: string;
+}
+
+interface SupabaseWebhookDeliveryRow {
+  id: string;
+  status: GitHubWebhookDeliveryStatus;
+  event: string;
+  delivery_id: string;
+  installation_id: number;
+  repository_full_name: string;
+  pull_request_number: number;
+  head_sha: string;
+  action: string;
+  result_summary?: GitHubWebhookDeliveryResultSummary | null;
+  error_code?: string | null;
+  error_summary?: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+}
+
+interface SupabaseWebhookDeliveryStatusRow {
+  status?: unknown;
+  updated_at?: unknown;
+}
+
+interface SupabaseWebhookDeliveryState {
+  status: GitHubWebhookDeliveryStatus;
+  updatedAt?: string;
+}
+
+interface SupabaseWebhookDeliveryUpdateOptions {
+  currentStatus?: GitHubWebhookDeliveryStatus;
+  currentUpdatedAt?: string;
+  returnRepresentation?: boolean;
+}
 
 export class GitHubAppTokenError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "GitHubAppTokenError";
+  }
+}
+
+export class GitHubWebhookIdempotencyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GitHubWebhookIdempotencyError";
   }
 }
 
@@ -302,12 +396,119 @@ export function markGitHubWebhookDelivery(key: string, now = Date.now()): boolea
   return true;
 }
 
+export async function reserveGitHubWebhookDelivery(
+  input: GitHubWebhookDeliveryInput,
+  now = Date.now(),
+  env = process.env
+): Promise<GitHubWebhookDeliveryReservation> {
+  const config = getSupabaseWebhookDeliveryConfig(env);
+
+  if (!config) {
+    return {
+      accepted: markGitHubWebhookDelivery(input.key, now),
+      store: "memory",
+      durable: false
+    };
+  }
+
+  return reserveSupabaseWebhookDelivery(config, input, now);
+}
+
 export function forgetGitHubWebhookDelivery(key: string): boolean {
   return githubWebhookDeliveryStore().delete(key);
 }
 
+export async function completeGitHubWebhookDelivery(
+  input: Pick<GitHubWebhookDeliveryInput, "key">,
+  resultSummary: GitHubWebhookDeliveryResultSummary,
+  now = Date.now(),
+  env = process.env
+): Promise<boolean> {
+  const config = getSupabaseWebhookDeliveryConfig(env);
+
+  if (!config) {
+    return true;
+  }
+
+  return updateSupabaseWebhookDelivery(config, input.key, {
+    status: "completed",
+    result_summary: resultSummary,
+    error_code: null,
+    error_summary: null,
+    updated_at: new Date(now).toISOString()
+  });
+}
+
+export async function releaseGitHubWebhookDelivery(
+  input: Pick<GitHubWebhookDeliveryInput, "key">,
+  env = process.env
+): Promise<boolean> {
+  const config = getSupabaseWebhookDeliveryConfig(env);
+
+  if (!config) {
+    return forgetGitHubWebhookDelivery(input.key);
+  }
+
+  return deleteSupabaseWebhookDelivery(config, input.key);
+}
+
+export async function failGitHubWebhookDelivery(
+  input: Pick<GitHubWebhookDeliveryInput, "key">,
+  error: { code: string; summary: string },
+  now = Date.now(),
+  env = process.env
+): Promise<boolean> {
+  const config = getSupabaseWebhookDeliveryConfig(env);
+
+  if (!config) {
+    return forgetGitHubWebhookDelivery(input.key);
+  }
+
+  return updateSupabaseWebhookDelivery(config, input.key, {
+    status: "failed_retryable",
+    error_code: safeWebhookAction(error.code),
+    error_summary: error.summary.slice(0, 500),
+    updated_at: new Date(now).toISOString()
+  });
+}
+
 export function clearGitHubWebhookDeliveriesForTests() {
   githubWebhookDeliveryStore().clear();
+}
+
+export function getGitHubWebhookIdempotencyStoreStatus(env = process.env): GitHubWebhookIdempotencyStoreStatus {
+  const read = readSupabaseWebhookDeliveryEnv(env);
+
+  if (read.url && read.serviceRoleKey) {
+    return {
+      mode: "supabase",
+      configured: true,
+      durable: true,
+      table: read.table,
+      missingEnv: []
+    };
+  }
+
+  const missingEnv: string[] = [];
+  if (read.url || read.serviceRoleKey) {
+    if (!read.url) {
+      missingEnv.push("AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL or AGENTPROOF_REPORTS_SUPABASE_URL or SUPABASE_URL");
+    }
+
+    if (!read.serviceRoleKey) {
+      missingEnv.push(
+        "AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY or AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"
+      );
+    }
+  }
+
+  return {
+    mode: "memory",
+    configured: false,
+    durable: false,
+    table: read.table,
+    missingEnv
+  };
 }
 
 function parseAllowedRepos(value: string): string[] {
@@ -362,4 +563,279 @@ function trimGitHubWebhookDeliveryStore() {
     if (!oldest) return;
     store.delete(oldest);
   }
+}
+
+async function reserveSupabaseWebhookDelivery(
+  config: SupabaseWebhookDeliveryConfig,
+  input: GitHubWebhookDeliveryInput,
+  now: number
+): Promise<GitHubWebhookDeliveryReservation> {
+  await deleteExpiredSupabaseWebhookDeliveries(config, now);
+
+  const response = await supabaseWebhookDeliveryFetch(config, "", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(toSupabaseWebhookDeliveryRow(input, now))
+  });
+
+  if (response.status === 409) {
+    const existing = await getSupabaseWebhookDeliveryState(config, input.key);
+
+    if (existing && shouldRetrySupabaseWebhookDelivery(existing, now)) {
+      const accepted = await updateSupabaseWebhookDelivery(config, input.key, {
+        status: "processing",
+        delivery_id: safeGitHubDeliveryId(input.delivery),
+        result_summary: null,
+        error_code: null,
+        error_summary: null,
+        updated_at: new Date(now).toISOString(),
+        expires_at: new Date(now + GITHUB_WEBHOOK_IDEMPOTENCY_DURABLE_TTL_MS).toISOString()
+      }, {
+        currentStatus: existing.status,
+        currentUpdatedAt: existing.updatedAt,
+        returnRepresentation: true
+      });
+
+      if (!accepted) {
+        return {
+          accepted: false,
+          store: "supabase",
+          durable: true,
+          duplicateStatus: existing.status
+        };
+      }
+
+      return {
+        accepted: true,
+        store: "supabase",
+        durable: true
+      };
+    }
+
+    return {
+      accepted: false,
+      store: "supabase",
+      durable: true,
+      duplicateStatus: existing?.status
+    };
+  }
+
+  if (!response.ok) {
+    throw new GitHubWebhookIdempotencyError(`GitHub webhook idempotency store failed with HTTP ${response.status}.`);
+  }
+
+  return {
+    accepted: true,
+    store: "supabase",
+    durable: true
+  };
+}
+
+async function deleteExpiredSupabaseWebhookDeliveries(config: SupabaseWebhookDeliveryConfig, now: number) {
+  const response = await supabaseWebhookDeliveryFetch(
+    config,
+    `?expires_at=lte.${encodeURIComponent(new Date(now).toISOString())}`,
+    {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" }
+    }
+  );
+
+  if (!response.ok) {
+    throw new GitHubWebhookIdempotencyError(`GitHub webhook idempotency cleanup failed with HTTP ${response.status}.`);
+  }
+}
+
+async function getSupabaseWebhookDeliveryState(
+  config: SupabaseWebhookDeliveryConfig,
+  key: string
+): Promise<SupabaseWebhookDeliveryState | undefined> {
+  const response = await supabaseWebhookDeliveryFetch(
+    config,
+    `?id=eq.${encodeURIComponent(hashGitHubWebhookDeliveryKey(key))}&select=status,updated_at&limit=1`,
+    { method: "GET" }
+  );
+
+  if (!response.ok) {
+    throw new GitHubWebhookIdempotencyError(`GitHub webhook idempotency lookup failed with HTTP ${response.status}.`);
+  }
+
+  const rows = (await response.json().catch(() => [])) as SupabaseWebhookDeliveryStatusRow[];
+  const status = Array.isArray(rows) ? rows[0]?.status : undefined;
+  const updatedAt = Array.isArray(rows) ? rows[0]?.updated_at : undefined;
+
+  return isGitHubWebhookDeliveryStatus(status)
+    ? { status, updatedAt: typeof updatedAt === "string" ? updatedAt : undefined }
+    : undefined;
+}
+
+async function updateSupabaseWebhookDelivery(
+  config: SupabaseWebhookDeliveryConfig,
+  key: string,
+  patch: Partial<SupabaseWebhookDeliveryRow>,
+  options: SupabaseWebhookDeliveryUpdateOptions = {}
+): Promise<boolean> {
+  const filters = [
+    `id=eq.${encodeURIComponent(hashGitHubWebhookDeliveryKey(key))}`
+  ];
+
+  if (options.currentStatus) {
+    filters.push(`status=eq.${encodeURIComponent(options.currentStatus)}`);
+  }
+
+  if (options.currentUpdatedAt) {
+    filters.push(`updated_at=eq.${encodeURIComponent(options.currentUpdatedAt)}`);
+  }
+
+  const response = await supabaseWebhookDeliveryFetch(
+    config,
+    `?${filters.join("&")}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: options.returnRepresentation ? "return=representation" : "return=minimal"
+      },
+      body: JSON.stringify(patch)
+    }
+  );
+
+  if (!response.ok) {
+    throw new GitHubWebhookIdempotencyError(`GitHub webhook idempotency update failed with HTTP ${response.status}.`);
+  }
+
+  if (options.returnRepresentation) {
+    const rows = (await response.json().catch(() => [])) as unknown;
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
+  return true;
+}
+
+async function deleteSupabaseWebhookDelivery(config: SupabaseWebhookDeliveryConfig, key: string): Promise<boolean> {
+  const response = await supabaseWebhookDeliveryFetch(
+    config,
+    `?id=eq.${encodeURIComponent(hashGitHubWebhookDeliveryKey(key))}`,
+    {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" }
+    }
+  );
+
+  if (!response.ok) {
+    throw new GitHubWebhookIdempotencyError(`GitHub webhook idempotency release failed with HTTP ${response.status}.`);
+  }
+
+  return true;
+}
+
+function toSupabaseWebhookDeliveryRow(input: GitHubWebhookDeliveryInput, now: number): SupabaseWebhookDeliveryRow {
+  const createdAt = new Date(now);
+
+  return {
+    id: hashGitHubWebhookDeliveryKey(input.key),
+    status: "processing",
+    event: safeWebhookAction(input.event),
+    delivery_id: safeGitHubDeliveryId(input.delivery),
+    installation_id: input.installationId,
+    repository_full_name: safeRepositoryFullName(input.repositoryFullName),
+    pull_request_number: input.pullRequestNumber,
+    head_sha: safeHeadSha(input.headSha),
+    action: safeWebhookAction(input.action),
+    result_summary: null,
+    error_code: null,
+    error_summary: null,
+    created_at: createdAt.toISOString(),
+    updated_at: createdAt.toISOString(),
+    expires_at: new Date(createdAt.getTime() + GITHUB_WEBHOOK_IDEMPOTENCY_DURABLE_TTL_MS).toISOString()
+  };
+}
+
+function hashGitHubWebhookDeliveryKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+async function supabaseWebhookDeliveryFetch(config: SupabaseWebhookDeliveryConfig, query: string, init: RequestInit) {
+  return fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}${query}`, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      ...(init.headers ?? {})
+    }
+  });
+}
+
+function getSupabaseWebhookDeliveryConfig(env = process.env): SupabaseWebhookDeliveryConfig | null {
+  const status = getGitHubWebhookIdempotencyStoreStatus(env);
+
+  if (status.missingEnv.length > 0) {
+    throw new GitHubWebhookIdempotencyError("GitHub webhook idempotency Supabase env is incomplete.");
+  }
+
+  if (status.mode !== "supabase") {
+    return null;
+  }
+
+  const read = readSupabaseWebhookDeliveryEnv(env);
+
+  return {
+    url: trimTrailingSlash(read.url),
+    serviceRoleKey: read.serviceRoleKey,
+    table: read.table
+  };
+}
+
+function readSupabaseWebhookDeliveryEnv(env = process.env) {
+  return {
+    url:
+      env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL ||
+      env.AGENTPROOF_REPORTS_SUPABASE_URL ||
+      env.SUPABASE_URL ||
+      "",
+    serviceRoleKey:
+      env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY ||
+      env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY ||
+      env.SUPABASE_SERVICE_ROLE_KEY ||
+      "",
+    table: env.AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE || DEFAULT_GITHUB_WEBHOOK_DELIVERIES_TABLE
+  };
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function isGitHubWebhookDeliveryStatus(value: unknown): value is GitHubWebhookDeliveryStatus {
+  return value === "processing" || value === "completed" || value === "failed_retryable";
+}
+
+function shouldRetrySupabaseWebhookDelivery(state: SupabaseWebhookDeliveryState, now: number): boolean {
+  if (!state.updatedAt) {
+    return false;
+  }
+
+  if (state.status === "failed_retryable") {
+    return true;
+  }
+
+  const updatedAt = Date.parse(state.updatedAt);
+  return state.status === "processing" && Number.isFinite(updatedAt) && now - updatedAt > GITHUB_WEBHOOK_PROCESSING_LEASE_MS;
+}
+
+function safeGitHubDeliveryId(value: string): string {
+  return /^[a-f0-9-]{20,80}$/i.test(value) ? value : "unknown";
+}
+
+function safeRepositoryFullName(value: string): string {
+  return /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(value) ? value.slice(0, 200) : "unknown/unknown";
+}
+
+function safeHeadSha(value: string): string {
+  return /^[a-f0-9]{6,64}$/i.test(value) ? value : "unknown";
+}
+
+function safeWebhookAction(value: string): string {
+  return /^[a-z_]{1,40}$/i.test(value) ? value : "unknown";
 }

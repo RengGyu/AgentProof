@@ -13,6 +13,8 @@ AgentProof saved reports are summary-only. They are meant for short-lived review
   - Stores the same summary-only projection used by share links.
   - Fails closed with a `503` response if Supabase is configured but unavailable.
 
+The same server-only Supabase URL and service-role key can also back GitHub App webhook idempotency. That table stores hashed duplicate-suppression keys plus bounded metadata only; see `docs/github-app-webhook.md`.
+
 ## Environment
 
 Preferred AgentProof-specific names:

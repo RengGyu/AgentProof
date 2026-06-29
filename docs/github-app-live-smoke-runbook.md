@@ -18,7 +18,7 @@ Use it only on a maintainer-owned disposable PR in one allowlisted repository.
 - It does not validate auto-merge behavior. AgentProof must not auto-merge.
 - It does not validate broad repository access. Use one test repository.
 - It does not validate Slack, OpenAI, or explicit user-token PR comments.
-- It does not prove durable idempotency across serverless instance restarts; the current v1 idempotency store is short-lived and in memory.
+- It does not fully prove durable idempotency across serverless instance restarts unless the Supabase webhook-delivery table is configured and inspected separately.
 
 ## Inputs To Prepare
 
@@ -53,6 +53,7 @@ AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED=true
 AGENTPROOF_GITHUB_APP_ALLOWED_REPOS=owner/repo
 AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=false
 AGENTPROOF_GITHUB_APP_SAVE_REPORTS=false
+AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE=agentproof_github_webhook_deliveries
 ```
 
 Then confirm the public status endpoint returns `mode: "event-mode"`:

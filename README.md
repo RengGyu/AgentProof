@@ -68,6 +68,7 @@ Optional server integrations are off by default:
 - `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED`, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS`: opt in to PR webhook-triggered analysis for specific repositories. Use `owner/repo` comma-separated values; `*` allows all installed repos and should be avoided outside controlled testing.
 - `AGENTPROOF_GITHUB_APP_SAVE_REPORTS`: when true, webhook-triggered analyses create summary-only saved report links.
 - `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED`: when true, webhook-triggered analyses create or update one GitHub App marker comment. Keep this false until the repository owner explicitly wants automatic comments.
+- `AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL`, `AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE`: enables durable duplicate suppression for GitHub App webhook automation. When webhook-specific Supabase env is absent, AgentProof reuses the saved-report Supabase URL and service-role key.
 - `SLACK_WEBHOOK_URL`, `AGENTPROOF_NOTIFY_TOKEN`: enables summary-only Slack notifications from trusted internal callers.
 - `AGENTPROOF_REPORTS_SUPABASE_URL`, `AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_REPORTS_TABLE`: enables durable summary-only saved reports through Supabase REST. Generic `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are also accepted. Never expose the service-role key with a `NEXT_PUBLIC_` prefix.
 - `OPENAI_API_KEY`, `AGENTPROOF_LLM_TOKEN`, optional `OPENAI_MODEL`: enables the structured-output verifier adapter. Missing or invalid output falls back to the deterministic report.
@@ -104,7 +105,7 @@ The comment smoke first analyzes the PR, then posts through `/api/github/comment
 
 Browser recent history, portable share links, Slack payloads, and saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, and raw re-prompt text. Retained summary fields are redacted before sharing or storage. Full Markdown export remains an explicit user action.
 
-Saved reports use in-memory storage when durable env is absent. This is suitable for local demos, but may disappear on serverless deployments. Optional Supabase storage is durable for the same summary-only projection; it still does not store raw evidence, claims, raw re-prompt text, patch excerpts, or raw logs. See `docs/saved-report-storage.md` for schema and env setup.
+Saved reports use in-memory storage when durable env is absent. This is suitable for local demos, but may disappear on serverless deployments. Optional Supabase storage is durable for the same summary-only projection; it still does not store raw evidence, claims, raw re-prompt text, patch excerpts, or raw logs. GitHub App webhook duplicate suppression also uses Supabase when configured and stores only hashed keys plus bounded metadata. See `docs/saved-report-storage.md` and `docs/github-app-webhook.md` for schema and env setup.
 
 ## Check Evidence Taxonomy
 
