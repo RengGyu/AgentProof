@@ -253,6 +253,89 @@ describe("buildPullRequestInput", () => {
     expect(input.limitations?.join(" ")).toContain("raw log archives were not fetched or stored");
   });
 
+  it("fetches Actions job metadata for multiple workflow runs concurrently", async () => {
+    let activeJobFetches = 0;
+    let maxActiveJobFetches = 0;
+    const jobFetchResolvers = new Map<number, () => void>();
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Parallel job metadata PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 3,
+          check_runs: [1, 2, 3].map((runId) => ({
+            name: `unit tests ${runId}`,
+            status: "completed",
+            conclusion: "success",
+            details_url: `https://github.com/acme/repo/actions/runs/${runId}/job/999`
+          }))
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/actions/runs/")) {
+        const runId = Number(url.match(/actions\/runs\/(\d+)/)?.[1] ?? 0);
+        activeJobFetches += 1;
+        maxActiveJobFetches = Math.max(maxActiveJobFetches, activeJobFetches);
+
+        return new Promise<Response>((resolve) => {
+          const complete = () => {
+            activeJobFetches -= 1;
+            resolve(Response.json({
+              jobs: [
+                {
+                  name: `unit tests ${runId}`,
+                  status: "completed",
+                  conclusion: "success",
+                  steps: [{ name: "pnpm test", status: "completed", conclusion: "success" }]
+                }
+              ]
+            }));
+          };
+
+          jobFetchResolvers.set(runId, complete);
+
+          if (jobFetchResolvers.size === 3) {
+            jobFetchResolvers.get(3)?.();
+            jobFetchResolvers.get(2)?.();
+            jobFetchResolvers.get(1)?.();
+          }
+        });
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(maxActiveJobFetches).toBeGreaterThan(1);
+    expect(input.logs.map((log) => log.source)).toEqual([
+      "GitHub Actions job: unit tests 1",
+      "GitHub Actions job: unit tests 2",
+      "GitHub Actions job: unit tests 3"
+    ]);
+    expect(input.limitations?.join(" ")).toContain("raw log archives were not fetched or stored");
+  });
+
   it("does not fetch Actions job metadata when generic CI summaries only mention preview tests", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
@@ -489,6 +572,87 @@ describe("buildPullRequestInput", () => {
     expect(input.limitations?.join(" ")).toContain("check annotation metadata was collected");
     expect(input.limitations?.join(" ")).toContain("raw annotation details and raw log archives were not fetched or stored");
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/logs"))).toBe(false);
+  });
+
+  it("fetches failed check annotations concurrently while preserving the total annotation cap", async () => {
+    let activeAnnotationFetches = 0;
+    let maxActiveAnnotationFetches = 0;
+    const annotationFetchResolvers = new Map<number, () => void>();
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Parallel annotation PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 3,
+          check_runs: [1, 2, 3].map((checkId) => ({
+            id: checkId,
+            name: `unit tests ${checkId}`,
+            status: "completed",
+            conclusion: "failure",
+            output: { summary: "Tests failed." }
+          }))
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/check-runs/") && url.includes("/annotations")) {
+        const checkId = Number(url.match(/check-runs\/(\d+)/)?.[1] ?? 0);
+        activeAnnotationFetches += 1;
+        maxActiveAnnotationFetches = Math.max(maxActiveAnnotationFetches, activeAnnotationFetches);
+
+        return new Promise<Response>((resolve) => {
+          const complete = () => {
+            activeAnnotationFetches -= 1;
+            resolve(Response.json(Array.from({ length: 10 }, (_, index) => ({
+              path: `src/check-${checkId}-${index}.test.ts`,
+              start_line: index + 1,
+              annotation_level: "failure"
+            }))));
+          };
+
+          annotationFetchResolvers.set(checkId, complete);
+
+          if (annotationFetchResolvers.size === 3) {
+            annotationFetchResolvers.get(3)?.();
+            annotationFetchResolvers.get(2)?.();
+            annotationFetchResolvers.get(1)?.();
+          }
+        });
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const summaries = input.checks.map((check) => check.summary ?? "").join(" ");
+    const annotationMatches = summaries.match(/failure at src\/check-/g) ?? [];
+
+    expect(maxActiveAnnotationFetches).toBeGreaterThan(1);
+    expect(annotationMatches).toHaveLength(20);
+    expect(input.checks[0]?.summary).toContain("failure at src/check-1-0.test.ts:1");
+    expect(input.checks[1]?.summary).toContain("failure at src/check-2-9.test.ts:10");
+    expect(input.checks[2]?.summary).not.toContain("Check annotations:");
+    expect(summaries).not.toContain("src/check-3-");
+    expect(input.limitations?.join(" ")).toContain("raw annotation details and raw log archives were not fetched or stored");
   });
 
   it("does not fetch annotations for failed non-execution check runs", async () => {
