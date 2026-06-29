@@ -66,7 +66,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
   const [report, setReport] = useState<VerificationReport | null>(initialReport);
   const [history, setHistory] = useState<StoredReport[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<{ message: string; hint?: string } | null>(null);
+  const [error, setError] = useState<{ message: string; hint?: string; guidance?: string[] } | null>(null);
 
   const statusLabel = useMemo(() => {
     if (!report) return "No report";
@@ -96,12 +96,22 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
         report?: VerificationReport;
         error?: string;
         hint?: string;
+        guidance?: string[];
       };
 
       if (!response.ok) {
+        const hint = typeof json.hint === "string" ? json.hint : undefined;
+        const guidance = Array.isArray(json.guidance)
+          ? json.guidance
+            .filter((item): item is string => typeof item === "string")
+            .filter((item) => item !== hint)
+            .slice(0, 3)
+          : undefined;
+
         setError({
           message: typeof json.error === "string" ? json.error : "Analysis failed",
-          hint: typeof json.hint === "string" ? json.hint : undefined
+          hint,
+          guidance
         });
         return;
       }
@@ -316,6 +326,13 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
               <div className="intake-error-body">
                 <strong>{error.message}</strong>
                 {error.hint ? <span>{error.hint}</span> : null}
+                {error.guidance && error.guidance.length > 0 ? (
+                  <ul className="intake-error-actions">
+                    {error.guidance.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             </div>
           ) : null}

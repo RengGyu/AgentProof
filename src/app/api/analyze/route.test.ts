@@ -36,7 +36,7 @@ describe("POST /api/analyze", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
   });
 
-  it("redacts token-like values from analysis errors", async () => {
+  it("does not leak token-like values from GitHub network errors", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("upstream failed with github_pat_1234567890abcdef1234567890")));
 
     const response = await POST(
@@ -50,8 +50,125 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(400);
     expect(JSON.stringify(json)).not.toContain("github_pat_1234567890abcdef1234567890");
-    expect(JSON.stringify(json)).toContain("[redacted]");
-    expect(json.hint).toContain("fine-grained GitHub token");
+    expect(JSON.stringify(json)).not.toContain("upstream failed");
+    expect(json.category).toBe("github_unavailable");
+    expect(json.hint).toContain("Retry the PR URL");
+  });
+
+  it("returns bounded GitHub guidance for private or permission-blocked PRs", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("forbidden", { status: 403 })));
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prUrl: "https://github.com/acme/private-repo/pull/12" })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.category).toBe("github_access");
+    expect(json.error).toContain("private or require a fine-grained token");
+    expect(json.guidance).toEqual(expect.arrayContaining([
+      expect.stringContaining("read access")
+    ]));
+    expect(JSON.stringify(json)).not.toContain("forbidden");
+  });
+
+  it("returns token-permission guidance without leaking the provided token", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("forbidden", { status: 403 })));
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/private-repo/pull/12",
+          githubToken: "github_pat_secret_should_not_leak_1234567890"
+        })
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(400);
+    expect(json.category).toBe("github_access");
+    expect(json.guidance).toEqual(expect.arrayContaining([
+      expect.stringContaining("pull request, contents, checks, statuses, and Actions metadata read access")
+    ]));
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
+    expect(serialized).not.toContain("forbidden");
+  });
+
+  it("returns URL visibility guidance for GitHub 404 failures", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not found", { status: 404 })));
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prUrl: "https://github.com/acme/missing-repo/pull/12" })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.category).toBe("github_access");
+    expect(json.guidance).toEqual(expect.arrayContaining([
+      expect.stringContaining("publicly visible")
+    ]));
+  });
+
+  it("returns token visibility guidance for GitHub 404 failures when a token is provided", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not found", { status: 404 })));
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/missing-repo/pull/12",
+          githubToken: "github_pat_secret_should_not_leak_1234567890"
+        })
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(400);
+    expect(json.category).toBe("github_access");
+    expect(json.guidance).toEqual(expect.arrayContaining([
+      expect.stringContaining("provided GitHub token")
+    ]));
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
+  });
+
+  it("returns rate-limit guidance for GitHub API throttling", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response("rate limited", {
+        status: 429,
+        headers: {
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": "1893456000"
+        }
+      })
+    ));
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.category).toBe("github_rate_limit");
+    expect(json.guidance).toEqual(expect.arrayContaining([
+      expect.stringContaining("rate limit to reset")
+    ]));
   });
 
   it("returns a full-valid report from mocked GitHub PR evidence without overclaiming execution", async () => {

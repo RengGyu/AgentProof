@@ -454,7 +454,7 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("reprompt");
   });
 
-  it("redacts automation error messages before returning 502", async () => {
+  it("omits raw automation network error messages before returning 502", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
@@ -483,7 +483,8 @@ describe("POST /api/github/webhook", () => {
 
     expect(response.status).toBe(502);
     expect(json.code).toBe("github_app_automation_failed");
-    expect(serialized).toContain("[redacted]");
+    expect(serialized).toContain("GitHub metadata request timed out or network failed");
+    expect(serialized).not.toContain("network failed token=");
     expect(serialized).not.toContain("github_pat_error");
   });
 
