@@ -110,6 +110,17 @@ interface GitHubCheckAnnotationSummary {
   level: string;
 }
 
+interface GitHubCheckAnnotationFetchResult {
+  checkId: number;
+  annotations: GitHubCheckAnnotationSummary[];
+  limitation?: string;
+}
+
+interface GitHubActionJobFetchResult {
+  logs: LogSnippet[];
+  limitation?: string;
+}
+
 export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
   try {
     const normalizedUrl = /^[a-z][a-z\d+.-]*:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
@@ -536,41 +547,26 @@ async function fetchCheckRunAnnotations(
   }
 
   const annotationsByCheckId = new Map<number, GitHubCheckAnnotationSummary[]>();
+
+  const annotationResults = await Promise.all(
+    eligibleChecks.map((check) => fetchCheckAnnotationsForRun(owner, repo, check, headers, hasToken))
+  );
   let annotationCount = 0;
 
-  for (const check of eligibleChecks) {
-    if (typeof check.id !== "number" || annotationCount >= GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL) {
+  for (const result of annotationResults) {
+    if (result.limitation) {
+      limitations.push(result.limitation);
+    }
+
+    if (annotationCount >= GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL || result.annotations.length === 0) {
       continue;
     }
 
-    let response: Response;
-    const perPage = Math.min(
-      GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN,
-      Math.max(0, GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL - annotationCount)
-    );
-
-    try {
-      response = await githubFetch(
-        `https://api.github.com/repos/${owner}/${repo}/check-runs/${check.id}/annotations?per_page=${perPage}`,
-        headers
-      );
-    } catch {
-      limitations.push("GitHub check annotation metadata unavailable: request timed out or network failed.");
-      continue;
-    }
-
-    if (!response.ok) {
-      limitations.push(`GitHub check annotation metadata fetch failed: ${githubFailureReason(response, hasToken)} File-level check evidence may be incomplete.`);
-      continue;
-    }
-
-    const annotations = ((await response.json()) as GitHubCheckAnnotationResponse[])
-      .map(summarizeCheckAnnotation)
-      .filter((annotation): annotation is GitHubCheckAnnotationSummary => Boolean(annotation))
-      .slice(0, perPage);
+    const remaining = GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL - annotationCount;
+    const annotations = result.annotations.slice(0, remaining);
 
     if (annotations.length > 0) {
-      annotationsByCheckId.set(check.id, annotations);
+      annotationsByCheckId.set(result.checkId, annotations);
       annotationCount += annotations.length;
     }
   }
@@ -584,6 +580,44 @@ async function fetchCheckRunAnnotations(
       ? { ...check, annotations: annotationsByCheckId.get(check.id) }
       : check
   );
+}
+
+async function fetchCheckAnnotationsForRun(
+  owner: string,
+  repo: string,
+  check: GitHubCheckRunResponse,
+  headers: Record<string, string>,
+  hasToken: boolean
+): Promise<GitHubCheckAnnotationFetchResult> {
+  const checkId = typeof check.id === "number" ? check.id : -1;
+
+  try {
+    const response = await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/check-runs/${checkId}/annotations?per_page=${GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN}`,
+      headers
+    );
+
+    if (!response.ok) {
+      return {
+        checkId,
+        annotations: [],
+        limitation: `GitHub check annotation metadata fetch failed: ${githubFailureReason(response, hasToken)} File-level check evidence may be incomplete.`
+      };
+    }
+
+    const annotations = ((await response.json()) as GitHubCheckAnnotationResponse[])
+      .map(summarizeCheckAnnotation)
+      .filter((annotation): annotation is GitHubCheckAnnotationSummary => Boolean(annotation))
+      .slice(0, GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN);
+
+    return { checkId, annotations };
+  } catch {
+    return {
+      checkId,
+      annotations: [],
+      limitation: "GitHub check annotation metadata unavailable: request timed out or network failed."
+    };
+  }
 }
 
 function shouldFetchCheckAnnotations(check: GitHubCheckRunResponse): boolean {
@@ -681,51 +715,21 @@ async function fetchActionJobSummaries(
     return [];
   }
 
+  const jobResults = await Promise.all(
+    runIds.map((runId) => fetchActionJobsForRun(owner, repo, runId, headers, hasToken))
+  );
   const logs: LogSnippet[] = [];
 
-  for (const runId of runIds) {
+  for (const result of jobResults) {
+    if (result.limitation) {
+      limitations.push(result.limitation);
+    }
+
     if (logs.length >= GITHUB_MAX_ACTION_JOB_SUMMARIES) {
-      break;
-    }
-
-    let response: Response;
-
-    try {
-      response = await githubFetch(
-        `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=${GITHUB_PAGE_SIZE}`,
-        headers
-      );
-    } catch {
-      limitations.push("GitHub Actions job-step metadata unavailable: request timed out or network failed.");
       continue;
     }
 
-    if (!response.ok) {
-      limitations.push(`GitHub Actions job-step metadata fetch failed: ${githubFailureReason(response, hasToken)} Test/build evidence may be incomplete.`);
-      continue;
-    }
-
-    const json = await response.json();
-    const jobs = ((json.jobs ?? []) as GitHubActionJobResponse[])
-      .filter(isExecutionActionJob)
-      .slice(0, Math.max(0, GITHUB_MAX_ACTION_JOB_SUMMARIES - logs.length));
-
-    for (const job of jobs) {
-      const status = mapGitHubCheckStatus(job.status, job.conclusion);
-      const safeJobName = redactSecrets(compactText(job.name, 160));
-      const steps = actionExecutionSteps(job)
-        .filter((step) => step.name)
-        .slice(0, GITHUB_MAX_ACTION_STEPS_PER_JOB)
-        .map((step) => `${redactSecrets(compactText(step.name, 160))}: ${mapGitHubCheckStatus(step.status, step.conclusion)}`)
-        .join("; ");
-
-      logs.push({
-        source: `GitHub Actions job: ${safeJobName}`,
-        status,
-        url: sanitizeGitHubEvidenceUrl(job.html_url),
-        text: redactSecrets(compactText(`GitHub Actions job ${safeJobName}: ${status}${steps ? `. Steps: ${steps}` : ""}`, 900))
-      });
-    }
+    logs.push(...result.logs.slice(0, GITHUB_MAX_ACTION_JOB_SUMMARIES - logs.length));
   }
 
   if (logs.length > 0) {
@@ -733,6 +737,56 @@ async function fetchActionJobSummaries(
   }
 
   return logs;
+}
+
+async function fetchActionJobsForRun(
+  owner: string,
+  repo: string,
+  runId: string,
+  headers: Record<string, string>,
+  hasToken: boolean
+): Promise<GitHubActionJobFetchResult> {
+  try {
+    const response = await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=${GITHUB_PAGE_SIZE}`,
+      headers
+    );
+
+    if (!response.ok) {
+      return {
+        logs: [],
+        limitation: `GitHub Actions job-step metadata fetch failed: ${githubFailureReason(response, hasToken)} Test/build evidence may be incomplete.`
+      };
+    }
+
+    const json = await response.json();
+    const logs = ((json.jobs ?? []) as GitHubActionJobResponse[])
+      .filter(isExecutionActionJob)
+      .slice(0, GITHUB_MAX_ACTION_JOB_SUMMARIES)
+      .map((job) => {
+        const status = mapGitHubCheckStatus(job.status, job.conclusion);
+        const safeJobName = redactSecrets(compactText(job.name, 160));
+        const steps = actionExecutionSteps(job)
+          .filter((step) => step.name)
+          .slice(0, GITHUB_MAX_ACTION_STEPS_PER_JOB)
+          .map((step) => `${redactSecrets(compactText(step.name, 160))}: ${mapGitHubCheckStatus(step.status, step.conclusion)}`)
+          .join("; ");
+
+        return {
+          source: `GitHub Actions job: ${safeJobName}`,
+          status,
+          url: sanitizeGitHubEvidenceUrl(job.html_url),
+          text: redactSecrets(compactText(`GitHub Actions job ${safeJobName}: ${status}${steps ? `. Steps: ${steps}` : ""}`, 900))
+        };
+      });
+
+    return { logs };
+  } catch {
+    return {
+      logs: [],
+      limitation: "GitHub Actions job-step metadata unavailable: request timed out or network failed."
+    };
+  }
 }
 
 function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
