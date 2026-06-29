@@ -9,8 +9,11 @@ afterEach(() => {
 
 function expectServerTiming(response: Response, phases: string[]) {
   const header = response.headers.get("Server-Timing") ?? "";
+  const fallbackHeader = response.headers.get("X-AgentProof-Timing") ?? "";
   const metrics = header.split(",").map((item) => item.trim()).filter(Boolean);
   const metricNames = metrics.map((item) => item.split(";")[0]);
+
+  expect(fallbackHeader).toBe(header);
 
   for (const phase of phases) {
     expect(header).toMatch(new RegExp(`\\bap_${phase};dur=\\d+\\b`));

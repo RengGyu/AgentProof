@@ -211,7 +211,9 @@ function jsonNoStore(payload: unknown, status = 200, timing?: AnalyzeTiming) {
   };
 
   if (timing) {
-    headers["Server-Timing"] = timing.serverTiming();
+    const serverTiming = timing.serverTiming();
+    headers["Server-Timing"] = serverTiming;
+    headers["X-AgentProof-Timing"] = serverTiming;
   }
 
   return NextResponse.json(payload, {
