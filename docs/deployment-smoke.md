@@ -50,7 +50,7 @@ Most recent live pass:
 - Supabase saved report round trip: passed, `summary-only-supabase`.
 - OpenAI verifier smoke: passed, `source: openai`.
 - GitHub signed webhook ping: passed, dry-run default verified.
-- Controlled GitHub App live automation smoke: not yet run after the safety wrapper was added.
+- Controlled GitHub App live automation persistence check: Supabase safe query observed one completed `pull_request` / `synchronize` analysis row for `RengGyu/AgentProof#27` at head SHA prefix `3e3703f63a07`, with `priority: medium`, `evidence_coverage: 18`, `has_saved_report: false`, `has_comment: false`, and `error_code: null`; privacy query checked 1 row and found 0 suspicious rows.
 - Slack notification smoke: passed, sent one summary-only message.
 - GitHub PR comment smoke: passed on PR #18, created an AgentProof marker comment.
 
