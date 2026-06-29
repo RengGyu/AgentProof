@@ -4,6 +4,8 @@ import {
   assertReportExpectations,
   failedCheckAnnotationLocations,
   passingExecutionEvidence,
+  analyzeTimingFromResponse,
+  parseAnalyzeTimingHeader,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
 
@@ -51,6 +53,13 @@ describe("smoke-analyze-pr-url", () => {
       savedEvidenceRefsCleared: true,
       savedReportDeleted: true
     }));
+    expect(result.analyzeTiming).toEqual({
+      input: 3,
+      evidence: 120,
+      report: 14,
+      validation: 2,
+      total: 139
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(2, "https://agentproof.example/api/reports", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "https://agentproof.example/api/reports/saved_123");
     expect(fetchMock).toHaveBeenNthCalledWith(4, "https://agentproof.example/api/reports/saved_123", { method: "DELETE" });
@@ -100,6 +109,100 @@ describe("smoke-analyze-pr-url", () => {
       originalReprompt: fullReport.reprompt.prompt,
       githubToken: "github_pat_secret_should_not_leak_123"
     })).toThrow("Saved report retained raw evidenceIndex items");
+  });
+
+  it("parses only bounded analyze timing metrics", () => {
+    expect(parseAnalyzeTimingHeader("ap_input;dur=1, ap_evidence;dur=23, ap_report;dur=4, ap_validation;dur=2, ap_total;dur=30")).toEqual({
+      input: 1,
+      evidence: 23,
+      report: 4,
+      validation: 2,
+      total: 30
+    });
+
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1, ap_total;dur=2"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1;desc=github_pat_secret_should_not_leak, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1, ap_input;dur=2, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1, ap_input;dur=2, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4"))
+      .toThrow("Analyze timing header contained duplicate phases");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1, ap_foo;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1, src/private/file.ts;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1.5, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=-1, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=1e3, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was malformed");
+    expect(() => parseAnalyzeTimingHeader("ap_input;dur=9007199254740992, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"))
+      .toThrow("Analyze timing header was missing a required phase");
+
+    try {
+      parseAnalyzeTimingHeader("ap_input;dur=1;desc=src/private/file.ts?token=sk-secret, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5");
+    } catch (error) {
+      expect(error.message).not.toContain("src/private/file.ts");
+      expect(error.message).not.toContain("sk-secret");
+    }
+  });
+
+  it("parses analyze timing from either timing header without exposing raw header values", () => {
+    const header = "ap_input;dur=1, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5";
+
+    expect(analyzeTimingFromResponse(new Response("{}", {
+      headers: { "x-agentproof-timing": header }
+    }))).toEqual({ input: 1, evidence: 2, report: 3, validation: 4, total: 5 });
+    expect(analyzeTimingFromResponse(new Response("{}", {
+      headers: { "server-timing": header }
+    }))).toEqual({ input: 1, evidence: 2, report: 3, validation: 4, total: 5 });
+    expect(analyzeTimingFromResponse(new Response("{}", {
+      headers: {
+        "x-agentproof-timing": header,
+        "server-timing": header
+      }
+    }))).toEqual({ input: 1, evidence: 2, report: 3, validation: 4, total: 5 });
+
+    expect(() => analyzeTimingFromResponse(new Response("{}", {
+      headers: {
+        "x-agentproof-timing": header,
+        "server-timing": "ap_input;dur=1;desc=github_pat_secret_should_not_leak, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"
+      }
+    }))).toThrow("Analyze timing headers disagreed");
+    try {
+      analyzeTimingFromResponse(new Response("{}", {
+        headers: {
+          "x-agentproof-timing": header,
+          "server-timing": "ap_input;dur=1;desc=github_pat_secret_should_not_leak, ap_evidence;dur=2, ap_report;dur=3, ap_validation;dur=4, ap_total;dur=5"
+        }
+      }));
+    } catch (error) {
+      expect(error.message).not.toContain("github_pat_secret_should_not_leak");
+    }
+
+    expect(() => analyzeTimingFromResponse(new Response("{}")))
+      .toThrow("Analyze response did not include timing evidence");
+  });
+
+  it("preserves analyze API errors when error responses have partial timing", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(
+      JSON.stringify({ error: "bounded github access error" }),
+      {
+        status: 403,
+        headers: {
+          "content-type": "application/json",
+          "x-agentproof-timing": "ap_input;dur=1, ap_total;dur=2"
+        }
+      }
+    ));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      fetchImpl: fetchMock
+    })).rejects.toThrow("bounded github access error");
   });
 
   it("rejects saved reports that keep evidence refs after evidenceIndex is stripped", () => {
@@ -306,12 +409,18 @@ describe("smoke-analyze-pr-url", () => {
 });
 
 function jsonResponse(payload, status = 200) {
+  const headers = {
+    "content-type": "application/json",
+    "cache-control": "private, no-store"
+  };
+
+  if (payload && typeof payload === "object" && Object.keys(payload).length === 1 && payload.report) {
+    headers["x-agentproof-timing"] = "ap_input;dur=3, ap_evidence;dur=120, ap_report;dur=14, ap_validation;dur=2, ap_total;dur=139";
+  }
+
   return new Response(JSON.stringify(payload), {
     status,
-    headers: {
-      "content-type": "application/json",
-      "cache-control": "private, no-store"
-    }
+    headers
   });
 }
 

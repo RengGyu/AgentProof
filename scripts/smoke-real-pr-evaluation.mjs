@@ -3,6 +3,7 @@ import { runAnalyzePrSmoke } from "./smoke-analyze-pr-url.mjs";
 const DEFAULT_BASE_URL = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "https://agentproof-pearl.vercel.app").replace(/\/$/, "");
 const EXPLICIT_GITHUB_TOKEN = process.env.AGENTPROOF_REAL_PR_SMOKE_GITHUB_TOKEN;
 const ALLOW_PRODUCTION_GITHUB_TOKEN = process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1";
+const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation", "total"];
 
 export const DEFAULT_REAL_PR_EVALUATION_CASES = [
   {
@@ -97,7 +98,7 @@ export async function runRealPrEvaluationSmoke({
 
     results.push({
       id: testCase.id,
-      prUrl: testCase.prUrl,
+      prUrl: safeSmokePrUrl(testCase.prUrl),
       priority: result.priority,
       confidence: result.confidence,
       evidenceCoverage: result.evidenceCoverage,
@@ -105,6 +106,7 @@ export async function runRealPrEvaluationSmoke({
       requirementCount: result.requirementCount,
       evidenceCount: result.evidenceCount,
       limitationCount: result.limitationCount,
+      analyzeTiming: result.analyzeTiming,
       expectationCheckCount: result.expectationCheckCount,
       expectationChecks: result.expectationChecks,
       failedCheckLocationCount: result.failedCheckLocationCount,
@@ -125,8 +127,67 @@ export async function runRealPrEvaluationSmoke({
     ok: true,
     baseUrl,
     caseCount: results.length,
+    timingSummary: summarizeAnalyzeTimings(results),
     results
   };
+}
+
+export function safeSmokePrUrl(value) {
+  try {
+    const url = new URL(value);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return undefined;
+    }
+
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+export function summarizeAnalyzeTimings(results) {
+  const phases = {};
+
+  for (const phase of ANALYZE_TIMING_PHASES) {
+    const values = results
+      .map((result) => result.analyzeTiming?.[phase])
+      .filter((value) => Number.isSafeInteger(value) && value >= 0)
+      .sort((a, b) => a - b);
+
+    phases[phase] = {
+      count: values.length,
+      missingCount: results.length - values.length,
+      p50: percentileNearestRank(values, 50),
+      p95: percentileNearestRank(values, 95),
+      max: values.length > 0 ? values[values.length - 1] : null
+    };
+  }
+
+  return {
+    metric: "X-AgentProof-Timing",
+    unit: "ms",
+    method: "nearest-rank",
+    phases
+  };
+}
+
+function percentileNearestRank(values, percentile) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const index = Math.min(
+    values.length - 1,
+    Math.max(0, Math.ceil((percentile / 100) * values.length) - 1)
+  );
+
+  return values[index];
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

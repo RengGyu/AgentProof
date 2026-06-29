@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_REAL_PR_EVALUATION_CASES,
-  runRealPrEvaluationSmoke
+  runRealPrEvaluationSmoke,
+  safeSmokePrUrl,
+  summarizeAnalyzeTimings
 } from "./smoke-real-pr-evaluation.mjs";
 
 describe("smoke-real-pr-evaluation", () => {
@@ -54,8 +56,20 @@ describe("smoke-real-pr-evaluation", () => {
 
     expect(result.ok).toBe(true);
     expect(result.caseCount).toBe(6);
+    expect(result.timingSummary).toEqual({
+      metric: "X-AgentProof-Timing",
+      unit: "ms",
+      method: "nearest-rank",
+      phases: {
+        input: { count: 6, missingCount: 0, p50: 6, p95: 12, max: 12 },
+        evidence: { count: 6, missingCount: 0, p50: 60, p95: 120, max: 120 },
+        report: { count: 6, missingCount: 0, p50: 12, p95: 24, max: 24 },
+        validation: { count: 6, missingCount: 0, p50: 1, p95: 4, max: 4 },
+        total: { count: 6, missingCount: 0, p50: 85, p95: 160, max: 160 }
+      }
+    });
     expect(result.results.map((item) => item.id)).toEqual(["PR-1", "PR-2", "PR-3", "PR-9", "PR-12", "PR-15"]);
-    for (const item of result.results) {
+    for (const [index, item] of result.results.entries()) {
       expect(item).toEqual(expect.objectContaining({
         ciStatus: "passed",
         savedReportPrivacy: "summary-only",
@@ -68,6 +82,7 @@ describe("smoke-real-pr-evaluation", () => {
         savedReportDeleted: true,
         productionTokenForwarded: false
       }));
+      expect(item.analyzeTiming).toEqual(timingForIndex(index));
       expect(item.expectationCheckCount).toBeGreaterThan(0);
     }
     expect(result.results.find((item) => item.id === "PR-15")).toEqual(expect.objectContaining({
@@ -79,6 +94,42 @@ describe("smoke-real-pr-evaluation", () => {
       .filter(([url]) => String(url).endsWith("/api/analyze"))
       .map(([, init]) => JSON.parse(String(init.body)));
     expect(analyzeBodies.every((body) => !("githubToken" in body))).toBe(true);
+  });
+
+  it("summarizes missing analyze timing without leaking case details", () => {
+    const summary = summarizeAnalyzeTimings([
+      {
+        id: "private-case",
+        prUrl: "https://user:github_pat_secret_should_not_leak@github.com/org/private/pull/1?token=sk-secret",
+        taskText: "Acceptance criteria: secret task text",
+        analyzeTiming: { input: 2, evidence: 20, report: 4, validation: 1, total: 27 }
+      },
+      { prUrl: "https://github.com/org/private/pull/2", analyzeTiming: { input: 8, evidence: 60, report: 10, validation: 2, total: 80 } },
+      {}
+    ]);
+
+    expect(summary).toEqual({
+      metric: "X-AgentProof-Timing",
+      unit: "ms",
+      method: "nearest-rank",
+      phases: {
+        input: { count: 2, missingCount: 1, p50: 2, p95: 8, max: 8 },
+        evidence: { count: 2, missingCount: 1, p50: 20, p95: 60, max: 60 },
+        report: { count: 2, missingCount: 1, p50: 4, p95: 10, max: 10 },
+        validation: { count: 2, missingCount: 1, p50: 1, p95: 2, max: 2 },
+        total: { count: 2, missingCount: 1, p50: 27, p95: 80, max: 80 }
+      }
+    });
+    expect(JSON.stringify(summary)).not.toContain("github_pat_secret_should_not_leak");
+    expect(JSON.stringify(summary)).not.toContain("sk-secret");
+    expect(JSON.stringify(summary)).not.toContain("secret task text");
+    expect(JSON.stringify(summary)).not.toContain("private-case");
+  });
+
+  it("strips secret-like URL parts from smoke result PR URLs", () => {
+    expect(safeSmokePrUrl("https://user:github_pat_secret_should_not_leak@github.com/org/repo/pull/1?token=sk-secret#files"))
+      .toBe("https://github.com/org/repo/pull/1");
+    expect(safeSmokePrUrl("not a url")).toBeUndefined();
   });
 
   it("passes a GitHub token only when explicitly provided", async () => {
@@ -132,13 +183,37 @@ describe("smoke-real-pr-evaluation", () => {
 });
 
 function jsonResponse(payload, status = 200) {
+  const headers = {
+    "content-type": "application/json",
+    "cache-control": "private, no-store"
+  };
+
+  if (payload && typeof payload === "object" && Object.keys(payload).length === 1 && payload.report) {
+    const pullNumber = Number(String(payload.report.source?.url ?? "").match(/\/pull\/(\d+)$/)?.[1] ?? 1);
+    const index = [1, 2, 3, 9, 12, 15].indexOf(pullNumber);
+    headers["x-agentproof-timing"] = timingHeaderForIndex(index < 0 ? 0 : index);
+  }
+
   return new Response(JSON.stringify(payload), {
     status,
-    headers: {
-      "content-type": "application/json",
-      "cache-control": "private, no-store"
-    }
+    headers
   });
+}
+
+function timingForIndex(index) {
+  return {
+    input: (index + 1) * 2,
+    evidence: (index + 1) * 20,
+    report: (index + 1) * 4,
+    validation: Math.max(1, index - 1),
+    total: (index + 1) * 25 + 10
+  };
+}
+
+function timingHeaderForIndex(index) {
+  const timing = timingForIndex(index);
+
+  return `ap_input;dur=${timing.input}, ap_evidence;dur=${timing.evidence}, ap_report;dur=${timing.report}, ap_validation;dur=${timing.validation}, ap_total;dur=${timing.total}`;
 }
 
 function reportFixture(prUrl) {

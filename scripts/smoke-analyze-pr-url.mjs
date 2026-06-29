@@ -4,6 +4,8 @@ const taskText = process.env.AGENTPROOF_SMOKE_TASK_TEXT ?? "";
 const githubToken = process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN;
 const allowProductionGithubToken = process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1";
 const ALLOWED_SAVED_REPORT_DURABILITY = new Set(["short-lived-in-memory", "summary-only-supabase"]);
+const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation", "total"];
+const ANALYZE_TIMING_PATTERN = /^ap_(input|evidence|report|validation|total);dur=(\d+)$/;
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -38,6 +40,7 @@ export async function runAnalyzePrSmoke({
     );
   }
 
+  const analyzeTiming = analyzeTimingFromResponse(response);
   const report = payload.report;
   const executionEvidence = passingExecutionEvidence(report);
   const failedCheckLocations = failedCheckAnnotationLocations(report);
@@ -65,6 +68,7 @@ export async function runAnalyzePrSmoke({
     requirementCount: Array.isArray(report.requirements) ? report.requirements.length : 0,
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
+    analyzeTiming,
     expectationCheckCount: expectationResult.checks.length,
     expectationChecks: expectationResult.checks,
     failedCheckLocationCount: failedCheckLocations.length,
@@ -81,6 +85,56 @@ export async function runAnalyzePrSmoke({
     savedReportDeleted: saveResult.deleted,
     savedReportDeleteWarning: saveResult.deleteWarning
   };
+}
+
+export function analyzeTimingFromResponse(response) {
+  const fallbackHeader = response.headers.get("x-agentproof-timing");
+  const serverTimingHeader = response.headers.get("server-timing");
+
+  if (fallbackHeader && serverTimingHeader && fallbackHeader !== serverTimingHeader) {
+    throw smokeError("Analyze timing headers disagreed.");
+  }
+
+  const header = fallbackHeader ?? serverTimingHeader;
+  if (!header) {
+    throw smokeError("Analyze response did not include timing evidence.");
+  }
+
+  return parseAnalyzeTimingHeader(header);
+}
+
+export function parseAnalyzeTimingHeader(header) {
+  const timing = {};
+  const entries = String(header)
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (entries.length !== ANALYZE_TIMING_PHASES.length) {
+    throw smokeError("Analyze timing header was malformed.");
+  }
+
+  for (const entry of entries) {
+    const match = entry.match(ANALYZE_TIMING_PATTERN);
+    if (!match) {
+      throw smokeError("Analyze timing header was malformed.");
+    }
+
+    const [, phase, value] = match;
+    if (Object.prototype.hasOwnProperty.call(timing, phase)) {
+      throw smokeError("Analyze timing header contained duplicate phases.");
+    }
+
+    timing[phase] = Number(value);
+  }
+
+  for (const phase of ANALYZE_TIMING_PHASES) {
+    if (!Number.isSafeInteger(timing[phase]) || timing[phase] < 0) {
+      throw smokeError("Analyze timing header was missing a required phase.");
+    }
+  }
+
+  return timing;
 }
 
 export function passingExecutionEvidence(report) {
