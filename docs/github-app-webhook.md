@@ -53,6 +53,53 @@ The smoke checks:
 - signed `pull_request` with action `closed`, which must report `willAnalyze: false` and `willComment: false`;
 - no echo of secret-like probe values sent in the smoke payload.
 
+## Controlled Live Automation Smoke
+
+Use this only for a maintainer-owned test PR in a single allowlisted repository. This is not the dry-run webhook smoke above: it exercises GitHub App installation-token PR analysis. The smoke payload suppresses automatic comments by default and suppresses saved-report creation unless explicitly allowed.
+
+Preflight:
+
+- Set `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED=true`.
+- Set `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS=owner/repo` for one test repository; do not use `*` outside controlled testing.
+- Leave `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED` unset or `false`. The live smoke also sends a signed smoke-only `suppressComment` control so comments stay off even if the deployment flag is accidentally enabled.
+- Leave `AGENTPROOF_GITHUB_APP_SAVE_REPORTS` unset or `false` unless validating summary-only saved report links. The live smoke sends `suppressSavedReport` by default; set `AGENTPROOF_WEBHOOK_LIVE_ALLOW_SAVE_REPORTS=1` only when validating saved-link metadata.
+- Confirm `/api/github/webhook/status` returns public mode `event-mode`. The smoke refuses to send a PR webhook when public status is `manual` or `signed-intake`.
+
+Command:
+
+```bash
+AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1 \
+AGENTPROOF_WEBHOOK_SMOKE_SECRET=<same value as deployed GITHUB_WEBHOOK_SECRET> \
+AGENTPROOF_WEBHOOK_LIVE_PR_URL=https://github.com/owner/repo/pull/123 \
+AGENTPROOF_WEBHOOK_LIVE_INSTALLATION_ID=<github-app-installation-id> \
+pnpm smoke:github-webhook-live
+```
+
+Optional:
+
+```bash
+AGENTPROOF_WEBHOOK_LIVE_ACTION=synchronize
+AGENTPROOF_WEBHOOK_LIVE_GITHUB_TOKEN=<read-only metadata token for private PRs>
+AGENTPROOF_WEBHOOK_LIVE_ALLOW_SAVE_REPORTS=1
+```
+
+Expected proof:
+
+- `dryRun: false`
+- `automationEnabled: true`
+- `willAnalyze: true`
+- `willComment: false`
+- `analysis.status: "completed"`
+- bounded metadata only: repository, PR number, head SHA prefix, priority, evidence coverage, and optional summary-only saved-report metadata
+
+The target PR must not receive a new or updated AgentProof marker comment. The command fails if a response echoes the webhook secret, signature, token-like probes, raw diff text, `evidenceIndex`, `claims`, or `reprompt`.
+
+Afterward:
+
+- Restore automation env to its normal state.
+- Record only date, target test PR, action, and bounded response fields in the deployment smoke checklist.
+- Do not paste raw webhook payloads, tokens, diffs, logs, installation objects, full reports, comment bodies, or saved report contents.
+
 ## Required Environment
 
 For signed intake:

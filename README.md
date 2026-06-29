@@ -90,6 +90,8 @@ pnpm smoke:github-webhook
 
 The webhook smoke checks public coarse status, invalid-signature rejection, a signed `ping`, and a signed `pull_request` `closed` event that must not plan analysis or comments. It prints only bounded metadata and fails if secret-like probe values are echoed.
 
+For the controlled live automation smoke, use `pnpm smoke:github-webhook-live` only on a maintainer-owned test PR in one allowlisted repository. It requires `AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1`, suppresses comments by default, and refuses to run unless public status is `event-mode`. See `docs/github-app-webhook.md`.
+
 Run the live GitHub comment smoke only when you intentionally want to create or update an AgentProof marker comment on a target PR:
 
 ```bash

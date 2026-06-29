@@ -71,6 +71,7 @@ export async function POST(request: Request) {
 
   const settings = getGitHubAppAutomationSettings();
   const action = safeWebhookString(typeof payload?.action === "string" ? payload.action : undefined);
+  const smokeControls = getGitHubAppSmokeControls(payload);
 
   if (meta.event !== "pull_request" || !settings.enabled) {
     return noStoreJson({
@@ -93,7 +94,8 @@ export async function POST(request: Request) {
     delivery: meta.delivery,
     event: meta.event,
     action,
-    commentEnabled: settings.commentEnabled,
+    commentEnabled: settings.commentEnabled && !smokeControls.suppressComment,
+    saveReportsEnabled: !smokeControls.suppressSavedReport,
     repoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
   });
 }
@@ -106,6 +108,7 @@ async function handlePullRequestAutomation(
     event: string;
     action: string | undefined;
     commentEnabled: boolean;
+    saveReportsEnabled: boolean;
     repoAllowed: boolean;
   }
 ) {
@@ -139,20 +142,24 @@ async function handlePullRequestAutomation(
     });
   }
 
+  const automation = parsePullRequestAutomationPayload(payload);
+  if (!automation) {
+    return noStoreJson({
+      error: "GitHub pull_request webhook payload is missing required automation fields or has mismatched repository metadata.",
+      code: "github_app_payload_invalid",
+      willAnalyze: false,
+      willComment: false
+    }, { status: 422 });
+  }
+
   const appStatus = getGitHubAppConfigStatus();
   if (!appStatus.ready) {
     return noStoreJson({
       error: "GitHub App automation is enabled, but App credentials are incomplete or invalid.",
       code: "github_app_not_ready",
-      status: appStatus
+      willAnalyze: false,
+      willComment: false
     }, { status: 503 });
-  }
-
-  const automation = parsePullRequestAutomationPayload(payload);
-  if (!automation) {
-    return noStoreJson({
-      error: "GitHub pull_request webhook payload is missing required automation fields."
-    }, { status: 422 });
   }
 
   const idempotencyKey = [
@@ -205,7 +212,9 @@ async function handlePullRequestAutomation(
       throw new Error(`Generated report failed runtime validation: ${validation.errors.join("; ")}`);
     }
 
-    const saved = await maybeCreateAutomationSavedReport(report, context.requestUrl);
+    const saved = context.saveReportsEnabled
+      ? await maybeCreateAutomationSavedReport(report, context.requestUrl)
+      : undefined;
     const comment = context.commentEnabled
       ? await postGitHubAppMarkerComment(automation, token, report)
       : undefined;
@@ -275,6 +284,16 @@ function getNumber(record: Record<string, unknown> | undefined, key: string): nu
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function getGitHubAppSmokeControls(payload: Record<string, unknown>) {
+  const smoke = getNestedRecord(payload, "agentproofSmoke");
+  const enabled = smoke?.mode === "live-analysis";
+
+  return {
+    suppressComment: enabled && smoke.suppressComment === true,
+    suppressSavedReport: enabled && smoke.suppressSavedReport === true
+  };
+}
+
 function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
   const repository = getNestedRecord(payload, "repository");
   const pullRequest = getNestedRecord(payload, "pull_request");
@@ -290,6 +309,15 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
     return null;
   }
 
+  const parsedPrUrl = parseGitHubPullRequestUrl(pullRequestUrl);
+  if (
+    !parsedPrUrl ||
+    parsedPrUrl.fullName.toLowerCase() !== repositoryFullName.toLowerCase() ||
+    parsedPrUrl.number !== pullRequestNumber
+  ) {
+    return null;
+  }
+
   return {
     repositoryFullName,
     pullRequestNumber,
@@ -297,6 +325,25 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
     headSha,
     installationId
   };
+}
+
+function parseGitHubPullRequestUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const [, owner, repo, pull, number] = url.pathname.split("/");
+    const prNumber = Number(number);
+
+    if (url.hostname !== "github.com" || !owner || !repo || pull !== "pull" || !Number.isInteger(prNumber) || prNumber <= 0) {
+      return null;
+    }
+
+    return {
+      fullName: `${owner}/${repo}`,
+      number: prNumber
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function maybeCreateAutomationSavedReport(report: VerificationReport, requestUrl: string) {

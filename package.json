@@ -15,6 +15,7 @@
     "smoke:production-regression": "node scripts/smoke-real-pr-evaluation.mjs",
     "smoke:github-comment": "node scripts/smoke-github-comment.mjs",
     "smoke:github-webhook": "node scripts/smoke-github-webhook.mjs",
+    "smoke:github-webhook-live": "node scripts/smoke-github-webhook-live.mjs",
     "smoke:openai": "node scripts/smoke-openai-verifier.mjs",
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
     "eval:promote:fixture": "node scripts/promote-eval-fixture.mjs",

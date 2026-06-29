@@ -111,6 +111,7 @@ export default function IntegrationsPage() {
           </li>
           <li>PR analysis requires <code>AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED</code> and an allowed repository.</li>
           <li>Automatic comments require separate <code>AGENTPROOF_GITHUB_APP_COMMENT_ENABLED</code> opt-in.</li>
+          <li>Live automation smoke should stay analysis-only on a controlled test PR.</li>
         </ul>
       </section>
     </main>

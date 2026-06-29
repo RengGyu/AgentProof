@@ -81,16 +81,14 @@ async function readStatus({ baseUrl, fetchImpl, webhookSecret }) {
   });
   const payload = await safeJson(response);
 
-  if (!response.ok || !payload.githubApp || typeof payload.githubApp !== "object") {
+  if (!response.ok || !payload.githubApp || typeof payload.githubApp !== "object" || Array.isArray(payload.githubApp)) {
     throw smokeError("GitHub webhook status smoke failed.", response.status);
   }
 
   assertNoSensitiveEcho(payload, webhookSecret);
 
   const status = payload.githubApp;
-  if (containsDetailedStatusFields(status)) {
-    throw smokeError("GitHub webhook status exposed detailed configuration fields.", response.status);
-  }
+  assertPublicStatusShape(status, response.status);
 
   return {
     mode: typeof status.mode === "string" ? status.mode : "unknown",
@@ -130,6 +128,8 @@ async function sendSignedEvent({ baseUrl, webhookSecret, event, delivery, body, 
   });
   const payload = await safeJson(response);
 
+  assertNoSensitiveEcho(payload, webhookSecret, signature);
+
   if (!response.ok) {
     throw smokeError(
       typeof payload.error === "string" ? payload.error : `${event} webhook smoke failed.`,
@@ -137,7 +137,6 @@ async function sendSignedEvent({ baseUrl, webhookSecret, event, delivery, body, 
     );
   }
 
-  assertNoSensitiveEcho(payload, webhookSecret, signature);
   return payload;
 }
 
@@ -173,19 +172,17 @@ function assertNoSensitiveEcho(payload, webhookSecret, signature = "") {
   }
 }
 
-function containsDetailedStatusFields(status) {
-  return [
-    "signedIntakeReady",
-    "appCredentialsReady",
-    "automationEnabled",
-    "commentEnabled",
-    "saveReportsEnabled",
-    "allowedRepoCount",
-    "allowAllRepos",
-    "canAnalyzePullRequests",
-    "canPostComments",
-    "warnings"
-  ].some((field) => Object.hasOwn(status, field));
+function assertPublicStatusShape(status, statusCode) {
+  const allowed = new Set(["mode", "label", "description", "capabilities", "cautions"]);
+  const unknownFields = Object.keys(status).filter((field) => !allowed.has(field));
+
+  if (unknownFields.length > 0) {
+    throw smokeError("GitHub webhook status exposed fields outside the public status contract.", statusCode);
+  }
+
+  if (typeof status.mode !== "string" || typeof status.label !== "string") {
+    throw smokeError("GitHub webhook status did not include the public mode and label.", statusCode);
+  }
 }
 
 function closedPullRequestPayload() {

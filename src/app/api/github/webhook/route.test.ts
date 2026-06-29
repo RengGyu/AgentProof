@@ -285,9 +285,52 @@ describe("POST /api/github/webhook", () => {
       })
     );
     const json = await response.json();
+    const serialized = JSON.stringify(json);
 
     expect(response.status).toBe(503);
-    expect(json.code).toBe("github_app_not_ready");
+    expect(json).toEqual({
+      error: "GitHub App automation is enabled, but App credentials are incomplete or invalid.",
+      code: "github_app_not_ready",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(serialized).not.toContain("appIdConfigured");
+    expect(serialized).not.toContain("privateKeyFormatValid");
+    expect(serialized).not.toContain("webhookSecretConfigured");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects pull_request payloads whose PR URL does not match repository metadata before fetching tokens", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        pull_request: {
+          number: 7,
+          html_url: "https://github.com/Other/Repo/pull/7",
+          title: "Mismatched PR URL should not be trusted",
+          head: { sha: "abc123" }
+        }
+      })), {
+        event: "pull_request",
+        delivery: "delivery-mismatched-pr-url",
+        secret: "secret"
+      })
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: "GitHub pull_request webhook payload is missing required automation fields or has mismatched repository metadata.",
+      code: "github_app_payload_invalid",
+      willAnalyze: false,
+      willComment: false
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -439,6 +482,45 @@ describe("POST /api/github/webhook", () => {
     expect(json.analysis.comment.url).toContain("issuecomment-777");
     expect(String((commentPost?.[1] as RequestInit).body)).toContain("agentproof:github-app:evidence-check:v1");
     expect(String((commentPost?.[1] as RequestInit).body)).not.toContain("Agent re-prompt");
+  });
+
+  it("suppresses GitHub App comments for signed live webhook smoke payloads", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        agentproofSmoke: {
+          mode: "live-analysis",
+          suppressComment: true,
+          suppressSavedReport: true,
+          sentinel: "github_pat_secret_should_not_leak_1234567890"
+        }
+      })), {
+        event: "pull_request",
+        delivery: "delivery-live-smoke",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+    const commentCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes("/issues/7/comments")
+    );
+
+    expect(response.status).toBe(200);
+    expect(json.willAnalyze).toBe(true);
+    expect(json.willComment).toBe(false);
+    expect(json.analysis.status).toBe("completed");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(commentCalls).toHaveLength(0);
+    expect(serialized).not.toContain("github_pat_secret");
   });
 });
 
