@@ -51,6 +51,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(400);
     expect(JSON.stringify(json)).not.toContain("github_pat_1234567890abcdef1234567890");
     expect(JSON.stringify(json)).toContain("[redacted]");
+    expect(json.hint).toContain("fine-grained GitHub token");
   });
 
   it("returns a full-valid report from mocked GitHub PR evidence without overclaiming execution", async () => {

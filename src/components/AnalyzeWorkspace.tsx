@@ -66,7 +66,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
   const [report, setReport] = useState<VerificationReport | null>(initialReport);
   const [history, setHistory] = useState<StoredReport[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; hint?: string } | null>(null);
 
   const statusLabel = useMemo(() => {
     if (!report) return "No report";
@@ -92,18 +92,30 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      const json = await response.json();
+      const json = await response.json() as {
+        report?: VerificationReport;
+        error?: string;
+        hint?: string;
+      };
 
       if (!response.ok) {
-        throw new Error(json.error ?? "Analysis failed");
+        setError({
+          message: typeof json.error === "string" ? json.error : "Analysis failed",
+          hint: typeof json.hint === "string" ? json.hint : undefined
+        });
+        return;
       }
 
-      const nextReport = json.report as VerificationReport;
+      if (!json.report) {
+        throw new Error("Analysis response did not include a report.");
+      }
+
+      const nextReport = json.report;
       setReport(nextReport);
       setHistory(saveReportToHistory(window.localStorage, nextReport));
       setForm((current) => ({ ...current, githubToken: "" }));
     } catch (analysisError) {
-      setError(analysisError instanceof Error ? analysisError.message : "Analysis failed");
+      setError({ message: analysisError instanceof Error ? analysisError.message : "Analysis failed" });
     } finally {
       setLoading(false);
     }
@@ -299,8 +311,12 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
           </div>
 
           {error ? (
-            <div className="error">
-              <AlertTriangle size={14} /> {error}
+            <div className="intake-error">
+              <AlertTriangle size={14} />
+              <div className="intake-error-body">
+                <strong>{error.message}</strong>
+                {error.hint ? <span>{error.hint}</span> : null}
+              </div>
             </div>
           ) : null}
 

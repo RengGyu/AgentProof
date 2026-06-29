@@ -27,7 +27,8 @@ The MVP is complete when a reviewer can run a demo or public PR analysis, see re
 - Browser recent history as summary-only.
 - Server saved reports as summary-only, with in-memory mode and optional Supabase durability.
 - GitHub PR comment posting with a one-time token and PR provenance safety.
-- GitHub App webhook signed dry-run boundary, with later opt-in automation path.
+- GitHub App webhook signed dry-run boundary, with explicit allowlist automation, durable duplicate suppression, and separate comment/save opt-ins.
+- Token-gated GitHub App operator diagnostics with bounded status categories and no secret or raw evidence exposure.
 - Slack summary-only notification endpoint.
 - OpenAI structured-output verifier adapter with runtime validation and deterministic fallback.
 - SWE-bench Verified evaluation harness and committed fixtures.
@@ -59,12 +60,14 @@ Verified outcomes:
 - Unauthenticated OpenAI verifier requests returned 401.
 - Unauthenticated Slack notification requests returned 401.
 - Unsigned GitHub webhook requests returned 401.
+- Unauthenticated operator diagnostics returned 401 after `AGENTPROOF_OPS_TOKEN` was configured.
 
 Most recent credentialed live integration pass:
 
 - OpenAI verifier returned `source: openai`.
 - Slack notification returned `{ "sent": true }`.
 - GitHub signed webhook returned `dryRun: true`, `automationEnabled: false`, `willAnalyze: false`, `willComment: false`.
+- Controlled GitHub App live automation persistence check recorded one completed PR analysis with summary-only durability and no comment/save side effects.
 - GitHub PR comment smoke created an AgentProof marker comment on PR #18.
 
 ## Why This Is Not A Generic AI Code Reviewer
@@ -77,7 +80,7 @@ Most recent credentialed live integration pass:
 
 ## Deferred Until After MVP
 
-- GitHub App installation UI, durable automation store, and production App smoke workflow.
+- GitHub App installation UI and ongoing automation dashboard.
 - Organization dashboards, analytics, Jira integration, or Slack OAuth.
 - Durable raw diff or raw log storage.
 - Auto-merge, merge-blocking checks, or policy enforcement.
@@ -88,6 +91,6 @@ Most recent credentialed live integration pass:
 
 - Add public source-backed market-validation citations.
 - Add a short demo video or GIF after the UI stabilizes.
-- Add richer live integration status without exposing secrets.
+- Keep operator diagnostics and live smoke runbooks current as integration settings change.
 - Improve GitHub private-repo guidance and token permission diagnostics.
 - Continue calibration against larger real PR and SWE-bench samples.

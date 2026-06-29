@@ -18,6 +18,7 @@ Run these after every production deployment:
 curl -sS -o /tmp/agentproof-home.html -w "home:%{http_code}\n" https://agentproof-pearl.vercel.app/
 curl -sS -o /tmp/agentproof-integrations.html -w "integrations:%{http_code}\n" https://agentproof-pearl.vercel.app/integrations
 curl -sS -o /tmp/agentproof-webhook-status.json -w "github_webhook_status:%{http_code}\n" https://agentproof-pearl.vercel.app/api/github/webhook/status
+curl -sS -o /tmp/agentproof-ops-status.json -w "github_app_ops_no_token:%{http_code}\n" https://agentproof-pearl.vercel.app/api/ops/github-app/status
 curl -sS -o /tmp/agentproof-api-analyze.txt -w "api_analyze_get:%{http_code}\n" https://agentproof-pearl.vercel.app/api/analyze
 AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app CI=true corepack pnpm smoke:production-regression
 ```
@@ -27,6 +28,7 @@ Expected:
 - `/` returns 200.
 - `/integrations` returns 200.
 - `/api/github/webhook/status` returns 200 with coarse status only; it must not expose env-specific booleans, repository allowlists, private-key validity, secret names, or secret values.
+- `/api/ops/github-app/status` returns 401 without `x-agentproof-ops-token` when operator diagnostics are configured; 501 means the diagnostics token is not configured for that deployment.
 - `/api/analyze` rejects GET with 405.
 - Production regression smoke passes for the public AgentProof PR set.
 - Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
@@ -61,7 +63,7 @@ Most recent no-secret production gate:
 - `/integrations` returned 200.
 - `/api/analyze` rejected GET with 405.
 - Production regression smoke passed for six public AgentProof PRs.
-- `/api/llm/verify`, `/api/notifications/slack`, and `/api/github/webhook` returned 401 without trusted caller credentials or signatures.
+- `/api/llm/verify`, `/api/notifications/slack`, `/api/github/webhook`, and `/api/ops/github-app/status` returned 401 without trusted caller credentials, signatures, or the operator diagnostics token.
 
 ## Manual Demo Checks
 
@@ -77,6 +79,7 @@ Most recent no-secret production gate:
 - Missing or invalid OpenAI caller token returns 401 or deterministic fallback metadata.
 - Missing or invalid Slack caller token returns 401.
 - Missing or invalid GitHub webhook signature returns 401.
+- Missing operator diagnostics token returns 401 when `AGENTPROOF_OPS_TOKEN` is configured.
 - Missing Supabase env falls back to `short-lived-in-memory` with a warning.
 - Misconfigured Supabase env returns 503 instead of silently using unsafe storage.
 
