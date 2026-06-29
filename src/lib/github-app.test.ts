@@ -150,6 +150,7 @@ describe("github app helpers", () => {
 
     expect(settings.enabled).toBe(true);
     expect(settings.commentEnabled).toBe(false);
+    expect(settings.saveReportsEnabled).toBe(false);
     expect(isGitHubAppRepoAllowed("renggyu/agentproof", settings)).toBe(true);
     expect(isGitHubAppRepoAllowed("unknown/repo", settings)).toBe(false);
   });

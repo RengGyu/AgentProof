@@ -15,6 +15,7 @@ export interface GitHubAppConfigStatus {
 export interface GitHubAppAutomationSettings {
   enabled: boolean;
   commentEnabled: boolean;
+  saveReportsEnabled: boolean;
   allowedRepos: string[];
   allowAllRepos: boolean;
 }
@@ -170,6 +171,7 @@ export function getGitHubAppAutomationSettings(env = process.env): GitHubAppAuto
   return {
     enabled: truthy(env.AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED),
     commentEnabled: truthy(env.AGENTPROOF_GITHUB_APP_COMMENT_ENABLED),
+    saveReportsEnabled: truthy(env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS),
     allowedRepos: allowedRepos.filter((repo) => repo !== "*"),
     allowAllRepos: allowedRepos.includes("*")
   };
@@ -178,7 +180,6 @@ export function getGitHubAppAutomationSettings(env = process.env): GitHubAppAuto
 export function getGitHubAppReadinessStatus(env = process.env): GitHubAppReadinessStatus {
   const config = getGitHubAppConfigStatus(env);
   const settings = getGitHubAppAutomationSettings(env);
-  const saveReportsEnabled = truthy(env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS);
   const hasAllowedRepos = settings.allowAllRepos || settings.allowedRepos.length > 0;
   const canAnalyzePullRequests = config.ready && settings.enabled && hasAllowedRepos;
   const canPostComments = canAnalyzePullRequests && settings.commentEnabled;
@@ -218,7 +219,7 @@ export function getGitHubAppReadinessStatus(env = process.env): GitHubAppReadine
     appCredentialsReady: config.ready,
     automationEnabled: settings.enabled,
     commentEnabled: settings.commentEnabled,
-    saveReportsEnabled,
+    saveReportsEnabled: settings.saveReportsEnabled,
     allowedRepoCount: settings.allowedRepos.length,
     allowAllRepos: settings.allowAllRepos,
     canAnalyzePullRequests,

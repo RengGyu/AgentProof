@@ -55,7 +55,7 @@ The smoke checks:
 
 ## Controlled Live Automation Smoke
 
-Use this only for a maintainer-owned test PR in a single allowlisted repository. This is not the dry-run webhook smoke above: it exercises GitHub App installation-token PR analysis. The smoke payload suppresses automatic comments by default and suppresses saved-report creation unless explicitly allowed.
+Use this only for a maintainer-owned test PR in a single allowlisted repository. This is not the dry-run webhook smoke above: it exercises GitHub App installation-token PR analysis. The smoke payload suppresses automatic comments by default and suppresses saved-report creation unless explicitly allowed. Follow `docs/github-app-live-smoke-runbook.md` before running it against production.
 
 Preflight:
 

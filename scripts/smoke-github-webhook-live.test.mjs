@@ -250,6 +250,72 @@ describe("smoke-github-webhook-live", () => {
     });
   });
 
+  it("sends suppressSavedReport false only when saved reports are explicitly allowed while keeping suppressComment true", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(statusResponse("event-mode", "Event mode ready"))
+      .mockResolvedValueOnce(githubPrResponse())
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        accepted: true,
+        dryRun: false,
+        event: "pull_request",
+        delivery: "agentproof-live-smoke-save-test",
+        action: "synchronize",
+        automationEnabled: true,
+        willAnalyze: true,
+        willComment: false,
+        analysis: {
+          status: "completed",
+          repository: "RengGyu/AgentProof",
+          pullRequestNumber: 22,
+          headSha: "abc123def4567890",
+          priority: "medium",
+          evidenceCoverage: 67,
+          savedReport: {
+            privacy: "summary-only",
+            durability: "summary-only-supabase",
+            url: "https://agentproof.example/reports/abc"
+          }
+        }
+      }));
+
+    const result = await runGitHubWebhookLiveSmoke({
+      baseUrl: "https://agentproof.example",
+      webhookSecret: "webhook-secret-should-not-leak",
+      prUrl: "https://github.com/RengGyu/AgentProof/pull/22",
+      installationId: "98765",
+      action: "synchronize",
+      githubToken: "github_pat_metadata_token_should_not_leak",
+      allowLiveAutomation: true,
+      allowSaveReports: true,
+      deliveryId: "agentproof-live-smoke-save-test",
+      fetchImpl: fetchMock
+    });
+    const webhookCall = fetchMock.mock.calls[2];
+    const body = JSON.parse(String(webhookCall[1].body));
+    const serializedResult = JSON.stringify(result);
+
+    expect(body.agentproofSmoke).toEqual({
+      mode: "live-analysis",
+      suppressComment: true,
+      suppressSavedReport: false,
+      sentinel: "github_pat_live_smoke_should_not_leak_1234567890"
+    });
+    expect(result.commentSuppressed).toBe(true);
+    expect(result.saveReportSuppressed).toBe(false);
+    expect(result.savedReport).toEqual({
+      privacy: "summary-only",
+      durability: "summary-only-supabase",
+      url: "https://agentproof.example/reports/abc"
+    });
+    expect(serializedResult).not.toContain("webhook-secret-should-not-leak");
+    expect(serializedResult).not.toContain("github_pat_metadata_token_should_not_leak");
+    expect(serializedResult).not.toContain("sha256=");
+    expect(serializedResult).not.toContain("github_pat_live_smoke_should_not_leak");
+    expect(serializedResult).not.toContain("sk-live-smoke");
+    expect(serializedResult).not.toContain("installation-token-live-smoke");
+  });
+
   it("fails if status or webhook responses echo sensitive probe values", async () => {
     await expect(runGitHubWebhookLiveSmoke({
       baseUrl: "https://agentproof.example",
@@ -282,13 +348,65 @@ describe("smoke-github-webhook-live", () => {
       }
     })).rejects.toThrow("leaked sensitive probe values");
   });
+
+  it("redacts secret-shaped webhook error messages before throwing", async () => {
+    await expect(liveSmokeWithWebhookPayload({
+      error: "failed token=github_pat_error_should_not_leak_1234567890 secret=another-secret-value",
+      code: "github_app_automation_failed"
+    }, {
+      webhookSecret: "webhook-secret-should-not-leak",
+      githubToken: "github_pat_metadata_token_should_not_leak",
+      webhookStatus: 502
+    })).rejects.toThrow(/failed \[redacted\] \[redacted\]/);
+
+    await expect(liveSmokeWithWebhookPayload({
+      error: "failed token=github_pat_error_should_not_leak_1234567890 secret=another-secret-value",
+      code: "github_app_automation_failed"
+    }, {
+      webhookSecret: "webhook-secret-should-not-leak",
+      githubToken: "github_pat_metadata_token_should_not_leak",
+      webhookStatus: 502
+    })).rejects.not.toThrow(/github_pat_error|webhook-secret-should-not-leak/);
+  });
+
+  it("redacts secret-shaped GitHub metadata error messages before throwing", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(statusResponse("event-mode", "Event mode ready"))
+      .mockResolvedValueOnce(jsonResponse({
+        message: "Bad credentials token=github_pat_error_should_not_leak_1234567890 secret=another-secret-value"
+      }, 403));
+
+    await expect(runGitHubWebhookLiveSmoke({
+      baseUrl: "https://agentproof.example",
+      webhookSecret: "webhook-secret-should-not-leak",
+      prUrl: "https://github.com/RengGyu/AgentProof/pull/22",
+      installationId: "98765",
+      githubToken: "github_pat_actual_input_should_not_leak_1234567890",
+      allowLiveAutomation: true,
+      fetchImpl: fetchMock
+    })).rejects.toThrow(/Bad credentials \[redacted\] \[redacted\]/);
+
+    await expect(runGitHubWebhookLiveSmoke({
+      baseUrl: "https://agentproof.example",
+      webhookSecret: "webhook-secret-should-not-leak",
+      prUrl: "https://github.com/RengGyu/AgentProof/pull/22",
+      installationId: "98765",
+      githubToken: "github_pat_actual_input_should_not_leak_1234567890",
+      allowLiveAutomation: true,
+      fetchImpl: vi.fn()
+        .mockResolvedValueOnce(statusResponse("event-mode", "Event mode ready"))
+        .mockResolvedValueOnce(jsonResponse({
+          message: "Bad credentials token=github_pat_error_should_not_leak_1234567890 secret=another-secret-value"
+        }, 403))
+    })).rejects.not.toThrow(/github_pat_error|another-secret-value|github_pat_actual_input/);
+  });
 });
 
 async function liveSmokeWithWebhookPayload(webhookPayload, options = {}) {
   const fetchMock = vi.fn()
     .mockResolvedValueOnce(statusResponse("event-mode", "Event mode ready"))
     .mockResolvedValueOnce(githubPrResponse())
-    .mockResolvedValueOnce(jsonResponse(webhookPayload));
+    .mockResolvedValueOnce(jsonResponse(webhookPayload, options.webhookStatus ?? 200));
 
   return runGitHubWebhookLiveSmoke({
     baseUrl: "https://agentproof.example",

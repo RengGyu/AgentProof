@@ -90,7 +90,7 @@ pnpm smoke:github-webhook
 
 The webhook smoke checks public coarse status, invalid-signature rejection, a signed `ping`, and a signed `pull_request` `closed` event that must not plan analysis or comments. It prints only bounded metadata and fails if secret-like probe values are echoed.
 
-For the controlled live automation smoke, use `pnpm smoke:github-webhook-live` only on a maintainer-owned test PR in one allowlisted repository. It requires `AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1`, suppresses comments by default, and refuses to run unless public status is `event-mode`. See `docs/github-app-webhook.md`.
+For the controlled live automation smoke, use `pnpm smoke:github-webhook-live` only on a maintainer-owned test PR in one allowlisted repository. It requires `AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1`, suppresses comments by default, and refuses to run unless public status is `event-mode`. See `docs/github-app-live-smoke-runbook.md` before running it.
 
 Run the live GitHub comment smoke only when you intentionally want to create or update an AgentProof marker comment on a target PR:
 
@@ -171,7 +171,7 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
-For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For example report artifacts, use `docs/example-reports.md`. For deployment smoke checks, use `docs/deployment-smoke.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook automation boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For example report artifacts, use `docs/example-reports.md`. For deployment smoke checks, use `docs/deployment-smoke.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook automation boundaries, use `docs/github-app-webhook.md`; for the controlled live smoke procedure, use `docs/github-app-live-smoke-runbook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
 
 ## Evaluation Pack
 

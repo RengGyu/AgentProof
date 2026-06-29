@@ -334,6 +334,50 @@ describe("POST /api/github/webhook", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects pull_request PR-number mismatches with a generic no-secret response before fetching tokens", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890",
+        installation: { id: 321, token: "installation-token-should-not-leak" },
+        pull_request: {
+          number: 7,
+          html_url: "https://github.com/RengGyu/AgentProof/pull/8?token=ghp_secret_should_not_leak_1234567890",
+          title: "Secret title token=sk-secret-should-not-leak",
+          head: { sha: "abc123" }
+        }
+      })), {
+        event: "pull_request",
+        delivery: "delivery-mismatched-pr-number",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(422);
+    expect(json).toEqual({
+      error: "GitHub pull_request webhook payload is missing required automation fields or has mismatched repository metadata.",
+      code: "github_app_payload_invalid",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("ghp_secret");
+    expect(serialized).not.toContain("installation-token");
+    expect(serialized).not.toContain("Secret title");
+    expect(serialized).not.toContain("sk-secret");
+  });
+
   it("ignores automation for repositories outside the allowlist before fetching tokens", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -380,6 +424,67 @@ describe("POST /api/github/webhook", () => {
     expect(json.ignored).toBe(true);
     expect(json.willAnalyze).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not save GitHub App automation reports unless saved reports are explicitly enabled", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-analyze-no-save",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json.willAnalyze).toBe(true);
+    expect(json.analysis.status).toBe("completed");
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
+  it("redacts automation error messages before returning 502", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+
+      if (href === "https://api.github.com/app/installations/321/access_tokens") {
+        return jsonResponse({ token: "installation-token" });
+      }
+
+      throw new Error("network failed token=github_pat_error_should_not_leak_1234567890");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-redacted-error",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(502);
+    expect(json.code).toBe("github_app_automation_failed");
+    expect(serialized).toContain("[redacted]");
+    expect(serialized).not.toContain("github_pat_error");
   });
 
   it("analyzes signed pull_request events with an installation token and saves summary-only reports", async () => {
@@ -484,10 +589,11 @@ describe("POST /api/github/webhook", () => {
     expect(String((commentPost?.[1] as RequestInit).body)).not.toContain("Agent re-prompt");
   });
 
-  it("suppresses GitHub App comments for signed live webhook smoke payloads", async () => {
+  it("suppresses GitHub App comments and saved reports for signed live webhook smoke payloads", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
@@ -519,8 +625,57 @@ describe("POST /api/github/webhook", () => {
     expect(json.willComment).toBe(false);
     expect(json.analysis.status).toBe("completed");
     expect(json.analysis).not.toHaveProperty("comment");
+    expect(json.analysis).not.toHaveProperty("savedReport");
     expect(commentCalls).toHaveLength(0);
     expect(serialized).not.toContain("github_pat_secret");
+  });
+
+  it("keeps live smoke comments suppressed when saved reports are explicitly allowed", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890",
+        installation: { id: 321, token: "payload-token-should-not-leak" },
+        agentproofSmoke: {
+          mode: "live-analysis",
+          suppressComment: true,
+          suppressSavedReport: false,
+          sentinel: "github_pat_secret_should_not_leak_1234567890"
+        }
+      })), {
+        event: "pull_request",
+        delivery: "delivery-live-smoke-save-allowed",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+    const commentCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes("/issues/7/comments")
+    );
+
+    expect(response.status).toBe(200);
+    expect(json.willAnalyze).toBe(true);
+    expect(json.willComment).toBe(false);
+    expect(json.analysis.status).toBe("completed");
+    expect(json.analysis.savedReport.privacy).toBe("summary-only");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(commentCalls).toHaveLength(0);
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("payload-token");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
   });
 });
 

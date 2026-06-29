@@ -95,7 +95,7 @@ export async function POST(request: Request) {
     event: meta.event,
     action,
     commentEnabled: settings.commentEnabled && !smokeControls.suppressComment,
-    saveReportsEnabled: !smokeControls.suppressSavedReport,
+    saveReportsEnabled: settings.saveReportsEnabled && !smokeControls.suppressSavedReport,
     repoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
   });
 }
