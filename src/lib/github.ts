@@ -3,6 +3,7 @@ import { isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText, redactSecrets } from "./redact";
 
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
+const GITHUB_COMMIT_STATUS_TIMEOUT_MS = 2000;
 const GITHUB_PAGE_SIZE = 100;
 const GITHUB_MAX_PAGES = 3;
 const GITHUB_MAX_CHANGED_FILES = 120;
@@ -473,11 +474,15 @@ function hasPastedEvidence(request: AnalyzeRequest): boolean {
   );
 }
 
-function githubFetch(url: string, headers: Record<string, string>): Promise<Response> {
+function githubFetch(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = GITHUB_FETCH_TIMEOUT_MS
+): Promise<Response> {
   return fetch(url, {
     headers,
     cache: "no-store",
-    signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS)
+    signal: AbortSignal.timeout(timeoutMs)
   });
 }
 
@@ -576,9 +581,9 @@ async function fetchCommitStatuses(
   let response: Response;
 
   try {
-    response = await githubFetch(url, headers);
+    response = await githubFetch(url, headers, GITHUB_COMMIT_STATUS_TIMEOUT_MS);
   } catch {
-    limitations.push("GitHub commit-status evidence unavailable: request timed out or network failed.");
+    limitations.push(`GitHub commit-status evidence unavailable: request timed out after ${GITHUB_COMMIT_STATUS_TIMEOUT_MS} ms or network failed.`);
     return [];
   }
 

@@ -185,7 +185,8 @@ describe("buildPullRequestInput", () => {
     );
 
     expect(input.title).toBe("Timed PR");
-    expect(records.map((item) => item.phase)).toEqual([...GITHUB_EVIDENCE_TIMING_PHASES]);
+    expect(new Set(records.map((item) => item.phase))).toEqual(new Set(GITHUB_EVIDENCE_TIMING_PHASES));
+    expect(records).toHaveLength(GITHUB_EVIDENCE_TIMING_PHASES.length);
     expect(records.every((item) => Number.isFinite(item.durationMs) && item.durationMs >= 0)).toBe(true);
     expect(JSON.stringify(records)).not.toContain("github_pat_secret_should_not_leak");
     expect(JSON.stringify(records)).not.toContain("acme/repo");
@@ -228,6 +229,180 @@ describe("buildPullRequestInput", () => {
     await expect(
       buildPullRequestInput({ prUrl: "https://github.com/acme/private-repo/pull/99" }, throwingSink)
     ).rejects.not.toThrow("timing sink exploded");
+  });
+
+  it("keeps legacy commit statuses when execution check-run evidence is available", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Check-run covered PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "unit tests",
+              status: "completed",
+              conclusion: "success",
+              output: { summary: "pnpm test passed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({
+          statuses: [
+            {
+              context: "legacy e2e tests",
+              state: "failure",
+              description: "legacy e2e failed"
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      taskText: "Acceptance criteria: add validation with tests."
+    });
+
+    expect(input.checks).toEqual([
+      expect.objectContaining({ name: "unit tests", status: "passed" }),
+      expect.objectContaining({ name: "legacy e2e tests", status: "failed" })
+    ]);
+    expect(input.limitations?.join(" ")).not.toContain("legacy commit-status evidence was skipped");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
+  });
+
+  it("does not let pending check-runs suppress completed legacy commit statuses", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Pending check-run PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "unit tests",
+              status: "in_progress",
+              conclusion: null,
+              output: { summary: "pnpm test is still running." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({
+          statuses: [
+            {
+              context: "legacy unit tests",
+              state: "failure",
+              description: "legacy unit tests failed"
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      taskText: "Acceptance criteria: add validation with tests."
+    });
+
+    expect(input.checks).toEqual([
+      expect.objectContaining({ name: "unit tests", status: "pending" }),
+      expect.objectContaining({ name: "legacy unit tests", status: "failed" })
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
+  });
+
+  it("keeps legacy commit statuses as fallback when execution check-runs are absent", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Legacy status PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({
+          statuses: [
+            {
+              context: "legacy unit tests",
+              state: "success",
+              description: "legacy CI passed"
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      taskText: "Acceptance criteria: add validation with tests."
+    });
+
+    expect(input.checks).toEqual([
+      expect.objectContaining({ name: "legacy unit tests", status: "passed" })
+    ]);
+    expect(input.limitations?.join(" ")).not.toContain("legacy commit-status evidence was skipped");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
   });
 
   it("keeps pasted historical passing text as unknown status", async () => {

@@ -456,6 +456,96 @@ describe("POST /api/analyze", () => {
     expect(json.report.evidenceIndex.filter((item) => item.kind === "check")).toHaveLength(3);
   });
 
+  it("preserves legacy commit-status timing and evidence when check-runs are present", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/88")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Use check runs before legacy statuses",
+            body: "Added regression coverage.",
+            url: "https://api.github.com/repos/acme/app/pulls/88",
+            user: { login: "coding-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/check-runs", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([
+          {
+            filename: "src/features/auth/reset.test.ts",
+            additions: 8,
+            deletions: 0,
+            status: "modified",
+            patch: "+ it('rejects expired reset links', () => {})"
+          }
+        ]));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "unit tests",
+              status: "completed",
+              conclusion: "success",
+              output: { summary: "pnpm test passed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({
+          statuses: [
+            {
+              context: "legacy integration tests",
+              state: "failure",
+              description: "legacy integration suite failed"
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/app/pull/88",
+          taskText: "Acceptance criteria: add regression coverage."
+        })
+      })
+    );
+    const json = await response.json() as { report: VerificationReport };
+    const githubEvidenceTiming = expectGitHubEvidenceTiming(response, [
+      "github_pr",
+      "github_files",
+      "github_checks",
+      "github_statuses",
+      "github_annotations",
+      "github_jobs"
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(json.report.testing.ciStatus).toBe("failed");
+    expect(json.report.evidenceIndex.some((item) =>
+      item.kind === "check" &&
+      item.label === "legacy integration tests" &&
+      item.summary.includes("Status: failed")
+    )).toBe(true);
+    expect(json.report.limitations.join(" ")).not.toContain("legacy commit-status evidence was skipped");
+    expect(githubEvidenceTiming).toContain("github_statuses");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
+  });
+
   it("returns a full-valid fallback report when live GitHub evidence is rate-limited", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response("rate limited", {
