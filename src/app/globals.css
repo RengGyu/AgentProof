@@ -170,6 +170,38 @@ summary:focus-visible {
   flex: 0 0 auto;
 }
 
+.automation-note {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 7px;
+  background: #eff6ff;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.automation-note svg {
+  color: var(--blue);
+  margin-top: 1px;
+}
+
+.automation-note span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.automation-note strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
 .eyebrow {
   margin: 0 0 5px;
   color: var(--blue);
@@ -849,6 +881,14 @@ code {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.35;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.notice p + p {
+  margin-top: 6px;
 }
 
 .summary-mode-notice {

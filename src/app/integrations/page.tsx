@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getPublicGitHubAppReadinessStatus } from "@/lib/github-app";
 
 const rows = [
   {
@@ -38,6 +39,8 @@ const rows = [
 ];
 
 export default function IntegrationsPage() {
+  const githubApp = getPublicGitHubAppReadinessStatus();
+
   return (
     <main className="shared-layout">
       <header className="integration-head">
@@ -54,6 +57,23 @@ export default function IntegrationsPage() {
       </header>
 
       <section className="integration-grid">
+        <article className="card integration-status-card">
+          <div className="card-title-row">
+            <h2>GitHub App Status</h2>
+            <span className="status-chip">{githubApp.label}</span>
+          </div>
+          <p className="muted">{githubApp.description}</p>
+          <ul className="plain-list compact-list">
+            {githubApp.capabilities.map((capability) => (
+              <li key={capability}>{capability}</li>
+            ))}
+          </ul>
+          <div className="notice integration-warning">
+            {githubApp.cautions.map((caution) => (
+              <p key={caution}>{caution}</p>
+            ))}
+          </div>
+        </article>
         {rows.map((row) => (
           <article className="card" key={row.name}>
             <h2>{row.name}</h2>

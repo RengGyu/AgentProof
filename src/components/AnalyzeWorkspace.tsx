@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ClipboardCheck,
   Database,
+  GitBranch,
   GitPullRequest,
   History,
   Plug,
@@ -148,6 +149,14 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
             </div>
             <Database size={18} aria-hidden="true" />
           </div>
+
+          <a className="automation-note" href="/integrations">
+            <GitBranch size={16} aria-hidden="true" />
+            <span>
+              <strong>GitHub App event mode</strong>
+              Signed PR events can generate reports for allowlisted repos; saved links and marker comments stay opt-in.
+            </span>
+          </a>
 
           <div className="mode-tabs" role="group" aria-label="Analysis source">
             <button

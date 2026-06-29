@@ -17,6 +17,7 @@ Run these after every production deployment:
 ```bash
 curl -sS -o /tmp/agentproof-home.html -w "home:%{http_code}\n" https://agentproof-pearl.vercel.app/
 curl -sS -o /tmp/agentproof-integrations.html -w "integrations:%{http_code}\n" https://agentproof-pearl.vercel.app/integrations
+curl -sS -o /tmp/agentproof-webhook-status.json -w "github_webhook_status:%{http_code}\n" https://agentproof-pearl.vercel.app/api/github/webhook/status
 curl -sS -o /tmp/agentproof-api-analyze.txt -w "api_analyze_get:%{http_code}\n" https://agentproof-pearl.vercel.app/api/analyze
 AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app CI=true corepack pnpm smoke:production-regression
 ```
@@ -25,6 +26,7 @@ Expected:
 
 - `/` returns 200.
 - `/integrations` returns 200.
+- `/api/github/webhook/status` returns 200 with coarse status only; it must not expose env-specific booleans, repository allowlists, private-key validity, secret names, or secret values.
 - `/api/analyze` rejects GET with 405.
 - Production regression smoke passes for the public AgentProof PR set.
 - Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
@@ -38,7 +40,7 @@ These checks use server-side env and caller tokens. They should never print secr
 | --- | --- | --- | --- |
 | Supabase saved reports | POST demo report to `/api/reports`, GET `/api/reports/{id}`, DELETE `/api/reports/{id}` | 200 for save/get/delete, `summary-only-supabase`, zero evidence items and claims | Creates then deletes one summary-only row |
 | OpenAI verifier | `AGENTPROOF_LLM_TOKEN=<caller token> AGENTPROOF_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:openai` | `Source: openai`, priority metadata only | Calls OpenAI Responses with `store: false` |
-| GitHub webhook | Signed `ping` request to `/api/github/webhook` | `accepted: true`, bounded metadata, dry-run unless automation is explicitly enabled | No GitHub write unless PR automation/comment opt-in is configured |
+| GitHub webhook | `AGENTPROOF_WEBHOOK_SMOKE_SECRET=<same value as deployed GITHUB_WEBHOOK_SECRET> pnpm smoke:github-webhook` | Coarse status, invalid signature rejected, signed `ping` accepted, signed `pull_request` `closed` does not plan analysis/comments | No GitHub write; uses a PR action that must be ignored |
 | Slack notification | POST a demo report to `/api/notifications/slack` with `x-agentproof-notify-token` | `{ "sent": true }` | Sends one summary-only Slack message |
 | GitHub PR comment | `pnpm smoke:github-comment` with an intentional target PR and write token | `action: "created"` or `"updated"`, comment URL, priority metadata only | Creates or updates one AgentProof marker comment |
 

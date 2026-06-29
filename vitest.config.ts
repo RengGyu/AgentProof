@@ -9,6 +9,7 @@ export default defineConfig({
       "scripts/build-eval-pack.test.mjs",
       "scripts/promote-eval-fixture.test.mjs",
       "scripts/smoke-github-comment.test.mjs",
+      "scripts/smoke-github-webhook.test.mjs",
       "scripts/smoke-analyze-pr-url.test.mjs",
       "scripts/smoke-real-pr-evaluation.test.mjs"
     ]
