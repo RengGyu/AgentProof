@@ -151,5 +151,5 @@ Completion criteria:
 - Broad style or generic bug review comments.
 - Security scanner claims without dedicated tools.
 - Durable raw diff or log storage.
-- GitHub App installation flow.
+- GitHub App installation UI, org dashboard, or automatic comments without explicit opt-in.
 - Jira integration, Slack OAuth, org analytics, or native mobile app.

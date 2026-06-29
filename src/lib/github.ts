@@ -133,7 +133,7 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
     }
 
     try {
-      const live = await fetchGitHubPullRequest(request.prUrl, request.githubToken, request.taskText ?? "");
+      const live = await buildGitHubPullRequestInput(request.prUrl, request.githubToken, request.taskText ?? "");
 
       if (live) {
         return mergePastedOverrides(live, request);
@@ -150,6 +150,14 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
   }
 
   return buildPastedPullRequestInput(request);
+}
+
+export async function buildGitHubPullRequestInput(
+  prUrl: string,
+  token: string | undefined,
+  taskText = ""
+): Promise<PullRequestInput | null> {
+  return fetchGitHubPullRequest(prUrl, token, taskText);
 }
 
 function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: string[] = []): PullRequestInput {

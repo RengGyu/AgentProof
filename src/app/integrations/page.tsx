@@ -3,9 +3,16 @@ import Link from "next/link";
 const rows = [
   {
     name: "GitHub App webhook",
-    purpose: "Dry-run only: verify signed GitHub pull_request/check/status events before future automated analysis. No automatic comments or analysis are triggered.",
+    purpose: "Verify signed GitHub events. PR webhook analysis is available only after explicit repo allowlist opt-in; automatic comments stay separately opt-in.",
     requiredEnv: ["GITHUB_WEBHOOK_SECRET"],
-    optionalEnv: ["GITHUB_APP_ID", "GITHUB_PRIVATE_KEY"]
+    optionalEnv: [
+      "GITHUB_APP_ID",
+      "GITHUB_PRIVATE_KEY",
+      "AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED",
+      "AGENTPROOF_GITHUB_APP_ALLOWED_REPOS",
+      "AGENTPROOF_GITHUB_APP_SAVE_REPORTS",
+      "AGENTPROOF_GITHUB_APP_COMMENT_ENABLED"
+    ]
   },
   {
     name: "Slack notifications",
@@ -79,11 +86,11 @@ export default function IntegrationsPage() {
         <ul className="plain-list">
           <li>Signed intake requires <code>GITHUB_WEBHOOK_SECRET</code>.</li>
           <li>
-            Future App automation additionally requires <code>GITHUB_APP_ID</code> and a valid{" "}
+            GitHub App automation additionally requires <code>GITHUB_APP_ID</code> and a valid{" "}
             <code>GITHUB_PRIVATE_KEY</code>.
           </li>
-          <li>Automation ready: no</li>
-          <li>Automatic comments and analysis remain disabled.</li>
+          <li>PR analysis requires <code>AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED</code> and an allowed repository.</li>
+          <li>Automatic comments require separate <code>AGENTPROOF_GITHUB_APP_COMMENT_ENABLED</code> opt-in.</li>
         </ul>
       </section>
     </main>
