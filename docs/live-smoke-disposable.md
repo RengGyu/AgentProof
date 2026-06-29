@@ -10,3 +10,7 @@ Expected validation:
 - The live smoke reports bounded metadata only.
 - The target PR receives no AgentProof marker comment.
 - Saved reports remain suppressed unless explicitly allowed.
+
+Synchronization probe:
+
+- This line gives the disposable PR a second commit after production reaches event mode.
