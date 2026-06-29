@@ -50,6 +50,7 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 - Server saved reports are summary-only. They use in-memory demo storage unless server-only Supabase credentials are configured.
 - GitHub PR comments use a short marker comment and update the prior AgentProof comment when present.
 - GitHub App webhook intake verifies `X-Hub-Signature-256` when `GITHUB_WEBHOOK_SECRET` is configured. PR analysis remains dry-run by default and requires App credentials, repository allowlist opt-in, installation-token handling, and duplicate suppression. Supabase-backed idempotency stores only hashed keys plus bounded metadata when configured. Automated comments require a separate opt-in and update one marker comment.
+- Operator diagnostics require `AGENTPROOF_OPS_TOKEN` and return bounded readiness categories only, without env values, repository names, table names, tokens, payloads, diffs, or logs.
 - Slack notifications require a server webhook plus `AGENTPROOF_NOTIFY_TOKEN`, and send summary-only payloads.
 - LLM mode requires `OPENAI_API_KEY` plus `AGENTPROOF_LLM_TOKEN`; structured output must pass runtime report validation before it is trusted.
 

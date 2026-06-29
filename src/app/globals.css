@@ -929,6 +929,56 @@ code {
   margin-bottom: 12px;
 }
 
+.mode-map,
+.proof-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.mode-card,
+.proof-item {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfa;
+}
+
+.mode-card {
+  display: grid;
+  gap: 5px;
+}
+
+.mode-card.active {
+  border-color: rgba(2, 122, 72, 0.34);
+  background: #ecfdf3;
+}
+
+.mode-card strong,
+.proof-item strong {
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.mode-card span,
+.proof-item span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.proof-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.proof-item {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
 .error {
   margin-top: 12px;
   padding: 10px 12px;
@@ -1051,6 +1101,10 @@ code {
   .integration-head,
   .integration-grid {
     display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .proof-grid {
     grid-template-columns: 1fr;
   }
 
