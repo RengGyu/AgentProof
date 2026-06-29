@@ -98,7 +98,7 @@ describe("smoke-github-webhook", () => {
       baseUrl: "https://agentproof.example",
       webhookSecret: "webhook-secret",
       fetchImpl: fetchMock
-    })).rejects.toThrow("detailed configuration fields");
+    })).rejects.toThrow("outside the public status contract");
   });
 
   it("fails if a webhook response echoes sensitive probe values", async () => {
