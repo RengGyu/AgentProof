@@ -540,9 +540,10 @@ async function fetchCheckRuns(
 
   for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
     let response: Response;
+    const perPage = Math.min(GITHUB_PAGE_SIZE, Math.max(1, GITHUB_MAX_CHECK_RUNS - checks.length));
 
     try {
-      response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers, GITHUB_CHECK_RUNS_TIMEOUT_MS);
+      response = await githubFetch(`${baseUrl}?per_page=${perPage}&page=${page}`, headers, GITHUB_CHECK_RUNS_TIMEOUT_MS);
     } catch {
       limitations.push(`GitHub check-run evidence unavailable: request timed out after ${GITHUB_CHECK_RUNS_TIMEOUT_MS} ms or network failed.`);
       return checks;
@@ -559,11 +560,13 @@ async function fetchCheckRuns(
     checks.push(...pageItems);
 
     if (checks.length >= GITHUB_MAX_CHECK_RUNS) {
-      limitations.push(`GitHub check-run evidence was capped at ${GITHUB_MAX_CHECK_RUNS} checks.`);
+      if (totalCount === undefined || totalCount > GITHUB_MAX_CHECK_RUNS) {
+        limitations.push(`GitHub check-run evidence was capped at ${GITHUB_MAX_CHECK_RUNS} checks.`);
+      }
       return checks.slice(0, GITHUB_MAX_CHECK_RUNS);
     }
 
-    if (pageItems.length < GITHUB_PAGE_SIZE || (totalCount !== undefined && checks.length >= totalCount)) {
+    if (pageItems.length < perPage || (totalCount !== undefined && checks.length >= totalCount)) {
       return checks;
     }
   }
