@@ -2,24 +2,29 @@ import { createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearGitHubWebhookDeliveriesForTests,
+  completeGitHubWebhookDelivery,
   createGitHubAppJwt,
   createGitHubInstallationAccessToken,
+  failGitHubWebhookDelivery,
   forgetGitHubWebhookDelivery,
   getGitHubAppConfigStatus,
   getGitHubAppAutomationSettings,
   getPublicGitHubAppReadinessStatus,
   getGitHubAppReadinessStatus,
+  getGitHubWebhookIdempotencyStoreStatus,
   isGitHubPrivateKeyFormatValid,
   isGitHubAppRepoAllowed,
   markGitHubWebhookDelivery,
   normalizeGitHubPrivateKey,
   normalizeGitHubWebhookEvent,
+  reserveGitHubWebhookDelivery,
   shouldHandlePullRequestAction,
   verifyGitHubWebhookSignature
 } from "./github-app";
 
 describe("github app helpers", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     clearGitHubWebhookDeliveriesForTests();
   });
@@ -219,6 +224,208 @@ describe("github app helpers", () => {
     expect(markGitHubWebhookDelivery("installation:repo:1:sha:opened", 1_002)).toBe(true);
   });
 
+  it("falls back to in-memory webhook idempotency when durable env is absent", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const input = webhookDeliveryInput();
+
+    await expect(reserveGitHubWebhookDelivery(input, 1_000)).resolves.toEqual({
+      accepted: true,
+      store: "memory",
+      durable: false
+    });
+    await expect(reserveGitHubWebhookDelivery(input, 1_001)).resolves.toEqual({
+      accepted: false,
+      store: "memory",
+      durable: false
+    });
+    expect(getGitHubWebhookIdempotencyStoreStatus()).toMatchObject({
+      mode: "memory",
+      configured: false,
+      durable: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for partial durable webhook idempotency env", async () => {
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL", "https://agentproof-test.supabase.co");
+
+    expect(getGitHubWebhookIdempotencyStoreStatus()).toMatchObject({
+      mode: "memory",
+      configured: false,
+      durable: false,
+      missingEnv: expect.arrayContaining([
+        expect.stringContaining("SERVICE_ROLE_KEY")
+      ])
+    });
+    await expect(reserveGitHubWebhookDelivery(webhookDeliveryInput(), 1_000)).rejects.toThrow("incomplete");
+  });
+
+  it("uses Supabase REST for durable webhook idempotency without storing raw payloads", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE", "webhook_deliveries_test");
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (init?.method === "POST") return new Response(null, { status: 201 });
+      if (init?.method === "PATCH") return new Response(null, { status: 204 });
+
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const input = webhookDeliveryInput({
+      delivery: "delivery-with-token=github_pat_secret_should_not_leak_1234567890",
+      repositoryFullName: "RengGyu/AgentProof",
+      headSha: "abc123def4567890"
+    });
+
+    const reservation = await reserveGitHubWebhookDelivery(input, Date.parse("2026-06-29T00:00:00Z"));
+    await completeGitHubWebhookDelivery(input, {
+      status: "completed",
+      repository: "RengGyu/AgentProof",
+      pullRequestNumber: 7,
+      headSha: "abc123def4567890",
+      priority: "medium",
+      evidenceCoverage: 67,
+      savedReport: { privacy: "summary-only", durability: "summary-only-supabase" },
+      comment: { action: "updated" }
+    }, Date.parse("2026-06-29T00:01:00Z"));
+    const postCall = fetchMock.mock.calls.find((call) => call[1]?.method === "POST");
+    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    const postBody = JSON.parse(String(postCall?.[1]?.body));
+    const patchBody = JSON.parse(String(patchCall?.[1]?.body));
+    const serialized = JSON.stringify({ postBody, patchBody });
+
+    expect(reservation).toEqual({
+      accepted: true,
+      store: "supabase",
+      durable: true
+    });
+    expect(String(postCall?.[0])).toBe("https://agentproof-test.supabase.co/rest/v1/webhook_deliveries_test");
+    expect((postCall?.[1]?.headers as Record<string, string>).Authorization).toBe("Bearer service-role-secret");
+    expect(postBody.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(postBody.id).not.toContain(input.key);
+    expect(postBody.status).toBe("processing");
+    expect(postBody.delivery_id).toBe("unknown");
+    expect(postBody.repository_full_name).toBe("RengGyu/AgentProof");
+    expect(postBody.pull_request_number).toBe(7);
+    expect(postBody.head_sha).toBe("abc123def4567890");
+    expect(postBody).not.toHaveProperty("rawBody");
+    expect(patchBody).toMatchObject({
+      status: "completed",
+      result_summary: {
+        status: "completed",
+        repository: "RengGyu/AgentProof",
+        pullRequestNumber: 7,
+        headSha: "abc123def4567890",
+        priority: "medium",
+        evidenceCoverage: 67,
+        savedReport: {
+          privacy: "summary-only",
+          durability: "summary-only-supabase"
+        },
+        comment: {
+          action: "updated"
+        }
+      }
+    });
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("installation-token");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
+  it("retries durable webhook idempotency rows marked failed_retryable", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const existingUpdatedAt = "2026-06-29T00:00:00.000Z";
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (init?.method === "POST") return new Response(null, { status: 409 });
+      if (init?.method === "GET") return Response.json([{ status: "failed_retryable", updated_at: existingUpdatedAt }]);
+      if (init?.method === "PATCH") return Response.json([{ status: "processing" }]);
+
+      return new Response(null, { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(reserveGitHubWebhookDelivery(webhookDeliveryInput(), 1_000)).resolves.toEqual({
+      accepted: true,
+      store: "supabase",
+      durable: true
+    });
+    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    expect(String(patchCall?.[0])).toContain("status=eq.failed_retryable");
+    expect(decodeURIComponent(String(patchCall?.[0]))).toContain(`updated_at=eq.${existingUpdatedAt}`);
+    expect((patchCall?.[1]?.headers as Record<string, string>).Prefer).toBe("return=representation");
+    expect(JSON.parse(String(patchCall?.[1]?.body)).status).toBe("processing");
+  });
+
+  it("does not accept retryable durable rows when another worker wins the conditional takeover", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (init?.method === "POST") return new Response(null, { status: 409 });
+      if (init?.method === "GET") return Response.json([{ status: "failed_retryable", updated_at: "2026-06-29T00:00:00.000Z" }]);
+      if (init?.method === "PATCH") return Response.json([]);
+
+      return new Response(null, { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(reserveGitHubWebhookDelivery(webhookDeliveryInput(), Date.parse("2026-06-29T00:01:00Z"))).resolves.toEqual({
+      accepted: false,
+      store: "supabase",
+      durable: true,
+      duplicateStatus: "failed_retryable"
+    });
+  });
+
+  it("allows durable processing rows to be retried after the processing lease expires", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (init?.method === "POST") return new Response(null, { status: 409 });
+      if (init?.method === "GET") return Response.json([{ status: "processing", updated_at: "2026-06-29T00:00:00.000Z" }]);
+      if (init?.method === "PATCH") return Response.json([{ status: "processing" }]);
+
+      return new Response(null, { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(reserveGitHubWebhookDelivery(webhookDeliveryInput(), Date.parse("2026-06-29T00:31:00Z"))).resolves.toEqual({
+      accepted: true,
+      store: "supabase",
+      durable: true
+    });
+    expect(String(fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH")?.[0])).toContain("status=eq.processing");
+  });
+
+  it("keeps durable webhook idempotency rows after retryable failures", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === "PATCH" ? new Response(null, { status: 204 }) : new Response(null, { status: 500 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(failGitHubWebhookDelivery(webhookDeliveryInput(), {
+      code: "github_app_automation_failed",
+      summary: "network failed [redacted]"
+    }, 1_000)).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      status: "failed_retryable",
+      error_code: "github_app_automation_failed",
+      error_summary: "network failed [redacted]"
+    });
+  });
+
   it("limits automated pull request actions to verification-relevant events", () => {
     expect(shouldHandlePullRequestAction("opened")).toBe(true);
     expect(shouldHandlePullRequestAction("synchronize")).toBe(true);
@@ -228,6 +435,20 @@ describe("github app helpers", () => {
     expect(shouldHandlePullRequestAction("labeled")).toBe(false);
   });
 });
+
+function webhookDeliveryInput(overrides: Partial<Parameters<typeof reserveGitHubWebhookDelivery>[0]> = {}) {
+  return {
+    key: "321:renggyu/agentproof:7:abc123def4567890:synchronize",
+    event: "pull_request",
+    delivery: "123e4567-e89b-12d3-a456-426614174000",
+    installationId: 321,
+    repositoryFullName: "RengGyu/AgentProof",
+    pullRequestNumber: 7,
+    headSha: "abc123def4567890",
+    action: "synchronize",
+    ...overrides
+  };
+}
 
 function testPrivateKey(): string {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });

@@ -30,7 +30,7 @@ The status endpoint is for UI and smoke probes only. It returns a coarse mode, l
 - Uses a GitHub App installation token to refetch PR evidence from GitHub; it does not trust PR title/body/diff fields from the webhook payload.
 - Creates summary-only saved report links only when `AGENTPROOF_GITHUB_APP_SAVE_REPORTS=true`.
 - Posts or updates one GitHub App marker comment only when `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=true`.
-- Uses short-lived in-memory idempotency for duplicate PR head/action deliveries in this v1 implementation.
+- Uses durable Supabase idempotency when server-only Supabase env is configured; otherwise falls back to short-lived in-memory idempotency for duplicate PR head/action deliveries.
 - Does not return raw payloads, patch text, logs, installation objects, tokens, titles, or arbitrary payload fields.
 - Redacts secret-looking values from returned metadata fields.
 
@@ -124,9 +124,56 @@ Optional automation settings:
 ```text
 AGENTPROOF_GITHUB_APP_SAVE_REPORTS=true
 AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=true
+AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE=agentproof_github_webhook_deliveries
 ```
 
 Keep comment automation disabled until the repository owner explicitly wants AgentProof comments on PRs.
+
+Durable idempotency uses the same server-only Supabase URL and service-role env accepted by saved reports. Optional GitHub-webhook-specific names can override them:
+
+```text
+AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL
+AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY
+```
+
+Do not expose service-role keys with a `NEXT_PUBLIC_` prefix.
+
+## Durable Idempotency Schema
+
+Durable webhook idempotency stores only normalized metadata and a hashed primary key. It does not store raw webhook bodies, signatures, PR titles/bodies, diffs, logs, installation tokens, full reports, claims, or raw re-prompt text.
+
+Rows start as `processing`, move to `completed` after a successful evidence report, and move to `failed_retryable` after retryable automation failures. A retryable takeover uses a conditional Supabase update on `id`, `status`, and `updated_at` so only one worker can re-open a failed row. `processing` rows older than 30 minutes can also be retried, which prevents a transient failure during status persistence from blocking a PR for the full row TTL.
+
+```sql
+create table if not exists agentproof_github_webhook_deliveries (
+  id text primary key,
+  status text not null check (status in ('processing', 'completed', 'failed_retryable')),
+  event text not null,
+  delivery_id text not null,
+  installation_id bigint not null,
+  repository_full_name text not null,
+  pull_request_number integer not null,
+  head_sha text not null,
+  action text not null,
+  result_summary jsonb,
+  error_code text,
+  error_summary text,
+  created_at timestamptz not null,
+  updated_at timestamptz not null,
+  expires_at timestamptz not null
+);
+
+create index if not exists agentproof_github_webhook_deliveries_expires_at_idx
+  on agentproof_github_webhook_deliveries (expires_at);
+```
+
+Recommended boundary:
+
+```sql
+alter table agentproof_github_webhook_deliveries enable row level security;
+```
+
+No public client policies are required because AgentProof reads and writes through server-side service-role credentials.
 
 ## Expected Responses
 
@@ -207,7 +254,8 @@ Keep these boundaries in place:
 - Use `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS`; avoid `*` outside controlled testing.
 - Treat saved reports as summary-only. Do not store raw diffs, raw logs, webhook payloads, installation tokens, claims, or raw re-prompt text.
 - Keep automatic comments off by default. When enabled, update one marker comment instead of creating comment storms.
-- Rate-limit and retry policy.
+- Use durable idempotency for production automation when Supabase is configured. The idempotency key is based on installation, repository, PR number, head SHA, and action, so different GitHub delivery ids for the same PR head/action do not trigger duplicate analysis.
+- Retry durable `failed_retryable` rows with a conditional update, and allow stale `processing` rows to retry only after the processing lease expires.
 - Tests proving raw payloads, raw diffs, logs, and tokens are not persisted.
 
-The current idempotency store is in-memory and short-lived. That is acceptable for v1 smoke testing, but durable automation should move to a dedicated store keyed by installation, repository, PR number, head SHA, event action, and delivery metadata.
+When Supabase idempotency env is absent, AgentProof falls back to short-lived in-memory idempotency. That is acceptable for local demos and smoke testing, but production GitHub App automation should configure the durable table above.
