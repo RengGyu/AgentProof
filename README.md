@@ -17,7 +17,7 @@ It is deliberately not a generic AI code reviewer. AgentProof maps the original 
 - Summary-only share links
 - Summary-only saved report API with in-memory demo mode and optional Supabase durability
 - Optional GitHub PR comment posting with a one-time write token
-- Env-gated GitHub App webhook, Slack notification, and OpenAI verifier adapters
+- Env-gated GitHub App webhook automation, Slack notification, and OpenAI verifier adapters
 - LLM structured-output boundary and runtime report validation
 
 ## Run
@@ -63,8 +63,11 @@ Use `.env.example` as the local template. Do not commit `.env` or `.env.local`; 
 
 Optional server integrations are off by default:
 
-- `GITHUB_WEBHOOK_SECRET`: enables signed GitHub webhook dry-run intake only.
-- `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`: future GitHub App automation readiness only. `GITHUB_PRIVATE_KEY` must be a valid PEM private key; local env files may use escaped `\n` newlines. Automated App actions still need installation-token handling, idempotency storage, and explicit opt-in.
+- `GITHUB_WEBHOOK_SECRET`: enables signed GitHub webhook intake. Without automation opt-in, the endpoint stays dry-run.
+- `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`: enables GitHub App installation-token analysis when automation is explicitly enabled. `GITHUB_PRIVATE_KEY` must be a valid PEM private key; local env files may use escaped `\n` newlines.
+- `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED`, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS`: opt in to PR webhook-triggered analysis for specific repositories. Use `owner/repo` comma-separated values; `*` allows all installed repos and should be avoided outside controlled testing.
+- `AGENTPROOF_GITHUB_APP_SAVE_REPORTS`: when true, webhook-triggered analyses create summary-only saved report links.
+- `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED`: when true, webhook-triggered analyses create or update one GitHub App marker comment. Keep this false until the repository owner explicitly wants automatic comments.
 - `SLACK_WEBHOOK_URL`, `AGENTPROOF_NOTIFY_TOKEN`: enables summary-only Slack notifications from trusted internal callers.
 - `AGENTPROOF_REPORTS_SUPABASE_URL`, `AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_REPORTS_TABLE`: enables durable summary-only saved reports through Supabase REST. Generic `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are also accepted. Never expose the service-role key with a `NEXT_PUBLIC_` prefix.
 - `OPENAI_API_KEY`, `AGENTPROOF_LLM_TOKEN`, optional `OPENAI_MODEL`: enables the structured-output verifier adapter. Missing or invalid output falls back to the deterministic report.
@@ -134,7 +137,7 @@ AgentProof does not decide whether to merge. It gives a human reviewer a compact
 - `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
 - `src/lib/openai-verifier.ts`: optional OpenAI Responses API structured-output adapter
 - `src/lib/evaluation-pack.ts`: real-dataset evaluation harness for benchmark-grounded verifier checks
-- `src/lib/github-app.ts`: GitHub App webhook signature/config helpers
+- `src/lib/github-app.ts`: GitHub App webhook signature, installation-token, opt-in, and idempotency helpers
 - `src/lib/slack.ts`: summary-only Slack notification formatter
 - `src/components/*`: reviewer-focused UI
 - `src/app/api/analyze/route.ts`: analysis API endpoint
@@ -157,7 +160,7 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
-For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For example report artifacts, use `docs/example-reports.md`. For deployment smoke checks, use `docs/deployment-smoke.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook dry-run boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For example report artifacts, use `docs/example-reports.md`. For deployment smoke checks, use `docs/deployment-smoke.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook automation boundaries, use `docs/github-app-webhook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
 
 ## Evaluation Pack
 

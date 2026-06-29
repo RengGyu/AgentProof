@@ -1,10 +1,15 @@
-import { createHmac } from "crypto";
+import { createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearGitHubWebhookDeliveriesForTests } from "@/lib/github-app";
+import { clearSavedReportsForTests } from "@/lib/server-report-store";
 import { POST } from "./route";
 
 describe("POST /api/github/webhook", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    clearGitHubWebhookDeliveriesForTests();
+    clearSavedReportsForTests();
   });
 
   it("is disabled until a webhook secret is configured", async () => {
@@ -27,6 +32,9 @@ describe("POST /api/github/webhook", () => {
 
   it("rejects tampered signatures", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
     const body = JSON.stringify({ action: "opened" });
     const signature = `sha256=${createHmac("sha256", "secret").update(`${body}tampered`).digest("hex")}`;
 
@@ -43,6 +51,7 @@ describe("POST /api/github/webhook", () => {
     );
 
     expect(response.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects missing signatures", async () => {
@@ -104,7 +113,7 @@ describe("POST /api/github/webhook", () => {
         pullRequestNumber: 4,
         pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/4"
       },
-      note: "Webhook verified. Automated GitHub App actions stay disabled until installation-token handling and idempotency storage are added."
+      note: "Webhook verified. Automated GitHub App actions stay disabled until automation is explicitly enabled for an allowed repository."
     });
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("do-not-return");
@@ -237,6 +246,200 @@ describe("POST /api/github/webhook", () => {
       error: "GitHub webhook payload is too large."
     });
   });
+
+  it("keeps dry-run behavior when App credentials exist but automation is not enabled", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-dry-run",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.automationEnabled).toBe(false);
+    expect(json.dryRun).toBe(true);
+    expect(json.willAnalyze).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when automation is enabled but App credentials are incomplete", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-missing-app",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json.code).toBe("github_app_not_ready");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores automation for repositories outside the allowlist before fetching tokens", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "other/repo");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-not-allowed",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.ignored).toBe(true);
+    expect(json.willAnalyze).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores unsupported pull_request actions before fetching tokens", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({ action: "closed" })), {
+        event: "pull_request",
+        delivery: "delivery-closed",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.ignored).toBe(true);
+    expect(json.willAnalyze).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("analyzes signed pull_request events with an installation token and saves summary-only reports", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890",
+        installation: { id: 321, token: "payload-token-should-not-leak" }
+      })), {
+        event: "pull_request",
+        delivery: "delivery-analyze",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json.dryRun).toBe(false);
+    expect(json.automationEnabled).toBe(true);
+    expect(json.willAnalyze).toBe(true);
+    expect(json.willComment).toBe(false);
+    expect(json.analysis.status).toBe("completed");
+    expect(json.analysis.repository).toBe("RengGyu/AgentProof");
+    expect(json.analysis.savedReport.privacy).toBe("summary-only");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("payload-token");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/app/installations/321/access_tokens",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("skips duplicate pull_request automation for the same PR head SHA and action", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify(automationPayload());
+
+    const first = await POST(signedRequest(body, {
+      event: "pull_request",
+      delivery: "delivery-duplicate-1",
+      secret: "secret"
+    }));
+    const callCount = fetchMock.mock.calls.length;
+    const second = await POST(signedRequest(body, {
+      event: "pull_request",
+      delivery: "delivery-duplicate-2",
+      secret: "secret"
+    }));
+    const json = await second.json();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(json.duplicate).toBe(true);
+    expect(json.willAnalyze).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(callCount);
+  });
+
+  it("creates a GitHub App marker comment only when comment opt-in is enabled", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-comment",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const commentPost = fetchMock.mock.calls.find((call) =>
+      String(call[0]) === "https://api.github.com/repos/RengGyu/AgentProof/issues/7/comments" &&
+      (call[1] as RequestInit | undefined)?.method === "POST"
+    );
+
+    expect(response.status).toBe(200);
+    expect(json.analysis.comment.action).toBe("created");
+    expect(json.analysis.comment.url).toContain("issuecomment-777");
+    expect(String((commentPost?.[1] as RequestInit).body)).toContain("agentproof:github-app:evidence-check:v1");
+    expect(String((commentPost?.[1] as RequestInit).body)).not.toContain("Agent re-prompt");
+  });
 });
 
 function signedRequest(
@@ -254,4 +457,118 @@ function signedRequest(
     },
     body
   });
+}
+
+function automationPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    action: "opened",
+    repository: {
+      id: 100,
+      full_name: "RengGyu/AgentProof"
+    },
+    pull_request: {
+      number: 7,
+      html_url: "https://github.com/RengGyu/AgentProof/pull/7",
+      title: "Webhook title should not be trusted",
+      head: { sha: "abc123" }
+    },
+    installation: { id: 321 },
+    ...overrides
+  };
+}
+
+function mockAutomationFetch() {
+  return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    const method = init?.method ?? "GET";
+
+    if (href === "https://api.github.com/app/installations/321/access_tokens") {
+      return jsonResponse({ token: "installation-token" });
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+      return jsonResponse({
+        title: "Fetched PR title",
+        body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
+        url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
+        user: { login: "agent-author" },
+        base: { ref: "main" },
+        head: { ref: "feature/app-automation", sha: "abc123" }
+      });
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7/files?per_page=100&page=1") {
+      return jsonResponse([
+        {
+          filename: "src/app/api/github/webhook/route.ts",
+          additions: 30,
+          deletions: 2,
+          status: "modified",
+          patch: "@@ -1 +1 @@\n+ signed webhook-triggered AgentProof analysis"
+        }
+      ]);
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/check-runs?per_page=100&page=1") {
+      return jsonResponse({
+        total_count: 1,
+        check_runs: [
+          {
+            id: 999,
+            name: "CI test/build evidence verification",
+            status: "completed",
+            conclusion: "success",
+            html_url: "https://github.com/RengGyu/AgentProof/actions/runs/1",
+            details_url: "https://github.com/RengGyu/AgentProof/actions/runs/1",
+            output: { summary: "pnpm test, typecheck, and build passed" }
+          }
+        ]
+      });
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/status") {
+      return jsonResponse({ statuses: [] });
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/actions/runs/1/jobs?per_page=100") {
+      return jsonResponse({
+        jobs: [
+          {
+            name: "CI test/build evidence verification",
+            status: "completed",
+            conclusion: "success",
+            html_url: "https://github.com/RengGyu/AgentProof/actions/runs/1/job/2",
+            steps: [
+              { name: "Test", status: "completed", conclusion: "success" },
+              { name: "Build", status: "completed", conclusion: "success" }
+            ]
+          }
+        ]
+      });
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/issues/7/comments?per_page=100&page=1") {
+      return jsonResponse([]);
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/issues/7/comments" && method === "POST") {
+      return jsonResponse({ html_url: "https://github.com/RengGyu/AgentProof/pull/7#issuecomment-777" });
+    }
+
+    return new Response(JSON.stringify({ message: `Unhandled ${method} ${href}` }), { status: 404 });
+  });
+}
+
+function jsonResponse(value: unknown, init?: ResponseInit) {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    ...init
+  });
+}
+
+function testPrivateKey(): string {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+  return privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 }

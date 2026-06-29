@@ -1,14 +1,27 @@
 import { createHmac, generateKeyPairSync } from "crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clearGitHubWebhookDeliveriesForTests,
+  createGitHubAppJwt,
+  createGitHubInstallationAccessToken,
+  forgetGitHubWebhookDelivery,
   getGitHubAppConfigStatus,
+  getGitHubAppAutomationSettings,
   isGitHubPrivateKeyFormatValid,
+  isGitHubAppRepoAllowed,
+  markGitHubWebhookDelivery,
   normalizeGitHubPrivateKey,
   normalizeGitHubWebhookEvent,
+  shouldHandlePullRequestAction,
   verifyGitHubWebhookSignature
 } from "./github-app";
 
 describe("github app helpers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearGitHubWebhookDeliveriesForTests();
+  });
+
   it("verifies raw-body webhook signatures", () => {
     const body = JSON.stringify({ zen: "Keep it logically awesome." });
     const secret = "webhook-secret";
@@ -70,6 +83,89 @@ describe("github app helpers", () => {
       event: "pull_request",
       delivery: "delivery-id"
     });
+  });
+
+  it("creates a GitHub App JWT without exposing the private key", () => {
+    const privateKey = testPrivateKey();
+    const token = createGitHubAppJwt({
+      GITHUB_APP_ID: "12345",
+      GITHUB_PRIVATE_KEY: privateKey
+    } as unknown as NodeJS.ProcessEnv, 1_700_000_000);
+    const [header, payload, signature] = token.split(".");
+
+    expect(header).toBeTruthy();
+    expect(payload).toBeTruthy();
+    expect(signature).toBeTruthy();
+    expect(JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))).toEqual({
+      iat: 1_699_999_940,
+      exp: 1_700_000_540,
+      iss: "12345"
+    });
+    expect(token).not.toContain("BEGIN");
+  });
+
+  it("requests an installation token with an app JWT", async () => {
+    const privateKey = testPrivateKey();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ token: "installation-token" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const token = await createGitHubInstallationAccessToken(321, {
+      GITHUB_APP_ID: "12345",
+      GITHUB_PRIVATE_KEY: privateKey
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(token).toBe("installation-token");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/app/installations/321/access_tokens",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: expect.stringMatching(/^Bearer [^.]+\.[^.]+\.[^.]+$/)
+        })
+      })
+    );
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("installation-token");
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("BEGIN");
+  });
+
+  it("fails closed before token fetch when app credentials are invalid", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createGitHubInstallationAccessToken(321, {
+      GITHUB_APP_ID: "12345",
+      GITHUB_PRIVATE_KEY: "sha256=not-a-private-key"
+    } as unknown as NodeJS.ProcessEnv)).rejects.toThrow("incomplete or invalid");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("parses automation settings and repo allowlists", () => {
+    const settings = getGitHubAppAutomationSettings({
+      AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED: "true",
+      AGENTPROOF_GITHUB_APP_COMMENT_ENABLED: "false",
+      AGENTPROOF_GITHUB_APP_ALLOWED_REPOS: "RengGyu/AgentProof, other/repo"
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(settings.enabled).toBe(true);
+    expect(settings.commentEnabled).toBe(false);
+    expect(isGitHubAppRepoAllowed("renggyu/agentproof", settings)).toBe(true);
+    expect(isGitHubAppRepoAllowed("unknown/repo", settings)).toBe(false);
+  });
+
+  it("tracks webhook idempotency keys without storing payloads", () => {
+    expect(markGitHubWebhookDelivery("installation:repo:1:sha:opened", 1_000)).toBe(true);
+    expect(markGitHubWebhookDelivery("installation:repo:1:sha:opened", 1_001)).toBe(false);
+    expect(forgetGitHubWebhookDelivery("installation:repo:1:sha:opened")).toBe(true);
+    expect(markGitHubWebhookDelivery("installation:repo:1:sha:opened", 1_002)).toBe(true);
+  });
+
+  it("limits automated pull request actions to verification-relevant events", () => {
+    expect(shouldHandlePullRequestAction("opened")).toBe(true);
+    expect(shouldHandlePullRequestAction("synchronize")).toBe(true);
+    expect(shouldHandlePullRequestAction("ready_for_review")).toBe(true);
+    expect(shouldHandlePullRequestAction("edited")).toBe(false);
+    expect(shouldHandlePullRequestAction("closed")).toBe(false);
+    expect(shouldHandlePullRequestAction("labeled")).toBe(false);
   });
 });
 

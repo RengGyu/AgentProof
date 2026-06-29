@@ -27,7 +27,7 @@ The MVP is complete when a reviewer can run a demo or public PR analysis, see re
 - Browser recent history as summary-only.
 - Server saved reports as summary-only, with in-memory mode and optional Supabase durability.
 - GitHub PR comment posting with a one-time token and PR provenance safety.
-- GitHub App webhook signed dry-run boundary.
+- GitHub App webhook signed dry-run boundary, with later opt-in automation path.
 - Slack summary-only notification endpoint.
 - OpenAI structured-output verifier adapter with runtime validation and deterministic fallback.
 - SWE-bench Verified evaluation harness and committed fixtures.
@@ -77,7 +77,7 @@ Most recent credentialed live integration pass:
 
 ## Deferred Until After MVP
 
-- GitHub App installation flow and automated App actions.
+- GitHub App installation UI, durable automation store, and production App smoke workflow.
 - Organization dashboards, analytics, Jira integration, or Slack OAuth.
 - Durable raw diff or raw log storage.
 - Auto-merge, merge-blocking checks, or policy enforcement.

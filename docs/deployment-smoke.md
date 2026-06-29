@@ -38,7 +38,7 @@ These checks use server-side env and caller tokens. They should never print secr
 | --- | --- | --- | --- |
 | Supabase saved reports | POST demo report to `/api/reports`, GET `/api/reports/{id}`, DELETE `/api/reports/{id}` | 200 for save/get/delete, `summary-only-supabase`, zero evidence items and claims | Creates then deletes one summary-only row |
 | OpenAI verifier | `AGENTPROOF_LLM_TOKEN=<caller token> AGENTPROOF_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:openai` | `Source: openai`, priority metadata only | Calls OpenAI Responses with `store: false` |
-| GitHub webhook | Signed `ping` request to `/api/github/webhook` | `accepted: true`, `dryRun: true`, `automationEnabled: false`, `willAnalyze: false`, `willComment: false` | No GitHub write |
+| GitHub webhook | Signed `ping` request to `/api/github/webhook` | `accepted: true`, bounded metadata, dry-run unless automation is explicitly enabled | No GitHub write unless PR automation/comment opt-in is configured |
 | Slack notification | POST a demo report to `/api/notifications/slack` with `x-agentproof-notify-token` | `{ "sent": true }` | Sends one summary-only Slack message |
 | GitHub PR comment | `pnpm smoke:github-comment` with an intentional target PR and write token | `action: "created"` or `"updated"`, comment URL, priority metadata only | Creates or updates one AgentProof marker comment |
 
@@ -46,7 +46,7 @@ Most recent live pass:
 
 - Supabase saved report round trip: passed, `summary-only-supabase`.
 - OpenAI verifier smoke: passed, `source: openai`.
-- GitHub signed webhook ping: passed, dry-run only.
+- GitHub signed webhook ping: passed, dry-run default verified.
 - Slack notification smoke: passed, sent one summary-only message.
 - GitHub PR comment smoke: passed on PR #18, created an AgentProof marker comment.
 
@@ -77,6 +77,7 @@ Most recent no-secret production gate:
 
 ## Non-Goals
 
-- No automated GitHub App analysis or comments.
+- GitHub App PR analysis is opt-in by env and repository allowlist.
+- GitHub App comments are a separate opt-in and update one marker comment only.
 - No auto-merge or merge-blocking decision.
 - No durable raw diff, raw log, raw annotation detail, token, claim, or raw re-prompt storage.
