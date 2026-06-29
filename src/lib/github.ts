@@ -251,12 +251,18 @@ async function fetchGitHubPullRequest(
   const pr = await prResponse.json();
   const limitations: string[] = [];
   const [files, checkRuns, statuses] = await Promise.all([
-    fetchPullFiles(pr.url + "/files", headers, limitations, Boolean(token?.trim())),
-    fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, Boolean(token?.trim())),
-    fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, Boolean(token?.trim()))
+    fetchPullFiles(pr.url + "/files", headers, limitations, hasToken),
+    fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, hasToken),
+    fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, hasToken)
   ]);
-  const annotatedCheckRuns = await fetchCheckRunAnnotations(parsed.owner, parsed.repo, checkRuns, headers, limitations, Boolean(token?.trim()));
-  const actionJobLogs = await fetchActionJobSummaries(parsed.owner, parsed.repo, annotatedCheckRuns, headers, limitations, Boolean(token?.trim()));
+  const annotationLimitations: string[] = [];
+  const actionJobLimitations: string[] = [];
+  const [annotatedCheckRuns, actionJobLogs] = await Promise.all([
+    fetchCheckRunAnnotations(parsed.owner, parsed.repo, checkRuns, headers, annotationLimitations, hasToken),
+    fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, actionJobLimitations, hasToken)
+  ]);
+
+  limitations.push(...annotationLimitations, ...actionJobLimitations);
   const missingPatchCount = files.filter((file) => !file.patch).length;
 
   if (missingPatchCount > 0) {
