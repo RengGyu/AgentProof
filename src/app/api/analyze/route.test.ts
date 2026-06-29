@@ -7,6 +7,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function expectServerTiming(response: Response, phases: string[]) {
+  const header = response.headers.get("Server-Timing") ?? "";
+  const metrics = header.split(",").map((item) => item.trim()).filter(Boolean);
+  const metricNames = metrics.map((item) => item.split(";")[0]);
+
+  for (const phase of phases) {
+    expect(header).toMatch(new RegExp(`\\bap_${phase};dur=\\d+\\b`));
+  }
+
+  expect(header).toMatch(/\bap_total;dur=\d+\b/);
+  expect(metricNames.every((name) => ["ap_input", "ap_evidence", "ap_report", "ap_validation", "ap_total"].includes(name))).toBe(true);
+  expect(metrics.every((item) => /^ap_(input|evidence|report|validation|total);dur=\d+$/.test(item))).toBe(true);
+
+  return header;
+}
+
 describe("POST /api/analyze", () => {
   it("rejects invalid PR URLs before producing a report", async () => {
     const response = await POST(
@@ -20,7 +36,53 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(400);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
+    expectServerTiming(response, ["input"]);
     expect(json.error).toContain("GitHub pull request URL");
+  });
+
+  it("adds bounded server timing without exposing request evidence or tokens", async () => {
+    const token = "github_pat_secret_should_not_leak_1234567890";
+    const taskText = `Acceptance criteria: preserve summary-only reports with token ${token}.`;
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          taskText,
+          prDescription: "Implemented summary-only saved reports.",
+          changedFiles: "src/lib/report-share.ts\nsrc/app/api/reports/route.ts",
+          checks: "unit tests: passed",
+          githubToken: token
+        })
+      })
+    );
+    const json = await response.json() as { report: VerificationReport; timing?: unknown };
+    const serverTiming = expectServerTiming(response, ["input", "evidence", "report", "validation"]);
+
+    expect(response.status).toBe(200);
+    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(json).not.toHaveProperty("timing");
+    expect(serverTiming).not.toContain(token);
+    expect(serverTiming).not.toContain("summary-only reports");
+    expect(JSON.stringify(json)).not.toContain(token);
+  });
+
+  it("adds server timing on malformed JSON errors without echoing the raw body", async () => {
+    const rawBody = "{\"taskText\":\"token ghp_secret_should_not_leak\"";
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: rawBody
+      })
+    );
+    const json = await response.json();
+    const serverTiming = expectServerTiming(response, ["input"]);
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBe("Request body must be valid JSON.");
+    expect(serverTiming).not.toContain("ghp_secret_should_not_leak");
+    expect(JSON.stringify(json)).not.toContain(rawBody);
   });
 
   it("rejects oversized request bodies even without a content-length header", async () => {
@@ -34,6 +96,7 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(413);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
+    expectServerTiming(response, ["input"]);
   });
 
   it("does not leak token-like values from GitHub network errors", async () => {
