@@ -15,15 +15,27 @@ const DEMO_SCENARIOS = new Set<DemoScenarioId>([
   "failed-ci",
   "vague-task"
 ]);
+const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation"] as const;
+
+type AnalyzeTimingPhase = (typeof ANALYZE_TIMING_PHASES)[number];
+type AnalyzeTimingDurations = Partial<Record<AnalyzeTimingPhase, number>>;
+
+interface AnalyzeTiming {
+  start: (phase: AnalyzeTimingPhase) => void;
+  serverTiming: () => string;
+}
 
 export async function POST(request: Request) {
+  const timing = createAnalyzeTiming();
+
   try {
     const contentLength = Number(request.headers.get("content-length") ?? 0);
 
     if (contentLength > MAX_BODY_BYTES) {
       return jsonNoStore(
         { error: "Request is too large. Paste shorter logs or use a PR URL." },
-        413
+        413,
+        timing
       );
     }
 
@@ -32,7 +44,8 @@ export async function POST(request: Request) {
     if (utf8ByteLength(rawText) > MAX_BODY_BYTES) {
       return jsonNoStore(
         { error: "Request is too large. Paste shorter logs or use a PR URL." },
-        413
+        413,
+        timing
       );
     }
 
@@ -50,22 +63,28 @@ export async function POST(request: Request) {
     ) {
       return jsonNoStore(
         { error: "Provide a PR URL, demo scenario, or pasted PR evidence before generating a verification report." },
-        400
+        400,
+        timing
       );
     }
 
     if (body.prUrl?.trim() && !parseGitHubPullUrl(body.prUrl)) {
       return jsonNoStore(
         { error: "PR URL must be a GitHub pull request URL, for example https://github.com/org/repo/pull/123." },
-        400
+        400,
+        timing
       );
     }
 
+    timing.start("evidence");
     const input = body.demoScenario
       ? demoScenarios[body.demoScenario]
       : await buildPullRequestInput(body);
 
+    timing.start("report");
     const report = generateVerificationReport(input);
+
+    timing.start("validation");
     const validation = validateVerificationReport(report, { mode: "full" });
 
     if (!validation.valid) {
@@ -74,11 +93,12 @@ export async function POST(request: Request) {
           error: "Generated report failed runtime validation.",
           details: validation.errors.map((item) => redactSecrets(item))
         },
-        500
+        500,
+        timing
       );
     }
 
-    return jsonNoStore({ report });
+    return jsonNoStore({ report }, 200, timing);
   } catch (error) {
     const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
     const guidance = analyzeFailureGuidance(error);
@@ -90,7 +110,8 @@ export async function POST(request: Request) {
         guidance: guidance.actions,
         category: guidance.category
       },
-      400
+      400,
+      timing
     );
   }
 }
@@ -183,14 +204,78 @@ function githubFailureActions(code: GitHubFetchFailureCode, tokenProvided: boole
   }
 }
 
-function jsonNoStore(payload: unknown, status = 200) {
+function jsonNoStore(payload: unknown, status = 200, timing?: AnalyzeTiming) {
+  const headers: Record<string, string> = {
+    "Cache-Control": "private, no-store",
+    "Referrer-Policy": "no-referrer"
+  };
+
+  if (timing) {
+    headers["Server-Timing"] = timing.serverTiming();
+  }
+
   return NextResponse.json(payload, {
     status,
-    headers: {
-      "Cache-Control": "private, no-store",
-      "Referrer-Policy": "no-referrer"
-    }
+    headers
   });
+}
+
+function createAnalyzeTiming(): AnalyzeTiming {
+  const startedAt = nowMs();
+  const durations: AnalyzeTimingDurations = {};
+  let activePhase: AnalyzeTimingPhase | null = "input";
+  let activeStartedAt = startedAt;
+  let finalized = false;
+  let cachedHeader = "";
+
+  const finishActivePhase = () => {
+    if (!activePhase) return;
+
+    const elapsed = Math.max(0, nowMs() - activeStartedAt);
+    durations[activePhase] = (durations[activePhase] ?? 0) + elapsed;
+    activePhase = null;
+  };
+
+  return {
+    start(phase) {
+      if (finalized) return;
+
+      finishActivePhase();
+      activePhase = phase;
+      activeStartedAt = nowMs();
+    },
+    serverTiming() {
+      if (!finalized) {
+        finishActivePhase();
+        cachedHeader = formatServerTiming(durations, Math.max(0, nowMs() - startedAt));
+        finalized = true;
+      }
+
+      return cachedHeader;
+    }
+  };
+}
+
+function formatServerTiming(durations: AnalyzeTimingDurations, totalMs: number): string {
+  const entries = ANALYZE_TIMING_PHASES
+    .filter((phase) => typeof durations[phase] === "number")
+    .map((phase) => `ap_${phase};dur=${formatDurationMs(durations[phase] ?? 0)}`);
+
+  entries.push(`ap_total;dur=${formatDurationMs(totalMs)}`);
+
+  return entries.join(", ");
+}
+
+function formatDurationMs(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+
+  return String(Math.round(value));
+}
+
+function nowMs(): number {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
 function parseJsonBody(rawText: string): unknown {
