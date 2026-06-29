@@ -5,6 +5,7 @@ const EXPLICIT_GITHUB_TOKEN = process.env.AGENTPROOF_REAL_PR_SMOKE_GITHUB_TOKEN;
 const ALLOW_PRODUCTION_GITHUB_TOKEN = process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1";
 const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation", "total"];
 const GITHUB_EVIDENCE_TIMING_PHASES = ["github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"];
+const DEFAULT_PERFORMANCE_BUDGET = performanceBudgetFromEnv(process.env);
 
 export const DEFAULT_REAL_PR_EVALUATION_CASES = [
   {
@@ -82,6 +83,7 @@ export async function runRealPrEvaluationSmoke({
   cases = DEFAULT_REAL_PR_EVALUATION_CASES,
   githubToken = EXPLICIT_GITHUB_TOKEN,
   allowProductionGithubToken = ALLOW_PRODUCTION_GITHUB_TOKEN,
+  performanceBudget = DEFAULT_PERFORMANCE_BUDGET,
   fetchImpl = fetch
 } = {}) {
   const results = [];
@@ -125,7 +127,7 @@ export async function runRealPrEvaluationSmoke({
     });
   }
 
-  return {
+  const summary = {
     ok: true,
     baseUrl,
     caseCount: results.length,
@@ -133,6 +135,24 @@ export async function runRealPrEvaluationSmoke({
     githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings(results),
     results
   };
+
+  const budgetResult = evaluatePerformanceBudget(summary, performanceBudget);
+  if (budgetResult) {
+    summary.performanceBudget = budgetResult;
+  }
+
+  if (budgetResult && !budgetResult.ok) {
+    const failedChecks = budgetResult.checks
+      .filter((check) => !check.ok)
+      .map((check) => typeof check.actualMs === "number"
+        ? `${check.metric}.${check.phase}.p95 ${check.actualMs}ms > ${check.maxP95Ms}ms`
+        : `${check.metric}.${check.phase}.p95 could not be verified <= ${check.maxP95Ms}ms`)
+      .join("; ");
+
+    throw new Error(`Real PR evaluation smoke exceeded performance budget: ${failedChecks}`);
+  }
+
+  return summary;
 }
 
 export function safeSmokePrUrl(value) {
@@ -169,6 +189,82 @@ export function summarizeGitHubEvidenceTimings(results) {
     source: "githubEvidenceTiming",
     phases: GITHUB_EVIDENCE_TIMING_PHASES,
     metric: "X-AgentProof-Evidence-Timing"
+  });
+}
+
+export function performanceBudgetFromEnv(env) {
+  return compactPerformanceBudget({
+    analyze: {
+      total: maxP95BudgetFromEnv(env, "AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS"),
+      evidence: maxP95BudgetFromEnv(env, "AGENTPROOF_SMOKE_MAX_EVIDENCE_P95_MS")
+    },
+    github: {
+      github_checks: maxP95BudgetFromEnv(env, "AGENTPROOF_SMOKE_MAX_GITHUB_CHECKS_P95_MS"),
+      github_statuses: maxP95BudgetFromEnv(env, "AGENTPROOF_SMOKE_MAX_GITHUB_STATUSES_P95_MS"),
+      github_jobs: maxP95BudgetFromEnv(env, "AGENTPROOF_SMOKE_MAX_GITHUB_JOBS_P95_MS")
+    }
+  });
+}
+
+export function evaluatePerformanceBudget(summary, budget) {
+  if (!budget) {
+    return null;
+  }
+
+  const checks = [
+    ...performanceBudgetChecks(summary.timingSummary, budget.analyze, "X-AgentProof-Timing"),
+    ...performanceBudgetChecks(summary.githubEvidenceTimingSummary, budget.github, "X-AgentProof-Evidence-Timing")
+  ];
+
+  if (checks.length === 0) {
+    return null;
+  }
+
+  return {
+    ok: checks.every((check) => check.ok),
+    checks
+  };
+}
+
+function compactPerformanceBudget(budget) {
+  const analyze = Object.fromEntries(Object.entries(budget.analyze).filter(([, value]) => Number.isSafeInteger(value)));
+  const github = Object.fromEntries(Object.entries(budget.github).filter(([, value]) => Number.isSafeInteger(value)));
+
+  if (Object.keys(analyze).length === 0 && Object.keys(github).length === 0) {
+    return undefined;
+  }
+
+  return { analyze, github };
+}
+
+function maxP95BudgetFromEnv(env, name) {
+  const value = env[name];
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`Invalid performance budget environment variable: ${name} must be a non-negative integer.`);
+  }
+
+  return parsed;
+}
+
+function performanceBudgetChecks(timingSummary, budget = {}, metric) {
+  return Object.entries(budget).map(([phase, maxP95Ms]) => {
+    const actualMs = timingSummary.phases[phase]?.p95 ?? null;
+    const ok = typeof actualMs === "number" && actualMs <= maxP95Ms;
+
+    return {
+      metric,
+      phase,
+      statistic: "p95",
+      maxP95Ms,
+      actualMs,
+      ok
+    };
   });
 }
 
