@@ -81,6 +81,15 @@ pnpm smoke:openai
 This command calls the configured deployment and prints only pass/fail metadata, not prompts, reports, or secret values.
 If Vercel stores a secret as unreadable/sensitive, `vercel env pull` may create a blank placeholder; export the needed value in your shell for that smoke run instead.
 
+Run the signed GitHub webhook smoke when you want to verify production webhook intake without triggering live PR analysis or comments:
+
+```bash
+AGENTPROOF_WEBHOOK_SMOKE_SECRET=<same value as deployed GITHUB_WEBHOOK_SECRET> \
+pnpm smoke:github-webhook
+```
+
+The webhook smoke checks public coarse status, invalid-signature rejection, a signed `ping`, and a signed `pull_request` `closed` event that must not plan analysis or comments. It prints only bounded metadata and fails if secret-like probe values are echoed.
+
 Run the live GitHub comment smoke only when you intentionally want to create or update an AgentProof marker comment on a target PR:
 
 ```bash

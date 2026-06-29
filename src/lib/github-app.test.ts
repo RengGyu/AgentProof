@@ -7,6 +7,8 @@ import {
   forgetGitHubWebhookDelivery,
   getGitHubAppConfigStatus,
   getGitHubAppAutomationSettings,
+  getPublicGitHubAppReadinessStatus,
+  getGitHubAppReadinessStatus,
   isGitHubPrivateKeyFormatValid,
   isGitHubAppRepoAllowed,
   markGitHubWebhookDelivery,
@@ -150,6 +152,63 @@ describe("github app helpers", () => {
     expect(settings.commentEnabled).toBe(false);
     expect(isGitHubAppRepoAllowed("renggyu/agentproof", settings)).toBe(true);
     expect(isGitHubAppRepoAllowed("unknown/repo", settings)).toBe(false);
+  });
+
+  it("reports non-secret readiness status for dry-run and automation modes", () => {
+    const dryRun = getGitHubAppReadinessStatus({
+      GITHUB_WEBHOOK_SECRET: "secret"
+    } as unknown as NodeJS.ProcessEnv);
+    const ready = getGitHubAppReadinessStatus({
+      GITHUB_WEBHOOK_SECRET: "secret",
+      GITHUB_APP_ID: "123",
+      GITHUB_PRIVATE_KEY: testPrivateKey(),
+      AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED: "true",
+      AGENTPROOF_GITHUB_APP_ALLOWED_REPOS: "RengGyu/AgentProof",
+      AGENTPROOF_GITHUB_APP_SAVE_REPORTS: "true"
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(dryRun).toEqual(expect.objectContaining({
+      mode: "dry-run",
+      signedIntakeReady: true,
+      canAnalyzePullRequests: false,
+      allowedRepoCount: 0
+    }));
+    expect(ready).toEqual(expect.objectContaining({
+      mode: "analysis-ready",
+      appCredentialsReady: true,
+      automationEnabled: true,
+      saveReportsEnabled: true,
+      allowedRepoCount: 1,
+      canAnalyzePullRequests: true,
+      canPostComments: false
+    }));
+    expect(JSON.stringify(ready)).not.toContain("BEGIN PRIVATE KEY");
+    expect(JSON.stringify(ready)).not.toContain("secret");
+  });
+
+  it("keeps public readiness status coarse enough for public UI and smoke probes", () => {
+    const publicStatus = getPublicGitHubAppReadinessStatus({
+      GITHUB_WEBHOOK_SECRET: "secret-value",
+      GITHUB_APP_ID: "123",
+      GITHUB_PRIVATE_KEY: testPrivateKey(),
+      AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED: "true",
+      AGENTPROOF_GITHUB_APP_ALLOWED_REPOS: "RengGyu/AgentProof,other/repo",
+      AGENTPROOF_GITHUB_APP_COMMENT_ENABLED: "true",
+      AGENTPROOF_GITHUB_APP_SAVE_REPORTS: "true"
+    } as unknown as NodeJS.ProcessEnv);
+    const serialized = JSON.stringify(publicStatus);
+
+    expect(publicStatus).toEqual(expect.objectContaining({
+      mode: "event-mode",
+      label: "Event mode ready"
+    }));
+    expect(serialized).not.toContain("secret-value");
+    expect(serialized).not.toContain("BEGIN PRIVATE KEY");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("analysis-and-comment-ready");
+    expect(serialized).not.toContain("allowedRepoCount");
+    expect(serialized).not.toContain("appCredentialsReady");
+    expect(serialized).not.toContain("saveReportsEnabled");
   });
 
   it("tracks webhook idempotency keys without storing payloads", () => {

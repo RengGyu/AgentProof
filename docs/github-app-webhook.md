@@ -8,6 +8,14 @@ Endpoint:
 POST /api/github/webhook
 ```
 
+Public coarse status endpoint:
+
+```text
+GET /api/github/webhook/status
+```
+
+The status endpoint is for UI and smoke probes only. It returns a coarse mode, label, capabilities, and cautions. It must not expose per-env booleans, repository allowlists, private-key validity, secret names, or secret values.
+
 ## Current Behavior
 
 - Fails closed when `GITHUB_WEBHOOK_SECRET` is missing.
@@ -27,6 +35,23 @@ POST /api/github/webhook
 - Redacts secret-looking values from returned metadata fields.
 
 The route reads the request body in memory to verify GitHub's HMAC signature. It does not persist that body, and oversized requests are rejected by `Content-Length` when available plus a post-read byte cap. Deployment platform body-size limits should remain enabled.
+
+## Smoke Test
+
+Use the webhook smoke when validating production without creating comments or triggering live PR analysis:
+
+```bash
+AGENTPROOF_WEBHOOK_SMOKE_SECRET=<same value as deployed GITHUB_WEBHOOK_SECRET> \
+pnpm smoke:github-webhook
+```
+
+The smoke checks:
+
+- public coarse status from `/api/github/webhook/status`;
+- invalid-signature rejection;
+- signed `ping` acceptance;
+- signed `pull_request` with action `closed`, which must report `willAnalyze: false` and `willComment: false`;
+- no echo of secret-like probe values sent in the smoke payload.
 
 ## Required Environment
 

@@ -19,6 +19,28 @@ export interface GitHubAppAutomationSettings {
   allowAllRepos: boolean;
 }
 
+export interface GitHubAppReadinessStatus {
+  mode: "not-configured" | "dry-run" | "analysis-ready" | "analysis-and-comment-ready";
+  signedIntakeReady: boolean;
+  appCredentialsReady: boolean;
+  automationEnabled: boolean;
+  commentEnabled: boolean;
+  saveReportsEnabled: boolean;
+  allowedRepoCount: number;
+  allowAllRepos: boolean;
+  canAnalyzePullRequests: boolean;
+  canPostComments: boolean;
+  warnings: string[];
+}
+
+export interface PublicGitHubAppReadinessStatus {
+  mode: "manual" | "signed-intake" | "event-mode";
+  label: string;
+  description: string;
+  capabilities: string[];
+  cautions: string[];
+}
+
 type GlobalWithWebhookIdempotency = typeof globalThis & {
   __agentproofGitHubWebhookDeliveries?: Map<string, number>;
 };
@@ -151,6 +173,104 @@ export function getGitHubAppAutomationSettings(env = process.env): GitHubAppAuto
     allowedRepos: allowedRepos.filter((repo) => repo !== "*"),
     allowAllRepos: allowedRepos.includes("*")
   };
+}
+
+export function getGitHubAppReadinessStatus(env = process.env): GitHubAppReadinessStatus {
+  const config = getGitHubAppConfigStatus(env);
+  const settings = getGitHubAppAutomationSettings(env);
+  const saveReportsEnabled = truthy(env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS);
+  const hasAllowedRepos = settings.allowAllRepos || settings.allowedRepos.length > 0;
+  const canAnalyzePullRequests = config.ready && settings.enabled && hasAllowedRepos;
+  const canPostComments = canAnalyzePullRequests && settings.commentEnabled;
+  const warnings: string[] = [];
+
+  if (!config.webhookSecretConfigured) {
+    warnings.push("Signed webhook intake is disabled until GITHUB_WEBHOOK_SECRET is configured.");
+  }
+
+  if (settings.enabled && !config.ready) {
+    warnings.push("Automation is enabled but GitHub App credentials are incomplete or invalid.");
+  }
+
+  if (settings.enabled && !hasAllowedRepos) {
+    warnings.push("Automation is enabled but no allowed repositories are configured.");
+  }
+
+  if (settings.allowAllRepos) {
+    warnings.push("Allowed repositories is set to all installed repositories; use only for controlled testing.");
+  }
+
+  if (settings.commentEnabled && !canAnalyzePullRequests) {
+    warnings.push("Comment opt-in is enabled but PR analysis is not ready.");
+  }
+
+  const mode = !config.webhookSecretConfigured
+    ? "not-configured"
+    : canPostComments
+      ? "analysis-and-comment-ready"
+      : canAnalyzePullRequests
+        ? "analysis-ready"
+        : "dry-run";
+
+  return {
+    mode,
+    signedIntakeReady: config.webhookSecretConfigured,
+    appCredentialsReady: config.ready,
+    automationEnabled: settings.enabled,
+    commentEnabled: settings.commentEnabled,
+    saveReportsEnabled,
+    allowedRepoCount: settings.allowedRepos.length,
+    allowAllRepos: settings.allowAllRepos,
+    canAnalyzePullRequests,
+    canPostComments,
+    warnings
+  };
+}
+
+export function getPublicGitHubAppReadinessStatus(env = process.env): PublicGitHubAppReadinessStatus {
+  const status = getGitHubAppReadinessStatus(env);
+  const publicMode = publicStatusMode(status.mode);
+
+  return {
+    mode: publicMode,
+    label: publicStatusLabel(publicMode),
+    description: publicStatusDescription(publicMode),
+    capabilities: [
+      "Manual PR URL analysis remains available from the main workspace.",
+      publicMode === "event-mode"
+        ? "Signed PR events can trigger AgentProof evidence reports for configured repositories."
+        : "Signed PR events are accepted as bounded metadata unless automation is explicitly enabled.",
+      "Saved report links and marker comments remain separate opt-in controls."
+    ],
+    cautions: [
+      "Public readiness status does not expose secret names, values, allowlists, or private-key validity.",
+      "AgentProof produces evidence reports for human decisions; it does not auto-merge."
+    ]
+  };
+}
+
+function publicStatusMode(mode: GitHubAppReadinessStatus["mode"]): PublicGitHubAppReadinessStatus["mode"] {
+  if (mode === "analysis-ready" || mode === "analysis-and-comment-ready") return "event-mode";
+  if (mode === "dry-run") return "signed-intake";
+  return "manual";
+}
+
+function publicStatusLabel(mode: PublicGitHubAppReadinessStatus["mode"]): string {
+  if (mode === "event-mode") return "Event mode ready";
+  if (mode === "signed-intake") return "Signed intake";
+  return "Manual mode";
+}
+
+function publicStatusDescription(mode: PublicGitHubAppReadinessStatus["mode"]): string {
+  if (mode === "event-mode") {
+    return "GitHub App event mode can generate evidence reports for configured PR events.";
+  }
+
+  if (mode === "signed-intake") {
+    return "Signed webhook events can be verified, but event analysis is not publicly reported as active.";
+  }
+
+  return "Use manual PR URL analysis until GitHub App webhook intake is configured.";
 }
 
 export function isGitHubAppRepoAllowed(fullName: string | undefined, settings: GitHubAppAutomationSettings): boolean {
