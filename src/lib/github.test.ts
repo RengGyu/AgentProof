@@ -421,6 +421,159 @@ describe("buildPullRequestInput", () => {
     expect(serialized).not.toContain("github_pat_secret_should_not_leak");
   });
 
+  it("bounds check-run page size to the internal evidence cap", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Bounded check-run page PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 100,
+          check_runs: Array.from({ length: 60 }, (_, index) => ({
+            name: `preview deployment ${index + 1}`,
+            status: "completed",
+            conclusion: "success",
+            output: { summary: "Preview deployment completed." }
+          }))
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const checkRunUrl = String(fetchMock.mock.calls.find(([url]) => String(url).includes("/check-runs"))?.[0] ?? "");
+
+    expect(checkRunUrl).toContain("per_page=60");
+    expect(checkRunUrl).toContain("page=1");
+    expect(input.checks).toHaveLength(60);
+    expect(input.limitations?.join(" ")).toContain("GitHub check-run evidence was capped at 60 checks.");
+  });
+
+  it("does not report check-run evidence as capped when total count equals the internal cap", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Exact check-run cap PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 60,
+          check_runs: Array.from({ length: 60 }, (_, index) => ({
+            name: `preview deployment ${index + 1}`,
+            status: "completed",
+            conclusion: "success",
+            output: { summary: "Preview deployment completed." }
+          }))
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.checks).toHaveLength(60);
+    expect(input.limitations?.join(" ")).not.toContain("GitHub check-run evidence was capped at 60 checks.");
+  });
+
+  it("keeps changed-file pagination offsets stable while capping collected evidence", async () => {
+    const allFiles = Array.from({ length: 150 }, (_, index) => ({
+      filename: `src/generated/file-${index + 1}.ts`,
+      additions: 1,
+      deletions: 0,
+      status: "modified",
+      patch: "+ export const value = true"
+    }));
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Bounded file page PR",
+            body: "Adds generated files.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/generated", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        const parsedUrl = new URL(url);
+        const perPage = Number(parsedUrl.searchParams.get("per_page"));
+        const page = Number(parsedUrl.searchParams.get("page"));
+        const startIndex = (page - 1) * perPage;
+
+        return Promise.resolve(Response.json(allFiles.slice(startIndex, startIndex + perPage)));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const fileUrls = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/files?"));
+
+    expect(fileUrls).toEqual([
+      "https://api.github.com/repos/acme/repo/pulls/12/files?per_page=100&page=1",
+      "https://api.github.com/repos/acme/repo/pulls/12/files?per_page=100&page=2"
+    ]);
+    expect(input.changedFiles).toHaveLength(120);
+    expect(new Set(input.changedFiles.map((file) => file.path)).size).toBe(120);
+    expect(input.changedFiles.at(99)?.path).toBe("src/generated/file-100.ts");
+    expect(input.changedFiles.at(100)?.path).toBe("src/generated/file-101.ts");
+    expect(input.changedFiles.at(119)?.path).toBe("src/generated/file-120.ts");
+    expect(input.limitations?.join(" ")).toContain("GitHub changed-file evidence was capped at 120 files.");
+  });
+
   it("keeps legacy commit statuses when execution check-run evidence is available", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
