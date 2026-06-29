@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_REAL_PR_EVALUATION_CASES,
+  evaluatePerformanceBudget,
+  performanceBudgetFromEnv,
   runRealPrEvaluationSmoke,
   safeSmokePrUrl,
   summarizeAnalyzeTimings,
@@ -57,6 +59,7 @@ describe("smoke-real-pr-evaluation", () => {
 
     expect(result.ok).toBe(true);
     expect(result.caseCount).toBe(6);
+    expect(result).not.toHaveProperty("performanceBudget");
     expect(result.timingSummary).toEqual({
       metric: "X-AgentProof-Timing",
       unit: "ms",
@@ -170,6 +173,129 @@ describe("smoke-real-pr-evaluation", () => {
     expect(JSON.stringify(summary)).not.toContain("sk-secret");
     expect(JSON.stringify(summary)).not.toContain("secret task text");
     expect(JSON.stringify(summary)).not.toContain("private-case");
+  });
+
+  it("evaluates optional performance budgets without leaking case details", () => {
+    const summary = {
+      timingSummary: summarizeAnalyzeTimings([
+        {
+          id: "private-case",
+          prUrl: "https://user:github_pat_secret_should_not_leak@github.com/org/private/pull/1?token=sk-secret",
+          taskText: "Acceptance criteria: secret task text",
+          analyzeTiming: { input: 2, evidence: 120, report: 4, validation: 1, total: 140 }
+        }
+      ]),
+      githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings([
+        {
+          id: "private-case",
+          githubEvidenceTiming: { github_pr: 20, github_files: 30, github_checks: 90, github_statuses: 40, github_jobs: 60 }
+        }
+      ])
+    };
+
+    const result = evaluatePerformanceBudget(summary, {
+      analyze: { total: 100, evidence: 150 },
+      github: { github_checks: 80, github_jobs: 60 }
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      checks: [
+        { metric: "X-AgentProof-Timing", phase: "total", statistic: "p95", maxP95Ms: 100, actualMs: 140, ok: false },
+        { metric: "X-AgentProof-Timing", phase: "evidence", statistic: "p95", maxP95Ms: 150, actualMs: 120, ok: true },
+        { metric: "X-AgentProof-Evidence-Timing", phase: "github_checks", statistic: "p95", maxP95Ms: 80, actualMs: 90, ok: false },
+        { metric: "X-AgentProof-Evidence-Timing", phase: "github_jobs", statistic: "p95", maxP95Ms: 60, actualMs: 60, ok: true }
+      ]
+    });
+    expect(JSON.stringify(result)).not.toContain("github_pat_secret_should_not_leak");
+    expect(JSON.stringify(result)).not.toContain("sk-secret");
+    expect(JSON.stringify(result)).not.toContain("secret task text");
+    expect(JSON.stringify(result)).not.toContain("private-case");
+  });
+
+  it("parses optional performance budgets from environment variables", () => {
+    expect(performanceBudgetFromEnv({
+      AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS: "1200",
+      AGENTPROOF_SMOKE_MAX_EVIDENCE_P95_MS: "1000",
+      AGENTPROOF_SMOKE_MAX_GITHUB_CHECKS_P95_MS: "700",
+      AGENTPROOF_SMOKE_MAX_GITHUB_JOBS_P95_MS: ""
+    })).toEqual({
+      analyze: {
+        total: 1200,
+        evidence: 1000
+      },
+      github: {
+        github_checks: 700
+      }
+    });
+
+    expect(performanceBudgetFromEnv({})).toBeUndefined();
+    expect(() => performanceBudgetFromEnv({
+      AGENTPROOF_SMOKE_MAX_GITHUB_STATUSES_P95_MS: "bad github_pat_secret_should_not_leak"
+    })).toThrow("Invalid performance budget environment variable: AGENTPROOF_SMOKE_MAX_GITHUB_STATUSES_P95_MS must be a non-negative integer.");
+    expect(() => performanceBudgetFromEnv({
+      AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS: "-1"
+    })).toThrow("Invalid performance budget environment variable: AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS must be a non-negative integer.");
+  });
+
+  it("fails performance budgets when a configured timing metric is missing", async () => {
+    await expect(runRealPrEvaluationSmoke({
+      baseUrl: "https://agentproof.example",
+      cases: [],
+      performanceBudget: {
+        analyze: {},
+        github: { github_checks: 1 }
+      },
+      fetchImpl: vi.fn()
+    })).rejects.toThrow("Real PR evaluation smoke exceeded performance budget: X-AgentProof-Evidence-Timing.github_checks.p95 could not be verified <= 1ms");
+  });
+
+  it("fails real PR smoke only when an explicit performance budget is exceeded", async () => {
+    const fetchMock = vi.fn(async (url, init = {}) => {
+      const method = init.method ?? "GET";
+
+      if (String(url).endsWith("/api/analyze")) {
+        return jsonResponse({ report: reportFixture("https://github.com/RengGyu/AgentProof/pull/1") });
+      }
+
+      if (String(url).endsWith("/api/reports") && method === "POST") {
+        return jsonResponse({
+          id: "saved_1",
+          url: "https://agentproof.example/reports/saved_1",
+          expiresAt: "2026-06-27T00:00:00.000Z",
+          privacy: "summary-only",
+          durability: "short-lived-in-memory",
+          durabilityWarning: "Saved reports are short-lived."
+        });
+      }
+
+      if (String(url).endsWith("/api/reports/saved_1") && method === "GET") {
+        return jsonResponse({
+          report: summaryOnlyReportFixture(),
+          createdAt: "2026-06-26T00:00:00.000Z",
+          expiresAt: "2026-06-27T00:00:00.000Z",
+          privacy: "summary-only",
+          durability: "short-lived-in-memory",
+          durabilityWarning: "Saved reports are short-lived."
+        });
+      }
+
+      if (String(url).endsWith("/api/reports/saved_1") && method === "DELETE") {
+        return jsonResponse({ deleted: true });
+      }
+
+      return new Response("unexpected url", { status: 500 });
+    });
+
+    await expect(runRealPrEvaluationSmoke({
+      baseUrl: "https://agentproof.example",
+      cases: [DEFAULT_REAL_PR_EVALUATION_CASES[0]],
+      performanceBudget: {
+        analyze: { total: 20 },
+        github: { github_checks: 1 }
+      },
+      fetchImpl: fetchMock
+    })).rejects.toThrow("Real PR evaluation smoke exceeded performance budget: X-AgentProof-Timing.total.p95 35ms > 20ms; X-AgentProof-Evidence-Timing.github_checks.p95 9ms > 1ms");
   });
 
   it("strips secret-like URL parts from smoke result PR URLs", () => {
