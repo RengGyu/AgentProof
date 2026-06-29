@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
-import { buildPullRequestInput, parseGitHubPullUrl } from "@/lib/github";
+import { buildPullRequestInput, GitHubFetchError, parseGitHubPullUrl, type GitHubFetchFailureCode } from "@/lib/github";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { generateVerificationReport } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
@@ -81,14 +81,105 @@ export async function POST(request: Request) {
     return jsonNoStore({ report });
   } catch (error) {
     const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
+    const guidance = analyzeFailureGuidance(error);
 
     return jsonNoStore(
       {
         error: message,
-        hint: "Use demo mode, paste PR evidence, or provide a fine-grained GitHub token for private PRs."
+        hint: guidance.hint,
+        guidance: guidance.actions,
+        category: guidance.category
       },
       400
     );
+  }
+}
+
+function analyzeFailureGuidance(error: unknown): {
+  category: "github_access" | "github_rate_limit" | "github_unavailable" | "input";
+  hint: string;
+  actions: string[];
+} {
+  if (error instanceof GitHubFetchError) {
+    const category = githubFailureCategory(error.code);
+    const actions = githubFailureActions(error.code, error.tokenProvided);
+
+    return {
+      category,
+      hint: actions[0] ?? "Paste PR evidence manually if live GitHub evidence is unavailable.",
+      actions
+    };
+  }
+
+  return {
+    category: "input",
+    hint: "Use demo mode, paste PR evidence, or provide a fine-grained GitHub token for private PRs.",
+    actions: [
+      "Check that the PR URL is reachable.",
+      "Paste PR description, changed files, checks, or logs if GitHub cannot be reached."
+    ]
+  };
+}
+
+function githubFailureCategory(code: GitHubFetchFailureCode): "github_access" | "github_rate_limit" | "github_unavailable" {
+  if (code === "github_rate_limited" || code === "github_secondary_rate_limited") {
+    return "github_rate_limit";
+  }
+
+  if (code === "github_fetch_failed") {
+    return "github_unavailable";
+  }
+
+  return "github_access";
+}
+
+function githubFailureActions(code: GitHubFetchFailureCode, tokenProvided: boolean): string[] {
+  switch (code) {
+    case "github_auth_required":
+      return [
+        "Provide a fine-grained GitHub token with read access to this repository.",
+        "Paste PR evidence manually if you do not want to send a token."
+      ];
+    case "github_token_rejected":
+      return [
+        "Create or refresh the fine-grained GitHub token, then try again.",
+        "Confirm the token was copied completely and has not expired."
+      ];
+    case "github_permission_denied":
+      return tokenProvided
+        ? [
+          "Confirm the token has pull request, contents, checks, statuses, and Actions metadata read access for this repository.",
+          "If this is a private repo, make sure the token is scoped to the selected repository."
+        ]
+        : [
+          "Provide a fine-grained GitHub token with read access to this repository.",
+          "Paste PR evidence manually if you do not want to send a token."
+        ];
+    case "github_not_found":
+      return tokenProvided
+        ? [
+          "Check that the PR URL is correct and visible to the provided GitHub token.",
+          "For private repos, confirm the token is scoped to that repository."
+        ]
+        : [
+          "Check that the PR URL is correct and publicly visible.",
+          "For private repos, use a fine-grained token scoped to that repository."
+        ];
+    case "github_rate_limited":
+      return [
+        "Wait for the GitHub API rate limit to reset, then retry.",
+        "Use a fine-grained token to increase the available request budget."
+      ];
+    case "github_secondary_rate_limited":
+      return [
+        "Wait briefly before retrying; GitHub secondary rate limiting is temporary.",
+        "Paste PR evidence manually if you need a report immediately."
+      ];
+    case "github_fetch_failed":
+      return [
+        "Retry the PR URL after GitHub or network access is available.",
+        "Paste PR evidence manually to generate a report without live GitHub fetches."
+      ];
   }
 }
 

@@ -18,12 +18,30 @@ const NON_PROOF_ACTION_STEP_PATTERN =
   /\b(checkout|setup|cache|install dependencies|upload|download|artifact|publish|preview|deploy|deployment|report|notify)\b/i;
 const GENERIC_ACTION_JOB_NAME_PATTERN = /^\s*(ci|checks?|workflow|github actions)\s*$/i;
 
-class GitHubFetchError extends Error {
+export type GitHubFetchFailureCode =
+  | "github_rate_limited"
+  | "github_secondary_rate_limited"
+  | "github_token_rejected"
+  | "github_auth_required"
+  | "github_permission_denied"
+  | "github_not_found"
+  | "github_fetch_failed";
+
+interface GitHubFailureClassification {
+  code: GitHubFetchFailureCode;
+  reason: string;
+}
+
+export class GitHubFetchError extends Error {
   constructor(
     public readonly status: number,
-    public readonly reason: string
+    public readonly code: GitHubFetchFailureCode,
+    public readonly reason: string,
+    public readonly tokenProvided = false
   ) {
-    super(`GitHub PR fetch failed: ${reason} (HTTP ${status}).`);
+    super(status > 0
+      ? `GitHub PR fetch failed: ${reason} (HTTP ${status}).`
+      : `GitHub PR fetch failed: ${reason}`);
   }
 }
 
@@ -197,13 +215,26 @@ async function fetchGitHubPullRequest(
     headers.Authorization = `Bearer ${token.trim()}`;
   }
 
-  const prResponse = await githubFetch(
-    `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
-    headers
-  );
+  const hasToken = Boolean(token?.trim());
+  let prResponse: Response;
+
+  try {
+    prResponse = await githubFetch(
+      `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
+      headers
+    );
+  } catch {
+    throw new GitHubFetchError(
+      0,
+      "github_fetch_failed",
+      "GitHub metadata request timed out or network failed.",
+      hasToken
+    );
+  }
 
   if (!prResponse.ok) {
-    throw new GitHubFetchError(prResponse.status, classifyGitHubFailure(prResponse, Boolean(token?.trim())));
+    const failure = classifyGitHubFailure(prResponse, hasToken);
+    throw new GitHubFetchError(prResponse.status, failure.code, failure.reason, hasToken);
   }
 
   const pr = await prResponse.json();
@@ -262,7 +293,7 @@ function githubFallbackLimitation(error: unknown): string {
   return "Live GitHub evidence could not be collected: GitHub metadata request failed before evidence could be collected. Report uses pasted evidence only.";
 }
 
-function classifyGitHubFailure(response: Response, hasToken: boolean): string {
+function classifyGitHubFailure(response: Response, hasToken: boolean): GitHubFailureClassification {
   const status = response.status;
   const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
   const rateLimitReset = response.headers.get("x-ratelimit-reset");
@@ -270,32 +301,54 @@ function classifyGitHubFailure(response: Response, hasToken: boolean): string {
 
   if ((status === 403 || status === 429) && rateLimitRemaining === "0") {
     const resetAt = formatGitHubRateLimitReset(rateLimitReset);
-    return `GitHub API rate limit was reached${resetAt ? ` until ${resetAt}` : ""}.`;
+    return {
+      code: "github_rate_limited",
+      reason: `GitHub API rate limit was reached${resetAt ? ` until ${resetAt}` : ""}.`
+    };
   }
 
   if ((status === 403 || status === 429) && retryAfter) {
-    return `GitHub API secondary rate limit or abuse protection was reached; retry after ${retryAfter} second(s).`;
+    return {
+      code: "github_secondary_rate_limited",
+      reason: `GitHub API secondary rate limit or abuse protection was reached; retry after ${retryAfter} second(s).`
+    };
   }
 
   if (status === 401) {
-    return hasToken
-      ? "the provided GitHub token was rejected."
-      : "GitHub authentication is required for this PR.";
+    return {
+      code: hasToken ? "github_token_rejected" : "github_auth_required",
+      reason: hasToken
+        ? "the provided GitHub token was rejected."
+        : "GitHub authentication is required for this PR."
+    };
   }
 
   if (status === 403) {
-    return hasToken
-      ? "the provided GitHub token may lack permission to read this repository or PR."
-      : "GitHub denied access; the repository may be private or require a fine-grained token.";
+    return {
+      code: "github_permission_denied",
+      reason: hasToken
+        ? "the provided GitHub token may lack permission to read this repository or PR."
+        : "GitHub denied access; the repository may be private or require a fine-grained token."
+    };
   }
 
   if (status === 404) {
-    return hasToken
-      ? "the repository or PR was not found or is not visible to the provided token."
-      : "the repository or PR was not found or is not visible without authentication.";
+    return {
+      code: "github_not_found",
+      reason: hasToken
+        ? "the repository or PR was not found or is not visible to the provided token."
+        : "the repository or PR was not found or is not visible without authentication."
+    };
   }
 
-  return `GitHub returned HTTP ${status}.`;
+  return {
+    code: "github_fetch_failed",
+    reason: `GitHub returned HTTP ${status}.`
+  };
+}
+
+function githubFailureReason(response: Response, hasToken: boolean): string {
+  return classifyGitHubFailure(response, hasToken).reason;
 }
 
 function formatGitHubRateLimitReset(value: string | null): string | null {
@@ -365,7 +418,7 @@ async function fetchPullFiles(
     }
 
     if (!response.ok) {
-      limitations.push(`GitHub changed-file fetch failed: ${classifyGitHubFailure(response, hasToken)} File evidence may be incomplete.`);
+      limitations.push(`GitHub changed-file fetch failed: ${githubFailureReason(response, hasToken)} File evidence may be incomplete.`);
       return files;
     }
 
@@ -406,7 +459,7 @@ async function fetchCheckRuns(
     }
 
     if (!response.ok) {
-      limitations.push(`GitHub check-run fetch failed: ${classifyGitHubFailure(response, hasToken)} CI evidence may be incomplete.`);
+      limitations.push(`GitHub check-run fetch failed: ${githubFailureReason(response, hasToken)} CI evidence may be incomplete.`);
       return checks;
     }
 
@@ -448,7 +501,7 @@ async function fetchCommitStatuses(
   }
 
   if (!response.ok) {
-    limitations.push(`GitHub commit-status fetch failed: ${classifyGitHubFailure(response, hasToken)} Legacy status evidence may be incomplete.`);
+    limitations.push(`GitHub commit-status fetch failed: ${githubFailureReason(response, hasToken)} Legacy status evidence may be incomplete.`);
     return [];
   }
 
@@ -507,7 +560,7 @@ async function fetchCheckRunAnnotations(
     }
 
     if (!response.ok) {
-      limitations.push(`GitHub check annotation metadata fetch failed: ${classifyGitHubFailure(response, hasToken)} File-level check evidence may be incomplete.`);
+      limitations.push(`GitHub check annotation metadata fetch failed: ${githubFailureReason(response, hasToken)} File-level check evidence may be incomplete.`);
       continue;
     }
 
@@ -648,7 +701,7 @@ async function fetchActionJobSummaries(
     }
 
     if (!response.ok) {
-      limitations.push(`GitHub Actions job-step metadata fetch failed: ${classifyGitHubFailure(response, hasToken)} Test/build evidence may be incomplete.`);
+      limitations.push(`GitHub Actions job-step metadata fetch failed: ${githubFailureReason(response, hasToken)} Test/build evidence may be incomplete.`);
       continue;
     }
 

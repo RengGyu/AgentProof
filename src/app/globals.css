@@ -1017,6 +1017,19 @@ code {
   font-size: 12px;
 }
 
+.intake-error-actions {
+  display: grid;
+  gap: 3px;
+  margin: 2px 0 0;
+  padding-left: 16px;
+  color: #7a271a;
+  font-size: 12px;
+}
+
+.intake-error-actions li {
+  overflow-wrap: anywhere;
+}
+
 .priority-low,
 .status-met,
 .status-passed {
