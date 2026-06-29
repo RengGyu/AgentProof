@@ -3,7 +3,10 @@ import { isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText, redactSecrets } from "./redact";
 
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
+const GITHUB_CHECK_RUNS_TIMEOUT_MS = 5000;
 const GITHUB_COMMIT_STATUS_TIMEOUT_MS = 2000;
+const GITHUB_CHECK_ANNOTATION_TIMEOUT_MS = 2500;
+const GITHUB_ACTION_JOB_TIMEOUT_MS = 2500;
 const GITHUB_PAGE_SIZE = 100;
 const GITHUB_MAX_PAGES = 3;
 const GITHUB_MAX_CHANGED_FILES = 120;
@@ -539,9 +542,9 @@ async function fetchCheckRuns(
     let response: Response;
 
     try {
-      response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
+      response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers, GITHUB_CHECK_RUNS_TIMEOUT_MS);
     } catch {
-      limitations.push("GitHub check-run evidence unavailable: request timed out or network failed.");
+      limitations.push(`GitHub check-run evidence unavailable: request timed out after ${GITHUB_CHECK_RUNS_TIMEOUT_MS} ms or network failed.`);
       return checks;
     }
 
@@ -670,7 +673,8 @@ async function fetchCheckAnnotationsForRun(
   try {
     const response = await githubFetch(
       `https://api.github.com/repos/${owner}/${repo}/check-runs/${checkId}/annotations?per_page=${GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN}`,
-      headers
+      headers,
+      GITHUB_CHECK_ANNOTATION_TIMEOUT_MS
     );
 
     if (!response.ok) {
@@ -691,7 +695,7 @@ async function fetchCheckAnnotationsForRun(
     return {
       checkId,
       annotations: [],
-      limitation: "GitHub check annotation metadata unavailable: request timed out or network failed."
+      limitation: `GitHub check annotation metadata unavailable: request timed out after ${GITHUB_CHECK_ANNOTATION_TIMEOUT_MS} ms or network failed.`
     };
   }
 }
@@ -825,7 +829,8 @@ async function fetchActionJobsForRun(
   try {
     const response = await githubFetch(
       `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=${GITHUB_PAGE_SIZE}`,
-      headers
+      headers,
+      GITHUB_ACTION_JOB_TIMEOUT_MS
     );
 
     if (!response.ok) {
@@ -860,7 +865,7 @@ async function fetchActionJobsForRun(
   } catch {
     return {
       logs: [],
-      limitation: "GitHub Actions job-step metadata unavailable: request timed out or network failed."
+      limitation: `GitHub Actions job-step metadata unavailable: request timed out after ${GITHUB_ACTION_JOB_TIMEOUT_MS} ms or network failed.`
     };
   }
 }

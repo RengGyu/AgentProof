@@ -9,6 +9,7 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("parseGitHubPullUrl", () => {
@@ -229,6 +230,195 @@ describe("buildPullRequestInput", () => {
     await expect(
       buildPullRequestInput({ prUrl: "https://github.com/acme/private-repo/pull/99" }, throwingSink)
     ).rejects.not.toThrow("timing sink exploded");
+  });
+
+  it("uses bounded phase-specific timeouts for GitHub evidence fetches", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Timeout budget PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              id: 1234,
+              name: "unit tests",
+              status: "completed",
+              conclusion: "failure",
+              details_url: "https://github.com/acme/repo/actions/runs/456/job/999",
+              output: { summary: "Vitest failed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/check-runs/1234/annotations")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/actions/runs/456/jobs")) {
+        return Promise.resolve(Response.json({ jobs: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(timeoutSpy.mock.calls.map(([timeoutMs]) => timeoutMs)).toEqual(expect.arrayContaining([
+      8000,
+      5000,
+      2500,
+      2000
+    ]));
+    expect(timeoutSpy.mock.calls.filter(([timeoutMs]) => timeoutMs === 2500)).toHaveLength(2);
+  });
+
+  it("keeps primary check-run evidence when annotation and Actions job metadata time out", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Timed-out enrichment PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              id: 1234,
+              name: "unit tests",
+              status: "completed",
+              conclusion: "failure",
+              details_url: "https://github.com/acme/repo/actions/runs/456/job/999",
+              output: { summary: "Vitest failed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/check-runs/1234/annotations") || url.includes("/actions/runs/456/jobs")) {
+        return Promise.reject(new Error("timed out with secret=sk-should_not_leak"));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const serialized = JSON.stringify(input);
+
+    expect(input.checks).toEqual([
+      expect.objectContaining({
+        name: "unit tests",
+        status: "failed",
+        summary: "Vitest failed."
+      })
+    ]);
+    expect(input.logs).toEqual([]);
+    expect(input.limitations?.join(" ")).toContain("GitHub check annotation metadata unavailable: request timed out after 2500 ms or network failed.");
+    expect(input.limitations?.join(" ")).toContain("GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.");
+    expect(serialized).not.toContain("sk-should_not_leak");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/456/logs"))).toBe(false);
+  });
+
+  it("keeps legacy commit-status fallback when check-run evidence times out", async () => {
+    const records: Array<{ phase: GitHubEvidenceTimingPhase; durationMs: number }> = [];
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Check-run timeout PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.reject(new Error("timed out"));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({
+          statuses: [
+            {
+              context: "legacy unit tests",
+              state: "failure",
+              description: "legacy unit tests failed"
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput(
+      {
+        prUrl: "https://github.com/acme/repo/pull/12",
+        githubToken: "github_pat_secret_should_not_leak"
+      },
+      {
+        record(phase, durationMs) {
+          records.push({ phase, durationMs });
+        }
+      }
+    );
+    const serialized = JSON.stringify(input);
+
+    expect(input.checks).toEqual([
+      expect.objectContaining({ name: "legacy unit tests", status: "failed" })
+    ]);
+    expect(input.limitations?.join(" ")).toContain("GitHub check-run evidence unavailable: request timed out after 5000 ms or network failed.");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
+    expect(records.some((item) => item.phase === "github_checks" && item.durationMs >= 0)).toBe(true);
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
   });
 
   it("keeps legacy commit statuses when execution check-run evidence is available", async () => {
