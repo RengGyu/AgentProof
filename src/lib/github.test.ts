@@ -336,6 +336,113 @@ describe("buildPullRequestInput", () => {
     expect(input.limitations?.join(" ")).toContain("raw log archives were not fetched or stored");
   });
 
+  it("fetches annotation and Actions job enrichment concurrently with stable limitation order", async () => {
+    let activeEnrichmentFetches = 0;
+    let maxActiveEnrichmentFetches = 0;
+    const enrichmentResolvers = new Map<string, () => void>();
+    const releaseEnrichmentFetches = () => {
+      if (enrichmentResolvers.size === 2) {
+        enrichmentResolvers.get("jobs")?.();
+        enrichmentResolvers.get("annotations")?.();
+      }
+    };
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Parallel enrichment PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              id: 1234,
+              name: "unit tests",
+              status: "completed",
+              conclusion: "failure",
+              details_url: "https://github.com/acme/repo/actions/runs/456/job/999",
+              output: { summary: "Vitest failed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/check-runs/1234/annotations")) {
+        activeEnrichmentFetches += 1;
+        maxActiveEnrichmentFetches = Math.max(maxActiveEnrichmentFetches, activeEnrichmentFetches);
+
+        return new Promise<Response>((resolve) => {
+          enrichmentResolvers.set("annotations", () => {
+            activeEnrichmentFetches -= 1;
+            resolve(Response.json([
+              {
+                path: "src/app/api/analyze/route.test.ts",
+                start_line: 42,
+                annotation_level: "failure",
+                raw_details: "secret=sk-should_not_leak"
+              }
+            ]));
+          });
+          releaseEnrichmentFetches();
+        });
+      }
+
+      if (url.includes("/actions/runs/456/jobs")) {
+        activeEnrichmentFetches += 1;
+        maxActiveEnrichmentFetches = Math.max(maxActiveEnrichmentFetches, activeEnrichmentFetches);
+
+        return new Promise<Response>((resolve) => {
+          enrichmentResolvers.set("jobs", () => {
+            activeEnrichmentFetches -= 1;
+            resolve(Response.json({
+              jobs: [
+                {
+                  name: "unit tests",
+                  status: "completed",
+                  conclusion: "failure",
+                  steps: [{ name: "pnpm test", status: "completed", conclusion: "failure" }]
+                }
+              ]
+            }));
+          });
+          releaseEnrichmentFetches();
+        });
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const annotationLimitationIndex = input.limitations?.findIndex((item) => item.includes("check annotation metadata was collected")) ?? -1;
+    const jobLimitationIndex = input.limitations?.findIndex((item) => item.includes("Actions job-step metadata was collected")) ?? -1;
+
+    expect(maxActiveEnrichmentFetches).toBeGreaterThan(1);
+    expect(input.checks[0]?.summary).toContain("failure at src/app/api/analyze/route.test.ts:42");
+    expect(input.logs[0]?.text).toContain("pnpm test: failed");
+    expect(annotationLimitationIndex).toBeGreaterThanOrEqual(0);
+    expect(jobLimitationIndex).toBeGreaterThan(annotationLimitationIndex);
+    expect(JSON.stringify(input)).not.toContain("sk-should_not_leak");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/456/logs"))).toBe(false);
+  });
+
   it("does not fetch Actions job metadata when generic CI summaries only mention preview tests", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
