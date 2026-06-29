@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
-import { buildPullRequestInput, GitHubFetchError, parseGitHubPullUrl, type GitHubFetchFailureCode } from "@/lib/github";
+import {
+  buildPullRequestInput,
+  GITHUB_EVIDENCE_TIMING_PHASES,
+  GitHubFetchError,
+  parseGitHubPullUrl,
+  type GitHubEvidenceTimingPhase,
+  type GitHubEvidenceTimingSink,
+  type GitHubFetchFailureCode
+} from "@/lib/github";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { generateVerificationReport } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
@@ -19,14 +27,20 @@ const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation"] as c
 
 type AnalyzeTimingPhase = (typeof ANALYZE_TIMING_PHASES)[number];
 type AnalyzeTimingDurations = Partial<Record<AnalyzeTimingPhase, number>>;
+type GitHubEvidenceTimingDurations = Partial<Record<GitHubEvidenceTimingPhase, number>>;
 
 interface AnalyzeTiming {
   start: (phase: AnalyzeTimingPhase) => void;
   serverTiming: () => string;
 }
 
+interface GitHubEvidenceTiming extends GitHubEvidenceTimingSink {
+  header: () => string | null;
+}
+
 export async function POST(request: Request) {
   const timing = createAnalyzeTiming();
+  const evidenceTiming = createGitHubEvidenceTiming();
 
   try {
     const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -79,7 +93,7 @@ export async function POST(request: Request) {
     timing.start("evidence");
     const input = body.demoScenario
       ? demoScenarios[body.demoScenario]
-      : await buildPullRequestInput(body);
+      : await buildPullRequestInput(body, evidenceTiming);
 
     timing.start("report");
     const report = generateVerificationReport(input);
@@ -98,7 +112,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return jsonNoStore({ report }, 200, timing);
+    return jsonNoStore({ report }, 200, timing, evidenceTiming);
   } catch (error) {
     const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
     const guidance = analyzeFailureGuidance(error);
@@ -204,7 +218,12 @@ function githubFailureActions(code: GitHubFetchFailureCode, tokenProvided: boole
   }
 }
 
-function jsonNoStore(payload: unknown, status = 200, timing?: AnalyzeTiming) {
+function jsonNoStore(
+  payload: unknown,
+  status = 200,
+  timing?: AnalyzeTiming,
+  evidenceTiming?: GitHubEvidenceTiming
+) {
   const headers: Record<string, string> = {
     "Cache-Control": "private, no-store",
     "Referrer-Policy": "no-referrer"
@@ -216,10 +235,36 @@ function jsonNoStore(payload: unknown, status = 200, timing?: AnalyzeTiming) {
     headers["X-AgentProof-Timing"] = serverTiming;
   }
 
+  const evidenceTimingHeader = evidenceTiming?.header();
+  if (evidenceTimingHeader) {
+    headers["X-AgentProof-Evidence-Timing"] = evidenceTimingHeader;
+  }
+
   return NextResponse.json(payload, {
     status,
     headers
   });
+}
+
+function createGitHubEvidenceTiming(): GitHubEvidenceTiming {
+  const durations: GitHubEvidenceTimingDurations = {};
+
+  return {
+    record(phase, durationMs) {
+      if (!Number.isFinite(durationMs) || durationMs < 0) {
+        return;
+      }
+
+      durations[phase] = (durations[phase] ?? 0) + durationMs;
+    },
+    header() {
+      const entries = GITHUB_EVIDENCE_TIMING_PHASES
+        .filter((phase) => typeof durations[phase] === "number")
+        .map((phase) => `ap_${phase};dur=${formatDurationMs(durations[phase] ?? 0)}`);
+
+      return entries.length > 0 ? entries.join(", ") : null;
+    }
+  };
 }
 
 function createAnalyzeTiming(): AnalyzeTiming {

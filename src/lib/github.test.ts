@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildPullRequestInput, normalizeGitHubPullUrl, parseGitHubPullUrl } from "./github";
+import {
+  buildPullRequestInput,
+  GITHUB_EVIDENCE_TIMING_PHASES,
+  normalizeGitHubPullUrl,
+  parseGitHubPullUrl,
+  type GitHubEvidenceTimingPhase
+} from "./github";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -144,6 +150,84 @@ describe("buildPullRequestInput", () => {
 
     expect(input.title).toBe("Example PR");
     expect(firstFetchOptions?.headers?.Authorization).toBeUndefined();
+  });
+
+  it("records bounded GitHub evidence timing phases without source details", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          title: "Timed PR",
+          body: "Adds validation.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          user: { login: "ai-agent" },
+          base: { ref: "main" },
+          head: { ref: "agent/validation", sha: "abc123" }
+        })
+      )
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(Response.json({ total_count: 0, check_runs: [] }))
+      .mockResolvedValueOnce(Response.json({ statuses: [] }));
+    const records: Array<{ phase: GitHubEvidenceTimingPhase; durationMs: number }> = [];
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput(
+      {
+        prUrl: "https://github.com/acme/repo/pull/12",
+        githubToken: "github_pat_secret_should_not_leak",
+        taskText: "Acceptance criteria: add validation."
+      },
+      {
+        record(phase, durationMs) {
+          records.push({ phase, durationMs });
+        }
+      }
+    );
+
+    expect(input.title).toBe("Timed PR");
+    expect(records.map((item) => item.phase)).toEqual([...GITHUB_EVIDENCE_TIMING_PHASES]);
+    expect(records.every((item) => Number.isFinite(item.durationMs) && item.durationMs >= 0)).toBe(true);
+    expect(JSON.stringify(records)).not.toContain("github_pat_secret_should_not_leak");
+    expect(JSON.stringify(records)).not.toContain("acme/repo");
+    expect(JSON.stringify(records)).not.toContain("validation");
+  });
+
+  it("does not let GitHub evidence timing sink failures change evidence collection", async () => {
+    const successFetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          title: "Sink-safe PR",
+          body: "Adds validation.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          user: { login: "ai-agent" },
+          base: { ref: "main" },
+          head: { ref: "agent/validation", sha: "abc123" }
+        })
+      )
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(Response.json({ total_count: 0, check_runs: [] }))
+      .mockResolvedValueOnce(Response.json({ statuses: [] }));
+    const throwingSink = {
+      record() {
+        throw new Error("timing sink exploded");
+      }
+    };
+    vi.stubGlobal("fetch", successFetchMock);
+
+    await expect(
+      buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" }, throwingSink)
+    ).resolves.toEqual(expect.objectContaining({ title: "Sink-safe PR" }));
+
+    const failureFetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
+    vi.stubGlobal("fetch", failureFetchMock);
+
+    await expect(
+      buildPullRequestInput({ prUrl: "https://github.com/acme/private-repo/pull/99" }, throwingSink)
+    ).rejects.toThrow("not found or is not visible");
+    await expect(
+      buildPullRequestInput({ prUrl: "https://github.com/acme/private-repo/pull/99" }, throwingSink)
+    ).rejects.not.toThrow("timing sink exploded");
   });
 
   it("keeps pasted historical passing text as unknown status", async () => {

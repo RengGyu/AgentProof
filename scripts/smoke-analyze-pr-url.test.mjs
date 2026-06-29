@@ -5,6 +5,8 @@ import {
   failedCheckAnnotationLocations,
   passingExecutionEvidence,
   analyzeTimingFromResponse,
+  githubEvidenceTimingFromResponse,
+  parseGitHubEvidenceTimingHeader,
   parseAnalyzeTimingHeader,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
@@ -59,6 +61,14 @@ describe("smoke-analyze-pr-url", () => {
       report: 14,
       validation: 2,
       total: 139
+    });
+    expect(result.githubEvidenceTiming).toEqual({
+      github_pr: 20,
+      github_files: 40,
+      github_checks: 50,
+      github_statuses: 10,
+      github_annotations: 0,
+      github_jobs: 0
     });
     expect(fetchMock).toHaveBeenNthCalledWith(2, "https://agentproof.example/api/reports", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "https://agentproof.example/api/reports/saved_123");
@@ -184,6 +194,32 @@ describe("smoke-analyze-pr-url", () => {
 
     expect(() => analyzeTimingFromResponse(new Response("{}")))
       .toThrow("Analyze response did not include timing evidence");
+  });
+
+  it("parses partial GitHub evidence timing without requiring unavailable subphases", () => {
+    expect(parseGitHubEvidenceTimingHeader("ap_github_pr;dur=12, ap_github_files;dur=34, ap_github_checks;dur=56")).toEqual({
+      github_pr: 12,
+      github_files: 34,
+      github_checks: 56
+    });
+
+    expect(githubEvidenceTimingFromResponse(new Response("{}", {
+      headers: {
+        "x-agentproof-evidence-timing": "ap_github_pr;dur=12, ap_github_files;dur=34"
+      }
+    }))).toEqual({
+      github_pr: 12,
+      github_files: 34
+    });
+
+    expect(() => parseGitHubEvidenceTimingHeader("ap_github_pr;dur=12, ap_github_foo;dur=34"))
+      .toThrow("GitHub evidence timing header was malformed");
+    expect(() => parseGitHubEvidenceTimingHeader("ap_github_pr;dur=12;desc=src/private/file.ts?token=sk-secret"))
+      .toThrow("GitHub evidence timing header was malformed");
+    expect(() => parseGitHubEvidenceTimingHeader("ap_github_pr;dur=12, ap_github_pr;dur=34"))
+      .toThrow("GitHub evidence timing header contained duplicate phases");
+    expect(() => githubEvidenceTimingFromResponse(new Response("{}")))
+      .toThrow("Analyze response did not include GitHub evidence timing");
   });
 
   it("preserves analyze API errors when error responses have partial timing", async () => {
@@ -416,6 +452,7 @@ function jsonResponse(payload, status = 200) {
 
   if (payload && typeof payload === "object" && Object.keys(payload).length === 1 && payload.report) {
     headers["x-agentproof-timing"] = "ap_input;dur=3, ap_evidence;dur=120, ap_report;dur=14, ap_validation;dur=2, ap_total;dur=139";
+    headers["x-agentproof-evidence-timing"] = "ap_github_pr;dur=20, ap_github_files;dur=40, ap_github_checks;dur=50, ap_github_statuses;dur=10, ap_github_annotations;dur=0, ap_github_jobs;dur=0";
   }
 
   return new Response(JSON.stringify(payload), {
