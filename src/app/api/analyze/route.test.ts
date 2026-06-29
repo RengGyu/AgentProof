@@ -546,6 +546,90 @@ describe("POST /api/analyze", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
   });
 
+  it("returns a valid report with limitations when check-run evidence times out but legacy status remains", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/89")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Keep legacy status fallback",
+            body: "Added regression coverage.",
+            url: "https://api.github.com/repos/acme/app/pulls/89",
+            user: { login: "coding-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/check-runs-timeout", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([
+          {
+            filename: "src/features/auth/reset.test.ts",
+            additions: 8,
+            deletions: 0,
+            status: "modified",
+            patch: "+ it('rejects expired reset links', () => {})"
+          }
+        ]));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.reject(new Error("timed out with token=github_pat_secret_should_not_leak"));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({
+          statuses: [
+            {
+              context: "legacy unit tests",
+              state: "success",
+              description: "legacy unit tests passed"
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/app/pull/89",
+          githubToken: "github_pat_secret_should_not_leak",
+          taskText: "Acceptance criteria: add regression coverage."
+        })
+      })
+    );
+    const json = await response.json() as { report: VerificationReport };
+    const serialized = JSON.stringify(json);
+    const githubEvidenceTiming = expectGitHubEvidenceTiming(response, [
+      "github_pr",
+      "github_files",
+      "github_checks",
+      "github_statuses",
+      "github_annotations",
+      "github_jobs"
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(json.report.testing.ciStatus).toBe("passed");
+    expect(json.report.summary.confidence).toBeLessThanOrEqual(0.85);
+    expect(json.report.limitations.join(" ")).toContain("GitHub check-run evidence unavailable: request timed out after 5000 ms or network failed.");
+    expect(json.report.evidenceIndex.some((item) =>
+      item.kind === "check" &&
+      item.label === "legacy unit tests" &&
+      item.summary.includes("Status: passed")
+    )).toBe(true);
+    expect(githubEvidenceTiming).toMatch(/^ap_github_(pr|files|checks|statuses|annotations|jobs);dur=\d+/);
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
+    expect(serialized).not.toContain("timed out with token");
+  });
+
   it("returns a full-valid fallback report when live GitHub evidence is rate-limited", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response("rate limited", {
