@@ -6,6 +6,8 @@ const allowProductionGithubToken = process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHU
 const ALLOWED_SAVED_REPORT_DURABILITY = new Set(["short-lived-in-memory", "summary-only-supabase"]);
 const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation", "total"];
 const ANALYZE_TIMING_PATTERN = /^ap_(input|evidence|report|validation|total);dur=(\d+)$/;
+const GITHUB_EVIDENCE_TIMING_PHASES = ["github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"];
+const GITHUB_EVIDENCE_TIMING_PATTERN = /^ap_(github_pr|github_files|github_checks|github_statuses|github_annotations|github_jobs);dur=(\d+)$/;
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -41,6 +43,7 @@ export async function runAnalyzePrSmoke({
   }
 
   const analyzeTiming = analyzeTimingFromResponse(response);
+  const githubEvidenceTiming = githubEvidenceTimingFromResponse(response);
   const report = payload.report;
   const executionEvidence = passingExecutionEvidence(report);
   const failedCheckLocations = failedCheckAnnotationLocations(report);
@@ -69,6 +72,7 @@ export async function runAnalyzePrSmoke({
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
     analyzeTiming,
+    githubEvidenceTiming,
     expectationCheckCount: expectationResult.checks.length,
     expectationChecks: expectationResult.checks,
     failedCheckLocationCount: failedCheckLocations.length,
@@ -104,33 +108,81 @@ export function analyzeTimingFromResponse(response) {
 }
 
 export function parseAnalyzeTimingHeader(header) {
+  return parseTimingHeader({
+    header,
+    phases: ANALYZE_TIMING_PHASES,
+    pattern: ANALYZE_TIMING_PATTERN,
+    malformedMessage: "Analyze timing header was malformed.",
+    duplicateMessage: "Analyze timing header contained duplicate phases.",
+    missingMessage: "Analyze timing header was missing a required phase."
+  });
+}
+
+export function githubEvidenceTimingFromResponse(response) {
+  const header = response.headers.get("x-agentproof-evidence-timing");
+  if (!header) {
+    throw smokeError("Analyze response did not include GitHub evidence timing.");
+  }
+
+  return parseGitHubEvidenceTimingHeader(header);
+}
+
+export function parseGitHubEvidenceTimingHeader(header) {
+  return parseTimingHeader({
+    header,
+    phases: GITHUB_EVIDENCE_TIMING_PHASES,
+    pattern: GITHUB_EVIDENCE_TIMING_PATTERN,
+    malformedMessage: "GitHub evidence timing header was malformed.",
+    duplicateMessage: "GitHub evidence timing header contained duplicate phases.",
+    missingMessage: "GitHub evidence timing header was missing a required phase.",
+    allowMissingPhases: true
+  });
+}
+
+function parseTimingHeader({
+  header,
+  phases,
+  pattern,
+  malformedMessage,
+  duplicateMessage,
+  missingMessage,
+  allowMissingPhases = false
+}) {
   const timing = {};
   const entries = String(header)
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-  if (entries.length !== ANALYZE_TIMING_PHASES.length) {
-    throw smokeError("Analyze timing header was malformed.");
+  if (entries.length === 0 || entries.length > phases.length || (!allowMissingPhases && entries.length !== phases.length)) {
+    throw smokeError(malformedMessage);
   }
 
   for (const entry of entries) {
-    const match = entry.match(ANALYZE_TIMING_PATTERN);
+    const match = entry.match(pattern);
     if (!match) {
-      throw smokeError("Analyze timing header was malformed.");
+      throw smokeError(malformedMessage);
     }
 
     const [, phase, value] = match;
     if (Object.prototype.hasOwnProperty.call(timing, phase)) {
-      throw smokeError("Analyze timing header contained duplicate phases.");
+      throw smokeError(duplicateMessage);
     }
 
     timing[phase] = Number(value);
   }
 
-  for (const phase of ANALYZE_TIMING_PHASES) {
+  for (const phase of Object.keys(timing)) {
     if (!Number.isSafeInteger(timing[phase]) || timing[phase] < 0) {
-      throw smokeError("Analyze timing header was missing a required phase.");
+      throw smokeError(missingMessage);
+    }
+  }
+
+  if (!allowMissingPhases) {
+    for (const phase of phases) {
+      if (!Number.isSafeInteger(timing[phase]) || timing[phase] < 0) {
+        throw smokeError(missingMessage);
+      }
     }
   }
 

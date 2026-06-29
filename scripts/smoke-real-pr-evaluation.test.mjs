@@ -3,7 +3,8 @@ import {
   DEFAULT_REAL_PR_EVALUATION_CASES,
   runRealPrEvaluationSmoke,
   safeSmokePrUrl,
-  summarizeAnalyzeTimings
+  summarizeAnalyzeTimings,
+  summarizeGitHubEvidenceTimings
 } from "./smoke-real-pr-evaluation.mjs";
 
 describe("smoke-real-pr-evaluation", () => {
@@ -68,6 +69,19 @@ describe("smoke-real-pr-evaluation", () => {
         total: { count: 6, missingCount: 0, p50: 85, p95: 160, max: 160 }
       }
     });
+    expect(result.githubEvidenceTimingSummary).toEqual({
+      metric: "X-AgentProof-Evidence-Timing",
+      unit: "ms",
+      method: "nearest-rank",
+      phases: {
+        github_pr: { count: 6, missingCount: 0, p50: 15, p95: 30, max: 30 },
+        github_files: { count: 6, missingCount: 0, p50: 21, p95: 42, max: 42 },
+        github_checks: { count: 6, missingCount: 0, p50: 27, p95: 54, max: 54 },
+        github_statuses: { count: 6, missingCount: 0, p50: 9, p95: 18, max: 18 },
+        github_annotations: { count: 6, missingCount: 0, p50: 2, p95: 5, max: 5 },
+        github_jobs: { count: 6, missingCount: 0, p50: 12, p95: 24, max: 24 }
+      }
+    });
     expect(result.results.map((item) => item.id)).toEqual(["PR-1", "PR-2", "PR-3", "PR-9", "PR-12", "PR-15"]);
     for (const [index, item] of result.results.entries()) {
       expect(item).toEqual(expect.objectContaining({
@@ -83,6 +97,7 @@ describe("smoke-real-pr-evaluation", () => {
         productionTokenForwarded: false
       }));
       expect(item.analyzeTiming).toEqual(timingForIndex(index));
+      expect(item.githubEvidenceTiming).toEqual(githubEvidenceTimingForIndex(index));
       expect(item.expectationCheckCount).toBeGreaterThan(0);
     }
     expect(result.results.find((item) => item.id === "PR-15")).toEqual(expect.objectContaining({
@@ -118,6 +133,37 @@ describe("smoke-real-pr-evaluation", () => {
         report: { count: 2, missingCount: 1, p50: 4, p95: 10, max: 10 },
         validation: { count: 2, missingCount: 1, p50: 1, p95: 2, max: 2 },
         total: { count: 2, missingCount: 1, p50: 27, p95: 80, max: 80 }
+      }
+    });
+    expect(JSON.stringify(summary)).not.toContain("github_pat_secret_should_not_leak");
+    expect(JSON.stringify(summary)).not.toContain("sk-secret");
+    expect(JSON.stringify(summary)).not.toContain("secret task text");
+    expect(JSON.stringify(summary)).not.toContain("private-case");
+  });
+
+  it("summarizes missing GitHub evidence timing without leaking case details", () => {
+    const summary = summarizeGitHubEvidenceTimings([
+      {
+        id: "private-case",
+        prUrl: "https://user:github_pat_secret_should_not_leak@github.com/org/private/pull/1?token=sk-secret",
+        taskText: "Acceptance criteria: secret task text",
+        githubEvidenceTiming: { github_pr: 2, github_files: 20, github_checks: 4, github_statuses: 1 }
+      },
+      { prUrl: "https://github.com/org/private/pull/2", githubEvidenceTiming: { github_pr: 8, github_files: 60, github_checks: 10, github_statuses: 2, github_jobs: 12 } },
+      {}
+    ]);
+
+    expect(summary).toEqual({
+      metric: "X-AgentProof-Evidence-Timing",
+      unit: "ms",
+      method: "nearest-rank",
+      phases: {
+        github_pr: { count: 2, missingCount: 1, p50: 2, p95: 8, max: 8 },
+        github_files: { count: 2, missingCount: 1, p50: 20, p95: 60, max: 60 },
+        github_checks: { count: 2, missingCount: 1, p50: 4, p95: 10, max: 10 },
+        github_statuses: { count: 2, missingCount: 1, p50: 1, p95: 2, max: 2 },
+        github_annotations: { count: 0, missingCount: 3, p50: null, p95: null, max: null },
+        github_jobs: { count: 1, missingCount: 2, p50: 12, p95: 12, max: 12 }
       }
     });
     expect(JSON.stringify(summary)).not.toContain("github_pat_secret_should_not_leak");
@@ -192,6 +238,7 @@ function jsonResponse(payload, status = 200) {
     const pullNumber = Number(String(payload.report.source?.url ?? "").match(/\/pull\/(\d+)$/)?.[1] ?? 1);
     const index = [1, 2, 3, 9, 12, 15].indexOf(pullNumber);
     headers["x-agentproof-timing"] = timingHeaderForIndex(index < 0 ? 0 : index);
+    headers["x-agentproof-evidence-timing"] = githubEvidenceTimingHeaderForIndex(index < 0 ? 0 : index);
   }
 
   return new Response(JSON.stringify(payload), {
@@ -214,6 +261,23 @@ function timingHeaderForIndex(index) {
   const timing = timingForIndex(index);
 
   return `ap_input;dur=${timing.input}, ap_evidence;dur=${timing.evidence}, ap_report;dur=${timing.report}, ap_validation;dur=${timing.validation}, ap_total;dur=${timing.total}`;
+}
+
+function githubEvidenceTimingForIndex(index) {
+  return {
+    github_pr: (index + 1) * 5,
+    github_files: (index + 1) * 7,
+    github_checks: (index + 1) * 9,
+    github_statuses: (index + 1) * 3,
+    github_annotations: index,
+    github_jobs: (index + 1) * 4
+  };
+}
+
+function githubEvidenceTimingHeaderForIndex(index) {
+  const timing = githubEvidenceTimingForIndex(index);
+
+  return `ap_github_pr;dur=${timing.github_pr}, ap_github_files;dur=${timing.github_files}, ap_github_checks;dur=${timing.github_checks}, ap_github_statuses;dur=${timing.github_statuses}, ap_github_annotations;dur=${timing.github_annotations}, ap_github_jobs;dur=${timing.github_jobs}`;
 }
 
 function reportFixture(prUrl) {

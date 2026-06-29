@@ -14,9 +14,23 @@ const GITHUB_MAX_ACTION_STEPS_PER_JOB = 8;
 const GITHUB_MAX_ANNOTATED_CHECK_RUNS = 3;
 const GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL = 20;
 const GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN = 10;
+export const GITHUB_EVIDENCE_TIMING_PHASES = [
+  "github_pr",
+  "github_files",
+  "github_checks",
+  "github_statuses",
+  "github_annotations",
+  "github_jobs"
+] as const;
 const NON_PROOF_ACTION_STEP_PATTERN =
   /\b(checkout|setup|cache|install dependencies|upload|download|artifact|publish|preview|deploy|deployment|report|notify)\b/i;
 const GENERIC_ACTION_JOB_NAME_PATTERN = /^\s*(ci|checks?|workflow|github actions)\s*$/i;
+
+export type GitHubEvidenceTimingPhase = (typeof GITHUB_EVIDENCE_TIMING_PHASES)[number];
+
+export interface GitHubEvidenceTimingSink {
+  record: (phase: GitHubEvidenceTimingPhase, durationMs: number) => void;
+}
 
 export type GitHubFetchFailureCode =
   | "github_rate_limited"
@@ -155,14 +169,17 @@ export function normalizeGitHubPullUrl(url: string): string | null {
   return `https://github.com/${parsed.owner}/${parsed.repo}/pull/${parsed.number}`;
 }
 
-export async function buildPullRequestInput(request: AnalyzeRequest): Promise<PullRequestInput> {
+export async function buildPullRequestInput(
+  request: AnalyzeRequest,
+  evidenceTiming?: GitHubEvidenceTimingSink
+): Promise<PullRequestInput> {
   if (request.prUrl) {
     if (!parseGitHubPullUrl(request.prUrl)) {
       throw new Error("PR URL must be a GitHub pull request URL, for example https://github.com/org/repo/pull/123.");
     }
 
     try {
-      const live = await buildGitHubPullRequestInput(request.prUrl, request.githubToken, request.taskText ?? "");
+      const live = await buildGitHubPullRequestInput(request.prUrl, request.githubToken, request.taskText ?? "", evidenceTiming);
 
       if (live) {
         return mergePastedOverrides(live, request);
@@ -184,9 +201,10 @@ export async function buildPullRequestInput(request: AnalyzeRequest): Promise<Pu
 export async function buildGitHubPullRequestInput(
   prUrl: string,
   token: string | undefined,
-  taskText = ""
+  taskText = "",
+  evidenceTiming?: GitHubEvidenceTimingSink
 ): Promise<PullRequestInput | null> {
-  return fetchGitHubPullRequest(prUrl, token, taskText);
+  return fetchGitHubPullRequest(prUrl, token, taskText, evidenceTiming);
 }
 
 function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: string[] = []): PullRequestInput {
@@ -207,7 +225,8 @@ function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: 
 async function fetchGitHubPullRequest(
   prUrl: string,
   token: string | undefined,
-  taskText: string
+  taskText: string,
+  evidenceTiming?: GitHubEvidenceTimingSink
 ): Promise<PullRequestInput | null> {
   const parsed = parseGitHubPullUrl(prUrl);
 
@@ -230,9 +249,13 @@ async function fetchGitHubPullRequest(
   let prResponse: Response;
 
   try {
-    prResponse = await githubFetch(
-      `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
-      headers
+    prResponse = await measureGitHubEvidenceTiming(
+      evidenceTiming,
+      "github_pr",
+      () => githubFetch(
+        `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
+        headers
+      )
     );
   } catch {
     throw new GitHubFetchError(
@@ -251,15 +274,35 @@ async function fetchGitHubPullRequest(
   const pr = await prResponse.json();
   const limitations: string[] = [];
   const [files, checkRuns, statuses] = await Promise.all([
-    fetchPullFiles(pr.url + "/files", headers, limitations, hasToken),
-    fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, hasToken),
-    fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, hasToken)
+    measureGitHubEvidenceTiming(
+      evidenceTiming,
+      "github_files",
+      () => fetchPullFiles(pr.url + "/files", headers, limitations, hasToken)
+    ),
+    measureGitHubEvidenceTiming(
+      evidenceTiming,
+      "github_checks",
+      () => fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, hasToken)
+    ),
+    measureGitHubEvidenceTiming(
+      evidenceTiming,
+      "github_statuses",
+      () => fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, hasToken)
+    )
   ]);
   const annotationLimitations: string[] = [];
   const actionJobLimitations: string[] = [];
   const [annotatedCheckRuns, actionJobLogs] = await Promise.all([
-    fetchCheckRunAnnotations(parsed.owner, parsed.repo, checkRuns, headers, annotationLimitations, hasToken),
-    fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, actionJobLimitations, hasToken)
+    measureGitHubEvidenceTiming(
+      evidenceTiming,
+      "github_annotations",
+      () => fetchCheckRunAnnotations(parsed.owner, parsed.repo, checkRuns, headers, annotationLimitations, hasToken)
+    ),
+    measureGitHubEvidenceTiming(
+      evidenceTiming,
+      "github_jobs",
+      () => fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, actionJobLimitations, hasToken)
+    )
   ]);
 
   limitations.push(...annotationLimitations, ...actionJobLimitations);
@@ -300,6 +343,28 @@ async function fetchGitHubPullRequest(
     logs: actionJobLogs,
     limitations
   };
+}
+
+async function measureGitHubEvidenceTiming<T>(
+  evidenceTiming: GitHubEvidenceTimingSink | undefined,
+  phase: GitHubEvidenceTimingPhase,
+  operation: () => Promise<T>
+): Promise<T> {
+  const startedAt = nowMs();
+
+  try {
+    return await operation();
+  } finally {
+    try {
+      evidenceTiming?.record(phase, Math.max(0, nowMs() - startedAt));
+    } catch {
+      // Timing is diagnostic only; it must never change GitHub evidence collection.
+    }
+  }
+}
+
+function nowMs(): number {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
 function githubFallbackLimitation(error: unknown): string {

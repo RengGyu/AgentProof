@@ -26,6 +26,27 @@ function expectServerTiming(response: Response, phases: string[]) {
   return header;
 }
 
+function expectGitHubEvidenceTiming(response: Response, phases: string[]) {
+  const header = response.headers.get("X-AgentProof-Evidence-Timing") ?? "";
+  const metrics = header.split(",").map((item) => item.trim()).filter(Boolean);
+  const metricNames = metrics.map((item) => item.split(";")[0]);
+
+  expect(header).not.toBe("");
+
+  for (const phase of phases) {
+    expect(header).toMatch(new RegExp(`\\bap_${phase};dur=\\d+\\b`));
+  }
+
+  expect(metricNames).toEqual(phases.map((phase) => `ap_${phase}`));
+  expect(metrics.every((item) => /^ap_github_(pr|files|checks|statuses|annotations|jobs);dur=\d+$/.test(item))).toBe(true);
+
+  return header;
+}
+
+function expectNoGitHubEvidenceTiming(response: Response) {
+  expect(response.headers.get("X-AgentProof-Evidence-Timing")).toBeNull();
+}
+
 describe("POST /api/analyze", () => {
   it("rejects invalid PR URLs before producing a report", async () => {
     const response = await POST(
@@ -40,6 +61,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(400);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expectServerTiming(response, ["input"]);
+    expectNoGitHubEvidenceTiming(response);
     expect(json.error).toContain("GitHub pull request URL");
   });
 
@@ -64,6 +86,7 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(200);
     expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expectNoGitHubEvidenceTiming(response);
     expect(json).not.toHaveProperty("timing");
     expect(serverTiming).not.toContain(token);
     expect(serverTiming).not.toContain("summary-only reports");
@@ -84,6 +107,7 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(400);
     expect(json.error).toBe("Request body must be valid JSON.");
+    expectNoGitHubEvidenceTiming(response);
     expect(serverTiming).not.toContain("ghp_secret_should_not_leak");
     expect(JSON.stringify(json)).not.toContain(rawBody);
   });
@@ -100,6 +124,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(413);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expectServerTiming(response, ["input"]);
+    expectNoGitHubEvidenceTiming(response);
   });
 
   it("does not leak token-like values from GitHub network errors", async () => {
@@ -115,6 +140,7 @@ describe("POST /api/analyze", () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
+    expectNoGitHubEvidenceTiming(response);
     expect(JSON.stringify(json)).not.toContain("github_pat_1234567890abcdef1234567890");
     expect(JSON.stringify(json)).not.toContain("upstream failed");
     expect(json.category).toBe("github_unavailable");
@@ -134,6 +160,7 @@ describe("POST /api/analyze", () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
+    expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
     expect(json.error).toContain("private or require a fine-grained token");
     expect(json.guidance).toEqual(expect.arrayContaining([
@@ -159,6 +186,7 @@ describe("POST /api/analyze", () => {
     const serialized = JSON.stringify(json);
 
     expect(response.status).toBe(400);
+    expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
     expect(json.guidance).toEqual(expect.arrayContaining([
       expect.stringContaining("pull request, contents, checks, statuses, and Actions metadata read access")
@@ -180,6 +208,7 @@ describe("POST /api/analyze", () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
+    expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
     expect(json.guidance).toEqual(expect.arrayContaining([
       expect.stringContaining("publicly visible")
@@ -203,6 +232,7 @@ describe("POST /api/analyze", () => {
     const serialized = JSON.stringify(json);
 
     expect(response.status).toBe(400);
+    expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
     expect(json.guidance).toEqual(expect.arrayContaining([
       expect.stringContaining("provided GitHub token")
@@ -231,6 +261,7 @@ describe("POST /api/analyze", () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
+    expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_rate_limit");
     expect(json.guidance).toEqual(expect.arrayContaining([
       expect.stringContaining("rate limit to reset")
@@ -310,6 +341,14 @@ describe("POST /api/analyze", () => {
     );
     const json = await response.json() as { report: VerificationReport };
     const serialized = JSON.stringify(json);
+    const githubEvidenceTiming = expectGitHubEvidenceTiming(response, [
+      "github_pr",
+      "github_files",
+      "github_checks",
+      "github_statuses",
+      "github_annotations",
+      "github_jobs"
+    ]);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
@@ -321,6 +360,9 @@ describe("POST /api/analyze", () => {
     expect(json.report.limitations.join(" ")).toContain("No CI or test logs were available");
     expect(json.report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
     expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
+    expect(githubEvidenceTiming).not.toContain("github_pat_secret_should_not_leak_1234567890");
+    expect(githubEvidenceTiming).not.toContain("acme/app");
+    expect(githubEvidenceTiming).not.toContain("reset.ts");
   });
 
   it("does not treat non-execution GitHub checks as passed CI", async () => {
@@ -441,6 +483,7 @@ describe("POST /api/analyze", () => {
     );
     const json = await response.json() as { report: VerificationReport };
     const serialized = JSON.stringify(json);
+    const githubEvidenceTiming = expectGitHubEvidenceTiming(response, ["github_pr"]);
 
     expect(response.status).toBe(200);
     expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
@@ -448,6 +491,8 @@ describe("POST /api/analyze", () => {
     expect(json.report.limitations.join(" ")).toContain("pasted evidence only");
     expect(json.report.evidenceIndex.some((item) => item.kind === "check" && item.summary.includes("passed"))).toBe(true);
     expect(serialized).not.toContain("ghp_secret_should_not_leak_1234567890");
+    expect(githubEvidenceTiming).not.toContain("ghp_secret_should_not_leak_1234567890");
+    expect(githubEvidenceTiming).not.toContain("private-app");
   });
 
   it("caps large GitHub PR evidence before full report validation", async () => {

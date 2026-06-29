@@ -4,6 +4,7 @@ const DEFAULT_BASE_URL = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "https://agen
 const EXPLICIT_GITHUB_TOKEN = process.env.AGENTPROOF_REAL_PR_SMOKE_GITHUB_TOKEN;
 const ALLOW_PRODUCTION_GITHUB_TOKEN = process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1";
 const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation", "total"];
+const GITHUB_EVIDENCE_TIMING_PHASES = ["github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"];
 
 export const DEFAULT_REAL_PR_EVALUATION_CASES = [
   {
@@ -107,6 +108,7 @@ export async function runRealPrEvaluationSmoke({
       evidenceCount: result.evidenceCount,
       limitationCount: result.limitationCount,
       analyzeTiming: result.analyzeTiming,
+      githubEvidenceTiming: result.githubEvidenceTiming,
       expectationCheckCount: result.expectationCheckCount,
       expectationChecks: result.expectationChecks,
       failedCheckLocationCount: result.failedCheckLocationCount,
@@ -128,6 +130,7 @@ export async function runRealPrEvaluationSmoke({
     baseUrl,
     caseCount: results.length,
     timingSummary: summarizeAnalyzeTimings(results),
+    githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings(results),
     results
   };
 }
@@ -152,11 +155,29 @@ export function safeSmokePrUrl(value) {
 }
 
 export function summarizeAnalyzeTimings(results) {
+  return summarizeTimingPhases({
+    results,
+    source: "analyzeTiming",
+    phases: ANALYZE_TIMING_PHASES,
+    metric: "X-AgentProof-Timing"
+  });
+}
+
+export function summarizeGitHubEvidenceTimings(results) {
+  return summarizeTimingPhases({
+    results,
+    source: "githubEvidenceTiming",
+    phases: GITHUB_EVIDENCE_TIMING_PHASES,
+    metric: "X-AgentProof-Evidence-Timing"
+  });
+}
+
+function summarizeTimingPhases({ results, source, phases: phaseNames, metric }) {
   const phases = {};
 
-  for (const phase of ANALYZE_TIMING_PHASES) {
+  for (const phase of phaseNames) {
     const values = results
-      .map((result) => result.analyzeTiming?.[phase])
+      .map((result) => result[source]?.[phase])
       .filter((value) => Number.isSafeInteger(value) && value >= 0)
       .sort((a, b) => a - b);
 
@@ -170,7 +191,7 @@ export function summarizeAnalyzeTimings(results) {
   }
 
   return {
-    metric: "X-AgentProof-Timing",
+    metric,
     unit: "ms",
     method: "nearest-rank",
     phases
