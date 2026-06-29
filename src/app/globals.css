@@ -979,7 +979,10 @@ code {
   gap: 5px;
 }
 
-.error {
+.intake-error {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
   margin-top: 12px;
   padding: 10px 12px;
   border: 1px solid rgba(162, 59, 42, 0.32);
@@ -987,6 +990,31 @@ code {
   background: rgba(162, 59, 42, 0.08);
   color: var(--danger);
   line-height: 1.35;
+}
+
+.intake-error svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.intake-error-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.intake-error-body strong,
+.intake-error-body span {
+  overflow-wrap: anywhere;
+}
+
+.intake-error-body strong {
+  font-size: 13px;
+}
+
+.intake-error-body span {
+  color: #7a271a;
+  font-size: 12px;
 }
 
 .priority-low,

@@ -112,12 +112,15 @@ Completed MVP work:
 - Expanded README with a concise "Why not an AI code reviewer?" section.
 - Kept market validation as an internal summary until public source URLs are re-verified.
 - Added a deployment smoke-test checklist for `/`, `/integrations`, demo analysis, saved reports, live integrations, and GitHub comment smoke in `docs/deployment-smoke.md`.
+- Added token-gated GitHub App operator diagnostics with bounded readiness categories and no exposure of env values, repository names, table names, tokens, payloads, diffs, or logs.
+- Added durable GitHub App webhook duplicate suppression and a bounded production persistence check for controlled automation.
 
 Launch polish still available:
 
 - Add a short demo GIF or video after final UI copy stabilizes.
 - Add public URL-backed market validation citations.
-- Add richer non-secret integration readiness status without exposing env values.
+- Improve private-repo and token-permission guidance when live GitHub PR evidence cannot be collected.
+- Keep operator diagnostics and live-smoke runbooks current as integration settings change.
 
 Completion criteria:
 
