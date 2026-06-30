@@ -50,8 +50,11 @@ For frozen portfolio artifacts, see `docs/example-reports.md`. For the MVP compl
 ```bash
 pnpm test
 pnpm typecheck
+pnpm eval:sentinels
 pnpm build
 ```
+
+`pnpm eval:sentinels` is a deterministic reviewer-signal guard, not a product score. It checks that documented demo reports still expose scope creep, missing tests, failed execution, vague-task uncertainty, visual-proof gaps, summary-only privacy, and useful re-prompt leads.
 
 ## Production Smoke
 

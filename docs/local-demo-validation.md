@@ -7,11 +7,12 @@ This checklist verifies AgentProof without GitHub tokens, OpenAI keys, Slack web
 ```bash
 CI=true corepack pnpm test
 CI=true corepack pnpm typecheck
+CI=true corepack pnpm eval:sentinels
 CI=true corepack pnpm eval:summary:fixture:strict
 CI=true corepack pnpm build
 ```
 
-These commands prove local code quality, report schema stability, summary-only privacy, and the committed evaluation fixture. They do not prove live GitHub permissions, private repository access, Slack delivery, OpenAI output quality, or Supabase durability.
+These commands prove local code quality, report schema stability, reviewer-signal sentinels, summary-only privacy, and the committed evaluation fixture. They do not prove live GitHub permissions, private repository access, Slack delivery, OpenAI output quality, or Supabase durability.
 
 ## Demo Scenarios
 
@@ -22,6 +23,19 @@ These commands prove local code quality, report schema stability, summary-only p
 | `missing-tests` | Behavior files without targeted test proof | Missing-test findings cite the file and supporting evidence gap. |
 | `failed-ci` | Blocker priority | Failed test/build execution prevents overconfident requirement satisfaction. |
 | `vague-task` | Unclear requirement coverage | Vague tasks stay low-confidence instead of being treated as verified. |
+
+## Reviewer-Signal Sentinels
+
+`pnpm eval:sentinels` is a deterministic sentinel suite, not a score. A sentinel is a guard test that fails when a documented reviewer handoff signal disappears.
+
+It checks that the demo reports keep these 30-second reviewer signals visible:
+
+- scope-creep paths appear in scope findings, review priority, provenance, and the re-prompt
+- missing-test paths appear in missing-test findings, review priority, provenance, and the re-prompt
+- failed execution stays blocker-level and prevents `met` requirement statuses
+- vague tasks remain `unclear` and ask for explicit acceptance criteria
+- visual/mobile UX requirements are not marked `met` without browser, screenshot, or visual QA proof
+- summary-only reports omit raw evidence, claims, provenance, evidence refs, and raw re-prompt text
 
 ## Finding Provenance
 

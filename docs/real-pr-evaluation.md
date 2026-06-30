@@ -53,7 +53,9 @@ Strict gate:
 - The real PR smoke also emits a deterministic `qualityGate`: requirement findings must exist, every `met` requirement must cite passing execution evidence, reviewer leads must keep evidence references and full-report provenance, and reports must avoid merge-decision wording.
 - Summary-only saved/shared surfaces must omit raw evidence, claims, raw re-prompt, and patch/log excerpts.
 
-The `qualityGate` is not a product score. It is a regression guard for report trust boundaries. A separate reviewer-signal sentinel suite should cover expected top risks, missing-test paths, scope paths, and re-prompt usefulness before treating the verifier as launch-grade.
+The `qualityGate` is not a product score. It is a regression guard for report trust boundaries.
+
+`pnpm eval:sentinels` covers a separate reviewer-signal sentinel suite. Sentinel means a guard test that fails when a documented reviewer handoff signal disappears. The suite checks expected top risks, missing-test paths, scope paths, failed execution handling, vague-task uncertainty, visual-proof gaps, summary-only privacy, and deterministic re-prompt usefulness.
 
 ## PR Results
 
