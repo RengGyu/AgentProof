@@ -57,6 +57,8 @@ pnpm build
 
 Use the manual GitHub Actions workflow `AgentProof Production Smoke` after a production deployment or integration change. It checks public pages, confirms `GET /api/analyze` still fails closed, and runs the real public PR regression set against the deployed app.
 
+The smoke includes a deterministic `qualityGate` for report trust boundaries: requirement findings exist, `met` findings cite passing execution evidence, reviewer leads keep provenance, summary-only storage stays summary-only, and the report avoids merge-decision wording. This is not a product score; it is a regression guard for the evidence report contract.
+
 The default workflow inputs enforce loose p95 (95th percentile) budgets: total response `3000ms`, evidence collection `2500ms`, and GitHub check/status/job phases `1500ms`. These budgets are guardrails, not product promises. If one manual run fails during a GitHub or Vercel blip, rerun once; repeated failures should be treated as an evidence-collection regression.
 
 This workflow does not require secrets and should not receive tokens in the `base_url` input. For local or one-off terminal checks, use:

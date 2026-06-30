@@ -123,7 +123,8 @@ export async function runRealPrEvaluationSmoke({
       savedRepromptOmitted: result.savedRepromptOmitted,
       savedEvidenceRefsCleared: result.savedEvidenceRefsCleared,
       savedReportDeleted: result.savedReportDeleted,
-      savedReportDeleteWarning: result.savedReportDeleteWarning
+      savedReportDeleteWarning: result.savedReportDeleteWarning,
+      qualityGate: result.qualityGate
     });
   }
 
@@ -131,6 +132,7 @@ export async function runRealPrEvaluationSmoke({
     ok: true,
     baseUrl,
     caseCount: results.length,
+    qualityGateSummary: summarizeQualityGates(results),
     timingSummary: summarizeAnalyzeTimings(results),
     githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings(results),
     results
@@ -190,6 +192,40 @@ export function summarizeGitHubEvidenceTimings(results) {
     phases: GITHUB_EVIDENCE_TIMING_PHASES,
     metric: "X-AgentProof-Evidence-Timing"
   });
+}
+
+export function summarizeQualityGates(results) {
+  const byId = new Map();
+
+  for (const result of results) {
+    for (const check of result.qualityGate?.checks ?? []) {
+      const existing = byId.get(check.id);
+
+      if (existing) {
+        existing.count += 1;
+        if (!check.ok) {
+          existing.failedCount += 1;
+        }
+      } else {
+        byId.set(check.id, {
+          id: check.id,
+          label: check.label,
+          count: 1,
+          failedCount: check.ok ? 0 : 1
+        });
+      }
+    }
+  }
+
+  const checks = Array.from(byId.values()).sort((left, right) =>
+    right.failedCount - left.failedCount ||
+    left.id.localeCompare(right.id)
+  );
+
+  return {
+    ok: checks.every((check) => check.failedCount === 0),
+    checks
+  };
 }
 
 export function performanceBudgetFromEnv(env) {

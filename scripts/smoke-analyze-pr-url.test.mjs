@@ -509,7 +509,16 @@ function reportFixture() {
         {
           path: "src/billing/invoiceExport.ts",
           why: "No passing test command was provided.",
-          evidenceRefs: ["ev_1", "ev_2"]
+          evidenceRefs: ["ev_1", "ev_2"],
+          provenance: [
+            {
+              evidenceRef: "ev_1",
+              sourceType: "diff",
+              locator: "src/billing/invoiceExport.ts",
+              confidence: 0.8,
+              evidenceText: "src/billing/invoiceExport.ts changed without a passing related test command."
+            }
+          ]
         }
       ]
     },
@@ -560,7 +569,7 @@ function summaryOnlyReportFixture(fullReport) {
     },
     testing: {
       ...fullReport.testing,
-      missingTests: fullReport.testing.missingTests.map((missingTest) => ({
+      missingTests: fullReport.testing.missingTests.map(({ provenance: _provenance, ...missingTest }) => ({
         ...missingTest,
         evidenceRefs: []
       }))

@@ -50,7 +50,10 @@ Strict gate:
 - Full reports must pass `validateVerificationReport(report, { mode: "full" })`.
 - Evidence references must point to existing evidence IDs or the report must state the gap.
 - Passing CI must come from test/build/CI execution evidence, not preview, security, code-owner, policy, deployment, or AI-review gates.
+- The real PR smoke also emits a deterministic `qualityGate`: requirement findings must exist, every `met` requirement must cite passing execution evidence, reviewer leads must keep evidence references and full-report provenance, and reports must avoid merge-decision wording.
 - Summary-only saved/shared surfaces must omit raw evidence, claims, raw re-prompt, and patch/log excerpts.
+
+The `qualityGate` is not a product score. It is a regression guard for report trust boundaries. A separate reviewer-signal sentinel suite should cover expected top risks, missing-test paths, scope paths, and re-prompt usefulness before treating the verifier as launch-grade.
 
 ## PR Results
 
