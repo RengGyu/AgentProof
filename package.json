@@ -20,6 +20,7 @@
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
     "eval:promote:fixture": "node scripts/promote-eval-fixture.mjs",
     "eval:pack": "vitest run src/lib/evaluation-pack.test.ts scripts/build-eval-pack.test.mjs scripts/promote-eval-fixture.test.mjs",
+    "eval:sentinels": "vitest run src/lib/reviewer-signal-sentinels.test.ts",
     "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:strict": "AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
