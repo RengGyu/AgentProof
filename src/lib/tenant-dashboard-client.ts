@@ -47,6 +47,12 @@ export function tenantAccountUrl(tenantId: string): string {
   return `/api/tenants/account?${params.toString()}`;
 }
 
+export function tenantEntitlementsUrl(tenantId: string): string {
+  const params = new URLSearchParams({ tenantId: tenantId.trim() });
+
+  return `/api/tenants/entitlements?${params.toString()}`;
+}
+
 export function tenantReportsUrl(tenantId: string, limit = 10): string {
   const params = new URLSearchParams({
     tenantId: tenantId.trim(),

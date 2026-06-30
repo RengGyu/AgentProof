@@ -1230,7 +1230,18 @@ code {
   color: var(--ok);
 }
 
+.tenant-usage-state.state-enabled {
+  background: #ecfdf3;
+  color: var(--ok);
+}
+
 .tenant-usage-state.state-exhausted {
+  background: rgba(180, 35, 24, 0.1);
+  color: var(--danger);
+}
+
+.tenant-usage-state.state-disabled,
+.tenant-usage-state.state-unavailable {
   background: rgba(180, 35, 24, 0.1);
   color: var(--danger);
 }
@@ -1248,7 +1259,10 @@ code {
 }
 
 .tenant-usage-state.state-invite-only,
-.tenant-usage-state.state-unknown {
+.tenant-usage-state.state-unknown,
+.tenant-usage-state.state-not_configured,
+.tenant-usage-state.state-not_enforced,
+.tenant-usage-state.state-unclear {
   background: #fff7ed;
   color: #b54708;
 }

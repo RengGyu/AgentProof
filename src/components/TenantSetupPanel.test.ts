@@ -72,6 +72,18 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).not.toContain("memberInviteToken");
   });
 
+  it("uses plan access summaries without provider identifiers or raw evidence", () => {
+    expect(source).toContain("tenantEntitlementsUrl");
+    expect(source).toContain("Plan Access");
+    expect(source).toContain("plan-entitlement-summary-only");
+    expect(source).toContain("Tenant plan access summary");
+    expect(source).not.toContain("providerCustomerId");
+    expect(source).not.toContain("subscriptionId");
+    expect(source).not.toContain("payment");
+    expect(source).not.toContain("rawDiff");
+    expect(source).not.toContain("rawLog");
+  });
+
   it("uses summary-only verification activity without raw audit internals", () => {
     expect(source).toContain("tenantAuditActivityUrl");
     expect(source).toContain("Recent Verification Activity");

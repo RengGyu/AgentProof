@@ -23,6 +23,7 @@ import {
   tenantAccountUrl,
   tenantAuditActivityUrl,
   tenantDeletionPreviewUrl,
+  tenantEntitlementsUrl,
   tenantOnboardingStartPayload,
   tenantReportsUrl,
   tenantSessionPayload,
@@ -87,6 +88,43 @@ interface TenantAccountStatus {
   };
   privacy: "tenant-account-summary-only";
   next: "manage_member_roles" | "configure_account_store";
+}
+
+interface TenantEntitlementFeature {
+  key: string;
+  label: string;
+  state: "enabled" | "disabled" | "not_configured" | "unavailable" | "unclear";
+  enabled: boolean;
+  reason?: string;
+}
+
+interface TenantEntitlementStatus {
+  plan: string;
+  account: {
+    status: string;
+    configured: boolean;
+    source: "tenant_account_summary" | "unavailable";
+  };
+  quota: {
+    state: "available" | "exhausted" | "not_configured" | "not_enforced" | "unavailable" | "unclear";
+    configured: boolean;
+    enforced: boolean;
+    limit?: number;
+    used?: number;
+    remaining?: number;
+    plan?: string;
+    planMatchesAccount?: boolean;
+  };
+  repositories: {
+    state: "configured" | "not_configured" | "unavailable";
+    connectedRepositoryCount?: number;
+    analysisEnabledCount?: number;
+    saveReportsEnabledCount?: number;
+    commentEnabledCount?: number;
+  };
+  features: TenantEntitlementFeature[];
+  privacy: "plan-entitlement-summary-only";
+  next: "review_plan_access" | "configure_plan_access";
 }
 
 interface UsageSummary {
@@ -270,6 +308,7 @@ export function TenantSetupPanel() {
   const [repositories, setRepositories] = useState<RepositorySettings[]>([]);
   const [health, setHealth] = useState<RepositoryHealth[]>([]);
   const [accountStatus, setAccountStatus] = useState<TenantAccountStatus | null>(null);
+  const [entitlementStatus, setEntitlementStatus] = useState<TenantEntitlementStatus | null>(null);
   const [usage, setUsage] = useState<UsageSummary[]>([]);
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [analysisJobs, setAnalysisJobs] = useState<AnalysisJobSummary[]>([]);
@@ -502,6 +541,30 @@ export function TenantSetupPanel() {
       }
     } catch (error) {
       setMessage(errorMessage(error, "Tenant account summary could not be loaded."));
+    } finally {
+      setMode("idle");
+    }
+  }
+
+  async function loadEntitlementStatus(feedback: "visible" | "silent" = "visible") {
+    setMode("loading");
+    if (feedback === "visible") setMessage(null);
+
+    try {
+      const json = await requestJson<TenantEntitlementStatus>(tenantEntitlementsUrl(tenantId), {
+        headers: tenantInviteHeaders(inviteToken)
+      });
+
+      if (json.privacy !== "plan-entitlement-summary-only") {
+        throw new PanelRequestError("Tenant plan access response did not match the summary-only boundary.");
+      }
+
+      setEntitlementStatus(json);
+      if (feedback === "visible") {
+        setMessage({ kind: "ok", text: "Plan access summary loaded." });
+      }
+    } catch (error) {
+      setMessage(errorMessage(error, "Plan access summary could not be loaded."));
     } finally {
       setMode("idle");
     }
@@ -749,6 +812,10 @@ export function TenantSetupPanel() {
             <UsersRound size={16} />
             Account
           </button>
+          <button className="button" type="button" onClick={() => loadEntitlementStatus()} disabled={!credentialsReady || busy}>
+            <ShieldCheck size={16} />
+            Plan Access
+          </button>
           <button className="button" type="button" onClick={() => loadUsageStatus()} disabled={!credentialsReady || busy}>
             <BarChart3 size={16} />
             Usage
@@ -829,6 +896,49 @@ export function TenantSetupPanel() {
             </div>
           ) : (
             <p className="muted small">No account summary loaded.</p>
+          )}
+        </article>
+
+        <article className="card">
+          <div className="card-title-row">
+            <h2>Plan Access</h2>
+            <ShieldCheck size={18} aria-hidden="true" />
+          </div>
+          <div className="button-row tenant-inline-actions">
+            <button className="button compact" type="button" onClick={() => loadEntitlementStatus()} disabled={!credentialsReady || busy}>
+              Load Access
+            </button>
+          </div>
+          {entitlementStatus ? (
+            <div className="tenant-account-summary">
+              <div className="tenant-rollup-row" aria-label="Tenant plan access summary">
+                <span>Plan {entitlementStatus.plan}</span>
+                <span>Account {entitlementStatus.account.status}</span>
+                <span>Quota {entitlementStatus.quota.state.replace(/_/g, " ")}</span>
+                <span>Repos {entitlementStatus.repositories.connectedRepositoryCount ?? 0}</span>
+              </div>
+              <ul className="tenant-usage-list">
+                {entitlementStatus.features.map((feature) => (
+                  <li key={feature.key}>
+                    <div className="tenant-usage-meter">
+                      <span>{feature.label}</span>
+                      <strong>{feature.enabled ? "On" : "Off"}</strong>
+                    </div>
+                    <div className={`tenant-usage-state state-${feature.state}`}>
+                      {entitlementStateLabel(feature.state)}
+                    </div>
+                    {feature.reason ? <small>{feature.reason.replace(/_/g, " ")}</small> : null}
+                  </li>
+                ))}
+              </ul>
+              <p className="muted small">
+                {entitlementStatus.quota.limit !== undefined && entitlementStatus.quota.used !== undefined
+                  ? `Usage ${entitlementStatus.quota.used} / ${entitlementStatus.quota.limit}`
+                  : entitlementStatus.next.replace(/_/g, " ")}
+              </p>
+            </div>
+          ) : (
+            <p className="muted small">No plan access summary loaded.</p>
           )}
         </article>
 
@@ -1116,6 +1226,15 @@ function usageStateLabel(state: UsageSummary["state"]): string {
   if (state === "available") return "Available";
   if (state === "exhausted") return "Exhausted";
   if (state === "not-enforced") return "Not enforced";
+
+  return "Not configured";
+}
+
+function entitlementStateLabel(state: TenantEntitlementFeature["state"]): string {
+  if (state === "enabled") return "Enabled";
+  if (state === "disabled") return "Disabled";
+  if (state === "unavailable") return "Unavailable";
+  if (state === "unclear") return "Unclear";
 
   return "Not configured";
 }

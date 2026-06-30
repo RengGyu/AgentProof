@@ -5,6 +5,7 @@ import {
   tenantInviteHeaders,
   tenantAnalysisJobsUrl,
   tenantAccountUrl,
+  tenantEntitlementsUrl,
   tenantOnboardingStartPayload,
   tenantAuditActivityUrl,
   tenantReportsUrl,
@@ -47,6 +48,21 @@ describe("tenant dashboard client request helpers", () => {
     expect(url).not.toContain("invite");
     expect(url).not.toContain("email");
     expect(url).not.toContain("billing");
+    expect(url).not.toContain("service-role");
+  });
+
+  it("builds plan access URLs without invite tokens, provider ids, or raw evidence fields", () => {
+    const url = tenantEntitlementsUrl(" tenant_a ");
+
+    expect(url).toBe("/api/tenants/entitlements?tenantId=tenant_a");
+    expect(url).not.toContain("token");
+    expect(url).not.toContain("invite");
+    expect(url).not.toContain("customer");
+    expect(url).not.toContain("subscription");
+    expect(url).not.toContain("provider");
+    expect(url).not.toContain("installation");
+    expect(url).not.toContain("repositoryId");
+    expect(url).not.toContain("rawDiff");
     expect(url).not.toContain("service-role");
   });
 
