@@ -34,6 +34,7 @@ Expected:
 - Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
 - Saved reports retain zero evidence items, zero claims, no raw re-prompt text, and cleared evidence references.
 - Tenant-scoped saved reports require the generated report key or trusted tenant context; id-only lookup returns the same unavailable response as missing or expired reports.
+- Quota-blocked tenant webhook analysis returns bounded metadata only and stops before idempotency, GitHub token fetch, PR evidence fetch, saved reports, or comments.
 
 ## Manual GitHub Actions Gate
 
@@ -110,7 +111,8 @@ Most recent no-secret production gate:
 - Missing or invalid Slack caller token returns 401.
 - Missing or invalid GitHub webhook signature returns 401.
 - Missing operator diagnostics token returns 401 when `AGENTPROOF_OPS_TOKEN` is configured.
-- Missing Supabase env falls back to `short-lived-in-memory` with a warning.
+- Missing saved-report Supabase env falls back to `short-lived-in-memory` with a warning.
+- Missing usage-quota Supabase RPC env fails closed when quota enforcement is enabled.
 - Misconfigured Supabase env returns 503 instead of silently using unsafe storage.
 
 ## Non-Goals

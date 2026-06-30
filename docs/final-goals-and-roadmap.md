@@ -291,6 +291,7 @@ Do not implement these until the SaaS evidence-verifier workflow is proven:
 5. **Usage and quota layer**
    - Count analysis attempts, successful reports, comments, saved links, Slack sends, and OpenAI calls.
    - Acceptance: quota prevents expensive work and side effects before they start.
+   - Current implementation note: tenant GitHub App analysis can reserve monthly analysis quota before webhook idempotency, GitHub token fetch, PR evidence fetch, saved reports, or comments. Production quota enforcement requires the durable Supabase reservation RPC; memory quota is local/demo only. Full billing plans, seat limits, connected-repo limits, dashboard usage, and Stripe/customer-portal integration remain separate work.
 
 6. **Audit log and privacy scanner**
    - Add bounded audit events and automated checks that durable rows do not contain raw evidence fields or secret-like strings.

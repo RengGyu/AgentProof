@@ -18,6 +18,7 @@ import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { createSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
 import { authorizeTenantRepositoryGrant, tenantGrantPublicReason } from "@/lib/tenant-control-plane";
+import { reserveUsageQuota, usageQuotaPublicReason, UsageQuotaStoreError, type UsageQuotaReservation } from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
 import type { VerificationReport } from "@/lib/types";
 
@@ -198,6 +199,48 @@ async function handlePullRequestAutomation(
     automation.headSha,
     context.action
   ].join(":");
+
+  if (tenantGrant.enabled) {
+    let quota: UsageQuotaReservation;
+    try {
+      quota = await reserveUsageQuota({
+        tenantId: tenantGrant.grant?.tenantId,
+        feature: "github_app_analysis",
+        idempotencyKey
+      });
+    } catch (error) {
+      if (error instanceof UsageQuotaStoreError) {
+        return noStoreJson({
+          error: "Usage quota store is unavailable.",
+          code: "usage_quota_unavailable",
+          willAnalyze: false,
+          willComment: false
+        }, { status: 503 });
+      }
+
+      throw error;
+    }
+
+    if (!quota.allowed) {
+      const invalidQuota = quota.reason === "quota-limits-invalid";
+
+      return noStoreJson({
+        ok: !invalidQuota,
+        ignored: !invalidQuota ? true : undefined,
+        dryRun: false,
+        event: safeWebhookString(context.event),
+        delivery: safeWebhookString(context.delivery),
+        action: context.action,
+        automationEnabled: true,
+        willAnalyze: false,
+        willComment: false,
+        code: invalidQuota
+          ? "github_app_tenant_quota_invalid"
+          : "github_app_tenant_quota_blocked",
+        note: usageQuotaPublicReason(quota.reason)
+      }, { status: invalidQuota ? 503 : 200 });
+    }
+  }
 
   let reservation;
   try {
