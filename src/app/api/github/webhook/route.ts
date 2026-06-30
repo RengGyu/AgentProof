@@ -1,4 +1,5 @@
 import { buildGitHubPullRequestInput } from "@/lib/github";
+import { recordAuditEvent, type AuditEventAction, type AuditEventResult } from "@/lib/audit-log";
 import {
   completeGitHubWebhookDelivery,
   createGitHubInstallationAccessToken,
@@ -147,6 +148,7 @@ async function handlePullRequestAutomation(
   });
 
   if (tenantGrant.enabled && tenantGrant.reason) {
+    const status = tenantGrant.reason === "invalid-grants" ? 503 : 200;
     const body = {
       ok: tenantGrant.reason !== "invalid-grants",
       ignored: tenantGrant.reason !== "invalid-grants" ? true : undefined,
@@ -163,10 +165,21 @@ async function handlePullRequestAutomation(
       note: tenantGrantPublicReason(tenantGrant.reason)
     };
 
-    return noStoreJson(body, { status: tenantGrant.reason === "invalid-grants" ? 503 : 200 });
+    await recordWebhookAuditEvent("github_app_grant_denied", status === 503 ? "failed" : "blocked", automation, context, {
+      tenantId: tenantGrant.grant?.tenantId,
+      statusCode: status,
+      code: body.code
+    });
+
+    return noStoreJson(body, { status });
   }
 
   if (!tenantGrant.enabled && !context.legacyRepoAllowed) {
+    await recordWebhookAuditEvent("github_app_grant_denied", "blocked", automation, context, {
+      statusCode: 200,
+      code: "github_app_repo_not_allowed"
+    });
+
     return noStoreJson({
       ok: true,
       ignored: true,
@@ -183,6 +196,12 @@ async function handlePullRequestAutomation(
 
   const appStatus = getGitHubAppConfigStatus();
   if (!appStatus.ready) {
+    await recordWebhookAuditEvent("github_app_not_ready", "blocked", automation, context, {
+      tenantId: tenantGrant.grant?.tenantId,
+      statusCode: 503,
+      code: "github_app_not_ready"
+    });
+
     return noStoreJson({
       error: "GitHub App automation is enabled, but App credentials are incomplete or invalid.",
       code: "github_app_not_ready",
@@ -210,6 +229,12 @@ async function handlePullRequestAutomation(
       });
     } catch (error) {
       if (error instanceof UsageQuotaStoreError) {
+        await recordWebhookAuditEvent("github_app_quota_unavailable", "failed", automation, context, {
+          tenantId: tenantGrant.grant?.tenantId,
+          statusCode: 503,
+          code: "usage_quota_unavailable"
+        });
+
         return noStoreJson({
           error: "Usage quota store is unavailable.",
           code: "usage_quota_unavailable",
@@ -223,6 +248,16 @@ async function handlePullRequestAutomation(
 
     if (!quota.allowed) {
       const invalidQuota = quota.reason === "quota-limits-invalid";
+      const status = invalidQuota ? 503 : 200;
+      const code = invalidQuota
+        ? "github_app_tenant_quota_invalid"
+        : "github_app_tenant_quota_blocked";
+
+      await recordWebhookAuditEvent("github_app_quota_blocked", invalidQuota ? "failed" : "blocked", automation, context, {
+        tenantId: tenantGrant.grant?.tenantId,
+        statusCode: status,
+        code
+      });
 
       return noStoreJson({
         ok: !invalidQuota,
@@ -234,11 +269,9 @@ async function handlePullRequestAutomation(
         automationEnabled: true,
         willAnalyze: false,
         willComment: false,
-        code: invalidQuota
-          ? "github_app_tenant_quota_invalid"
-          : "github_app_tenant_quota_blocked",
+        code,
         note: usageQuotaPublicReason(quota.reason)
-      }, { status: invalidQuota ? 503 : 200 });
+      }, { status });
     }
   }
 
@@ -256,6 +289,12 @@ async function handlePullRequestAutomation(
     });
   } catch (error) {
     if (error instanceof GitHubWebhookIdempotencyError) {
+      await recordWebhookAuditEvent("github_app_idempotency_unavailable", "failed", automation, context, {
+        tenantId: tenantGrant.grant?.tenantId,
+        statusCode: 503,
+        code: "github_app_idempotency_unavailable"
+      });
+
       return noStoreJson({
         error: "GitHub App idempotency store is unavailable.",
         code: "github_app_idempotency_unavailable",
@@ -268,6 +307,12 @@ async function handlePullRequestAutomation(
   }
 
   if (!reservation.accepted) {
+    await recordWebhookAuditEvent("github_app_duplicate_skipped", "skipped", automation, context, {
+      tenantId: tenantGrant.grant?.tenantId,
+      statusCode: 200,
+      code: reservation.duplicateStatus === "processing" ? "duplicate_processing" : "duplicate_completed"
+    });
+
     return noStoreJson({
       ok: true,
       accepted: true,
@@ -348,6 +393,20 @@ async function handlePullRequestAutomation(
       } : undefined
     }).catch(() => undefined);
 
+    await recordWebhookAuditEvent("github_app_analysis_completed", "completed", automation, context, {
+      tenantId: tenantGrant.grant?.tenantId,
+      statusCode: 200,
+      priority: report.summary.priority,
+      evidenceCoverage: report.summary.evidenceCoverage,
+      savedReport: saved ? {
+        privacy: saved.privacy,
+        durability: saved.durability
+      } : undefined,
+      comment: comment ? {
+        action: comment.action
+      } : undefined
+    });
+
     return noStoreJson({
       ok: true,
       accepted: true,
@@ -362,17 +421,67 @@ async function handlePullRequestAutomation(
     });
   } catch (error) {
     const errorMessage = redactSecrets(error instanceof Error ? error.message : "GitHub App automation failed.");
+    const status = error instanceof SavedReportStoreError ? 503 : 502;
     await failGitHubWebhookDelivery({
       key: idempotencyKey
     }, {
       code: error instanceof SavedReportStoreError ? "saved_report_store_error" : "github_app_automation_failed",
       summary: errorMessage
     }).catch(() => undefined);
+    await recordWebhookAuditEvent("github_app_analysis_failed", "failed", automation, context, {
+      tenantId: tenantGrant.grant?.tenantId,
+      statusCode: status,
+      code: error instanceof SavedReportStoreError ? "saved_report_store_error" : "github_app_automation_failed"
+    });
+
     return noStoreJson({
       error: errorMessage,
       code: "github_app_automation_failed"
-    }, { status: error instanceof SavedReportStoreError ? 503 : 502 });
+    }, { status });
   }
+}
+
+async function recordWebhookAuditEvent(
+  action: AuditEventAction,
+  result: AuditEventResult,
+  automation: NonNullable<ReturnType<typeof parsePullRequestAutomationPayload>>,
+  context: {
+    delivery: string;
+    action: string | undefined;
+  },
+  options: {
+    tenantId?: string;
+    statusCode?: number;
+    code?: string;
+    priority?: string;
+    evidenceCoverage?: number;
+    savedReport?: {
+      privacy?: string;
+      durability?: string;
+    };
+    comment?: {
+      action?: string;
+    };
+  } = {}
+) {
+  await recordAuditEvent({
+    action,
+    result,
+    actor: "github_app",
+    tenantId: options.tenantId,
+    repositoryFullName: automation.repositoryFullName,
+    installationId: automation.installationId,
+    pullRequestNumber: automation.pullRequestNumber,
+    headSha: automation.headSha,
+    githubDeliveryId: context.delivery,
+    webhookAction: context.action,
+    statusCode: options.statusCode,
+    code: options.code,
+    priority: options.priority,
+    evidenceCoverage: options.evidenceCoverage,
+    savedReport: options.savedReport,
+    comment: options.comment
+  }).catch(() => undefined);
 }
 
 function buildWebhookDryRunSummary(payload: Record<string, unknown>) {

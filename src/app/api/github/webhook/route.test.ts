@@ -1,5 +1,6 @@
 import { createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearAuditEventsForTests, getAuditEventsForTests } from "@/lib/audit-log";
 import { clearGitHubWebhookDeliveriesForTests } from "@/lib/github-app";
 import { clearSavedReportsForTests } from "@/lib/server-report-store";
 import { clearUsageQuotaForTests } from "@/lib/usage-quota";
@@ -10,6 +11,7 @@ describe("POST /api/github/webhook", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    clearAuditEventsForTests();
     clearGitHubWebhookDeliveriesForTests();
     clearSavedReportsForTests();
     clearUsageQuotaForTests();
@@ -573,6 +575,22 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("tenant_test");
     expect(serialized).not.toContain("RengGyu/AgentProof");
     expect(serialized).not.toContain("abc123");
+    const audit = getAuditEventsForTests();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      action: "github_app_quota_blocked",
+      result: "blocked",
+      tenant_id: "tenant_test",
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7,
+      head_sha_prefix: "abc123",
+      status_code: 200,
+      metadata: {
+        webhookAction: "opened",
+        code: "github_app_tenant_quota_blocked"
+      }
+    });
+    expectAuditEventIsSummaryOnly(audit[0]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -611,6 +629,16 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("{not-json");
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("github_pat_secret");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_quota_blocked",
+      result: "failed",
+      tenant_id: "tenant_test",
+      status_code: 503,
+      metadata: {
+        code: "github_app_tenant_quota_invalid"
+      }
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
   it("fails closed when tenant quota store is unavailable before idempotency or token fetch", async () => {
@@ -654,6 +682,16 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("tenant_test");
     expect(serialized).not.toContain("RengGyu/AgentProof");
     expect(serialized).not.toContain("abc123");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_quota_unavailable",
+      result: "failed",
+      tenant_id: "tenant_test",
+      status_code: 503,
+      metadata: {
+        code: "usage_quota_unavailable"
+      }
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
   it("ignores unsupported pull_request actions before fetching tokens", async () => {
@@ -706,6 +744,21 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      tenant_id: null,
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7,
+      head_sha_prefix: "abc123",
+      status_code: 200,
+      metadata: {
+        webhookAction: "opened",
+        priority: expect.any(String),
+        evidenceCoverage: expect.any(Number)
+      }
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
   it("allows tenant-granted analysis without legacy allowlist and respects grant-level save/comment opt-ins", async () => {
@@ -742,6 +795,16 @@ describe("POST /api/github/webhook", () => {
     expect(json.analysis).not.toHaveProperty("savedReport");
     expect(json.analysis).not.toHaveProperty("comment");
     expect(commentCalls).toHaveLength(0);
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      tenant_id: "tenant_test",
+      metadata: {
+        priority: expect.any(String),
+        evidenceCoverage: expect.any(Number)
+      }
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
   it("creates tenant-scoped saved reports for tenant-granted webhook automation", async () => {
@@ -788,6 +851,20 @@ describe("POST /api/github/webhook", () => {
     expect(keyJson.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
     expect(serialized).not.toContain("tenant_test");
     expect(serialized).not.toContain("Patch excerpt");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      tenant_id: "tenant_test",
+      metadata: {
+        savedReport: {
+          privacy: "summary-only",
+          durability: "short-lived-in-memory"
+        }
+      }
+    });
+    expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedKey);
+    expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedReportUrl.toString());
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
   it("omits raw automation network error messages before returning 502", async () => {
@@ -866,6 +943,66 @@ describe("POST /api/github/webhook", () => {
     );
   });
 
+  it("writes bounded Supabase audit rows for completed analysis without raw webhook or report data", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY", "audit-service-role-secret");
+    vi.stubEnv("AGENTPROOF_AUDIT_EVENTS_TABLE", "audit_events_test");
+    const githubFetch = mockAutomationFetch();
+    const auditBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+
+      if (href === "https://agentproof-test.supabase.co/rest/v1/audit_events_test") {
+        auditBodies.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 201 });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890",
+        installation: { id: 321, token: "payload-token-should-not-leak" }
+      })), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174000",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const auditBody = auditBodies[0] as Record<string, unknown>;
+    const serializedAudit = JSON.stringify(auditBody);
+
+    expect(response.status).toBe(200);
+    expect(json.analysis.status).toBe("completed");
+    expect(auditBodies).toHaveLength(1);
+    expect(auditBody).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      tenant_id: null,
+      repository_full_name: "RengGyu/AgentProof",
+      installation_id: 321,
+      pull_request_number: 7,
+      head_sha_prefix: "abc123",
+      request_id: "123e4567-e89b-12d3-a456-426614174000",
+      status_code: 200
+    });
+    expect((auditBody.metadata as Record<string, unknown>)).toMatchObject({
+      webhookAction: "opened",
+      priority: expect.any(String),
+      evidenceCoverage: expect.any(Number)
+    });
+    expect(serializedAudit).not.toContain("audit-service-role-secret");
+    expectAuditEventIsSummaryOnly(auditBody);
+  });
+
   it("skips duplicate pull_request automation for the same PR head SHA and action", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -894,6 +1031,18 @@ describe("POST /api/github/webhook", () => {
     expect(json.duplicate).toBe(true);
     expect(json.willAnalyze).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(callCount);
+    expect(getAuditEventsForTests().map((event) => event.action)).toEqual([
+      "github_app_analysis_completed",
+      "github_app_duplicate_skipped"
+    ]);
+    expect(getAuditEventsForTests()[1]).toMatchObject({
+      result: "skipped",
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7,
+      head_sha_prefix: "abc123",
+      status_code: 200
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[1]);
   });
 
   it("does not treat changed PR head SHA or action as duplicate automation", async () => {
@@ -1100,6 +1249,18 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7,
+      metadata: {
+        savedReport: {
+          privacy: "summary-only"
+        }
+      }
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
   it("creates a GitHub App marker comment only when comment opt-in is enabled", async () => {
@@ -1130,6 +1291,18 @@ describe("POST /api/github/webhook", () => {
     expect(json.analysis.comment.url).toContain("issuecomment-777");
     expect(String((commentPost?.[1] as RequestInit).body)).toContain("agentproof:github-app:evidence-check:v1");
     expect(String((commentPost?.[1] as RequestInit).body)).not.toContain("Agent re-prompt");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      metadata: {
+        comment: {
+          action: "created"
+        }
+      }
+    });
+    expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain("agentproof:github-app:evidence-check:v1");
+    expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain("issuecomment-777");
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
   it("suppresses GitHub App comments and saved reports for signed live webhook smoke payloads", async () => {
@@ -1221,6 +1394,21 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("reprompt");
   });
 });
+
+function expectAuditEventIsSummaryOnly(event: unknown) {
+  const serialized = JSON.stringify(event);
+
+  expect(serialized).not.toContain("Patch excerpt");
+  expect(serialized).not.toContain("github_pat_secret");
+  expect(serialized).not.toContain("payload-token");
+  expect(serialized).not.toContain("installation-token");
+  expect(serialized).not.toContain("service-role-secret");
+  expect(serialized).not.toContain("evidenceIndex");
+  expect(serialized).not.toContain("claims");
+  expect(serialized).not.toContain("reprompt");
+  expect(serialized).not.toContain("rawDiff");
+  expect(serialized).not.toContain("comment_body");
+}
 
 function signedRequest(
   body: string,
