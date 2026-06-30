@@ -2,6 +2,7 @@ import { createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearGitHubWebhookDeliveriesForTests } from "@/lib/github-app";
 import { clearSavedReportsForTests } from "@/lib/server-report-store";
+import { clearUsageQuotaForTests } from "@/lib/usage-quota";
 import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
 
@@ -11,6 +12,7 @@ describe("POST /api/github/webhook", () => {
     vi.unstubAllGlobals();
     clearGitHubWebhookDeliveriesForTests();
     clearSavedReportsForTests();
+    clearUsageQuotaForTests();
   });
 
   it("is disabled until a webhook secret is configured", async () => {
@@ -526,6 +528,132 @@ describe("POST /api/github/webhook", () => {
       willComment: false
     }));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks exhausted tenant quota before durable idempotency, token fetch, saved reports, or comments", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: true,
+      commentEnabled: true
+    }));
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", quotaLimitsJson({ monthlyAnalysisLimit: 0 }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-quota-exhausted",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      ok: true,
+      ignored: true,
+      code: "github_app_tenant_quota_blocked",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(json.note).toContain("quota");
+    expect(json).not.toHaveProperty("analysis");
+    expect(serialized).not.toContain("tenant_test");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("abc123");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for invalid tenant quota configuration before durable idempotency or token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson());
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", "{not-json");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890"
+      })), {
+        event: "pull_request",
+        delivery: "delivery-tenant-quota-invalid",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual(expect.objectContaining({
+      ok: false,
+      code: "github_app_tenant_quota_invalid",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("{not-json");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+  });
+
+  it("fails closed when tenant quota store is unavailable before idempotency or token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson());
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", quotaLimitsJson({ monthlyAnalysisLimit: 10 }));
+    vi.stubEnv("AGENTPROOF_USAGE_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      new Response("quota down", { status: 500 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-quota-store-down",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual(expect.objectContaining({
+      code: "usage_quota_unavailable",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(json).not.toHaveProperty("analysis");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_reserve_usage_quota"
+    );
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("tenant_test");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("abc123");
   });
 
   it("ignores unsupported pull_request actions before fetching tokens", async () => {
@@ -1221,6 +1349,18 @@ function tenantGrantJson(overrides: Record<string, unknown> = {}) {
       analysisEnabled: true,
       saveReportsEnabled: true,
       commentEnabled: false,
+      ...overrides
+    }
+  ]);
+}
+
+function quotaLimitsJson(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify([
+    {
+      tenantId: "tenant_test",
+      monthlyAnalysisLimit: 1,
+      enabled: true,
+      plan: "team",
       ...overrides
     }
   ]);

@@ -130,6 +130,24 @@ AGENTPROOF_TENANT_REPOSITORY_GRANTS=[{"tenantId":"tenant_demo","installationId":
 
 This JSON env is a temporary control-plane seed until self-serve GitHub App onboarding and database-backed tenant grants exist. When tenant control is enabled, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` does not authorize analysis, including `*`.
 
+For invite-only quota enforcement, add a server-only quota seed:
+
+```text
+AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED=true
+AGENTPROOF_USAGE_QUOTA_LIMITS=[{"tenantId":"tenant_demo","monthlyAnalysisLimit":100,"enabled":true,"plan":"team"}]
+```
+
+Required durable usage records for SaaS/beta quota enforcement:
+
+```text
+AGENTPROOF_USAGE_SUPABASE_URL=
+AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_USAGE_RECORDS_TABLE=agentproof_usage_records
+AGENTPROOF_USAGE_RESERVATION_RPC=agentproof_reserve_usage_quota
+```
+
+When quota enforcement is enabled, tenant GitHub App analysis reserves quota before webhook idempotency, GitHub installation-token fetch, PR evidence fetch, saved reports, or marker comments. Quota-blocked webhooks return bounded metadata only and do not include tenant ids, repositories, head SHAs, diffs, logs, or usage counts. If durable usage storage is missing or unavailable, AgentProof fails closed with `usage_quota_unavailable`. `AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY=true` is only for local/demo quota tests and should not be set for SaaS/beta operation.
+
 Optional automation settings:
 
 ```text
@@ -148,6 +166,96 @@ AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY
 ```
 
 Do not expose service-role keys with a `NEXT_PUBLIC_` prefix.
+
+## Usage Quota Schema
+
+Durable usage records store only bounded usage metadata and hashed idempotency keys. They do not store webhook payloads, PR descriptions, diffs, logs, reports, comments, tokens, or private repository payloads.
+
+```sql
+create table if not exists agentproof_usage_records (
+  id text primary key,
+  tenant_id text not null,
+  period text not null,
+  feature text not null check (feature in ('github_app_analysis')),
+  idempotency_key_hash text not null,
+  created_at timestamptz not null
+);
+
+create index if not exists agentproof_usage_records_tenant_period_feature_idx
+  on agentproof_usage_records (tenant_id, period, feature);
+
+create unique index if not exists agentproof_usage_records_unique_delivery_idx
+  on agentproof_usage_records (tenant_id, period, feature, idempotency_key_hash);
+```
+
+Recommended boundary:
+
+```sql
+alter table agentproof_usage_records enable row level security;
+```
+
+No public client policies are required because AgentProof reads and writes through server-side service-role credentials.
+
+Quota reservation must be atomic. Create the RPC used by `AGENTPROOF_USAGE_RESERVATION_RPC` so concurrent webhooks cannot both pass a `count -> insert` race:
+
+```sql
+create or replace function agentproof_reserve_usage_quota(
+  p_id text,
+  p_tenant_id text,
+  p_period text,
+  p_feature text,
+  p_idempotency_key_hash text,
+  p_limit integer,
+  p_created_at timestamptz,
+  p_records_table text default 'agentproof_usage_records'
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_exists boolean;
+  v_used integer;
+begin
+  if p_limit < 0 or p_limit > 1000000 then
+    raise exception 'invalid quota limit';
+  end if;
+
+  if p_records_table !~ '^[a-zA-Z_][a-zA-Z0-9_]{0,62}$' then
+    raise exception 'invalid records table';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_tenant_id || ':' || p_period || ':' || p_feature, 0));
+
+  execute format('select exists (select 1 from %I where id = $1)', p_records_table)
+    into v_exists
+    using p_id;
+
+  execute format(
+    'select count(*)::integer from %I where tenant_id = $1 and period = $2 and feature = $3',
+    p_records_table
+  )
+    into v_used
+    using p_tenant_id, p_period, p_feature;
+
+  if v_exists then
+    return jsonb_build_object('allowed', true, 'duplicate', true, 'used', v_used);
+  end if;
+
+  if v_used >= p_limit then
+    return jsonb_build_object('allowed', false, 'reason', 'quota-exceeded', 'used', v_used);
+  end if;
+
+  execute format(
+    'insert into %I (id, tenant_id, period, feature, idempotency_key_hash, created_at) values ($1, $2, $3, $4, $5, $6)',
+    p_records_table
+  )
+    using p_id, p_tenant_id, p_period, p_feature, p_idempotency_key_hash, p_created_at;
+
+  return jsonb_build_object('allowed', true, 'duplicate', false, 'used', v_used + 1);
+end;
+$$;
+```
 
 ## Durable Idempotency Schema
 
@@ -290,12 +398,30 @@ Ignored signed event:
 }
 ```
 
+Quota blocked:
+
+```json
+{
+  "ok": true,
+  "ignored": true,
+  "dryRun": false,
+  "event": "pull_request",
+  "delivery": "delivery-id",
+  "automationEnabled": true,
+  "willAnalyze": false,
+  "willComment": false,
+  "code": "github_app_tenant_quota_blocked",
+  "note": "Tenant monthly PR analysis quota has been reached."
+}
+```
+
 ## Safety Boundary
 
 Keep these boundaries in place:
 
 - Install the GitHub App with least-privilege permissions for pull requests, checks/statuses, metadata, and Actions job metadata. Add issue comment write only when comment opt-in is intended.
 - Use tenant control mode for SaaS/beta operation so analysis requires an active `installation_id + repository` grant.
+- Enable usage quota enforcement with the durable Supabase RPC before paid beta so overages stop before GitHub/OpenAI work or side effects.
 - Use `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` only for operator/demo mode; avoid `*` outside controlled testing.
 - Treat saved reports as summary-only. Do not store raw diffs, raw logs, webhook payloads, installation tokens, claims, or raw re-prompt text.
 - Keep automatic comments off by default. When enabled, update one marker comment instead of creating comment storms.
