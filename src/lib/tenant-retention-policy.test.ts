@@ -24,6 +24,7 @@ describe("tenant data retention policy", () => {
       "analysis_jobs",
       "audit_events",
       "usage_records",
+      "account_member_records",
       "billing_account_records",
       "backups",
       "tenant_tombstones"
@@ -52,6 +53,7 @@ describe("tenant data retention policy", () => {
     expect(coverage.uncountedCategories).toEqual([
       { key: "transient_pr_evidence", reason: "not-stored" },
       { key: "onboarding_states", reason: "not-yet-counted" },
+      { key: "account_member_records", reason: "not-yet-counted" },
       { key: "billing_account_records", reason: "not-yet-counted" },
       { key: "backups", reason: "not-yet-counted" },
       { key: "tenant_tombstones", reason: "not-yet-counted" }
@@ -92,6 +94,7 @@ describe("tenant data retention policy", () => {
     expect(byKey.transient_pr_evidence.retentionWindowDays).toBe(0);
     expect(byKey.onboarding_states.retentionWindowDays).toBe(1);
     expect(byKey.analysis_jobs.deletionReadiness).toBe("blocked");
+    expect(byKey.account_member_records.deletionReadiness).toBe("manual-review-required");
     expect(byKey.backups.deletionReadiness).toBe("blocked");
     expect(byKey.tenant_tombstones.deletionReadiness).toBe("blocked");
   });

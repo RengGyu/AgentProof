@@ -16,7 +16,7 @@ Status as of 2026-06-30:
 
 - The portfolio MVP is complete and deployed at `https://agentproof-pearl.vercel.app`.
 - The deterministic verifier, report validation, summary-only share/save flows, GitHub comment safety, Slack summary payload, OpenAI structured-output adapter, GitHub App signed webhook boundary, operator diagnostics, invite-only onboarding skeleton, first-class GitHub installation metadata, repository grants/settings, repository setup health API, queue enqueue/worker/bounded-batch boundary, Vercel Cron-compatible scheduler route, aggregate queue summary metrics and alert signals, read-only dead-letter summary, operator-only summary Slack queue alert delivery, invite-only `/tenant` setup dashboard, count-only deletion preview tied to a draft retention policy, internal tenant deletion execution boundary, evaluation pack, production smoke workflow, and reviewer-signal sentinels are implemented.
-- The current product is still beta/operator-configured. GitHub App automation, Supabase storage, Slack, OpenAI, and live smoke workflows depend on environment variables and runbooks, while onboarding and repository settings still rely on tenant-bound invite tokens rather than authenticated customer accounts.
+- The current product is still beta/operator-configured. GitHub App automation, Supabase storage, Slack, OpenAI, and live smoke workflows depend on environment variables and runbooks, while onboarding and repository settings still rely on tenant-bound invite tokens rather than authenticated customer accounts. A bounded tenant account/member metadata read model now exists for beta dashboards, but it is not durable user authentication, RBAC enforcement, billing, or revocable server-side sessions.
 - The product is not yet a self-serve SaaS because it does not have tenant accounts, billing-grade quota pages, customer audit-log export, a full background worker system, operations dashboards, broad incident routing, retention cleanup jobs, deletion drills, restore drills, or destructive deletion workflows.
 
 ## Final SaaS Success Definition
@@ -76,6 +76,10 @@ Completion criteria:
 - Suspended or deleted installations cannot fetch PR evidence, save reports, comment, or notify Slack.
 - Private repo failures explain whether the issue is installation permission, repository grant, visibility, GitHub rate limit, or missing CI evidence.
 - Existing no-secret demo mode still works without authentication.
+
+Current implementation note:
+
+- Tenant account/member metadata can now be read by authorized tenant admins through a summary-only endpoint and the `/tenant` dashboard. It exposes tenant display name, status, plan label, member ids, roles, and member statuses only. It intentionally does not provide full user login, OAuth, billing identity, role-gated mutation enforcement, invite lifecycle management, durable session revocation, or payment data.
 
 ## Milestone 2: Reviewer Workflow And Activation
 

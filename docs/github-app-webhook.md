@@ -177,6 +177,18 @@ AGENTPROOF_ONBOARDING_STATES_TABLE=agentproof_github_onboarding_states
 
 See `docs/github-app-onboarding.md` for endpoint behavior, cookies, and Supabase schemas.
 
+For invite-only tenant account/member metadata:
+
+```text
+AGENTPROOF_TENANT_ACCOUNTS=
+AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_URL=
+AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_TENANTS_TABLE=agentproof_tenants
+AGENTPROOF_TENANT_MEMBERS_TABLE=agentproof_tenant_members
+```
+
+This is a summary-only account readiness layer for beta dashboards, not full user authentication or billing. It may expose tenant display name, status, plan label, member ids, roles, and member statuses to authorized tenant admins. It must not store or return raw invite tokens, session hashes, OAuth access or refresh tokens, GitHub installation tokens, service-role keys, private keys, webhook secrets, billing provider ids, payment data, contact details, reports, diffs, logs, claims, or raw re-prompt text.
+
 For invite-only quota enforcement, add a server-only quota seed:
 
 ```text

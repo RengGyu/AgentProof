@@ -16,6 +16,7 @@ export type TenantDataRetentionCategoryKey =
   | "analysis_jobs"
   | "audit_events"
   | "usage_records"
+  | "account_member_records"
   | "billing_account_records"
   | "backups"
   | "tenant_tombstones";
@@ -200,6 +201,21 @@ export const TENANT_DATA_RETENTION_POLICY = {
       deletionReadiness: "manual-review-required",
       deletionBlockers: ["Billing-linked usage rows require manual review before deletion."],
       previewCounting: "counted"
+    },
+    {
+      key: "account_member_records",
+      label: "Account and member records",
+      storedFields: "Tenant id, display name, status, plan label, member ids, roles, and member statuses.",
+      prohibitedFields: "Raw invite tokens, session hashes, OAuth access or refresh tokens, contact details, billing provider ids, payment data, reports, diffs, logs, claims, re-prompts, or secrets.",
+      retention: "Active while the tenant account exists; removal requires role/session/invite lifecycle review.",
+      deletionBehavior: "Delete or tombstone tenant-owned account/member metadata after access revocation and legal review.",
+      backupBehavior: "May exist in metadata backups until backup expiry.",
+      retentionWindowDays: 0,
+      retentionWindowTrigger: "Tenant deletion start after member sessions and invites are revoked.",
+      deletionMode: "manual-review",
+      deletionReadiness: "manual-review-required",
+      deletionBlockers: ["Full account/member auth, invite revocation, and server-side session revocation are not implemented."],
+      previewCounting: "not-counted"
     },
     {
       key: "billing_account_records",

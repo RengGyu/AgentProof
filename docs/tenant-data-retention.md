@@ -20,6 +20,7 @@ The count-only deletion preview uses this policy version. It is a dry run and do
 | Analysis jobs | Tenant/job metadata, status, bounded error code/summary, planned side effects, result summary | Raw webhook bodies, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, re-prompts, URLs with keys, tokens | 30 days after terminal/completed update | Blocked | A guarded internal execution boundary now plans deletion, can mark static/memory/Supabase deletion state, disables tenant grants first, rechecks deletion state and tenant grants before direct enqueue, exact-counts queued/processing/retryable jobs before purge, and only purges through the protected path when new work is explicitly blocked and active jobs are zero. Public destructive deletion still needs every category purge wired behind an operator workflow and deletion drill | Bounded metadata only when needed for recovery |
 | Audit events | Bounded actor, tenant, repository, action, result, status, request prefix, safe summary fields | Raw payloads, reports, diffs, logs, evidence indexes, claims, re-prompts, comment bodies, saved-link keys, secrets | 365 days from event creation unless legal review requires tombstone | Manual review | Retain or tombstone according to legal/compliance policy | May be retained in backups until backup expiry |
 | Usage records | Tenant id, period, feature, hashed idempotency key | Raw idempotency keys, delivery ids, PR data, repository payloads, reports, diffs, logs, tokens | 400 days after usage period end | Manual review | Delete tenant-owned non-billing usage rows; billing-linked records need manual review | May be retained in backups until backup expiry |
+| Account and member records | Tenant id, display name, status, plan label, member ids, roles, member statuses | Raw invite tokens, session hashes, OAuth tokens, contact details, billing provider ids, payment data, reports, diffs, logs, claims, re-prompts, secrets | 0 days after tenant deletion and access revocation review | Manual review | Delete or tombstone account/member metadata after sessions and invites are revoked | May exist in metadata backups until backup expiry |
 | Billing and account records | Tenant/account ids, plan, subscription status, provider customer id, invoice references, deletion state | Payment card data, raw provider webhook bodies, source code, reports, diffs, logs, tokens | 2555 days from invoice/subscription/tax event | Manual review | Anonymize or retain minimum legally required billing records | May remain in backups until backup expiry |
 | Backups | Snapshot copies of allowed metadata and summary-only records | Raw evidence categories that production storage is prohibited from keeping | 30 days from backup creation | Blocked | Do not surgically edit immutable backups; expire according to backup retention | This is the backup category |
 | Deleted-tenant tombstones | Tenant id hash or minimal deletion marker, deletion timestamp, reason/status | Repository names, PR numbers, reports, diffs, logs, evidence, claims, re-prompts, billing details, tokens | 365 days after tenant deletion completes | Blocked | Create during destructive deletion after policy approval | May remain in backups until backup expiry |
@@ -40,6 +41,7 @@ Explicitly not counted yet:
 
 - transient PR evidence, because it is not durably stored by design
 - onboarding states
+- account and member records
 - billing and account records
 - backups
 - deleted-tenant tombstones
@@ -53,7 +55,7 @@ Do not add a destructive tenant deletion endpoint until these are true:
 - Retention windows are implemented by cleanup jobs or documented provider retention controls, not only listed in policy. Saved summary reports already have the `GET /api/cron/reports/cleanup` cron path for expired rows.
 - GitHub installation metadata has database-level uniqueness on `installation_id`, and historical webhook delivery rows without `tenant_id` have an expiry or manual-review plan.
 - Analysis jobs have a deletion orchestrator that creates or verifies a durable tenant deletion state, blocks new enqueue and grant re-enable, calls tenant-wide grant disable, purges saved summary reports through the guarded execution wrapper, drains or cancels processing workers, executes the guarded tenant-scoped job purge, and proves no saved report or comment can be produced after deletion starts.
-- Billing/account retention is reviewed separately from product metadata retention.
+- Account/member and billing retention are reviewed separately from product metadata retention.
 - Backup expiry behavior is documented and tested.
 - A deletion drill proves that saved reports, repository grants, GitHub installations, tenant-mapped webhook deliveries, analysis jobs, audit events, and usage records follow this policy.
 - A restore drill proves that summary-only data can be recovered without raw evidence.

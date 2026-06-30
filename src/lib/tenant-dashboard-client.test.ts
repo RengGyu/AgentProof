@@ -4,6 +4,7 @@ import {
   tenantHealthUrl,
   tenantInviteHeaders,
   tenantAnalysisJobsUrl,
+  tenantAccountUrl,
   tenantOnboardingStartPayload,
   tenantAuditActivityUrl,
   tenantReportsUrl,
@@ -35,6 +36,17 @@ describe("tenant dashboard client request helpers", () => {
     expect(url).not.toContain("token");
     expect(url).not.toContain("invite");
     expect(url).not.toContain("idempotency");
+    expect(url).not.toContain("service-role");
+  });
+
+  it("builds account status URLs without invite tokens or account secrets", () => {
+    const url = tenantAccountUrl(" tenant_a ");
+
+    expect(url).toBe("/api/tenants/account?tenantId=tenant_a");
+    expect(url).not.toContain("token");
+    expect(url).not.toContain("invite");
+    expect(url).not.toContain("email");
+    expect(url).not.toContain("billing");
     expect(url).not.toContain("service-role");
   });
 

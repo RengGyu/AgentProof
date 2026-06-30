@@ -12,13 +12,15 @@ import {
   Loader2,
   RefreshCcw,
   ShieldCheck,
-  SlidersHorizontal
+  SlidersHorizontal,
+  UsersRound
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   tenantHealthUrl,
   tenantInviteHeaders,
   tenantAnalysisJobsUrl,
+  tenantAccountUrl,
   tenantAuditActivityUrl,
   tenantDeletionPreviewUrl,
   tenantOnboardingStartPayload,
@@ -57,6 +59,33 @@ interface InstalledRepository {
   fullName: string;
   private: boolean;
   defaultBranch?: string;
+}
+
+interface TenantAccountSummary {
+  tenantId: string;
+  name: string;
+  status: string;
+  plan: string;
+  configured: boolean;
+  memberCount: number;
+}
+
+interface TenantMemberSummary {
+  memberId: string;
+  role: "owner" | "admin" | "member";
+  status: "active" | "invited" | "disabled";
+}
+
+interface TenantAccountStatus {
+  account: TenantAccountSummary;
+  members: TenantMemberSummary[];
+  roleCounts: {
+    owner: number;
+    admin: number;
+    member: number;
+  };
+  privacy: "tenant-account-summary-only";
+  next: "manage_member_roles" | "configure_account_store";
 }
 
 interface UsageSummary {
@@ -239,6 +268,7 @@ export function TenantSetupPanel() {
   const [installationId, setInstallationId] = useState("");
   const [repositories, setRepositories] = useState<RepositorySettings[]>([]);
   const [health, setHealth] = useState<RepositoryHealth[]>([]);
+  const [accountStatus, setAccountStatus] = useState<TenantAccountStatus | null>(null);
   const [usage, setUsage] = useState<UsageSummary[]>([]);
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [analysisJobs, setAnalysisJobs] = useState<AnalysisJobSummary[]>([]);
@@ -447,6 +477,30 @@ export function TenantSetupPanel() {
       }
     } catch (error) {
       setMessage(errorMessage(error, "Repository health could not be loaded."));
+    } finally {
+      setMode("idle");
+    }
+  }
+
+  async function loadAccountStatus(feedback: "visible" | "silent" = "visible") {
+    setMode("loading");
+    if (feedback === "visible") setMessage(null);
+
+    try {
+      const json = await requestJson<TenantAccountStatus>(tenantAccountUrl(tenantId), {
+        headers: tenantInviteHeaders(inviteToken)
+      });
+
+      if (json.privacy !== "tenant-account-summary-only") {
+        throw new PanelRequestError("Tenant account response did not match the summary-only boundary.");
+      }
+
+      setAccountStatus(json);
+      if (feedback === "visible") {
+        setMessage({ kind: "ok", text: "Tenant account summary loaded." });
+      }
+    } catch (error) {
+      setMessage(errorMessage(error, "Tenant account summary could not be loaded."));
     } finally {
       setMode("idle");
     }
@@ -690,6 +744,10 @@ export function TenantSetupPanel() {
             <RefreshCcw size={16} />
             Health
           </button>
+          <button className="button" type="button" onClick={() => loadAccountStatus()} disabled={!credentialsReady || busy}>
+            <UsersRound size={16} />
+            Account
+          </button>
           <button className="button" type="button" onClick={() => loadUsageStatus()} disabled={!credentialsReady || busy}>
             <BarChart3 size={16} />
             Usage
@@ -721,6 +779,56 @@ export function TenantSetupPanel() {
       </div>
 
       <div className="tenant-setup-grid">
+        <article className="card">
+          <div className="card-title-row">
+            <h2>Tenant Account</h2>
+            <UsersRound size={18} aria-hidden="true" />
+          </div>
+          <div className="button-row tenant-inline-actions">
+            <button className="button compact" type="button" onClick={() => loadAccountStatus()} disabled={!credentialsReady || busy}>
+              Load Account
+            </button>
+          </div>
+          {accountStatus ? (
+            <div className="tenant-account-summary">
+              <div className="tenant-rollup-row" aria-label="Tenant account role summary">
+                <span>{accountStatus.account.configured ? "Configured" : "Invite-only"}</span>
+                <span>Owners {accountStatus.roleCounts.owner}</span>
+                <span>Admins {accountStatus.roleCounts.admin}</span>
+                <span>Members {accountStatus.roleCounts.member}</span>
+              </div>
+              <ul className="tenant-usage-list">
+                <li>
+                  <div className="tenant-usage-meter">
+                    <span>{accountStatus.account.name}</span>
+                    <strong>{accountStatus.account.plan}</strong>
+                  </div>
+                  <div className={`tenant-usage-state state-${accountStatus.account.status}`}>
+                    {accountStatus.account.status}
+                  </div>
+                  <small>{accountStatus.account.memberCount} member roles · {accountStatus.next.replace(/_/g, " ")}</small>
+                </li>
+              </ul>
+              {accountStatus.members.length > 0 ? (
+                <ul className="tenant-repo-list tenant-member-list">
+                  {accountStatus.members.map((member) => (
+                    <li key={member.memberId}>
+                      <div>
+                        <strong>{member.memberId}</strong>
+                        <span>{member.role} · {member.status}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted small">No member records configured yet.</p>
+              )}
+            </div>
+          ) : (
+            <p className="muted small">No account summary loaded.</p>
+          )}
+        </article>
+
         <article className="card">
           <div className="card-title-row">
             <h2>Installed Repositories</h2>

@@ -52,6 +52,24 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).not.toContain("idempotency");
   });
 
+  it("uses account summary metadata without full auth, billing, or contact fields", () => {
+    expect(source).toContain("tenantAccountUrl");
+    expect(source).toContain("Tenant Account");
+    expect(source).toContain("tenant-account-summary-only");
+    expect(source).toContain("Owners {accountStatus.roleCounts.owner}");
+    expect(source).toContain("Admins {accountStatus.roleCounts.admin}");
+    expect(source).toContain("Members {accountStatus.roleCounts.member}");
+    expect(source).not.toContain("email");
+    expect(source).not.toContain("billing");
+    expect(source).not.toContain("customerId");
+    expect(source).not.toContain("subscription");
+    expect(source).not.toContain("oauth");
+    expect(source).not.toContain("accessToken");
+    expect(source).not.toContain("refreshToken");
+    expect(source).not.toContain("sessionHash");
+    expect(source).not.toContain("memberInviteToken");
+  });
+
   it("uses summary-only verification activity without raw audit internals", () => {
     expect(source).toContain("tenantAuditActivityUrl");
     expect(source).toContain("Recent Verification Activity");

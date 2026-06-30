@@ -1235,6 +1235,33 @@ code {
   color: var(--danger);
 }
 
+.tenant-usage-state.state-active,
+.tenant-usage-state.state-trialing {
+  background: #ecfdf3;
+  color: var(--ok);
+}
+
+.tenant-usage-state.state-suspended,
+.tenant-usage-state.state-deleted {
+  background: rgba(180, 35, 24, 0.1);
+  color: var(--danger);
+}
+
+.tenant-usage-state.state-invite-only,
+.tenant-usage-state.state-unknown {
+  background: #fff7ed;
+  color: #b54708;
+}
+
+.tenant-account-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.tenant-member-list {
+  margin-top: 0;
+}
+
 .tenant-audit-list,
 .tenant-report-list,
 .tenant-deletion-list {
