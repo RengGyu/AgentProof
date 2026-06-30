@@ -35,6 +35,7 @@ Expected:
 - Saved reports retain zero evidence items, zero claims, no raw re-prompt text, and cleared evidence references.
 - Tenant-scoped saved reports require the generated report key or trusted tenant context; id-only lookup returns the same unavailable response as missing or expired reports.
 - Quota-blocked tenant webhook analysis returns bounded metadata only and stops before idempotency, GitHub token fetch, PR evidence fetch, saved reports, or comments.
+- Audit events, when configured, contain only bounded tenant/repo/action/result/request/status metadata and pass privacy scanner tests for raw payloads, diffs, logs, reports, claims, re-prompt text, comment bodies, tokens, and saved-link keys.
 
 ## Manual GitHub Actions Gate
 
@@ -113,6 +114,7 @@ Most recent no-secret production gate:
 - Missing operator diagnostics token returns 401 when `AGENTPROOF_OPS_TOKEN` is configured.
 - Missing saved-report Supabase env falls back to `short-lived-in-memory` with a warning.
 - Missing usage-quota Supabase RPC env fails closed when quota enforcement is enabled.
+- Audit privacy scanner failures block the audit write before durable storage.
 - Misconfigured Supabase env returns 503 instead of silently using unsafe storage.
 
 ## Non-Goals

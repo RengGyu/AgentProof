@@ -296,6 +296,7 @@ Do not implement these until the SaaS evidence-verifier workflow is proven:
 6. **Audit log and privacy scanner**
    - Add bounded audit events and automated checks that durable rows do not contain raw evidence fields or secret-like strings.
    - Acceptance: privacy scanner failure blocks release.
+   - Current implementation note: GitHub App automation can now write bounded audit events for grant denial, quota blocks/unavailability, idempotency unavailability, duplicate skips, completed analysis, and failed analysis. Audit events run through a structural privacy scanner before memory or Supabase storage. Install/uninstall, repo settings, admin access, billing, Slack, deletion, export UI, and required-audit side-effect gates remain separate work.
 
 7. **Billing beta**
    - Add plan records, subscription status, billing portal, and quota mapping.

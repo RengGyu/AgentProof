@@ -95,6 +95,7 @@ Optional server integrations are off by default:
 - `AGENTPROOF_GITHUB_APP_SAVE_REPORTS`: when true, webhook-triggered analyses create summary-only saved report links.
 - `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED`: when true, webhook-triggered analyses create or update one GitHub App marker comment. Keep this false until the repository owner explicitly wants automatic comments.
 - `AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL`, `AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE`: enables durable duplicate suppression for GitHub App webhook automation. When webhook-specific Supabase env is absent, AgentProof reuses the saved-report Supabase URL and service-role key.
+- `AGENTPROOF_AUDIT_SUPABASE_URL`, `AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_AUDIT_EVENTS_TABLE`: enables bounded audit events for tenant GitHub App automation. Audit rows pass a structural privacy scanner and store only tenant/repo/action/result/request/status metadata, not raw payloads, reports, diffs, logs, claims, re-prompt text, comment bodies, tokens, or saved-link keys.
 - `AGENTPROOF_OPS_TOKEN`: enables token-gated operator diagnostics for GitHub App readiness. The diagnostics endpoint returns status categories only, not env values, repository names, table names, tokens, payloads, diffs, or logs.
 - `SLACK_WEBHOOK_URL`, `AGENTPROOF_NOTIFY_TOKEN`: enables summary-only Slack notifications from trusted internal callers.
 - `AGENTPROOF_REPORTS_SUPABASE_URL`, `AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_REPORTS_TABLE`: enables durable summary-only saved reports through Supabase REST. Generic `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are also accepted. Never expose the service-role key with a `NEXT_PUBLIC_` prefix.
@@ -172,6 +173,7 @@ AgentProof does not decide whether to merge. It gives a human reviewer a compact
 - `src/lib/report-validation.ts`: runtime report validation and evidence-ref integrity checks
 - `src/lib/report-share.ts`: summary-only portable share links
 - `src/lib/server-report-store.ts`: summary-only saved report store with in-memory and optional Supabase backends
+- `src/lib/audit-log.ts`: bounded audit event writer and privacy scanner for SaaS automation metadata
 - `src/lib/report-history.ts`: browser-local summary-only recent report history
 - `src/lib/llm-package.ts`: normalized package for future LLM verifier calls
 - `src/lib/openai-verifier.ts`: optional OpenAI Responses API structured-output adapter

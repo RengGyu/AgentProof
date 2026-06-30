@@ -167,6 +167,16 @@ AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY
 
 Do not expose service-role keys with a `NEXT_PUBLIC_` prefix.
 
+Optional bounded audit event storage:
+
+```text
+AGENTPROOF_AUDIT_SUPABASE_URL=
+AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_AUDIT_EVENTS_TABLE=agentproof_audit_events
+```
+
+Audit events are append-only operational metadata for tenant GitHub App automation. They pass a structural privacy scanner before storage. They must not include raw webhook payloads, signatures, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, raw re-prompt text, comment bodies, saved-report URLs with `key`, tokens, private keys, service-role keys, Slack webhooks, or OpenAI keys.
+
 ## Usage Quota Schema
 
 Durable usage records store only bounded usage metadata and hashed idempotency keys. They do not store webhook payloads, PR descriptions, diffs, logs, reports, comments, tokens, or private repository payloads.
@@ -256,6 +266,39 @@ begin
 end;
 $$;
 ```
+
+## Audit Event Schema
+
+Audit rows store only bounded metadata: actor, tenant, repository, installation, PR number, head SHA prefix, request id, action, result, status, and safe summary fields.
+
+```sql
+create table if not exists agentproof_audit_events (
+  id text primary key,
+  created_at timestamptz not null,
+  actor text not null check (actor in ('github_app', 'system')),
+  action text not null,
+  result text not null check (result in ('blocked', 'completed', 'failed', 'skipped')),
+  tenant_id text,
+  repository_full_name text,
+  installation_id bigint,
+  pull_request_number integer,
+  head_sha_prefix text,
+  request_id text,
+  status_code integer,
+  metadata jsonb not null default '{}'::jsonb
+);
+
+create index if not exists agentproof_audit_events_tenant_created_idx
+  on agentproof_audit_events (tenant_id, created_at desc);
+```
+
+Recommended boundary:
+
+```sql
+alter table agentproof_audit_events enable row level security;
+```
+
+No public client policies are required because AgentProof writes audit events through server-side service-role credentials. Audit export should include bounded metadata only; do not add raw report or source-code columns.
 
 ## Durable Idempotency Schema
 
