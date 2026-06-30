@@ -282,6 +282,7 @@ Do not implement these until the SaaS evidence-verifier workflow is proven:
 3. **Tenant-scoped saved report store**
    - Add tenant id to saved report lifecycle while preserving summary-only projection and TTL.
    - Acceptance: wrong-tenant access returns not found or forbidden without exposing report metadata.
+   - Current implementation note: saved reports can now carry tenant ownership plus a hashed report access key; tenant-owned reports are hidden from id-only lookups. Full authenticated tenant sessions, dashboard filtering, and deletion workflows remain separate work.
 
 4. **Analysis job queue**
    - Move GitHub App webhook analysis into durable jobs with idempotency, retry, and dead-letter state.

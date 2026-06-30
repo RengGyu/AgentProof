@@ -1,4 +1,6 @@
+import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { sanitizeReportForShare } from "./report-share";
+import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
 import type { VerificationReport } from "./types";
 
@@ -20,6 +22,24 @@ export interface StoredServerReport {
   createdAt: string;
   expiresAt: string;
   report: VerificationReport;
+  tenantId?: string;
+  accessToken?: string;
+  accessTokenHash?: string;
+}
+
+export interface SavedReportAccessContext {
+  tenantId?: string;
+  accessToken?: string;
+}
+
+export interface CreateSavedReportOptions {
+  ttlMs?: number;
+  tenantId?: string;
+}
+
+interface NormalizedCreateSavedReportOptions {
+  ttlMs: number;
+  tenantId?: string;
 }
 
 export interface SavedReportStoreStatus {
@@ -47,6 +67,8 @@ interface SupabaseReportRow {
   created_at: string;
   expires_at: string;
   report: VerificationReport;
+  tenant_id?: string | null;
+  access_token_hash?: string | null;
 }
 
 export class SavedReportStoreError extends Error {
@@ -56,32 +78,45 @@ export class SavedReportStoreError extends Error {
   }
 }
 
-export async function createSavedReport(report: VerificationReport, ttlMs = SERVER_REPORT_TTL_MS): Promise<StoredServerReport> {
+export async function createSavedReport(
+  report: VerificationReport,
+  optionsOrTtlMs: CreateSavedReportOptions | number = SERVER_REPORT_TTL_MS
+): Promise<StoredServerReport> {
   const config = getSupabaseReportStoreConfig();
+  const options = normalizeCreateOptions(optionsOrTtlMs);
 
   if (config) {
-    return createSupabaseSavedReport(config, report, ttlMs);
+    return createSupabaseSavedReport(config, report, options);
   }
 
-  return createMemorySavedReport(report, ttlMs);
+  return createMemorySavedReport(report, options);
 }
 
-export async function getSavedReport(id: string): Promise<StoredServerReport | null> {
+export async function getSavedReport(
+  id: string,
+  access: SavedReportAccessContext = {}
+): Promise<StoredServerReport | null> {
   const config = getSupabaseReportStoreConfig();
 
   if (config) {
-    return getSupabaseSavedReport(config, id);
+    return getSupabaseSavedReport(config, id, access);
   }
 
-  return getMemorySavedReport(id);
+  return getMemorySavedReport(id, access);
 }
 
-export async function deleteSavedReport(id: string): Promise<boolean> {
+export async function deleteSavedReport(
+  id: string,
+  access: SavedReportAccessContext = {}
+): Promise<boolean> {
   const config = getSupabaseReportStoreConfig();
 
   if (config) {
-    return deleteSupabaseSavedReport(config, id);
+    return deleteSupabaseSavedReport(config, id, access);
   }
+
+  const saved = getMemorySavedReport(id, access);
+  if (!saved) return false;
 
   return reportStore().delete(id);
 }
@@ -138,23 +173,25 @@ export function clearSavedReportsForTests() {
   reportStore().clear();
 }
 
-function createMemorySavedReport(report: VerificationReport, ttlMs: number): StoredServerReport {
+function createMemorySavedReport(report: VerificationReport, options: NormalizedCreateSavedReportOptions): StoredServerReport {
   cleanupExpiredReports();
 
   const createdAtDate = new Date();
+  const access = createTenantAccess(options.tenantId);
   const saved: StoredServerReport = {
-    id: crypto.randomUUID(),
+    id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
-    expiresAt: new Date(createdAtDate.getTime() + ttlMs).toISOString(),
-    report: sanitizeReportForShare(report)
+    expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
+    report: sanitizeSummaryReport(report),
+    ...access
   };
 
-  reportStore().set(saved.id, saved);
+  reportStore().set(saved.id, withoutTransientAccessToken(saved));
   trimReportStore();
   return saved;
 }
 
-function getMemorySavedReport(id: string): StoredServerReport | null {
+function getMemorySavedReport(id: string, access: SavedReportAccessContext): StoredServerReport | null {
   const saved = reportStore().get(id);
 
   if (!saved) return null;
@@ -163,20 +200,22 @@ function getMemorySavedReport(id: string): StoredServerReport | null {
     return null;
   }
 
-  return saved;
+  return canAccessSavedReport(saved, access) ? saved : null;
 }
 
 async function createSupabaseSavedReport(
   config: SupabaseReportStoreConfig,
   report: VerificationReport,
-  ttlMs: number
+  options: NormalizedCreateSavedReportOptions
 ): Promise<StoredServerReport> {
   const createdAtDate = new Date();
+  const access = createTenantAccess(options.tenantId);
   const saved: StoredServerReport = {
-    id: crypto.randomUUID(),
+    id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
-    expiresAt: new Date(createdAtDate.getTime() + ttlMs).toISOString(),
-    report: sanitizeSummaryReport(report)
+    expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
+    report: sanitizeSummaryReport(report),
+    ...access
   };
 
   const response = await supabaseFetch(config, "", {
@@ -189,13 +228,28 @@ async function createSupabaseSavedReport(
     throw new SavedReportStoreError(`Saved report storage failed with status ${response.status}.`);
   }
 
-  return rowToStoredReport((await parseSupabaseArray(response))[0]) ?? saved;
+  const stored = rowToStoredReport((await parseSupabaseArray(response))[0]);
+
+  return stored
+    ? {
+        ...stored,
+        tenantId: saved.tenantId,
+        accessToken: saved.accessToken,
+        accessTokenHash: saved.accessTokenHash
+      }
+    : saved;
 }
 
-async function getSupabaseSavedReport(config: SupabaseReportStoreConfig, id: string): Promise<StoredServerReport | null> {
+async function getSupabaseSavedReport(
+  config: SupabaseReportStoreConfig,
+  id: string,
+  access: SavedReportAccessContext
+): Promise<StoredServerReport | null> {
   if (!isSafeReportId(id)) return null;
+  if (!hasSavedReportAccessContext(access) && isTenantScopedReportId(id)) return null;
 
-  const response = await supabaseFetch(config, `?id=eq.${encodeURIComponent(id)}&select=id,created_at,expires_at,report&limit=1`, {
+  const query = buildSupabaseReportAccessQuery(id, access);
+  const response = await supabaseFetch(config, query, {
     method: "GET"
   });
 
@@ -207,17 +261,33 @@ async function getSupabaseSavedReport(config: SupabaseReportStoreConfig, id: str
 
   if (!saved) return null;
   if (Date.parse(saved.expiresAt) <= Date.now()) {
-    await deleteSupabaseSavedReport(config, id);
+    await deleteSupabaseSavedReportRow(config, id, access);
     return null;
   }
 
-  return saved;
+  return canAccessSavedReport(saved, access) ? saved : null;
 }
 
-async function deleteSupabaseSavedReport(config: SupabaseReportStoreConfig, id: string): Promise<boolean> {
+async function deleteSupabaseSavedReport(
+  config: SupabaseReportStoreConfig,
+  id: string,
+  access: SavedReportAccessContext
+): Promise<boolean> {
   if (!isSafeReportId(id)) return false;
+  if (!hasSavedReportAccessContext(access) && isTenantScopedReportId(id)) return false;
 
-  const response = await supabaseFetch(config, `?id=eq.${encodeURIComponent(id)}`, {
+  const existing = await getSupabaseSavedReport(config, id, access);
+  if (!existing) return false;
+
+  return deleteSupabaseSavedReportRow(config, id, access);
+}
+
+async function deleteSupabaseSavedReportRow(
+  config: SupabaseReportStoreConfig,
+  id: string,
+  access: SavedReportAccessContext
+): Promise<boolean> {
+  const response = await supabaseFetch(config, buildSupabaseReportDeleteQuery(id, access), {
     method: "DELETE",
     headers: { Prefer: "return=minimal" }
   });
@@ -261,12 +331,19 @@ async function parseSupabaseArray(response: Response): Promise<SupabaseReportRow
 }
 
 function toSupabaseRow(saved: StoredServerReport): SupabaseReportRow {
-  return {
+  const row: SupabaseReportRow = {
     id: saved.id,
     created_at: saved.createdAt,
     expires_at: saved.expiresAt,
     report: saved.report
   };
+
+  if (saved.tenantId) {
+    row.tenant_id = saved.tenantId;
+    row.access_token_hash = saved.accessTokenHash;
+  }
+
+  return row;
 }
 
 function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerReport | null {
@@ -276,7 +353,9 @@ function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerRepo
     id: row.id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
-    report: row.report
+    report: row.report,
+    tenantId: row.tenant_id ?? undefined,
+    accessTokenHash: row.access_token_hash ?? undefined
   };
 }
 
@@ -288,6 +367,8 @@ function isSupabaseReportRow(value: unknown): value is SupabaseReportRow {
     typeof row.id === "string" &&
     typeof row.created_at === "string" &&
     typeof row.expires_at === "string" &&
+    (row.tenant_id === undefined || row.tenant_id === null || typeof row.tenant_id === "string") &&
+    (row.access_token_hash === undefined || row.access_token_hash === null || typeof row.access_token_hash === "string") &&
     Boolean(row.report && typeof row.report === "object" && !Array.isArray(row.report))
   );
 }
@@ -315,6 +396,123 @@ function readSupabaseReportStoreEnv() {
 
 function isSafeReportId(id: string): boolean {
   return /^[a-zA-Z0-9_-]{1,100}$/.test(id);
+}
+
+function normalizeCreateOptions(optionsOrTtlMs: CreateSavedReportOptions | number): NormalizedCreateSavedReportOptions {
+  const options = typeof optionsOrTtlMs === "number"
+    ? { ttlMs: optionsOrTtlMs }
+    : optionsOrTtlMs;
+  const ttlMs = typeof options.ttlMs === "number" && Number.isFinite(options.ttlMs)
+    ? options.ttlMs
+    : SERVER_REPORT_TTL_MS;
+  const tenantId = options.tenantId ? normalizeTenantId(options.tenantId) : undefined;
+
+  if (options.tenantId && !tenantId) {
+    throw new SavedReportStoreError("Saved report tenant id is invalid.");
+  }
+
+  return {
+    ttlMs,
+    tenantId
+  };
+}
+
+function createTenantAccess(tenantId: string | undefined): Partial<StoredServerReport> {
+  if (!tenantId) return {};
+
+  const accessToken = randomBytes(24).toString("base64url");
+
+  return {
+    tenantId,
+    accessToken,
+    accessTokenHash: hashSavedReportAccessToken(accessToken)
+  };
+}
+
+function buildSupabaseReportAccessQuery(id: string, access: SavedReportAccessContext): string {
+  if (!hasSavedReportAccessContext(access)) {
+    return `?id=eq.${encodeURIComponent(id)}&select=id,created_at,expires_at,report&limit=1`;
+  }
+
+  return [
+    `id=eq.${encodeURIComponent(id)}`,
+    ...supabaseAccessFilters(access),
+    "select=id,created_at,expires_at,report,tenant_id,access_token_hash",
+    "limit=1"
+  ].join("&").replace(/^/, "?");
+}
+
+function buildSupabaseReportDeleteQuery(id: string, access: SavedReportAccessContext): string {
+  if (!hasSavedReportAccessContext(access)) {
+    return `?id=eq.${encodeURIComponent(id)}`;
+  }
+
+  return [
+    `id=eq.${encodeURIComponent(id)}`,
+    ...supabaseAccessFilters(access)
+  ].join("&").replace(/^/, "?");
+}
+
+function supabaseAccessFilters(access: SavedReportAccessContext): string[] {
+  const filters: string[] = [];
+  const tenantId = access.tenantId ? normalizeTenantId(access.tenantId) : undefined;
+  const accessTokenHash = access.accessToken ? hashSavedReportAccessToken(access.accessToken) : undefined;
+
+  if (tenantId) filters.push(`tenant_id=eq.${encodeURIComponent(tenantId)}`);
+  if (accessTokenHash) filters.push(`access_token_hash=eq.${encodeURIComponent(accessTokenHash)}`);
+
+  return filters;
+}
+
+function hasSavedReportAccessContext(access: SavedReportAccessContext): boolean {
+  return Boolean(access.tenantId || access.accessToken);
+}
+
+function createSavedReportId(tenantId: string | undefined): string {
+  const id = crypto.randomUUID();
+
+  return tenantId ? `tenant_${id}` : id;
+}
+
+function isTenantScopedReportId(id: string): boolean {
+  return id.startsWith("tenant_");
+}
+
+function canAccessSavedReport(saved: StoredServerReport, access: SavedReportAccessContext): boolean {
+  if (!saved.tenantId && !saved.accessTokenHash) return true;
+
+  const tenantId = access.tenantId ? normalizeTenantId(access.tenantId) : undefined;
+  if (tenantId && saved.tenantId && tenantId === saved.tenantId) {
+    return true;
+  }
+
+  return Boolean(access.accessToken && saved.accessTokenHash && safeTokenEqual(
+    saved.accessTokenHash,
+    hashSavedReportAccessToken(access.accessToken)
+  ));
+}
+
+function hashSavedReportAccessToken(accessToken: string): string {
+  return createHash("sha256").update(accessToken).digest("hex");
+}
+
+function safeTokenEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function normalizeTenantId(value: string): string | undefined {
+  const normalized = redactSecrets(value).trim();
+
+  return /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,79}$/.test(normalized) ? normalized : undefined;
+}
+
+function withoutTransientAccessToken(saved: StoredServerReport): StoredServerReport {
+  const { accessToken: _accessToken, ...stored } = saved;
+
+  return stored;
 }
 
 function trimTrailingSlash(value: string): string {
