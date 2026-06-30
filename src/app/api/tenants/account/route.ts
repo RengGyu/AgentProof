@@ -1,9 +1,6 @@
 import { verifyTenantAdminAccess } from "@/lib/github-onboarding";
 import { noStoreJson } from "@/lib/http";
-import {
-  readTenantAccountSummary,
-  TenantAccountStoreError
-} from "@/lib/tenant-accounts";
+import { readTenantAccountSummary } from "@/lib/tenant-accounts";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -34,14 +31,10 @@ export async function GET(request: Request) {
       privacy: summary.privacy,
       next: summary.account.configured ? "manage_member_roles" : "configure_account_store"
     });
-  } catch (error) {
-    if (error instanceof TenantAccountStoreError) {
-      return noStoreJson({
-        error: "Tenant account status is unavailable.",
-        code: "tenant_account_unavailable"
-      }, { status: 503 });
-    }
-
-    throw error;
+  } catch {
+    return noStoreJson({
+      error: "Tenant account status is unavailable.",
+      code: "tenant_account_unavailable"
+    }, { status: 503 });
   }
 }

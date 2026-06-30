@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createTenantAdminSession } from "@/lib/github-onboarding";
 import { GET } from "./route";
 
 describe("GET /api/tenants/account", () => {
@@ -106,6 +107,43 @@ describe("GET /api/tenants/account", () => {
     }));
 
     expect(response.status).toBe(401);
+  });
+
+  it("accepts a tenant admin session cookie without an invite header", async () => {
+    stubSessionEnv();
+    const session = createTenantAdminSession({
+      tenantId: "tenant_a",
+      inviteToken: "tenant-a-invite-token"
+    });
+
+    const response = await GET(new Request("http://localhost/api/tenants/account?tenantId=tenant_a", {
+      headers: { cookie: session.sessionCookie }
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({
+      ok: true,
+      tenantId: "tenant_a",
+      privacy: "tenant-account-summary-only"
+    });
+  });
+
+  it("rejects a wrong-tenant admin session cookie before reading account status", async () => {
+    stubSessionEnv();
+    const session = createTenantAdminSession({
+      tenantId: "tenant_b",
+      inviteToken: "tenant-b-invite-token"
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(new Request("http://localhost/api/tenants/account?tenantId=tenant_a", {
+      headers: { cookie: session.sessionCookie }
+    }));
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fails closed for invalid account seed configuration", async () => {

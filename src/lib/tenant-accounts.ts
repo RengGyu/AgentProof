@@ -68,6 +68,7 @@ interface SupabaseTenantRow {
 }
 
 interface SupabaseTenantMemberRow {
+  tenant_id?: unknown;
   member_id?: unknown;
   role?: unknown;
   status?: unknown;
@@ -163,7 +164,7 @@ async function readSupabaseTenantAccountSummary(
   }
 
   const accountRows = (await accountResponse.json().catch(() => [])) as unknown;
-  const account = Array.isArray(accountRows) ? normalizeSupabaseTenantRow(accountRows[0]) : null;
+  const account = Array.isArray(accountRows) ? normalizeSupabaseTenantRow(accountRows[0], tenantId) : null;
   if (!account) {
     return toReadResult({
       tenantId,
@@ -177,7 +178,7 @@ async function readSupabaseTenantAccountSummary(
 
   const memberParams = new URLSearchParams({
     tenant_id: `eq.${tenantId}`,
-    select: "member_id,role,status",
+    select: "tenant_id,member_id,role,status",
     limit: "100"
   });
   const memberResponse = await tenantAccountFetch(config, config.membersTable, `?${memberParams.toString()}`, {
@@ -190,7 +191,9 @@ async function readSupabaseTenantAccountSummary(
 
   const memberRows = (await memberResponse.json().catch(() => [])) as unknown;
   const members = Array.isArray(memberRows)
-    ? memberRows.map(normalizeSupabaseTenantMemberRow).filter((item): item is TenantMemberSummary => Boolean(item))
+    ? memberRows
+      .map((row) => normalizeSupabaseTenantMemberRow(row, tenantId))
+      .filter((item): item is TenantMemberSummary => Boolean(item))
     : [];
 
   return toReadResult({
@@ -300,16 +303,18 @@ function normalizeTenantMemberSeed(input: unknown): TenantMemberSummary | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const value = input as TenantMemberSeedInput;
   const memberId = normalizeMemberId(value.memberId);
-  if (!memberId) return null;
+  const role = normalizeMemberRole(value.role);
+  const status = normalizeMemberStatus(value.status);
+  if (!memberId || !role || !status) return null;
 
   return {
     memberId,
-    role: normalizeMemberRole(value.role),
-    status: normalizeMemberStatus(value.status)
+    role,
+    status
   };
 }
 
-function normalizeSupabaseTenantRow(row: unknown): {
+function normalizeSupabaseTenantRow(row: unknown, expectedTenantId: string): {
   name: string;
   status: TenantAccountStatus;
   plan: TenantAccountPlan;
@@ -317,7 +322,7 @@ function normalizeSupabaseTenantRow(row: unknown): {
   if (!row || typeof row !== "object" || Array.isArray(row)) return null;
   const value = row as SupabaseTenantRow;
   const tenantId = normalizeTenantId(value.tenant_id);
-  if (!tenantId) return null;
+  if (!tenantId || tenantId !== expectedTenantId) return null;
 
   return {
     name: normalizeName(value.name) ?? tenantId,
@@ -326,16 +331,19 @@ function normalizeSupabaseTenantRow(row: unknown): {
   };
 }
 
-function normalizeSupabaseTenantMemberRow(row: unknown): TenantMemberSummary | null {
+function normalizeSupabaseTenantMemberRow(row: unknown, expectedTenantId: string): TenantMemberSummary | null {
   if (!row || typeof row !== "object" || Array.isArray(row)) return null;
   const value = row as SupabaseTenantMemberRow;
+  const tenantId = normalizeTenantId(value.tenant_id);
   const memberId = normalizeMemberId(value.member_id);
-  if (!memberId) return null;
+  const role = normalizeMemberRole(value.role);
+  const status = normalizeMemberStatus(value.status);
+  if (!tenantId || tenantId !== expectedTenantId || !memberId || !role || !status) return null;
 
   return {
     memberId,
-    role: normalizeMemberRole(value.role),
-    status: normalizeMemberStatus(value.status)
+    role,
+    status
   };
 }
 
@@ -373,16 +381,16 @@ function normalizeAccountPlan(value: unknown): TenantAccountPlan {
   return "unknown";
 }
 
-function normalizeMemberRole(value: unknown): TenantMemberRole {
+function normalizeMemberRole(value: unknown): TenantMemberRole | null {
   if (value === "owner" || value === "admin" || value === "member") return value;
 
-  return "member";
+  return null;
 }
 
-function normalizeMemberStatus(value: unknown): TenantMemberStatus {
+function normalizeMemberStatus(value: unknown): TenantMemberStatus | null {
   if (value === "active" || value === "invited" || value === "disabled") return value;
 
-  return "active";
+  return null;
 }
 
 function trimTrailingSlash(value: string): string {

@@ -79,6 +79,33 @@ describe("tenant account metadata boundary", () => {
     expect(serialized).not.toContain("sk-secret");
   });
 
+  it("does not fabricate member role or status when seed rows are malformed", async () => {
+    vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        name: "AgentProof Team",
+        status: "active",
+        plan: "team",
+        members: [
+          { memberId: "owner_1", role: "owner", status: "active" },
+          { memberId: "unknown_role", role: "maintainer", status: "active" },
+          { memberId: "unknown_status", role: "member", status: "pending" },
+          { memberId: "missing_status", role: "member" }
+        ]
+      }
+    ]));
+
+    const result = await readTenantAccountSummary({ tenantId: "tenant_a" });
+
+    expect(result.members).toEqual([
+      { memberId: "owner_1", role: "owner", status: "active" }
+    ]);
+    expect(result.roleCounts).toEqual({ owner: 1, admin: 0, member: 0 });
+    expect(JSON.stringify(result)).not.toContain("unknown_role");
+    expect(JSON.stringify(result)).not.toContain("unknown_status");
+    expect(JSON.stringify(result)).not.toContain("missing_status");
+  });
+
   it("rejects malformed account seed configuration", () => {
     vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([
       { tenantId: "tenant_a", members: "owner@example.com" }
@@ -100,8 +127,11 @@ describe("tenant account metadata boundary", () => {
       }
 
       return Response.json([
-        { member_id: "owner_1", role: "owner", status: "active", email: "owner@example.com" },
-        { member_id: "member_1", role: "member", status: "active", token: "github_pat_secret_should_not_leak" }
+        { tenant_id: "tenant_a", member_id: "owner_1", role: "owner", status: "active", email: "owner@example.com" },
+        { tenant_id: "tenant_a", member_id: "member_1", role: "member", status: "active", token: "github_pat_secret_should_not_leak" },
+        { tenant_id: "tenant_b", member_id: "wrong_tenant", role: "member", status: "active" },
+        { tenant_id: "tenant_a", member_id: "bad_role", role: "maintainer", status: "active" },
+        { tenant_id: "tenant_a", member_id: "bad_status", role: "member", status: "pending" }
       ]);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -120,7 +150,7 @@ describe("tenant account metadata boundary", () => {
       memberCount: 2
     });
     expect(tenantUrl).toContain("select=tenant_id%2Cname%2Cstatus%2Cplan");
-    expect(memberUrl).toContain("select=member_id%2Crole%2Cstatus");
+    expect(memberUrl).toContain("select=tenant_id%2Cmember_id%2Crole%2Cstatus");
     expect(tenantUrl).not.toContain("email");
     expect(memberUrl).not.toContain("email");
     expect(memberUrl).not.toContain("token");
@@ -129,5 +159,38 @@ describe("tenant account metadata boundary", () => {
     expect(serialized).not.toContain("private_members_table");
     expect(serialized).not.toContain("owner@example.com");
     expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("wrong_tenant");
+    expect(serialized).not.toContain("bad_role");
+    expect(serialized).not.toContain("bad_status");
+  });
+
+  it("ignores a Supabase tenant row that does not match the requested tenant", async () => {
+    vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("agentproof_tenants")) {
+        return Response.json([
+          { tenant_id: "tenant_b", name: "Wrong Tenant", status: "active", plan: "team" }
+        ]);
+      }
+
+      return Response.json([
+        { tenant_id: "tenant_a", member_id: "owner_1", role: "owner", status: "active" }
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await readTenantAccountSummary({ tenantId: "tenant_a" });
+
+    expect(result.account).toEqual({
+      tenantId: "tenant_a",
+      name: "tenant_a",
+      status: "unknown",
+      plan: "unknown",
+      configured: false,
+      memberCount: 0
+    });
+    expect(result.members).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
