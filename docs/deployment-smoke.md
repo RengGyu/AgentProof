@@ -34,6 +34,34 @@ Expected:
 - Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
 - Saved reports retain zero evidence items, zero claims, no raw re-prompt text, and cleared evidence references.
 
+## Manual GitHub Actions Gate
+
+Use the `AgentProof Production Smoke` workflow in GitHub Actions after a production deployment or when GitHub evidence collection changes. The workflow is `workflow_dispatch` only: it does not run on every push, and it does not require any repository secret.
+
+Default inputs:
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `base_url` | `https://agentproof-pearl.vercel.app` | Deployment URL to test. Do not include tokens, usernames, passwords, or secret query strings. |
+| `enforce_performance_budget` | `true` | Whether to fail the run when configured p95 budgets are exceeded. |
+| `max_total_p95_ms` | `3000` | Maximum `X-AgentProof-Timing.total` p95. |
+| `max_evidence_p95_ms` | `2500` | Maximum `X-AgentProof-Timing.evidence` p95. |
+| `max_github_checks_p95_ms` | `1500` | Maximum `X-AgentProof-Evidence-Timing.github_checks` p95. |
+| `max_github_statuses_p95_ms` | `1500` | Maximum `X-AgentProof-Evidence-Timing.github_statuses` p95. |
+| `max_github_jobs_p95_ms` | `1500` | Maximum `X-AgentProof-Evidence-Timing.github_jobs` p95. |
+
+The budgets are loose operational guardrails. They are meant to catch repeated regressions, not to prove a public latency SLA. If one run fails during an external GitHub or Vercel slowdown, rerun once before changing code. If the same phase fails repeatedly, investigate the named timing phase before lowering evidence collection quality.
+
+Expected workflow proof:
+
+- `/` and `/integrations` return 200.
+- `GET /api/analyze` returns 405.
+- `/api/github/webhook/status` returns the public `githubApp` status object only.
+- Unauthenticated `/api/ops/github-app/status` returns 401 when diagnostics are configured or 501 when they are not configured.
+- `pnpm smoke:production-regression` passes for the public AgentProof PR set.
+- When budgets are enforced, the smoke output includes `performanceBudget.ok: true`.
+- The run output contains bounded metadata only. It must not include GitHub tokens, private task text, raw diffs, raw logs, full reports, or saved-report contents.
+
 ## Live Integration Checks
 
 These checks use server-side env and caller tokens. They should never print secret values.

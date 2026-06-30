@@ -1,0 +1,206 @@
+name: AgentProof Production Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployment base URL. Do not include tokens or secrets."
+        required: true
+        default: "https://agentproof-pearl.vercel.app"
+      enforce_performance_budget:
+        description: "Fail when p95 timing budgets are exceeded."
+        type: boolean
+        required: true
+        default: true
+      max_total_p95_ms:
+        description: "Max X-AgentProof-Timing total p95 in ms."
+        required: true
+        default: "3000"
+      max_evidence_p95_ms:
+        description: "Max X-AgentProof-Timing evidence p95 in ms."
+        required: true
+        default: "2500"
+      max_github_checks_p95_ms:
+        description: "Max X-AgentProof-Evidence-Timing github_checks p95 in ms."
+        required: true
+        default: "1500"
+      max_github_statuses_p95_ms:
+        description: "Max X-AgentProof-Evidence-Timing github_statuses p95 in ms."
+        required: true
+        default: "1500"
+      max_github_jobs_p95_ms:
+        description: "Max X-AgentProof-Evidence-Timing github_jobs p95 in ms."
+        required: true
+        default: "1500"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentproof-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  production-smoke:
+    name: Production regression smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: "1"
+      AGENTPROOF_SMOKE_BASE_URL: ${{ inputs.base_url }}
+      SMOKE_ENFORCE_PERFORMANCE_BUDGET: ${{ inputs.enforce_performance_budget }}
+      SMOKE_MAX_TOTAL_P95_MS: ${{ inputs.max_total_p95_ms }}
+      SMOKE_MAX_EVIDENCE_P95_MS: ${{ inputs.max_evidence_p95_ms }}
+      SMOKE_MAX_GITHUB_CHECKS_P95_MS: ${{ inputs.max_github_checks_p95_ms }}
+      SMOKE_MAX_GITHUB_STATUSES_P95_MS: ${{ inputs.max_github_statuses_p95_ms }}
+      SMOKE_MAX_GITHUB_JOBS_P95_MS: ${{ inputs.max_github_jobs_p95_ms }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate smoke inputs
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const rawBaseUrl = process.env.AGENTPROOF_SMOKE_BASE_URL ?? "";
+
+          let url;
+          try {
+            url = new URL(rawBaseUrl);
+          } catch {
+            console.error("base_url must be a valid https URL without credentials, query, or hash.");
+            process.exit(1);
+          }
+
+          if (
+            url.protocol !== "https:" ||
+            !url.hostname ||
+            url.username ||
+            url.password ||
+            url.search ||
+            url.hash
+          ) {
+            console.error("base_url must be a valid https URL without credentials, query, or hash.");
+            process.exit(1);
+          }
+
+          const normalizedPath = url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "");
+          const normalized = `${url.origin}${normalizedPath}`;
+          fs.appendFileSync(process.env.GITHUB_ENV, `AGENTPROOF_SMOKE_BASE_URL=${normalized}\n`);
+          NODE
+
+      - name: Check public production endpoints
+        run: |
+          set -euo pipefail
+          base="${AGENTPROOF_SMOKE_BASE_URL%/}"
+          curl -fsS -o /tmp/agentproof-home.html "$base/"
+          curl -fsS -o /tmp/agentproof-integrations.html "$base/integrations"
+          curl -fsS -o /tmp/agentproof-webhook-status.json "$base/api/github/webhook/status"
+          ops_status="$(curl -sS -o /tmp/agentproof-ops-status.json -w "%{http_code}" "$base/api/ops/github-app/status")"
+          if [ "$ops_status" != "401" ] && [ "$ops_status" != "501" ]; then
+            echo "Expected unauthenticated /api/ops/github-app/status to return 401 or 501, received $ops_status"
+            exit 1
+          fi
+          analyze_status="$(curl -sS -o /tmp/agentproof-api-analyze.txt -w "%{http_code}" "$base/api/analyze")"
+          if [ "$analyze_status" != "405" ]; then
+            echo "Expected GET /api/analyze to return 405, received $analyze_status"
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const payload = JSON.parse(fs.readFileSync("/tmp/agentproof-webhook-status.json", "utf8"));
+          const status = payload?.githubApp;
+          const allowedTopLevelKeys = new Set(["githubApp"]);
+          const allowedStatusKeys = new Set(["mode", "label", "description", "capabilities", "cautions"]);
+          const forbidden = [
+            "GITHUB_WEBHOOK_SECRET",
+            "GITHUB_PRIVATE_KEY",
+            "GITHUB_APP_ID",
+            "AGENTPROOF_GITHUB_APP_ALLOWED_REPOS",
+            "BEGIN PRIVATE KEY",
+            "privateKey",
+            "signedIntakeReady",
+            "appCredentialsReady",
+            "allowedRepoCount",
+            "allowAllRepos",
+            "saveReportsEnabled",
+            "commentEnabled"
+          ];
+
+          if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+            console.error("Webhook status response must be a JSON object.");
+            process.exit(1);
+          }
+
+          for (const key of Object.keys(payload)) {
+            if (!allowedTopLevelKeys.has(key)) {
+              console.error("Webhook status response exposed fields outside the public status contract.");
+              process.exit(1);
+            }
+          }
+
+          if (!status || typeof status !== "object" || Array.isArray(status)) {
+            console.error("Webhook status response must include githubApp status metadata.");
+            process.exit(1);
+          }
+
+          for (const key of Object.keys(status)) {
+            if (!allowedStatusKeys.has(key)) {
+              console.error("Webhook status response exposed fields outside the public status contract.");
+              process.exit(1);
+            }
+          }
+
+          for (const key of allowedStatusKeys) {
+            if (!(key in status)) {
+              console.error("Webhook status response is missing a public status field.");
+              process.exit(1);
+            }
+          }
+
+          if (
+            typeof status.mode !== "string" ||
+            typeof status.label !== "string" ||
+            typeof status.description !== "string" ||
+            !Array.isArray(status.capabilities) ||
+            !Array.isArray(status.cautions) ||
+            !status.capabilities.every((item) => typeof item === "string") ||
+            !status.cautions.every((item) => typeof item === "string")
+          ) {
+            console.error("Webhook status response public fields have unexpected types.");
+            process.exit(1);
+          }
+
+          const serialized = JSON.stringify(status);
+          if (forbidden.some((value) => serialized.includes(value))) {
+            console.error("Webhook status response exposed a forbidden secret-like field.");
+            process.exit(1);
+          }
+          NODE
+
+      - name: Run real PR production regression smoke
+        run: |
+          set -euo pipefail
+          if [ "$SMOKE_ENFORCE_PERFORMANCE_BUDGET" = "true" ]; then
+            export AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS="$SMOKE_MAX_TOTAL_P95_MS"
+            export AGENTPROOF_SMOKE_MAX_EVIDENCE_P95_MS="$SMOKE_MAX_EVIDENCE_P95_MS"
+            export AGENTPROOF_SMOKE_MAX_GITHUB_CHECKS_P95_MS="$SMOKE_MAX_GITHUB_CHECKS_P95_MS"
+            export AGENTPROOF_SMOKE_MAX_GITHUB_STATUSES_P95_MS="$SMOKE_MAX_GITHUB_STATUSES_P95_MS"
+            export AGENTPROOF_SMOKE_MAX_GITHUB_JOBS_P95_MS="$SMOKE_MAX_GITHUB_JOBS_P95_MS"
+          fi
+          pnpm smoke:production-regression

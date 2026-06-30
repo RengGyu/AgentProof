@@ -53,6 +53,24 @@ pnpm typecheck
 pnpm build
 ```
 
+## Production Smoke
+
+Use the manual GitHub Actions workflow `AgentProof Production Smoke` after a production deployment or integration change. It checks public pages, confirms `GET /api/analyze` still fails closed, and runs the real public PR regression set against the deployed app.
+
+The default workflow inputs enforce loose p95 (95th percentile) budgets: total response `3000ms`, evidence collection `2500ms`, and GitHub check/status/job phases `1500ms`. These budgets are guardrails, not product promises. If one manual run fails during a GitHub or Vercel blip, rerun once; repeated failures should be treated as an evidence-collection regression.
+
+This workflow does not require secrets and should not receive tokens in the `base_url` input. For local or one-off terminal checks, use:
+
+```bash
+AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app \
+AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS=3000 \
+AGENTPROOF_SMOKE_MAX_EVIDENCE_P95_MS=2500 \
+AGENTPROOF_SMOKE_MAX_GITHUB_CHECKS_P95_MS=1500 \
+AGENTPROOF_SMOKE_MAX_GITHUB_STATUSES_P95_MS=1500 \
+AGENTPROOF_SMOKE_MAX_GITHUB_JOBS_P95_MS=1500 \
+pnpm smoke:production-regression
+```
+
 ## Environment
 
 The app can run in demo mode without environment variables. For live GitHub PR fetches, paste a fine-grained GitHub token in the form. The token is used only for that request and is not stored by this MVP.

@@ -14,6 +14,20 @@ AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:real-pr
 
 The command intentionally does not read `AGENTPROOF_SMOKE_GITHUB_TOKEN`. These public PR cases should run without forwarding a local GitHub token to production. If a private self-evaluation case is added later, pass `AGENTPROOF_REAL_PR_SMOKE_GITHUB_TOKEN` plus `AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN=1` explicitly.
 
+Optional production performance budgets can fail the same smoke when p95 timing evidence exceeds configured thresholds:
+
+```bash
+AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app \
+AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS=3000 \
+AGENTPROOF_SMOKE_MAX_EVIDENCE_P95_MS=2500 \
+AGENTPROOF_SMOKE_MAX_GITHUB_CHECKS_P95_MS=1500 \
+AGENTPROOF_SMOKE_MAX_GITHUB_STATUSES_P95_MS=1500 \
+AGENTPROOF_SMOKE_MAX_GITHUB_JOBS_P95_MS=1500 \
+pnpm smoke:production-regression
+```
+
+These budgets are regression guardrails, not an availability or latency SLA. A single failure can reflect temporary GitHub or Vercel latency; repeated failures in the same phase should be investigated before reducing evidence collection.
+
 Saved-report deletion in this smoke is best-effort. The privacy gate is the save/get round trip proving summary-only data. In in-memory mode, deletion may report `false` on Vercel when a different serverless instance handles the request. With Supabase-backed summary storage, deletion should be durable and API-visible unless the backend is unavailable.
 
 Summary-only saved/share reports still may include PR URL/title, requirement text, missing-test paths, and review-priority paths. They must not include raw evidence, claims, raw re-prompt text, patch/log excerpts, raw annotation details, or failed annotation `path:line` values copied from full execution evidence.
