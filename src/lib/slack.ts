@@ -1,4 +1,6 @@
 import { sanitizeReportForShare } from "./report-share";
+import type { AnalysisQueueAlert } from "./analysis-job-alerts";
+import type { AnalysisJobQueueSummary } from "./analysis-jobs";
 import type { VerificationReport } from "./types";
 
 export interface SlackWebhookPayload {
@@ -71,6 +73,61 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
           {
             type: "plain_text",
             text: "Summary-only notification. Raw evidence, logs, claims, and re-prompt text are omitted."
+          }
+        ]
+      }
+    ]
+  };
+}
+
+export function analysisQueueAlertsToSlackPayload(input: {
+  summary: AnalysisJobQueueSummary;
+  alerts: AnalysisQueueAlert[];
+}): SlackWebhookPayload {
+  const warnings = input.alerts.filter((alert) => alert.severity === "warning").length;
+  const infos = input.alerts.filter((alert) => alert.severity === "info").length;
+  const severity = warnings > 0 ? "WARNING" : "INFO";
+  const alertLines = input.alerts
+    .slice(0, 8)
+    .map((alert) => `- ${alert.severity.toUpperCase()}: ${alert.code} (${alert.metric} ${alert.count}/${alert.threshold})`)
+    .join("\n");
+
+  return {
+    text: `AgentProof analysis queue ${severity}: ${warnings} warning, ${infos} info alert(s)`,
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: truncateSlackText(`AgentProof analysis queue ${severity}`, 150)
+        }
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "plain_text", text: `Warnings: ${warnings}` },
+          { type: "plain_text", text: `Info: ${infos}` },
+          { type: "plain_text", text: `Failed terminal: ${input.summary.counts.failed_terminal}` },
+          { type: "plain_text", text: `Stale processing: ${input.summary.staleProcessing}` },
+          { type: "plain_text", text: `Due now: ${input.summary.due}` },
+          { type: "plain_text", text: `Delayed retry: ${input.summary.delayedRetry}` },
+          { type: "plain_text", text: `Sampled rows: ${input.summary.sampled}` },
+          { type: "plain_text", text: `Truncated: ${input.summary.truncated ? "yes" : "no"}` }
+        ]
+      },
+      {
+        type: "section",
+        text: {
+          type: "plain_text",
+          text: truncateSlackText(`Alerts\n${alertLines || "- No queue alerts selected for delivery."}`, 3000)
+        }
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "plain_text",
+            text: "Summary-only ops alert. Repository, PR, tenant, raw evidence, logs, reports, tokens, and re-prompt text are omitted."
           }
         ]
       }

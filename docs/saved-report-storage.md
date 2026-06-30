@@ -1,8 +1,16 @@
 # Saved Report Storage
 
-AgentProof saved reports are summary-only. They are meant for short-lived reviewer handoff, not long-term raw evidence retention.
+AgentProof saved reports are summary-only. They are meant for short-lived reviewer handoff, not long-term raw evidence retention. See `docs/tenant-data-retention.md` for the draft SaaS retention and deletion matrix.
+
+Tenant deletion preview counts saved reports and other tenant-mapped categories as totals only, including GitHub installations and tenant-mapped webhook deliveries, and returns the retention policy version/status, counted/uncounted category coverage, and a bounded deletion plan with retention windows and readiness states. It must not fetch or return report bodies, access keys, claims, evidence indexes, diffs, logs, raw re-prompt text, account logins, installation ids, delivery ids, idempotency hashes, or backend storage internals, and it must not clean up expired memory reports while counting.
+
+Expired saved-report cleanup is wired through `GET /api/cron/reports/cleanup` and the Vercel cron entry in `vercel.json`. The route accepts only `CRON_SECRET` bearer auth or `x-agentproof-cron-token` from `AGENTPROOF_CRON_TOKEN`; query-string tokens are rejected. The cleanup result is metadata-only: deleted count plus a coarse count basis. It must not expose report ids, tenant ids, report bodies, access hashes, table names, Supabase URLs, service-role keys, evidence, claims, raw re-prompt text, diffs, or logs.
 
 Tenant-scoped saved reports add an access boundary around the same summary-only projection. A tenant-owned saved report is not readable or deletable by id alone; it requires either trusted tenant context from the server or the short-lived report `key` embedded in the generated saved-report URL. The raw key is returned only at creation time and is stored as a SHA-256 hash.
+
+Tenant deletion uses a guarded execution wrapper for saved reports. It can delete tenant-owned summary rows only after new work has been explicitly blocked and tenant deletion state is active. The purge result returns metadata only: deleted count plus a coarse count basis. It must not read or return report bodies, report ids, tenant ids, access-token hashes, storage mode, table names, Supabase URLs, service-role keys, evidence indexes, claims, raw re-prompt text, diffs, logs, patch excerpts, or saved-link keys. `POST /api/ops/tenants/deletion` does not expose this purge action; it currently accepts only `block_new_work`.
+
+Design-partner tenant dashboards can list recent saved reports through `GET /api/tenants/reports?tenantId=<tenant>&limit=10` with a tenant-bound invite token. The list response is `privacy: "saved-report-summary-only"` and includes only bounded summary metadata: report id, created/expiry timestamps, source title, source URL without query/hash, priority, evidence coverage, requirement status counts, coarse testing statuses, missing-test count, review-priority count, and scope flag. It must not return the report body, access key, access-token hash, evidence index, claims, raw re-prompt text, diffs, logs, patch excerpts, comment bodies, tokens, or storage internals.
 
 ## Modes
 

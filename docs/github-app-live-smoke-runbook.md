@@ -60,7 +60,7 @@ For tenant control mode, replace the global repo authorization with an active se
 
 ```text
 AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED=true
-AGENTPROOF_TENANT_REPOSITORY_GRANTS=[{"tenantId":"tenant_demo","installationId":123,"repositoryFullName":"owner/repo","enabled":true,"analysisEnabled":true,"saveReportsEnabled":false,"commentEnabled":false}]
+AGENTPROOF_TENANT_REPOSITORY_GRANTS=[{"tenantId":"tenant_demo","installationId":123,"repositoryId":456,"repositoryFullName":"owner/repo","enabled":true,"analysisEnabled":true,"saveReportsEnabled":false,"commentEnabled":false}]
 ```
 
 When tenant control mode is enabled, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` is ignored for authorization, including `*`.

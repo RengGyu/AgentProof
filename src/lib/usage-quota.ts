@@ -41,6 +41,28 @@ export interface UsageQuotaReservation {
   reason?: UsageQuotaDenyReason;
 }
 
+export interface UsageQuotaStatus {
+  enforced: boolean;
+  configured: boolean;
+  store: "memory" | "supabase" | "none";
+  tenantId?: string;
+  feature: UsageQuotaFeature;
+  period: string;
+  plan?: string;
+  limit?: number;
+  used?: number;
+  remaining?: number;
+  reason?: UsageQuotaDenyReason | "quota-store-unavailable";
+}
+
+export interface TenantUsageRecordCount {
+  count: number;
+  store: "none" | "memory" | "supabase";
+  durable: boolean;
+  configured: boolean;
+  disabled?: boolean;
+}
+
 interface UsageQuotaLimitInput {
   tenantId?: unknown;
   monthlyAnalysisLimit?: unknown;
@@ -176,6 +198,120 @@ export function usageQuotaPublicReason(reason: UsageQuotaDenyReason | undefined)
   return "Usage quota enforcement is disabled.";
 }
 
+export async function readUsageQuotaStatus(
+  input: { tenantId?: unknown; feature: UsageQuotaFeature; now?: Date },
+  env = process.env
+): Promise<UsageQuotaStatus> {
+  const period = usageQuotaPeriod(input.now ?? new Date());
+  const tenantId = normalizeTenantId(input.tenantId);
+
+  if (!truthy(env.AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED)) {
+    return {
+      enforced: false,
+      configured: false,
+      store: "none",
+      tenantId,
+      feature: input.feature,
+      period,
+      reason: "quota-disabled"
+    };
+  }
+
+  if (!tenantId) {
+    return {
+      enforced: true,
+      configured: false,
+      store: "none",
+      feature: input.feature,
+      period,
+      reason: "quota-tenant-missing"
+    };
+  }
+
+  const limits = readUsageQuotaLimits(env);
+  if (!limits) {
+    return {
+      enforced: true,
+      configured: false,
+      store: "none",
+      tenantId,
+      feature: input.feature,
+      period,
+      reason: "quota-limits-invalid"
+    };
+  }
+
+  const limit = limits.find((item) => item.tenantId === tenantId && item.enabled);
+  if (!limit) {
+    return {
+      enforced: true,
+      configured: false,
+      store: "none",
+      tenantId,
+      feature: input.feature,
+      period,
+      reason: "quota-limit-missing"
+    };
+  }
+
+  const config = getUsageQuotaStoreConfig(env);
+  if (config) {
+    const used = await readSupabaseUsageCount(config, limit.tenantId, period, input.feature);
+
+    return usageQuotaStatusForCount(input.feature, limit, period, used, "supabase");
+  }
+
+  if (!truthy(env.AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY)) {
+    throw new UsageQuotaStoreError("Usage quota durable store is not configured.");
+  }
+
+  const key = `${limit.tenantId}:${period}:${input.feature}`;
+  const used = usageQuotaMemoryStore().get(key)?.size ?? 0;
+
+  return usageQuotaStatusForCount(input.feature, limit, period, used, "memory");
+}
+
+export async function countTenantUsageRecords(
+  input: { tenantId?: unknown },
+  env = process.env
+): Promise<TenantUsageRecordCount> {
+  const tenantId = normalizeTenantId(input.tenantId);
+  if (!tenantId) {
+    throw new UsageQuotaStoreError("Tenant id is invalid.");
+  }
+
+  if (!truthy(env.AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED)) {
+    return {
+      count: 0,
+      store: "none",
+      durable: false,
+      configured: false,
+      disabled: true
+    };
+  }
+
+  const config = getUsageQuotaStoreConfig(env);
+  if (config) {
+    return {
+      count: await countSupabaseTenantUsageRecords(config, tenantId),
+      store: "supabase",
+      durable: true,
+      configured: true
+    };
+  }
+
+  if (!truthy(env.AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY)) {
+    throw new UsageQuotaStoreError("Usage quota durable store is not configured.");
+  }
+
+  return {
+    count: countMemoryTenantUsageRecords(tenantId),
+    store: "memory",
+    durable: false,
+    configured: true
+  };
+}
+
 export function clearUsageQuotaForTests() {
   usageQuotaMemoryStore().clear();
 }
@@ -296,6 +432,104 @@ async function supabaseUsageRpcFetch(config: UsageQuotaStoreConfig, body: Record
   });
 }
 
+async function readSupabaseUsageCount(
+  config: UsageQuotaStoreConfig,
+  tenantId: string,
+  period: string,
+  feature: UsageQuotaFeature
+): Promise<number> {
+  const params = new URLSearchParams({
+    tenant_id: `eq.${tenantId}`,
+    period: `eq.${period}`,
+    feature: `eq.${feature}`,
+    select: "id"
+  });
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.recordsTable)}?${params.toString()}`, {
+    method: "HEAD",
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      Prefer: "count=exact",
+      Range: "0-0"
+    }
+  });
+
+  if (!response.ok) {
+    throw new UsageQuotaStoreError(`Usage quota status failed with status ${response.status}.`);
+  }
+
+  const used = usageCountFromContentRange(response.headers.get("content-range"));
+  if (used === null) {
+    throw new UsageQuotaStoreError("Usage quota status returned invalid usage count.");
+  }
+
+  return used;
+}
+
+async function countSupabaseTenantUsageRecords(
+  config: UsageQuotaStoreConfig,
+  tenantId: string
+): Promise<number> {
+  const params = new URLSearchParams({
+    tenant_id: `eq.${tenantId}`,
+    select: "id"
+  });
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.recordsTable)}?${params.toString()}`, {
+    method: "HEAD",
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      Prefer: "count=exact",
+      Range: "0-0"
+    }
+  });
+
+  if (!response.ok) {
+    throw new UsageQuotaStoreError(`Usage record count failed with status ${response.status}.`);
+  }
+
+  const count = usageCountFromContentRange(response.headers.get("content-range"));
+  if (count === null) {
+    throw new UsageQuotaStoreError("Usage record count returned invalid usage count.");
+  }
+
+  return count;
+}
+
+function usageQuotaStatusForCount(
+  feature: UsageQuotaFeature,
+  limit: UsageQuotaLimit,
+  period: string,
+  used: number,
+  store: "memory" | "supabase"
+): UsageQuotaStatus {
+  return {
+    enforced: true,
+    configured: true,
+    store,
+    tenantId: limit.tenantId,
+    feature,
+    period,
+    plan: limit.plan,
+    limit: limit.monthlyAnalysisLimit,
+    used,
+    remaining: Math.max(0, limit.monthlyAnalysisLimit - used)
+  };
+}
+
+function countMemoryTenantUsageRecords(tenantId: string): number {
+  let count = 0;
+  for (const [key, records] of usageQuotaMemoryStore().entries()) {
+    if (key.startsWith(`${tenantId}:`)) {
+      count += records.size;
+    }
+  }
+
+  return count;
+}
+
 async function parseSupabaseUsageQuotaRpcResult(response: Response): Promise<SupabaseUsageQuotaRpcResult> {
   const value = (await response.json().catch(() => null)) as unknown;
   const result = Array.isArray(value) ? value[0] : value;
@@ -378,6 +612,15 @@ function normalizeUsageCount(value: unknown): number | null {
   }
 
   return value;
+}
+
+function usageCountFromContentRange(value: string | null): number | null {
+  if (!value) return null;
+
+  const match = value.match(/\/(\d+)$/);
+  if (!match) return null;
+
+  return normalizeUsageCount(Number(match[1]));
 }
 
 function usageQuotaPeriod(now: Date): string {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Bot, Database, FileCheck2, GitPullRequest, KeyRound, ShieldCheck } from "lucide-react";
+import { Bell, Bot, Database, FileCheck2, GitPullRequest, KeyRound, ShieldCheck, SlidersHorizontal, Wrench } from "lucide-react";
 import { getPublicGitHubAppReadinessStatus } from "@/lib/github-app";
 
 const rows = [
@@ -17,7 +17,10 @@ const rows = [
       "AGENTPROOF_GITHUB_APP_COMMENT_ENABLED",
       "AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE",
       "AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL",
-      "AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY"
+      "AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY",
+      "AGENTPROOF_GITHUB_INSTALLATIONS_TABLE",
+      "AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL",
+      "AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_SERVICE_ROLE_KEY"
     ]
   },
   {
@@ -43,6 +46,18 @@ const rows = [
       "AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY",
       "AGENTPROOF_REPORTS_TABLE"
     ]
+  },
+  {
+    name: "Analysis job queue",
+    icon: FileCheck2,
+    purpose: "Optional metadata-only queue boundary for GitHub App PR analysis. Operator-gated worker endpoints can preflight, run one due job, drain a small bounded batch, or run through the token-gated Vercel Cron route.",
+    requiredEnv: ["None when queue mode is disabled"],
+    optionalEnv: [
+      "AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED",
+      "AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL or SUPABASE_URL",
+      "AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY",
+      "AGENTPROOF_ANALYSIS_JOBS_TABLE"
+    ]
   }
 ];
 
@@ -67,6 +82,8 @@ const modeCards = [
 const safetyChecks = [
   "Use a one-repository allowlist before event-mode testing.",
   "Keep automatic comments and saved reports off for live smoke checks.",
+  "Use durable queue storage before moving webhook analysis off the request path.",
+  "Use durable GitHub installation metadata storage before beta onboarding.",
   "Store only hashed duplicate keys and bounded metadata for webhook deliveries.",
   "Restore signed-intake after controlled production checks."
 ];
@@ -91,9 +108,19 @@ export default function IntegrationsPage() {
             This page shows coarse runtime status only. Dated smoke evidence is recorded separately and is not treated as live readiness.
           </p>
         </div>
-        <Link className="button" href="/">
-          Back
-        </Link>
+        <div className="integration-head-actions">
+          <Link className="button" href="/ops">
+            <Wrench size={16} />
+            Ops
+          </Link>
+          <Link className="button" href="/tenant">
+            <SlidersHorizontal size={16} />
+            Tenant Dashboard
+          </Link>
+          <Link className="button" href="/">
+            Back
+          </Link>
+        </div>
       </header>
 
       <section className="integration-grid">

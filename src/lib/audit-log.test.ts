@@ -6,6 +6,7 @@ import {
   clearAuditEventsForTests,
   getAuditEventsForTests,
   getAuditLogStoreStatus,
+  listTenantAuditEvents,
   recordAuditEvent
 } from "./audit-log";
 
@@ -111,6 +112,159 @@ describe("audit log", () => {
     expect(serializedBody).not.toContain("claims");
     expect(serializedBody).not.toContain("reprompt");
     expect(serializedBody).not.toContain("Patch excerpt");
+  });
+
+  it("records lifecycle audit metadata without raw webhook payload fields", async () => {
+    const row = await recordAuditEvent({
+      action: "github_app_installation_disabled",
+      result: "completed",
+      actor: "github_app",
+      installationId: 321,
+      githubDeliveryId: "123e4567-e89b-12d3-a456-426614174200",
+      webhookAction: "deleted",
+      statusCode: 200,
+      code: "github_app_installation_disabled"
+    });
+    const serialized = JSON.stringify(row);
+
+    expect(row).toMatchObject({
+      action: "github_app_installation_disabled",
+      result: "completed",
+      installation_id: 321,
+      request_id: "123e4567-e89b-12d3-a456-426614174200",
+      metadata: {
+        webhookAction: "deleted",
+        code: "github_app_installation_disabled"
+      }
+    });
+    expect(serialized).not.toContain("payload");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("token");
+    expect(serialized).not.toContain("Patch excerpt");
+  });
+
+  it("lists bounded tenant audit activity summaries without raw metadata fields", async () => {
+    await recordAuditEvent({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      tenantId: "tenant_a",
+      repositoryFullName: "RengGyu/AgentProof",
+      installationId: 123,
+      pullRequestNumber: 27,
+      headSha: "3e3703f63a07abcd",
+      githubDeliveryId: "123e4567-e89b-12d3-a456-426614174100",
+      webhookAction: "synchronize",
+      statusCode: 200,
+      priority: "medium",
+      evidenceCoverage: 42,
+      savedReport: { privacy: "summary-only", durability: "summary-only-supabase" },
+      comment: { action: "updated" }
+    });
+    await recordAuditEvent({
+      action: "github_app_quota_blocked",
+      result: "blocked",
+      tenantId: "tenant_b",
+      repositoryFullName: "Other/Private",
+      githubDeliveryId: "123e4567-e89b-12d3-a456-426614174101",
+      code: "github_app_tenant_quota_blocked"
+    });
+
+    const rows = await listTenantAuditEvents({ tenantId: "tenant_a", limit: 50 });
+    const serialized = JSON.stringify(rows);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(expect.objectContaining({
+      actor: "github_app",
+      action: "github_app_analysis_completed",
+      result: "completed",
+      repositoryFullName: "RengGyu/AgentProof",
+      installationId: 123,
+      pullRequestNumber: 27,
+      headShaPrefix: "3e3703f63a07",
+      deliveryIdPrefix: "123e4567-e89",
+      statusCode: 200,
+      webhookAction: "synchronize",
+      priority: "medium",
+      evidenceCoverage: 42,
+      savedReport: {
+        privacy: "summary-only",
+        durability: "summary-only-supabase"
+      },
+      comment: {
+        action: "updated"
+      }
+    }));
+    expect(serialized).not.toContain("tenant_b");
+    expect(serialized).not.toContain("Other/Private");
+    expect(serialized).not.toContain("requestId");
+    expect(serialized).not.toContain("123e4567-e89b-12d3-a456-426614174100");
+    expect(serialized).not.toContain("\"metadata\"");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("comment_body");
+    expect(serialized).not.toContain("token");
+  });
+
+  it("lists Supabase audit summaries with server-only credentials and filters unsafe rows", async () => {
+    const env = {
+      AGENTPROOF_AUDIT_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
+      AGENTPROOF_AUDIT_EVENTS_TABLE: "audit_events_test"
+    } as unknown as NodeJS.ProcessEnv;
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      Response.json([
+        {
+          id: "audit-safe",
+          created_at: "2026-06-30T00:00:00.000Z",
+          actor: "github_app",
+          action: "github_app_quota_blocked",
+          result: "blocked",
+          tenant_id: "tenant_a",
+          repository_full_name: "RengGyu/AgentProof",
+          installation_id: 123,
+          pull_request_number: 27,
+          head_sha_prefix: "3e3703f63a07",
+          request_id: "123e4567-e89b-12d3-a456-426614174102",
+          status_code: 200,
+          metadata: { code: "github_app_tenant_quota_blocked" }
+        },
+        {
+          id: "audit-unsafe",
+          created_at: "2026-06-30T00:00:01.000Z",
+          actor: "github_app",
+          action: "github_app_analysis_failed",
+          result: "failed",
+          tenant_id: "tenant_a",
+          metadata: { rawDiff: "Patch excerpt" }
+        }
+      ])
+    );
+    global.fetch = fetchMock as typeof fetch;
+
+    const rows = await listTenantAuditEvents({ tenantId: "tenant_a", limit: 100 }, env);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const serialized = JSON.stringify(rows);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: "audit-safe",
+        action: "github_app_quota_blocked",
+        result: "blocked",
+        code: "github_app_tenant_quota_blocked"
+      })
+    ]);
+    expect(String(url)).toContain("https://agentproof-test.supabase.co/rest/v1/audit_events_test?");
+    expect(String(url)).toContain("tenant_id=eq.tenant_a");
+    expect(String(url)).toContain("limit=26");
+    expect(String(url)).not.toContain("service-role-secret");
+    expect(init?.method).toBe("GET");
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer service-role-secret");
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("rawDiff");
+    expect(serialized).not.toContain("\"metadata\"");
   });
 
   it("rejects audit rows with forbidden raw evidence fields or secret-looking values before storage", () => {

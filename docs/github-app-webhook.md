@@ -22,12 +22,14 @@ The status endpoint is for UI and smoke probes only. It returns a coarse mode, l
 - Verifies `X-Hub-Signature-256` against the raw request body before trusting event data.
 - Rejects oversized `Content-Length` before reading the body when the header is present.
 - Accepts bounded metadata for `pull_request`, `check_run`, `check_suite`, `status`, and `ping`.
+- Accepts signed `installation` and `installation_repositories` lifecycle events so deleted/suspended installations or removed repository access can disable matching tenant repository grants.
 - Ignores unsupported signed events without taking action.
 - Rejects malformed JSON for supported events.
 - Keeps dry-run behavior unless `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED=true`.
 - For enabled `pull_request` events, handles only `opened`, `reopened`, `synchronize`, and `ready_for_review`.
 - In operator/demo mode, requires `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` before analyzing a PR.
-- In tenant control mode, ignores the global allowlist and requires an active tenant repository grant matching `installation_id + repository`.
+- In tenant control mode, ignores the global allowlist and requires an active tenant repository grant matching `installation_id + repository_id`.
+- Lifecycle events run before PR automation and do not require `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED`.
 - Uses a GitHub App installation token to refetch PR evidence from GitHub; it does not trust PR title/body/diff fields from the webhook payload.
 - Creates summary-only saved report links only when `AGENTPROOF_GITHUB_APP_SAVE_REPORTS=true`.
 - Posts or updates one GitHub App marker comment only when `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=true`.
@@ -62,7 +64,7 @@ Preflight:
 
 - Set `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED=true`.
 - In operator/demo mode, set `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS=owner/repo` for one test repository; do not use `*` outside controlled testing.
-- In tenant control mode, set an active grant in `AGENTPROOF_TENANT_REPOSITORY_GRANTS` for the test repository's GitHub App installation id and repository full name. The global allowlist is ignored in this mode.
+- In tenant control mode, set an active grant for the test repository's GitHub App installation id and repository id. The global allowlist is ignored in this mode.
 - Leave `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED` unset or `false`. The live smoke also sends a signed smoke-only `suppressComment` control so comments stay off even if the deployment flag is accidentally enabled.
 - Leave `AGENTPROOF_GITHUB_APP_SAVE_REPORTS` unset or `false` unless validating summary-only saved report links. The live smoke sends `suppressSavedReport` by default; set `AGENTPROOF_WEBHOOK_LIVE_ALLOW_SAVE_REPORTS=1` only when validating saved-link metadata.
 - Confirm `/api/github/webhook/status` returns public mode `event-mode`. The smoke refuses to send a PR webhook when public status is `manual` or `signed-intake`.
@@ -125,10 +127,55 @@ For invite-only SaaS tenant control mode, add a server-only repository grant sou
 
 ```text
 AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED=true
-AGENTPROOF_TENANT_REPOSITORY_GRANTS=[{"tenantId":"tenant_demo","installationId":123,"repositoryFullName":"owner/repo","enabled":true,"analysisEnabled":true,"saveReportsEnabled":false,"commentEnabled":false}]
+AGENTPROOF_CONTROL_PLANE_SUPABASE_URL=
+AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_TENANT_REPOSITORY_GRANTS_TABLE=agentproof_tenant_repository_grants
 ```
 
-This JSON env is a temporary control-plane seed until self-serve GitHub App onboarding and database-backed tenant grants exist. When tenant control is enabled, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` does not authorize analysis, including `*`.
+Durable tenant grants are created by the invite-only onboarding flow and authorize on `installation_id + repository_id`. When tenant control is enabled, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` does not authorize analysis, including `*`.
+
+Repo verification settings can be read or changed through the invite-only metadata endpoint:
+
+```text
+GET /api/tenants/repositories?tenantId=<tenant>
+PATCH /api/tenants/repositories
+GET /api/tenants/repositories/health?tenantId=<tenant>
+```
+
+The settings endpoint updates only `enabled`, `analysisEnabled`, `saveReportsEnabled`, and `commentEnabled`. It requires tenant-bound `AGENTPROOF_BETA_INVITES`; the legacy global invite token is not accepted for settings changes.
+
+The health endpoint is customer-facing setup status for the same tenant grants. It is metadata-only by default and performs no GitHub calls unless `probe=github` is supplied. A live probe checks bounded repository metadata access only, with at most 10 repositories per request or one repository when `repositoryId=<id>` is supplied. Health responses are allowlisted to grant metadata, coarse statuses, bounded next actions, `privacy`, `probe`, and `truncated`.
+
+These endpoints must not receive or return prompts, diffs, logs, findings, evidence indexes, claims, report bodies, raw GitHub error bodies, tokens, private keys, or comment bodies.
+
+The invite-only `/tenant` dashboard is the design-partner UI for these endpoints. It keeps tenant invite tokens in the current browser form only long enough to bootstrap an HttpOnly tenant admin session, sends them in `x-agentproof-beta-invite-token`, and does not place them in query strings, JSON request bodies, PATCH bodies, localStorage, or sessionStorage. Tenant APIs accept the session cookie or the tenant-bound invite header fallback. The dashboard can also load a policy-aware tenant deletion preview that stays count-only, reports the draft retention policy version/status plus category coverage, and does not perform destructive deletion.
+
+Lifecycle behavior:
+
+- `installation` actions `deleted`, `suspend`, and `suspended` disable all stored grants for the signed `installation.id`.
+- `installation_repositories` action `removed` disables only grants matching the signed `installation.id` and repository ids from `repositories_removed`.
+- AgentProof does not automatically re-enable grants on install/unsuspend or repository-added events; a tenant admin must use onboarding or repo verification settings to re-enable analysis.
+- Lifecycle responses are bounded metadata only: event, delivery, action, `willAnalyze:false`, `willComment:false`, installation id, and disabled grant count. They do not include tenant ids, repository-name lists, raw payloads, tokens, URLs, PR data, reports, or comments.
+- If the tenant grant store is unavailable or partially configured, lifecycle handling fails closed with `github_app_tenant_grant_store_unavailable` and does not fetch GitHub tokens, analyze PRs, create saved reports, comment, or notify Slack.
+
+For local/demo compatibility only, an env-seeded grant is still accepted:
+
+```text
+AGENTPROOF_TENANT_REPOSITORY_GRANTS=[{"tenantId":"tenant_demo","installationId":123,"repositoryId":456,"repositoryFullName":"owner/repo","enabled":true,"analysisEnabled":true,"saveReportsEnabled":false,"commentEnabled":false}]
+```
+
+Do not use env-seeded grants as the primary production tenant boundary.
+
+For invite-only GitHub App onboarding:
+
+```text
+AGENTPROOF_GITHUB_APP_SLUG=
+AGENTPROOF_ONBOARDING_STATE_SECRET=
+AGENTPROOF_BETA_INVITES=[{"tenantId":"tenant_demo","tokenHash":"sha256-hex-without-prefix"}]
+AGENTPROOF_ONBOARDING_STATES_TABLE=agentproof_github_onboarding_states
+```
+
+See `docs/github-app-onboarding.md` for endpoint behavior, cookies, and Supabase schemas.
 
 For invite-only quota enforcement, add a server-only quota seed:
 
@@ -148,15 +195,24 @@ AGENTPROOF_USAGE_RESERVATION_RPC=agentproof_reserve_usage_quota
 
 When quota enforcement is enabled, tenant GitHub App analysis reserves quota before webhook idempotency, GitHub installation-token fetch, PR evidence fetch, saved reports, or marker comments. Quota-blocked webhooks return bounded metadata only and do not include tenant ids, repositories, head SHAs, diffs, logs, or usage counts. If durable usage storage is missing or unavailable, AgentProof fails closed with `usage_quota_unavailable`. `AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY=true` is only for local/demo quota tests and should not be set for SaaS/beta operation.
 
+Customer-visible usage status is read-only:
+
+```text
+GET /api/tenants/usage?tenantId=<tenant>
+```
+
+It requires the same tenant-bound invite header as repo settings. The response is `privacy: "usage-summary-only"` and includes only period, feature label, enforcement/configuration state, plan, limit, used, remaining, and a bounded state such as `available`, `exhausted`, `not-configured`, or `not-enforced`. It never reserves quota and must not return raw usage rows, idempotency keys or hashes, delivery ids, PR numbers, repository names, reports, diffs, logs, claims, tokens, service-role keys, table names, Supabase/RPC internals, or private repository payloads.
+
 Optional automation settings:
 
 ```text
 AGENTPROOF_GITHUB_APP_SAVE_REPORTS=true
 AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=true
+AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS=true
 AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE=agentproof_github_webhook_deliveries
 ```
 
-Keep comment automation disabled until the repository owner explicitly wants AgentProof comments on PRs.
+Keep comment automation disabled until the repository owner explicitly wants AgentProof comments on PRs. In beta/SaaS operation, enable `AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS=true` before enabling saved links or marker comments. With that gate enabled, AgentProof writes a bounded `github_app_side_effects_ready` audit event before fetching a GitHub installation token for side-effecting automation. If durable audit storage is missing or unavailable, the webhook returns `github_app_durable_audit_required` and does not create saved reports or comments.
 
 Durable idempotency uses the same server-only Supabase URL and service-role env accepted by saved reports. Optional GitHub-webhook-specific names can override them:
 
@@ -167,6 +223,87 @@ AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY
 
 Do not expose service-role keys with a `NEXT_PUBLIC_` prefix.
 
+## Analysis Job Queue
+
+By default, GitHub App PR automation still runs analysis inline after grant, quota, idempotency, and side-effect preflight gates pass. Set `AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED=true` to move the expensive GitHub token/evidence fetch and report generation off the webhook request path. In queue mode, a valid webhook returns `202` with `analysis.status: "queued"` after storing bounded job metadata.
+
+Queue readiness is checked before quota reservation, durable webhook idempotency, GitHub installation-token fetch, saved reports, or marker comments. If the queue is enabled but not configured, AgentProof fails closed with `github_app_analysis_queue_unavailable`, `willAnalyze:false`, and `willComment:false`.
+
+```text
+AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED=true
+AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL=
+AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_ANALYSIS_JOBS_TABLE=agentproof_analysis_jobs
+```
+
+Local smoke tests may set `AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY=true`, but SaaS/beta operation should use durable storage.
+
+```sql
+create table if not exists agentproof_analysis_jobs (
+  id text primary key,
+  status text not null check (status in ('queued', 'processing', 'completed', 'failed_retryable', 'failed_terminal')),
+  tenant_id text,
+  idempotency_key_hash text not null,
+  delivery_id text,
+  event text not null,
+  action text,
+  installation_id bigint not null,
+  repository_id bigint,
+  repository_full_name text not null,
+  pull_request_number integer not null,
+  pull_request_url text not null,
+  head_sha text not null,
+  save_report boolean not null default false,
+  comment boolean not null default false,
+  attempts integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  run_after timestamptz not null default now(),
+  locked_at timestamptz,
+  completed_at timestamptz,
+  error_code text,
+  error_summary text,
+  result_summary jsonb
+);
+
+create index if not exists agentproof_analysis_jobs_status_run_after_idx
+  on agentproof_analysis_jobs (status, run_after);
+
+create index if not exists agentproof_analysis_jobs_tenant_created_idx
+  on agentproof_analysis_jobs (tenant_id, created_at desc);
+
+create index if not exists agentproof_analysis_jobs_status_updated_idx
+  on agentproof_analysis_jobs (status, updated_at);
+```
+
+Job rows are metadata-only. They may store tenant id, installation id, repository id/name, PR number, canonical PR URL, head SHA, action, delivery id, hashed idempotency key, status, attempt timestamps, bounded error code/summary, planned side-effect booleans, and completed `result_summary` fields such as priority, evidence coverage, and saved-report/comment action metadata. They must not store raw webhook bodies, signatures, installation tokens, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, raw re-prompt text, saved-report URLs with keys, comment bodies, Slack webhooks, OpenAI keys, or service-role keys.
+
+Tenant deletion readiness is not implied by the queue table alone. Queue insertion and worker side effects recheck static/memory/Supabase deletion state and tenant grants, tenant repository grants have a metadata-only tenant-wide disable primitive for deletion start, and the guarded internal execution boundary refuses saved-report purge unless new work is explicitly blocked and tenant deletion state is active. It also refuses analysis-job purge unless new work is explicitly blocked, tenant deletion state is active, and exact queued/processing/retryable counts are zero. A public destructive deletion flow still needs an operator workflow that calls the tenant-wide grant disable, executes the guarded saved-report purge, drains or cancels active workers, executes every remaining category purge, handles external GitHub installation access, and is covered by a deletion drill.
+
+`GET /api/ops/tenants/deletion?tenantId=<id>` returns the metadata-only internal deletion execution plan behind `AGENTPROOF_OPS_TOKEN`. `POST /api/ops/tenants/deletion` accepts only `{ "tenantId": "...", "action": "block_new_work" }`; it can mark deletion state and disable tenant repository grants, but it deliberately does not expose analysis-job purge or any full destructive deletion action. Responses must not return tenant ids, repository names, installation ids, PR metadata, job ids, table names, store names, evidence, claims, diffs, logs, re-prompt text, or secrets.
+
+The saved-report purge primitive is internal-only and runs through `src/lib/tenant-deletion-execution.ts`, not the public ops route. Its public projection is limited to deleted count and a coarse count basis. It must not expose report ids, report bodies, access-token hashes, storage mode, table names, Supabase URLs, service-role keys, evidence indexes, claims, raw re-prompt text, diffs, logs, patch excerpts, saved-link keys, or tenant ids.
+
+The queue library now supports metadata-only worker state transitions: due jobs can be claimed into `processing`, stale `processing` jobs can be reclaimed after a bounded lease, successful jobs can be marked `completed`, and failures can become `failed_retryable` with a future `run_after` or `failed_terminal` after the retry budget is exhausted. Failure summaries are redacted and length-bounded before storage.
+
+`POST /api/ops/analysis-jobs/preflight` is an operator-token-gated worker preflight endpoint. It claims at most one due job, re-authorizes the active tenant repository grant before any GitHub token fetch, clamps queued side-effect flags to the current grant settings, and records retryable or terminal job state when credentials or grants are unavailable. Its response is `analysis-worker-preflight-metadata-only` and omits tenant ids, repository names, raw webhook payloads, PR evidence, diffs, logs, reports, claims, raw re-prompt text, comment bodies, saved-report keys, table names, and secrets.
+
+`POST /api/ops/analysis-jobs/run` is an operator-token-gated worker execution endpoint. It runs the same preflight first, then fetches a GitHub installation token, refetches PR evidence from GitHub, generates and runtime-validates a verification report, performs configured summary-only saved-report/comment side effects, and marks the job completed with `result_summary`. If GitHub evidence fetch, saved-report storage, comment posting, or validation fails, the worker records retryable or terminal job state with a redacted bounded `error_summary`. The run response is `analysis-worker-run-metadata-only` and returns only job id, PR number, head SHA prefix, attempts, priority, evidence coverage, and side-effect action metadata. It does not return repository names, tenant ids, saved-report URLs or keys, comment URLs or bodies, full reports, evidence indexes, claims, diffs, logs, raw re-prompt text, table names, or secrets.
+
+`POST /api/ops/analysis-jobs/run-batch?limit=<n>` is the bounded batch variant for cron or operator-driven drains. It defaults to one job and hard-caps at five jobs per request. The batch stops early when the queue is idle or after the first retryable failure, so a systemic GitHub/API/storage outage does not drain every due job into failure state. The response is `analysis-worker-batch-metadata-only` and contains only aggregate counters plus per-item run metadata using the same public projection as the single-run endpoint. It does not return repository names, tenant ids, installation ids, PR URLs, saved-report URLs/keys, comment URLs/bodies, raw reports, evidence, claims, diffs, logs, raw re-prompt text, table names, or secrets.
+
+`GET /api/cron/analysis-jobs/run` is the Vercel Cron-compatible scheduler route. It accepts `Authorization: Bearer <token>` or `x-agentproof-cron-token` where the token is `CRON_SECRET` or `AGENTPROOF_CRON_TOKEN`. If both are configured, either matching token is accepted so native Vercel Cron still works. If no cron token is configured it returns `501`; if the token is wrong it returns `401`; if the analysis queue is disabled it returns a `200` no-op metadata response; if the queue is enabled but storage is incomplete it returns `503`. Successful runs call the same bounded batch worker and return only aggregate counters with `privacy: "analysis-worker-cron-metadata-only"`. The route never returns repository names, tenant ids, installation ids, PR URLs, saved-report URLs/keys, comment URLs/bodies, per-job items, raw reports, evidence, claims, diffs, logs, raw re-prompt text, table names, or secrets. `vercel.json` schedules it once daily for the conservative first rollout; `AGENTPROOF_CRON_ANALYSIS_JOB_BATCH_LIMIT` can request a smaller/larger batch, but the worker still hard-caps at five jobs.
+
+`GET /api/ops/github-app/status` includes coarse GitHub installation metadata storage mode plus optional `analysisQueueSummary`, `analysisQueueAlertBasis: "sampled_rows"`, and `analysisQueueAlerts` when queue storage is configured. The summary is aggregate-only: sampled row count, truncation flag, status counts, due count, delayed retry count, stale processing count, and oldest queued/retry age in seconds. Alerts are code/count/threshold pairs such as `analysis_queue_failed_terminal`, `analysis_queue_stale_processing`, `analysis_queue_due_jobs`, `analysis_queue_backlog`, and `analysis_queue_summary_truncated`; they are an operator signal, not customer-facing incident notifications. They do not expose job rows, tenant ids, repository names, installation ids, delivery ids, idempotency hashes, PR URLs, error summaries, Supabase table names, missing env names, or service-role keys.
+
+`POST /api/ops/analysis-jobs/alerts/slack` is an operator-token-gated Slack delivery route for the same aggregate queue alert signals. It requires `AGENTPROOF_OPS_TOKEN` and a server-side `SLACK_WEBHOOK_URL`; it does not accept webhook URLs or report content from the request body. By default it sends warning-level alerts only; `includeInfo=true` can send info alerts after operator authentication. Responses use `privacy: "analysis-queue-alert-summary-only"` and include only send status, delivered alert counts, sampled row count, and truncation status. The Slack payload is summary-only: alert code, severity, metric, count, threshold, and aggregate queue counts. It must not include job rows, tenant ids, repository names, installation ids, delivery ids, idempotency hashes, PR URLs, PR numbers, head SHAs, job ids, event/action names, per-job timestamps, error codes/summaries, webhook payloads, signatures, tokens, private keys, Slack webhook URLs, Supabase URLs/keys/table names, PR titles/bodies, diffs, patches, logs, full reports, evidence indexes, claims, requirements, review priority, missing tests, raw re-prompt text, saved-report URLs/keys, comment URLs/bodies, or Slack response bodies.
+
+`GET /api/ops/analysis-jobs/dead-letter` is an operator-token-gated read-only summary for `failed_terminal` jobs. It returns top-level `privacy: "analysis-job-dead-letter-summary-only"`, `basis: "failed_terminal_recent_sample"` inside the summary, sampled/truncated counts, sampled terminal count, top bounded error-code counts, and the oldest terminal failure age in seconds. It deliberately does not return individual job rows, tenant ids, repository names, installation ids, delivery ids, idempotency hashes, PR URLs, PR numbers, head SHAs, job ids, event/action names, per-job timestamps, raw error summaries, webhook payloads, signatures, tokens, private keys, Supabase URLs/keys/table names, PR titles/bodies, diffs, patches, logs, full reports, evidence indexes, claims, raw re-prompt text, saved-report URLs/keys, or comment URLs/bodies. It is not a requeue or acknowledgement workflow.
+
+Design-partner tenants can read recent async analysis job status through `GET /api/tenants/analysis-jobs?tenantId=<tenant>&limit=10&status=failed|active|completed` with a tenant-bound invite token or tenant admin session cookie. Omitting `status` returns all recent jobs; explicit invalid values return `400 invalid_status_filter` instead of falling back to all data. The response uses `privacy: "analysis-job-summary-only"` and returns only an allowlisted projection plus a recent-sample rollup with `privacy: "analysis-job-tenant-rollup-summary-only"`. The tenant UI labels statuses as public states such as queued, active, retrying, needs attention, and completed. The endpoint must not return raw idempotency keys or hashes, full delivery ids, webhook payloads, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, raw re-prompt text, saved-report URLs/keys, comment URLs/bodies, tokens, service-role keys, table names, or Supabase internals.
+
+This is still not a full background worker system. The Vercel Cron route is a small serverless scheduler for bounded batches, the dead-letter endpoint is read-only aggregate visibility, and the Slack queue alert route is an operator-only summary delivery path rather than a complete incident-management system. A separate worker process, customer-visible async status rollups beyond the `/tenant` design-partner view, dead-letter requeue/ack workflows, broader alert routing, concurrency controls, and exactly-once operational guarantees remain separate SaaS work.
+
 Optional bounded audit event storage:
 
 ```text
@@ -175,7 +312,9 @@ AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY=
 AGENTPROOF_AUDIT_EVENTS_TABLE=agentproof_audit_events
 ```
 
-Audit events are append-only operational metadata for tenant GitHub App automation. They pass a structural privacy scanner before storage. They must not include raw webhook payloads, signatures, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, raw re-prompt text, comment bodies, saved-report URLs with `key`, tokens, private keys, service-role keys, Slack webhooks, or OpenAI keys.
+Audit events are append-only operational metadata for tenant GitHub App automation and lifecycle handling. They pass a structural privacy scanner before storage. Lifecycle audit actions include `github_app_installation_disabled`, `github_app_repository_access_removed`, and `github_app_lifecycle_store_unavailable`. Side-effect preflight audit actions include `github_app_side_effects_ready`; they include only planned saved-report privacy and comment action status, never saved-report URLs/keys or comment bodies. Audit rows must not include raw webhook payloads, signatures, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, raw re-prompt text, comment bodies, saved-report URLs with `key`, tokens, private keys, service-role keys, Slack webhooks, or OpenAI keys.
+
+Design-partner tenants can read a best-effort recent verification activity projection through `GET /api/tenants/audit-activity?tenantId=<tenant>&limit=10` with a tenant-bound invite token. The response uses `privacy: "audit-activity-summary-only"` and returns an `activity` array with flattened fields only: timestamp, actor, action, result, repository full name, PR number, head SHA prefix, delivery ID prefix, status code, priority, evidence coverage, saved-report privacy/durability, and comment action. It must not expose audit table names, Supabase env names, raw payloads, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, raw re-prompt text, saved report keys or URLs, comment bodies, tokens, signatures, or service-role keys. It is not a complete compliance export.
 
 ## Usage Quota Schema
 
@@ -269,7 +408,7 @@ $$;
 
 ## Audit Event Schema
 
-Audit rows store only bounded metadata: actor, tenant, repository, installation, PR number, head SHA prefix, request id, action, result, status, and safe summary fields.
+Audit rows store only bounded metadata: actor, tenant, repository, installation, PR number, head SHA prefix, request id, action, result, status, and safe summary fields. Customer-facing activity responses shorten request ids to delivery id prefixes.
 
 ```sql
 create table if not exists agentproof_audit_events (
@@ -309,6 +448,7 @@ Rows start as `processing`, move to `completed` after a successful evidence repo
 ```sql
 create table if not exists agentproof_github_webhook_deliveries (
   id text primary key,
+  tenant_id text,
   status text not null check (status in ('processing', 'completed', 'failed_retryable')),
   event text not null,
   delivery_id text not null,
@@ -327,7 +467,12 @@ create table if not exists agentproof_github_webhook_deliveries (
 
 create index if not exists agentproof_github_webhook_deliveries_expires_at_idx
   on agentproof_github_webhook_deliveries (expires_at);
+
+create index if not exists agentproof_github_webhook_deliveries_tenant_expires_idx
+  on agentproof_github_webhook_deliveries (tenant_id, expires_at);
 ```
+
+New tenant-control webhook rows store `tenant_id` from the authorized tenant repository grant. Historical rows without `tenant_id` must not be inferred from repository names or PR metadata during tenant deletion; they are handled only by normal expiry or a separate manual migration review.
 
 Recommended boundary:
 
@@ -463,8 +608,9 @@ Quota blocked:
 Keep these boundaries in place:
 
 - Install the GitHub App with least-privilege permissions for pull requests, checks/statuses, metadata, and Actions job metadata. Add issue comment write only when comment opt-in is intended.
-- Use tenant control mode for SaaS/beta operation so analysis requires an active `installation_id + repository` grant.
+- Use tenant control mode for SaaS/beta operation so analysis requires an active `installation_id + repository_id` grant.
 - Enable usage quota enforcement with the durable Supabase RPC before paid beta so overages stop before GitHub/OpenAI work or side effects.
+- Enable `AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS=true` before enabling saved report links or marker comments in SaaS/beta operation.
 - Use `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` only for operator/demo mode; avoid `*` outside controlled testing.
 - Treat saved reports as summary-only. Do not store raw diffs, raw logs, webhook payloads, installation tokens, claims, or raw re-prompt text.
 - Keep automatic comments off by default. When enabled, update one marker comment instead of creating comment storms.

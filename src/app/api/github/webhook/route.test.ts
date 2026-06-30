@@ -1,8 +1,18 @@
 import { createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearAnalysisJobsForTests, getAnalysisJobsForTests } from "@/lib/analysis-jobs";
 import { clearAuditEventsForTests, getAuditEventsForTests } from "@/lib/audit-log";
 import { clearGitHubWebhookDeliveriesForTests } from "@/lib/github-app";
+import {
+  clearTenantGitHubInstallationsForTests,
+  getTenantGitHubInstallationsForTests
+} from "@/lib/github-installations";
 import { clearSavedReportsForTests } from "@/lib/server-report-store";
+import {
+  clearTenantRepositoryGrantsForTests,
+  createTenantRepositoryGrant,
+  listTenantRepositoryGrants
+} from "@/lib/tenant-control-plane";
 import { clearUsageQuotaForTests } from "@/lib/usage-quota";
 import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
@@ -13,7 +23,10 @@ describe("POST /api/github/webhook", () => {
     vi.unstubAllGlobals();
     clearAuditEventsForTests();
     clearGitHubWebhookDeliveriesForTests();
+    clearAnalysisJobsForTests();
     clearSavedReportsForTests();
+    clearTenantGitHubInstallationsForTests();
+    clearTenantRepositoryGrantsForTests();
     clearUsageQuotaForTests();
   });
 
@@ -172,6 +185,282 @@ describe("POST /api/github/webhook", () => {
         statusContext: "CI test/build evidence verification [redacted]"
       })
     }));
+  });
+
+  it("accepts installation lifecycle events as dry-run when tenant control is disabled", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    const body = JSON.stringify({
+      action: "deleted",
+      installation: { id: 321, token: "payload-token-should-not-leak" },
+      repositories: [
+        { id: 100, full_name: "RengGyu/AgentProof" }
+      ]
+    });
+
+    const response = await POST(signedRequest(body, {
+      event: "installation",
+      delivery: "123e4567-e89b-12d3-a456-426614174101",
+      secret: "secret"
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({
+      ok: true,
+      accepted: true,
+      dryRun: true,
+      event: "installation",
+      delivery: "123e4567-e89b-12d3-a456-426614174101",
+      action: "deleted",
+      automationEnabled: false,
+      willAnalyze: false,
+      willComment: false,
+      note: "GitHub App lifecycle webhook verified. Tenant control is disabled, so repository grants were not changed."
+    });
+    expect(serialized).not.toContain("payload-token");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+  });
+
+  it("disables tenant repository grants for signed installation deleted events without token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY", "true");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: true,
+      commentEnabled: true
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(signedRequest(JSON.stringify({
+      action: "deleted",
+      installation: {
+        id: 321,
+        token: "payload-token-should-not-leak",
+        account: {
+          id: 1001,
+          login: "RengGyu",
+          type: "User"
+        }
+      },
+      repositories: [
+        { id: 100, full_name: "RengGyu/AgentProof" }
+      ],
+      rawDiff: "Patch excerpt should not leak"
+    }), {
+      event: "installation",
+      delivery: "123e4567-e89b-12d3-a456-426614174102",
+      secret: "secret"
+    }));
+    const json = await response.json();
+    const grants = await listTenantRepositoryGrants({ tenantId: "tenant_test" });
+    const installations = getTenantGitHubInstallationsForTests();
+    const serialized = JSON.stringify({ json, audit: getAuditEventsForTests() });
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({
+      ok: true,
+      accepted: true,
+      dryRun: false,
+      event: "installation",
+      delivery: "123e4567-e89b-12d3-a456-426614174102",
+      action: "deleted",
+      automationEnabled: false,
+      willAnalyze: false,
+      willComment: false,
+      installationId: 321,
+      disabledGrantCount: 1,
+      privacy: "grant-metadata-only",
+      note: "GitHub App installation lifecycle disabled matching AgentProof repository grants."
+    });
+    expect(grants[0]).toMatchObject({
+      enabled: false,
+      analysisEnabled: false,
+      saveReportsEnabled: false,
+      commentEnabled: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(installations).toEqual([
+      expect.objectContaining({
+        tenantId: "tenant_test",
+        installationId: 321,
+        accountId: 1001,
+        accountLogin: "RengGyu",
+        accountType: "User",
+        status: "deleted",
+        deletedAt: expect.any(String)
+      })
+    ]);
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_installation_disabled",
+      result: "completed",
+      tenant_id: "tenant_test",
+      installation_id: 321,
+      request_id: "123e4567-e89b-12d3-a456-426614174102",
+      metadata: {
+        webhookAction: "deleted",
+        code: "github_app_installation_disabled"
+      }
+    });
+    expect(serialized).not.toContain("payload-token");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("RengGyu");
+  });
+
+  it("fails closed when lifecycle metadata storage is partially configured", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: true,
+      commentEnabled: true
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(signedRequest(JSON.stringify({
+      action: "deleted",
+      installation: { id: 321 }
+    }), {
+      event: "installation",
+      delivery: "123e4567-e89b-12d3-a456-426614174120",
+      secret: "secret"
+    }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "GitHub App installation metadata store is unavailable.",
+      code: "github_app_installation_metadata_store_unavailable",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_lifecycle_store_unavailable",
+      result: "failed",
+      installation_id: 321,
+      metadata: {
+        webhookAction: "deleted",
+        code: "github_app_installation_metadata_store_unavailable"
+      }
+    });
+  });
+
+  it("disables only removed repository grants for signed installation_repositories removed events", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: true,
+      commentEnabled: true
+    });
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 101,
+      repositoryFullName: "RengGyu/Docs",
+      saveReportsEnabled: true,
+      commentEnabled: true
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(signedRequest(JSON.stringify({
+      action: "removed",
+      installation: { id: 321 },
+      repositories_removed: [
+        { id: 101, full_name: "RengGyu/Docs", token: "github_pat_secret_should_not_leak_1234567890" }
+      ]
+    }), {
+      event: "installation_repositories",
+      delivery: "123e4567-e89b-12d3-a456-426614174103",
+      secret: "secret"
+    }));
+    const json = await response.json();
+    const grants = await listTenantRepositoryGrants({ tenantId: "tenant_test" });
+    const serialized = JSON.stringify({ json, audit: getAuditEventsForTests() });
+
+    expect(response.status).toBe(200);
+    expect(json.disabledGrantCount).toBe(1);
+    expect(json.willAnalyze).toBe(false);
+    expect(json.willComment).toBe(false);
+    expect(grants).toEqual([
+      expect.objectContaining({
+        repositoryId: 100,
+        enabled: true,
+        saveReportsEnabled: true,
+        commentEnabled: true
+      }),
+      expect.objectContaining({
+        repositoryId: 101,
+        enabled: false,
+        saveReportsEnabled: false,
+        commentEnabled: false
+      })
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_repository_access_removed",
+      result: "completed",
+      tenant_id: "tenant_test",
+      metadata: {
+        webhookAction: "removed",
+        code: "github_app_repository_access_removed"
+      }
+    });
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("RengGyu/Docs");
+  });
+
+  it("fails closed for lifecycle events when the tenant grant store is unavailable", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(signedRequest(JSON.stringify({
+      action: "deleted",
+      installation: { id: 321 }
+    }), {
+      event: "installation",
+      delivery: "123e4567-e89b-12d3-a456-426614174104",
+      secret: "secret"
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual({
+      error: "Tenant repository grant store is unavailable.",
+      code: "github_app_tenant_grant_store_unavailable",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_lifecycle_store_unavailable",
+      result: "failed",
+      installation_id: 321,
+      metadata: {
+        webhookAction: "deleted",
+        code: "github_app_tenant_grant_store_unavailable"
+      }
+    });
   });
 
   it("ignores unsupported signed events without parsing or taking action", async () => {
@@ -439,6 +728,346 @@ describe("POST /api/github/webhook", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("authorizes tenant webhook automation from stored repository grants by repository id", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "OldName/AgentProof",
+      saveReportsEnabled: false,
+      commentEnabled: false
+    });
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-stored-tenant-grant",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.willAnalyze).toBe(true);
+    expect(json.analysis.status).toBe("completed");
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/app/installations/321/access_tokens",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_completed",
+      tenant_id: "tenant_test"
+    });
+  });
+
+  it("queues tenant-granted automation before fetching a GitHub installation token", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: false,
+      commentEnabled: false
+    });
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === "https://agentproof-test.supabase.co/rest/v1/analysis_jobs_test") {
+        return new Response(null, { status: 201 });
+      }
+
+      return new Response(JSON.stringify({ message: `Unexpected fetch ${href}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify({
+        ...automationPayload(),
+        rawDiff: "Patch excerpt: + token = 'github_pat_secret_should_not_leak_1234567890'"
+      }), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174300",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [unknown, RequestInit];
+    const queuedBody = JSON.parse(String(init.body));
+    const serializedBody = JSON.stringify(queuedBody);
+
+    expect(response.status).toBe(202);
+    expect(json).toEqual(expect.objectContaining({
+      ok: true,
+      accepted: true,
+      queued: true,
+      willAnalyze: true,
+      willComment: false,
+      analysis: expect.objectContaining({
+        status: "queued",
+        jobId: expect.any(String),
+        repository: "RengGyu/AgentProof",
+        pullRequestNumber: 7,
+        headSha: "abc123",
+        queue: {
+          store: "supabase",
+          durable: true
+        }
+      })
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "https://api.github.com/app/installations/321/access_tokens",
+      expect.anything()
+    );
+    expect(queuedBody).toMatchObject({
+      status: "queued",
+      tenant_id: "tenant_test",
+      idempotency_key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      delivery_id: "123e4567-e89b-12d3-a456-426614174300",
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7,
+      pull_request_url: "https://github.com/RengGyu/AgentProof/pull/7",
+      head_sha: "abc123",
+      save_report: false,
+      comment: false
+    });
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serializedBody).not.toContain("Patch excerpt");
+    expect(serializedBody).not.toContain("github_pat_secret");
+    expect(serializedBody).not.toContain("installation-token");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_queued",
+      result: "completed",
+      tenant_id: "tenant_test",
+      status_code: 202,
+      metadata: {
+        code: "github_app_analysis_queued_durable"
+      }
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
+  it("fails closed before quota, idempotency, or token fetch when queue mode lacks storage", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", quotaLimitsJson({ monthlyAnalysisLimit: 1 }));
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174301",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual({
+      error: "Analysis job queue is unavailable.",
+      code: "github_app_analysis_queue_unavailable",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAnalysisJobsForTests()).toEqual([]);
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_queue_unavailable",
+      result: "failed",
+      tenant_id: "tenant_test",
+      status_code: 503
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
+  it("marks durable idempotency retryable when queue enqueue fails after reservation", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://jobs.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "jobs-service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL", "https://webhooks.supabase.co");
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY", "webhook-service-role-secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE", "deliveries_test");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      const method = init?.method ?? "GET";
+
+      if (href.startsWith("https://webhooks.supabase.co/rest/v1/deliveries_test?expires_at=") && method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+
+      if (href === "https://webhooks.supabase.co/rest/v1/deliveries_test" && method === "POST") {
+        return new Response(null, { status: 201 });
+      }
+
+      if (href.startsWith("https://webhooks.supabase.co/rest/v1/deliveries_test?id=eq.") && method === "PATCH") {
+        const body = JSON.parse(String(init?.body));
+        expect(body).toMatchObject({
+          status: "failed_retryable",
+          error_code: "github_app_analysis_queue_unavailable"
+        });
+        return new Response(null, { status: 204 });
+      }
+
+      if (href === "https://jobs.supabase.co/rest/v1/analysis_jobs_test" && method === "POST") {
+        return new Response("queue down", { status: 500 });
+      }
+
+      return new Response(JSON.stringify({ message: `Unexpected fetch ${method} ${href}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174302",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual({
+      error: "Analysis job queue is unavailable.",
+      code: "github_app_analysis_queue_unavailable",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(urls).toEqual(expect.arrayContaining([
+      "https://webhooks.supabase.co/rest/v1/deliveries_test",
+      "https://jobs.supabase.co/rest/v1/analysis_jobs_test"
+    ]));
+    expect(urls.some((url) => url === "https://api.github.com/app/installations/321/access_tokens")).toBe(false);
+    expect(getAnalysisJobsForTests()).toEqual([]);
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_queue_unavailable",
+      result: "failed",
+      tenant_id: "tenant_test",
+      status_code: 503
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
+  it("does not authorize a stored tenant grant when repository id differs even if the full name matches", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 999,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-stored-tenant-grant-wrong-repo-id",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      ignored: true,
+      code: "github_app_tenant_grant_required",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when stored tenant grant lookup is unavailable before token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-grant-store-unavailable",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual({
+      error: "Tenant repository grant store is unavailable.",
+      code: "github_app_tenant_grant_store_unavailable",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_grant_store_unavailable",
+      result: "failed",
+      status_code: 503,
+      metadata: {
+        code: "github_app_tenant_grant_store_unavailable"
+      }
+    });
+  });
+
   it("denies disabled tenant grants before durable idempotency or token fetch", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -469,6 +1098,49 @@ describe("POST /api/github/webhook", () => {
     }));
     expect(json.note).toContain("disabled");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("denies active grants for unavailable tenants before quota, idempotency, enqueue, or token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson());
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_TOMBSTONES", JSON.stringify(["tenant_test"]));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", quotaLimitsJson({ monthlyAnalysisLimit: 1 }));
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-guard-blocked",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      ignored: true,
+      code: "github_app_tenant_grant_required",
+      willAnalyze: false,
+      willComment: false,
+      note: "Repository grant is not active."
+    }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAnalysisJobsForTests()).toEqual([]);
+    expect(serialized).not.toContain("tenant_test");
+    expect(serialized).not.toContain("deletion");
+    expect(serialized).not.toContain("tombstone");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("quota");
+    expect(serialized).not.toContain("token");
   });
 
   it("denies analysis-disabled tenant grants before durable idempotency or token fetch", async () => {
@@ -537,6 +1209,7 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
     vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
       saveReportsEnabled: true,
@@ -865,6 +1538,179 @@ describe("POST /api/github/webhook", () => {
     expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedKey);
     expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedReportUrl.toString());
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
+  it("requires durable audit before saved-report side effects when the gate is enabled", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: true,
+      commentEnabled: false
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-durable-audit-required",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual({
+      error: "Durable audit storage is required before GitHub App side effects.",
+      code: "github_app_durable_audit_required",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAuditEventsForTests()).toEqual([]);
+  });
+
+  it("requires durable audit before marker-comment side effects when the gate is enabled", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: false,
+      commentEnabled: true
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-durable-audit-comment-required",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json.code).toBe("github_app_durable_audit_required");
+    expect(json.willComment).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAuditEventsForTests()).toEqual([]);
+  });
+
+  it("blocks side effects before token fetch when durable audit storage is down", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: true,
+      commentEnabled: false
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY", "audit-service-role-secret");
+    vi.stubEnv("AGENTPROOF_AUDIT_EVENTS_TABLE", "audit_events_test");
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      if (String(url) === "https://agentproof-test.supabase.co/rest/v1/audit_events_test") {
+        return new Response("down", { status: 500 });
+      }
+
+      return jsonResponse({ token: "should-not-be-requested" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-durable-audit-down",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+
+    expect(response.status).toBe(503);
+    expect(json.code).toBe("github_app_durable_audit_required");
+    expect(urls).toEqual(["https://agentproof-test.supabase.co/rest/v1/audit_events_test"]);
+    expect(urls).not.toContain("https://api.github.com/app/installations/321/access_tokens");
+  });
+
+  it("writes a durable side-effect preflight audit before creating a saved report", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: true,
+      commentEnabled: false
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY", "audit-service-role-secret");
+    vi.stubEnv("AGENTPROOF_AUDIT_EVENTS_TABLE", "audit_events_test");
+    const githubFetch = mockAutomationFetch();
+    const auditBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://agentproof-test.supabase.co/rest/v1/audit_events_test") {
+        auditBodies.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 201 });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-durable-audit-ready",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serializedAudit = JSON.stringify(auditBodies);
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    const tokenFetchIndex = urls.indexOf("https://api.github.com/app/installations/321/access_tokens");
+
+    expect(response.status).toBe(200);
+    expect(json.analysis.savedReport.privacy).toBe("summary-only");
+    expect(urls[0]).toBe("https://agentproof-test.supabase.co/rest/v1/audit_events_test");
+    expect(tokenFetchIndex).toBeGreaterThan(0);
+    expect(urls.indexOf("https://agentproof-test.supabase.co/rest/v1/audit_events_test")).toBeLessThan(tokenFetchIndex);
+    expect(auditBodies).toHaveLength(2);
+    expect(auditBodies[0]).toMatchObject({
+      action: "github_app_side_effects_ready",
+      result: "completed",
+      tenant_id: "tenant_test",
+      metadata: {
+        code: "github_app_saved_report_ready",
+        savedReport: {
+          privacy: "summary-only"
+        }
+      }
+    });
+    expect(auditBodies[1]).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      tenant_id: "tenant_test"
+    });
+    expect(serializedAudit).not.toContain("audit-service-role-secret");
+    expect(serializedAudit).not.toContain(json.analysis.savedReport.url);
+    expectAuditEventIsSummaryOnly(auditBodies[0]);
+    expectAuditEventIsSummaryOnly(auditBodies[1]);
   });
 
   it("omits raw automation network error messages before returning 502", async () => {
@@ -1220,6 +2066,7 @@ describe("POST /api/github/webhook", () => {
     expect(json.analysis.status).toBe("completed");
     expect(postBody).toMatchObject({
       status: "processing",
+      tenant_id: null,
       event: "pull_request",
       delivery_id: "123e4567-e89b-12d3-a456-426614174000",
       installation_id: 321,
@@ -1261,6 +2108,58 @@ describe("POST /api/github/webhook", () => {
       }
     });
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
+  it("stores tenant id on durable webhook idempotency rows for tenant-granted automation", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson());
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE", "webhook_deliveries_test");
+    const githubFetch = mockAutomationFetch();
+    const supabaseCalls: Array<[string, RequestInit | undefined]> = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+
+      if (href.startsWith("https://agentproof-test.supabase.co/rest/v1/webhook_deliveries_test")) {
+        supabaseCalls.push([href, init]);
+        if (init?.method === "DELETE") return new Response(null, { status: 204 });
+        if (init?.method === "POST") return new Response(null, { status: 201 });
+        if (init?.method === "PATCH") return new Response(null, { status: 204 });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890"
+      })), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174777",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const postBody = JSON.parse(String(supabaseCalls.find((call) => call[1]?.method === "POST")?.[1]?.body));
+    const serialized = JSON.stringify({ json, postBody });
+
+    expect(response.status).toBe(200);
+    expect(json.analysis.status).toBe("completed");
+    expect(postBody).toMatchObject({
+      tenant_id: "tenant_test",
+      status: "processing",
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7
+    });
+    expect(postBody.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("Patch excerpt");
   });
 
   it("creates a GitHub App marker comment only when comment opt-in is enabled", async () => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearGitHubWebhookDeliveriesForTests,
   completeGitHubWebhookDelivery,
+  countTenantGitHubWebhookDeliveries,
   createGitHubAppJwt,
   createGitHubInstallationAccessToken,
   failGitHubWebhookDelivery,
@@ -298,6 +299,23 @@ describe("github app helpers", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("counts tenant-mapped in-memory webhook deliveries without exposing keys", async () => {
+    markGitHubWebhookDelivery("tenant-a-delivery-one", 1_000, "tenant_a");
+    markGitHubWebhookDelivery("tenant-a-delivery-two", 1_001, "tenant_a");
+    markGitHubWebhookDelivery("tenant-b-delivery-one", 1_002, "tenant_b");
+    markGitHubWebhookDelivery("operator-delivery", 1_003);
+
+    await expect(countTenantGitHubWebhookDeliveries({ tenantId: "tenant_a" })).resolves.toEqual({
+      count: 2,
+      store: "memory",
+      durable: false,
+      configured: false
+    });
+    await expect(countTenantGitHubWebhookDeliveries({ tenantId: "tenant_b" })).resolves.toMatchObject({
+      count: 1
+    });
+  });
+
   it("fails closed for partial durable webhook idempotency env", async () => {
     vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL", "https://agentproof-test.supabase.co");
 
@@ -356,6 +374,7 @@ describe("github app helpers", () => {
     expect((postCall?.[1]?.headers as Record<string, string>).Authorization).toBe("Bearer service-role-secret");
     expect(postBody.id).toMatch(/^[a-f0-9]{64}$/);
     expect(postBody.id).not.toContain(input.key);
+    expect(postBody.tenant_id).toBe("tenant_test");
     expect(postBody.status).toBe("processing");
     expect(postBody.delivery_id).toBe("unknown");
     expect(postBody.repository_full_name).toBe("RengGyu/AgentProof");
@@ -386,6 +405,31 @@ describe("github app helpers", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+  });
+
+  it("counts durable tenant webhook deliveries with a narrow HEAD query", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE", "webhook_deliveries_test");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => new Response(null, {
+      status: init?.method === "HEAD" ? 200 : 500,
+      headers: { "content-range": "0-0/4" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(countTenantGitHubWebhookDeliveries({ tenantId: "tenant_test" })).resolves.toEqual({
+      count: 4,
+      store: "supabase",
+      durable: true,
+      configured: true
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://agentproof-test.supabase.co/rest/v1/webhook_deliveries_test?tenant_id=eq.tenant_test&select=id");
+    expect(init?.method).toBe("HEAD");
+    expect(new Headers(init?.headers).get("Prefer")).toBe("count=exact");
+    expect(new Headers(init?.headers).get("Range")).toBe("0-0");
+    expect(init?.body).toBeUndefined();
   });
 
   it("retries durable webhook idempotency rows marked failed_retryable", async () => {
@@ -490,6 +534,7 @@ describe("github app helpers", () => {
 function webhookDeliveryInput(overrides: Partial<Parameters<typeof reserveGitHubWebhookDelivery>[0]> = {}) {
   return {
     key: "321:renggyu/agentproof:7:abc123def4567890:synchronize",
+    tenantId: "tenant_test",
     event: "pull_request",
     delivery: "123e4567-e89b-12d3-a456-426614174000",
     installationId: 321,

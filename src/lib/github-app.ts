@@ -4,7 +4,7 @@ import { getTenantControlPlaneSettings, readTenantRepositoryGrants } from "./ten
 const GITHUB_APP_FETCH_TIMEOUT_MS = 8000;
 const GITHUB_WEBHOOK_IDEMPOTENCY_TTL_MS = 30 * 60 * 1000;
 const GITHUB_WEBHOOK_PROCESSING_LEASE_MS = 30 * 60 * 1000;
-const GITHUB_WEBHOOK_IDEMPOTENCY_DURABLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const GITHUB_WEBHOOK_IDEMPOTENCY_DURABLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const GITHUB_WEBHOOK_IDEMPOTENCY_MAX = 500;
 export const DEFAULT_GITHUB_WEBHOOK_DELIVERIES_TABLE = "agentproof_github_webhook_deliveries";
 
@@ -48,6 +48,7 @@ export interface PublicGitHubAppReadinessStatus {
 
 export interface GitHubWebhookDeliveryInput {
   key: string;
+  tenantId?: string;
   event: string;
   delivery: string;
   installationId: number;
@@ -91,8 +92,13 @@ export interface GitHubWebhookIdempotencyStoreStatus {
 }
 
 type GlobalWithWebhookIdempotency = typeof globalThis & {
-  __agentproofGitHubWebhookDeliveries?: Map<string, number>;
+  __agentproofGitHubWebhookDeliveries?: Map<string, MemoryWebhookDeliveryRecord>;
 };
+
+interface MemoryWebhookDeliveryRecord {
+  createdAt: number;
+  tenantId?: string;
+}
 
 interface SupabaseWebhookDeliveryConfig {
   url: string;
@@ -102,6 +108,7 @@ interface SupabaseWebhookDeliveryConfig {
 
 interface SupabaseWebhookDeliveryRow {
   id: string;
+  tenant_id?: string | null;
   status: GitHubWebhookDeliveryStatus;
   event: string;
   delivery_id: string;
@@ -401,7 +408,7 @@ export function shouldHandlePullRequestAction(action: string | undefined): boole
     action === "ready_for_review";
 }
 
-export function markGitHubWebhookDelivery(key: string, now = Date.now()): boolean {
+export function markGitHubWebhookDelivery(key: string, now = Date.now(), tenantId?: string): boolean {
   cleanupGitHubWebhookDeliveries(now);
   const store = githubWebhookDeliveryStore();
 
@@ -409,7 +416,11 @@ export function markGitHubWebhookDelivery(key: string, now = Date.now()): boolea
     return false;
   }
 
-  store.set(key, now);
+  const safeTenant = safeTenantId(tenantId);
+  store.set(key, {
+    createdAt: now,
+    tenantId: safeTenant ?? undefined
+  });
   trimGitHubWebhookDeliveryStore();
   return true;
 }
@@ -423,7 +434,7 @@ export async function reserveGitHubWebhookDelivery(
 
   if (!config) {
     return {
-      accepted: markGitHubWebhookDelivery(input.key, now),
+      accepted: markGitHubWebhookDelivery(input.key, now, input.tenantId),
       store: "memory",
       durable: false
     };
@@ -434,6 +445,47 @@ export async function reserveGitHubWebhookDelivery(
 
 export function forgetGitHubWebhookDelivery(key: string): boolean {
   return githubWebhookDeliveryStore().delete(key);
+}
+
+export interface TenantGitHubWebhookDeliveryCount {
+  count: number;
+  store: "memory" | "supabase";
+  durable: boolean;
+  configured: boolean;
+  disabled?: boolean;
+}
+
+export async function countTenantGitHubWebhookDeliveries(
+  input: { tenantId: string },
+  env = process.env
+): Promise<TenantGitHubWebhookDeliveryCount> {
+  const tenantId = safeTenantId(input.tenantId);
+  if (!tenantId) {
+    return {
+      count: 0,
+      store: "memory",
+      durable: false,
+      configured: false,
+      disabled: true
+    };
+  }
+
+  const config = getSupabaseWebhookDeliveryConfig(env);
+  if (!config) {
+    return {
+      count: countMemoryGitHubWebhookDeliveries(tenantId),
+      store: "memory",
+      durable: false,
+      configured: false
+    };
+  }
+
+  return {
+    count: await countSupabaseTenantGitHubWebhookDeliveries(config, tenantId),
+    store: "supabase",
+    durable: true,
+    configured: true
+  };
 }
 
 export async function completeGitHubWebhookDelivery(
@@ -556,8 +608,8 @@ function base64Url(value: Buffer): string {
 function cleanupGitHubWebhookDeliveries(now: number): number {
   let deleted = 0;
 
-  for (const [key, createdAt] of githubWebhookDeliveryStore()) {
-    if (now - createdAt > GITHUB_WEBHOOK_IDEMPOTENCY_TTL_MS) {
+  for (const [key, record] of githubWebhookDeliveryStore()) {
+    if (now - record.createdAt > GITHUB_WEBHOOK_IDEMPOTENCY_TTL_MS) {
       githubWebhookDeliveryStore().delete(key);
       deleted += 1;
     }
@@ -566,9 +618,18 @@ function cleanupGitHubWebhookDeliveries(now: number): number {
   return deleted;
 }
 
+function countMemoryGitHubWebhookDeliveries(tenantId: string): number {
+  let count = 0;
+  for (const record of githubWebhookDeliveryStore().values()) {
+    if (record.tenantId === tenantId) count += 1;
+  }
+
+  return count;
+}
+
 function githubWebhookDeliveryStore() {
   const globalStore = globalThis as GlobalWithWebhookIdempotency;
-  globalStore.__agentproofGitHubWebhookDeliveries ??= new Map<string, number>();
+  globalStore.__agentproofGitHubWebhookDeliveries ??= new Map<string, MemoryWebhookDeliveryRecord>();
 
   return globalStore.__agentproofGitHubWebhookDeliveries;
 }
@@ -602,6 +663,7 @@ async function reserveSupabaseWebhookDelivery(
     if (existing && shouldRetrySupabaseWebhookDelivery(existing, now)) {
       const accepted = await updateSupabaseWebhookDelivery(config, input.key, {
         status: "processing",
+        tenant_id: safeTenantId(input.tenantId),
         delivery_id: safeGitHubDeliveryId(input.delivery),
         result_summary: null,
         error_code: null,
@@ -747,11 +809,40 @@ async function deleteSupabaseWebhookDelivery(config: SupabaseWebhookDeliveryConf
   return true;
 }
 
+async function countSupabaseTenantGitHubWebhookDeliveries(
+  config: SupabaseWebhookDeliveryConfig,
+  tenantId: string
+): Promise<number> {
+  const params = new URLSearchParams({
+    tenant_id: `eq.${tenantId}`,
+    select: "id"
+  });
+  const response = await supabaseWebhookDeliveryFetch(config, `?${params.toString()}`, {
+    method: "HEAD",
+    headers: {
+      Prefer: "count=exact",
+      Range: "0-0"
+    }
+  });
+
+  if (!response.ok) {
+    throw new GitHubWebhookIdempotencyError(`GitHub webhook delivery count failed with HTTP ${response.status}.`);
+  }
+
+  const count = countFromContentRange(response.headers.get("content-range"));
+  if (count === null) {
+    throw new GitHubWebhookIdempotencyError("GitHub webhook delivery count returned an invalid range.");
+  }
+
+  return count;
+}
+
 function toSupabaseWebhookDeliveryRow(input: GitHubWebhookDeliveryInput, now: number): SupabaseWebhookDeliveryRow {
   const createdAt = new Date(now);
 
   return {
     id: hashGitHubWebhookDeliveryKey(input.key),
+    tenant_id: safeTenantId(input.tenantId),
     status: "processing",
     event: safeWebhookAction(input.event),
     delivery_id: safeGitHubDeliveryId(input.delivery),
@@ -856,4 +947,17 @@ function safeHeadSha(value: string): string {
 
 function safeWebhookAction(value: string): string {
   return /^[a-z_]{1,40}$/i.test(value) ? value : "unknown";
+}
+
+function safeTenantId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,79}$/.test(trimmed) ? trimmed : null;
+}
+
+function countFromContentRange(value: string | null): number | null {
+  const match = value?.match(/\/(\d+)$/);
+  if (!match) return null;
+  const count = Number(match[1]);
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
 }

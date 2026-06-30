@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearUsageQuotaForTests,
   readUsageQuotaLimits,
+  readUsageQuotaStatus,
   reserveUsageQuota,
   usageQuotaPublicReason,
   UsageQuotaStoreError
@@ -121,6 +122,76 @@ describe("usage quota", () => {
     }));
   });
 
+  it("reads in-memory quota status without consuming quota", async () => {
+    const env = quotaEnv({
+      monthlyAnalysisLimit: 2,
+      AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY: "true"
+    });
+    await reserveUsageQuota({
+      tenantId: "tenant_a",
+      feature: "github_app_analysis",
+      idempotencyKey: "first",
+      now: new Date("2026-06-30T00:00:00Z")
+    }, env);
+
+    const firstStatus = await readUsageQuotaStatus({
+      tenantId: "tenant_a",
+      feature: "github_app_analysis",
+      now: new Date("2026-06-30T12:00:00Z")
+    }, env);
+    const secondStatus = await readUsageQuotaStatus({
+      tenantId: "tenant_a",
+      feature: "github_app_analysis",
+      now: new Date("2026-06-30T12:00:00Z")
+    }, env);
+
+    expect(firstStatus).toEqual({
+      enforced: true,
+      configured: true,
+      store: "memory",
+      tenantId: "tenant_a",
+      feature: "github_app_analysis",
+      period: "2026-06",
+      plan: "team",
+      limit: 2,
+      used: 1,
+      remaining: 1
+    });
+    expect(secondStatus).toEqual(firstStatus);
+  });
+
+  it("returns bounded quota status when enforcement is disabled or tenant quota is missing", async () => {
+    const disabled = await readUsageQuotaStatus({
+      tenantId: "tenant_a",
+      feature: "github_app_analysis",
+      now: new Date("2026-06-30T00:00:00Z")
+    }, {} as NodeJS.ProcessEnv);
+    const missing = await readUsageQuotaStatus({
+      tenantId: "tenant_b",
+      feature: "github_app_analysis",
+      now: new Date("2026-06-30T00:00:00Z")
+    }, quotaEnv({
+      monthlyAnalysisLimit: 1,
+      AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY: "true"
+    }));
+
+    expect(disabled).toEqual(expect.objectContaining({
+      enforced: false,
+      configured: false,
+      store: "none",
+      tenantId: "tenant_a",
+      period: "2026-06",
+      reason: "quota-disabled"
+    }));
+    expect(missing).toEqual(expect.objectContaining({
+      enforced: true,
+      configured: false,
+      store: "none",
+      tenantId: "tenant_b",
+      reason: "quota-limit-missing"
+    }));
+  });
+
   it("reserves Supabase quota through an atomic RPC without storing raw idempotency keys", async () => {
     const env = quotaEnv({
       monthlyAnalysisLimit: 2,
@@ -166,6 +237,63 @@ describe("usage quota", () => {
     }));
     expect(serialized).not.toContain("raw-idempotency-key");
     expect(serialized).not.toContain("service-role-secret");
+  });
+
+  it("reads Supabase usage status from count headers without fetching raw records", async () => {
+    const env = quotaEnv({
+      monthlyAnalysisLimit: 10,
+      AGENTPROOF_USAGE_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
+      AGENTPROOF_USAGE_RECORDS_TABLE: "usage_records_test"
+    });
+    const fetchMock = vi.fn(async (_url: string | URL, _init?: RequestInit) => new Response(null, {
+      status: 200,
+      headers: { "content-range": "0-0/3" }
+    }));
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await readUsageQuotaStatus({
+      tenantId: "tenant_a",
+      feature: "github_app_analysis",
+      now: new Date("2026-06-30T00:00:00Z")
+    }, env);
+    const [url, init] = fetchMock.mock.calls[0];
+
+    expect(result).toEqual({
+      enforced: true,
+      configured: true,
+      store: "supabase",
+      tenantId: "tenant_a",
+      feature: "github_app_analysis",
+      period: "2026-06",
+      plan: "team",
+      limit: 10,
+      used: 3,
+      remaining: 7
+    });
+    expect(String(url)).toContain("https://agentproof-test.supabase.co/rest/v1/usage_records_test?");
+    expect(String(url)).toContain("tenant_id=eq.tenant_a");
+    expect(String(url)).not.toContain("service-role-secret");
+    expect(init?.method).toBe("HEAD");
+    expect(init?.body).toBeUndefined();
+    expect(init?.headers).toEqual(expect.objectContaining({
+      Prefer: "count=exact",
+      Range: "0-0"
+    }));
+  });
+
+  it("throws a bounded store error when Supabase usage status count is unavailable", async () => {
+    const env = quotaEnv({
+      monthlyAnalysisLimit: 10,
+      AGENTPROOF_USAGE_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret"
+    });
+    global.fetch = vi.fn(async () => new Response(null, { status: 500 })) as typeof fetch;
+
+    await expect(readUsageQuotaStatus({
+      tenantId: "tenant_a",
+      feature: "github_app_analysis"
+    }, env)).rejects.toThrow(UsageQuotaStoreError);
   });
 
   it("throws a bounded store error when Supabase quota reservation fails", async () => {
