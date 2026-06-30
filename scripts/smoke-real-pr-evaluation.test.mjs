@@ -6,8 +6,10 @@ import {
   runRealPrEvaluationSmoke,
   safeSmokePrUrl,
   summarizeAnalyzeTimings,
-  summarizeGitHubEvidenceTimings
+  summarizeGitHubEvidenceTimings,
+  summarizeQualityGates
 } from "./smoke-real-pr-evaluation.mjs";
+import { evaluateReportQualityGate } from "./smoke-analyze-pr-url.mjs";
 
 describe("smoke-real-pr-evaluation", () => {
   it("runs every real PR evaluation case through analyze and summary-only save smoke", async () => {
@@ -60,6 +62,17 @@ describe("smoke-real-pr-evaluation", () => {
     expect(result.ok).toBe(true);
     expect(result.caseCount).toBe(6);
     expect(result).not.toHaveProperty("performanceBudget");
+    expect(result.qualityGateSummary).toEqual({
+      ok: true,
+      checks: [
+        { id: "ci_execution_proof", label: "Passed CI is backed by execution evidence", count: 6, failedCount: 0 },
+        { id: "human_decision_support", label: "Report does not make merge decisions", count: 6, failedCount: 0 },
+        { id: "met_requirement_execution", label: "Met requirements cite passing execution evidence", count: 6, failedCount: 0 },
+        { id: "requirements_present", label: "Requirement extraction present", count: 6, failedCount: 0 },
+        { id: "reviewer_lead_provenance", label: "Reviewer leads include provenance", count: 6, failedCount: 0 },
+        { id: "summary_only_privacy", label: "Saved report remains summary-only", count: 6, failedCount: 0 }
+      ]
+    });
     expect(result.timingSummary).toEqual({
       metric: "X-AgentProof-Timing",
       unit: "ms",
@@ -97,7 +110,15 @@ describe("smoke-real-pr-evaluation", () => {
         savedEvidenceRefsCleared: true,
         savedFailedCheckLocationsOmitted: true,
         savedReportDeleted: true,
-        productionTokenForwarded: false
+        productionTokenForwarded: false,
+        qualityGate: expect.objectContaining({
+          ok: true,
+          checks: expect.arrayContaining([
+            expect.objectContaining({ id: "requirements_present", ok: true }),
+            expect.objectContaining({ id: "met_requirement_execution", ok: true }),
+            expect.objectContaining({ id: "summary_only_privacy", ok: true })
+          ])
+        })
       }));
       expect(item.analyzeTiming).toEqual(timingForIndex(index));
       expect(item.githubEvidenceTiming).toEqual(githubEvidenceTimingForIndex(index));
@@ -211,6 +232,146 @@ describe("smoke-real-pr-evaluation", () => {
     expect(JSON.stringify(result)).not.toContain("sk-secret");
     expect(JSON.stringify(result)).not.toContain("secret task text");
     expect(JSON.stringify(result)).not.toContain("private-case");
+  });
+
+  it("summarizes report quality gates without leaking case details", () => {
+    const summary = summarizeQualityGates([
+      {
+        id: "private-case",
+        prUrl: "https://user:github_pat_secret_should_not_leak@github.com/org/private/pull/1?token=sk-secret",
+        taskText: "Acceptance criteria: secret task text",
+        qualityGate: {
+          ok: false,
+          checks: [
+            { id: "met_requirement_execution", label: "Met requirements cite passing execution evidence", ok: false, detail: "1 met requirement(s) lack passing check or log evidence." },
+            { id: "summary_only_privacy", label: "Saved report remains summary-only", ok: true, detail: "Saved report omits raw evidence." }
+          ]
+        }
+      },
+      {
+        qualityGate: {
+          ok: true,
+          checks: [
+            { id: "met_requirement_execution", label: "Met requirements cite passing execution evidence", ok: true, detail: "Every met requirement cites passing check or log evidence." },
+            { id: "summary_only_privacy", label: "Saved report remains summary-only", ok: true, detail: "Saved report omits raw evidence." }
+          ]
+        }
+      }
+    ]);
+
+    expect(summary).toEqual({
+      ok: false,
+      checks: [
+        { id: "met_requirement_execution", label: "Met requirements cite passing execution evidence", count: 2, failedCount: 1 },
+        { id: "summary_only_privacy", label: "Saved report remains summary-only", count: 2, failedCount: 0 }
+      ]
+    });
+    expect(JSON.stringify(summary)).not.toContain("github_pat_secret_should_not_leak");
+    expect(JSON.stringify(summary)).not.toContain("sk-secret");
+    expect(JSON.stringify(summary)).not.toContain("secret task text");
+    expect(JSON.stringify(summary)).not.toContain("private-case");
+  });
+
+  it("fails report quality gates for unsupported met requirements and unsafe merge decisions", () => {
+    const report = reportFixture("https://github.com/RengGyu/AgentProof/pull/1");
+
+    report.requirements[0].evidenceRefs = ["ev_extra_1"];
+    report.summary.oneLine = "Ready to merge.";
+
+    const result = evaluateReportQualityGate(report, {
+      savedReport: summaryOnlyReportFixture()
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "met_requirement_execution", ok: false }),
+      expect.objectContaining({ id: "human_decision_support", ok: false })
+    ]));
+  });
+
+  it("does not fail merge-decision quality when the source requirement quotes forbidden wording", () => {
+    const report = reportFixture("https://github.com/RengGyu/AgentProof/pull/1");
+
+    report.requirements[0].requirementText = "Avoid saying this PR is safe to merge.";
+
+    const result = evaluateReportQualityGate(report, {
+      savedReport: summaryOnlyReportFixture()
+    });
+
+    expect(result.checks.find((check) => check.id === "human_decision_support")).toEqual(expect.objectContaining({
+      ok: true
+    }));
+  });
+
+  it("fails report quality gates when reviewer leads lack provenance", () => {
+    const report = reportFixture("https://github.com/RengGyu/AgentProof/pull/1");
+
+    report.testing.missingTests = [{ path: "src/private.ts", why: "Needs test", evidenceRefs: [] }];
+    report.scope = {
+      suspected: true,
+      outOfScopeFiles: ["src/private.ts"],
+      reasons: ["Possible scope creep"],
+      evidenceRefs: []
+    };
+    report.reviewPriority = [{
+      path: "src/private.ts",
+      reason: "Review this first.",
+      priority: "high",
+      evidenceRefs: []
+    }];
+
+    const result = evaluateReportQualityGate(report, {
+      savedReport: summaryOnlyReportFixture()
+    });
+
+    expect(result.checks.find((check) => check.id === "reviewer_lead_provenance")).toEqual(expect.objectContaining({
+      ok: false,
+      detail: "3 reviewer lead group(s) lack evidence references."
+    }));
+  });
+
+  it("fails report quality gates when summary-only saved data retains full-report material", () => {
+    const report = reportFixture("https://github.com/RengGyu/AgentProof/pull/1");
+    const savedReport = {
+      ...summaryOnlyReportFixture(),
+      evidenceIndex: [{ id: "ev_secret", kind: "diff", label: "src/private.ts", summary: "Patch excerpt", confidence: 0.9 }]
+    };
+
+    const result = evaluateReportQualityGate(report, { savedReport });
+
+    expect(result.checks.find((check) => check.id === "summary_only_privacy")).toEqual(expect.objectContaining({
+      ok: false
+    }));
+  });
+
+  it("fails report quality gates when summary-only saved data retains raw text patterns", () => {
+    const report = reportFixture("https://github.com/RengGyu/AgentProof/pull/1");
+    const savedReport = summaryOnlyReportFixture();
+
+    savedReport.limitations.push("Patch excerpt: + github_pat_secret_should_not_leak");
+
+    const result = evaluateReportQualityGate(report, { savedReport });
+
+    expect(result.checks.find((check) => check.id === "summary_only_privacy")).toEqual(expect.objectContaining({
+      ok: false
+    }));
+    expect(JSON.stringify(result)).not.toContain("github_pat_secret_should_not_leak");
+  });
+
+  it("keeps report quality gate details bounded and free of secret-like report text", () => {
+    const report = reportFixture("https://github.com/RengGyu/AgentProof/pull/1");
+
+    report.requirements[0].requirementText = "Do not leak github_pat_secret_should_not_leak or sk-secret.";
+    report.requirements[0].evidenceRefs = ["ev_extra_1"];
+
+    const result = evaluateReportQualityGate(report, {
+      savedReport: summaryOnlyReportFixture()
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result.ok).toBe(false);
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
+    expect(serialized).not.toContain("sk-secret");
   });
 
   it("parses optional performance budgets from environment variables", () => {

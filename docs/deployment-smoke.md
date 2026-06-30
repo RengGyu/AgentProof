@@ -59,6 +59,7 @@ Expected workflow proof:
 - `/api/github/webhook/status` returns the public `githubApp` status object only.
 - Unauthenticated `/api/ops/github-app/status` returns 401 when diagnostics are configured or 501 when they are not configured.
 - `pnpm smoke:production-regression` passes for the public AgentProof PR set.
+- The smoke output includes `qualityGateSummary.ok: true` for deterministic report trust checks; this is a guardrail, not a verifier quality score.
 - When budgets are enforced, the smoke output includes `performanceBudget.ok: true`.
 - The run output contains bounded metadata only. It must not include GitHub tokens, private task text, raw diffs, raw logs, full reports, or saved-report contents.
 

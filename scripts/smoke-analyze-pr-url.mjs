@@ -60,6 +60,16 @@ export async function runAnalyzePrSmoke({
     githubToken,
     failedCheckLocations
   });
+  const qualityGate = evaluateReportQualityGate(report, { savedReport });
+
+  if (!qualityGate.ok) {
+    const failedChecks = qualityGate.checks
+      .filter((check) => !check.ok)
+      .map((check) => check.id)
+      .join(", ");
+
+    throw smokeError(`Report quality gate failed: ${failedChecks}.`, response.status);
+  }
 
   return {
     ok: true,
@@ -87,7 +97,8 @@ export async function runAnalyzePrSmoke({
     savedRepromptOmitted: /omit|shared summary|summary/i.test(savedReport.reprompt?.prompt ?? ""),
     savedEvidenceRefsCleared: evidenceRefsCleared(savedReport),
     savedReportDeleted: saveResult.deleted,
-    savedReportDeleteWarning: saveResult.deleteWarning
+    savedReportDeleteWarning: saveResult.deleteWarning,
+    qualityGate
   };
 }
 
@@ -315,6 +326,180 @@ export function assertReportExpectations(report, expectations = {}) {
   }
 
   return { checks };
+}
+
+export function evaluateReportQualityGate(report, { savedReport } = {}) {
+  const checks = [
+    requirementsPresentQualityCheck(report),
+    metRequirementExecutionQualityCheck(report),
+    ciExecutionQualityCheck(report),
+    reviewerLeadProvenanceQualityCheck(report),
+    humanDecisionSupportQualityCheck(report),
+    summaryOnlyPrivacyQualityCheck(savedReport)
+  ];
+
+  return {
+    ok: checks.every((check) => check.ok),
+    checks
+  };
+}
+
+function requirementsPresentQualityCheck(report) {
+  const count = Array.isArray(report.requirements) ? report.requirements.length : 0;
+
+  return qualityCheck({
+    id: "requirements_present",
+    label: "Requirement extraction present",
+    ok: count > 0,
+    detail: count > 0
+      ? `${count} requirement finding(s) are available for reviewer coverage checks.`
+      : "No requirement findings were available for reviewer coverage checks."
+  });
+}
+
+function metRequirementExecutionQualityCheck(report) {
+  const requirements = Array.isArray(report.requirements) ? report.requirements : [];
+  const unsupportedMetCount = requirements.filter((requirement) =>
+    requirement?.status === "met" && !requirementHasPassingExecutionRef(report, requirement.evidenceRefs)
+  ).length;
+
+  return qualityCheck({
+    id: "met_requirement_execution",
+    label: "Met requirements cite passing execution evidence",
+    ok: unsupportedMetCount === 0,
+    detail: unsupportedMetCount === 0
+      ? "Every met requirement cites passing check or log evidence."
+      : `${unsupportedMetCount} met requirement(s) lack passing check or log evidence.`
+  });
+}
+
+function ciExecutionQualityCheck(report) {
+  const ciStatus = report.testing?.ciStatus ?? "unknown";
+  const passingEvidenceCount = passingExecutionEvidence(report).length;
+
+  return qualityCheck({
+    id: "ci_execution_proof",
+    label: "Passed CI is backed by execution evidence",
+    ok: ciStatus !== "passed" || passingEvidenceCount > 0,
+    detail: ciStatus === "passed"
+      ? `${passingEvidenceCount} passing execution evidence item(s) support passed CI.`
+      : `CI status is ${ciStatus}; passing execution proof is not required for this check.`
+  });
+}
+
+function reviewerLeadProvenanceQualityCheck(report) {
+  const missingTests = Array.isArray(report.testing?.missingTests) ? report.testing.missingTests : [];
+  const reviewPriority = Array.isArray(report.reviewPriority) ? report.reviewPriority : [];
+  const missingTestsWithoutRefs = missingTests.filter((item) =>
+    !hasNonEmptyStringArray(item?.evidenceRefs) || !hasFindingProvenance(item?.provenance)
+  ).length;
+  const reviewPriorityWithoutRefs = reviewPriority.filter((item) => !hasNonEmptyStringArray(item?.evidenceRefs)).length;
+  const scopeMissingRefs = report.scope?.suspected === true &&
+    (!hasNonEmptyStringArray(report.scope?.evidenceRefs) || !hasFindingProvenance(report.scope?.provenance));
+  const issueCount = missingTestsWithoutRefs + reviewPriorityWithoutRefs + (scopeMissingRefs ? 1 : 0);
+
+  return qualityCheck({
+    id: "reviewer_lead_provenance",
+    label: "Reviewer leads include provenance",
+    ok: issueCount === 0,
+    detail: issueCount === 0
+      ? "Missing-test, scope, and review-priority leads include evidence references when present."
+      : `${issueCount} reviewer lead group(s) lack evidence references.`
+  });
+}
+
+function humanDecisionSupportQualityCheck(report) {
+  const serialized = JSON.stringify(reportAuthoredDecisionText(report));
+  const hasMergeDecision = /\b(?:approved|safe|ready|cleared|okay|ok)\s+(?:to\s+)?merge\b|\bmerge\s+(?:approved|safe|ready|cleared)\b|\bauto[-\s]?merge\s+(?:approved|enabled|safe|ready)\b/i.test(serialized);
+
+  return qualityCheck({
+    id: "human_decision_support",
+    label: "Report does not make merge decisions",
+    ok: !hasMergeDecision,
+    detail: hasMergeDecision
+      ? "Report contains merge-decision wording; AgentProof should provide evidence for a human decision."
+      : "Report stays in evidence handoff language rather than merge-decision language."
+  });
+}
+
+function summaryOnlyPrivacyQualityCheck(savedReport) {
+  try {
+    assertSummaryOnlyReport(savedReport);
+  } catch {
+    return qualityCheck({
+      id: "summary_only_privacy",
+      label: "Saved report remains summary-only",
+      ok: false,
+      detail: "Saved report retained full-report material or evidence references."
+    });
+  }
+
+  return qualityCheck({
+    id: "summary_only_privacy",
+    label: "Saved report remains summary-only",
+    ok: true,
+    detail: "Saved report omits raw evidence, claims, raw re-prompt text, and evidence references."
+  });
+}
+
+function reportAuthoredDecisionText(report) {
+  const summary = report?.summary ?? {};
+  const requirements = Array.isArray(report?.requirements) ? report.requirements : [];
+  const missingTests = Array.isArray(report?.testing?.missingTests) ? report.testing.missingTests : [];
+  const scope = report?.scope ?? {};
+  const reviewPriority = Array.isArray(report?.reviewPriority) ? report.reviewPriority : [];
+
+  return {
+    summary: {
+      oneLine: summary.oneLine,
+      topRisks: summary.topRisks
+    },
+    requirementGuidance: requirements.map((requirement) => ({
+      gaps: requirement?.gaps,
+      reviewerNote: requirement?.reviewerNote
+    })),
+    scopeReasons: scope.reasons,
+    missingTestReasons: missingTests.map((item) => item?.why),
+    reviewPriority: reviewPriority.map((item) => item?.reason),
+    reprompt: report?.reprompt?.prompt,
+    limitations: report?.limitations
+  };
+}
+
+function qualityCheck({ id, label, ok, detail }) {
+  return { id, label, ok, detail };
+}
+
+function requirementHasPassingExecutionRef(report, evidenceRefs) {
+  if (!Array.isArray(evidenceRefs) || evidenceRefs.length === 0 || !Array.isArray(report.evidenceIndex)) {
+    return false;
+  }
+
+  const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
+
+  return evidenceRefs.some((ref) => {
+    const item = evidenceById.get(ref);
+
+    return Boolean(item) &&
+      (item.kind === "check" || item.kind === "log") &&
+      isExecutionSignal(item.label, item.summary, item.locator) &&
+      hasPassingEvidenceStatusPrefix(item.summary);
+  });
+}
+
+function hasNonEmptyStringArray(value) {
+  return Array.isArray(value) && value.some((item) => typeof item === "string" && item.length > 0);
+}
+
+function hasFindingProvenance(value) {
+  return Array.isArray(value) && value.some((item) =>
+    item &&
+    typeof item === "object" &&
+    typeof item.evidenceRef === "string" &&
+    item.evidenceRef.length > 0 &&
+    typeof item.evidenceText === "string" &&
+    item.evidenceText.length > 0
+  );
 }
 
 function assertVisualRequirementsStayUnverifiedWithoutVisualEvidence(report) {
