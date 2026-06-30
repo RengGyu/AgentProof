@@ -196,7 +196,7 @@ mobile report UX, and whether every finding is traceable to evidence.
 Prioritize bugs, false positives, security issues, missing tests, and workflow gaps.
 ```
 
-For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For example report artifacts, use `docs/example-reports.md`. For deployment smoke checks, use `docs/deployment-smoke.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook automation boundaries, use `docs/github-app-webhook.md`; for the controlled live smoke procedure, use `docs/github-app-live-smoke-runbook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the product goal and next implementation phases, use `docs/final-goals-and-roadmap.md`.
+For a fuller review prompt and mobile/manual test checklist, use `docs/review-handoff.md`. For no-secret local demo checks, use `docs/local-demo-validation.md`. For example report artifacts, use `docs/example-reports.md`. For deployment smoke checks, use `docs/deployment-smoke.md`. For saved-report storage setup, use `docs/saved-report-storage.md`. For GitHub App webhook automation boundaries, use `docs/github-app-webhook.md`; for the controlled live smoke procedure, use `docs/github-app-live-smoke-runbook.md`. For the internal market-validation summary behind this positioning, use `docs/market-validation.md`. For the final SaaS goal, tenant/billing/operations gates, and next implementation tickets, use `docs/final-goals-and-roadmap.md`.
 
 ## Evaluation Pack
 

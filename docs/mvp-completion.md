@@ -89,6 +89,7 @@ Most recent credentialed live integration pass:
 
 ## Next Launch-Readiness Work
 
+- Use `docs/final-goals-and-roadmap.md` as the SaaS implementation goal before starting tenant, billing, GitHub App onboarding, or operations work.
 - Add public source-backed market-validation citations.
 - Add a short demo video or GIF after the UI stabilizes.
 - Keep operator diagnostics and live smoke runbooks current as integration settings change.
