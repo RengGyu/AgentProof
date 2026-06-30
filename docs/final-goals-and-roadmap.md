@@ -273,6 +273,7 @@ Do not implement these until the SaaS evidence-verifier workflow is proven:
 1. **Tenant control plane skeleton**
    - Add tenant/member/repository/installation types and persistence boundaries.
    - Acceptance: webhook analysis cannot run without an active tenant repository grant.
+   - Current implementation note: an env-seeded tenant repository grant skeleton can fail closed before webhook idempotency, token fetch, PR fetch, saved reports, or comments. Database-backed tenants, members, installations, and self-serve repository selection remain separate work.
 
 2. **Self-serve GitHub App onboarding**
    - Add install callback, repository selection, installation health, and repo settings.

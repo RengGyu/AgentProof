@@ -1,6 +1,6 @@
 # GitHub App Webhook Automation
 
-AgentProof's GitHub App webhook endpoint is a signed intake boundary for evidence reports, not an automated reviewer or merge gate. Default behavior remains dry-run unless automation is explicitly enabled for allowed repositories.
+AgentProof's GitHub App webhook endpoint is a signed intake boundary for evidence reports, not an automated reviewer or merge gate. Default behavior remains dry-run unless automation is explicitly enabled and the repository is authorized for analysis.
 
 Endpoint:
 
@@ -26,7 +26,8 @@ The status endpoint is for UI and smoke probes only. It returns a coarse mode, l
 - Rejects malformed JSON for supported events.
 - Keeps dry-run behavior unless `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED=true`.
 - For enabled `pull_request` events, handles only `opened`, `reopened`, `synchronize`, and `ready_for_review`.
-- Requires `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` before analyzing a PR.
+- In operator/demo mode, requires `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` before analyzing a PR.
+- In tenant control mode, ignores the global allowlist and requires an active tenant repository grant matching `installation_id + repository`.
 - Uses a GitHub App installation token to refetch PR evidence from GitHub; it does not trust PR title/body/diff fields from the webhook payload.
 - Creates summary-only saved report links only when `AGENTPROOF_GITHUB_APP_SAVE_REPORTS=true`.
 - Posts or updates one GitHub App marker comment only when `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=true`.
@@ -55,12 +56,13 @@ The smoke checks:
 
 ## Controlled Live Automation Smoke
 
-Use this only for a maintainer-owned test PR in a single allowlisted repository. This is not the dry-run webhook smoke above: it exercises GitHub App installation-token PR analysis. The smoke payload suppresses automatic comments by default and suppresses saved-report creation unless explicitly allowed. Follow `docs/github-app-live-smoke-runbook.md` before running it against production.
+Use this only for a maintainer-owned test PR in a single explicitly authorized repository. This is not the dry-run webhook smoke above: it exercises GitHub App installation-token PR analysis. The smoke payload suppresses automatic comments by default and suppresses saved-report creation unless explicitly allowed. Follow `docs/github-app-live-smoke-runbook.md` before running it against production.
 
 Preflight:
 
 - Set `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED=true`.
-- Set `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS=owner/repo` for one test repository; do not use `*` outside controlled testing.
+- In operator/demo mode, set `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS=owner/repo` for one test repository; do not use `*` outside controlled testing.
+- In tenant control mode, set an active grant in `AGENTPROOF_TENANT_REPOSITORY_GRANTS` for the test repository's GitHub App installation id and repository full name. The global allowlist is ignored in this mode.
 - Leave `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED` unset or `false`. The live smoke also sends a signed smoke-only `suppressComment` control so comments stay off even if the deployment flag is accidentally enabled.
 - Leave `AGENTPROOF_GITHUB_APP_SAVE_REPORTS` unset or `false` unless validating summary-only saved report links. The live smoke sends `suppressSavedReport` by default; set `AGENTPROOF_WEBHOOK_LIVE_ALLOW_SAVE_REPORTS=1` only when validating saved-link metadata.
 - Confirm `/api/github/webhook/status` returns public mode `event-mode`. The smoke refuses to send a PR webhook when public status is `manual` or `signed-intake`.
@@ -108,7 +110,7 @@ For signed intake:
 GITHUB_WEBHOOK_SECRET
 ```
 
-For GitHub App PR analysis:
+For GitHub App PR analysis in operator/demo mode:
 
 ```text
 GITHUB_APP_ID
@@ -118,6 +120,15 @@ AGENTPROOF_GITHUB_APP_ALLOWED_REPOS=owner/repo
 ```
 
 `GITHUB_PRIVATE_KEY` must be a valid PEM private key. Local env files may use escaped `\n` newlines.
+
+For invite-only SaaS tenant control mode, add a server-only repository grant source:
+
+```text
+AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED=true
+AGENTPROOF_TENANT_REPOSITORY_GRANTS=[{"tenantId":"tenant_demo","installationId":123,"repositoryFullName":"owner/repo","enabled":true,"analysisEnabled":true,"saveReportsEnabled":false,"commentEnabled":false}]
+```
+
+This JSON env is a temporary control-plane seed until self-serve GitHub App onboarding and database-backed tenant grants exist. When tenant control is enabled, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` does not authorize analysis, including `*`.
 
 Optional automation settings:
 
@@ -233,6 +244,39 @@ Verified automated analysis:
 }
 ```
 
+Tenant grant required:
+
+```json
+{
+  "ok": true,
+  "ignored": true,
+  "dryRun": false,
+  "event": "pull_request",
+  "delivery": "delivery-id",
+  "automationEnabled": true,
+  "willAnalyze": false,
+  "willComment": false,
+  "code": "github_app_tenant_grant_required",
+  "note": "No active tenant repository grant matches this GitHub App installation and repository."
+}
+```
+
+Invalid tenant grant configuration:
+
+```json
+{
+  "ok": false,
+  "dryRun": false,
+  "event": "pull_request",
+  "delivery": "delivery-id",
+  "automationEnabled": true,
+  "willAnalyze": false,
+  "willComment": false,
+  "code": "github_app_tenant_grants_invalid",
+  "note": "Tenant repository grants are misconfigured."
+}
+```
+
 Ignored signed event:
 
 ```json
@@ -251,10 +295,11 @@ Ignored signed event:
 Keep these boundaries in place:
 
 - Install the GitHub App with least-privilege permissions for pull requests, checks/statuses, metadata, and Actions job metadata. Add issue comment write only when comment opt-in is intended.
-- Use `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS`; avoid `*` outside controlled testing.
+- Use tenant control mode for SaaS/beta operation so analysis requires an active `installation_id + repository` grant.
+- Use `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` only for operator/demo mode; avoid `*` outside controlled testing.
 - Treat saved reports as summary-only. Do not store raw diffs, raw logs, webhook payloads, installation tokens, claims, or raw re-prompt text.
 - Keep automatic comments off by default. When enabled, update one marker comment instead of creating comment storms.
-- Use durable idempotency for production automation when Supabase is configured. The idempotency key is based on installation, repository, PR number, head SHA, and action, so different GitHub delivery ids for the same PR head/action do not trigger duplicate analysis.
+- Use durable idempotency for production automation when Supabase is configured. The idempotency key is based on tenant when available, installation, repository, PR number, head SHA, and action, so different GitHub delivery ids for the same PR head/action do not trigger duplicate analysis.
 - Retry durable `failed_retryable` rows with a conditional update, and allow stale `processing` rows to retry only after the processing lease expires.
 - Tests proving raw payloads, raw diffs, logs, and tokens are not persisted.
 

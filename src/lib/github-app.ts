@@ -1,4 +1,5 @@
 import { createHash, createHmac, createPrivateKey, createSign, timingSafeEqual } from "crypto";
+import { getTenantControlPlaneSettings, readTenantRepositoryGrants } from "./tenant-control-plane";
 
 const GITHUB_APP_FETCH_TIMEOUT_MS = 8000;
 const GITHUB_WEBHOOK_IDEMPOTENCY_TTL_MS = 30 * 60 * 1000;
@@ -274,8 +275,13 @@ export function getGitHubAppAutomationSettings(env = process.env): GitHubAppAuto
 export function getGitHubAppReadinessStatus(env = process.env): GitHubAppReadinessStatus {
   const config = getGitHubAppConfigStatus(env);
   const settings = getGitHubAppAutomationSettings(env);
-  const hasAllowedRepos = settings.allowAllRepos || settings.allowedRepos.length > 0;
-  const canAnalyzePullRequests = config.ready && settings.enabled && hasAllowedRepos;
+  const tenantControl = getTenantControlPlaneSettings(env);
+  const tenantGrants = tenantControl.enabled ? readTenantRepositoryGrants(env) : [];
+  const tenantGrantCount = Array.isArray(tenantGrants) ? tenantGrants.length : 0;
+  const hasTenantGrantSource = tenantControl.enabled && tenantGrantCount > 0;
+  const hasLegacyAllowedRepos = settings.allowAllRepos || settings.allowedRepos.length > 0;
+  const hasAllowedRepos = tenantControl.enabled ? hasTenantGrantSource : hasLegacyAllowedRepos;
+  const canAnalyzePullRequests = config.ready && settings.enabled && hasAllowedRepos && tenantGrants !== null;
   const canPostComments = canAnalyzePullRequests && settings.commentEnabled;
   const warnings: string[] = [];
 
@@ -287,12 +293,24 @@ export function getGitHubAppReadinessStatus(env = process.env): GitHubAppReadine
     warnings.push("Automation is enabled but GitHub App credentials are incomplete or invalid.");
   }
 
-  if (settings.enabled && !hasAllowedRepos) {
+  if (settings.enabled && !tenantControl.enabled && !hasAllowedRepos) {
     warnings.push("Automation is enabled but no allowed repositories are configured.");
   }
 
-  if (settings.allowAllRepos) {
+  if (settings.enabled && tenantControl.enabled && tenantGrants === null) {
+    warnings.push("Automation is enabled but tenant repository grants are invalid.");
+  }
+
+  if (settings.enabled && tenantControl.enabled && Array.isArray(tenantGrants) && tenantGrants.length === 0) {
+    warnings.push("Tenant control plane is enabled but no tenant repository grants are configured.");
+  }
+
+  if (settings.allowAllRepos && !tenantControl.enabled) {
     warnings.push("Allowed repositories is set to all installed repositories; use only for controlled testing.");
+  }
+
+  if (settings.allowAllRepos && tenantControl.enabled) {
+    warnings.push("Global repository allowlist is ignored while tenant control plane authorization is enabled.");
   }
 
   if (settings.commentEnabled && !canAnalyzePullRequests) {
@@ -314,7 +332,7 @@ export function getGitHubAppReadinessStatus(env = process.env): GitHubAppReadine
     automationEnabled: settings.enabled,
     commentEnabled: settings.commentEnabled,
     saveReportsEnabled: settings.saveReportsEnabled,
-    allowedRepoCount: settings.allowedRepos.length,
+    allowedRepoCount: tenantControl.enabled ? tenantGrantCount : settings.allowedRepos.length,
     allowAllRepos: settings.allowAllRepos,
     canAnalyzePullRequests,
     canPostComments,
