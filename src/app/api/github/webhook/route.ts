@@ -273,7 +273,7 @@ async function handlePullRequestAutomation(
     const canPostComment = context.commentEnabled
       && (!tenantGrant.enabled || tenantGrant.grant?.commentEnabled === true);
     const saved = canSaveReport
-      ? await maybeCreateAutomationSavedReport(report, context.requestUrl)
+      ? await maybeCreateAutomationSavedReport(report, context.requestUrl, tenantGrant.grant?.tenantId)
       : undefined;
     const comment = canPostComment
       ? await postGitHubAppMarkerComment(automation, token, report)
@@ -433,17 +433,21 @@ function isGitHubSha(value: string): boolean {
   return /^[a-f0-9]{6,64}$/i.test(value);
 }
 
-async function maybeCreateAutomationSavedReport(report: VerificationReport, requestUrl: string) {
+async function maybeCreateAutomationSavedReport(report: VerificationReport, requestUrl: string, tenantId?: string) {
   if (!/^(1|true|yes|on)$/i.test(process.env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS?.trim() ?? "")) {
     return undefined;
   }
 
   const status = getSavedReportStoreStatus();
-  const saved = await createSavedReport(report);
+  const saved = await createSavedReport(report, { tenantId });
+  const url = new URL(`/reports/${saved.id}`, requestUrl);
+  if (saved.accessToken) {
+    url.searchParams.set("key", saved.accessToken);
+  }
 
   return {
     id: saved.id,
-    url: new URL(`/reports/${saved.id}`, requestUrl).toString(),
+    url: url.toString(),
     expiresAt: saved.expiresAt,
     privacy: "summary-only" as const,
     durability: status.durability

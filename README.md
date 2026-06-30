@@ -131,7 +131,7 @@ The comment smoke first analyzes the PR, then posts through `/api/github/comment
 
 Browser recent history, portable share links, Slack payloads, and saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, and raw re-prompt text. Retained summary fields are redacted before sharing or storage. Full Markdown export remains an explicit user action.
 
-Saved reports use in-memory storage when durable env is absent. This is suitable for local demos, but may disappear on serverless deployments. Optional Supabase storage is durable for the same summary-only projection; it still does not store raw evidence, claims, raw re-prompt text, patch excerpts, or raw logs. GitHub App webhook duplicate suppression also uses Supabase when configured and stores only hashed keys plus bounded metadata. See `docs/saved-report-storage.md` and `docs/github-app-webhook.md` for schema and env setup.
+Saved reports use in-memory storage when durable env is absent. This is suitable for local demos, but may disappear on serverless deployments. Optional Supabase storage is durable for the same summary-only projection; it still does not store raw evidence, claims, raw re-prompt text, patch excerpts, raw logs, or raw report access keys. Tenant-scoped saved reports are not readable by id alone; they require trusted tenant context or the generated saved-link key. GitHub App webhook duplicate suppression also uses Supabase when configured and stores only hashed keys plus bounded metadata. See `docs/saved-report-storage.md` and `docs/github-app-webhook.md` for schema and env setup.
 
 ## Check Evidence Taxonomy
 

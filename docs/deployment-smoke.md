@@ -33,6 +33,7 @@ Expected:
 - Production regression smoke passes for the public AgentProof PR set.
 - Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
 - Saved reports retain zero evidence items, zero claims, no raw re-prompt text, and cleared evidence references.
+- Tenant-scoped saved reports require the generated report key or trusted tenant context; id-only lookup returns the same unavailable response as missing or expired reports.
 
 ## Manual GitHub Actions Gate
 
@@ -69,7 +70,7 @@ These checks use server-side env and caller tokens. They should never print secr
 
 | Integration | Command or request | Expected proof | Side effect |
 | --- | --- | --- | --- |
-| Supabase saved reports | POST demo report to `/api/reports`, GET `/api/reports/{id}`, DELETE `/api/reports/{id}` | 200 for save/get/delete, `summary-only-supabase`, zero evidence items and claims | Creates then deletes one summary-only row |
+| Supabase saved reports | POST demo report to `/api/reports`, GET `/api/reports/{id}`, DELETE `/api/reports/{id}` | 200 for save/get/delete, `summary-only-supabase`, zero evidence items and claims | Creates then deletes one public demo summary-only row |
 | OpenAI verifier | `AGENTPROOF_LLM_TOKEN=<caller token> AGENTPROOF_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:openai` | `Source: openai`, priority metadata only | Calls OpenAI Responses with `store: false` |
 | GitHub webhook | `AGENTPROOF_WEBHOOK_SMOKE_SECRET=<same value as deployed GITHUB_WEBHOOK_SECRET> pnpm smoke:github-webhook` | Coarse status, invalid signature rejected, signed `ping` accepted, signed `pull_request` `closed` does not plan analysis/comments | No GitHub write; uses a PR action that must be ignored |
 | Controlled GitHub App live automation | Follow `docs/github-app-live-smoke-runbook.md`, then run `AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1 AGENTPROOF_WEBHOOK_LIVE_PR_URL=https://github.com/owner/repo/pull/123 AGENTPROOF_WEBHOOK_LIVE_INSTALLATION_ID=<id> pnpm smoke:github-webhook-live` | Public status is `event-mode`, `dryRun: false`, `willAnalyze: true`, `willComment: false`, `analysis.status: "completed"` | Analysis-only on a maintainer-owned test PR; comments and saved reports are suppressed by default |

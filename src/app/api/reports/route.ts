@@ -44,11 +44,14 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const url = new URL(`/reports/${saved.id}`, request.url).toString();
+  const savedUrl = new URL(`/reports/${saved.id}`, request.url);
+  if (saved.accessToken) {
+    savedUrl.searchParams.set("key", saved.accessToken);
+  }
 
   return noStoreJson({
     id: saved.id,
-    url,
+    url: savedUrl.toString(),
     expiresAt: saved.expiresAt,
     privacy: "summary-only",
     durability: status.durability,

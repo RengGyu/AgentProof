@@ -2,6 +2,7 @@ import { createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearGitHubWebhookDeliveriesForTests } from "@/lib/github-app";
 import { clearSavedReportsForTests } from "@/lib/server-report-store";
+import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
 
 describe("POST /api/github/webhook", () => {
@@ -613,6 +614,52 @@ describe("POST /api/github/webhook", () => {
     expect(json.analysis).not.toHaveProperty("savedReport");
     expect(json.analysis).not.toHaveProperty("comment");
     expect(commentCalls).toHaveLength(0);
+  });
+
+  it("creates tenant-scoped saved reports for tenant-granted webhook automation", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: true,
+      commentEnabled: false
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-granted-save",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const savedReportUrl = new URL(json.analysis.savedReport.url);
+    const savedId = savedReportUrl.pathname.split("/").at(-1) ?? "";
+    const savedKey = savedReportUrl.searchParams.get("key") ?? "";
+    const noKeyResponse = await GETSavedReport(new Request(`http://localhost/api/reports/${savedId}`), {
+      params: Promise.resolve({ id: savedId })
+    });
+    const keyResponse = await GETSavedReport(new Request(`http://localhost/api/reports/${savedId}?key=${savedKey}`), {
+      params: Promise.resolve({ id: savedId })
+    });
+    const keyJson = await keyResponse.json();
+    const serialized = JSON.stringify({ webhook: json, saved: keyJson });
+
+    expect(response.status).toBe(200);
+    expect(json.analysis.savedReport.privacy).toBe("summary-only");
+    expect(savedKey).toBeTruthy();
+    expect(noKeyResponse.status).toBe(404);
+    expect(keyResponse.status).toBe(200);
+    expect(keyJson.report.evidenceIndex).toEqual([]);
+    expect(keyJson.report.claims).toEqual([]);
+    expect(keyJson.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
+    expect(serialized).not.toContain("tenant_test");
+    expect(serialized).not.toContain("Patch excerpt");
   });
 
   it("omits raw automation network error messages before returning 502", async () => {

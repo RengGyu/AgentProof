@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
-import { clearSavedReportsForTests, SAVED_REPORT_DURABILITY, SAVED_REPORT_DURABILITY_WARNING } from "@/lib/server-report-store";
+import {
+  clearSavedReportsForTests,
+  createSavedReport,
+  SAVED_REPORT_DURABILITY,
+  SAVED_REPORT_DURABILITY_WARNING
+} from "@/lib/server-report-store";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
 import { DELETE, GET } from "./[id]/route";
@@ -61,6 +66,57 @@ describe("POST /api/reports", () => {
     expect(json.expiresAt).toBe(saved.expiresAt);
     expect(json.durability).toBe(SAVED_REPORT_DURABILITY);
     expect(json.durabilityWarning).toBe(SAVED_REPORT_DURABILITY_WARNING);
+  });
+
+  it("hides tenant-scoped saved reports unless the report access key is provided", async () => {
+    const saved = await createSavedReport(generateVerificationReport(demoScenarios["scope-creep"]), {
+      tenantId: "tenant_test"
+    });
+
+    const missingKeyResponse = await GET(new Request(`http://localhost/api/reports/${saved.id}`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    const missingKeyJson = await missingKeyResponse.json();
+    const wrongKeyResponse = await GET(new Request(`http://localhost/api/reports/${saved.id}?key=wrong-key`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    const wrongKeyJson = await wrongKeyResponse.json();
+    const validKeyResponse = await GET(new Request(`http://localhost/api/reports/${saved.id}?key=${saved.accessToken}`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    const validKeyJson = await validKeyResponse.json();
+
+    expect(missingKeyResponse.status).toBe(404);
+    expect(wrongKeyResponse.status).toBe(404);
+    expect(missingKeyJson).toEqual({
+      error: "Saved report was not found or has expired."
+    });
+    expect(wrongKeyJson).not.toHaveProperty("report");
+    expect(wrongKeyJson).not.toHaveProperty("createdAt");
+    expect(wrongKeyJson).not.toHaveProperty("expiresAt");
+    expect(wrongKeyJson).not.toHaveProperty("durability");
+    expect(validKeyResponse.status).toBe(200);
+    expect(validKeyJson.report.evidenceIndex).toEqual([]);
+    expect(validKeyJson.privacy).toBe("summary-only");
+    expect(JSON.stringify(validKeyJson)).not.toContain(saved.accessToken);
+  });
+
+  it("does not disclose tenant-scoped saved report existence on wrong-key delete", async () => {
+    const saved = await createSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_test"
+    });
+
+    const wrongKeyResponse = await DELETE(new Request(`http://localhost/api/reports/${saved.id}?key=wrong-key`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    const wrongKeyJson = await wrongKeyResponse.json();
+    const stillReadable = await GET(new Request(`http://localhost/api/reports/${saved.id}?key=${saved.accessToken}`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+
+    expect(wrongKeyResponse.status).toBe(200);
+    expect(wrongKeyJson).toEqual({ deleted: false });
+    expect(stillReadable.status).toBe(200);
   });
 
   it("rejects invalid reports", async () => {
