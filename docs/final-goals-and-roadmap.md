@@ -118,6 +118,7 @@ Required changes:
 - Gate private repo automation, saved history duration, Slack, comments, connected repositories, and quota by plan.
 - Add quota-safe failure responses that do not trigger analysis, comments, or Slack when usage is blocked.
 - Keep billing data separate from report evidence data.
+- Keep provider customer/subscription identifiers server-side and internal-only; customer-facing surfaces should use plan/status labels and bounded quota summaries instead.
 
 Completion criteria:
 
@@ -192,9 +193,10 @@ The implementation should introduce these tenant-scoped entities before public S
 - `saved_reports`: tenant, report id, summary-only report, expiration, privacy label.
 - `audit_events`: tenant, actor, action, result, request id, bounded metadata.
 - `usage_records`: tenant, period, feature, count, quota source.
-- `billing_customers`: tenant, provider customer id, subscription id, plan, status.
+- `billing_customers`: tenant, internal-only provider customer id, internal-only subscription id, plan, status.
 
 Do not add durable tables for raw diffs, raw logs, full webhook payloads, evidence indexes, agent claims, or raw re-prompt text.
+Do not expose billing provider identifiers in tenant-facing dashboards, customer-visible APIs, audit exports, comments, Slack notifications, saved reports, or support screenshots.
 
 ## Privacy And Security Boundaries
 
@@ -310,7 +312,7 @@ Do not implement these until the SaaS evidence-verifier workflow is proven:
 
 7. **Billing beta**
    - Add plan records, subscription status, billing portal, and quota mapping.
-   - Acceptance: team plan controls feature gates and monthly PR analysis quota.
+   - Acceptance: team plan controls feature gates and monthly PR analysis quota without exposing provider customer or subscription ids.
 
 8. **Public launch polish**
    - Add public setup docs, pricing page, support paths, and source-backed market validation citations.

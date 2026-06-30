@@ -68,6 +68,7 @@ interface TenantAccountSummary {
   plan: string;
   configured: boolean;
   memberCount: number;
+  membersTruncated: boolean;
 }
 
 interface TenantMemberSummary {
@@ -806,7 +807,9 @@ export function TenantSetupPanel() {
                   <div className={`tenant-usage-state state-${accountStatus.account.status}`}>
                     {accountStatus.account.status}
                   </div>
-                  <small>{accountStatus.account.memberCount} member roles · {accountStatus.next.replace(/_/g, " ")}</small>
+                  <small>
+                    {accountStatus.account.memberCount}{accountStatus.account.membersTruncated ? "+" : ""} member roles · {accountStatus.next.replace(/_/g, " ")}
+                  </small>
                 </li>
               </ul>
               {accountStatus.members.length > 0 ? (

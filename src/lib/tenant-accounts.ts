@@ -22,6 +22,7 @@ export interface TenantAccountSummary {
   plan: TenantAccountPlan;
   configured: boolean;
   memberCount: number;
+  membersTruncated: boolean;
 }
 
 export interface TenantAccountReadResult {
@@ -179,7 +180,7 @@ async function readSupabaseTenantAccountSummary(
   const memberParams = new URLSearchParams({
     tenant_id: `eq.${tenantId}`,
     select: "tenant_id,member_id,role,status",
-    limit: "100"
+    limit: "101"
   });
   const memberResponse = await tenantAccountFetch(config, config.membersTable, `?${memberParams.toString()}`, {
     method: "GET"
@@ -215,6 +216,7 @@ function toReadResult(input: {
   members: TenantMemberSummary[];
 }): TenantAccountReadResult {
   const members = input.members.slice(0, 100);
+  const membersTruncated = input.members.length > members.length;
 
   return {
     privacy: "tenant-account-summary-only",
@@ -224,7 +226,8 @@ function toReadResult(input: {
       status: input.status,
       plan: input.plan,
       configured: input.configured,
-      memberCount: members.length
+      memberCount: members.length,
+      membersTruncated
     },
     members,
     roleCounts: roleCounts(members)
@@ -295,7 +298,7 @@ function normalizeTenantAccountSeed(input: TenantAccountSeedInput): TenantAccoun
     name: normalizeName(input.name) ?? tenantId,
     status: normalizeAccountStatus(input.status),
     plan: normalizeAccountPlan(input.plan),
-    members: members.slice(0, 100)
+    members: members.slice(0, 101)
   };
 }
 

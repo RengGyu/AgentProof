@@ -59,6 +59,8 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).toContain("Owners {accountStatus.roleCounts.owner}");
     expect(source).toContain("Admins {accountStatus.roleCounts.admin}");
     expect(source).toContain("Members {accountStatus.roleCounts.member}");
+    expect(source).toContain("membersTruncated");
+    expect(source).toContain("memberCount}{accountStatus.account.membersTruncated ? \"+\" : \"\"}");
     expect(source).not.toContain("email");
     expect(source).not.toContain("billing");
     expect(source).not.toContain("customerId");

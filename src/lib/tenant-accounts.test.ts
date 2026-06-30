@@ -21,7 +21,8 @@ describe("tenant account metadata boundary", () => {
         status: "invite-only",
         plan: "beta",
         configured: false,
-        memberCount: 0
+        memberCount: 0,
+        membersTruncated: false
       },
       members: [],
       roleCounts: {
@@ -67,7 +68,8 @@ describe("tenant account metadata boundary", () => {
       status: "active",
       plan: "team",
       configured: true,
-      memberCount: 2
+      memberCount: 2,
+      membersTruncated: false
     });
     expect(result.members).toEqual([
       { memberId: "owner_1", role: "owner", status: "active" },
@@ -147,10 +149,12 @@ describe("tenant account metadata boundary", () => {
       status: "trialing",
       plan: "team",
       configured: true,
-      memberCount: 2
+      memberCount: 2,
+      membersTruncated: false
     });
     expect(tenantUrl).toContain("select=tenant_id%2Cname%2Cstatus%2Cplan");
     expect(memberUrl).toContain("select=tenant_id%2Cmember_id%2Crole%2Cstatus");
+    expect(memberUrl).toContain("limit=101");
     expect(tenantUrl).not.toContain("email");
     expect(memberUrl).not.toContain("email");
     expect(memberUrl).not.toContain("token");
@@ -188,9 +192,34 @@ describe("tenant account metadata boundary", () => {
       status: "unknown",
       plan: "unknown",
       configured: false,
-      memberCount: 0
+      memberCount: 0,
+      membersTruncated: false
     });
     expect(result.members).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks member summaries as truncated instead of presenting a capped count as exact", async () => {
+    const members = Array.from({ length: 101 }, (_, index) => ({
+      memberId: `member_${index + 1}`,
+      role: "member",
+      status: "active"
+    }));
+    vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        name: "AgentProof Team",
+        status: "active",
+        plan: "team",
+        members
+      }
+    ]));
+
+    const result = await readTenantAccountSummary({ tenantId: "tenant_a" });
+
+    expect(result.account.memberCount).toBe(100);
+    expect(result.account.membersTruncated).toBe(true);
+    expect(result.members).toHaveLength(100);
+    expect(JSON.stringify(result)).not.toContain("member_101");
   });
 });

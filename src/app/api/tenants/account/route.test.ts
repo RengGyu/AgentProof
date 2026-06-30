@@ -53,7 +53,8 @@ describe("GET /api/tenants/account", () => {
         status: "active",
         plan: "team",
         configured: true,
-        memberCount: 3
+        memberCount: 3,
+        membersTruncated: false
       },
       members: [
         { memberId: "owner_1", role: "owner", status: "active" },
@@ -91,7 +92,8 @@ describe("GET /api/tenants/account", () => {
         status: "invite-only",
         plan: "beta",
         configured: false,
-        memberCount: 0
+        memberCount: 0,
+        membersTruncated: false
       },
       members: [],
       privacy: "tenant-account-summary-only",
