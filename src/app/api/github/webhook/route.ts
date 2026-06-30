@@ -17,6 +17,7 @@ import { reportToGitHubComment } from "@/lib/markdown";
 import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { createSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
+import { authorizeTenantRepositoryGrant, tenantGrantPublicReason } from "@/lib/tenant-control-plane";
 import { generateVerificationReport } from "@/lib/verifier";
 import type { VerificationReport } from "@/lib/types";
 
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
     action,
     commentEnabled: settings.commentEnabled && !smokeControls.suppressComment,
     saveReportsEnabled: settings.saveReportsEnabled && !smokeControls.suppressSavedReport,
-    repoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
+    legacyRepoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
   });
 }
 
@@ -111,7 +112,7 @@ async function handlePullRequestAutomation(
     action: string | undefined;
     commentEnabled: boolean;
     saveReportsEnabled: boolean;
-    repoAllowed: boolean;
+    legacyRepoAllowed: boolean;
   }
 ) {
   if (!shouldHandlePullRequestAction(context.action)) {
@@ -129,7 +130,42 @@ async function handlePullRequestAutomation(
     });
   }
 
-  if (!context.repoAllowed) {
+  const automation = parsePullRequestAutomationPayload(payload);
+  if (!automation) {
+    return noStoreJson({
+      error: "GitHub pull_request webhook payload is missing required automation fields or has mismatched repository metadata.",
+      code: "github_app_payload_invalid",
+      willAnalyze: false,
+      willComment: false
+    }, { status: 422 });
+  }
+
+  const tenantGrant = authorizeTenantRepositoryGrant({
+    installationId: automation.installationId,
+    repositoryFullName: automation.repositoryFullName
+  });
+
+  if (tenantGrant.enabled && tenantGrant.reason) {
+    const body = {
+      ok: tenantGrant.reason !== "invalid-grants",
+      ignored: tenantGrant.reason !== "invalid-grants" ? true : undefined,
+      dryRun: false,
+      event: safeWebhookString(context.event),
+      delivery: safeWebhookString(context.delivery),
+      action: context.action,
+      automationEnabled: true,
+      willAnalyze: false,
+      willComment: false,
+      code: tenantGrant.reason === "invalid-grants"
+        ? "github_app_tenant_grants_invalid"
+        : "github_app_tenant_grant_required",
+      note: tenantGrantPublicReason(tenantGrant.reason)
+    };
+
+    return noStoreJson(body, { status: tenantGrant.reason === "invalid-grants" ? 503 : 200 });
+  }
+
+  if (!tenantGrant.enabled && !context.legacyRepoAllowed) {
     return noStoreJson({
       ok: true,
       ignored: true,
@@ -144,16 +180,6 @@ async function handlePullRequestAutomation(
     });
   }
 
-  const automation = parsePullRequestAutomationPayload(payload);
-  if (!automation) {
-    return noStoreJson({
-      error: "GitHub pull_request webhook payload is missing required automation fields or has mismatched repository metadata.",
-      code: "github_app_payload_invalid",
-      willAnalyze: false,
-      willComment: false
-    }, { status: 422 });
-  }
-
   const appStatus = getGitHubAppConfigStatus();
   if (!appStatus.ready) {
     return noStoreJson({
@@ -165,6 +191,7 @@ async function handlePullRequestAutomation(
   }
 
   const idempotencyKey = [
+    tenantGrant.grant?.tenantId ?? "operator",
     automation.installationId,
     automation.repositoryFullName.toLowerCase(),
     automation.pullRequestNumber,
@@ -241,10 +268,14 @@ async function handlePullRequestAutomation(
       throw new Error(`Generated report failed runtime validation: ${validation.errors.join("; ")}`);
     }
 
-    const saved = context.saveReportsEnabled
+    const canSaveReport = context.saveReportsEnabled
+      && (!tenantGrant.enabled || tenantGrant.grant?.saveReportsEnabled === true);
+    const canPostComment = context.commentEnabled
+      && (!tenantGrant.enabled || tenantGrant.grant?.commentEnabled === true);
+    const saved = canSaveReport
       ? await maybeCreateAutomationSavedReport(report, context.requestUrl)
       : undefined;
-    const comment = context.commentEnabled
+    const comment = canPostComment
       ? await postGitHubAppMarkerComment(automation, token, report)
       : undefined;
     const analysis = {
@@ -283,7 +314,7 @@ async function handlePullRequestAutomation(
       action: context.action,
       automationEnabled: true,
       willAnalyze: true,
-      willComment: context.commentEnabled,
+      willComment: Boolean(comment),
       analysis
     });
   } catch (error) {

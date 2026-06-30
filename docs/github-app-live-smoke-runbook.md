@@ -2,12 +2,12 @@
 
 This runbook is for one controlled production check of GitHub App PR analysis. It proves that AgentProof can receive a signed pull request webhook, refetch PR evidence with an installation token, generate an evidence report, and avoid unintended comments or saved reports by default.
 
-Use it only on a maintainer-owned disposable PR in one allowlisted repository.
+Use it only on a maintainer-owned disposable PR in one explicitly authorized repository.
 
 ## What This Proves
 
 - Signed webhook intake reaches enabled `pull_request` automation.
-- Repository allowlist and GitHub App credentials are sufficient for PR evidence collection.
+- Repository authorization and GitHub App credentials are sufficient for PR evidence collection.
 - The response contains bounded metadata only: repository, PR number, head SHA, priority, and evidence coverage.
 - Automatic GitHub comments stay suppressed.
 - Saved reports stay suppressed unless the smoke explicitly opts in.
@@ -37,7 +37,7 @@ Do not ask a mobile user to paste `GITHUB_WEBHOOK_SECRET`, `GITHUB_PRIVATE_KEY`,
 | Input | Where to get it | Notes |
 | --- | --- | --- |
 | `AGENTPROOF_WEBHOOK_SMOKE_SECRET` | Same value as deployed `GITHUB_WEBHOOK_SECRET` | Used locally to sign the synthetic webhook body. |
-| `AGENTPROOF_WEBHOOK_LIVE_PR_URL` | A maintainer-owned disposable PR URL | The repo must be installed for the GitHub App and allowlisted in production env. |
+| `AGENTPROOF_WEBHOOK_LIVE_PR_URL` | A maintainer-owned disposable PR URL | The repo must be installed for the GitHub App and authorized by operator/demo allowlist or tenant grant. |
 | `AGENTPROOF_WEBHOOK_LIVE_INSTALLATION_ID` | GitHub App installation settings URL, usually the numeric id in `/installations/<id>` | Use the installation for the target test repository. |
 | `AGENTPROOF_WEBHOOK_LIVE_GITHUB_TOKEN` | Optional read-only metadata token | Needed only when the target PR is private and unauthenticated metadata fetches fail. Do not request it over chat; use a trusted operator shell path. |
 
@@ -55,6 +55,15 @@ AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=false
 AGENTPROOF_GITHUB_APP_SAVE_REPORTS=false
 AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE=agentproof_github_webhook_deliveries
 ```
+
+For tenant control mode, replace the global repo authorization with an active server-only grant:
+
+```text
+AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED=true
+AGENTPROOF_TENANT_REPOSITORY_GRANTS=[{"tenantId":"tenant_demo","installationId":123,"repositoryFullName":"owner/repo","enabled":true,"analysisEnabled":true,"saveReportsEnabled":false,"commentEnabled":false}]
+```
+
+When tenant control mode is enabled, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS` is ignored for authorization, including `*`.
 
 Then confirm the public status endpoint returns `mode: "event-mode"`:
 
@@ -122,6 +131,8 @@ saved_report_privacy: none | summary-only
 - `status mode event-mode` failure: production env is still in manual or signed-intake mode. Do not send a live webhook yet.
 - `github_app_not_ready`: app id or private key env is missing or malformed.
 - `Repository is not in AGENTPROOF_GITHUB_APP_ALLOWED_REPOS`: narrow allowlist does not include the test repo.
+- `github_app_tenant_grant_required`: tenant control mode is enabled but no active grant matches the test installation id and repository.
+- `github_app_tenant_grants_invalid`: the tenant grant JSON env is malformed; fix it before retrying.
 - `GitHub PR metadata fetch failed`: use a public test PR or provide an optional read-only metadata token.
 - `duplicate-delivery guard`: wait for idempotency TTL, push a new commit to the disposable PR, or change to another allowed action.
 

@@ -88,7 +88,9 @@ Optional server integrations are off by default:
 
 - `GITHUB_WEBHOOK_SECRET`: enables signed GitHub webhook intake. Without automation opt-in, the endpoint stays dry-run.
 - `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`: enables GitHub App installation-token analysis when automation is explicitly enabled. `GITHUB_PRIVATE_KEY` must be a valid PEM private key; local env files may use escaped `\n` newlines.
-- `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED`, `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS`: opt in to PR webhook-triggered analysis for specific repositories. Use `owner/repo` comma-separated values; `*` allows all installed repos and should be avoided outside controlled testing.
+- `AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED`: opts in to PR webhook-triggered analysis after a repository authorization source approves the event.
+- `AGENTPROOF_GITHUB_APP_ALLOWED_REPOS`: legacy operator/demo allowlist used only when tenant control is disabled. Use `owner/repo` comma-separated values; `*` allows all installed repos and should be avoided outside controlled testing.
+- `AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED`, `AGENTPROOF_TENANT_REPOSITORY_GRANTS`: invite-only SaaS authorization skeleton. When tenant control is enabled, webhook analysis ignores the global allowlist and requires an active server-only grant matching `installationId + repositoryFullName`; this JSON env is temporary until tenant/repo grants move to the database.
 - `AGENTPROOF_GITHUB_APP_SAVE_REPORTS`: when true, webhook-triggered analyses create summary-only saved report links.
 - `AGENTPROOF_GITHUB_APP_COMMENT_ENABLED`: when true, webhook-triggered analyses create or update one GitHub App marker comment. Keep this false until the repository owner explicitly wants automatic comments.
 - `AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL`, `AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY`, optional `AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE`: enables durable duplicate suppression for GitHub App webhook automation. When webhook-specific Supabase env is absent, AgentProof reuses the saved-report Supabase URL and service-role key.
@@ -115,7 +117,7 @@ pnpm smoke:github-webhook
 
 The webhook smoke checks public coarse status, invalid-signature rejection, a signed `ping`, and a signed `pull_request` `closed` event that must not plan analysis or comments. It prints only bounded metadata and fails if secret-like probe values are echoed.
 
-For the controlled live automation smoke, use `pnpm smoke:github-webhook-live` only on a maintainer-owned test PR in one allowlisted repository. It requires `AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1`, suppresses comments by default, and refuses to run unless public status is `event-mode`. See `docs/github-app-live-smoke-runbook.md` before running it.
+For the controlled live automation smoke, use `pnpm smoke:github-webhook-live` only on a maintainer-owned test PR in one explicitly authorized repository. It requires `AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1`, suppresses comments by default, and refuses to run unless public status is `event-mode`. See `docs/github-app-live-smoke-runbook.md` before running it.
 
 Run the live GitHub comment smoke only when you intentionally want to create or update an AgentProof marker comment on a target PR:
 

@@ -402,6 +402,131 @@ describe("POST /api/github/webhook", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("requires an active tenant grant before legacy allowlists, durable idempotency, or token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "*");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-grant-missing",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      ignored: true,
+      code: "github_app_tenant_grant_required",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(json.note).toContain("No active tenant repository grant");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("denies disabled tenant grants before durable idempotency or token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({ enabled: false }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-grant-disabled",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      ignored: true,
+      code: "github_app_tenant_grant_required",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(json.note).toContain("disabled");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("denies analysis-disabled tenant grants before durable idempotency or token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({ analysisEnabled: false }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-grant-analysis-disabled",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      ignored: true,
+      code: "github_app_tenant_grant_required",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(json.note).toContain("analysis is disabled");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for invalid tenant grant configuration before token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", "{not-json");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-grants-invalid",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual(expect.objectContaining({
+      ok: false,
+      code: "github_app_tenant_grants_invalid",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("ignores unsupported pull_request actions before fetching tokens", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -452,6 +577,42 @@ describe("POST /api/github/webhook", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+  });
+
+  it("allows tenant-granted analysis without legacy allowlist and respects grant-level save/comment opt-ins", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: false,
+      commentEnabled: false
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-tenant-granted-no-side-effects",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const commentCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes("/issues/7/comments")
+    );
+
+    expect(response.status).toBe(200);
+    expect(json.willAnalyze).toBe(true);
+    expect(json.willComment).toBe(false);
+    expect(json.analysis.status).toBe("completed");
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(commentCalls).toHaveLength(0);
   });
 
   it("omits raw automation network error messages before returning 502", async () => {
@@ -1001,6 +1162,21 @@ function mockAutomationFetch() {
 
     return new Response(JSON.stringify({ message: `Unhandled ${method} ${href}` }), { status: 404 });
   });
+}
+
+function tenantGrantJson(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify([
+    {
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryFullName: "RengGyu/AgentProof",
+      enabled: true,
+      analysisEnabled: true,
+      saveReportsEnabled: true,
+      commentEnabled: false,
+      ...overrides
+    }
+  ]);
 }
 
 function jsonResponse(value: unknown, init?: ResponseInit) {

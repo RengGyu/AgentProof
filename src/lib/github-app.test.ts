@@ -192,6 +192,57 @@ describe("github app helpers", () => {
     expect(JSON.stringify(ready)).not.toContain("secret");
   });
 
+  it("requires tenant repository grants for tenant-control readiness", () => {
+    const baseEnv = {
+      GITHUB_WEBHOOK_SECRET: "secret",
+      GITHUB_APP_ID: "123",
+      GITHUB_PRIVATE_KEY: testPrivateKey(),
+      AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED: "true",
+      AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "true"
+    } as unknown as NodeJS.ProcessEnv;
+    const empty = getGitHubAppReadinessStatus({
+      ...baseEnv,
+      AGENTPROOF_GITHUB_APP_ALLOWED_REPOS: "*"
+    });
+    const invalid = getGitHubAppReadinessStatus({
+      ...baseEnv,
+      AGENTPROOF_TENANT_REPOSITORY_GRANTS: "{not-json"
+    });
+    const ready = getGitHubAppReadinessStatus({
+      ...baseEnv,
+      AGENTPROOF_TENANT_REPOSITORY_GRANTS: JSON.stringify([
+        {
+          tenantId: "tenant_test",
+          installationId: 321,
+          repositoryFullName: "RengGyu/AgentProof",
+          enabled: true,
+          analysisEnabled: true
+        }
+      ])
+    });
+
+    expect(empty).toEqual(expect.objectContaining({
+      mode: "dry-run",
+      allowedRepoCount: 0,
+      canAnalyzePullRequests: false
+    }));
+    expect(empty.warnings).toEqual(expect.arrayContaining([
+      "Tenant control plane is enabled but no tenant repository grants are configured.",
+      "Global repository allowlist is ignored while tenant control plane authorization is enabled."
+    ]));
+    expect(invalid).toEqual(expect.objectContaining({
+      mode: "dry-run",
+      allowedRepoCount: 0,
+      canAnalyzePullRequests: false
+    }));
+    expect(invalid.warnings).toContain("Automation is enabled but tenant repository grants are invalid.");
+    expect(ready).toEqual(expect.objectContaining({
+      mode: "analysis-ready",
+      allowedRepoCount: 1,
+      canAnalyzePullRequests: true
+    }));
+  });
+
   it("keeps public readiness status coarse enough for public UI and smoke probes", () => {
     const publicStatus = getPublicGitHubAppReadinessStatus({
       GITHUB_WEBHOOK_SECRET: "secret-value",
