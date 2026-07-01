@@ -59,9 +59,9 @@ AgentProof is not a long-term source-code archive. Raw PR evidence is processed 
 Current deletion support is deliberately staged:
 
 - Customer-facing deletion preview is count-only and dry-run.
-- Internal deletion execution is guarded and requires tenant deletion state before destructive work.
+- Operator deletion execution is guarded and requires tenant deletion state before destructive saved-report or analysis-job purge work.
 - Saved summary report and analysis job deletion boundaries are partially implemented.
-- Public destructive deletion controls, full deletion drills, restore drills, backup expiry enforcement, and external GitHub installation revocation remain launch-gate work.
+- Public destructive deletion controls, full deletion drills, restore drills, backup expiry enforcement, billing/account deletion, and external GitHub installation revocation remain launch-gate work.
 
 The public promise should be conservative: AgentProof does not durably retain raw code evidence by design, and deletion workflows remain subject to the documented retention policy and operational readiness gates.
 

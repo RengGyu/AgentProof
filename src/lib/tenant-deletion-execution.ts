@@ -151,6 +151,11 @@ export interface TenantDeletionAnalysisJobPurgeResult {
     | "fix_analysis_job_store_before_purge";
 }
 
+export type TenantDeletionGuardedStepResult =
+  | TenantDeletionNewWorkBlockResult
+  | TenantDeletionSavedReportPurgeResult
+  | TenantDeletionAnalysisJobPurgeResult;
+
 export class TenantDeletionExecutionError extends Error {
   constructor(message: string) {
     super(message);
@@ -168,20 +173,22 @@ export async function buildTenantDeletionExecutionPlan(
   }
 
   const preview = await buildTenantDeletionPreview({ tenantId }, env);
+  const newWorkBlocked = input.newWorkBlocked === true
+    || await getTenantDeletionStateActiveOrNull(tenantId, env) === true;
   const activeJobs = await getActiveAnalysisJobCountOrNull(tenantId, env);
   const repositoryGrants = findCategory(preview, "repository_grants");
   const savedReports = findCategory(preview, "saved_reports");
   const analysisJobs = findCategory(preview, "analysis_jobs");
-  const blockNewWorkAction = buildBlockNewWorkPlanAction(repositoryGrants, input.newWorkBlocked === true);
+  const blockNewWorkAction = buildBlockNewWorkPlanAction(repositoryGrants, newWorkBlocked);
   const savedReportPurgeAction = buildPurgeSavedReportsPlanAction({
     category: savedReports,
-    newWorkBlocked: input.newWorkBlocked === true
+    newWorkBlocked
   });
   const drainAction = buildDrainAnalysisJobsPlanAction(activeJobs);
   const purgeAction = buildPurgeAnalysisJobsPlanAction({
     category: analysisJobs,
     activeJobs,
-    newWorkBlocked: input.newWorkBlocked === true
+    newWorkBlocked
   });
 
   return {
@@ -433,6 +440,46 @@ export async function purgeTenantDeletionAnalysisJobsWhenSafe(
   }
 }
 
+export async function runTenantDeletionGuardedStep(
+  input: { tenantId?: unknown },
+  env = process.env
+): Promise<TenantDeletionGuardedStepResult> {
+  const tenantId = normalizeTenantId(input.tenantId);
+  if (!tenantId) {
+    throw new TenantDeletionExecutionError("Tenant id is invalid.");
+  }
+
+  const plan = await buildTenantDeletionExecutionPlan({ tenantId }, env);
+  if (plan.next === "block_new_work_before_deletion") {
+    return blockTenantDeletionNewWork({ tenantId }, env);
+  }
+
+  const block = await blockTenantDeletionNewWork({ tenantId }, env);
+  if (block.status !== "completed") {
+    return block;
+  }
+
+  if (plan.next === "purge_saved_reports") {
+    return purgeTenantDeletionSavedReportsWhenSafe({
+      tenantId,
+      newWorkBlocked: true
+    }, env);
+  }
+
+  const savedReports = await purgeTenantDeletionSavedReportsWhenSafe({
+    tenantId,
+    newWorkBlocked: true
+  }, env);
+  if (savedReports.status !== "completed" || savedReports.deletedCount > 0) {
+    return savedReports;
+  }
+
+  return purgeTenantDeletionAnalysisJobsWhenSafe({
+    tenantId,
+    newWorkBlocked: true
+  }, env);
+}
+
 function buildBlockNewWorkPlanAction(
   category: TenantDeletionPreviewCategory | null,
   newWorkBlocked: boolean
@@ -535,6 +582,15 @@ function buildPurgeSavedReportsPlanAction(input: {
       status: "blocked",
       reason: "block_new_work_first",
       count: input.category.count
+    };
+  }
+
+  if (input.category.count === 0) {
+    return {
+      key: "purge_saved_reports",
+      status: "completed",
+      reason: "saved_report_purge_completed",
+      count: 0
     };
   }
 
