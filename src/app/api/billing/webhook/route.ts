@@ -1,4 +1,9 @@
-import { type BillingWebhookIntakeStatus, processSignedBillingWebhook } from "@/lib/billing-beta";
+import {
+  BillingBetaStoreError,
+  type BillingWebhookIntakeStatus,
+  processSignedBillingWebhook,
+  syncBillingSubscriptionLifecycleFromWebhook
+} from "@/lib/billing-beta";
 import { noStoreJson, utf8ByteLength } from "@/lib/http";
 
 const MAX_BILLING_WEBHOOK_REQUEST_BYTES = 200_000;
@@ -19,14 +24,44 @@ export async function POST(request: Request) {
     rawBody: bodyText,
     signatureHeader: request.headers.get("stripe-signature")
   });
+  let subscription;
+  try {
+    subscription = await syncBillingSubscriptionLifecycleFromWebhook(intake);
+  } catch (error) {
+    if (error instanceof BillingBetaStoreError) {
+      return noStoreJson({
+        ok: false,
+        webhook: intake,
+        subscription: {
+          privacy: "billing-subscription-lifecycle-metadata-only",
+          enabled: true,
+          synced: false,
+          status: "store_unavailable",
+          store: "none",
+          durable: false,
+          provider: intake.provider,
+          tenantId: intake.tenantId,
+          eventType: intake.eventType,
+          subscriptionStatus: intake.subscriptionStatus,
+          plan: intake.plan,
+          next: "configure_billing_subscription_lifecycle_store"
+        },
+        privacy: intake.privacy,
+        next: "configure_billing_subscription_lifecycle_store"
+      }, { status: 503 });
+    }
+
+    throw error;
+  }
 
   const status = billingWebhookStatusCode(intake.status);
 
   return noStoreJson({
     ok: intake.accepted,
     webhook: intake,
+    subscription,
     privacy: intake.privacy,
-    next: intake.next
+    next: subscription.enabled ? subscription.next : intake.next
   }, { status });
 }
 

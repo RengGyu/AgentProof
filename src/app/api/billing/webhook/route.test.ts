@@ -106,6 +106,56 @@ describe("POST /api/billing/webhook", () => {
     expect(serialized).not.toContain("agentproof_billing_webhook_events");
   });
 
+  it("syncs accepted webhook metadata when subscription lifecycle sync is enabled", async () => {
+    stubWebhookEnv();
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY", "true");
+    const body = billingWebhookBody({
+      id: "evt_route_lifecycle_123",
+      status: "past_due",
+      metadata: {
+        tenantId: "tenant_a",
+        plan: "team",
+        paymentMethod: "pm_secret_should_not_leak"
+      }
+    });
+
+    const response = await POST(new Request("http://localhost/api/billing/webhook", {
+      method: "POST",
+      headers: {
+        "stripe-signature": stripeSignature(body, webhookSecret(), Math.floor(Date.now() / 1000))
+      },
+      body
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({
+      ok: true,
+      next: "billing_subscription_metadata_synced",
+      subscription: {
+        privacy: "billing-subscription-lifecycle-metadata-only",
+        enabled: true,
+        synced: true,
+        status: "synced",
+        store: "memory",
+        durable: false,
+        provider: "stripe",
+        tenantId: "tenant_a",
+        eventType: "customer.subscription.updated",
+        subscriptionStatus: "past_due",
+        plan: "team",
+        next: "billing_subscription_metadata_synced"
+      }
+    });
+    expect(serialized).not.toContain("evt_route_lifecycle_123");
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("pm_secret");
+    expect(serialized).not.toContain(webhookSecret());
+  });
+
   it("rejects malformed JSON after signature verification as bounded metadata", async () => {
     stubWebhookEnv();
     const body = "{not-json";

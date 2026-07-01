@@ -8,7 +8,8 @@ import {
   evaluateBillingBetaGate,
   processSignedBillingWebhook,
   readBillingBetaSummary,
-  reserveBillingWebhookEvent
+  reserveBillingWebhookEvent,
+  syncBillingSubscriptionLifecycleFromWebhook
 } from "./billing-beta";
 
 describe("billing beta metadata boundary", () => {
@@ -483,6 +484,184 @@ describe("billing beta metadata boundary", () => {
     });
     expect(JSON.stringify(result)).not.toContain("evt_no_store_123");
   });
+
+  it("syncs accepted billing webhook lifecycle metadata into the memory summary boundary", async () => {
+    const intake = await acceptedWebhookIntake({
+      id: "evt_lifecycle_memory_123",
+      status: "past_due",
+      tenantId: "tenant_lifecycle",
+      plan: "team"
+    });
+
+    const sync = await syncBillingSubscriptionLifecycleFromWebhook(intake, testEnv({
+      AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED: "true",
+      AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY: "true"
+    }));
+    const summary = readBillingBetaSummary({ tenantId: "tenant_lifecycle" }, testEnv({
+      AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY: "true",
+      AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY: "true"
+    }));
+    const serialized = JSON.stringify({ sync, summary });
+
+    expect(sync).toEqual({
+      privacy: "billing-subscription-lifecycle-metadata-only",
+      enabled: true,
+      synced: true,
+      status: "synced",
+      store: "memory",
+      durable: false,
+      provider: "stripe",
+      tenantId: "tenant_lifecycle",
+      eventType: "customer.subscription.updated",
+      subscriptionStatus: "past_due",
+      plan: "team",
+      next: "billing_subscription_metadata_synced"
+    });
+    expect(summary).toMatchObject({
+      privacy: "billing-beta-summary-only",
+      configured: true,
+      providerBacked: true,
+      subscriptionStatus: "past_due",
+      plan: "team",
+      portal: {
+        available: false,
+        mode: "not_configured"
+      }
+    });
+    expect(serialized).not.toContain("evt_lifecycle_memory_123");
+    expect(serialized).not.toContain("cus_");
+    expect(serialized).not.toContain("sub_");
+    expect(serialized).not.toContain("payment");
+  });
+
+  it("does not lifecycle-sync duplicate billing webhook intakes", async () => {
+    const intake = await acceptedWebhookIntake({
+      id: "evt_lifecycle_duplicate_123",
+      status: "active",
+      tenantId: "tenant_lifecycle",
+      plan: "team"
+    });
+    const duplicate = { ...intake, status: "duplicate" as const, duplicate: true };
+
+    const sync = await syncBillingSubscriptionLifecycleFromWebhook(duplicate, testEnv({
+      AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED: "true",
+      AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY: "true"
+    }));
+
+    expect(sync).toMatchObject({
+      privacy: "billing-subscription-lifecycle-metadata-only",
+      enabled: true,
+      synced: false,
+      status: "duplicate_ignored",
+      next: "ignore_duplicate_billing_event"
+    });
+  });
+
+  it("stores only bounded subscription lifecycle metadata in Supabase", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(null, { status: 201 });
+    }));
+    const intake = await acceptedWebhookIntake({
+      id: "evt_lifecycle_supabase_123",
+      status: "trialing",
+      tenantId: "tenant_lifecycle",
+      plan: "team"
+    });
+
+    const sync = await syncBillingSubscriptionLifecycleFromWebhook(intake, testEnv({
+      AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED: "true",
+      AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
+      AGENTPROOF_BILLING_SUBSCRIPTIONS_TABLE: "billing_subscriptions_test"
+    }));
+    const serialized = JSON.stringify({ sync, bodies });
+
+    expect(sync).toMatchObject({
+      privacy: "billing-subscription-lifecycle-metadata-only",
+      synced: true,
+      status: "synced",
+      store: "supabase",
+      durable: true,
+      tenantId: "tenant_lifecycle",
+      subscriptionStatus: "trialing"
+    });
+    expect(bodies[0]).toMatchObject({
+      tenant_id: "tenant_lifecycle",
+      provider: "stripe",
+      provider_backed: true,
+      subscription_status: "trialing",
+      plan: "team",
+      last_event_type: "customer.subscription.updated"
+    });
+    expect(bodies[0]).not.toHaveProperty("provider_customer_id");
+    expect(bodies[0]).not.toHaveProperty("provider_subscription_id");
+    expect(bodies[0]).not.toHaveProperty("payload");
+    expect(serialized).not.toContain("evt_lifecycle_supabase_123");
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("cus_");
+    expect(serialized).not.toContain("sub_");
+  });
+
+  it("requires tenant and subscription status before lifecycle sync", async () => {
+    const missingTenant = await syncBillingSubscriptionLifecycleFromWebhook({
+      privacy: "billing-webhook-intake-metadata-only",
+      provider: "stripe",
+      verified: true,
+      accepted: true,
+      duplicate: false,
+      status: "accepted",
+      eventType: "customer.subscription.updated",
+      subscriptionStatus: "active",
+      next: "process_billing_event_metadata"
+    }, testEnv({ AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED: "true" }));
+    const missingStatus = await syncBillingSubscriptionLifecycleFromWebhook({
+      privacy: "billing-webhook-intake-metadata-only",
+      provider: "stripe",
+      verified: true,
+      accepted: true,
+      duplicate: false,
+      status: "accepted",
+      tenantId: "tenant_lifecycle",
+      eventType: "customer.subscription.updated",
+      next: "process_billing_event_metadata"
+    }, testEnv({ AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED: "true" }));
+
+    expect(missingTenant).toMatchObject({
+      synced: false,
+      status: "missing_tenant",
+      next: "review_provider_billing_mapping"
+    });
+    expect(missingStatus).toMatchObject({
+      synced: false,
+      status: "missing_subscription_status",
+      next: "review_provider_billing_mapping"
+    });
+  });
+
+  it("does not blame lifecycle storage when webhook intake was not accepted", async () => {
+    const sync = await syncBillingSubscriptionLifecycleFromWebhook({
+      privacy: "billing-webhook-intake-metadata-only",
+      provider: "stripe",
+      verified: false,
+      accepted: false,
+      duplicate: false,
+      status: "signature_missing",
+      next: "retry_with_signed_provider_payload"
+    }, testEnv({ AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED: "true" }));
+
+    expect(sync).toEqual({
+      privacy: "billing-subscription-lifecycle-metadata-only",
+      enabled: true,
+      synced: false,
+      status: "webhook_not_accepted",
+      store: "none",
+      durable: false,
+      provider: "stripe",
+      next: "retry_billing_webhook_intake"
+    });
+  });
 });
 
 function billingEnv(input: {
@@ -517,4 +696,36 @@ function stripeSignature(rawBody: string, secret: string, timestamp: number): st
   const digest = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
 
   return `t=${timestamp},v1=${digest}`;
+}
+
+async function acceptedWebhookIntake(input: {
+  id: string;
+  status: "active" | "past_due" | "trialing";
+  tenantId: string;
+  plan: string;
+}) {
+  const secret = "whsec_lifecycle_secret_with_enough_entropy";
+  const rawBody = JSON.stringify({
+    id: input.id,
+    type: "customer.subscription.updated",
+    data: {
+      object: {
+        status: input.status,
+        metadata: {
+          tenantId: input.tenantId,
+          plan: input.plan
+        }
+      }
+    }
+  });
+  const receivedAt = new Date("2026-07-02T00:00:00Z");
+
+  return processSignedBillingWebhook({
+    rawBody,
+    signatureHeader: stripeSignature(rawBody, secret, Math.floor(receivedAt.getTime() / 1000)),
+    receivedAt
+  }, testEnv({
+    AGENTPROOF_BILLING_WEBHOOK_SECRET: secret,
+    AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY: "true"
+  }));
 }
