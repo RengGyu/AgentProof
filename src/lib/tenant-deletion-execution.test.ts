@@ -143,6 +143,7 @@ describe("tenant deletion execution boundary", () => {
     });
     expect(plan.actions.map((action) => action.key)).toEqual([
       "review_retention_policy",
+      "review_github_installation_revocation",
       "review_billing_retention",
       "block_new_work",
       "purge_saved_reports",
@@ -167,6 +168,30 @@ describe("tenant deletion execution boundary", () => {
       status: "blocked",
       reason: "block_new_work_first"
     });
+    expectNoPrivateDeletionFields(serialized);
+  });
+
+  it("keeps external GitHub installation revocation as manual review", async () => {
+    const env = memoryEnv();
+
+    const plan = await buildTenantDeletionExecutionPlan({
+      tenantId: "tenant_a",
+      newWorkBlocked: true
+    }, env);
+    const serialized = JSON.stringify(plan);
+
+    expect(plan.actions.find((action) => action.key === "review_github_installation_revocation")).toEqual({
+      key: "review_github_installation_revocation",
+      status: "manual_review_required",
+      reason: "external_github_installation_revocation_required"
+    });
+    expect(plan.actions.find((action) => action.key === "review_github_installation_revocation")).not.toMatchObject({
+      status: "completed"
+    });
+    expect(serialized).not.toContain("installationId");
+    expect(serialized).not.toContain("accountLogin");
+    expect(serialized).not.toContain("repositorySelection");
+    expect(serialized).not.toContain("access token");
     expectNoPrivateDeletionFields(serialized);
   });
 
@@ -208,6 +233,7 @@ describe("tenant deletion execution boundary", () => {
     expect(plan.next).toBe("purge_saved_reports");
     expect(plan.actions.map((action) => action.key)).toEqual([
       "review_retention_policy",
+      "review_github_installation_revocation",
       "review_billing_retention",
       "block_new_work",
       "purge_saved_reports",
@@ -522,7 +548,7 @@ function expectNoPrivateDeletionFields(serialized: string) {
   expect(serialized).not.toContain("Other/Private");
   expect(serialized).not.toContain("repositoryFullName");
   expect(serialized).not.toContain("repositoryId");
-  expect(serialized).not.toContain("installation");
+  expect(serialized).not.toContain("installationId");
   expect(serialized).not.toContain("pull_request");
   expect(serialized).not.toContain("headSha");
   expect(serialized).not.toContain("delivery");

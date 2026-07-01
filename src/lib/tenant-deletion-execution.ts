@@ -18,6 +18,7 @@ import {
 
 export type TenantDeletionExecutionActionKey =
   | "review_retention_policy"
+  | "review_github_installation_revocation"
   | "review_billing_retention"
   | "block_new_work"
   | "purge_saved_reports"
@@ -34,6 +35,7 @@ export type TenantDeletionExecutionActionStatus =
 
 export type TenantDeletionExecutionReason =
   | "draft_retention_policy"
+  | "external_github_installation_revocation_required"
   | "billing_legal_retention_required"
   | "manual_store_review_required"
   | "store_unavailable"
@@ -204,6 +206,7 @@ export async function buildTenantDeletionExecutionPlan(
         status: "manual_review_required",
         reason: "draft_retention_policy"
       },
+      buildGitHubInstallationRevocationReviewPlanAction(),
       buildBillingRetentionReviewPlanAction(),
       blockNewWorkAction,
       savedReportPurgeAction,
@@ -481,6 +484,14 @@ export async function runTenantDeletionGuardedStep(
     tenantId,
     newWorkBlocked: true
   }, env);
+}
+
+function buildGitHubInstallationRevocationReviewPlanAction(): TenantDeletionExecutionAction {
+  return {
+    key: "review_github_installation_revocation",
+    status: "manual_review_required",
+    reason: "external_github_installation_revocation_required"
+  };
 }
 
 function buildBillingRetentionReviewPlanAction(): TenantDeletionExecutionAction {

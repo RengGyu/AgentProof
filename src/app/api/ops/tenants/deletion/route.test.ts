@@ -525,7 +525,7 @@ function expectNoPrivateDeletionFields(serialized: string) {
   expect(serialized).not.toContain("RengGyu");
   expect(serialized).not.toContain("repositoryFullName");
   expect(serialized).not.toContain("repositoryId");
-  expect(serialized).not.toContain("installation");
+  expect(serialized).not.toContain("installationId");
   expect(serialized).not.toContain("pull_request");
   expect(serialized).not.toContain("delivery");
   expect(serialized).not.toContain("idempotency");
