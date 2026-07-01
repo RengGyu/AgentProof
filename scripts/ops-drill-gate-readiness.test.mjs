@@ -7,31 +7,31 @@ import {
 } from "./ops-drill-gate-readiness.mjs";
 
 describe("ops-drill-gate-readiness", () => {
-  it("validates the checked-in partial evidence as blocked without widening refs", () => {
+  it("validates the checked-in launch evidence as ready without widening refs", () => {
     const markdown = readFileSync(new URL("../docs/ops-drill-evidence-2026-07-01.md", import.meta.url), "utf8");
     const evidenceText = extractEvidenceJsonFromMarkdown(markdown);
     const summary = validateOpsDrillEvidence({
       evidenceText,
-      now: new Date("2026-07-01T13:40:00Z")
+      now: new Date("2026-07-01T17:00:00Z")
     });
 
     expect(summary).toMatchObject({
       privacy: "ops-drill-evidence-validation-summary-only",
-      status: "blocked",
+      status: "ready",
       counts: {
         required: 4,
-        passed: 2,
-        blocked: 2,
+        passed: 4,
+        blocked: 0,
         missing: 0,
         stale: 0,
         failed: 0,
-        unclear: 2
+        unclear: 0
       },
-      next: "review_failed_ops_drills"
+      next: "ready_for_launch_review"
     });
     expect(summary.categories.map((item) => `${item.key}:${item.status}`)).toEqual([
-      "deletion_drill:unclear",
-      "restore_drill:unclear",
+      "deletion_drill:passed",
+      "restore_drill:passed",
       "incident_runbook_review:passed",
       "production_smoke:passed"
     ]);
