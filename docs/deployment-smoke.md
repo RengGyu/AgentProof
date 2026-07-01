@@ -117,6 +117,25 @@ The drill gate is an evidence gate only. It does not execute deletion, restore, 
 
 Current partial launch-readiness evidence: `docs/ops-drill-evidence-2026-07-01.md`.
 
+Validate a candidate evidence record before setting production env:
+
+```bash
+pnpm ops:drill-gate --evidence-file docs/ops-drill-evidence-2026-07-01.md
+```
+
+After production `AGENTPROOF_OPS_DRILL_EVIDENCE` is set and the deployment has
+picked it up, verify the operator endpoint with a trusted shell that already has
+`AGENTPROOF_OPS_TOKEN` set:
+
+```bash
+pnpm ops:drill-gate --require-production --require-ready
+```
+
+This command prints only summary status, category states, counts, and next
+action. It fails closed when evidence is not ready, the operator token is
+missing, the endpoint returns non-metadata fields, or the response echoes
+secret-like/raw fields.
+
 Most recent no-secret production gate:
 
 - `/` returned 200.
