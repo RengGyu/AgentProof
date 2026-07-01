@@ -6,6 +6,7 @@ import {
   BarChart3,
   CheckCircle2,
   Database,
+  Download,
   ExternalLink,
   FileText,
   GitBranch,
@@ -22,6 +23,7 @@ import {
   tenantAnalysisJobsUrl,
   tenantAccountUrl,
   tenantAuditActivityUrl,
+  tenantAuditExportUrl,
   tenantDeletionPreviewUrl,
   tenantEntitlementsUrl,
   tenantOnboardingStartPayload,
@@ -288,6 +290,18 @@ interface TenantDeletionPreview {
 interface ApiErrorBody {
   error?: string;
   code?: string;
+}
+
+interface TenantAuditExportStatus {
+  ok: true;
+  tenantId: string;
+  generatedAt: string;
+  schemaVersion: "2026-07-01";
+  privacy: "tenant-audit-export-summary-only";
+  events: AuditSummary[];
+  count: number;
+  limit: number;
+  truncated: boolean;
 }
 
 type PanelMode = "idle" | "loading" | "saving" | "probing";
@@ -614,6 +628,37 @@ export function TenantSetupPanel() {
     }
   }
 
+  async function downloadAuditExport() {
+    setMode("loading");
+    setMessage(null);
+
+    try {
+      const json = await requestJson<TenantAuditExportStatus>(tenantAuditExportUrl(tenantId, 100), {
+        headers: tenantInviteHeaders(inviteToken)
+      });
+
+      if (json.privacy !== "tenant-audit-export-summary-only") {
+        throw new PanelRequestError("Tenant audit export response did not match the summary-only boundary.");
+      }
+
+      const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = `agentproof-audit-${tenantId.trim()}.json`;
+      link.click();
+      URL.revokeObjectURL(href);
+      setMessage({
+        kind: "ok",
+        text: `Audit export prepared with ${json.count}${json.truncated ? "+" : ""} bounded events.`
+      });
+    } catch (error) {
+      setMessage(errorMessage(error, "Audit export could not be prepared."));
+    } finally {
+      setMode("idle");
+    }
+  }
+
   async function loadSavedReports(feedback: "visible" | "silent" = "visible") {
     setMode("loading");
     if (feedback === "visible") setMessage(null);
@@ -835,6 +880,10 @@ export function TenantSetupPanel() {
           <button className="button" type="button" onClick={() => loadAuditActivity()} disabled={!credentialsReady || busy}>
             <Activity size={16} />
             Activity
+          </button>
+          <button className="button" type="button" onClick={downloadAuditExport} disabled={!credentialsReady || busy}>
+            <Download size={16} />
+            Export Audit
           </button>
         </div>
 
@@ -1208,6 +1257,21 @@ export function TenantSetupPanel() {
           ) : (
             <p className="muted small">No recent verification activity loaded.</p>
           )}
+        </article>
+
+        <article className="card">
+          <div className="card-title-row">
+            <h2>Audit Export</h2>
+            <Download size={18} aria-hidden="true" />
+          </div>
+          <div className="button-row tenant-inline-actions">
+            <button className="button compact" type="button" onClick={downloadAuditExport} disabled={!credentialsReady || busy}>
+              Export JSON
+            </button>
+          </div>
+          <p className="muted small">
+            Summary-only tenant events with bounded repository, PR, delivery prefix, result, status, evidence coverage, saved-report, and comment action fields.
+          </p>
         </article>
       </div>
     </section>

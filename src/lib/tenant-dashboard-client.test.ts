@@ -8,6 +8,7 @@ import {
   tenantEntitlementsUrl,
   tenantOnboardingStartPayload,
   tenantAuditActivityUrl,
+  tenantAuditExportUrl,
   tenantReportsUrl,
   tenantSessionPayload,
   tenantSettingsPatchPayload,
@@ -111,6 +112,28 @@ describe("tenant dashboard client request helpers", () => {
     expect(url).not.toContain("payload");
     expect(url).not.toContain("table");
     expect(url).not.toContain("service-role");
+  });
+
+  it("builds bounded audit export URLs without invite tokens, provider ids, or raw internals", () => {
+    const url = tenantAuditExportUrl(" tenant_a ", 999);
+    const minimumUrl = tenantAuditExportUrl(" tenant_a ", -1);
+    const malformedUrl = tenantAuditExportUrl(" tenant_a ", Number.NaN);
+
+    expect(url).toBe("/api/tenants/audit-export?tenantId=tenant_a&limit=250");
+    expect(minimumUrl).toBe("/api/tenants/audit-export?tenantId=tenant_a&limit=1");
+    expect(malformedUrl).toBe("/api/tenants/audit-export?tenantId=tenant_a&limit=100");
+    expect(url).not.toContain("token");
+    expect(url).not.toContain("invite");
+    expect(url).not.toContain("payload");
+    expect(url).not.toContain("table");
+    expect(url).not.toContain("service-role");
+    expect(url).not.toContain("installation");
+    expect(url).not.toContain("repositoryId");
+    expect(url).not.toContain("savedReportUrl");
+    expect(url).not.toContain("rawDiff");
+    expect(url).not.toContain("rawLog");
+    expect(url).not.toContain("claims");
+    expect(url).not.toContain("reprompt");
   });
 
   it("starts onboarding without putting invite tokens in the JSON body", () => {

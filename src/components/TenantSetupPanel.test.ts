@@ -98,6 +98,26 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).not.toContain("rawBody");
   });
 
+  it("uses summary-only audit export copy without provider ids or raw audit internals", () => {
+    expect(source).toContain("tenantAuditExportUrl");
+    expect(source).toContain("Audit Export");
+    expect(source).toContain("Export JSON");
+    expect(source).toContain("tenant-audit-export-summary-only");
+    expect(source).toContain("Summary-only tenant events");
+    expect(source).not.toContain("AI code review");
+    expect(source).not.toContain("raw audit log");
+    expect(source).not.toContain("download evidence");
+    expect(source).not.toContain("full report");
+    expect(source).not.toContain("signature");
+    expect(source).not.toContain("savedReportUrl");
+    expect(source).not.toContain("commentBody");
+    expect(source).not.toContain("privateKey");
+    expect(source).not.toContain("serviceRole");
+    expect(source).not.toContain("webhookPayload");
+    expect(source).not.toContain("rawPayload");
+    expect(source).not.toContain("rawBody");
+  });
+
   it("uses summary-only recent reports without report access internals", () => {
     expect(source).toContain("tenantReportsUrl");
     expect(source).toContain("Recent Summary Reports");

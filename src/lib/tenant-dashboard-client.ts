@@ -92,6 +92,15 @@ export function tenantAuditActivityUrl(tenantId: string, limit = 10): string {
   return `/api/tenants/audit-activity?${params.toString()}`;
 }
 
+export function tenantAuditExportUrl(tenantId: string, limit = 100): string {
+  const params = new URLSearchParams({
+    tenantId: tenantId.trim(),
+    limit: String(normalizeTenantAuditExportClientLimit(limit))
+  });
+
+  return `/api/tenants/audit-export?${params.toString()}`;
+}
+
 export function tenantOnboardingStartPayload(tenantId: string): { tenantId: string } {
   return { tenantId: tenantId.trim() };
 }
@@ -118,4 +127,10 @@ export function tenantSettingsPatchPayload(input: {
 
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function normalizeTenantAuditExportClientLimit(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+
+  return Math.min(Math.max(Math.trunc(value), 1), 250);
 }

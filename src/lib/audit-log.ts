@@ -607,7 +607,7 @@ function safeDurability(value: string | undefined): string | undefined {
 
 function normalizeListLimit(value: number | undefined): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0
-    ? Math.min(value, 26)
+    ? Math.min(value, 251)
     : 10;
 }
 
