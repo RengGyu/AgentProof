@@ -11,6 +11,7 @@ const publicCopyFiles = [
   ["home page", "../app/page.tsx"],
   ["workspace surface", "../components/AnalyzeWorkspace.tsx"],
   ["integrations page", "../app/integrations/page.tsx"],
+  ["status and support page", "../app/status/page.tsx"],
   ["tenant setup page", "../app/tenant/page.tsx"]
 ] as const;
 
@@ -141,5 +142,41 @@ describe("public launch copy boundary", () => {
     expect(source).not.toMatch(/\bSLA\b/);
     expect(source).not.toMatch(/\b\d+%\b/);
     expect(source).not.toMatch(/\$\d/);
+  });
+
+  it("keeps the public status support surface bounded and non-operational", () => {
+    const source = readFileSync(new URL("../app/status/page.tsx", import.meta.url), "utf8");
+
+    for (const expected of [
+      "Status And Support",
+      "summary-only support",
+      "does not expose live tenant data",
+      "raw errors",
+      "provider ids",
+      "table names",
+      "tokens",
+      "evidence reports",
+      "verification",
+      "requirement coverage",
+      "missing proof",
+      "scope creep",
+      "re-prompt",
+      "grounded findings",
+      "setup_blocker",
+      "report_usefulness",
+      "privacy_or_retention",
+      "incident_or_status",
+      "Do Not Send Through Support",
+      "Hosted status automation",
+      "remain separate launch work"
+    ]) {
+      expect(source).toContain(expected);
+    }
+
+    expect(source).not.toMatch(/\bSLA\b/);
+    expect(source).not.toMatch(/\b\d+%\b/);
+    expect(source).not.toMatch(/\$\d/);
+    expect(source).not.toMatch(/customer id/i);
+    expect(source).not.toMatch(/subscription id/i);
   });
 });
