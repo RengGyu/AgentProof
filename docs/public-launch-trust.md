@@ -61,7 +61,7 @@ Current deletion support is deliberately staged:
 - Customer-facing deletion preview is count-only and dry-run.
 - Operator deletion execution is guarded and requires tenant deletion state before destructive saved-report or analysis-job purge work.
 - Saved summary report and analysis job deletion boundaries are partially implemented.
-- Public destructive deletion controls, full deletion drills, restore drills, backup expiry enforcement, billing/account deletion execution, and external GitHub installation revocation remain launch-gate work. The internal deletion execution plan must keep billing/account retention as manual review and must not imply legal billing deletion is complete.
+- Public destructive deletion controls, full deletion drills, restore drills, backup expiry enforcement, billing/account deletion execution, and external GitHub installation revocation remain launch-gate work. The internal deletion execution plan must keep external GitHub installation revocation and billing/account retention as manual review, and must not imply those legal/provider deletion steps are complete.
 
 The public promise should be conservative: AgentProof does not durably retain raw code evidence by design, and deletion workflows remain subject to the documented retention policy and operational readiness gates.
 
