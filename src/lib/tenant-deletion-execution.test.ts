@@ -138,12 +138,14 @@ describe("tenant deletion execution boundary", () => {
         returnsMetadataOnly: true,
         requiresNewWorkBlockedBeforePurge: true,
         requiresActiveJobsDrainedBeforePurge: true,
-        requiresRetentionPolicyReview: true
+        requiresRetentionPolicyReview: true,
+        requiresAccountMemberDeletionReview: true
       }
     });
     expect(plan.actions.map((action) => action.key)).toEqual([
       "review_retention_policy",
       "review_github_installation_revocation",
+      "review_account_member_deletion",
       "review_billing_retention",
       "block_new_work",
       "purge_saved_reports",
@@ -168,6 +170,31 @@ describe("tenant deletion execution boundary", () => {
       status: "blocked",
       reason: "block_new_work_first"
     });
+    expectNoPrivateDeletionFields(serialized);
+  });
+
+  it("keeps account and member deletion as manual review instead of implying access revocation completion", async () => {
+    const env = memoryEnv();
+
+    const plan = await buildTenantDeletionExecutionPlan({
+      tenantId: "tenant_a",
+      newWorkBlocked: true
+    }, env);
+    const serialized = JSON.stringify(plan);
+
+    expect(plan.actions.find((action) => action.key === "review_account_member_deletion")).toEqual({
+      key: "review_account_member_deletion",
+      status: "manual_review_required",
+      reason: "account_member_revocation_required"
+    });
+    expect(plan.actions.find((action) => action.key === "review_account_member_deletion")).not.toMatchObject({
+      status: "completed"
+    });
+    expect(serialized).not.toContain("memberId");
+    expect(serialized).not.toContain("owner@example.com");
+    expect(serialized).not.toContain("sessionHash");
+    expect(serialized).not.toContain("bootstrap");
+    expect(serialized).not.toContain("invite");
     expectNoPrivateDeletionFields(serialized);
   });
 
@@ -234,6 +261,7 @@ describe("tenant deletion execution boundary", () => {
     expect(plan.actions.map((action) => action.key)).toEqual([
       "review_retention_policy",
       "review_github_installation_revocation",
+      "review_account_member_deletion",
       "review_billing_retention",
       "block_new_work",
       "purge_saved_reports",

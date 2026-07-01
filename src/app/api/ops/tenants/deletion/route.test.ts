@@ -76,7 +76,8 @@ describe("/api/ops/tenants/deletion", () => {
         returnsMetadataOnly: true,
         requiresNewWorkBlockedBeforePurge: true,
         requiresActiveJobsDrainedBeforePurge: true,
-        requiresRetentionPolicyReview: true
+        requiresRetentionPolicyReview: true,
+        requiresAccountMemberDeletionReview: true
       }
     });
     expect(json.actions).toEqual(expect.arrayContaining([
