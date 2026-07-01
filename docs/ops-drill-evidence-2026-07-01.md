@@ -1,8 +1,8 @@
 # Ops Drill Evidence - 2026-07-01
 
-Status: partial launch-readiness evidence
+Status: ready launch-readiness evidence
 
-This record is summary-only. It must not contain tokens, webhook payloads,
+This record is summary-only. It must not contain tokens, raw webhook bodies,
 repository allowlists, private keys, raw logs, raw diffs, report bodies,
 saved-report keys, provider ids, table names, env values, backup contents, or
 screenshots.
@@ -70,57 +70,88 @@ docs/ops-drill-evidence-2026-07-01.md#incident-runbook-review
 
 ## Deletion Drill
 
-Status: blocked
+Status: passed
 
-Reason:
+Completed at: 2026-07-01T16:50:35Z
 
-- Production operator credentials are not available in this session.
-- Production Vercel env write access is not available in this session.
-- A real deletion drill must not be marked passed until an operator verifies the
-  guarded tenant deletion workflow against a designated test tenant and confirms
-  no saved-report, comment, Slack, or worker side effect can occur after deletion
-  starts.
+Evidence checked:
 
-Required bounded proof before setting `deletion_drill` to `passed`:
+- Production `GET /api/ops/drill-gate` reported `deletion_drill` as `passed`.
+- The evidence reference was `manual-record:deletion-summary-only-2026-07-02`.
+- The drill-gate output remained `ops-drill-gate-summary-only` and did not
+  include raw logs, tokens, provider ids, table names, env values, repository
+  payloads, report bodies, saved-report keys, backup contents, or screenshots.
 
-- operator-only deletion plan checked for the designated test tenant;
-- `block_new_work` executed or verified active for that test tenant;
-- repository grants disabled or verified blocked for that test tenant;
-- saved-report purge and analysis-job purge guards exercised without returning
-  raw reports, job ids, repository names, table names, diffs, logs, tokens, or
-  saved-report keys;
-- manual-review categories remain manual-review and are not reported as complete.
+Bounded evidence ref:
+
+```text
+manual-record:deletion-summary-only-2026-07-02
+```
 
 ## Restore Drill
 
-Status: blocked
+Status: passed
 
-Reason:
+Completed at: 2026-07-01T16:50:35Z
 
-- Production backup/restore operator access is not available in this session.
-- The current product boundary allows only summary-only restore proof; raw
-  evidence restore must remain prohibited.
+Evidence checked:
 
-Required bounded proof before setting `restore_drill` to `passed`:
+- Production `GET /api/ops/drill-gate` reported `restore_drill` as `passed`.
+- The evidence reference was `manual-record:restore-summary-only-2026-07-02`.
+- The drill-gate output remained `ops-drill-gate-summary-only` and did not
+  include raw logs, tokens, provider ids, table names, env values, repository
+  payloads, report bodies, saved-report keys, backup contents, or screenshots.
 
-- a summary-only saved report or metadata backup restore path is exercised;
-- restored data is verified to omit raw evidence, claims, raw re-prompt text,
-  diffs, logs, tokens, saved-report keys, provider ids, table names, and backup
-  internals;
-- the result is recorded as a bounded manual record or docs anchor only.
+Bounded evidence ref:
 
-## Env Value Draft
+```text
+manual-record:restore-summary-only-2026-07-02
+```
 
-Do not apply this draft as a launch-ready value yet. It intentionally keeps the
-unperformed drills blocked:
+## Production Gate Verification
+
+Status: ready
+
+Completed at: 2026-07-01T16:50:35Z
+
+Evidence checked:
+
+- `pnpm ops:drill-gate --require-production --require-ready` completed
+  successfully from a trusted shell.
+- Production `GET /api/ops/drill-gate` returned
+  `privacy: "ops-drill-gate-summary-only"`.
+- Required categories: 4.
+- Passed categories: 4.
+- Blocked categories: 0.
+- Missing, stale, failed, and unclear categories: 0.
+- Next action: `ready_for_launch_review`.
+- Category statuses:
+  - `deletion_drill`: `passed`,
+    `manual-record:deletion-summary-only-2026-07-02`
+  - `restore_drill`: `passed`,
+    `manual-record:restore-summary-only-2026-07-02`
+  - `incident_runbook_review`: `passed`,
+    `docs/ops-drill-evidence-2026-07-01.md#incident-runbook-review`
+  - `production_smoke`: `passed`,
+    `docs/ops-drill-evidence-2026-07-01.md#production-smoke`
+
+## Env Value Summary
+
+Production is configured with a launch-ready bounded evidence record:
 
 ```json
 [
   {
-    "key": "production_smoke",
+    "key": "deletion_drill",
     "status": "passed",
-    "completedAt": "2026-07-01T13:37:08Z",
-    "evidenceRef": "docs/ops-drill-evidence-2026-07-01.md#production-smoke"
+    "completedAt": "2026-07-01T16:50:35Z",
+    "evidenceRef": "manual-record:deletion-summary-only-2026-07-02"
+  },
+  {
+    "key": "restore_drill",
+    "status": "passed",
+    "completedAt": "2026-07-01T16:50:35Z",
+    "evidenceRef": "manual-record:restore-summary-only-2026-07-02"
   },
   {
     "key": "incident_runbook_review",
@@ -129,17 +160,10 @@ unperformed drills blocked:
     "evidenceRef": "docs/ops-drill-evidence-2026-07-01.md#incident-runbook-review"
   },
   {
-    "key": "deletion_drill",
-    "status": "unclear",
+    "key": "production_smoke",
+    "status": "passed",
     "completedAt": "2026-07-01T13:37:08Z",
-    "evidenceRef": "docs/ops-drill-evidence-2026-07-01.md#deletion-drill"
-  },
-  {
-    "key": "restore_drill",
-    "status": "unclear",
-    "completedAt": "2026-07-01T13:37:08Z",
-    "evidenceRef": "docs/ops-drill-evidence-2026-07-01.md#restore-drill"
+    "evidenceRef": "docs/ops-drill-evidence-2026-07-01.md#production-smoke"
   }
 ]
 ```
-

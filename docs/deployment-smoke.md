@@ -115,7 +115,7 @@ Allowed `evidenceRef` values are bounded references only: `docs/...#anchor`, `gi
 
 The drill gate is an evidence gate only. It does not execute deletion, restore, incident response, or smoke workflows. If evidence is missing, stale, failed, unclear, or malformed, launch review stays blocked.
 
-Current partial launch-readiness evidence: `docs/ops-drill-evidence-2026-07-01.md`.
+Current launch-readiness evidence: `docs/ops-drill-evidence-2026-07-01.md`.
 
 Validate a candidate evidence record before setting production env:
 
