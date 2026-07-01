@@ -302,6 +302,32 @@ describe("tenant deletion execution boundary", () => {
     expectNoPrivateDeletionFields(serialized);
   });
 
+  it("refuses analysis-job purge when new work is claimed blocked but deletion state is not active", async () => {
+    const env = queueOnlyEnv();
+    const { id } = await enqueueAnalysisJob(jobInput(), env);
+    setJobStatus(id, "completed");
+
+    const result = await purgeTenantDeletionAnalysisJobsWhenSafe({
+      tenantId: "tenant_a",
+      newWorkBlocked: true
+    }, env);
+    const jobs = await listTenantAnalysisJobs({ tenantId: "tenant_a" }, env);
+    const serialized = JSON.stringify(result);
+
+    expect(result).toEqual({
+      ok: true,
+      privacy: "tenant-deletion-analysis-job-purge-metadata-only",
+      phase: "purge_analysis_jobs",
+      destructiveDataDeletion: true,
+      status: "blocked",
+      reason: "block_new_work_first",
+      deletedCount: 0,
+      next: "block_new_work_before_purge"
+    });
+    expect(jobs).toHaveLength(1);
+    expectNoPrivateDeletionFields(serialized);
+  });
+
   it("refuses analysis-job purge while queued, processing, or retryable jobs remain", async () => {
     const env = queueAndDeletionStateEnv();
     const queued = await enqueueAnalysisJob(jobInput({ headSha: "abc111" }), env);
