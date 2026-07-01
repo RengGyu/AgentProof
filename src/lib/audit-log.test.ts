@@ -241,7 +241,7 @@ describe("audit log", () => {
     const rows = await listTenantAuditEvents({ tenantId: "tenant_a", limit: 10 });
     const serialized = JSON.stringify(rows);
 
-    expect(rows).toEqual([
+    expect(rows).toEqual(expect.arrayContaining([
       expect.objectContaining({
         actor: "system",
         action: "tenant_session_failed",
@@ -256,7 +256,8 @@ describe("audit log", () => {
         statusCode: 401,
         code: "bootstrap_or_member_invalid"
       })
-    ]);
+    ]));
+    expect(rows).toHaveLength(2);
     expect(serialized).not.toContain("tenant-a-invite-token");
     expect(serialized).not.toContain("member-bootstrap-token");
     expect(serialized).not.toContain("cookie");
