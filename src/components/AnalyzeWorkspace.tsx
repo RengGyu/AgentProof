@@ -7,6 +7,7 @@ import {
   GitBranch,
   GitPullRequest,
   History,
+  LifeBuoy,
   Plug,
   Play,
   RotateCcw,
@@ -152,6 +153,9 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
           </div>
         </div>
         <div className="topbar-actions">
+          <a className="icon-link" href="/status" aria-label="Status and support">
+            <LifeBuoy size={15} />
+          </a>
           <a className="icon-link" href="/integrations" aria-label="Integration readiness">
             <Plug size={15} />
           </a>

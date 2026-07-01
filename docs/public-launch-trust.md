@@ -106,7 +106,7 @@ Support paths should be practical and evidence-based:
 - privacy and deletion requests tied to the retention policy
 - incident updates for sustained GitHub, storage, queue, Slack, or OpenAI outages
 
-Use `docs/support-status-feedback.md` as the beta support/status boundary. Support intake should collect only bounded setup, report, privacy, billing, and incident metadata; it must not become a channel for raw diffs, full logs, webhook payloads, report bodies, tokens, provider ids, payment data, table names, environment variable names, or service internals.
+Use `docs/support-status-feedback.md` as the beta support/status boundary. The public `/status` page is the first customer-facing support entry surface for setup blockers, report usefulness feedback, privacy questions, and incident/status communication. Support intake should collect only bounded setup, report, privacy, billing, and incident metadata; it must not become a channel for raw diffs, full logs, webhook payloads, report bodies, tokens, provider ids, payment data, table names, environment variable names, or service internals.
 
 ## Publication Checklist
 
