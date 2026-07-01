@@ -28,12 +28,13 @@ export function tenantSettingsUrl(tenantId: string): string {
 
 export function tenantHealthUrl(
   tenantId: string,
-  options: { probeGitHub?: boolean; repositoryId?: number } = {}
+  options: { probeGitHub?: boolean; repositoryId?: number; pullRequestNumber?: number } = {}
 ): string {
   const params = new URLSearchParams({ tenantId: tenantId.trim() });
 
   if (options.probeGitHub) params.set("probe", "github");
   if (isPositiveInteger(options.repositoryId)) params.set("repositoryId", String(options.repositoryId));
+  if (isPositiveInteger(options.pullRequestNumber)) params.set("pullRequestNumber", String(options.pullRequestNumber));
 
   return `/api/tenants/repositories/health?${params.toString()}`;
 }

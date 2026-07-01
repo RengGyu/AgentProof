@@ -171,20 +171,23 @@ describe("tenant dashboard client request helpers", () => {
   it("builds metadata-only and explicit GitHub probe health URLs", () => {
     const metadataOnly = tenantHealthUrl("tenant_a");
     const singleProbe = tenantHealthUrl("tenant_a", { probeGitHub: true, repositoryId: 456 });
+    const firstReportProbe = tenantHealthUrl("tenant_a", { probeGitHub: true, repositoryId: 456, pullRequestNumber: 42 });
     const broadProbe = tenantHealthUrl("tenant_a", { probeGitHub: true });
 
     expect(metadataOnly).toBe("/api/tenants/repositories/health?tenantId=tenant_a");
     expect(metadataOnly).not.toContain("probe=github");
     expect(metadataOnly).not.toContain("repositoryId");
     expect(singleProbe).toBe("/api/tenants/repositories/health?tenantId=tenant_a&probe=github&repositoryId=456");
+    expect(firstReportProbe).toBe("/api/tenants/repositories/health?tenantId=tenant_a&probe=github&repositoryId=456&pullRequestNumber=42");
     expect(broadProbe).toBe("/api/tenants/repositories/health?tenantId=tenant_a&probe=github");
   });
 
-  it("omits malformed repository ids from health probe URLs", () => {
-    const url = tenantHealthUrl("tenant_a", { probeGitHub: true, repositoryId: 0 });
+  it("omits malformed repository ids and pull request numbers from health probe URLs", () => {
+    const url = tenantHealthUrl("tenant_a", { probeGitHub: true, repositoryId: 0, pullRequestNumber: 0 });
 
     expect(url).toBe("/api/tenants/repositories/health?tenantId=tenant_a&probe=github");
     expect(url).not.toContain("repositoryId=0");
+    expect(url).not.toContain("pullRequestNumber=0");
   });
 
   it("builds allowlisted settings PATCH payloads without invite tokens or raw evidence fields", () => {
