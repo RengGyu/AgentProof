@@ -18,6 +18,7 @@ import {
 
 export type TenantDeletionExecutionActionKey =
   | "review_retention_policy"
+  | "review_billing_retention"
   | "block_new_work"
   | "purge_saved_reports"
   | "drain_analysis_jobs"
@@ -33,6 +34,7 @@ export type TenantDeletionExecutionActionStatus =
 
 export type TenantDeletionExecutionReason =
   | "draft_retention_policy"
+  | "billing_legal_retention_required"
   | "manual_store_review_required"
   | "store_unavailable"
   | "store_disabled"
@@ -202,6 +204,7 @@ export async function buildTenantDeletionExecutionPlan(
         status: "manual_review_required",
         reason: "draft_retention_policy"
       },
+      buildBillingRetentionReviewPlanAction(),
       blockNewWorkAction,
       savedReportPurgeAction,
       drainAction,
@@ -478,6 +481,14 @@ export async function runTenantDeletionGuardedStep(
     tenantId,
     newWorkBlocked: true
   }, env);
+}
+
+function buildBillingRetentionReviewPlanAction(): TenantDeletionExecutionAction {
+  return {
+    key: "review_billing_retention",
+    status: "manual_review_required",
+    reason: "billing_legal_retention_required"
+  };
 }
 
 function buildBlockNewWorkPlanAction(
