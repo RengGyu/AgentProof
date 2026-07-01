@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const publicCopyFiles = [
   ["public launch trust doc", "../../docs/public-launch-trust.md"],
+  ["support status feedback doc", "../../docs/support-status-feedback.md"],
   ["GitHub App onboarding doc", "../../docs/github-app-onboarding.md"],
   ["tenant data retention doc", "../../docs/tenant-data-retention.md"],
   ["saved report storage doc", "../../docs/saved-report-storage.md"],
@@ -104,5 +105,41 @@ describe("public launch copy boundary", () => {
     ]) {
       expect(source).toContain(expected);
     }
+  });
+
+  it("keeps support and status guidance summary-only and evidence-backed", () => {
+    const source = readFileSync(new URL("../../docs/support-status-feedback.md", import.meta.url), "utf8");
+
+    for (const expected of [
+      "Support, Status, And Feedback Boundary",
+      "summary-only report",
+      "If the evidence is unavailable, say it is unavailable",
+      "`setup_blocker`",
+      "`report_usefulness`",
+      "`false_positive_or_false_confidence`",
+      "`privacy_or_retention`",
+      "`billing_or_plan`",
+      "`incident_or_status`",
+      "Status updates must not expose tenant ids",
+      "Say `unclear` when setup, report usefulness, billing, deletion, or incident evidence is incomplete"
+    ]) {
+      expect(source).toContain(expected);
+    }
+
+    for (const forbidden of [
+      /ask customers to paste raw diffs/i,
+      /full logs, full webhook payloads/i,
+      /provider customer/i,
+      /subscription id/i,
+      /payment method/i,
+      /service-role key/i,
+      /environment variable name/i
+    ]) {
+      expect(source).toMatch(forbidden);
+    }
+
+    expect(source).not.toMatch(/\bSLA\b/);
+    expect(source).not.toMatch(/\b\d+%\b/);
+    expect(source).not.toMatch(/\$\d/);
   });
 });
