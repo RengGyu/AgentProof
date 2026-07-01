@@ -19,6 +19,7 @@ import {
 export type TenantDeletionExecutionActionKey =
   | "review_retention_policy"
   | "review_github_installation_revocation"
+  | "review_account_member_deletion"
   | "review_billing_retention"
   | "block_new_work"
   | "purge_saved_reports"
@@ -36,6 +37,7 @@ export type TenantDeletionExecutionActionStatus =
 export type TenantDeletionExecutionReason =
   | "draft_retention_policy"
   | "external_github_installation_revocation_required"
+  | "account_member_revocation_required"
   | "billing_legal_retention_required"
   | "manual_store_review_required"
   | "store_unavailable"
@@ -81,6 +83,7 @@ export interface TenantDeletionExecutionPlan {
     requiresDeletionStateBeforePurge: true;
     requiresActiveJobsDrainedBeforePurge: true;
     requiresRetentionPolicyReview: true;
+    requiresAccountMemberDeletionReview: true;
   };
   next:
     | "review_retention_policy_before_delete"
@@ -207,6 +210,7 @@ export async function buildTenantDeletionExecutionPlan(
         reason: "draft_retention_policy"
       },
       buildGitHubInstallationRevocationReviewPlanAction(),
+      buildAccountMemberDeletionReviewPlanAction(),
       buildBillingRetentionReviewPlanAction(),
       blockNewWorkAction,
       savedReportPurgeAction,
@@ -222,7 +226,8 @@ export async function buildTenantDeletionExecutionPlan(
       requiresNewWorkBlockedBeforePurge: true,
       requiresDeletionStateBeforePurge: true,
       requiresActiveJobsDrainedBeforePurge: true,
-      requiresRetentionPolicyReview: true
+      requiresRetentionPolicyReview: true,
+      requiresAccountMemberDeletionReview: true
     },
     next: nextExecutionStep(blockNewWorkAction, savedReportPurgeAction, drainAction, purgeAction)
   };
@@ -491,6 +496,14 @@ function buildGitHubInstallationRevocationReviewPlanAction(): TenantDeletionExec
     key: "review_github_installation_revocation",
     status: "manual_review_required",
     reason: "external_github_installation_revocation_required"
+  };
+}
+
+function buildAccountMemberDeletionReviewPlanAction(): TenantDeletionExecutionAction {
+  return {
+    key: "review_account_member_deletion",
+    status: "manual_review_required",
+    reason: "account_member_revocation_required"
   };
 }
 
