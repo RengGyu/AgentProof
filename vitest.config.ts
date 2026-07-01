@@ -11,6 +11,7 @@ export default defineConfig({
       "scripts/smoke-github-comment.test.mjs",
       "scripts/smoke-github-webhook.test.mjs",
       "scripts/smoke-github-webhook-live.test.mjs",
+      "scripts/ops-drill-gate-readiness.test.mjs",
       "scripts/smoke-analyze-pr-url.test.mjs",
       "scripts/smoke-real-pr-evaluation.test.mjs"
     ]

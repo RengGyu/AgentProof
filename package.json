@@ -17,6 +17,7 @@
     "smoke:github-webhook": "node scripts/smoke-github-webhook.mjs",
     "smoke:github-webhook-live": "node scripts/smoke-github-webhook-live.mjs",
     "smoke:openai": "node scripts/smoke-openai-verifier.mjs",
+    "ops:drill-gate": "node scripts/ops-drill-gate-readiness.mjs",
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
     "eval:promote:fixture": "node scripts/promote-eval-fixture.mjs",
     "eval:pack": "vitest run src/lib/evaluation-pack.test.ts scripts/build-eval-pack.test.mjs scripts/promote-eval-fixture.test.mjs",
