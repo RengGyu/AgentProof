@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   ClipboardCheck,
+  CreditCard,
   Database,
   GitBranch,
   GitPullRequest,
@@ -153,6 +154,9 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
           </div>
         </div>
         <div className="topbar-actions">
+          <a className="icon-link" href="/billing" aria-label="Billing beta boundary">
+            <CreditCard size={15} />
+          </a>
           <a className="icon-link" href="/status" aria-label="Status and support">
             <LifeBuoy size={15} />
           </a>

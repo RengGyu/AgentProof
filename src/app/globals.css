@@ -1696,7 +1696,7 @@ code {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: 44px 44px minmax(0, 1fr);
+    grid-template-columns: 44px 44px 44px minmax(0, 1fr);
     width: 100%;
   }
 
