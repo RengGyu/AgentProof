@@ -42,7 +42,8 @@ describe("GET /api/tenants/entitlements", () => {
       enabled: true,
       analysisEnabled: true,
       saveReportsEnabled: true,
-      commentEnabled: false
+      commentEnabled: false,
+      slackNotificationsEnabled: true
     });
 
     const response = await GET(new Request("http://localhost/api/tenants/entitlements?tenantId=tenant_a", {
@@ -76,7 +77,8 @@ describe("GET /api/tenants/entitlements", () => {
         connectedRepositoryCount: 1,
         analysisEnabledCount: 1,
         saveReportsEnabledCount: 1,
-        commentEnabledCount: 0
+        commentEnabledCount: 0,
+        slackNotificationsEnabledCount: 1
       },
       privacy: "plan-entitlement-summary-only",
       next: "review_plan_access"
@@ -85,6 +87,12 @@ describe("GET /api/tenants/entitlements", () => {
       {
         key: "github_app_analysis",
         label: "PR evidence reports",
+        state: "enabled",
+        enabled: true
+      },
+      {
+        key: "slack_summaries",
+        label: "Slack summaries",
         state: "enabled",
         enabled: true
       },

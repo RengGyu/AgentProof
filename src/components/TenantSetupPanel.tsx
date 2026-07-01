@@ -46,6 +46,7 @@ interface RepositorySettings {
   analysisEnabled: boolean;
   saveReportsEnabled: boolean;
   commentEnabled: boolean;
+  slackNotificationsEnabled: boolean;
 }
 
 interface RepositoryHealth extends RepositorySettings {
@@ -126,6 +127,7 @@ interface TenantEntitlementStatus {
     analysisEnabledCount?: number;
     saveReportsEnabledCount?: number;
     commentEnabledCount?: number;
+    slackNotificationsEnabledCount?: number;
   };
   features: TenantEntitlementFeature[];
   privacy: "plan-entitlement-summary-only";
@@ -320,7 +322,8 @@ const settingLabels = {
   enabled: "Grant enabled",
   analysisEnabled: "Run evidence reports",
   saveReportsEnabled: "Save summary links",
-  commentEnabled: "Marker comments"
+  commentEnabled: "Marker comments",
+  slackNotificationsEnabled: "Slack summaries"
 } satisfies Record<TenantRepositorySettingKey, string>;
 
 export function TenantSetupPanel() {

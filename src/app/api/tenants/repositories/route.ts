@@ -11,7 +11,13 @@ import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/
 
 const MAX_SETTINGS_REQUEST_BYTES = 20_000;
 const PATCH_KEYS = new Set(["tenantId", "installationId", "repositoryId", "settings"]);
-const SETTINGS_KEYS = new Set(["enabled", "analysisEnabled", "commentEnabled", "saveReportsEnabled"]);
+const SETTINGS_KEYS = new Set([
+  "enabled",
+  "analysisEnabled",
+  "commentEnabled",
+  "saveReportsEnabled",
+  "slackNotificationsEnabled"
+]);
 
 interface RepositorySettingsPatchRequest {
   tenantId?: unknown;
@@ -22,6 +28,7 @@ interface RepositorySettingsPatchRequest {
     analysisEnabled?: unknown;
     commentEnabled?: unknown;
     saveReportsEnabled?: unknown;
+    slackNotificationsEnabled?: unknown;
   };
 }
 
@@ -208,7 +215,8 @@ function toPublicRepositorySettings(grant: TenantRepositoryGrant) {
     enabled: grant.enabled,
     analysisEnabled: grant.analysisEnabled,
     saveReportsEnabled: grant.saveReportsEnabled,
-    commentEnabled: grant.commentEnabled
+    commentEnabled: grant.commentEnabled,
+    slackNotificationsEnabled: grant.slackNotificationsEnabled
   };
 }
 
@@ -231,6 +239,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     analysisEnabled?: boolean;
     commentEnabled?: boolean;
     saveReportsEnabled?: boolean;
+    slackNotificationsEnabled?: boolean;
   };
 } {
   const entries = Object.entries(value);
@@ -241,6 +250,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     analysisEnabled?: boolean;
     commentEnabled?: boolean;
     saveReportsEnabled?: boolean;
+    slackNotificationsEnabled?: boolean;
   } = {};
 
   for (const [key, setting] of entries) {

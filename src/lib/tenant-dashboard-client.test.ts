@@ -192,7 +192,7 @@ describe("tenant dashboard client request helpers", () => {
       tenantId: " tenant_a ",
       installationId: 123,
       repositoryId: 456,
-      setting: "commentEnabled",
+      setting: "slackNotificationsEnabled",
       value: true
     });
     const serialized = JSON.stringify(payload);
@@ -202,7 +202,7 @@ describe("tenant dashboard client request helpers", () => {
       installationId: 123,
       repositoryId: 456,
       settings: {
-        commentEnabled: true
+        slackNotificationsEnabled: true
       }
     });
     expect(Object.keys(payload)).toEqual(["tenantId", "installationId", "repositoryId", "settings"]);
@@ -211,5 +211,8 @@ describe("tenant dashboard client request helpers", () => {
     expect(serialized).not.toContain("logs");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+    expect(serialized).not.toContain("webhook");
+    expect(serialized).not.toContain("channel");
+    expect(serialized).not.toContain("workspace");
   });
 });

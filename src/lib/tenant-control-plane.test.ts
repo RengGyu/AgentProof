@@ -56,7 +56,8 @@ describe("tenant control plane helpers", () => {
         enabled: true,
         analysisEnabled: true,
         commentEnabled: false,
-        saveReportsEnabled: true
+        saveReportsEnabled: true,
+        slackNotificationsEnabled: false
       }
     });
 
@@ -159,7 +160,8 @@ describe("tenant control plane helpers", () => {
         enabled: true,
         analysisEnabled: true,
         commentEnabled: false,
-        saveReportsEnabled: true
+        saveReportsEnabled: true,
+        slackNotificationsEnabled: false
       }
     });
   });
@@ -238,7 +240,8 @@ describe("tenant control plane helpers", () => {
       repositoryId: 100,
       repositoryFullName: "RengGyu/AgentProof",
       saveReportsEnabled: true,
-      commentEnabled: true
+      commentEnabled: true,
+      slackNotificationsEnabled: true
     }, env);
 
     await expect(updateTenantRepositoryGrantSettings({
@@ -248,7 +251,8 @@ describe("tenant control plane helpers", () => {
       enabled: true,
       analysisEnabled: false,
       saveReportsEnabled: false,
-      commentEnabled: false
+      commentEnabled: false,
+      slackNotificationsEnabled: false
     }, env)).resolves.toEqual({
       tenantId: "tenant_test",
       installationId: 321,
@@ -257,7 +261,8 @@ describe("tenant control plane helpers", () => {
       enabled: true,
       analysisEnabled: false,
       commentEnabled: false,
-      saveReportsEnabled: false
+      saveReportsEnabled: false,
+      slackNotificationsEnabled: false
     });
     await expect(authorizeTenantRepositoryGrantAsync({
       installationId: 321,
@@ -591,6 +596,7 @@ describe("tenant control plane helpers", () => {
         analysis_enabled: true,
         comment_enabled: false,
         save_reports_enabled: true,
+        slack_notifications_enabled: true,
         raw_diff: "Patch excerpt should be ignored"
       }
     ]));
@@ -610,11 +616,12 @@ describe("tenant control plane helpers", () => {
         enabled: true,
         analysisEnabled: true,
         commentEnabled: false,
-        saveReportsEnabled: true
+        saveReportsEnabled: true,
+        slackNotificationsEnabled: true
       }
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled&order=repository_full_name.asc&limit=500",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled&order=repository_full_name.asc&limit=500",
       expect.objectContaining({ method: "GET" })
     );
   });
@@ -637,7 +644,8 @@ describe("tenant control plane helpers", () => {
           enabled: true,
           analysis_enabled: true,
           comment_enabled: true,
-          save_reports_enabled: false
+          save_reports_enabled: false,
+          slack_notifications_enabled: true
         }
       ]);
     });
@@ -653,7 +661,8 @@ describe("tenant control plane helpers", () => {
       installationId: 321,
       repositoryId: 100,
       commentEnabled: true,
-      saveReportsEnabled: false
+      saveReportsEnabled: false,
+      slackNotificationsEnabled: true
     }, env);
     const [, init] = fetchMock.mock.calls[1] as unknown as [unknown, RequestInit];
     const body = JSON.parse(String(init.body));
@@ -671,7 +680,7 @@ describe("tenant control plane helpers", () => {
       expect.objectContaining({ method: "HEAD" })
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&installation_id=eq.321&repository_id=eq.100&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&installation_id=eq.321&repository_id=eq.100&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled",
       expect.objectContaining({ method: "PATCH" })
     );
     expect(body).toMatchObject({
@@ -693,7 +702,8 @@ describe("tenant control plane helpers", () => {
         enabled: false,
         analysis_enabled: false,
         comment_enabled: false,
-        save_reports_enabled: false
+        save_reports_enabled: false,
+        slack_notifications_enabled: false
       }
     ]));
     vi.stubGlobal("fetch", fetchMock);
@@ -710,7 +720,7 @@ describe("tenant control plane helpers", () => {
 
     expect(result.updatedCount).toBe(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled",
       expect.objectContaining({ method: "PATCH" })
     );
     expect(body).toMatchObject({
@@ -718,6 +728,7 @@ describe("tenant control plane helpers", () => {
       analysis_enabled: false,
       comment_enabled: false,
       save_reports_enabled: false,
+      slack_notifications_enabled: false,
       updated_at: expect.any(String)
     });
     expect(serializedBody).not.toContain("service-role-secret");
@@ -740,7 +751,7 @@ describe("tenant control plane helpers", () => {
       grants: []
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled",
+      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled",
       expect.objectContaining({ method: "PATCH" })
     );
   });
@@ -803,6 +814,7 @@ describe("tenant control plane helpers", () => {
       analysis_enabled: false,
       comment_enabled: false,
       save_reports_enabled: false,
+      slack_notifications_enabled: false,
       updated_at: expect.any(String)
     });
     expect(serializedResult).not.toContain("tenant_test");

@@ -57,6 +57,7 @@ export interface TenantEntitlementRepositorySummary {
   analysisEnabledCount?: number;
   saveReportsEnabledCount?: number;
   commentEnabledCount?: number;
+  slackNotificationsEnabledCount?: number;
 }
 
 export interface TenantEntitlementSummary {
@@ -181,7 +182,8 @@ async function readRepositoryBoundary(
       connectedRepositoryCount: grants.length,
       analysisEnabledCount: grants.filter((grant) => grant.enabled && grant.analysisEnabled).length,
       saveReportsEnabledCount: grants.filter((grant) => grant.enabled && grant.saveReportsEnabled).length,
-      commentEnabledCount: grants.filter((grant) => grant.enabled && grant.commentEnabled).length
+      commentEnabledCount: grants.filter((grant) => grant.enabled && grant.commentEnabled).length,
+      slackNotificationsEnabledCount: grants.filter((grant) => grant.enabled && grant.slackNotificationsEnabled).length
     };
   } catch {
     return { state: "unavailable" };
@@ -234,10 +236,7 @@ function buildFeatures(input: {
     feature("connected_repository_verification", repositoryVerificationState(input)),
     feature("saved_summary_links", repoSettingState(input, "saveReportsEnabledCount")),
     feature("marker_comments", repoSettingState(input, "commentEnabledCount")),
-    feature("slack_summaries", {
-      state: "not_configured",
-      reason: "tenant_slack_opt_in_not_implemented"
-    }),
+    feature("slack_summaries", repoSettingState(input, "slackNotificationsEnabledCount")),
     feature("structured_llm_verifier", {
       state: "not_configured",
       reason: "tenant_llm_opt_in_not_implemented"
@@ -285,7 +284,7 @@ function repoSettingState(
     account: TenantEntitlementAccountSummary;
     repositories: TenantEntitlementRepositorySummary;
   },
-  countKey: "saveReportsEnabledCount" | "commentEnabledCount"
+  countKey: "saveReportsEnabledCount" | "commentEnabledCount" | "slackNotificationsEnabledCount"
 ): Pick<TenantEntitlementFeature, "state" | "reason"> {
   const base = activeTenantBaseState(input.account);
   if (base) return base;

@@ -53,7 +53,7 @@ describe("tenant dashboard setup warnings", () => {
         features: [
           { key: "github_app_analysis", state: "disabled", enabled: false },
           { key: "structured_llm_verifier", state: "unavailable", enabled: false },
-          { key: "slack_summaries", state: "not_configured", enabled: false }
+          { key: "slack_summaries", state: "disabled", enabled: false }
         ]
       },
       repositoryHealth: [

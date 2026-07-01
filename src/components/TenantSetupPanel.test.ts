@@ -46,6 +46,15 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).not.toContain("Merge");
   });
 
+  it("surfaces Slack summaries as opt-in metadata without provider configuration", () => {
+    expect(source).toContain("slackNotificationsEnabled");
+    expect(source).toContain("Slack summaries");
+    expect(source).not.toContain("Slack webhook");
+    expect(source).not.toContain("webhookUrl");
+    expect(source).not.toContain("workspaceId");
+    expect(source).not.toContain("channelId");
+  });
+
   it("uses read-only usage status instead of quota reservation paths", () => {
     expect(source).toContain("tenantUsageUrl");
     expect(source).not.toContain("reserveUsageQuota");

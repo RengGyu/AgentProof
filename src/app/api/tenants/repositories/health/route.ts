@@ -43,6 +43,7 @@ interface RepositoryHealth {
   analysisEnabled: boolean;
   saveReportsEnabled: boolean;
   commentEnabled: boolean;
+  slackNotificationsEnabled: boolean;
   status: GrantHealthStatus;
   githubAccess: GitHubAccessStatus;
   checks: {
@@ -227,6 +228,7 @@ function toRepositoryHealth(
     analysisEnabled: grant.analysisEnabled,
     saveReportsEnabled: grant.saveReportsEnabled,
     commentEnabled: grant.commentEnabled,
+    slackNotificationsEnabled: grant.slackNotificationsEnabled,
     status,
     githubAccess: options.githubAccess,
     checks: {

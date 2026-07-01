@@ -28,7 +28,8 @@ describe("tenant plan entitlement summary boundary", () => {
       enabled: true,
       analysisEnabled: true,
       saveReportsEnabled: true,
-      commentEnabled: false
+      commentEnabled: false,
+      slackNotificationsEnabled: true
     });
 
     const result = await readTenantEntitlementSummary({ tenantId: "tenant_a" });
@@ -58,7 +59,8 @@ describe("tenant plan entitlement summary boundary", () => {
         connectedRepositoryCount: 1,
         analysisEnabledCount: 1,
         saveReportsEnabledCount: 1,
-        commentEnabledCount: 0
+        commentEnabledCount: 0,
+        slackNotificationsEnabledCount: 1
       }
     });
     expect(result.features.find((feature) => feature.key === "github_app_analysis")).toMatchObject({
@@ -73,6 +75,10 @@ describe("tenant plan entitlement summary boundary", () => {
       state: "disabled",
       enabled: false,
       reason: "repo_setting_disabled"
+    });
+    expect(result.features.find((feature) => feature.key === "slack_summaries")).toMatchObject({
+      state: "enabled",
+      enabled: true
     });
     expect(serialized).not.toContain("RengGyu/AgentProof");
     expect(serialized).not.toContain("installation");
@@ -168,7 +174,8 @@ describe("tenant plan entitlement summary boundary", () => {
         enabled: true,
         analysisEnabled: true,
         saveReportsEnabled: true,
-        commentEnabled: true
+        commentEnabled: true,
+        slackNotificationsEnabled: true
       }
     ]));
 
@@ -180,6 +187,11 @@ describe("tenant plan entitlement summary boundary", () => {
       reason: "tenant_not_active"
     });
     expect(result.features.find((feature) => feature.key === "marker_comments")).toMatchObject({
+      state: "disabled",
+      enabled: false,
+      reason: "tenant_not_active"
+    });
+    expect(result.features.find((feature) => feature.key === "slack_summaries")).toMatchObject({
       state: "disabled",
       enabled: false,
       reason: "tenant_not_active"

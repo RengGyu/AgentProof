@@ -21,6 +21,7 @@ export interface TenantRepositoryGrant {
   analysisEnabled: boolean;
   commentEnabled: boolean;
   saveReportsEnabled: boolean;
+  slackNotificationsEnabled: boolean;
 }
 
 export interface TenantRepositoryGrantDecision {
@@ -38,6 +39,7 @@ export interface TenantRepositoryGrantSettingsInput {
   analysisEnabled?: unknown;
   commentEnabled?: unknown;
   saveReportsEnabled?: unknown;
+  slackNotificationsEnabled?: unknown;
 }
 
 export interface TenantRepositoryGrantDisableResult {
@@ -71,6 +73,7 @@ interface TenantRepositoryGrantInput {
   analysisEnabled?: unknown;
   commentEnabled?: unknown;
   saveReportsEnabled?: unknown;
+  slackNotificationsEnabled?: unknown;
 }
 
 interface TenantRepositoryGrantRow {
@@ -82,6 +85,7 @@ interface TenantRepositoryGrantRow {
   analysis_enabled: boolean;
   comment_enabled: boolean;
   save_reports_enabled: boolean;
+  slack_notifications_enabled: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -95,6 +99,9 @@ interface TenantGrantStoreConfig {
 type GlobalWithTenantGrants = typeof globalThis & {
   __agentproofTenantRepositoryGrants?: Map<string, TenantRepositoryGrant>;
 };
+
+const TENANT_REPOSITORY_GRANT_SELECT =
+  "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled";
 
 export class TenantControlPlaneStoreError extends Error {
   constructor(message: string) {
@@ -483,7 +490,8 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
     enabled: input.enabled !== false,
     analysisEnabled: input.analysisEnabled !== false,
     commentEnabled: input.commentEnabled === true,
-    saveReportsEnabled: input.saveReportsEnabled === true
+    saveReportsEnabled: input.saveReportsEnabled === true,
+    slackNotificationsEnabled: input.slackNotificationsEnabled === true
   };
 }
 
@@ -532,7 +540,7 @@ async function listSupabaseTenantRepositoryGrants(
     config,
     [
       `?tenant_id=eq.${encodeURIComponent(tenantId)}`,
-      "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled",
+      TENANT_REPOSITORY_GRANT_SELECT,
       "order=repository_full_name.asc",
       "limit=500"
     ].join("&"),
@@ -594,7 +602,7 @@ async function findSupabaseTenantRepositoryGrant(
       input.repositoryId
         ? `repository_id=eq.${encodeURIComponent(String(input.repositoryId))}`
         : `repository_full_name=eq.${encodeURIComponent(input.repositoryFullName)}`,
-      "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled",
+      TENANT_REPOSITORY_GRANT_SELECT,
       "limit=1"
     ].join("&"),
     { method: "GET" }
@@ -616,7 +624,7 @@ async function updateSupabaseTenantRepositoryGrantSettings(
     tenantId: string;
     installationId: number;
     repositoryId: number;
-    settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled">>;
+    settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled">>;
   }
 ): Promise<TenantRepositoryGrant> {
   const body = toTenantRepositoryGrantSettingsRow(input.settings);
@@ -626,7 +634,7 @@ async function updateSupabaseTenantRepositoryGrantSettings(
       `?tenant_id=eq.${encodeURIComponent(input.tenantId)}`,
       `installation_id=eq.${encodeURIComponent(String(input.installationId))}`,
       `repository_id=eq.${encodeURIComponent(String(input.repositoryId))}`,
-      "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled"
+      TENANT_REPOSITORY_GRANT_SELECT
     ].join("&"),
     {
       method: "PATCH",
@@ -663,7 +671,7 @@ async function disableSupabaseTenantRepositoryGrants(
     ...(input.repositoryIds?.length
       ? [`repository_id=in.(${input.repositoryIds.map((id) => encodeURIComponent(String(id))).join(",")})`]
       : []),
-    "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled"
+    TENANT_REPOSITORY_GRANT_SELECT
   ];
   const response = await supabaseTenantGrantFetch(config, filters.join("&"), {
     method: "PATCH",
@@ -676,6 +684,7 @@ async function disableSupabaseTenantRepositoryGrants(
       analysis_enabled: false,
       comment_enabled: false,
       save_reports_enabled: false,
+      slack_notifications_enabled: false,
       updated_at: new Date().toISOString()
     })
   });
@@ -715,6 +724,7 @@ async function disableSupabaseTenantRepositoryGrantsForTenant(
         analysis_enabled: false,
         comment_enabled: false,
         save_reports_enabled: false,
+        slack_notifications_enabled: false,
         updated_at: new Date().toISOString()
       })
     }
@@ -768,13 +778,14 @@ function toTenantRepositoryGrantRow(grant: TenantRepositoryGrant, now: string): 
     analysis_enabled: grant.analysisEnabled,
     comment_enabled: grant.commentEnabled,
     save_reports_enabled: grant.saveReportsEnabled,
+    slack_notifications_enabled: grant.slackNotificationsEnabled,
     created_at: now,
     updated_at: now
   };
 }
 
 function toTenantRepositoryGrantSettingsRow(
-  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled">>
+  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled">>
 ) {
   const row: Partial<TenantRepositoryGrantRow> = {};
 
@@ -782,6 +793,7 @@ function toTenantRepositoryGrantSettingsRow(
   if (settings.analysisEnabled !== undefined) row.analysis_enabled = settings.analysisEnabled;
   if (settings.commentEnabled !== undefined) row.comment_enabled = settings.commentEnabled;
   if (settings.saveReportsEnabled !== undefined) row.save_reports_enabled = settings.saveReportsEnabled;
+  if (settings.slackNotificationsEnabled !== undefined) row.slack_notifications_enabled = settings.slackNotificationsEnabled;
 
   return row;
 }
@@ -798,7 +810,8 @@ function rowToTenantRepositoryGrant(row: unknown): TenantRepositoryGrant | undef
     enabled: value.enabled,
     analysisEnabled: value.analysis_enabled,
     commentEnabled: value.comment_enabled,
-    saveReportsEnabled: value.save_reports_enabled
+    saveReportsEnabled: value.save_reports_enabled,
+    slackNotificationsEnabled: value.slack_notifications_enabled
   }) ?? undefined;
 }
 
@@ -806,7 +819,7 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
   tenantId: string;
   installationId: number;
   repositoryId: number;
-  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled">>;
+  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled">>;
 } | null {
   const tenantId = normalizeId(input.tenantId);
   const installationId = normalizeInstallationId(input.installationId);
@@ -815,7 +828,8 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
     ...(typeof input.enabled === "boolean" ? { enabled: input.enabled } : {}),
     ...(typeof input.analysisEnabled === "boolean" ? { analysisEnabled: input.analysisEnabled } : {}),
     ...(typeof input.commentEnabled === "boolean" ? { commentEnabled: input.commentEnabled } : {}),
-    ...(typeof input.saveReportsEnabled === "boolean" ? { saveReportsEnabled: input.saveReportsEnabled } : {})
+    ...(typeof input.saveReportsEnabled === "boolean" ? { saveReportsEnabled: input.saveReportsEnabled } : {}),
+    ...(typeof input.slackNotificationsEnabled === "boolean" ? { slackNotificationsEnabled: input.slackNotificationsEnabled } : {})
   };
 
   if (!tenantId || !installationId || !repositoryId || Object.keys(settings).length === 0) {
@@ -964,7 +978,8 @@ function disableMemoryTenantRepositoryGrants(input: { installationId: number; re
       enabled: false,
       analysisEnabled: false,
       commentEnabled: false,
-      saveReportsEnabled: false
+      saveReportsEnabled: false,
+      slackNotificationsEnabled: false
     };
     tenantGrantMemoryStore().set(tenantGrantKey(next.installationId, next.repositoryFullName, next.repositoryId), next);
     updated.push(next);
@@ -987,7 +1002,8 @@ function disableMemoryTenantRepositoryGrantsForTenant(tenantId: string): number 
       enabled: false,
       analysisEnabled: false,
       commentEnabled: false,
-      saveReportsEnabled: false
+      saveReportsEnabled: false,
+      slackNotificationsEnabled: false
     };
     tenantGrantMemoryStore().set(tenantGrantKey(next.installationId, next.repositoryFullName, next.repositoryId), next);
     disabledCount += 1;

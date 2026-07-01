@@ -320,6 +320,7 @@ create table if not exists agentproof_tenant_repository_grants (
   analysis_enabled boolean not null default true,
   comment_enabled boolean not null default false,
   save_reports_enabled boolean not null default false,
+  slack_notifications_enabled boolean not null default false,
   created_at timestamptz not null,
   updated_at timestamptz not null,
   primary key (tenant_id, installation_id, repository_id)

@@ -52,7 +52,8 @@ describe("/api/tenants/repositories", () => {
       repositoryId: 100,
       repositoryFullName: "RengGyu/AgentProof",
       saveReportsEnabled: true,
-      commentEnabled: false
+      commentEnabled: false,
+      slackNotificationsEnabled: true
     });
     await createTenantRepositoryGrant({
       tenantId: "tenant_b",
@@ -82,7 +83,8 @@ describe("/api/tenants/repositories", () => {
           enabled: true,
           analysisEnabled: true,
           saveReportsEnabled: true,
-          commentEnabled: false
+          commentEnabled: false,
+          slackNotificationsEnabled: true
         }
       ],
       privacy: "grant-metadata-only",
@@ -129,7 +131,8 @@ describe("/api/tenants/repositories", () => {
       repositoryId: 100,
       repositoryFullName: "RengGyu/AgentProof",
       saveReportsEnabled: true,
-      commentEnabled: true
+      commentEnabled: true,
+      slackNotificationsEnabled: true
     });
 
     const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
@@ -142,7 +145,8 @@ describe("/api/tenants/repositories", () => {
         settings: {
           analysisEnabled: false,
           saveReportsEnabled: false,
-          commentEnabled: false
+          commentEnabled: false,
+          slackNotificationsEnabled: false
         }
       })
     }));
@@ -161,7 +165,8 @@ describe("/api/tenants/repositories", () => {
         enabled: true,
         analysisEnabled: false,
         saveReportsEnabled: false,
-        commentEnabled: false
+        commentEnabled: false,
+        slackNotificationsEnabled: false
       },
       privacy: "grant-metadata-only",
       next: "repository_settings_saved"
@@ -170,7 +175,8 @@ describe("/api/tenants/repositories", () => {
       repositoryFullName: "RengGyu/AgentProof",
       analysisEnabled: false,
       saveReportsEnabled: false,
-      commentEnabled: false
+      commentEnabled: false,
+      slackNotificationsEnabled: false
     });
     expect(serialized).not.toContain("Patch excerpt");
   });

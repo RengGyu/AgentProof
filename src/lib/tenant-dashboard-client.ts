@@ -4,7 +4,8 @@ export type TenantRepositorySettingKey =
   | "enabled"
   | "analysisEnabled"
   | "saveReportsEnabled"
-  | "commentEnabled";
+  | "commentEnabled"
+  | "slackNotificationsEnabled";
 
 export function tenantInviteHeaders(inviteToken: string): HeadersInit {
   const token = inviteToken.trim();

@@ -111,6 +111,7 @@ describe("GET /api/tenants/repositories/health", () => {
           analysisEnabled: true,
           saveReportsEnabled: true,
           commentEnabled: false,
+          slackNotificationsEnabled: false,
           status: "app-credentials-not-ready",
           githubAccess: "not-checked",
           checks: {
