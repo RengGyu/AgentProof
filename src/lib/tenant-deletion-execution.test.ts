@@ -143,6 +143,7 @@ describe("tenant deletion execution boundary", () => {
     });
     expect(plan.actions.map((action) => action.key)).toEqual([
       "review_retention_policy",
+      "review_billing_retention",
       "block_new_work",
       "purge_saved_reports",
       "drain_analysis_jobs",
@@ -169,6 +170,30 @@ describe("tenant deletion execution boundary", () => {
     expectNoPrivateDeletionFields(serialized);
   });
 
+  it("keeps billing retention as manual review instead of implying deletion completion", async () => {
+    const env = memoryEnv();
+
+    const plan = await buildTenantDeletionExecutionPlan({
+      tenantId: "tenant_a",
+      newWorkBlocked: true
+    }, env);
+    const serialized = JSON.stringify(plan);
+
+    expect(plan.actions.find((action) => action.key === "review_billing_retention")).toEqual({
+      key: "review_billing_retention",
+      status: "manual_review_required",
+      reason: "billing_legal_retention_required"
+    });
+    expect(plan.actions.find((action) => action.key === "review_billing_retention")).not.toMatchObject({
+      status: "completed"
+    });
+    expect(serialized).not.toContain("providerCustomerId");
+    expect(serialized).not.toContain("providerSubscriptionId");
+    expect(serialized).not.toContain("invoice");
+    expect(serialized).not.toContain("payment");
+    expectNoPrivateDeletionFields(serialized);
+  });
+
   it("marks saved-report purge ready after new work is blocked while keeping later job purge blocked", async () => {
     const env = queueOnlyEnv();
     await createSavedReport(savedReport(), { tenantId: "tenant_a" });
@@ -183,6 +208,7 @@ describe("tenant deletion execution boundary", () => {
     expect(plan.next).toBe("purge_saved_reports");
     expect(plan.actions.map((action) => action.key)).toEqual([
       "review_retention_policy",
+      "review_billing_retention",
       "block_new_work",
       "purge_saved_reports",
       "drain_analysis_jobs",
