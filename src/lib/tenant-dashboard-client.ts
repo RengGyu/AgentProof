@@ -12,6 +12,10 @@ export function tenantInviteHeaders(inviteToken: string): HeadersInit {
   return token ? { "x-agentproof-beta-invite-token": token } : {};
 }
 
+export function tenantMutationHeaders(): HeadersInit {
+  return { "x-agentproof-csrf": "same-origin" };
+}
+
 export function tenantSessionPayload(input: { tenantId: string }): {
   tenantId: string;
 } {

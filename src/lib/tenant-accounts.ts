@@ -82,6 +82,22 @@ export class TenantAccountStoreError extends Error {
   }
 }
 
+export type TenantAccountLifecycleErrorCode =
+  | "account_not_active"
+  | "invalid_member_update"
+  | "last_owner_required"
+  | "member_not_found";
+
+export class TenantAccountLifecycleError extends Error {
+  constructor(
+    public readonly code: TenantAccountLifecycleErrorCode,
+    message: string
+  ) {
+    super(message);
+    this.name = "TenantAccountLifecycleError";
+  }
+}
+
 export async function readTenantAccountSummary(
   input: { tenantId?: unknown },
   env = process.env
@@ -121,6 +137,87 @@ export async function readTenantAccountSummary(
     configured: false,
     members: []
   });
+}
+
+export async function updateTenantMemberLifecycle(
+  input: {
+    tenantId?: unknown;
+    memberId?: unknown;
+    role?: unknown;
+    status?: unknown;
+  },
+  env = process.env
+): Promise<TenantMemberSummary> {
+  const tenantId = normalizeTenantId(input.tenantId);
+  const memberId = normalizeMemberId(input.memberId);
+  const requestedRole = input.role === undefined ? undefined : normalizeMemberRole(input.role);
+  const requestedStatus = input.status === undefined ? undefined : normalizeMemberStatus(input.status);
+  if (!tenantId || !memberId || (input.role !== undefined && !requestedRole) || (input.status !== undefined && !requestedStatus)) {
+    throw new TenantAccountLifecycleError("invalid_member_update", "Tenant member lifecycle update is invalid.");
+  }
+  if (requestedRole === undefined && requestedStatus === undefined) {
+    throw new TenantAccountLifecycleError("invalid_member_update", "Tenant member lifecycle update has no changes.");
+  }
+
+  const config = getTenantAccountStoreConfig(env);
+  if (!config) {
+    throw new TenantAccountStoreError("Tenant member lifecycle updates require durable account storage.");
+  }
+
+  const summary = await readTenantAccountSummary({ tenantId }, env);
+  if (summary.account.status !== "active" && summary.account.status !== "trialing") {
+    throw new TenantAccountLifecycleError("account_not_active", "Tenant account is not active.");
+  }
+
+  const current = summary.members.find((member) => member.memberId === memberId);
+  if (!current) {
+    throw new TenantAccountLifecycleError("member_not_found", "Tenant member was not found.");
+  }
+
+  const nextRole = requestedRole ?? current.role;
+  const nextStatus = requestedStatus ?? current.status;
+  const activeOwnerCount = summary.members.filter((member) =>
+    member.role === "owner" && member.status === "active"
+  ).length;
+  const targetIsActiveOwner = current.role === "owner" && current.status === "active";
+  const targetRemainsActiveOwner = nextRole === "owner" && nextStatus === "active";
+
+  if (targetIsActiveOwner && !targetRemainsActiveOwner && activeOwnerCount <= 1) {
+    throw new TenantAccountLifecycleError("last_owner_required", "Tenant must keep at least one active owner.");
+  }
+
+  if (nextRole === current.role && nextStatus === current.status) {
+    return current;
+  }
+
+  const params = new URLSearchParams({
+    tenant_id: `eq.${tenantId}`,
+    member_id: `eq.${memberId}`,
+    select: "tenant_id,member_id,role,status"
+  });
+  const response = await tenantAccountFetch(config, config.membersTable, `?${params.toString()}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify({
+      role: nextRole,
+      status: nextStatus
+    })
+  });
+
+  if (!response.ok) {
+    throw new TenantAccountStoreError(`Tenant member lifecycle update failed with HTTP ${response.status}.`);
+  }
+
+  const rows = await response.json().catch(() => []) as unknown;
+  const updated = Array.isArray(rows) ? normalizeSupabaseTenantMemberRow(rows[0], tenantId) : null;
+  if (!updated || updated.memberId !== memberId) {
+    throw new TenantAccountLifecycleError("member_not_found", "Tenant member update returned no member.");
+  }
+
+  return updated;
 }
 
 export function readTenantAccountSeeds(env = process.env): TenantAccountSeed[] | null {

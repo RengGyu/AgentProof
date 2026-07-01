@@ -3,10 +3,14 @@ import {
   getGitHubOnboardingConfigStatus,
   GitHubOnboardingStoreError
 } from "@/lib/github-onboarding";
+import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson, parseJsonSafely } from "@/lib/http";
 
 export async function POST(request: Request) {
+  const csrf = verifySameOriginMutationRequest(request);
+  if (!csrf.ok) return csrfFailureResponse();
+
   const status = getGitHubOnboardingConfigStatus();
   if (!status.configured) {
     return noStoreJson({

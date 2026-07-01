@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  TenantAccountLifecycleError,
+  TenantAccountStoreError,
   readTenantAccountSeeds,
-  readTenantAccountSummary
+  readTenantAccountSummary,
+  updateTenantMemberLifecycle
 } from "./tenant-accounts";
 
 describe("tenant account metadata boundary", () => {
@@ -222,4 +225,119 @@ describe("tenant account metadata boundary", () => {
     expect(result.members).toHaveLength(100);
     expect(JSON.stringify(result)).not.toContain("member_101");
   });
+
+  it("patches only member role and status through a durable account store", async () => {
+    stubSupabaseAccountEnv();
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("agentproof_tenants")) {
+        return Response.json([
+          { tenant_id: "tenant_a", name: "AgentProof Team", status: "active", plan: "team" }
+        ]);
+      }
+
+      if (init?.method === "PATCH") {
+        return Response.json([
+          { tenant_id: "tenant_a", member_id: "member_1", role: "admin", status: "disabled", email: "member@example.com" }
+        ]);
+      }
+
+      return Response.json([
+        { tenant_id: "tenant_a", member_id: "owner_1", role: "owner", status: "active" },
+        { tenant_id: "tenant_a", member_id: "member_1", role: "member", status: "active", token: "github_pat_secret_should_not_leak" }
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateTenantMemberLifecycle({
+      tenantId: "tenant_a",
+      memberId: "member_1",
+      role: "admin",
+      status: "disabled"
+    });
+    const [patchUrl, patchInit] = fetchMock.mock.calls[2] as unknown as [string, RequestInit];
+    const patchBody = JSON.parse(String(patchInit.body));
+    const serialized = JSON.stringify(result);
+
+    expect(result).toEqual({ memberId: "member_1", role: "admin", status: "disabled" });
+    expect(patchInit.method).toBe("PATCH");
+    expect(patchUrl).toContain("agentproof_tenant_members");
+    expect(patchUrl).toContain("tenant_id=eq.tenant_a");
+    expect(patchUrl).toContain("member_id=eq.member_1");
+    expect(patchUrl).toContain("select=tenant_id%2Cmember_id%2Crole%2Cstatus");
+    expect(patchBody).toEqual({ role: "admin", status: "disabled" });
+    expect(serialized).not.toContain("member@example.com");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("agentproof_tenant_members");
+    expect(serialized).not.toContain("service-role-secret");
+  });
+
+  it("rejects malformed member lifecycle changes before storage access", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateTenantMemberLifecycle({
+      tenantId: "tenant_a",
+      memberId: "member_1",
+      role: "maintainer"
+    })).rejects.toMatchObject({
+      name: "TenantAccountLifecycleError",
+      code: "invalid_member_update"
+    });
+    await expect(updateTenantMemberLifecycle({
+      tenantId: "tenant_a",
+      memberId: "member_1"
+    })).rejects.toMatchObject({
+      name: "TenantAccountLifecycleError",
+      code: "invalid_member_update"
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("requires durable account storage for member lifecycle updates", async () => {
+    await expect(updateTenantMemberLifecycle({
+      tenantId: "tenant_a",
+      memberId: "member_1",
+      status: "disabled"
+    })).rejects.toBeInstanceOf(TenantAccountStoreError);
+  });
+
+  it("does not disable or demote the last active owner", async () => {
+    stubSupabaseAccountEnv();
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("agentproof_tenants")) {
+        return Response.json([
+          { tenant_id: "tenant_a", name: "AgentProof Team", status: "active", plan: "team" }
+        ]);
+      }
+
+      if (init?.method === "PATCH") {
+        throw new Error("last-owner guard should block before PATCH");
+      }
+
+      return Response.json([
+        { tenant_id: "tenant_a", member_id: "owner_1", role: "owner", status: "active" },
+        { tenant_id: "tenant_a", member_id: "admin_1", role: "admin", status: "disabled" }
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateTenantMemberLifecycle({
+      tenantId: "tenant_a",
+      memberId: "owner_1",
+      status: "disabled"
+    })).rejects.toBeInstanceOf(TenantAccountLifecycleError);
+    await expect(updateTenantMemberLifecycle({
+      tenantId: "tenant_a",
+      memberId: "owner_1",
+      role: "admin"
+    })).rejects.toMatchObject({
+      code: "last_owner_required"
+    });
+    expect(fetchMock.mock.calls.every(([, init]) => init?.method !== "PATCH")).toBe(true);
+  });
 });
+
+function stubSupabaseAccountEnv() {
+  vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+  vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+}

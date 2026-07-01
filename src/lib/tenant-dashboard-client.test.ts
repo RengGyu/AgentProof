@@ -3,6 +3,7 @@ import {
   tenantDeletionPreviewUrl,
   tenantHealthUrl,
   tenantInviteHeaders,
+  tenantMutationHeaders,
   tenantAnalysisJobsUrl,
   tenantAccountUrl,
   tenantEntitlementsUrl,
@@ -29,6 +30,15 @@ describe("tenant dashboard client request helpers", () => {
 
   it("omits blank tenant invite tokens from headers", () => {
     expect(tenantInviteHeaders("  ")).toEqual({});
+  });
+
+  it("adds an explicit same-origin marker for tenant mutations without credentials", () => {
+    const headers = tenantMutationHeaders();
+
+    expect(headers).toEqual({ "x-agentproof-csrf": "same-origin" });
+    expect(JSON.stringify(headers)).not.toContain("token");
+    expect(JSON.stringify(headers)).not.toContain("cookie");
+    expect(JSON.stringify(headers)).not.toContain("secret");
   });
 
   it("builds usage status URLs without invite tokens or raw usage internals", () => {

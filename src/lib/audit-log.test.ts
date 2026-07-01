@@ -220,6 +220,52 @@ describe("audit log", () => {
     expect(serialized).not.toContain("token");
   });
 
+  it("lists tenant session failure audit summaries without raw credentials", async () => {
+    await recordAuditEvent({
+      action: "tenant_session_failed",
+      result: "failed",
+      actor: "system",
+      tenantId: "tenant_a",
+      statusCode: 401,
+      code: "invite_invalid"
+    });
+    await recordAuditEvent({
+      action: "tenant_auth_session_failed",
+      result: "failed",
+      actor: "system",
+      tenantId: "tenant_a",
+      statusCode: 401,
+      code: "bootstrap_or_member_invalid"
+    });
+
+    const rows = await listTenantAuditEvents({ tenantId: "tenant_a", limit: 10 });
+    const serialized = JSON.stringify(rows);
+
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actor: "system",
+        action: "tenant_session_failed",
+        result: "failed",
+        statusCode: 401,
+        code: "invite_invalid"
+      }),
+      expect.objectContaining({
+        actor: "system",
+        action: "tenant_auth_session_failed",
+        result: "failed",
+        statusCode: 401,
+        code: "bootstrap_or_member_invalid"
+      })
+    ]));
+    expect(rows).toHaveLength(2);
+    expect(serialized).not.toContain("tenant-a-invite-token");
+    expect(serialized).not.toContain("member-bootstrap-token");
+    expect(serialized).not.toContain("cookie");
+    expect(serialized).not.toContain("sessionHash");
+    expect(serialized).not.toContain("tokenHash");
+    expect(serialized).not.toContain("\"metadata\"");
+  });
+
   it("lists Supabase audit summaries with server-only credentials and filters unsafe rows", async () => {
     const env = {
       AGENTPROOF_AUDIT_SUPABASE_URL: "https://agentproof-test.supabase.co",

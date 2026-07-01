@@ -17,6 +17,7 @@ describe("POST /api/github/onboarding/start", () => {
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
       body: JSON.stringify({ tenantId: "tenant_a" })
@@ -51,7 +52,7 @@ describe("POST /api/github/onboarding/start", () => {
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
-      headers: { cookie: session.sessionCookie },
+      headers: { ...sameOriginHeaders(), cookie: session.sessionCookie },
       body: JSON.stringify({ tenantId: "tenant_a" })
     }));
     const json = await response.json();
@@ -74,7 +75,7 @@ describe("POST /api/github/onboarding/start", () => {
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
-      headers: { cookie: session.sessionCookie },
+      headers: { ...sameOriginHeaders(), cookie: session.sessionCookie },
       body: JSON.stringify({ tenantId: "tenant_a" })
     }));
 
@@ -91,6 +92,7 @@ describe("POST /api/github/onboarding/start", () => {
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "x-agentproof-beta-invite-token": "wrong"
       },
       body: JSON.stringify({ tenantId: "tenant_a" })
@@ -109,6 +111,7 @@ describe("POST /api/github/onboarding/start", () => {
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
       body: JSON.stringify({ tenantId: "tenant_a" })
@@ -140,6 +143,7 @@ describe("POST /api/github/onboarding/start", () => {
     const wrongTenant = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
       body: JSON.stringify({ tenantId: "tenant_b" })
@@ -147,6 +151,7 @@ describe("POST /api/github/onboarding/start", () => {
     const rightTenant = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
       body: JSON.stringify({ tenantId: "tenant_a" })
@@ -166,6 +171,7 @@ describe("POST /api/github/onboarding/start", () => {
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
       body: JSON.stringify({ tenantId: "tenant_a" })
@@ -177,7 +183,31 @@ describe("POST /api/github/onboarding/start", () => {
       code: "github_onboarding_state_store_unavailable"
     });
   });
+
+  it("rejects cross-site onboarding start before creating a nonce cookie", async () => {
+    stubOnboardingEnv();
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
+      method: "POST",
+      headers: {
+        Origin: "https://attacker.example",
+        "x-agentproof-beta-invite-token": "tenant-a-invite-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a" })
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Tenant mutations require a same-origin request.",
+      code: "tenant_mutation_csrf_required"
+    });
+  });
 });
+
+function sameOriginHeaders() {
+  return { Origin: "http://localhost" };
+}
 
 function stubOnboardingEnv(role: "owner" | "admin" | "member" = "owner") {
   vi.stubEnv("AGENTPROOF_GITHUB_APP_SLUG", "agentproof-test");

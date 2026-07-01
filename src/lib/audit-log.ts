@@ -19,7 +19,9 @@ export type AuditEventAction =
   | "github_app_quota_blocked"
   | "github_app_quota_unavailable"
   | "github_app_repository_access_removed"
-  | "github_app_side_effects_ready";
+  | "github_app_side_effects_ready"
+  | "tenant_auth_session_failed"
+  | "tenant_session_failed";
 
 export type AuditEventResult = "blocked" | "completed" | "failed" | "skipped";
 
@@ -652,7 +654,9 @@ function isAuditEventAction(value: unknown): value is AuditEventAction {
     "github_app_quota_blocked",
     "github_app_quota_unavailable",
     "github_app_repository_access_removed",
-    "github_app_side_effects_ready"
+    "github_app_side_effects_ready",
+    "tenant_auth_session_failed",
+    "tenant_session_failed"
   ].includes(value);
 }
 
