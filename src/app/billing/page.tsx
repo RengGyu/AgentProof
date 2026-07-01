@@ -180,7 +180,7 @@ export default function BillingPage() {
           <div>
             <h2>Still Separate Launch Work</h2>
             <p className="muted">
-              Public self-serve signup, provider checkout, actual provider portal session creation, durable payment pages, seat billing, provider webhook signature parsing, billing retention execution, and URL-backed market claims remain separate work.
+              Public self-serve signup, provider checkout, actual provider portal session creation, durable payment pages, seat billing, provider subscription lifecycle sync, billing retention execution, and URL-backed market claims remain separate work.
             </p>
           </div>
           <FileCheck2 size={18} aria-hidden="true" />
