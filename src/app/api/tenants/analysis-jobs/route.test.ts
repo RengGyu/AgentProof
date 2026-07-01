@@ -31,7 +31,7 @@ describe("GET /api/tenants/analysis-jobs", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      error: "Tenant analysis jobs require a valid tenant-bound invite token.",
+      error: "Tenant analysis jobs require valid tenant authorization.",
       code: "tenant_analysis_jobs_unauthorized"
     });
   });

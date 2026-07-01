@@ -21,6 +21,8 @@ GET  /api/github/onboarding/repositories?installationId=<id>
 POST /api/github/onboarding/repositories
 POST /api/tenants/session
 DELETE /api/tenants/session
+POST /api/tenants/auth/session
+DELETE /api/tenants/auth/session
 GET  /api/tenants/repositories?tenantId=<tenant>
 PATCH /api/tenants/repositories
 GET  /api/tenants/repositories/health?tenantId=<tenant>
@@ -34,9 +36,11 @@ GET  /api/tenants/repositories/health?tenantId=<tenant>
 }
 ```
 
-Authorize the request with a valid tenant admin session cookie or send the tenant-bound invite token as `x-agentproof-beta-invite-token`. Do not send invite tokens in the JSON body.
+Authorize read requests with a valid durable tenant auth session, legacy tenant admin session cookie, or the tenant-bound invite token as `x-agentproof-beta-invite-token`. Privileged setup writes require durable owner/admin auth or the current tenant-bound invite header. Do not send invite tokens in the JSON body.
 
 `POST /api/tenants/session` accepts the same tenantId-only JSON body and requires `x-agentproof-beta-invite-token`. It returns bounded JSON plus `Set-Cookie: agentproof_tenant_admin_session=...; HttpOnly; Secure; SameSite=Lax`. `DELETE /api/tenants/session` clears that cookie. Neither response returns the invite token, session secret, repository grants, PR evidence, diffs, logs, claims, report bodies, or comment content.
+
+`POST /api/tenants/auth/session` is the first durable tenant auth/session v1 boundary. It accepts `tenantId` and `memberId` in JSON, requires the member bootstrap credential in `x-agentproof-tenant-auth-token`, verifies the tenant account is active or trialing, verifies the member is active, stores only a hashed session token in the server-side session store, and returns an HttpOnly `agentproof_tenant_auth_session` cookie. `DELETE /api/tenants/auth/session` revokes the hashed session when the store is available and clears the cookie. Tenant-facing responses may include bounded `tenantId`, `memberId`, `role`, and `expiresAt`; they must not return bootstrap tokens, session tokens, session hashes, emails/contact details, OAuth tokens, provider ids, billing ids, repository grants, PR evidence, diffs, logs, claims, report bodies, or comment content.
 
 `GET /callback` is called by GitHub with `installation_id`, `setup_action`, and `state`. API clients receive bounded JSON. Browser callbacks that request HTML are redirected to `/tenant?tenantId=<tenant>&installationId=<id>&githubApp=connected` with the activation cookie set; the opaque state token is not copied into the redirect URL.
 
@@ -166,10 +170,11 @@ The health API is allowlisted to tenant-owned grant metadata, coarse statuses, b
 `GET /tenant` is the invite-only design-partner setup surface. It lets a reviewer/admin:
 
 - Start a 12-hour tenant admin session from `tenantId` plus a tenant-bound invite token.
-- Start GitHub App installation using a valid tenant admin session or the tenant-bound invite header fallback.
+- Start a durable tenant auth session from an active member bootstrap credential when `AGENTPROOF_TENANT_AUTH_BOOTSTRAPS` and a session store are configured.
+- Start GitHub App installation using a valid durable tenant auth session or tenant-bound invite header fallback with `owner` or `admin` role metadata.
 - Load installed repositories after the GitHub callback sets the short-lived activation cookie.
-- Create one repository grant from server-fetched installation metadata.
-- Read repository settings through tenant-bound auth, and update only `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and `slackNotificationsEnabled` when the tenant invite/session carries `owner` or `admin` role metadata.
+- Create one repository grant from server-fetched installation metadata when the activation session is paired with durable owner/admin tenant auth or the current owner/admin tenant-bound invite header.
+- Read repository settings through tenant-bound auth, and update only `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and `slackNotificationsEnabled` when the durable session or current invite header carries `owner` or `admin` role metadata.
 - Load metadata-only repository health, then run an explicit bounded GitHub access probe per repository.
 - Load read-only monthly usage summaries without reserving quota.
 - Load recent async analysis job summaries with public status filters and recent-sample rollups, without raw idempotency keys, delivery ids, webhook payloads, reports, diffs, logs, claims, raw re-prompt text, saved-report keys, comment bodies, or storage internals.
@@ -177,7 +182,7 @@ The health API is allowlisted to tenant-owned grant metadata, coarse statuses, b
 - Load recent summary report metadata without report bodies, evidence indexes, claims, raw re-prompt text, access keys, diffs, or logs.
 - Load recent verification activity summaries from the audit store without raw payloads, reports, diffs, logs, claims, re-prompt text, comment bodies, saved-report URLs, or storage internals.
 
-The dashboard keeps the invite token in React state only long enough to bootstrap the tenant admin session. It sends the token in `x-agentproof-beta-invite-token`, never in query strings, JSON request bodies, PATCH bodies, localStorage, or sessionStorage, then clears the input after a successful session start. Tenant APIs accept the HttpOnly session cookie or the tenant-bound invite header fallback. Repository settings mutations require bounded `owner` or `admin` role metadata from that invite/session; `member` or role-less invites can still read tenant-bound setup metadata but cannot change repository settings. The session cookie is stateless and short-lived; logout clears the browser cookie, but durable server-side revocation is still future account-system work. The dashboard does not render PR evidence, diffs, logs, findings, claims, evidence indexes, report bodies, raw re-prompt text, comment bodies, or merge decisions.
+The dashboard keeps invite and bootstrap credentials in React state only long enough to bootstrap a cookie session. It sends invite tokens in `x-agentproof-beta-invite-token` and durable auth bootstrap credentials in `x-agentproof-tenant-auth-token`, never in query strings, JSON request bodies, PATCH bodies, localStorage, or sessionStorage, then clears the input after a successful session start. Tenant APIs prefer the durable HttpOnly auth session when present, then fall back to the short-lived tenant admin session or tenant-bound invite header for design-partner read compatibility. Repository settings mutations, GitHub App install start, and repository grant creation require bounded `owner` or `admin` role metadata from durable tenant auth or the current tenant-bound invite header; the legacy stateless tenant admin session is not a privileged authorization source. `member` or role-less invites can still read selected tenant-bound setup metadata but cannot change repository settings or bind repositories. Durable auth sessions are server-side revocable and recheck tenant/member status. The legacy tenant admin session remains stateless and short-lived for controlled design partners, not a full account system. The dashboard does not render PR evidence, diffs, logs, findings, claims, evidence indexes, report bodies, raw re-prompt text, comment bodies, or merge decisions.
 
 ## Required Environment
 
@@ -186,6 +191,8 @@ AGENTPROOF_GITHUB_APP_SLUG=
 AGENTPROOF_ONBOARDING_STATE_SECRET=
 AGENTPROOF_TENANT_SESSION_SECRET=
 AGENTPROOF_BETA_INVITES=
+AGENTPROOF_TENANT_AUTH_BOOTSTRAPS=
+AGENTPROOF_TENANT_AUTH_SESSIONS_TABLE=agentproof_tenant_auth_sessions
 AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED=true
 AGENTPROOF_CONTROL_PLANE_SUPABASE_URL=
 AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY=
@@ -208,6 +215,20 @@ Recommended invite format:
 
 For local smoke only, `AGENTPROOF_BETA_INVITES` may use raw `token` values. `role` is optional for read-only tenant setup metadata and must be one of `owner`, `admin`, or `member`; repository settings mutations require `owner` or `admin`. Malformed role values fail closed. `AGENTPROOF_BETA_INVITE_TOKEN` remains a legacy helper for older local paths, but tenant dashboard access, session bootstrap, and onboarding start require tenant-bound invite records. Do not use the global token as the only production tenant boundary.
 
+Recommended durable auth bootstrap format:
+
+```json
+[
+  {
+    "tenantId": "tenant_demo",
+    "memberId": "member_owner",
+    "tokenHash": "sha256-hex-without-prefix"
+  }
+]
+```
+
+Bootstrap tokens are for session creation only. The durable session store keeps hashed opaque session tokens with tenant id, member id, created/expiry timestamps, and optional revocation timestamp. Tenant APIs re-read account/member metadata for durable sessions so suspended/deleted tenants, disabled members, and role changes fail closed or take effect without trusting stale cookie role data. Legacy invite/session fallback is also blocked when configured account metadata marks the tenant suspended or deleted.
+
 Optional table overrides:
 
 ```text
@@ -216,6 +237,8 @@ AGENTPROOF_TENANT_REPOSITORY_GRANTS_TABLE=agentproof_tenant_repository_grants
 AGENTPROOF_GITHUB_INSTALLATIONS_TABLE=agentproof_github_installations
 AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL=
 AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL=
+AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY=
 ```
 
 Local/demo-only memory stores:
@@ -224,6 +247,7 @@ Local/demo-only memory stores:
 AGENTPROOF_ONBOARDING_ALLOW_MEMORY=true
 AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY=true
 AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY=true
+AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY=true
 ```
 
 Do not set memory-store flags for beta or SaaS operation.
@@ -252,6 +276,30 @@ create index if not exists agentproof_github_onboarding_states_expiry_idx
   on agentproof_github_onboarding_states (expires_at);
 
 alter table agentproof_github_onboarding_states enable row level security;
+```
+
+## Tenant Auth Session Schema
+
+Durable tenant auth sessions store hashed opaque session tokens. They must not store raw session tokens, bootstrap tokens, invite tokens, OAuth access or refresh tokens, emails, contact details, provider ids, billing ids, reports, diffs, logs, claims, or raw re-prompt text.
+
+```sql
+create table if not exists agentproof_tenant_auth_sessions (
+  id text primary key,
+  token_hash text not null unique,
+  tenant_id text not null,
+  member_id text not null,
+  created_at timestamptz not null,
+  expires_at timestamptz not null,
+  revoked_at timestamptz
+);
+
+create index if not exists agentproof_tenant_auth_sessions_tenant_member_idx
+  on agentproof_tenant_auth_sessions (tenant_id, member_id);
+
+create index if not exists agentproof_tenant_auth_sessions_expiry_idx
+  on agentproof_tenant_auth_sessions (expires_at);
+
+alter table agentproof_tenant_auth_sessions enable row level security;
 ```
 
 Recommended checks:
@@ -371,6 +419,6 @@ Signed lifecycle webhooks keep repository grants aligned with GitHub App access:
 
 ## Launch Blockers
 
-Before public self-serve launch, replace invite-bootstrap `/tenant` access with a full account system, authenticated tenant membership checks, durable session revocation, and role-based admin permissions. The current tenant admin session is suitable for controlled design partners, but it is not a full account system.
+Before public self-serve launch, replace invite-bootstrap `/tenant` access with a full account system, authenticated tenant membership checks, durable session revocation, and role-based admin permissions. The current tenant admin session is suitable for controlled design-partner read compatibility, but it is not a full account system and is not accepted for privileged setup writes.
 
 Also add destructive tenant deletion/tombstoning workflow, quota/customer audit views, and broader setup health for GitHub permissions, suspended installs, large PR caps, and unavailable checks before broad rollout.

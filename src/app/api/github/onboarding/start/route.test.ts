@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearGitHubOnboardingSessionsForTests, createTenantAdminSession } from "@/lib/github-onboarding";
+import { clearTenantAuthSessionsForTests, createTenantAuthSession } from "@/lib/tenant-auth";
 import { POST } from "./route";
 
 describe("POST /api/github/onboarding/start", () => {
@@ -7,6 +8,7 @@ describe("POST /api/github/onboarding/start", () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     clearGitHubOnboardingSessionsForTests();
+    clearTenantAuthSessionsForTests();
   });
 
   it("starts invite-only onboarding with an opaque state and nonce cookie", async () => {
@@ -38,11 +40,13 @@ describe("POST /api/github/onboarding/start", () => {
     expect(serialized).not.toContain("state-secret-value");
   });
 
-  it("starts onboarding from a tenant admin session cookie without an invite header", async () => {
+  it("starts onboarding from a durable tenant auth session cookie without an invite header", async () => {
     stubOnboardingEnv();
-    const session = createTenantAdminSession({
+    stubDurableAuthEnv();
+    const session = await createTenantAuthSession({
       tenantId: "tenant_a",
-      inviteToken: "tenant-a-invite-token"
+      memberId: "member_owner",
+      bootstrapToken: "member-bootstrap-token"
     });
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
@@ -57,6 +61,27 @@ describe("POST /api/github/onboarding/start", () => {
       ok: true,
       privacy: "state-only-no-tokens-stored",
       next: "install_github_app"
+    });
+    expect(JSON.stringify(json)).not.toContain("member-bootstrap-token");
+  });
+
+  it("does not treat a stateless tenant admin session as privileged onboarding authorization", async () => {
+    stubOnboardingEnv();
+    const session = createTenantAdminSession({
+      tenantId: "tenant_a",
+      inviteToken: "tenant-a-invite-token"
+    });
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
+      method: "POST",
+      headers: { cookie: session.sessionCookie },
+      body: JSON.stringify({ tenantId: "tenant_a" })
+    }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "GitHub App onboarding requires an owner or admin role.",
+      code: "github_onboarding_role_required"
     });
   });
 
@@ -73,9 +98,31 @@ describe("POST /api/github/onboarding/start", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "Invite token is required for GitHub App onboarding.",
+      error: "GitHub App onboarding requires valid tenant authorization.",
       code: "github_onboarding_invite_required"
     });
+  });
+
+  it("requires owner or admin role before starting onboarding", async () => {
+    stubOnboardingEnv("member");
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
+      method: "POST",
+      headers: {
+        "x-agentproof-beta-invite-token": "tenant-a-invite-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a" })
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(403);
+    expect(json).toEqual({
+      error: "GitHub App onboarding requires an owner or admin role.",
+      code: "github_onboarding_role_required"
+    });
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("tenant-a-invite-token");
   });
 
   it("requires tenant-bound invites when scoped beta invite records are configured", async () => {
@@ -84,7 +131,8 @@ describe("POST /api/github/onboarding/start", () => {
     vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
       {
         tenantId: "tenant_a",
-        token: "tenant-a-invite-token"
+        token: "tenant-a-invite-token",
+        role: "owner"
       }
     ]));
     vi.stubEnv("AGENTPROOF_ONBOARDING_ALLOW_MEMORY", "true");
@@ -112,7 +160,7 @@ describe("POST /api/github/onboarding/start", () => {
     vi.stubEnv("AGENTPROOF_GITHUB_APP_SLUG", "agentproof-test");
     vi.stubEnv("AGENTPROOF_ONBOARDING_STATE_SECRET", "state-secret-value-with-enough-entropy");
     vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
-      { tenantId: "tenant_a", token: "tenant-a-invite-token" }
+      { tenantId: "tenant_a", token: "tenant-a-invite-token", role: "owner" }
     ]));
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
@@ -131,12 +179,30 @@ describe("POST /api/github/onboarding/start", () => {
   });
 });
 
-function stubOnboardingEnv() {
+function stubOnboardingEnv(role: "owner" | "admin" | "member" = "owner") {
   vi.stubEnv("AGENTPROOF_GITHUB_APP_SLUG", "agentproof-test");
   vi.stubEnv("AGENTPROOF_ONBOARDING_STATE_SECRET", "state-secret-value-with-enough-entropy");
   vi.stubEnv("AGENTPROOF_TENANT_SESSION_SECRET", "tenant-session-secret-value-with-enough-entropy");
   vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
-    { tenantId: "tenant_a", token: "tenant-a-invite-token" }
+    { tenantId: "tenant_a", token: "tenant-a-invite-token", role }
   ]));
   vi.stubEnv("AGENTPROOF_ONBOARDING_ALLOW_MEMORY", "true");
+}
+
+function stubDurableAuthEnv(role: "owner" | "admin" | "member" = "owner", status: "active" | "disabled" = "active") {
+  vi.stubEnv("AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([
+    {
+      tenantId: "tenant_a",
+      name: "Tenant A",
+      status: "active",
+      plan: "team",
+      members: [
+        { memberId: "member_owner", role, status }
+      ]
+    }
+  ]));
+  vi.stubEnv("AGENTPROOF_TENANT_AUTH_BOOTSTRAPS", JSON.stringify([
+    { tenantId: "tenant_a", memberId: "member_owner", token: "member-bootstrap-token" }
+  ]));
 }

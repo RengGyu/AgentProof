@@ -1,9 +1,9 @@
 import {
   createGitHubAppInstallSession,
   getGitHubOnboardingConfigStatus,
-  GitHubOnboardingStoreError,
-  verifyTenantAdminAccess
+  GitHubOnboardingStoreError
 } from "@/lib/github-onboarding";
+import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson, parseJsonSafely } from "@/lib/http";
 
 export async function POST(request: Request) {
@@ -30,16 +30,22 @@ export async function POST(request: Request) {
     }, { status: 422 });
   }
 
-  const access = verifyTenantAdminAccess({
+  const access = await verifyTenantAccess({
     tenantId: body.tenantId,
     inviteToken: request.headers.get("x-agentproof-beta-invite-token") ?? undefined,
     cookieHeader: request.headers.get("cookie")
   });
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
-      error: "Invite token is required for GitHub App onboarding.",
+      error: "GitHub App onboarding requires valid tenant authorization.",
       code: "github_onboarding_invite_required"
     }, { status: 401 });
+  }
+  if (!canUsePrivilegedTenantAccess(access)) {
+    return noStoreJson({
+      error: "GitHub App onboarding requires an owner or admin role.",
+      code: "github_onboarding_role_required"
+    }, { status: 403 });
   }
   const authorizedTenantId = access.tenantId;
 

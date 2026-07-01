@@ -5,7 +5,7 @@ import {
   type TenantRepositoryGrant,
   updateTenantRepositoryGrantSettings
 } from "@/lib/tenant-control-plane";
-import { verifyTenantAdminAccess } from "@/lib/github-onboarding";
+import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/lib/tenant-deletion-state";
 
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const tenantId = url.searchParams.get("tenantId");
   const inviteToken = request.headers.get("x-agentproof-beta-invite-token") ?? undefined;
-  const access = verifyTenantAdminAccess({
+  const access = await verifyTenantAccess({
     tenantId,
     inviteToken,
     cookieHeader: request.headers.get("cookie")
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
 
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
-      error: "Tenant repository settings require a valid tenant-bound invite token.",
+      error: "Tenant repository settings require valid tenant authorization.",
       code: "tenant_repository_settings_unauthorized"
     }, { status: 401 });
   }
@@ -111,18 +111,18 @@ export async function PATCH(request: Request) {
   }
 
   const inviteToken = request.headers.get("x-agentproof-beta-invite-token") ?? undefined;
-  const access = verifyTenantAdminAccess({
+  const access = await verifyTenantAccess({
     tenantId: body.tenantId,
     inviteToken,
     cookieHeader: request.headers.get("cookie")
   });
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
-      error: "Tenant repository settings require a valid tenant-bound invite token.",
+      error: "Tenant repository settings require valid tenant authorization.",
       code: "tenant_repository_settings_unauthorized"
     }, { status: 401 });
   }
-  if (!canMutateRepositorySettings(access.role)) {
+  if (!canUsePrivilegedTenantAccess(access)) {
     return noStoreJson({
       error: "Tenant repository settings require an owner or admin role.",
       code: "tenant_repository_settings_role_required"
@@ -224,10 +224,6 @@ function toPublicRepositorySettings(grant: TenantRepositoryGrant) {
     commentEnabled: grant.commentEnabled,
     slackNotificationsEnabled: grant.slackNotificationsEnabled
   };
-}
-
-function canMutateRepositorySettings(role: unknown): boolean {
-  return role === "owner" || role === "admin";
 }
 
 function normalizePositiveInteger(value: unknown): number | undefined {

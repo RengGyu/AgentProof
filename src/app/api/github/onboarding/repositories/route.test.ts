@@ -28,7 +28,7 @@ describe("/api/github/onboarding/repositories", () => {
     const activationCookie = await createActivationCookie();
 
     const response = await GET(new Request("http://localhost/api/github/onboarding/repositories?installationId=321", {
-      headers: { cookie: activationCookie }
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" }
     }));
     const json = await response.json();
     const serialized = JSON.stringify(json);
@@ -86,7 +86,7 @@ describe("/api/github/onboarding/repositories", () => {
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
-      headers: { cookie: activationCookie },
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
       body: JSON.stringify({
         installationId: 321,
         repositoryId: 100,
@@ -139,7 +139,7 @@ describe("/api/github/onboarding/repositories", () => {
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
-      headers: { cookie: activationCookie },
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
       body: JSON.stringify({
         installationId: 321,
         repositoryId: 100
@@ -172,7 +172,7 @@ describe("/api/github/onboarding/repositories", () => {
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
-      headers: { cookie: activationCookie },
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
       body: JSON.stringify({
         installationId: 321,
         repositoryId: 250
@@ -204,12 +204,12 @@ describe("/api/github/onboarding/repositories", () => {
 
     const bad = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
-      headers: { cookie: activationCookie },
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
       body: JSON.stringify({ installationId: 321, repositoryId: 999 })
     }));
     const good = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
-      headers: { cookie: activationCookie },
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
       body: JSON.stringify({ installationId: 321, repositoryId: 100 })
     }));
 
@@ -232,7 +232,7 @@ describe("/api/github/onboarding/repositories", () => {
     const activationCookie = await createActivationCookie();
     const request = () => new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
-      headers: { cookie: activationCookie },
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
       body: JSON.stringify({ installationId: 321, repositoryId: 100 })
     });
 
@@ -257,7 +257,7 @@ describe("/api/github/onboarding/repositories", () => {
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
-      headers: { cookie: activationCookie },
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
       body: JSON.stringify({ installationId: 321, repositoryId: 100 })
     }));
 
@@ -266,6 +266,33 @@ describe("/api/github/onboarding/repositories", () => {
       error: "Tenant repository grant store is unavailable.",
       code: "github_onboarding_grant_store_unavailable"
     });
+  });
+
+  it("requires owner or admin role before creating a repository grant", async () => {
+    stubOnboardingEnv("member");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    const fetchMock = mockRepositoryFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const activationCookie = await createActivationCookie();
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
+      method: "POST",
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ installationId: 321, repositoryId: 100 })
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(403);
+    expect(json).toEqual({
+      error: "GitHub App repository setup requires an owner or admin role.",
+      code: "github_onboarding_role_required"
+    });
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("tenant-a-invite-token");
   });
 });
 
@@ -280,10 +307,12 @@ async function createActivationCookie() {
   return activation.activationCookie;
 }
 
-function stubOnboardingEnv() {
+function stubOnboardingEnv(role: "owner" | "admin" | "member" = "owner") {
   vi.stubEnv("AGENTPROOF_GITHUB_APP_SLUG", "agentproof-test");
   vi.stubEnv("AGENTPROOF_ONBOARDING_STATE_SECRET", "state-secret-value-with-enough-entropy");
-  vi.stubEnv("AGENTPROOF_BETA_INVITE_TOKEN", "invite-token-value");
+  vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
+    { tenantId: "tenant_a", token: "tenant-a-invite-token", role }
+  ]));
   vi.stubEnv("AGENTPROOF_ONBOARDING_ALLOW_MEMORY", "true");
 }
 

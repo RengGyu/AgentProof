@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTenantAdminSession } from "@/lib/github-onboarding";
+import { clearTenantAuthSessionsForTests, createTenantAuthSession, TENANT_AUTH_SESSION_COOKIE } from "@/lib/tenant-auth";
 import { GET } from "./route";
 
 describe("GET /api/tenants/account", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    clearTenantAuthSessionsForTests();
   });
 
   it("requires tenant admin access", async () => {
@@ -16,7 +18,7 @@ describe("GET /api/tenants/account", () => {
 
     expect(response.status).toBe(401);
     expect(json).toEqual({
-      error: "Tenant account status requires a valid tenant-bound invite token.",
+      error: "Tenant account status requires valid tenant authorization.",
       code: "tenant_account_unauthorized"
     });
   });
@@ -131,6 +133,53 @@ describe("GET /api/tenants/account", () => {
     });
   });
 
+  it("accepts a durable tenant auth session cookie without an invite header", async () => {
+    stubSessionEnv();
+    stubDurableAuthEnv();
+    const session = await createTenantAuthSession({
+      tenantId: "tenant_a",
+      memberId: "member_owner",
+      bootstrapToken: "member-bootstrap-token"
+    });
+
+    const response = await GET(new Request("http://localhost/api/tenants/account?tenantId=tenant_a", {
+      headers: { cookie: session.sessionCookie }
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({
+      ok: true,
+      tenantId: "tenant_a",
+      account: {
+        tenantId: "tenant_a",
+        status: "active",
+        plan: "team",
+        configured: true
+      },
+      privacy: "tenant-account-summary-only"
+    });
+    expect(serialized).not.toContain("member-bootstrap-token");
+    expect(serialized).not.toContain("tokenHash");
+  });
+
+  it("fails closed with bounded JSON when durable tenant auth storage is incomplete", async () => {
+    stubSessionEnv();
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL", "https://tenant-auth.example.supabase.co");
+
+    const response = await GET(new Request("http://localhost/api/tenants/account?tenantId=tenant_a", {
+      headers: { cookie: `${TENANT_AUTH_SESSION_COOKIE}=opaque-session-token` }
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(json).toEqual({
+      error: "Tenant account status requires valid tenant authorization.",
+      code: "tenant_account_unauthorized"
+    });
+  });
+
   it("rejects a wrong-tenant admin session cookie before reading account status", async () => {
     stubSessionEnv();
     const session = createTenantAdminSession({
@@ -172,5 +221,23 @@ function stubSessionEnv() {
   vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
     { tenantId: "tenant_a", token: "tenant-a-invite-token" },
     { tenantId: "tenant_b", token: "tenant-b-invite-token" }
+  ]));
+}
+
+function stubDurableAuthEnv() {
+  vi.stubEnv("AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([
+    {
+      tenantId: "tenant_a",
+      name: "Tenant A",
+      status: "active",
+      plan: "team",
+      members: [
+        { memberId: "member_owner", role: "owner", status: "active" }
+      ]
+    }
+  ]));
+  vi.stubEnv("AGENTPROOF_TENANT_AUTH_BOOTSTRAPS", JSON.stringify([
+    { tenantId: "tenant_a", memberId: "member_owner", token: "member-bootstrap-token" }
   ]));
 }
