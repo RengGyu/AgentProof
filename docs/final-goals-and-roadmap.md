@@ -16,7 +16,7 @@ Status as of 2026-06-30:
 
 - The portfolio MVP is complete and deployed at `https://agentproof-pearl.vercel.app`.
 - The deterministic verifier, report validation, summary-only share/save flows, GitHub comment safety, Slack summary payload, OpenAI structured-output adapter, GitHub App signed webhook boundary, operator diagnostics, invite-only onboarding skeleton, first-class GitHub installation metadata, repository grants/settings, repository setup health API, queue enqueue/worker/bounded-batch boundary, Vercel Cron-compatible scheduler route, aggregate queue summary metrics and alert signals, read-only dead-letter summary, operator-only summary Slack queue alert delivery, invite-only `/tenant` setup dashboard, summary-only plan access readiness, tenant audit export summary, count-only deletion preview tied to a draft retention policy, internal tenant deletion execution boundary, evaluation pack, production smoke workflow, and reviewer-signal sentinels are implemented.
-- The current product is still beta/operator-configured. GitHub App automation, Supabase storage, Slack, OpenAI, and live smoke workflows depend on environment variables and runbooks, while onboarding and repository settings still rely on tenant-bound invite tokens rather than authenticated customer accounts. A bounded tenant account/member metadata read model now exists for beta dashboards, but it is not durable user authentication, RBAC enforcement, billing, or revocable server-side sessions.
+- The current product is still beta/operator-configured. GitHub App automation, Supabase storage, Slack, OpenAI, and live smoke workflows depend on environment variables and runbooks, while onboarding and repository settings still rely on tenant-bound invite tokens rather than authenticated customer accounts. A bounded tenant account/member metadata read model now exists for beta dashboards, but it is not durable user authentication, RBAC enforcement, billing, or revocable server-side sessions. A public launch trust/setup draft now defines product-boundary, GitHub App permission, Slack summary, retention/deletion, troubleshooting, pricing-language, and support copy boundaries, with source-level tests guarding public surfaces against unsupported positioning drift.
 - The product is not yet a self-serve SaaS because it does not have full tenant accounts, billing-grade quota pages, a full background worker system, operations dashboards, broad incident routing, retention cleanup jobs, deletion drills, restore drills, or destructive deletion workflows.
 
 ## Final SaaS Success Definition
@@ -182,6 +182,10 @@ Completion criteria:
 - At least 5 teams use AgentProof weekly for 4 consecutive weeks.
 - At least one paid team or written design partner commitment validates willingness to pay.
 - Public docs state that AgentProof does not auto-merge, does not claim full correctness, and does not retain durable raw code evidence.
+
+Current implementation note:
+
+- `docs/public-launch-trust.md` is the first public-facing trust/setup boundary draft. It covers product positioning, GitHub App permissions, Slack summary gates, retention/deletion boundaries, troubleshooting language, pricing packaging language, support paths, and pre-publication checks without making unsupported market claims. Source-level copy boundary tests now monitor selected public docs and app surfaces so broad review, merge-authority, bug-finder, and unsupported security positioning does not slip into launch copy. This is documentation and regression coverage only; public self-serve signup, billing, durable customer support workflows, deletion/restore drills, and cited market claims remain separate launch work.
 
 ## Core Data Model For SaaS
 

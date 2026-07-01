@@ -1,5 +1,7 @@
 # AgentProof Product Brief
 
+Status: internal product-planning brief, not public launch copy. Use `docs/public-launch-trust.md` for publication-ready setup and trust boundaries.
+
 ## Decision
 
 Build only the narrowed version: an evidence-based verifier for AI-generated PRs. Do not build a broad AI code reviewer.
@@ -70,3 +72,5 @@ Do not publish uncited market claims from internal notes until source URLs are r
 ## Execution Roadmap
 
 Use `docs/final-goals-and-roadmap.md` as the implementation target for moving from the current hardened MVP toward the final evidence-verifier product goal.
+
+Use `docs/public-launch-trust.md` for public setup and trust copy boundaries before publishing GitHub App, Slack, retention/deletion, pricing, troubleshooting, or support material.

@@ -26,7 +26,7 @@ const rows = [
   {
     name: "Slack notifications",
     icon: Bell,
-    purpose: "Send summary-only evidence cards to a trusted Slack incoming webhook.",
+    purpose: "Send summary-only evidence cards only after tenant grant, repo opt-in, plan/quota, and audit gates allow a server-side Slack webhook.",
     requiredEnv: ["SLACK_WEBHOOK_URL", "AGENTPROOF_NOTIFY_TOKEN"]
   },
   {
