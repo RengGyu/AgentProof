@@ -7,12 +7,19 @@ export const MAX_MEMORY_AUDIT_EVENTS = 1000;
 export type AuditEventAction =
   | "github_app_analysis_completed"
   | "github_app_analysis_failed"
+  | "github_app_analysis_queue_unavailable"
+  | "github_app_analysis_queued"
   | "github_app_duplicate_skipped"
   | "github_app_grant_denied"
+  | "github_app_grant_store_unavailable"
   | "github_app_idempotency_unavailable"
+  | "github_app_installation_disabled"
+  | "github_app_lifecycle_store_unavailable"
   | "github_app_not_ready"
   | "github_app_quota_blocked"
-  | "github_app_quota_unavailable";
+  | "github_app_quota_unavailable"
+  | "github_app_repository_access_removed"
+  | "github_app_side_effects_ready";
 
 export type AuditEventResult = "blocked" | "completed" | "failed" | "skipped";
 
@@ -38,6 +45,10 @@ export interface AuditEventInput {
   comment?: {
     action?: string;
   };
+  slack?: {
+    action?: string;
+    privacy?: string;
+  };
 }
 
 export interface AuditEventRow {
@@ -62,6 +73,42 @@ export interface AuditLogStoreStatus {
   durable: boolean;
   table: string;
   missingEnv: string[];
+}
+
+export interface TenantAuditActivitySummary {
+  id: string;
+  createdAt: string;
+  actor: "github_app" | "system";
+  action: AuditEventAction;
+  result: AuditEventResult;
+  repositoryFullName?: string;
+  installationId?: number;
+  pullRequestNumber?: number;
+  headShaPrefix?: string;
+  deliveryIdPrefix?: string;
+  statusCode?: number;
+  webhookAction?: string;
+  code?: string;
+  priority?: string;
+  evidenceCoverage?: number;
+  savedReport?: {
+    privacy?: string;
+    durability?: string;
+  };
+  comment?: {
+    action?: string;
+  };
+  slack?: {
+    action?: string;
+    privacy?: string;
+  };
+}
+
+export interface TenantAuditEventCount {
+  count: number;
+  store: "memory" | "supabase";
+  durable: boolean;
+  configured: boolean;
 }
 
 interface AuditLogStoreConfig {
@@ -165,6 +212,51 @@ export function getAuditLogStoreStatus(env = process.env): AuditLogStoreStatus {
   };
 }
 
+export async function listTenantAuditEvents(
+  input: { tenantId?: unknown; limit?: number },
+  env = process.env
+): Promise<TenantAuditActivitySummary[]> {
+  const tenantId = safeTenantId(typeof input.tenantId === "string" ? input.tenantId : undefined);
+  if (!tenantId) {
+    throw new AuditLogError("Tenant id is invalid.");
+  }
+
+  const limit = normalizeListLimit(input.limit);
+  const config = getAuditLogStoreConfig(env);
+  const rows = config
+    ? await listSupabaseTenantAuditEvents(config, tenantId, limit)
+    : listMemoryTenantAuditEvents(tenantId, limit);
+
+  return rows.map(toTenantAuditSummary);
+}
+
+export async function countTenantAuditEvents(
+  input: { tenantId?: unknown },
+  env = process.env
+): Promise<TenantAuditEventCount> {
+  const tenantId = safeTenantId(typeof input.tenantId === "string" ? input.tenantId : undefined);
+  if (!tenantId) {
+    throw new AuditLogError("Tenant id is invalid.");
+  }
+
+  const config = getAuditLogStoreConfig(env);
+  if (config) {
+    return {
+      count: await countSupabaseTenantAuditEvents(config, tenantId),
+      store: "supabase",
+      durable: true,
+      configured: true
+    };
+  }
+
+  return {
+    count: countMemoryTenantAuditEvents(tenantId),
+    store: "memory",
+    durable: false,
+    configured: true
+  };
+}
+
 export function assertAuditEventIsPrivate(value: unknown): void {
   const serialized = JSON.stringify(value);
   if (containsSecretPattern(serialized)) {
@@ -202,6 +294,10 @@ function toAuditEventRow(input: AuditEventInput): AuditEventRow {
     } : undefined,
     comment: input.comment ? {
       action: safeSlug(input.comment.action)
+    } : undefined,
+    slack: input.slack ? {
+      action: safeSlug(input.slack.action),
+      privacy: safeSlug(input.slack.privacy)
     } : undefined
   };
 
@@ -240,10 +336,165 @@ async function createSupabaseAuditEvent(config: AuditLogStoreConfig, row: AuditE
   }
 }
 
+async function listSupabaseTenantAuditEvents(
+  config: AuditLogStoreConfig,
+  tenantId: string,
+  limit: number
+): Promise<AuditEventRow[]> {
+  const params = new URLSearchParams({
+    tenant_id: `eq.${tenantId}`,
+    select: "id,created_at,actor,action,result,tenant_id,repository_full_name,installation_id,pull_request_number,head_sha_prefix,request_id,status_code,metadata",
+    order: "created_at.desc",
+    limit: String(limit)
+  });
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      Accept: "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    throw new AuditLogError(`Audit event list failed with HTTP ${response.status}.`);
+  }
+
+  const value = await response.json().catch(() => null) as unknown;
+  if (!Array.isArray(value)) {
+    throw new AuditLogError("Audit event list returned a malformed response.");
+  }
+
+  return value
+    .map(normalizeAuditEventRow)
+    .filter((row): row is AuditEventRow => Boolean(row));
+}
+
+async function countSupabaseTenantAuditEvents(
+  config: AuditLogStoreConfig,
+  tenantId: string
+): Promise<number> {
+  const params = new URLSearchParams({
+    tenant_id: `eq.${tenantId}`,
+    select: "id"
+  });
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
+    method: "HEAD",
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      Prefer: "count=exact",
+      Range: "0-0"
+    }
+  });
+
+  if (!response.ok) {
+    throw new AuditLogError(`Audit event count failed with HTTP ${response.status}.`);
+  }
+
+  const count = countFromContentRange(response.headers.get("content-range"));
+  if (count === null) {
+    throw new AuditLogError("Audit event count returned an invalid range.");
+  }
+
+  return count;
+}
+
 function createMemoryAuditEvent(row: AuditEventRow) {
   auditEventStore().push(row);
   while (auditEventStore().length > MAX_MEMORY_AUDIT_EVENTS) {
     auditEventStore().shift();
+  }
+}
+
+function listMemoryTenantAuditEvents(tenantId: string, limit: number): AuditEventRow[] {
+  return auditEventStore()
+    .filter((row) => row.tenant_id === tenantId)
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .slice(0, limit);
+}
+
+function countMemoryTenantAuditEvents(tenantId: string): number {
+  return auditEventStore().filter((row) => row.tenant_id === tenantId).length;
+}
+
+function toTenantAuditSummary(row: AuditEventRow): TenantAuditActivitySummary {
+  const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+    ? row.metadata
+    : {};
+  const savedReport = objectValue(metadata.savedReport);
+  const comment = objectValue(metadata.comment);
+  const slack = objectValue(metadata.slack);
+  const summary = dropUndefined({
+    id: row.id,
+    createdAt: row.created_at,
+    actor: row.actor,
+    action: row.action,
+    result: row.result,
+    repositoryFullName: row.repository_full_name ?? undefined,
+    installationId: row.installation_id ?? undefined,
+    pullRequestNumber: row.pull_request_number ?? undefined,
+    headShaPrefix: row.head_sha_prefix ?? undefined,
+    deliveryIdPrefix: row.request_id ? row.request_id.slice(0, 12) : undefined,
+    statusCode: row.status_code ?? undefined,
+    webhookAction: stringValue(metadata.webhookAction),
+    code: stringValue(metadata.code),
+    priority: stringValue(metadata.priority),
+    evidenceCoverage: numberValue(metadata.evidenceCoverage),
+    savedReport: objectWithSafeStrings({
+      privacy: stringValue(savedReport?.privacy),
+      durability: stringValue(savedReport?.durability)
+    }),
+    comment: objectWithSafeStrings({
+      action: stringValue(comment?.action)
+    }),
+    slack: objectWithSafeStrings({
+      action: stringValue(slack?.action),
+      privacy: stringValue(slack?.privacy)
+    })
+  }) as unknown as TenantAuditActivitySummary;
+
+  assertAuditEventIsPrivate(summary);
+
+  return summary;
+}
+
+function normalizeAuditEventRow(value: unknown): AuditEventRow | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Partial<AuditEventRow>;
+  if (
+    typeof input.id !== "string" ||
+    typeof input.created_at !== "string" ||
+    (input.actor !== "github_app" && input.actor !== "system") ||
+    !isAuditEventAction(input.action) ||
+    !isAuditEventResult(input.result)
+  ) {
+    return null;
+  }
+
+  const row: AuditEventRow = {
+    id: input.id,
+    created_at: input.created_at,
+    actor: input.actor,
+    action: input.action,
+    result: input.result,
+    tenant_id: stringOrNull(input.tenant_id),
+    repository_full_name: stringOrNull(input.repository_full_name),
+    installation_id: numberOrNull(input.installation_id),
+    pull_request_number: numberOrNull(input.pull_request_number),
+    head_sha_prefix: stringOrNull(input.head_sha_prefix),
+    request_id: stringOrNull(input.request_id),
+    status_code: numberOrNull(input.status_code),
+    metadata: objectValue(input.metadata) ?? {}
+  };
+
+  try {
+    assertAuditEventIsPrivate(row);
+    return row;
+  } catch {
+    return null;
   }
 }
 
@@ -371,8 +622,73 @@ function safeDurability(value: string | undefined): string | undefined {
   return /^[a-z0-9_.:-]{1,120}$/i.test(normalized) ? normalized : "unknown";
 }
 
+function normalizeListLimit(value: number | undefined): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? Math.min(value, 251)
+    : 10;
+}
+
+function countFromContentRange(value: string | null): number | null {
+  if (!value) return null;
+  const total = value.split("/").at(1);
+  if (!total || total === "*") return null;
+  const count = Number(total);
+  return Number.isInteger(count) && count >= 0 ? count : null;
+}
+
+function isAuditEventAction(value: unknown): value is AuditEventAction {
+  return typeof value === "string" && [
+    "github_app_analysis_completed",
+    "github_app_analysis_failed",
+    "github_app_analysis_queue_unavailable",
+    "github_app_analysis_queued",
+    "github_app_duplicate_skipped",
+    "github_app_grant_denied",
+    "github_app_grant_store_unavailable",
+    "github_app_idempotency_unavailable",
+    "github_app_installation_disabled",
+    "github_app_lifecycle_store_unavailable",
+    "github_app_not_ready",
+    "github_app_quota_blocked",
+    "github_app_quota_unavailable",
+    "github_app_repository_access_removed",
+    "github_app_side_effects_ready"
+  ].includes(value);
+}
+
+function isAuditEventResult(value: unknown): value is AuditEventResult {
+  return value === "blocked" || value === "completed" || value === "failed" || value === "skipped";
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function dropUndefined(value: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function objectWithSafeStrings<T extends Record<string, string | undefined>>(value: T): T | undefined {
+  const cleaned = dropUndefined(value) as T;
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
 }
 
 function trimTrailingSlash(value: string): string {

@@ -48,6 +48,107 @@ describe("POST /api/llm/verify", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("requires tenant plan context before OpenAI calls when quota enforcement is enabled", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("AGENTPROOF_LLM_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        monthlyAnalysisLimit: 5,
+        enabled: true,
+        plan: "team",
+        structuredLlmVerifierEnabled: true
+      }
+    ]));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/llm/verify", {
+        method: "POST",
+        headers: { "x-agentproof-llm-token": "secret" },
+        body: JSON.stringify({
+          input: demoScenarios.clean,
+          report: generateVerificationReport(demoScenarios.clean),
+          rawDiff: "Patch excerpt: token=github_pat_secret_should_not_leak_1234567890"
+        })
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(403);
+    expect(json).toEqual({
+      error: "LLM verifier requires tenant plan context.",
+      code: "llm_verifier_tenant_required",
+      fallback: "Use the deterministic verifier report."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+  });
+
+  it("fails closed before OpenAI calls when the tenant verifier plan is disabled or invalid", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("AGENTPROOF_LLM_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        monthlyAnalysisLimit: 5,
+        enabled: true,
+        plan: "team",
+        structuredLlmVerifierEnabled: false
+      }
+    ]));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const disabled = await POST(
+      new Request("http://localhost/api/llm/verify?tenantId=tenant_a", {
+        method: "POST",
+        headers: { "x-agentproof-llm-token": "secret" },
+        body: JSON.stringify({
+          input: demoScenarios.clean,
+          report: generateVerificationReport(demoScenarios.clean)
+        })
+      })
+    );
+    const disabledJson = await disabled.json();
+
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", "{not-json");
+    const invalid = await POST(
+      new Request("http://localhost/api/llm/verify?tenantId=tenant_a", {
+        method: "POST",
+        headers: { "x-agentproof-llm-token": "secret" },
+        body: JSON.stringify({
+          input: demoScenarios.clean,
+          report: generateVerificationReport(demoScenarios.clean)
+        })
+      })
+    );
+    const invalidJson = await invalid.json();
+    const serialized = JSON.stringify({ disabledJson, invalidJson });
+
+    expect(disabled.status).toBe(403);
+    expect(disabledJson).toEqual({
+      error: "LLM verifier is not enabled for this tenant plan.",
+      code: "llm_verifier_plan_disabled",
+      fallback: "Use the deterministic verifier report."
+    });
+    expect(invalid.status).toBe(503);
+    expect(invalidJson).toEqual({
+      error: "LLM verifier tenant plan is unavailable.",
+      code: "llm_verifier_plan_unavailable",
+      fallback: "Use the deterministic verifier report."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("{not-json");
+    expect(serialized).not.toContain("tenant_a");
+  });
+
   it("rejects oversized requests from content-length before model calls", async () => {
     vi.stubEnv("OPENAI_API_KEY", "test-key");
     vi.stubEnv("AGENTPROOF_LLM_TOKEN", "secret");
@@ -173,6 +274,48 @@ describe("POST /api/llm/verify", () => {
     expect(response.status).toBe(200);
     expect(json.source).toBe("openai");
     expect(json.report).toEqual(report);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows OpenAI calls when the tenant verifier plan is enabled", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("AGENTPROOF_LLM_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        monthlyAnalysisLimit: 5,
+        enabled: true,
+        plan: "team",
+        structuredLlmVerifierEnabled: true
+      }
+    ]));
+    const report = generateVerificationReport(demoScenarios.clean);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(report) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/llm/verify", {
+        method: "POST",
+        headers: {
+          "x-agentproof-llm-token": "secret",
+          "x-agentproof-tenant-id": "tenant_a"
+        },
+        body: JSON.stringify({
+          input: demoScenarios.clean,
+          report
+        })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.source).toBe("openai");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

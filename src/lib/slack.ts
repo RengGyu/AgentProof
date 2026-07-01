@@ -1,10 +1,30 @@
 import { sanitizeReportForShare } from "./report-share";
+import type { AnalysisQueueAlert } from "./analysis-job-alerts";
+import type { AnalysisJobQueueSummary } from "./analysis-jobs";
 import type { VerificationReport } from "./types";
 
 export interface SlackWebhookPayload {
   text: string;
   blocks: Array<Record<string, unknown>>;
 }
+
+export interface SlackReportNotificationResult {
+  action: "sent";
+  privacy: "summary-only";
+}
+
+export class SlackNotificationError extends Error {
+  constructor(
+    public readonly code: "slack_summary_not_configured" | "slack_summary_webhook_invalid" | "slack_summary_webhook_failed",
+    message: string,
+    public readonly status?: number
+  ) {
+    super(message);
+    this.name = "SlackNotificationError";
+  }
+}
+
+export const SLACK_NOTIFICATION_TIMEOUT_MS = 5000;
 
 export function reportToSlackPayload(report: VerificationReport, reportUrl?: string): SlackWebhookPayload {
   const safeReport = sanitizeReportForShare(report);
@@ -78,6 +98,61 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
   };
 }
 
+export function analysisQueueAlertsToSlackPayload(input: {
+  summary: AnalysisJobQueueSummary;
+  alerts: AnalysisQueueAlert[];
+}): SlackWebhookPayload {
+  const warnings = input.alerts.filter((alert) => alert.severity === "warning").length;
+  const infos = input.alerts.filter((alert) => alert.severity === "info").length;
+  const severity = warnings > 0 ? "WARNING" : "INFO";
+  const alertLines = input.alerts
+    .slice(0, 8)
+    .map((alert) => `- ${alert.severity.toUpperCase()}: ${alert.code} (${alert.metric} ${alert.count}/${alert.threshold})`)
+    .join("\n");
+
+  return {
+    text: `AgentProof analysis queue ${severity}: ${warnings} warning, ${infos} info alert(s)`,
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: truncateSlackText(`AgentProof analysis queue ${severity}`, 150)
+        }
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "plain_text", text: `Warnings: ${warnings}` },
+          { type: "plain_text", text: `Info: ${infos}` },
+          { type: "plain_text", text: `Failed terminal: ${input.summary.counts.failed_terminal}` },
+          { type: "plain_text", text: `Stale processing: ${input.summary.staleProcessing}` },
+          { type: "plain_text", text: `Due now: ${input.summary.due}` },
+          { type: "plain_text", text: `Delayed retry: ${input.summary.delayedRetry}` },
+          { type: "plain_text", text: `Sampled rows: ${input.summary.sampled}` },
+          { type: "plain_text", text: `Truncated: ${input.summary.truncated ? "yes" : "no"}` }
+        ]
+      },
+      {
+        type: "section",
+        text: {
+          type: "plain_text",
+          text: truncateSlackText(`Alerts\n${alertLines || "- No queue alerts selected for delivery."}`, 3000)
+        }
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "plain_text",
+            text: "Summary-only ops alert. Repository, PR, tenant, raw evidence, logs, reports, tokens, and re-prompt text are omitted."
+          }
+        ]
+      }
+    ]
+  };
+}
+
 export function isAllowedSlackWebhookUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -85,6 +160,52 @@ export function isAllowedSlackWebhookUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function assertSlackReportNotificationConfigured(env = process.env): string {
+  const webhookUrl = env.SLACK_WEBHOOK_URL?.trim();
+  if (!webhookUrl) {
+    throw new SlackNotificationError(
+      "slack_summary_not_configured",
+      "Slack summary notifications are not configured."
+    );
+  }
+
+  if (!isAllowedSlackWebhookUrl(webhookUrl)) {
+    throw new SlackNotificationError(
+      "slack_summary_webhook_invalid",
+      "Slack summary webhook URL is invalid."
+    );
+  }
+
+  return webhookUrl;
+}
+
+export async function sendSlackReportSummary(
+  report: VerificationReport,
+  options: { reportUrl?: string } = {},
+  env = process.env
+): Promise<SlackReportNotificationResult> {
+  const webhookUrl = assertSlackReportNotificationConfigured(env);
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reportToSlackPayload(report, options.reportUrl)),
+    signal: AbortSignal.timeout(SLACK_NOTIFICATION_TIMEOUT_MS)
+  });
+
+  if (!response.ok) {
+    throw new SlackNotificationError(
+      "slack_summary_webhook_failed",
+      `Slack webhook returned HTTP ${response.status}.`,
+      response.status
+    );
+  }
+
+  return {
+    action: "sent",
+    privacy: "summary-only"
+  };
 }
 
 export function neutralizeSlackMentions(value: string): string {

@@ -15,9 +15,9 @@ The product helps a human reviewer decide what to trust, what to inspect first, 
 Status as of 2026-06-30:
 
 - The portfolio MVP is complete and deployed at `https://agentproof-pearl.vercel.app`.
-- The deterministic verifier, report validation, summary-only share/save flows, GitHub comment safety, Slack summary payload, OpenAI structured-output adapter, GitHub App signed webhook boundary, operator diagnostics, evaluation pack, production smoke workflow, and reviewer-signal sentinels are implemented.
-- The current product is still operator-configured. GitHub App automation, Supabase storage, Slack, OpenAI, and live smoke workflows depend on environment variables and runbooks.
-- The product is not yet a self-serve SaaS because it does not have tenant accounts, self-serve GitHub App onboarding, billing, quotas, customer audit logs, queue-backed analysis, customer-facing operations dashboards, or deletion workflows.
+- The deterministic verifier, report validation, summary-only share/save flows, GitHub comment safety, Slack summary payload, OpenAI structured-output adapter, GitHub App signed webhook boundary, operator diagnostics, invite-only onboarding skeleton, first-class GitHub installation metadata, repository grants/settings, repository setup health API, queue enqueue/worker/bounded-batch boundary, Vercel Cron-compatible scheduler route, aggregate queue summary metrics and alert signals, read-only dead-letter summary, operator-only summary Slack queue alert delivery, invite-only `/tenant` setup dashboard, summary-only plan access readiness, tenant audit export summary, count-only deletion preview tied to a draft retention policy, internal tenant deletion execution boundary, evaluation pack, production smoke workflow, and reviewer-signal sentinels are implemented.
+- The current product is still beta/operator-configured. GitHub App automation, Supabase storage, Slack, OpenAI, and live smoke workflows depend on environment variables and runbooks, while onboarding and repository settings still rely on tenant-bound invite tokens rather than authenticated customer accounts. A bounded tenant account/member metadata read model now exists for beta dashboards, but it is not durable user authentication, RBAC enforcement, billing, or revocable server-side sessions. A public launch trust/setup draft now defines product-boundary, GitHub App permission, Slack summary, retention/deletion, troubleshooting, pricing-language, and support copy boundaries, with source-level tests guarding public surfaces against unsupported positioning drift.
+- The product is not yet a self-serve SaaS because it does not have full tenant accounts, billing-grade quota pages, a full background worker system, operations dashboards, broad incident routing, retention cleanup jobs, deletion drills, restore drills, or destructive deletion workflows.
 
 ## Final SaaS Success Definition
 
@@ -72,10 +72,15 @@ Required changes:
 Completion criteria:
 
 - A new team can generate its first real PR evidence report within 15 minutes.
-- Webhook analysis runs only when `installation_id + repository` maps to an active tenant grant.
+- Webhook analysis runs only when `installation_id + repository_id` maps to an active tenant grant.
 - Suspended or deleted installations cannot fetch PR evidence, save reports, comment, or notify Slack.
 - Private repo failures explain whether the issue is installation permission, repository grant, visibility, GitHub rate limit, or missing CI evidence.
 - Existing no-secret demo mode still works without authentication.
+
+Current implementation note:
+
+- Tenant account/member metadata can now be read by authorized tenant admins through a summary-only endpoint and the `/tenant` dashboard. It exposes tenant display name, status, plan label, member ids, roles, and member statuses only. Tenant-bound invite records and derived HttpOnly tenant admin sessions can carry bounded `owner`/`admin`/`member` role metadata, and repository settings mutations require `owner` or `admin`. This is a narrow invite-role boundary, not full authenticated RBAC. It intentionally does not provide full user login, OAuth, billing identity, invite lifecycle management, durable session revocation, or payment data.
+- Plan access readiness can now compose account status, usage quota state, and aggregate repository grant settings into a summary-only `/tenant` card. It intentionally does not expose billing provider ids, repository names, repository ids, installation ids, usage idempotency keys, raw evidence, or payment state, and it is not a billing provider integration.
 
 ## Milestone 2: Reviewer Workflow And Activation
 
@@ -85,8 +90,8 @@ Turn first setup into a repeatable merge-review workflow.
 
 Required changes:
 
-- Add a tenant dashboard showing recent summary-only reports, failed analyses, repo status, quota usage, and setup warnings.
-- Add customer-facing GitHub App health checks for missing permissions, expired/suspended installations, inaccessible repos, rate limits, large PR caps, and unavailable checks.
+- Add a tenant dashboard showing recent summary-only reports, failed analyses, repo status, quota usage, and setup warnings. The first `/tenant` setup dashboard exists for install, grants, settings, repo health, read-only monthly usage, recent summary report metadata with priority/status/query filters over a bounded recent summary sample, recent verification activity, async analysis status filters with recent-sample rollups, and a summary-only setup warning rollup from loaded account, plan access, repository health, usage, and job status signals.
+- Add customer-facing GitHub App health checks for missing permissions, expired/suspended installations, inaccessible repos, rate limits, large PR caps, and unavailable checks. The first metadata-only repository health API and explicit per-repo probe UI exist; it now surfaces suspended/deleted GitHub installation metadata as first-report blockers without fetching installation tokens. Broader permission/job health coverage remains.
 - Keep the report layout focused on top risk, weakest evidence, requirement coverage, missing tests, scope creep, review priority, and next action.
 - Keep GitHub PR comments marker-based and summary-only.
 - Add Slack summary notification settings per tenant or repo.
@@ -114,6 +119,7 @@ Required changes:
 - Gate private repo automation, saved history duration, Slack, comments, connected repositories, and quota by plan.
 - Add quota-safe failure responses that do not trigger analysis, comments, or Slack when usage is blocked.
 - Keep billing data separate from report evidence data.
+- Keep provider customer/subscription identifiers server-side and internal-only; customer-facing surfaces should use plan/status labels and bounded quota summaries instead.
 
 Completion criteria:
 
@@ -131,7 +137,7 @@ Make the service reliable and auditable enough for paying teams.
 
 Required changes:
 
-- Define the tenant data retention policy before adding customer saved history, audit exports, billing retention, backups, or restore procedures.
+- Implement cleanup jobs and provider retention controls from the concrete draft tenant data retention windows before adding customer saved history, audit exports, billing retention, backups, or restore procedures.
 - Move webhook-triggered analysis off the request path into a durable job queue.
 - Acknowledge valid webhooks quickly, then process analysis asynchronously with retries and dead-letter handling.
 - Keep durable idempotency based on tenant, installation, repository, PR number, head SHA, and action.
@@ -142,6 +148,11 @@ Required changes:
 - Add tenant deletion workflow for saved reports, repository grants, installations, webhook rows, queued work, and account metadata.
 - Add backup and restore procedures for tenant metadata, summary-only reports, billing records, audit logs, and webhook/job state.
 
+Current implementation note:
+
+- A draft tenant data retention matrix now exists in `docs/tenant-data-retention.md` and `src/lib/tenant-retention-policy.ts` with concrete retention windows and deletion readiness markers. The tenant deletion preview remains count-only and reports the policy version/status plus counted/uncounted category coverage, deletion plan windows, GitHub installation metadata counts, and tenant-mapped webhook delivery counts. New tenant-control webhook idempotency rows store `tenant_id`; historical rows without `tenant_id` must not be inferred from repository metadata. Tenant repository grants now have a metadata-only tenant-wide disable primitive for deletion start. Saved summary reports now have an internal guarded execution wrapper that can delete tenant-owned summary rows only after new work is explicitly blocked and tenant deletion state is active, while exposing only deleted count and coarse count basis. Analysis jobs now have an internal execution boundary that builds a metadata-only deletion plan, can mark static/memory/Supabase deletion state, disables repository grants as the first block phase, rechecks deletion state and tenant grants before direct enqueue, rechecks deletion state in worker execution before GitHub token fetch and side-effect calls, exact-counts queued/processing/retryable jobs, and refuses purge unless new work is explicitly blocked, deletion state is active, and active jobs are zero. Deletion readiness remains intentionally blocked until a destructive deletion orchestrator executes every category purge, revokes/disconnects external GitHub installation access where appropriate, and proves no saved report, comment, or Slack side effect can be produced after deletion starts. Cleanup jobs, destructive deletion endpoints, external GitHub installation revocation, backup expiry enforcement, and broader deletion/restore drills remain separate launch-gate work.
+- Tenant admins can now download a summary-only audit export through a distinct `/api/tenants/audit-export` route and `/tenant` dashboard control. The export requires tenant-bound invite/session auth, returns `tenant-audit-export-summary-only`, uses default limit 100 and max 250 with truncation metadata, and includes only bounded audit event fields such as actor, action, result, repository name, PR number, SHA/delivery prefixes, status, evidence coverage, saved-report privacy/durability, and comment action. It intentionally excludes installation ids, provider ids, raw metadata, payloads, diffs, logs, claims, re-prompts, report bodies, saved-report URLs/keys, comment bodies, tokens, signatures, table names, env names, and service-role secrets.
+
 Completion criteria:
 
 - The retention policy defines TTLs and deletion behavior for transient raw evidence, summary-only reports, webhook/job rows, audit logs, billing/account records, backups, and deleted tenants.
@@ -149,7 +160,7 @@ Completion criteria:
 - Sustained 5xx, webhook signature spikes, GitHub auth failures, queue backlog, storage failures, and privacy scanner failures produce alerts.
 - Tenant deletion removes or tombstones customer data according to the documented retention policy.
 - Restore drill and deletion drill are tested before public launch.
-- Audit export contains bounded metadata only: actor, tenant, repo, PR number, action, result, timestamp, request id, and safe status fields.
+- Audit export contains bounded metadata only: actor, tenant, repo, PR number, action, result, timestamp, delivery/request id prefix, and safe status fields.
 
 ## Milestone 5: Public SaaS Launch
 
@@ -172,6 +183,10 @@ Completion criteria:
 - At least one paid team or written design partner commitment validates willingness to pay.
 - Public docs state that AgentProof does not auto-merge, does not claim full correctness, and does not retain durable raw code evidence.
 
+Current implementation note:
+
+- `docs/public-launch-trust.md` is the first public-facing trust/setup boundary draft. It covers product positioning, GitHub App permissions, Slack summary gates, retention/deletion boundaries, troubleshooting language, pricing packaging language, support paths, and pre-publication checks without making unsupported market claims. Source-level copy boundary tests now monitor selected public docs and app surfaces so broad review, merge-authority, bug-finder, and unsupported security positioning does not slip into launch copy. This is documentation and regression coverage only; public self-serve signup, billing, durable customer support workflows, deletion/restore drills, and cited market claims remain separate launch work.
+
 ## Core Data Model For SaaS
 
 The implementation should introduce these tenant-scoped entities before public SaaS launch:
@@ -184,9 +199,10 @@ The implementation should introduce these tenant-scoped entities before public S
 - `saved_reports`: tenant, report id, summary-only report, expiration, privacy label.
 - `audit_events`: tenant, actor, action, result, request id, bounded metadata.
 - `usage_records`: tenant, period, feature, count, quota source.
-- `billing_customers`: tenant, provider customer id, subscription id, plan, status.
+- `billing_customers`: tenant, internal-only provider customer id, internal-only subscription id, plan, status.
 
 Do not add durable tables for raw diffs, raw logs, full webhook payloads, evidence indexes, agent claims, or raw re-prompt text.
+Do not expose billing provider identifiers in tenant-facing dashboards, customer-visible APIs, audit exports, comments, Slack notifications, saved reports, or support screenshots.
 
 ## Privacy And Security Boundaries
 
@@ -273,34 +289,36 @@ Do not implement these until the SaaS evidence-verifier workflow is proven:
 1. **Tenant control plane skeleton**
    - Add tenant/member/repository/installation types and persistence boundaries.
    - Acceptance: webhook analysis cannot run without an active tenant repository grant.
-   - Current implementation note: an env-seeded tenant repository grant skeleton can fail closed before webhook idempotency, token fetch, PR fetch, saved reports, or comments. Database-backed tenants, members, installations, and self-serve repository selection remain separate work.
+   - Current implementation note: tenant repository grants can now be stored through the server-only control-plane Supabase boundary, authorize webhook analysis by `installation_id + repository_id`, expose repo verification settings for `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and repo-level Slack summary opt-in metadata, support short-lived HttpOnly tenant admin sessions bootstrapped from tenant-bound invites, require bounded `owner` or `admin` invite/session role metadata for repository settings mutations, store first-class GitHub installation metadata after verified onboarding callbacks, disable grants from signed GitHub App uninstall/suspend/repository-removal lifecycle events, and disable all tenant grants through a metadata-only deletion-start primitive that does not return repository names. Uninstall/suspend lifecycle events also mark installation metadata `deleted` or `suspended` when one tenant mapping is known. Env-seeded grants remain local/demo compatibility only and are marked manual-review for deletion. Full tenant/member authentication, durable role lifecycle management, durable session revocation, Slack OAuth/marketplace installation, and destructive row deletion remain separate work.
 
 2. **Self-serve GitHub App onboarding**
    - Add install callback, repository selection, installation health, and repo settings.
    - Acceptance: a user can connect one repository without editing environment variables.
+   - Current implementation note: invite-only onboarding now supports tenant-bound beta invites, opaque hashed state/nonce storage, browser callback redirect to `/tenant`, activation cookies, bounded repository listing up to 500 installed repositories, server-fetched repository grant creation, metadata-only repo settings updates, explicit per-repo health probes, read-only usage summaries, recent summary report metadata, recent verification activity summaries, count-only tenant deletion preview, and a 12-hour HttpOnly tenant admin session for controlled design partners. It is still design-partner onboarding, not a full account system; customer audit export, destructive tenant deletion/tombstoning, durable session revocation, tenant membership, and broader GitHub permission/job health remain separate work.
 
 3. **Tenant-scoped saved report store**
    - Add tenant id to saved report lifecycle while preserving summary-only projection and TTL.
    - Acceptance: wrong-tenant access returns not found or forbidden without exposing report metadata.
-   - Current implementation note: saved reports can now carry tenant ownership plus a hashed report access key; tenant-owned reports are hidden from id-only lookups. Full authenticated tenant sessions, dashboard filtering, and deletion workflows remain separate work.
+   - Current implementation note: saved reports can now carry tenant ownership plus a hashed report access key; tenant-owned reports are hidden from id-only lookups and can be listed or counted as bounded tenant summary metadata. Full authenticated tenant sessions, dashboard filtering, and destructive deletion workflows remain separate work.
 
 4. **Analysis job queue**
    - Move GitHub App webhook analysis into durable jobs with idempotency, retry, and dead-letter state.
    - Acceptance: valid webhook acknowledgement is fast and analysis result is visible later.
+   - Current implementation note: queue-backed mode can now fail closed when queue storage is missing and can enqueue bounded metadata-only analysis jobs after grant/quota/idempotency/side-effect gates but before GitHub installation-token fetch. Job rows hash idempotency keys and omit webhook bodies, PR bodies, diffs, logs, full reports, evidence indexes, claims, raw re-prompt text, comments, saved-report keys, Slack webhooks, and tokens; completed jobs may store summary-only result metadata such as priority, evidence coverage, and saved-report/comment/Slack action status. The queue library also has metadata-only claim, retry-lease, completion, retryable-failure, and terminal-failure primitives plus operator-token-gated preflight/run/run-batch endpoints. The run endpoints re-authorize tenant repository grants before any token fetch, fetch GitHub evidence, generate validated reports, perform configured summary-only side effects, and complete due jobs within a small bounded batch. Repo-level Slack summary delivery now requires an active tenant grant, repo Slack opt-in, configured server-side Slack webhook, quota allowance, and durable audit when the side-effect gate is enabled; payloads use summary-only formatting and neutralize mentions. `vercel.json` schedules a token-gated cron route once daily for the conservative first rollout; the route no-ops when queue mode is disabled and returns aggregate-only metadata output. Operator diagnostics include aggregate queue summary metrics and alert signals, a read-only dead-letter summary exposes failed-terminal error-code distribution plus aggregate-only incident status and next-action codes without job internals, and an operator-only Slack route can deliver warning-level queue alerts using summary-only aggregate payloads. Design-partner tenants can read summary-only async job status in `/tenant`. Dead-letter requeue/ack workflows, broader incident routing, separate worker processes, concurrency controls, Slack OAuth routing, separate Slack usage billing records, and exactly-once operational guarantees remain separate work.
 
 5. **Usage and quota layer**
    - Count analysis attempts, successful reports, comments, saved links, Slack sends, and OpenAI calls.
    - Acceptance: quota prevents expensive work and side effects before they start.
-   - Current implementation note: tenant GitHub App analysis can reserve monthly analysis quota before webhook idempotency, GitHub token fetch, PR evidence fetch, saved reports, or comments. Production quota enforcement requires the durable Supabase reservation RPC; memory quota is local/demo only. Full billing plans, seat limits, connected-repo limits, dashboard usage, and Stripe/customer-portal integration remain separate work.
+   - Current implementation note: tenant GitHub App analysis can reserve monthly analysis quota before webhook idempotency, GitHub token fetch, PR evidence fetch, saved reports, comments, or Slack summaries. The server-only quota seed now also carries bounded plan capability flags for connected repository limits, saved summary links, marker comments, Slack summaries, and structured verifier access; webhook and worker execution recheck those plan flags before Slack configuration checks, durable side-effect audit, GitHub token fetch, PR evidence fetch, saved-report creation, marker comments, or Slack delivery. `/api/llm/verify` also requires tenant plan context and `structuredLlmVerifierEnabled: true` before OpenAI calls when quota enforcement is enabled. `/api/tenants/usage` and the `/tenant` dashboard can show read-only monthly usage summaries without reserving quota or exposing raw rows/idempotency keys, while plan readiness exposes only plan labels, usage status, connected repository count/limit, and bounded feature states. Production quota enforcement requires the durable Supabase reservation RPC; memory quota is local/demo only. Stripe/customer-portal integration, provider subscription lifecycle, separate per-side-effect usage billing records, and seat billing remain separate work.
 
 6. **Audit log and privacy scanner**
    - Add bounded audit events and automated checks that durable rows do not contain raw evidence fields or secret-like strings.
    - Acceptance: privacy scanner failure blocks release.
-   - Current implementation note: GitHub App automation can now write bounded audit events for grant denial, quota blocks/unavailability, idempotency unavailability, duplicate skips, completed analysis, and failed analysis. Audit events run through a structural privacy scanner before memory or Supabase storage. Install/uninstall, repo settings, admin access, billing, Slack, deletion, export UI, and required-audit side-effect gates remain separate work.
+   - Current implementation note: GitHub App automation can now write bounded audit events for grant denial, grant lifecycle disables, quota blocks/unavailability, idempotency unavailability, duplicate skips, completed analysis, failed analysis, and side-effect preflight. When `AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS=true`, saved-report, marker-comment, and Slack summary automation fails closed before GitHub token fetch if durable audit storage is missing or unavailable. Audit events can include only bounded Slack side-effect action/privacy metadata, never Slack webhook URLs, channel/workspace/provider identifiers, or response bodies. Audit events run through a structural privacy scanner before memory or Supabase storage. Tenant admins can export bounded summary-only audit events from `/api/tenants/audit-export` without raw metadata, provider ids, table names, env names, or secrets. Admin access, billing, deletion execution, and always-required audit gates remain separate work.
 
 7. **Billing beta**
    - Add plan records, subscription status, billing portal, and quota mapping.
-   - Acceptance: team plan controls feature gates and monthly PR analysis quota.
+   - Acceptance: team plan controls feature gates and monthly PR analysis quota without exposing provider customer or subscription ids.
 
 8. **Public launch polish**
    - Add public setup docs, pricing page, support paths, and source-backed market validation citations.

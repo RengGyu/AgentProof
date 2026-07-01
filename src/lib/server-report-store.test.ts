@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
 import {
   clearSavedReportsForTests,
   cleanupExpiredReports,
+  cleanupExpiredSavedReports,
   createSavedReport,
   deleteSavedReport,
   getSavedReport,
   getSavedReportStoreStatus,
+  listTenantSavedReports,
   MAX_SERVER_REPORTS,
+  purgeTenantSavedReportsForDeletion,
   SavedReportStoreError
 } from "./server-report-store";
 import { generateVerificationReport } from "./verifier";
@@ -77,7 +81,7 @@ describe("server report store", () => {
   });
 
   it("scopes tenant saved reports by tenant id or report access key", async () => {
-    const report = generateVerificationReport(demoScenarios.clean);
+    const report = decodeSharedReport(encodeReportForShare(generateVerificationReport(demoScenarios.clean)));
     const saved = await createSavedReport(report, { tenantId: "tenant_a" });
 
     expect(saved.accessToken).toBeTruthy();
@@ -96,8 +100,44 @@ describe("server report store", () => {
     await expect(deleteSavedReport(saved.id, { accessToken: saved.accessToken })).resolves.toBe(true);
   });
 
+  it("lists tenant saved reports as bounded summary-only metadata", async () => {
+    const firstReport = generateVerificationReport(demoScenarios["scope-creep"]);
+    firstReport.source.title = "Scope report with token=secret_should_not_leak";
+    firstReport.source.url = "https://github.com/RengGyu/AgentProof/pull/27?key=secret_should_not_leak#discussion";
+    const secondReport = generateVerificationReport(demoScenarios.clean);
+    const first = await createSavedReport(firstReport, { tenantId: "tenant_a" });
+    await createSavedReport(secondReport, { tenantId: "tenant_b" });
+
+    const rows = await listTenantSavedReports({ tenantId: "tenant_a", limit: 25 });
+    const serialized = JSON.stringify(rows);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: first.id,
+        sourceTitle: "Scope report with [redacted]",
+        sourceUrl: "https://github.com/RengGyu/AgentProof/pull/27",
+        priority: first.report.summary.priority,
+        evidenceCoverage: first.report.summary.evidenceCoverage,
+        privacy: "summary-only"
+      })
+    ]);
+    expect(rows[0].requirementCounts).toEqual(expect.objectContaining({
+      met: expect.any(Number),
+      partial: expect.any(Number),
+      missing: expect.any(Number),
+      unclear: expect.any(Number)
+    }));
+    expect(serialized).not.toContain(first.accessToken ?? "missing-access-token");
+    expect(serialized).not.toContain("secret_should_not_leak");
+    expect(serialized).not.toContain("?key=");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+    expect(serialized).not.toContain("Patch excerpt");
+  });
+
   it("keeps no-auth demo saved reports readable without tenant scope", async () => {
-    const report = generateVerificationReport(demoScenarios.clean);
+    const report = decodeSharedReport(encodeReportForShare(generateVerificationReport(demoScenarios.clean)));
     const saved = await createSavedReport(report);
 
     expect(saved.tenantId).toBeUndefined();
@@ -113,6 +153,48 @@ describe("server report store", () => {
 
     expect(await getSavedReport(saved.id)).toBeNull();
     expect(cleanupExpiredReports()).toBe(0);
+  });
+
+  it("cleans expired in-memory reports with metadata-only output", async () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.evidenceIndex.push({
+      id: "ev_cleanup_secret",
+      kind: "log",
+      label: "raw log",
+      summary: "Patch excerpt with github_pat_secret_should_not_leak",
+      confidence: 0.6
+    });
+    report.reprompt.prompt = "raw cleanup prompt with sk-secret_should_not_leak";
+    const active = await createSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      ttlMs: 60_000
+    });
+    const expired = await createSavedReport(report, { tenantId: "tenant_a", ttlMs: -1 });
+
+    const result = await cleanupExpiredSavedReports(Date.now());
+    const serialized = JSON.stringify(result);
+
+    expect(result).toEqual({
+      privacy: "saved-report-cleanup-metadata-only",
+      deletedCount: 1,
+      countBasis: "exact-memory-delete-count",
+      store: "memory",
+      durable: false,
+      configured: false
+    });
+    expect(expired.id).toMatch(/^tenant_/);
+    await expect(getSavedReport(active.id, { tenantId: "tenant_a" })).resolves.toMatchObject({
+      id: active.id
+    });
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain(expired.id);
+    expect(serialized).not.toContain(active.id);
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+    expect(serialized).not.toContain("github_pat_");
+    expect(serialized).not.toContain("sk-secret");
   });
 
   it("caps in-memory saved reports by removing oldest entries", async () => {
@@ -259,6 +341,49 @@ describe("server report store", () => {
     expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("tenant_id=eq.tenant_a");
   });
 
+  it("lists Supabase tenant saved reports without access tokens or storage internals", async () => {
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    process.env.AGENTPROOF_REPORTS_TABLE = "saved_reports_test";
+    const report = decodeSharedReport(encodeReportForShare(generateVerificationReport(demoScenarios.clean)));
+    report.source.url = "https://github.com/RengGyu/AgentProof/pull/28?key=secret_should_not_leak";
+    const row = {
+      id: "tenant_report",
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      tenant_id: "tenant_a",
+      access_token_hash: "a".repeat(64),
+      report
+    };
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json([row]));
+    global.fetch = fetchMock as typeof fetch;
+
+    const rows = await listTenantSavedReports({ tenantId: "tenant_a", limit: 100 });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const serialized = JSON.stringify(rows);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: "tenant_report",
+        sourceUrl: "https://github.com/RengGyu/AgentProof/pull/28",
+        privacy: "summary-only"
+      })
+    ]);
+    expect(String(url)).toContain("https://agentproof-test.supabase.co/rest/v1/saved_reports_test?");
+    expect(String(url)).toContain("tenant_id=eq.tenant_a");
+    expect(String(url)).toContain("expires_at=gt.");
+    expect(String(url)).toContain("limit=100");
+    expect(String(url)).not.toContain("service-role-secret");
+    expect(init?.method).toBe("GET");
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer service-role-secret");
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("access_token_hash");
+    expect(serialized).not.toContain("secret_should_not_leak");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
   it("returns null for expired Supabase reports and deletes them", async () => {
     process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
     process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
@@ -279,6 +404,162 @@ describe("server report store", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1][0])).toContain("id=eq.expired_report");
     expect(fetchMock.mock.calls[1][1]?.method).toBe("DELETE");
+  });
+
+  it("cleans expired Supabase saved reports without reading report bodies or exposing storage internals", async () => {
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    process.env.AGENTPROOF_REPORTS_TABLE = "saved_reports_test";
+    const now = Date.parse("2026-06-30T00:00:00.000Z");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "HEAD") {
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "content-range": "0-0/4"
+          }
+        });
+      }
+
+      if (init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+
+      return new Response("unexpected", { status: 500 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await cleanupExpiredSavedReports(now);
+    const [countUrl, countInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    const serialized = JSON.stringify(result);
+
+    expect(result).toEqual({
+      privacy: "saved-report-cleanup-metadata-only",
+      deletedCount: 4,
+      countBasis: "pre-delete-supabase-count",
+      store: "supabase",
+      durable: true,
+      configured: true
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(countUrl).toBe("https://agentproof-test.supabase.co/rest/v1/saved_reports_test?expires_at=lte.2026-06-30T00%3A00%3A00.000Z&select=id");
+    expect(countInit.method).toBe("HEAD");
+    expect(countInit.body).toBeUndefined();
+    expect(countInit.headers).toMatchObject({
+      Prefer: "count=exact",
+      Range: "0-0"
+    });
+    expect(deleteUrl).toBe("https://agentproof-test.supabase.co/rest/v1/saved_reports_test?expires_at=lte.2026-06-30T00%3A00%3A00.000Z");
+    expect(deleteInit.method).toBe("DELETE");
+    expect(deleteInit.body).toBeUndefined();
+    expect(deleteInit.headers).toMatchObject({
+      Prefer: "return=minimal"
+    });
+    expect(serialized).not.toContain("saved_reports_test");
+    expect(serialized).not.toContain("agentproof-test.supabase.co");
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("reportBody");
+    expect(serialized).not.toContain("access_token");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
+  it("purges tenant memory saved reports without returning report bodies or raw evidence", async () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.reprompt.prompt = "raw tenant purge prompt with sk-secret_should_not_leak";
+    report.evidenceIndex.push({
+      id: "ev_tenant_purge_secret",
+      kind: "diff",
+      label: "Patch excerpt",
+      summary: "Patch excerpt with github_pat_secret_should_not_leak",
+      confidence: 0.9
+    });
+    const tenantAFirst = await createSavedReport(report, { tenantId: "tenant_a" });
+    await createSavedReport(report, { tenantId: "tenant_a" });
+    const tenantB = await createSavedReport(report, { tenantId: "tenant_b" });
+
+    const result = await purgeTenantSavedReportsForDeletion({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify(result);
+
+    expect(result).toEqual({
+      privacy: "saved-report-tenant-purge-metadata-only",
+      deletedCount: 2,
+      countBasis: "exact-memory-delete-count"
+    });
+    await expect(getSavedReport(tenantAFirst.id, { tenantId: "tenant_a" })).resolves.toBeNull();
+    await expect(getSavedReport(tenantB.id, { tenantId: "tenant_b" })).resolves.toMatchObject({
+      tenantId: "tenant_b"
+    });
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("tenant_b");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
+    expect(serialized).not.toContain("sk-secret_should_not_leak");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
+  it("purges Supabase tenant saved reports through count-only DELETE without reading reports", async () => {
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    process.env.AGENTPROOF_REPORTS_TABLE = "saved_reports_test";
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "HEAD") {
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "content-range": "0-0/3"
+          }
+        });
+      }
+
+      if (init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+
+      return new Response("unexpected report body read", { status: 500 });
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await purgeTenantSavedReportsForDeletion({ tenantId: "tenant_a" });
+    const [countUrl, countInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    const serialized = JSON.stringify(result);
+
+    expect(result).toEqual({
+      privacy: "saved-report-tenant-purge-metadata-only",
+      deletedCount: 3,
+      countBasis: "pre-delete-supabase-count"
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(countUrl).toBe("https://agentproof-test.supabase.co/rest/v1/saved_reports_test?tenant_id=eq.tenant_a&select=id");
+    expect(countInit.method).toBe("HEAD");
+    expect(countInit.body).toBeUndefined();
+    expect(countInit.headers).toMatchObject({
+      Prefer: "count=exact",
+      Range: "0-0"
+    });
+    expect(deleteUrl).toBe("https://agentproof-test.supabase.co/rest/v1/saved_reports_test?tenant_id=eq.tenant_a");
+    expect(deleteInit.method).toBe("DELETE");
+    expect(deleteInit.body).toBeUndefined();
+    expect(deleteInit.headers).toMatchObject({
+      Prefer: "return=minimal"
+    });
+    expect(String(countUrl)).not.toContain("select=report");
+    expect(String(deleteUrl)).not.toContain("select=report");
+    expect(serialized).not.toContain("saved_reports_test");
+    expect(serialized).not.toContain("agentproof-test.supabase.co");
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("reportBody");
+    expect(serialized).not.toContain("access_token");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
   });
 
   it("does not call Supabase for unsafe saved report ids", async () => {

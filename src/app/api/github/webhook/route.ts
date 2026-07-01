@@ -1,5 +1,10 @@
 import { buildGitHubPullRequestInput } from "@/lib/github";
-import { recordAuditEvent, type AuditEventAction, type AuditEventResult } from "@/lib/audit-log";
+import {
+  AnalysisJobQueueError,
+  enqueueAnalysisJob,
+  getAnalysisJobQueueStatus
+} from "@/lib/analysis-jobs";
+import { getAuditLogStoreStatus, recordAuditEvent, type AuditEventAction, type AuditEventResult } from "@/lib/audit-log";
 import {
   completeGitHubWebhookDelivery,
   createGitHubInstallationAccessToken,
@@ -13,21 +18,43 @@ import {
   shouldHandlePullRequestAction,
   verifyGitHubWebhookSignature
 } from "@/lib/github-app";
+import {
+  GitHubInstallationStoreError,
+  markTenantGitHubInstallationStatus
+} from "@/lib/github-installations";
+import {
+  createAutomationSavedReport,
+  postGitHubAppMarkerComment
+} from "@/lib/github-app-side-effects";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
-import { reportToGitHubComment } from "@/lib/markdown";
 import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
-import { createSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
-import { authorizeTenantRepositoryGrant, tenantGrantPublicReason } from "@/lib/tenant-control-plane";
-import { reserveUsageQuota, usageQuotaPublicReason, UsageQuotaStoreError, type UsageQuotaReservation } from "@/lib/usage-quota";
+import { SavedReportStoreError } from "@/lib/server-report-store";
+import {
+  assertSlackReportNotificationConfigured,
+  sendSlackReportSummary,
+  SlackNotificationError
+} from "@/lib/slack";
+import {
+  authorizeTenantRepositoryGrantAsync,
+  disableTenantRepositoryGrantsForInstallation,
+  disableTenantRepositoryGrantsForRepositories,
+  getTenantControlPlaneSettings,
+  tenantGrantPublicReason,
+  TenantControlPlaneStoreError
+} from "@/lib/tenant-control-plane";
+import { TenantDeletionStateError } from "@/lib/tenant-deletion-state";
+import {
+  clampTenantPlanSideEffects,
+  reserveUsageQuota,
+  usageQuotaPublicReason,
+  UsageQuotaStoreError,
+  type UsageQuotaReservation
+} from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
-import type { VerificationReport } from "@/lib/types";
 
-const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping"]);
+const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
 const MAX_WEBHOOK_BODY_BYTES = 400_000;
-const AGENTPROOF_APP_COMMENT_MARKER = "<!-- agentproof:github-app:evidence-check:v1 -->";
-const COMMENTS_PAGE_SIZE = 100;
-const MAX_COMMENT_PAGES = 5;
 
 export async function POST(request: Request) {
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
@@ -78,6 +105,14 @@ export async function POST(request: Request) {
   const action = safeWebhookString(typeof payload?.action === "string" ? payload.action : undefined);
   const smokeControls = getGitHubAppSmokeControls(payload);
 
+  if (isInstallationLifecycleEvent(meta.event)) {
+    return handleInstallationLifecycle(payload, {
+      delivery: meta.delivery,
+      event: meta.event,
+      action
+    });
+  }
+
   if (meta.event !== "pull_request" || !settings.enabled) {
     return noStoreJson({
       ok: true,
@@ -103,6 +138,139 @@ export async function POST(request: Request) {
     saveReportsEnabled: settings.saveReportsEnabled && !smokeControls.suppressSavedReport,
     legacyRepoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
   });
+}
+
+async function handleInstallationLifecycle(
+  payload: Record<string, unknown>,
+  context: {
+    delivery: string;
+    event: string;
+    action: string | undefined;
+  }
+) {
+  if (!getTenantControlPlaneSettings().enabled) {
+    return noStoreJson({
+      ok: true,
+      accepted: true,
+      dryRun: true,
+      event: safeWebhookString(context.event),
+      delivery: safeWebhookString(context.delivery),
+      action: context.action,
+      automationEnabled: false,
+      willAnalyze: false,
+      willComment: false,
+      note: "GitHub App lifecycle webhook verified. Tenant control is disabled, so repository grants were not changed."
+    });
+  }
+
+  const lifecycle = parseInstallationLifecyclePayload(payload, context.event, context.action);
+  if (!lifecycle) {
+    return noStoreJson({
+      error: "GitHub App lifecycle webhook payload is missing required installation metadata.",
+      code: "github_app_lifecycle_payload_invalid",
+      willAnalyze: false,
+      willComment: false
+    }, { status: 422 });
+  }
+
+  if (!lifecycle.shouldDisable) {
+    await recordInstallationLifecycleAuditEvent(lifecycle.auditAction, "skipped", lifecycle, context, {
+      statusCode: 200,
+      code: "github_app_lifecycle_no_grant_change"
+    });
+
+    return noStoreJson({
+      ok: true,
+      accepted: true,
+      ignored: true,
+      dryRun: false,
+      event: safeWebhookString(context.event),
+      delivery: safeWebhookString(context.delivery),
+      action: context.action,
+      automationEnabled: false,
+      willAnalyze: false,
+      willComment: false,
+      disabledGrantCount: 0,
+      note: "GitHub App lifecycle event did not require repository grant changes."
+    });
+  }
+
+  try {
+    const result = lifecycle.repositoryIds
+      ? await disableTenantRepositoryGrantsForRepositories({
+        installationId: lifecycle.installationId,
+        repositoryIds: lifecycle.repositoryIds
+      })
+      : await disableTenantRepositoryGrantsForInstallation({
+        installationId: lifecycle.installationId
+      });
+    const tenantId = uniqueTenantId(result.grants);
+
+    if (tenantId && lifecycle.installationStatus) {
+      await markTenantGitHubInstallationStatus({
+        tenantId,
+        installationId: lifecycle.installationId,
+        accountId: lifecycle.accountId,
+        accountLogin: lifecycle.accountLogin,
+        accountType: lifecycle.accountType,
+        status: lifecycle.installationStatus
+      });
+    }
+
+    await recordInstallationLifecycleAuditEvent(lifecycle.auditAction, "completed", lifecycle, context, {
+      statusCode: 200,
+      code: lifecycle.code,
+      tenantId
+    });
+
+    return noStoreJson({
+      ok: true,
+      accepted: true,
+      dryRun: false,
+      event: safeWebhookString(context.event),
+      delivery: safeWebhookString(context.delivery),
+      action: context.action,
+      automationEnabled: false,
+      willAnalyze: false,
+      willComment: false,
+      installationId: lifecycle.installationId,
+      disabledGrantCount: result.updatedCount,
+      privacy: "grant-metadata-only",
+      note: lifecycle.repositoryIds
+        ? "Removed GitHub App repository access disabled matching AgentProof repository grants."
+        : "GitHub App installation lifecycle disabled matching AgentProof repository grants."
+    });
+  } catch (error) {
+    if (error instanceof GitHubInstallationStoreError) {
+      await recordInstallationLifecycleAuditEvent("github_app_lifecycle_store_unavailable", "failed", lifecycle, context, {
+        statusCode: 503,
+        code: "github_app_installation_metadata_store_unavailable"
+      });
+
+      return noStoreJson({
+        error: "GitHub App installation metadata store is unavailable.",
+        code: "github_app_installation_metadata_store_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+
+    if (error instanceof TenantControlPlaneStoreError) {
+      await recordInstallationLifecycleAuditEvent("github_app_lifecycle_store_unavailable", "failed", lifecycle, context, {
+        statusCode: 503,
+        code: "github_app_tenant_grant_store_unavailable"
+      });
+
+      return noStoreJson({
+        error: "Tenant repository grant store is unavailable.",
+        code: "github_app_tenant_grant_store_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+
+    throw error;
+  }
 }
 
 async function handlePullRequestAutomation(
@@ -142,10 +310,44 @@ async function handlePullRequestAutomation(
     }, { status: 422 });
   }
 
-  const tenantGrant = authorizeTenantRepositoryGrant({
-    installationId: automation.installationId,
-    repositoryFullName: automation.repositoryFullName
-  });
+  let tenantGrant;
+  try {
+    tenantGrant = await authorizeTenantRepositoryGrantAsync({
+      installationId: automation.installationId,
+      repositoryFullName: automation.repositoryFullName,
+      repositoryId: automation.repositoryId
+    });
+  } catch (error) {
+    if (error instanceof TenantControlPlaneStoreError) {
+      await recordWebhookAuditEvent("github_app_grant_store_unavailable", "failed", automation, context, {
+        statusCode: 503,
+        code: "github_app_tenant_grant_store_unavailable"
+      });
+
+      return noStoreJson({
+        error: "Tenant repository grant store is unavailable.",
+        code: "github_app_tenant_grant_store_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+
+    if (error instanceof TenantDeletionStateError) {
+      await recordWebhookAuditEvent("github_app_grant_store_unavailable", "failed", automation, context, {
+        statusCode: 503,
+        code: "github_app_tenant_guard_unavailable"
+      });
+
+      return noStoreJson({
+        error: "Tenant repository guard is unavailable.",
+        code: "github_app_tenant_guard_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+
+    throw error;
+  }
 
   if (tenantGrant.enabled && tenantGrant.reason) {
     const status = tenantGrant.reason === "invalid-grants" ? 503 : 200;
@@ -218,6 +420,21 @@ async function handlePullRequestAutomation(
     automation.headSha,
     context.action
   ].join(":");
+  const queueStatus = getAnalysisJobQueueStatus();
+  if (queueStatus.enabled && !queueStatus.configured) {
+    await recordWebhookAuditEvent("github_app_analysis_queue_unavailable", "failed", automation, context, {
+      tenantId: tenantGrant.grant?.tenantId,
+      statusCode: 503,
+      code: "github_app_analysis_queue_unavailable"
+    });
+
+    return noStoreJson({
+      error: "Analysis job queue is unavailable.",
+      code: "github_app_analysis_queue_unavailable",
+      willAnalyze: false,
+      willComment: false
+    }, { status: 503 });
+  }
 
   if (tenantGrant.enabled) {
     let quota: UsageQuotaReservation;
@@ -279,6 +496,7 @@ async function handlePullRequestAutomation(
   try {
     reservation = await reserveGitHubWebhookDelivery({
       key: idempotencyKey,
+      tenantId: tenantGrant.grant?.tenantId,
       event: context.event,
       delivery: context.delivery,
       installationId: automation.installationId,
@@ -336,6 +554,150 @@ async function handlePullRequestAutomation(
     });
   }
 
+  let plannedSideEffects = {
+    saveReport: context.saveReportsEnabled
+      && (!tenantGrant.enabled || tenantGrant.grant?.saveReportsEnabled === true),
+    comment: context.commentEnabled
+      && (!tenantGrant.enabled || tenantGrant.grant?.commentEnabled === true),
+    ...(tenantGrant.enabled && tenantGrant.grant?.slackNotificationsEnabled === true ? { slackSummary: true } : {})
+  };
+
+  try {
+    plannedSideEffects = tenantGrant.enabled
+      ? clampTenantPlanSideEffects({
+        tenantId: tenantGrant.grant?.tenantId,
+        saveReport: plannedSideEffects.saveReport,
+        comment: plannedSideEffects.comment,
+        slackSummary: plannedSideEffects.slackSummary
+      })
+      : plannedSideEffects;
+  } catch (error) {
+    if (error instanceof UsageQuotaStoreError) {
+      await failGitHubWebhookDelivery({
+        key: idempotencyKey
+      }, {
+        code: "github_app_plan_gate_unavailable",
+        summary: "Tenant plan side-effect gate is unavailable."
+      }).catch(() => undefined);
+      await recordWebhookAuditEvent("github_app_quota_unavailable", "failed", automation, context, {
+        tenantId: tenantGrant.grant?.tenantId,
+        statusCode: 503,
+        code: "github_app_plan_gate_unavailable"
+      });
+
+      return noStoreJson({
+        error: "Tenant plan side-effect gate is unavailable.",
+        code: "github_app_plan_gate_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+
+    throw error;
+  }
+
+  const slackGate = validateSlackSummaryForSideEffects(plannedSideEffects);
+  if (slackGate) {
+    await failGitHubWebhookDelivery({
+      key: idempotencyKey
+    }, {
+      code: slackGate.code,
+      summary: slackGate.summary
+    }).catch(() => undefined);
+
+    return slackGate.response;
+  }
+
+  const sideEffectGateResponse = await requireDurableAuditForSideEffects(
+    automation,
+    context,
+    tenantGrant.grant?.tenantId,
+    plannedSideEffects
+  );
+  if (sideEffectGateResponse) {
+    await failGitHubWebhookDelivery({
+      key: idempotencyKey
+    }, {
+      code: "github_app_durable_audit_required",
+      summary: "Durable audit storage is required before GitHub App side effects."
+    }).catch(() => undefined);
+
+    return sideEffectGateResponse;
+  }
+
+  if (queueStatus.enabled) {
+    try {
+      const job = await enqueueAnalysisJob({
+        tenantId: tenantGrant.grant?.tenantId,
+        idempotencyKey,
+        deliveryId: context.delivery,
+        event: context.event,
+        action: context.action,
+        installationId: automation.installationId,
+        repositoryId: automation.repositoryId,
+        repositoryFullName: automation.repositoryFullName,
+        pullRequestNumber: automation.pullRequestNumber,
+        pullRequestUrl: automation.pullRequestUrl,
+        headSha: automation.headSha,
+        saveReport: plannedSideEffects.saveReport,
+        comment: plannedSideEffects.comment,
+        slackSummary: plannedSideEffects.slackSummary
+      });
+
+      await recordWebhookAuditEvent("github_app_analysis_queued", "completed", automation, context, {
+        tenantId: tenantGrant.grant?.tenantId,
+        statusCode: 202,
+        code: job.durable ? "github_app_analysis_queued_durable" : "github_app_analysis_queued_memory"
+      });
+
+      return noStoreJson({
+        ok: true,
+        accepted: true,
+        queued: true,
+        dryRun: false,
+        event: safeWebhookString(context.event),
+        delivery: safeWebhookString(context.delivery),
+        action: context.action,
+        automationEnabled: true,
+        willAnalyze: true,
+        willComment: plannedSideEffects.comment,
+        analysis: {
+          status: "queued",
+          jobId: job.id,
+          repository: automation.repositoryFullName,
+          pullRequestNumber: automation.pullRequestNumber,
+          headSha: automation.headSha,
+          queue: {
+            store: job.store,
+            durable: job.durable
+          }
+        }
+      }, { status: 202 });
+    } catch (error) {
+      const errorMessage = redactSecrets(error instanceof Error ? error.message : "Analysis job queue is unavailable.");
+      await failGitHubWebhookDelivery({
+        key: idempotencyKey
+      }, {
+        code: "github_app_analysis_queue_unavailable",
+        summary: errorMessage
+      }).catch(() => undefined);
+      await recordWebhookAuditEvent("github_app_analysis_queue_unavailable", "failed", automation, context, {
+        tenantId: tenantGrant.grant?.tenantId,
+        statusCode: 503,
+        code: "github_app_analysis_queue_unavailable"
+      });
+
+      return noStoreJson({
+        error: error instanceof AnalysisJobQueueError
+          ? "Analysis job queue is unavailable."
+          : "Analysis job queue could not accept the webhook.",
+        code: "github_app_analysis_queue_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+  }
+
   try {
     const token = await createGitHubInstallationAccessToken(automation.installationId);
     const input = await buildGitHubPullRequestInput(automation.pullRequestUrl, token, "");
@@ -356,15 +718,19 @@ async function handlePullRequestAutomation(
       throw new Error(`Generated report failed runtime validation: ${validation.errors.join("; ")}`);
     }
 
-    const canSaveReport = context.saveReportsEnabled
-      && (!tenantGrant.enabled || tenantGrant.grant?.saveReportsEnabled === true);
-    const canPostComment = context.commentEnabled
-      && (!tenantGrant.enabled || tenantGrant.grant?.commentEnabled === true);
+    const canSaveReport = plannedSideEffects.saveReport;
+    const canPostComment = plannedSideEffects.comment;
     const saved = canSaveReport
-      ? await maybeCreateAutomationSavedReport(report, context.requestUrl, tenantGrant.grant?.tenantId)
+      ? await createAutomationSavedReport(report, {
+        requestUrl: context.requestUrl,
+        tenantId: tenantGrant.grant?.tenantId
+      })
       : undefined;
     const comment = canPostComment
       ? await postGitHubAppMarkerComment(automation, token, report)
+      : undefined;
+    const slack = plannedSideEffects.slackSummary
+      ? await sendSlackReportSummary(report)
       : undefined;
     const analysis = {
       status: "completed",
@@ -374,7 +740,8 @@ async function handlePullRequestAutomation(
       priority: report.summary.priority,
       evidenceCoverage: report.summary.evidenceCoverage,
       savedReport: saved,
-      comment
+      comment,
+      slack
     };
 
     await completeGitHubWebhookDelivery({ key: idempotencyKey }, {
@@ -390,6 +757,10 @@ async function handlePullRequestAutomation(
       } : undefined,
       comment: comment ? {
         action: comment.action
+      } : undefined,
+      slack: slack ? {
+        action: slack.action,
+        privacy: slack.privacy
       } : undefined
     }).catch(() => undefined);
 
@@ -404,6 +775,10 @@ async function handlePullRequestAutomation(
       } : undefined,
       comment: comment ? {
         action: comment.action
+      } : undefined,
+      slack: slack ? {
+        action: slack.action,
+        privacy: slack.privacy
       } : undefined
     });
 
@@ -421,17 +796,25 @@ async function handlePullRequestAutomation(
     });
   } catch (error) {
     const errorMessage = redactSecrets(error instanceof Error ? error.message : "GitHub App automation failed.");
-    const status = error instanceof SavedReportStoreError ? 503 : 502;
+    const status = error instanceof SavedReportStoreError || error instanceof SlackNotificationError ? 503 : 502;
     await failGitHubWebhookDelivery({
       key: idempotencyKey
     }, {
-      code: error instanceof SavedReportStoreError ? "saved_report_store_error" : "github_app_automation_failed",
+      code: error instanceof SavedReportStoreError
+        ? "saved_report_store_error"
+        : error instanceof SlackNotificationError
+          ? error.code
+          : "github_app_automation_failed",
       summary: errorMessage
     }).catch(() => undefined);
     await recordWebhookAuditEvent("github_app_analysis_failed", "failed", automation, context, {
       tenantId: tenantGrant.grant?.tenantId,
       statusCode: status,
-      code: error instanceof SavedReportStoreError ? "saved_report_store_error" : "github_app_automation_failed"
+      code: error instanceof SavedReportStoreError
+        ? "saved_report_store_error"
+        : error instanceof SlackNotificationError
+          ? error.code
+          : "github_app_automation_failed"
     });
 
     return noStoreJson({
@@ -462,6 +845,10 @@ async function recordWebhookAuditEvent(
     comment?: {
       action?: string;
     };
+    slack?: {
+      action?: string;
+      privacy?: string;
+    };
   } = {}
 ) {
   await recordAuditEvent({
@@ -480,7 +867,141 @@ async function recordWebhookAuditEvent(
     priority: options.priority,
     evidenceCoverage: options.evidenceCoverage,
     savedReport: options.savedReport,
-    comment: options.comment
+    comment: options.comment,
+    slack: options.slack
+  }).catch(() => undefined);
+}
+
+function validateSlackSummaryForSideEffects(sideEffects: {
+  slackSummary?: boolean;
+}): { response: Response; code: SlackNotificationError["code"]; summary: string } | null {
+  if (!sideEffects.slackSummary) return null;
+
+  try {
+    assertSlackReportNotificationConfigured();
+    return null;
+  } catch (error) {
+    if (error instanceof SlackNotificationError) {
+      return {
+        response: noStoreJson({
+          error: redactSecrets(error.message),
+          code: error.code,
+          willAnalyze: false,
+          willComment: false
+        }, { status: 503 }),
+        code: error.code,
+        summary: error.message
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function requireDurableAuditForSideEffects(
+  automation: NonNullable<ReturnType<typeof parsePullRequestAutomationPayload>>,
+  context: {
+    delivery: string;
+    action: string | undefined;
+  },
+  tenantId: string | undefined,
+  sideEffects: {
+    saveReport: boolean;
+    comment: boolean;
+    slackSummary?: boolean;
+  }
+): Promise<Response | null> {
+  if (!requiresDurableAuditForSideEffects() || !hasPlannedSideEffects(sideEffects)) {
+    return null;
+  }
+
+  const status = getAuditLogStoreStatus();
+  if (!status.durable) {
+    return durableAuditRequiredResponse();
+  }
+
+  try {
+    await recordAuditEvent({
+      action: "github_app_side_effects_ready",
+      result: "completed",
+      actor: "github_app",
+      tenantId,
+      repositoryFullName: automation.repositoryFullName,
+      installationId: automation.installationId,
+      pullRequestNumber: automation.pullRequestNumber,
+      headSha: automation.headSha,
+      githubDeliveryId: context.delivery,
+      webhookAction: context.action,
+      statusCode: 200,
+      code: sideEffectAuditCode(sideEffects),
+      savedReport: sideEffects.saveReport ? {
+        privacy: "summary-only"
+      } : undefined,
+      comment: sideEffects.comment ? {
+        action: "planned"
+      } : undefined,
+      slack: sideEffects.slackSummary ? {
+        action: "planned",
+        privacy: "summary-only"
+      } : undefined
+    });
+  } catch {
+    return durableAuditRequiredResponse();
+  }
+
+  return null;
+}
+
+function requiresDurableAuditForSideEffects(): boolean {
+  return /^(1|true|yes)$/i.test(process.env.AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS ?? "");
+}
+
+function durableAuditRequiredResponse(): Response {
+  return noStoreJson({
+    error: "Durable audit storage is required before GitHub App side effects.",
+    code: "github_app_durable_audit_required",
+    willAnalyze: false,
+    willComment: false
+  }, { status: 503 });
+}
+
+function hasPlannedSideEffects(sideEffects: { saveReport: boolean; comment: boolean; slackSummary?: boolean }): boolean {
+  return sideEffects.saveReport || sideEffects.comment || sideEffects.slackSummary === true;
+}
+
+function sideEffectAuditCode(sideEffects: { saveReport: boolean; comment: boolean; slackSummary?: boolean }): string {
+  const plannedCount = [sideEffects.saveReport, sideEffects.comment, sideEffects.slackSummary === true]
+    .filter(Boolean).length;
+  if (plannedCount > 1) return "github_app_side_effects_ready";
+  if (sideEffects.saveReport) return "github_app_saved_report_ready";
+  if (sideEffects.slackSummary) return "github_app_slack_summary_ready";
+  return "github_app_comment_ready";
+}
+
+async function recordInstallationLifecycleAuditEvent(
+  action: AuditEventAction,
+  result: AuditEventResult,
+  lifecycle: NonNullable<ReturnType<typeof parseInstallationLifecyclePayload>>,
+  context: {
+    delivery: string;
+    action: string | undefined;
+  },
+  options: {
+    tenantId?: string;
+    statusCode?: number;
+    code?: string;
+  } = {}
+) {
+  await recordAuditEvent({
+    action,
+    result,
+    actor: "github_app",
+    tenantId: options.tenantId,
+    installationId: lifecycle.installationId,
+    githubDeliveryId: context.delivery,
+    webhookAction: context.action,
+    statusCode: options.statusCode,
+    code: options.code
   }).catch(() => undefined);
 }
 
@@ -497,6 +1018,77 @@ function buildWebhookDryRunSummary(payload: Record<string, unknown>) {
     checkRunName: getString(checkRun, "name"),
     statusContext
   };
+}
+
+function isInstallationLifecycleEvent(event: string): boolean {
+  return event === "installation" || event === "installation_repositories";
+}
+
+function parseInstallationLifecyclePayload(
+  payload: Record<string, unknown>,
+  event: string,
+  action: string | undefined
+) {
+  const installation = getNestedRecord(payload, "installation");
+  const installationId = getNumber(installation, "id");
+  if (!installationId) return null;
+
+  if (event === "installation") {
+    const shouldDisable = action === "deleted" || action === "suspend" || action === "suspended";
+    const account = getNestedRecord(installation ?? {}, "account");
+
+    return {
+      installationId,
+      shouldDisable,
+      installationStatus: action === "deleted"
+        ? "deleted" as const
+        : shouldDisable
+          ? "suspended" as const
+          : undefined,
+      accountId: getNumber(account, "id"),
+      accountLogin: getString(account, "login"),
+      accountType: getString(account, "type"),
+      auditAction: "github_app_installation_disabled" as const,
+      code: shouldDisable ? "github_app_installation_disabled" : "github_app_installation_no_change"
+    };
+  }
+
+  if (event === "installation_repositories") {
+    const repositoryIds = getRepositoryIds(payload.repositories_removed);
+    const shouldDisable = action === "removed" && repositoryIds.length > 0;
+
+    return {
+      installationId,
+      repositoryIds,
+      shouldDisable,
+      installationStatus: undefined,
+      accountId: undefined,
+      accountLogin: undefined,
+      accountType: undefined,
+      auditAction: "github_app_repository_access_removed" as const,
+      code: shouldDisable ? "github_app_repository_access_removed" : "github_app_repository_access_no_change"
+    };
+  }
+
+  return null;
+}
+
+function getRepositoryIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+
+  const ids = value
+    .map((item) => getNumber(item && typeof item === "object" && !Array.isArray(item)
+      ? item as Record<string, unknown>
+      : undefined, "id"))
+    .filter((id): id is number => Boolean(id));
+
+  return Array.from(new Set(ids)).slice(0, 500);
+}
+
+function uniqueTenantId(grants: Array<{ tenantId?: string }>): string | undefined {
+  const tenants = new Set(grants.map((grant) => grant.tenantId).filter((tenantId): tenantId is string => Boolean(tenantId)));
+
+  return tenants.size === 1 ? Array.from(tenants)[0] : undefined;
 }
 
 function getNestedRecord(parent: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
@@ -534,6 +1126,7 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
   const pullRequest = getNestedRecord(payload, "pull_request");
   const installation = getNestedRecord(payload, "installation");
   const repositoryFullName = getString(repository, "full_name");
+  const repositoryId = getNumber(repository, "id");
   const pullRequestNumber = getNumber(pullRequest, "number");
   const pullRequestUrl = getString(pullRequest, "html_url");
   const head = getNestedRecord(pullRequest ?? {}, "head");
@@ -555,6 +1148,7 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
 
   return {
     repositoryFullName,
+    repositoryId,
     pullRequestNumber,
     pullRequestUrl,
     headSha,
@@ -583,101 +1177,6 @@ function parseGitHubPullRequestUrl(value: string) {
 
 function isGitHubSha(value: string): boolean {
   return /^[a-f0-9]{6,64}$/i.test(value);
-}
-
-async function maybeCreateAutomationSavedReport(report: VerificationReport, requestUrl: string, tenantId?: string) {
-  if (!/^(1|true|yes|on)$/i.test(process.env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS?.trim() ?? "")) {
-    return undefined;
-  }
-
-  const status = getSavedReportStoreStatus();
-  const saved = await createSavedReport(report, { tenantId });
-  const url = new URL(`/reports/${saved.id}`, requestUrl);
-  if (saved.accessToken) {
-    url.searchParams.set("key", saved.accessToken);
-  }
-
-  return {
-    id: saved.id,
-    url: url.toString(),
-    expiresAt: saved.expiresAt,
-    privacy: "summary-only" as const,
-    durability: status.durability
-  };
-}
-
-async function postGitHubAppMarkerComment(
-  automation: NonNullable<ReturnType<typeof parsePullRequestAutomationPayload>>,
-  token: string,
-  report: VerificationReport
-) {
-  const [owner, repo] = automation.repositoryFullName.split("/");
-  if (!owner || !repo) {
-    throw new Error("Repository full name is invalid.");
-  }
-
-  const headers = {
-    Accept: "application/vnd.github+json",
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "X-GitHub-Api-Version": "2022-11-28"
-  };
-  const commentsUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${automation.pullRequestNumber}/comments`;
-  const existing = await findExistingGitHubAppComment(commentsUrl, headers);
-  const body = `${AGENTPROOF_APP_COMMENT_MARKER}\n${reportToGitHubComment(report, { includeMarker: false })}`;
-  const response = existing
-    ? await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/comments/${existing.id}`, {
-        method: "PATCH",
-        headers,
-        cache: "no-store",
-        body: JSON.stringify({ body: redactSecrets(body) })
-      })
-    : await fetch(commentsUrl, {
-        method: "POST",
-        headers,
-        cache: "no-store",
-        body: JSON.stringify({ body: redactSecrets(body) })
-      });
-
-  if (!response.ok) {
-    throw new Error(`GitHub App could not ${existing ? "update" : "create"} the AgentProof marker comment: HTTP ${response.status}.`);
-  }
-
-  const json = (await response.json()) as { html_url?: unknown };
-  return {
-    action: existing ? "updated" : "created",
-    url: typeof json.html_url === "string" ? redactSecrets(json.html_url) : automation.pullRequestUrl
-  };
-}
-
-async function findExistingGitHubAppComment(commentsUrl: string, headers: Record<string, string>) {
-  for (let page = 1; page <= MAX_COMMENT_PAGES; page += 1) {
-    const response = await fetch(`${commentsUrl}?per_page=${COMMENTS_PAGE_SIZE}&page=${page}`, {
-      headers,
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      throw new Error(`GitHub App could not read PR comments: HTTP ${response.status}.`);
-    }
-
-    const comments = (await response.json()) as Array<{ id?: unknown; body?: unknown }>;
-    const existing = comments.find((comment) =>
-      typeof comment.id === "number" &&
-      typeof comment.body === "string" &&
-      comment.body.includes(AGENTPROOF_APP_COMMENT_MARKER)
-    );
-
-    if (existing && typeof existing.id === "number") {
-      return { id: existing.id };
-    }
-
-    if (comments.length < COMMENTS_PAGE_SIZE) {
-      return null;
-    }
-  }
-
-  return null;
 }
 
 function safeWebhookString(value: string | undefined): string | undefined {

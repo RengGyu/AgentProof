@@ -1,5 +1,7 @@
 # AgentProof Product Brief
 
+Status: internal product-planning brief, not public launch copy. Use `docs/public-launch-trust.md` for publication-ready setup and trust boundaries.
+
 ## Decision
 
 Build only the narrowed version: an evidence-based verifier for AI-generated PRs. Do not build a broad AI code reviewer.
@@ -21,7 +23,7 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 - Summary-only share links that omit raw evidence and re-prompt text
 - Summary-only saved report API with in-memory demo mode and optional Supabase durability
 - Optional GitHub PR comment posting with a one-time write token
-- Env-gated GitHub App webhook automation, Slack notification, and OpenAI verifier adapters
+- Env-gated GitHub App webhook automation, repo-opt-in Slack summaries, local/operator manual Slack smoke route, and OpenAI verifier adapters
 - Runtime report validation before future LLM output is trusted
 
 ## Not In MVP
@@ -51,7 +53,7 @@ AgentProof answers one question: "Is there enough evidence that this agent-autho
 - GitHub PR comments use a short marker comment and update the prior AgentProof comment when present.
 - GitHub App webhook intake verifies `X-Hub-Signature-256` when `GITHUB_WEBHOOK_SECRET` is configured. PR analysis remains dry-run by default and requires App credentials, repository allowlist opt-in, installation-token handling, and duplicate suppression. Supabase-backed idempotency stores only hashed keys plus bounded metadata when configured. Automated comments require a separate opt-in and update one marker comment.
 - Operator diagnostics require `AGENTPROOF_OPS_TOKEN` and return bounded readiness categories only, without env values, repository names, table names, tokens, payloads, diffs, or logs.
-- Slack notifications require a server webhook plus `AGENTPROOF_NOTIFY_TOKEN`, and send summary-only payloads.
+- GitHub App Slack summaries require an active tenant repository grant, repo-level Slack opt-in, a server-side Slack webhook, quota allowance, and side-effect audit gates when enabled. The manual `/api/notifications/slack` smoke route also requires `AGENTPROOF_NOTIFY_TOKEN` plus `AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED=true`, and is disabled when the tenant control plane is enabled.
 - LLM mode requires `OPENAI_API_KEY` plus `AGENTPROOF_LLM_TOKEN`; structured output must pass runtime report validation before it is trusted.
 
 ## Market Validation Summary
@@ -70,3 +72,5 @@ Do not publish uncited market claims from internal notes until source URLs are r
 ## Execution Roadmap
 
 Use `docs/final-goals-and-roadmap.md` as the implementation target for moving from the current hardened MVP toward the final evidence-verifier product goal.
+
+Use `docs/public-launch-trust.md` for public setup and trust copy boundaries before publishing GitHub App, Slack, retention/deletion, pricing, troubleshooting, or support material.

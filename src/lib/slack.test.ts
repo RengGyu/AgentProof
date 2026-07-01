@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
-import { isAllowedSlackWebhookUrl, neutralizeSlackMentions, reportToSlackPayload } from "./slack";
+import {
+  analysisQueueAlertsToSlackPayload,
+  isAllowedSlackWebhookUrl,
+  neutralizeSlackMentions,
+  reportToSlackPayload
+} from "./slack";
 import { generateVerificationReport } from "./verifier";
 
 describe("slack helpers", () => {
@@ -54,5 +59,55 @@ describe("slack helpers", () => {
   it("only allows Slack incoming webhook URLs", () => {
     expect(isAllowedSlackWebhookUrl("https://hooks.slack.com/services/T/B/C")).toBe(true);
     expect(isAllowedSlackWebhookUrl("https://example.com/services/T/B/C")).toBe(false);
+  });
+
+  it("formats analysis queue alerts as aggregate-only payloads", () => {
+    const payloadText = JSON.stringify(analysisQueueAlertsToSlackPayload({
+      summary: {
+        privacy: "analysis-job-queue-summary-only",
+        sampled: 3,
+        truncated: false,
+        counts: {
+          queued: 1,
+          processing: 1,
+          completed: 0,
+          failed_retryable: 0,
+          failed_terminal: 1
+        },
+        due: 1,
+        delayedRetry: 0,
+        staleProcessing: 1,
+        oldestQueuedAgeSeconds: 1000
+      },
+      alerts: [
+        {
+          code: "analysis_queue_failed_terminal",
+          severity: "warning",
+          metric: "counts.failed_terminal",
+          count: 1,
+          threshold: 1
+        },
+        {
+          code: "analysis_queue_backlog",
+          severity: "warning",
+          metric: "oldestQueuedAgeSeconds",
+          count: 1000,
+          threshold: 900
+        }
+      ]
+    }));
+
+    expect(payloadText).toContain("analysis queue WARNING");
+    expect(payloadText).toContain("Failed terminal: 1");
+    expect(payloadText).toContain("analysis_queue_backlog");
+    expect(payloadText).toContain("Summary-only ops alert");
+    expect(payloadText).not.toContain("RengGyu/AgentProof");
+    expect(payloadText).not.toContain("tenant_a");
+    expect(payloadText).not.toContain("https://github.com");
+    expect(payloadText).not.toContain("evidenceIndex");
+    expect(payloadText).not.toContain("claims");
+    expect(payloadText).not.toContain("reprompt");
+    expect(payloadText).not.toContain("Patch excerpt");
+    expect(payloadText).not.toContain("github_pat_");
   });
 });

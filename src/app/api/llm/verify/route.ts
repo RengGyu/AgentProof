@@ -2,6 +2,7 @@ import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { verifyReportWithOpenAI } from "@/lib/openai-verifier";
 import { redactSecrets } from "@/lib/redact";
+import { readUsageQuotaPlanCapabilities } from "@/lib/usage-quota";
 import type { PullRequestInput, VerificationReport } from "@/lib/types";
 
 const MAX_LLM_REQUEST_BYTES = 220_000;
@@ -29,6 +30,9 @@ export async function POST(request: Request) {
   if (request.headers.get("x-agentproof-llm-token") !== llmToken) {
     return noStoreJson({ error: "Invalid LLM verifier token." }, { status: 401 });
   }
+
+  const planGate = requireStructuredVerifierPlan(request);
+  if (planGate) return planGate;
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_LLM_REQUEST_BYTES) {
@@ -67,6 +71,38 @@ export async function POST(request: Request) {
       }
     );
   }
+}
+
+function requireStructuredVerifierPlan(request: Request): Response | null {
+  const url = new URL(request.url);
+  const tenantId = request.headers.get("x-agentproof-tenant-id") ?? url.searchParams.get("tenantId");
+  const plan = readUsageQuotaPlanCapabilities({ tenantId });
+
+  if (!plan.enforced) return null;
+
+  if (!plan.configured) {
+    const missingTenant = plan.reason === "quota-tenant-missing";
+
+    return noStoreJson({
+      error: missingTenant
+        ? "LLM verifier requires tenant plan context."
+        : "LLM verifier tenant plan is unavailable.",
+      code: missingTenant
+        ? "llm_verifier_tenant_required"
+        : "llm_verifier_plan_unavailable",
+      fallback: "Use the deterministic verifier report."
+    }, { status: missingTenant ? 403 : 503 });
+  }
+
+  if (plan.structuredLlmVerifierEnabled !== true) {
+    return noStoreJson({
+      error: "LLM verifier is not enabled for this tenant plan.",
+      code: "llm_verifier_plan_disabled",
+      fallback: "Use the deterministic verifier report."
+    }, { status: 403 });
+  }
+
+  return null;
 }
 
 function redactReportStrings<T>(value: T): T {
