@@ -34,7 +34,7 @@ export default function TenantDashboardPage() {
         </div>
         <ul className="plain-list">
           <li>Repository settings are limited to grant status, analysis, summary links, and marker comments.</li>
-          <li>Health probes check bounded GitHub repository metadata only after an explicit button press.</li>
+          <li>Health probes check bounded repository metadata and optional first-report readiness only after an explicit button press.</li>
           <li>This dashboard does not render PR evidence, diffs, logs, claims, report bodies, raw re-prompts, or merge decisions.</li>
         </ul>
       </section>

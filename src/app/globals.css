@@ -1167,6 +1167,41 @@ code {
   overflow-wrap: anywhere;
 }
 
+.tenant-first-report {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tenant-first-report .tenant-rollup-row {
+  margin-bottom: 0;
+}
+
+.tenant-pr-probe-row {
+  display: grid;
+  grid-template-columns: auto minmax(76px, 110px) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tenant-pr-probe-row label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.tenant-pr-probe-row .input {
+  height: 34px;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.tenant-pr-probe-row .button {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
 .tenant-usage-list {
   display: grid;
   gap: 8px;
@@ -1697,6 +1732,15 @@ code {
   .tenant-repo-list li,
   .tenant-deletion-list li {
     grid-template-columns: 1fr;
+  }
+
+  .tenant-pr-probe-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tenant-pr-probe-row .button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .proof-grid {

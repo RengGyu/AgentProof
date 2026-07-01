@@ -71,9 +71,9 @@ Use setup language when explaining activation blockers:
 
 | Symptom | Likely evidence to check | Safe customer response |
 | --- | --- | --- |
-| No report generated from a PR event | GitHub App mode, tenant grant, repo analysis setting, queue status, quota status | The repository is not ready for automated evidence reports yet. |
+| No report generated from a PR event | GitHub App mode, tenant grant, repo analysis setting, first-report readiness, queue status, quota status | The repository or PR is not ready for automated evidence reports yet. |
 | Private repository cannot be analyzed | Installation access, repository grant, GitHub rate limit or unavailable metadata | The GitHub App cannot currently confirm repository access. |
-| No CI or test evidence appears | Check/status API availability and PR checks | The report cannot verify execution evidence that GitHub did not provide. |
+| No CI or test evidence appears | First-report check/status availability and PR checks | The report cannot verify execution evidence that GitHub did not provide. |
 | Slack summary not delivered | Repo Slack opt-in, plan/quota gate, server Slack configuration, audit gate | Slack delivery is not ready for this repository. |
 | Saved link unavailable | Saved-report setting, quota/plan gate, storage status, TTL expiry | Summary links are unavailable or expired; raw evidence is not recovered from storage. |
 

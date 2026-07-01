@@ -146,11 +146,19 @@ The settings API requires `AGENTPROOF_BETA_INVITES` tenant-bound invite records.
 }
 ```
 
-Add `probe=github` to verify live GitHub repository metadata access through the stored installation id and repository id. This probe never fetches PR evidence, diffs, logs, reports, comments, Slack data, or LLM verification. It checks at most 10 repositories per request, or one repository when `repositoryId=<id>` is supplied:
+Add `probe=github` to verify live GitHub repository metadata access through the stored installation id and repository id. It checks at most 10 repositories per request, or one repository when `repositoryId=<id>` is supplied:
 
 ```text
 GET /api/tenants/repositories/health?tenantId=tenant_demo&probe=github&repositoryId=456
 ```
+
+Add `pullRequestNumber=<number>` with `repositoryId=<id>` for a single first-report readiness probe. This checks whether PR metadata is reachable, whether the changed-file count exceeds the evidence cap, and whether check-run or commit-status sources are present, missing, rate-limited, or unavailable:
+
+```text
+GET /api/tenants/repositories/health?tenantId=tenant_demo&probe=github&repositoryId=456&pullRequestNumber=42
+```
+
+The PR readiness probe never fetches changed-file patches, annotations, logs, reports, comments, Slack data, quota reservations, queue writes, or LLM verification. It returns only `first-report-readiness-metadata-only` fields: PR number, coarse status, pull request access status, changed-file count/status/max, check source availability, and bounded next action.
 
 Health statuses are bounded and safe to show to customers:
 
@@ -163,7 +171,9 @@ Health statuses are bounded and safe to show to customers:
 - `github-unavailable`: GitHub access could not be checked.
 - `github-not-checked`: no live GitHub probe was run for this repository.
 
-The health API is allowlisted to tenant-owned grant metadata, coarse statuses, bounded next actions, `privacy`, `probe`, and `truncated`. It must not return prompts, diffs, logs, findings, evidence indexes, claims, report bodies, tokens, private keys, GitHub error bodies, or comment bodies.
+First-report statuses are also bounded: `ready`, `repository-disabled`, `analysis-disabled`, `credentials-not-ready`, `pull-request-inaccessible`, `pull-request-rate-limited`, `pull-request-unavailable`, `large-pr-capped`, `checks-missing`, `checks-rate-limited`, and `checks-unavailable`.
+
+The health API is allowlisted to tenant-owned grant metadata, coarse statuses, bounded next actions, `privacy`, `probe`, `truncated`, and first-report metadata. It must not return prompts, diffs, logs, findings, evidence indexes, claims, report bodies, tokens, private keys, GitHub error bodies, PR titles/bodies, full head SHAs, check names, file paths, patches, annotations, job logs, or comment bodies.
 
 ## Tenant Dashboard
 

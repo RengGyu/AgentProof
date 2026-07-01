@@ -58,6 +58,24 @@ interface RepositoryHealth extends RepositorySettings {
     appCredentialsReady: boolean;
     githubAccess: string;
   };
+  firstReport?: FirstReportDiagnostics;
+  nextAction: string;
+}
+
+interface FirstReportDiagnostics {
+  privacy: "first-report-readiness-metadata-only";
+  pullRequestNumber: number;
+  status: string;
+  pullRequestAccess: string;
+  changedFiles: {
+    status: string;
+    count?: number;
+    maxFiles: number;
+  };
+  checksAvailability: {
+    status: string;
+    sources: Array<"check-runs" | "commit-statuses">;
+  };
   nextAction: string;
 }
 
@@ -347,6 +365,7 @@ export function TenantSetupPanel() {
   const [deletionPreview, setDeletionPreview] = useState<TenantDeletionPreview | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditSummary[]>([]);
   const [installedRepositories, setInstalledRepositories] = useState<InstalledRepository[]>([]);
+  const [firstReportPrNumbers, setFirstReportPrNumbers] = useState<Record<number, string>>({});
   const [mode, setMode] = useState<PanelMode>("idle");
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
@@ -523,7 +542,8 @@ export function TenantSetupPanel() {
   async function loadRepositoryHealth(
     probe: "metadata-only" | "github" = "metadata-only",
     repositoryId?: number,
-    feedback: "visible" | "silent" = "visible"
+    feedback: "visible" | "silent" = "visible",
+    pullRequestNumber?: number
   ) {
     setMode(probe === "github" ? "probing" : "loading");
     if (feedback === "visible") setMessage(null);
@@ -533,7 +553,8 @@ export function TenantSetupPanel() {
         repositories?: RepositoryHealth[];
       }>(tenantHealthUrl(tenantId, {
         probeGitHub: probe === "github",
-        repositoryId
+        repositoryId,
+        pullRequestNumber
       }), {
         headers: tenantInviteHeaders(inviteToken)
       });
@@ -542,7 +563,9 @@ export function TenantSetupPanel() {
       if (feedback === "visible") {
         setMessage({
           kind: "ok",
-          text: probe === "github" ? "GitHub access probe finished." : "Repository health loaded."
+          text: pullRequestNumber
+            ? "First PR readiness probe finished."
+            : probe === "github" ? "GitHub access probe finished." : "Repository health loaded."
         });
       }
     } catch (error) {
@@ -1103,6 +1126,8 @@ export function TenantSetupPanel() {
             <ul className="tenant-repo-list settings-list">
               {repositories.map((repo) => {
                 const repoHealth = typeof repo.repositoryId === "number" ? healthByRepositoryId.get(repo.repositoryId) : undefined;
+                const prInput = typeof repo.repositoryId === "number" ? firstReportPrNumbers[repo.repositoryId] ?? "" : "";
+                const prNumber = parsePositiveIntegerInput(prInput);
 
                 return (
                   <li key={`${repo.installationId}:${repo.repositoryId ?? repo.repositoryFullName}`}>
@@ -1128,6 +1153,43 @@ export function TenantSetupPanel() {
                       </div>
                       {repoHealth ? (
                         <p className="tenant-next-action">{repoHealth.nextAction}</p>
+                      ) : null}
+                      {repoHealth?.firstReport ? (
+                        <div className="tenant-first-report" aria-label={`First PR readiness for ${repo.repositoryFullName}`}>
+                          <div className="tenant-rollup-row">
+                            <span>PR #{repoHealth.firstReport.pullRequestNumber}</span>
+                            <span>{firstReportStatusLabel(repoHealth.firstReport.status)}</span>
+                            <span>{changedFilesReadinessLabel(repoHealth.firstReport.changedFiles)}</span>
+                            <span>{checksAvailabilityLabel(repoHealth.firstReport.checksAvailability)}</span>
+                          </div>
+                          <p className="tenant-next-action">{repoHealth.firstReport.nextAction}</p>
+                        </div>
+                      ) : null}
+                      {typeof repo.repositoryId === "number" ? (
+                        <div className="tenant-pr-probe-row">
+                          <label htmlFor={`first-report-pr-${repo.repositoryId}`}>PR #</label>
+                          <input
+                            id={`first-report-pr-${repo.repositoryId}`}
+                            className="input"
+                            value={prInput}
+                            onChange={(event) => setFirstReportPrNumbers((current) => ({
+                              ...current,
+                              [repo.repositoryId as number]: event.target.value
+                            }))}
+                            placeholder="42"
+                            inputMode="numeric"
+                            autoComplete="off"
+                          />
+                          <button
+                            className="button compact"
+                            type="button"
+                            onClick={() => loadRepositoryHealth("github", repo.repositoryId, "visible", prNumber)}
+                            disabled={!credentialsReady || busy || !prNumber}
+                          >
+                            <Activity size={14} />
+                            PR Probe
+                          </button>
+                        </div>
                       ) : null}
                     </div>
                     <button
@@ -1402,6 +1464,45 @@ export function TenantSetupPanel() {
       </div>
     </section>
   );
+}
+
+function parsePositiveIntegerInput(value: string): number | undefined {
+  if (!/^\d{1,10}$/.test(value.trim())) return undefined;
+
+  const parsed = Number(value.trim());
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function firstReportStatusLabel(status: string): string {
+  if (status === "ready") return "Ready";
+  if (status === "repository-disabled") return "Grant disabled";
+  if (status === "analysis-disabled") return "Analysis off";
+  if (status === "credentials-not-ready") return "Credentials";
+  if (status === "pull-request-inaccessible") return "PR access";
+  if (status === "pull-request-rate-limited") return "Rate limited";
+  if (status === "pull-request-unavailable") return "PR unavailable";
+  if (status === "large-pr-capped") return "Large PR";
+  if (status === "checks-missing") return "Checks missing";
+  if (status === "checks-rate-limited") return "Checks limited";
+  if (status === "checks-unavailable") return "Checks unavailable";
+
+  return "Unclear";
+}
+
+function changedFilesReadinessLabel(changedFiles: FirstReportDiagnostics["changedFiles"]): string {
+  if (typeof changedFiles.count === "number") {
+    return `Files ${changedFiles.count}/${changedFiles.maxFiles}`;
+  }
+
+  return `Files ${changedFiles.status.replace(/-/g, " ")}`;
+}
+
+function checksAvailabilityLabel(checks: FirstReportDiagnostics["checksAvailability"]): string {
+  if (checks.status === "present" && checks.sources.length > 0) {
+    return `Checks ${checks.sources.map((source) => source.replace(/-/g, " ")).join(", ")}`;
+  }
+
+  return `Checks ${checks.status.replace(/-/g, " ")}`;
 }
 
 function formatUsage(item: UsageSummary): string {
