@@ -23,6 +23,7 @@ POST /api/tenants/session
 DELETE /api/tenants/session
 POST /api/tenants/auth/session
 DELETE /api/tenants/auth/session
+PATCH /api/tenants/account
 GET  /api/tenants/repositories?tenantId=<tenant>
 PATCH /api/tenants/repositories
 GET  /api/tenants/repositories/health?tenantId=<tenant>
@@ -41,6 +42,12 @@ Authorize read requests with a valid durable tenant auth session, legacy tenant 
 `POST /api/tenants/session` accepts the same tenantId-only JSON body and requires `x-agentproof-beta-invite-token`. It returns bounded JSON plus `Set-Cookie: agentproof_tenant_admin_session=...; HttpOnly; Secure; SameSite=Lax`. `DELETE /api/tenants/session` clears that cookie. Neither response returns the invite token, session secret, repository grants, PR evidence, diffs, logs, claims, report bodies, or comment content.
 
 `POST /api/tenants/auth/session` is the first durable tenant auth/session v1 boundary. It accepts `tenantId` and `memberId` in JSON, requires the member bootstrap credential in `x-agentproof-tenant-auth-token`, verifies the tenant account is active or trialing, verifies the member is active, stores only a hashed session token in the server-side session store, and returns an HttpOnly `agentproof_tenant_auth_session` cookie. `DELETE /api/tenants/auth/session` revokes the hashed session when the store is available and clears the cookie. Tenant-facing responses may include bounded `tenantId`, `memberId`, `role`, and `expiresAt`; they must not return bootstrap tokens, session tokens, session hashes, emails/contact details, OAuth tokens, provider ids, billing ids, repository grants, PR evidence, diffs, logs, claims, report bodies, or comment content.
+
+Cookie-mutating tenant routes require a same-origin mutation boundary. Browser requests should carry a matching `Origin`; non-browser same-origin clients may send `x-agentproof-csrf: same-origin` when `Origin` is unavailable. Requests with cross-site fetch metadata or mismatched origins fail before cookies are issued, revoked, or cleared. This gate applies to `POST /api/github/onboarding/start`, `POST /api/tenants/session`, `DELETE /api/tenants/session`, `POST /api/tenants/auth/session`, `DELETE /api/tenants/auth/session`, and account lifecycle mutations.
+
+Failed tenant session and durable auth session attempts write bounded audit events when audit storage is available. The events use `tenant_session_failed` or `tenant_auth_session_failed`, `actor: system`, HTTP status, normalized tenant id when valid, and a low-cardinality reason code. They must not include invite tokens, bootstrap credentials, cookies, session tokens, session hashes, raw request bodies, headers, contact fields, storage table names, provider ids, or raw storage errors.
+
+`PATCH /api/tenants/account` is an operator/design-partner account lifecycle v2 boundary for durable account stores only. It requires same-origin mutation proof plus a durable tenant auth session whose current member role re-reads as `owner` or `admin`. The legacy stateless tenant admin session and invite header fallback cannot mutate member lifecycle. The request accepts only `tenantId`, `memberId`, optional `role`, and optional `status`; role is limited to `owner`, `admin`, or `member`, and status is limited to `active`, `invited`, or `disabled`. The route protects the last active owner and returns only `tenant-account-member-lifecycle-metadata-only` fields: tenant id, member id, role, status, privacy label, and next action.
 
 `GET /callback` is called by GitHub with `installation_id`, `setup_action`, and `state`. API clients receive bounded JSON. Browser callbacks that request HTML are redirected to `/tenant?tenantId=<tenant>&installationId=<id>&githubApp=connected` with the activation cookie set; the opaque state token is not copied into the redirect URL.
 
@@ -184,6 +191,7 @@ The health API is allowlisted to tenant-owned grant metadata, coarse statuses, b
 - Start GitHub App installation using a valid durable tenant auth session or tenant-bound invite header fallback with `owner` or `admin` role metadata.
 - Load installed repositories after the GitHub callback sets the short-lived activation cookie.
 - Create one repository grant from server-fetched installation metadata when the activation session is paired with durable owner/admin tenant auth or the current owner/admin tenant-bound invite header.
+- Mutate tenant member role/status through the server API only when a durable owner/admin session and durable account store are present; invite headers and the legacy tenant admin session remain read/setup compatibility paths.
 - Read repository settings through tenant-bound auth, and update only `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and `slackNotificationsEnabled` when the durable session or current invite header carries `owner` or `admin` role metadata.
 - Load metadata-only repository health, then run an explicit bounded GitHub access probe per repository.
 - Load read-only monthly usage summaries without reserving quota.
@@ -192,7 +200,7 @@ The health API is allowlisted to tenant-owned grant metadata, coarse statuses, b
 - Load recent summary report metadata without report bodies, evidence indexes, claims, raw re-prompt text, access keys, diffs, or logs.
 - Load recent verification activity summaries from the audit store without raw payloads, reports, diffs, logs, claims, re-prompt text, comment bodies, saved-report URLs, or storage internals.
 
-The dashboard keeps invite and bootstrap credentials in React state only long enough to bootstrap a cookie session. It sends invite tokens in `x-agentproof-beta-invite-token` and durable auth bootstrap credentials in `x-agentproof-tenant-auth-token`, never in query strings, JSON request bodies, PATCH bodies, localStorage, or sessionStorage, then clears the input after a successful session start. Tenant APIs prefer the durable HttpOnly auth session when present, then fall back to the short-lived tenant admin session or tenant-bound invite header for design-partner read compatibility. Repository settings mutations, GitHub App install start, and repository grant creation require bounded `owner` or `admin` role metadata from durable tenant auth or the current tenant-bound invite header; the legacy stateless tenant admin session is not a privileged authorization source. `member` or role-less invites can still read selected tenant-bound setup metadata but cannot change repository settings or bind repositories. Durable auth sessions are server-side revocable and recheck tenant/member status. The legacy tenant admin session remains stateless and short-lived for controlled design partners, not a full account system. The dashboard does not render PR evidence, diffs, logs, findings, claims, evidence indexes, report bodies, raw re-prompt text, comment bodies, or merge decisions.
+The dashboard keeps invite and bootstrap credentials in React state only long enough to bootstrap a cookie session. It sends invite tokens in `x-agentproof-beta-invite-token` and durable auth bootstrap credentials in `x-agentproof-tenant-auth-token`, never in query strings, JSON request bodies, PATCH bodies, localStorage, or sessionStorage, then clears the input after a successful session start. Tenant cookie mutations and setup writes include a same-origin mutation marker and use `credentials: same-origin`. Tenant APIs prefer the durable HttpOnly auth session when present, then fall back to the short-lived tenant admin session or tenant-bound invite header for design-partner read compatibility. Repository settings mutations, GitHub App install start, and repository grant creation require bounded `owner` or `admin` role metadata from durable tenant auth or the current tenant-bound invite header; account member lifecycle mutations require durable owner/admin tenant auth only. The legacy stateless tenant admin session is not a privileged authorization source. `member` or role-less invites can still read selected tenant-bound setup metadata but cannot change repository settings, bind repositories, or mutate member lifecycle. Durable auth sessions are server-side revocable and recheck tenant/member status. The legacy tenant admin session remains stateless and short-lived for controlled design partners, not a full account system. The dashboard does not render PR evidence, diffs, logs, findings, claims, evidence indexes, report bodies, raw re-prompt text, comment bodies, or merge decisions.
 
 ## Required Environment
 
@@ -203,6 +211,10 @@ AGENTPROOF_TENANT_SESSION_SECRET=
 AGENTPROOF_BETA_INVITES=
 AGENTPROOF_TENANT_AUTH_BOOTSTRAPS=
 AGENTPROOF_TENANT_AUTH_SESSIONS_TABLE=agentproof_tenant_auth_sessions
+AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_URL=
+AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_TENANTS_TABLE=agentproof_tenants
+AGENTPROOF_TENANT_MEMBERS_TABLE=agentproof_tenant_members
 AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED=true
 AGENTPROOF_CONTROL_PLANE_SUPABASE_URL=
 AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY=
@@ -238,6 +250,8 @@ Recommended durable auth bootstrap format:
 ```
 
 Bootstrap tokens are for session creation only. The durable session store keeps hashed opaque session tokens with tenant id, member id, created/expiry timestamps, and optional revocation timestamp. Tenant APIs re-read account/member metadata for durable sessions so suspended/deleted tenants, disabled members, and role changes fail closed or take effect without trusting stale cookie role data. Legacy invite/session fallback is also blocked when configured account metadata marks the tenant suspended or deleted.
+
+Tenant member lifecycle updates require the durable account store. They patch only `role` and `status` for one normalized tenant/member pair, use narrow account/member projections, and reject changes that would leave the tenant without an active owner. They do not delete account rows, member rows, billing records, provider ids, repository grants, reports, jobs, audit rows, or backups.
 
 Optional table overrides:
 

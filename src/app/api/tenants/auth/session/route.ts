@@ -5,6 +5,8 @@ import {
   TenantAuthError,
   TenantAuthStoreError
 } from "@/lib/tenant-auth";
+import { recordAuditEvent } from "@/lib/audit-log";
+import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 
 const MAX_AUTH_SESSION_REQUEST_BYTES = 10_000;
@@ -15,8 +17,15 @@ interface TenantAuthSessionRequest {
 }
 
 export async function POST(request: Request) {
+  const csrf = verifySameOriginMutationRequest(request);
+  if (!csrf.ok) {
+    await recordTenantAuthFailure({ statusCode: 403, code: csrf.code });
+    return csrfFailureResponse();
+  }
+
   const bodyText = await request.text();
   if (utf8ByteLength(bodyText) > MAX_AUTH_SESSION_REQUEST_BYTES) {
+    await recordTenantAuthFailure({ statusCode: 413, code: "payload_too_large" });
     return noStoreJson({
       error: "Tenant auth session request is too large.",
       code: "tenant_auth_session_payload_too_large"
@@ -25,6 +34,7 @@ export async function POST(request: Request) {
 
   const body = parseJsonSafely<TenantAuthSessionRequest>(bodyText);
   if (!body || typeof body !== "object" || Array.isArray(body)) {
+    await recordTenantAuthFailure({ statusCode: 400, code: "payload_invalid" });
     return noStoreJson({
       error: "Tenant auth session request must be a JSON object.",
       code: "tenant_auth_session_payload_invalid"
@@ -55,6 +65,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof TenantAuthStoreError) {
+      await recordTenantAuthFailure({
+        tenantId: body.tenantId,
+        statusCode: 503,
+        code: "session_store_unavailable"
+      });
       return noStoreJson({
         error: "Tenant auth session storage is unavailable.",
         code: "tenant_auth_session_unavailable"
@@ -62,6 +77,11 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof TenantAuthError) {
+      await recordTenantAuthFailure({
+        tenantId: body.tenantId,
+        statusCode: 401,
+        code: "bootstrap_or_member_invalid"
+      });
       return noStoreJson({
         error: "Tenant auth session requires a valid active member bootstrap credential.",
         code: "tenant_auth_session_unauthorized"
@@ -73,6 +93,12 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const csrf = verifySameOriginMutationRequest(request);
+  if (!csrf.ok) {
+    await recordTenantAuthFailure({ statusCode: 403, code: csrf.code });
+    return csrfFailureResponse();
+  }
+
   try {
     await revokeTenantAuthSession({ cookieHeader: request.headers.get("cookie") });
   } catch (error) {
@@ -88,4 +114,23 @@ export async function DELETE(request: Request) {
       "Set-Cookie": clearTenantAuthSessionCookie()
     }
   });
+}
+
+async function recordTenantAuthFailure(input: {
+  tenantId?: unknown;
+  statusCode: number;
+  code: string;
+}) {
+  try {
+    await recordAuditEvent({
+      action: "tenant_auth_session_failed",
+      result: "failed",
+      actor: "system",
+      tenantId: typeof input.tenantId === "string" ? input.tenantId : undefined,
+      statusCode: input.statusCode,
+      code: input.code
+    });
+  } catch {
+    // Auth responses stay bounded even when audit storage is unavailable.
+  }
 }

@@ -13,6 +13,7 @@ describe("TenantSetupPanel product and privacy boundary", () => {
   it("uses the tenant session endpoint without putting invite tokens in the JSON payload helper", () => {
     expect(source).toContain("/api/tenants/session");
     expect(source).toContain("tenantSessionPayload({ tenantId })");
+    expect(source).toContain("tenantMutationHeaders()");
     expect(source).not.toContain("tenantSessionPayload({ tenantId, inviteToken })");
   });
 

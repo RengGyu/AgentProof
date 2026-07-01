@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearAuditEventsForTests, getAuditEventsForTests } from "@/lib/audit-log";
 import { TENANT_ADMIN_SESSION_COOKIE } from "@/lib/github-onboarding";
 import { DELETE, POST } from "./route";
 
 describe("/api/tenants/session", () => {
   afterEach(() => {
+    clearAuditEventsForTests();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -14,6 +16,7 @@ describe("/api/tenants/session", () => {
     const response = await POST(new Request("http://localhost/api/tenants/session", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "Content-Type": "application/json",
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
@@ -44,7 +47,7 @@ describe("/api/tenants/session", () => {
 
     const response = await POST(new Request("http://localhost/api/tenants/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...sameOriginHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ tenantId: "tenant_a", inviteToken: "tenant-a-invite-token" })
     }));
 
@@ -54,6 +57,16 @@ describe("/api/tenants/session", () => {
       error: "Tenant session requires a valid tenant-bound invite token.",
       code: "tenant_session_unauthorized"
     });
+    expect(getAuditEventsForTests()).toEqual([
+      expect.objectContaining({
+        action: "tenant_session_failed",
+        result: "failed",
+        actor: "system",
+        tenant_id: "tenant_a",
+        status_code: 401,
+        metadata: { code: "invite_invalid" }
+      })
+    ]);
   });
 
   it("rejects wrong-tenant invite headers before issuing a cookie", async () => {
@@ -62,6 +75,7 @@ describe("/api/tenants/session", () => {
     const response = await POST(new Request("http://localhost/api/tenants/session", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "Content-Type": "application/json",
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
@@ -80,6 +94,7 @@ describe("/api/tenants/session", () => {
     const response = await POST(new Request("http://localhost/api/tenants/session", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "Content-Type": "application/json",
         "x-agentproof-beta-invite-token": "tenant-a-invite-token"
       },
@@ -91,7 +106,10 @@ describe("/api/tenants/session", () => {
   });
 
   it("clears the tenant admin session cookie", async () => {
-    const response = await DELETE();
+    const response = await DELETE(new Request("http://localhost/api/tenants/session", {
+      method: "DELETE",
+      headers: sameOriginHeaders()
+    }));
     const json = await response.json();
     const cookie = response.headers.get("Set-Cookie") ?? "";
 
@@ -107,7 +125,54 @@ describe("/api/tenants/session", () => {
       privacy: "tenant-admin-session-cookie-only"
     });
   });
+
+  it("rejects cross-site session creation without issuing a cookie", async () => {
+    stubSessionEnv();
+
+    const response = await POST(new Request("http://localhost/api/tenants/session", {
+      method: "POST",
+      headers: {
+        Origin: "https://attacker.example",
+        "Content-Type": "application/json",
+        "x-agentproof-beta-invite-token": "tenant-a-invite-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a" })
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Tenant mutations require a same-origin request.",
+      code: "tenant_mutation_csrf_required"
+    });
+    expect(getAuditEventsForTests()).toEqual([
+      expect.objectContaining({
+        action: "tenant_session_failed",
+        result: "failed",
+        status_code: 403,
+        metadata: { code: "origin_mismatch" }
+      })
+    ]);
+  });
+
+  it("rejects cross-site session deletion without clearing cookies", async () => {
+    const response = await DELETE(new Request("http://localhost/api/tenants/session", {
+      method: "DELETE",
+      headers: { Origin: "https://attacker.example" }
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Tenant mutations require a same-origin request.",
+      code: "tenant_mutation_csrf_required"
+    });
+  });
 });
+
+function sameOriginHeaders() {
+  return { Origin: "http://localhost" };
+}
 
 function stubSessionEnv() {
   vi.stubEnv("AGENTPROOF_TENANT_SESSION_SECRET", "tenant-session-secret-value-with-enough-entropy");

@@ -37,7 +37,7 @@ The GitHub App should request only the permissions needed for evidence-report au
 | Checks/statuses | Read CI, test, lint, typecheck, and build signals. | Passing or failing checks are evidence inputs; unavailable checks stay unavailable. |
 | Issues or pull request comments, when enabled | Update one AgentProof marker comment with a summary-only handoff. | Commenting is a separate repo-level opt-in and is off by default. |
 
-Design-partner onboarding is still invite/bootstrap-gated. A tenant admin can install the App, select a repository, and configure repository settings through tenant-bound authorization. Repository settings mutations require bounded `owner` or `admin` role metadata from a durable tenant auth session or the current tenant-bound invite header; the legacy stateless tenant admin session is kept as a short-lived read compatibility path. This is not full self-serve authentication or account RBAC.
+Design-partner onboarding is still invite/bootstrap-gated. A tenant admin can install the App, select a repository, and configure repository settings through tenant-bound authorization. Cookie-mutating setup routes require same-origin mutation proof. Repository settings mutations require bounded `owner` or `admin` role metadata from a durable tenant auth session or the current tenant-bound invite header; member role/status lifecycle mutations require a durable owner/admin tenant auth session and a durable account store. The legacy stateless tenant admin session is kept as a short-lived read compatibility path. This is not full self-serve authentication, OAuth login, billing identity, or public customer account RBAC.
 
 ## Slack Summaries
 
@@ -64,6 +64,8 @@ Current deletion support is deliberately staged:
 - Public destructive deletion controls, full deletion drills, restore drills, backup expiry enforcement, billing/account deletion, and external GitHub installation revocation remain launch-gate work.
 
 The public promise should be conservative: AgentProof does not durably retain raw code evidence by design, and deletion workflows remain subject to the documented retention policy and operational readiness gates.
+
+Failed invite/bootstrap session attempts may be audited as bounded system events. Audit rows should include only action, result, status code, normalized tenant id when valid, and a public reason code. They must not include invite tokens, bootstrap credentials, cookies, session hashes, request bodies, provider identifiers, table names, or raw storage errors.
 
 ## Troubleshooting
 

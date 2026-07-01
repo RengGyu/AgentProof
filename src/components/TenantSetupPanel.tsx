@@ -21,6 +21,7 @@ import { buildTenantSetupWarningRollup } from "@/lib/tenant-dashboard-warnings";
 import {
   tenantHealthUrl,
   tenantInviteHeaders,
+  tenantMutationHeaders,
   tenantAnalysisJobsUrl,
   tenantAccountUrl,
   tenantAuditActivityUrl,
@@ -400,7 +401,7 @@ export function TenantSetupPanel() {
     try {
       const json = await requestJson<{ installUrl?: string; error?: string; code?: string }>("/api/github/onboarding/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...tenantInviteHeaders(inviteToken) },
+        headers: { "Content-Type": "application/json", ...tenantMutationHeaders(), ...tenantInviteHeaders(inviteToken) },
         body: JSON.stringify(tenantOnboardingStartPayload(tenantId))
       });
 
@@ -426,7 +427,7 @@ export function TenantSetupPanel() {
         expiresAt?: string;
       }>("/api/tenants/session", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...tenantInviteHeaders(inviteToken) },
+        headers: { "Content-Type": "application/json", ...tenantMutationHeaders(), ...tenantInviteHeaders(inviteToken) },
         body: JSON.stringify(tenantSessionPayload({ tenantId }))
       });
 
@@ -446,7 +447,8 @@ export function TenantSetupPanel() {
 
     try {
       await requestJson("/api/tenants/session", {
-        method: "DELETE"
+        method: "DELETE",
+        headers: tenantMutationHeaders()
       });
       setSessionActive(false);
       setMessage({ kind: "ok", text: "Tenant admin session ended." });
@@ -803,7 +805,7 @@ export function TenantSetupPanel() {
         repository?: RepositorySettings;
       }>("/api/tenants/repositories", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...tenantInviteHeaders(inviteToken) },
+        headers: { "Content-Type": "application/json", ...tenantMutationHeaders(), ...tenantInviteHeaders(inviteToken) },
         body: JSON.stringify(tenantSettingsPatchPayload({
           tenantId: tenantId.trim(),
           installationId: repository.installationId,

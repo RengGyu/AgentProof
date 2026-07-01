@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearAuditEventsForTests, getAuditEventsForTests } from "@/lib/audit-log";
 import { clearTenantAuthSessionsForTests, TENANT_AUTH_SESSION_COOKIE, verifyTenantAuthAccess } from "@/lib/tenant-auth";
 import { DELETE, POST } from "./route";
 
 describe("/api/tenants/auth/session", () => {
   afterEach(() => {
+    clearAuditEventsForTests();
     vi.unstubAllEnvs();
     clearTenantAuthSessionsForTests();
   });
@@ -14,6 +16,7 @@ describe("/api/tenants/auth/session", () => {
     const response = await POST(new Request("http://localhost/api/tenants/auth/session", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "Content-Type": "application/json",
         "x-agentproof-tenant-auth-token": "member-bootstrap-token"
       },
@@ -55,7 +58,7 @@ describe("/api/tenants/auth/session", () => {
 
     const response = await POST(new Request("http://localhost/api/tenants/auth/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...sameOriginHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({
         tenantId: "tenant_a",
         memberId: "member_owner",
@@ -65,6 +68,20 @@ describe("/api/tenants/auth/session", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("Set-Cookie")).toBeNull();
+    const serialized = JSON.stringify(getAuditEventsForTests());
+    expect(getAuditEventsForTests()).toEqual([
+      expect.objectContaining({
+        action: "tenant_auth_session_failed",
+        result: "failed",
+        actor: "system",
+        tenant_id: "tenant_a",
+        status_code: 401,
+        metadata: { code: "bootstrap_or_member_invalid" }
+      })
+    ]);
+    expect(serialized).not.toContain("member-bootstrap-token");
+    expect(serialized).not.toContain("bootstrapToken");
+    expect(serialized).not.toContain("cookie");
   });
 
   it("fails closed for disabled members and unavailable session storage", async () => {
@@ -73,6 +90,7 @@ describe("/api/tenants/auth/session", () => {
     const disabled = await POST(new Request("http://localhost/api/tenants/auth/session", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "Content-Type": "application/json",
         "x-agentproof-tenant-auth-token": "disabled-bootstrap-token"
       },
@@ -95,6 +113,7 @@ describe("/api/tenants/auth/session", () => {
     const unavailable = await POST(new Request("http://localhost/api/tenants/auth/session", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "Content-Type": "application/json",
         "x-agentproof-tenant-auth-token": "member-bootstrap-token"
       },
@@ -113,6 +132,7 @@ describe("/api/tenants/auth/session", () => {
     const start = await POST(new Request("http://localhost/api/tenants/auth/session", {
       method: "POST",
       headers: {
+        ...sameOriginHeaders(),
         "Content-Type": "application/json",
         "x-agentproof-tenant-auth-token": "member-bootstrap-token"
       },
@@ -122,7 +142,7 @@ describe("/api/tenants/auth/session", () => {
 
     const response = await DELETE(new Request("http://localhost/api/tenants/auth/session", {
       method: "DELETE",
-      headers: { cookie: startCookie }
+      headers: { ...sameOriginHeaders(), cookie: startCookie }
     }));
     const json = await response.json();
     const clearCookie = response.headers.get("Set-Cookie") ?? "";
@@ -140,7 +160,55 @@ describe("/api/tenants/auth/session", () => {
       cookieHeader: startCookie
     })).resolves.toEqual({ authorized: false });
   });
+
+  it("rejects cross-site durable auth session creation without issuing a cookie", async () => {
+    stubTenantAuthRouteEnv();
+
+    const response = await POST(new Request("http://localhost/api/tenants/auth/session", {
+      method: "POST",
+      headers: {
+        Origin: "https://attacker.example",
+        "Content-Type": "application/json",
+        "x-agentproof-tenant-auth-token": "member-bootstrap-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a", memberId: "member_owner" })
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Tenant mutations require a same-origin request.",
+      code: "tenant_mutation_csrf_required"
+    });
+    expect(JSON.stringify(getAuditEventsForTests())).not.toContain("member-bootstrap-token");
+    expect(getAuditEventsForTests()).toEqual([
+      expect.objectContaining({
+        action: "tenant_auth_session_failed",
+        result: "failed",
+        status_code: 403,
+        metadata: { code: "origin_mismatch" }
+      })
+    ]);
+  });
+
+  it("rejects cross-site durable auth session deletion without clearing cookies", async () => {
+    const response = await DELETE(new Request("http://localhost/api/tenants/auth/session", {
+      method: "DELETE",
+      headers: { Origin: "https://attacker.example", cookie: `${TENANT_AUTH_SESSION_COOKIE}=opaque` }
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Tenant mutations require a same-origin request.",
+      code: "tenant_mutation_csrf_required"
+    });
+  });
 });
+
+function sameOriginHeaders() {
+  return { Origin: "http://localhost" };
+}
 
 function stubTenantAuthRouteEnv() {
   vi.stubEnv("AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY", "true");
