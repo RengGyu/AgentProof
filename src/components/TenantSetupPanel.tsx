@@ -17,6 +17,7 @@ import {
   UsersRound
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { buildTenantSetupWarningRollup } from "@/lib/tenant-dashboard-warnings";
 import {
   tenantHealthUrl,
   tenantInviteHeaders,
@@ -810,6 +811,13 @@ export function TenantSetupPanel() {
   const canStartSession = hasTenantId && inviteToken.trim().length > 0;
   const credentialsReady = hasTenantId;
   const canLoadInstalled = Number.isInteger(Number(installationId)) && Number(installationId) > 0;
+  const setupWarningRollup = useMemo(() => buildTenantSetupWarningRollup({
+    account: accountStatus,
+    entitlements: entitlementStatus,
+    repositoryHealth: health,
+    usage,
+    analysisJobs: analysisJobSummary
+  }), [accountStatus, entitlementStatus, health, usage, analysisJobSummary]);
 
   return (
     <section className="tenant-setup" aria-labelledby="tenant-setup-title">
@@ -922,6 +930,38 @@ export function TenantSetupPanel() {
       </div>
 
       <div className="tenant-setup-grid">
+        <article className="card">
+          <div className="card-title-row">
+            <h2>Setup Warnings</h2>
+            <AlertTriangle size={18} aria-hidden="true" />
+          </div>
+          <div className="tenant-rollup-row" aria-label="Tenant setup warning summary">
+            <span>Blocking {setupWarningRollup.counts.critical}</span>
+            <span>Warnings {setupWarningRollup.counts.warning}</span>
+            <span>Info {setupWarningRollup.counts.info}</span>
+            <span>{setupWarningNextLabel(setupWarningRollup.next)}</span>
+          </div>
+          {setupWarningRollup.warnings.length > 0 ? (
+            <ul className="tenant-usage-list">
+              {setupWarningRollup.warnings.map((warning) => (
+                <li key={warning.key}>
+                  <div className="tenant-usage-meter">
+                    <span>{warning.label}</span>
+                    <strong>{setupWarningSeverityLabel(warning.severity)}</strong>
+                  </div>
+                  <div className={`tenant-usage-state state-${warning.severity}`}>
+                    {warning.action}
+                  </div>
+                  <small>{warning.detail}</small>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted small">Loaded setup summaries show no blocking warnings.</p>
+          )}
+          <p className="muted small">Loaded summary signals only; repository payloads, provider ids, raw evidence, logs, and report bodies are omitted.</p>
+        </article>
+
         <article className="card">
           <div className="card-title-row">
             <h2>Tenant Account</h2>
@@ -1403,6 +1443,21 @@ function reportDetail(report: ReportSummary): string {
   const scopeText = report.scopeCreepSuspected ? "scope check flagged" : "scope check clear";
 
   return `${requirementText} · ${testingText} · ${reviewText} · ${scopeText}`;
+}
+
+function setupWarningSeverityLabel(severity: string): string {
+  if (severity === "critical") return "Blocking";
+  if (severity === "warning") return "Warning";
+
+  return "Info";
+}
+
+function setupWarningNextLabel(next: string): string {
+  if (next === "fix_blocking_setup") return "Fix setup";
+  if (next === "review_setup_warnings") return "Review warnings";
+  if (next === "ready_for_first_report") return "Ready";
+
+  return "Load summaries";
 }
 
 function reportPriorityLabel(filter: TenantReportPriorityFilter): string {

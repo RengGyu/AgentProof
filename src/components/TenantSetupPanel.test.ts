@@ -52,6 +52,24 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).not.toContain("idempotency");
   });
 
+  it("uses summary-only setup warning rollups without raw setup internals", () => {
+    expect(source).toContain("buildTenantSetupWarningRollup");
+    expect(source).toContain("Setup Warnings");
+    expect(source).toContain("Tenant setup warning summary");
+    expect(source).toContain("Loaded summary signals only");
+    expect(source).toContain("repository payloads");
+    expect(source).toContain("raw evidence");
+    expect(source).toContain("Blocking {setupWarningRollup.counts.critical}");
+    expect(source).not.toContain("setupRawPayload");
+    expect(source).not.toContain("providerCustomerId");
+    expect(source).not.toContain("installationToken");
+    expect(source).not.toContain("githubToken");
+    expect(source).not.toContain("serviceRole");
+    expect(source).not.toContain("webhookPayload");
+    expect(source).not.toContain("rawDiff");
+    expect(source).not.toContain("rawLog");
+  });
+
   it("uses account summary metadata without full auth, billing, or contact fields", () => {
     expect(source).toContain("tenantAccountUrl");
     expect(source).toContain("Tenant Account");

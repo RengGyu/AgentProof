@@ -1240,6 +1240,21 @@ code {
   color: var(--danger);
 }
 
+.tenant-usage-state.state-critical {
+  background: rgba(180, 35, 24, 0.1);
+  color: var(--danger);
+}
+
+.tenant-usage-state.state-warning {
+  background: #fff7ed;
+  color: #b54708;
+}
+
+.tenant-usage-state.state-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .tenant-usage-state.state-disabled,
 .tenant-usage-state.state-unavailable {
   background: rgba(180, 35, 24, 0.1);
