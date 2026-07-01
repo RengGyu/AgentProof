@@ -5,6 +5,7 @@ export const BILLING_BETA_SUBSCRIPTIONS_ENV = "AGENTPROOF_BILLING_BETA_SUBSCRIPT
 export const BILLING_BETA_ENFORCEMENT_ENV = "AGENTPROOF_BILLING_BETA_ENFORCEMENT_ENABLED";
 export const BILLING_WEBHOOK_SECRET_ENV = "AGENTPROOF_BILLING_WEBHOOK_SECRET";
 export const DEFAULT_BILLING_WEBHOOK_EVENTS_TABLE = "agentproof_billing_webhook_events";
+export const DEFAULT_BILLING_SUBSCRIPTIONS_TABLE = "agentproof_billing_subscriptions";
 export const DEFAULT_BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS = 300;
 
 export type BillingBetaProvider = "stripe" | "manual";
@@ -75,6 +76,36 @@ export interface BillingWebhookIntakeResult {
     | "ignore_duplicate_billing_event";
 }
 
+export type BillingSubscriptionLifecycleSyncStatus =
+  | "synced"
+  | "duplicate_ignored"
+  | "not_enabled"
+  | "webhook_not_accepted"
+  | "missing_tenant"
+  | "missing_subscription_status"
+  | "store_unavailable";
+
+export interface BillingSubscriptionLifecycleSyncResult {
+  privacy: "billing-subscription-lifecycle-metadata-only";
+  enabled: boolean;
+  synced: boolean;
+  status: BillingSubscriptionLifecycleSyncStatus;
+  store: "memory" | "supabase" | "none";
+  durable: boolean;
+  provider?: "stripe";
+  tenantId?: string;
+  eventType?: string;
+  subscriptionStatus?: BillingBetaSubscriptionStatus;
+  plan?: string;
+  next:
+    | "enable_billing_subscription_lifecycle_sync"
+    | "retry_billing_webhook_intake"
+    | "review_provider_billing_mapping"
+    | "configure_billing_subscription_lifecycle_store"
+    | "billing_subscription_metadata_synced"
+    | "ignore_duplicate_billing_event";
+}
+
 export type BillingBetaGateReason =
   | "billing-beta-enforcement-disabled"
   | "billing-record-missing"
@@ -137,6 +168,7 @@ interface BillingBetaSubscriptionInput {
 interface BillingBetaSubscriptionRecord {
   tenantId: string;
   provider: BillingBetaProvider;
+  providerBacked: boolean;
   providerCustomerId?: string;
   providerSubscriptionId?: string;
   providerPriceId?: string;
@@ -146,6 +178,12 @@ interface BillingBetaSubscriptionRecord {
 }
 
 interface BillingWebhookStoreConfig {
+  url: string;
+  serviceRoleKey: string;
+  table: string;
+}
+
+interface BillingSubscriptionLifecycleStoreConfig {
   url: string;
   serviceRoleKey: string;
   table: string;
@@ -164,6 +202,7 @@ interface StripeBillingWebhookPayload {
 
 type GlobalWithBillingWebhookStore = typeof globalThis & {
   __agentproofBillingWebhookEvents?: Set<string>;
+  __agentproofBillingSubscriptions?: Map<string, BillingBetaSubscriptionRecord>;
 };
 
 export class BillingBetaStoreError extends Error {
@@ -205,19 +244,15 @@ export function readBillingBetaSummary(
     };
   }
 
-  const providerBacked = record.provider !== "manual"
-    && Boolean(record.providerCustomerId)
-    && Boolean(record.providerSubscriptionId);
-
   return {
     privacy: "billing-beta-summary-only",
     configured: true,
-    providerBacked,
+    providerBacked: record.providerBacked,
     subscriptionStatus: record.subscriptionStatus,
     ...(record.plan ? { plan: record.plan } : {}),
     portal: {
-      available: providerBacked && record.customerPortalEnabled,
-      mode: providerBacked && record.customerPortalEnabled ? "server_redirect_required" : "not_configured"
+      available: record.providerBacked && record.customerPortalEnabled,
+      mode: record.providerBacked && record.customerPortalEnabled ? "server_redirect_required" : "not_configured"
     },
     webhooks: {
       idempotency: webhookIdempotency
@@ -389,7 +424,7 @@ export function billingBetaPublicReason(reason: BillingBetaGateReason | undefine
 
 export function readBillingBetaSubscriptionRecords(env = process.env): BillingBetaSubscriptionRecord[] | null {
   const raw = env[BILLING_BETA_SUBSCRIPTIONS_ENV];
-  if (!raw?.trim()) return [];
+  if (!raw?.trim()) return mergeMemoryBillingSubscriptionRecords([], env).slice(0, 500);
 
   let parsed: unknown;
   try {
@@ -408,7 +443,7 @@ export function readBillingBetaSubscriptionRecords(env = process.env): BillingBe
     records.push(record);
   }
 
-  return records.slice(0, 500);
+  return mergeMemoryBillingSubscriptionRecords(records, env).slice(0, 500);
 }
 
 export async function reserveBillingWebhookEvent(
@@ -576,8 +611,156 @@ export async function processSignedBillingWebhook(
   });
 }
 
+export async function syncBillingSubscriptionLifecycleFromWebhook(
+  intake: BillingWebhookIntakeResult,
+  env = process.env
+): Promise<BillingSubscriptionLifecycleSyncResult> {
+  if (!truthy(env.AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED)) {
+    return billingSubscriptionLifecycleResult({
+      enabled: false,
+      synced: false,
+      status: "not_enabled",
+      store: "none",
+      durable: false,
+      provider: intake.provider,
+      tenantId: intake.tenantId,
+      eventType: intake.eventType,
+      subscriptionStatus: intake.subscriptionStatus,
+      plan: intake.plan,
+      next: "enable_billing_subscription_lifecycle_sync"
+    });
+  }
+
+  if (intake.status === "duplicate") {
+    return billingSubscriptionLifecycleResult({
+      enabled: true,
+      synced: false,
+      status: "duplicate_ignored",
+      store: intake.idempotency?.store ?? "none",
+      durable: intake.idempotency?.store === "supabase",
+      provider: intake.provider,
+      tenantId: intake.tenantId,
+      eventType: intake.eventType,
+      subscriptionStatus: intake.subscriptionStatus,
+      plan: intake.plan,
+      next: "ignore_duplicate_billing_event"
+    });
+  }
+
+  if (!intake.verified || !intake.accepted) {
+    return billingSubscriptionLifecycleResult({
+      enabled: true,
+      synced: false,
+      status: "webhook_not_accepted",
+      store: "none",
+      durable: false,
+      provider: intake.provider,
+      tenantId: intake.tenantId,
+      eventType: intake.eventType,
+      subscriptionStatus: intake.subscriptionStatus,
+      plan: intake.plan,
+      next: "retry_billing_webhook_intake"
+    });
+  }
+
+  if (!intake.tenantId) {
+    return billingSubscriptionLifecycleResult({
+      enabled: true,
+      synced: false,
+      status: "missing_tenant",
+      store: "none",
+      durable: false,
+      provider: intake.provider,
+      eventType: intake.eventType,
+      subscriptionStatus: intake.subscriptionStatus,
+      plan: intake.plan,
+      next: "review_provider_billing_mapping"
+    });
+  }
+
+  if (!intake.subscriptionStatus) {
+    return billingSubscriptionLifecycleResult({
+      enabled: true,
+      synced: false,
+      status: "missing_subscription_status",
+      store: "none",
+      durable: false,
+      provider: intake.provider,
+      tenantId: intake.tenantId,
+      eventType: intake.eventType,
+      plan: intake.plan,
+      next: "review_provider_billing_mapping"
+    });
+  }
+
+  const config = getBillingSubscriptionLifecycleStoreConfig(env);
+  if (config) {
+    await syncSupabaseBillingSubscriptionLifecycle(config, {
+      provider: intake.provider,
+      tenantId: intake.tenantId,
+      eventType: intake.eventType,
+      subscriptionStatus: intake.subscriptionStatus,
+      plan: intake.plan
+    });
+
+    return billingSubscriptionLifecycleResult({
+      enabled: true,
+      synced: true,
+      status: "synced",
+      store: "supabase",
+      durable: true,
+      provider: intake.provider,
+      tenantId: intake.tenantId,
+      eventType: intake.eventType,
+      subscriptionStatus: intake.subscriptionStatus,
+      plan: intake.plan,
+      next: "billing_subscription_metadata_synced"
+    });
+  }
+
+  if (!truthy(env.AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY)) {
+    return billingSubscriptionLifecycleResult({
+      enabled: true,
+      synced: false,
+      status: "store_unavailable",
+      store: "none",
+      durable: false,
+      provider: intake.provider,
+      tenantId: intake.tenantId,
+      eventType: intake.eventType,
+      subscriptionStatus: intake.subscriptionStatus,
+      plan: intake.plan,
+      next: "configure_billing_subscription_lifecycle_store"
+    });
+  }
+
+  billingSubscriptionMemoryStore().set(intake.tenantId, {
+    tenantId: intake.tenantId,
+    provider: intake.provider,
+    providerBacked: true,
+    ...(intake.plan ? { plan: intake.plan } : {}),
+    subscriptionStatus: intake.subscriptionStatus,
+    customerPortalEnabled: false
+  });
+
+  return billingSubscriptionLifecycleResult({
+    enabled: true,
+    synced: true,
+    status: "synced",
+    store: "memory",
+    durable: false,
+    provider: intake.provider,
+    tenantId: intake.tenantId,
+    eventType: intake.eventType,
+    subscriptionStatus: intake.subscriptionStatus,
+    plan: intake.plan,
+    next: "billing_subscription_metadata_synced"
+  });
+}
+
 export function clearBillingWebhookEventsForTests() {
   billingWebhookMemoryStore().clear();
+  billingSubscriptionMemoryStore().clear();
 }
 
 function normalizeBillingBetaSubscription(input: BillingBetaSubscriptionInput): BillingBetaSubscriptionRecord | null {
@@ -595,6 +778,7 @@ function normalizeBillingBetaSubscription(input: BillingBetaSubscriptionInput): 
   return {
     tenantId,
     provider,
+    providerBacked: provider !== "manual" && Boolean(providerCustomerId) && Boolean(providerSubscriptionId),
     ...(providerCustomerId ? { providerCustomerId } : {}),
     ...(providerSubscriptionId ? { providerSubscriptionId } : {}),
     ...(providerPriceId ? { providerPriceId } : {}),
@@ -602,6 +786,70 @@ function normalizeBillingBetaSubscription(input: BillingBetaSubscriptionInput): 
     subscriptionStatus,
     customerPortalEnabled
   };
+}
+
+async function syncSupabaseBillingSubscriptionLifecycle(
+  config: BillingSubscriptionLifecycleStoreConfig,
+  input: {
+    provider: "stripe";
+    tenantId: string;
+    eventType?: string;
+    subscriptionStatus: BillingBetaSubscriptionStatus;
+    plan?: string;
+  }
+): Promise<void> {
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?on_conflict=tenant_id`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    body: JSON.stringify({
+      tenant_id: input.tenantId,
+      provider: input.provider,
+      provider_backed: true,
+      subscription_status: input.subscriptionStatus,
+      plan: input.plan ?? null,
+      last_event_type: input.eventType ?? null,
+      updated_at: new Date().toISOString()
+    })
+  });
+
+  if (!response.ok) {
+    throw new BillingBetaStoreError(`Billing subscription lifecycle store failed with HTTP ${response.status}.`);
+  }
+}
+
+function getBillingSubscriptionLifecycleStoreConfig(env = process.env): BillingSubscriptionLifecycleStoreConfig | null {
+  const url = env.AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_URL || "";
+  const serviceRoleKey = env.AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_SERVICE_ROLE_KEY || "";
+
+  if (!url && !serviceRoleKey) return null;
+  if (!url || !serviceRoleKey) {
+    throw new BillingBetaStoreError("Billing subscription lifecycle Supabase env is incomplete.");
+  }
+
+  return {
+    url: trimTrailingSlash(url),
+    serviceRoleKey,
+    table: env.AGENTPROOF_BILLING_SUBSCRIPTIONS_TABLE || DEFAULT_BILLING_SUBSCRIPTIONS_TABLE
+  };
+}
+
+function mergeMemoryBillingSubscriptionRecords(
+  records: BillingBetaSubscriptionRecord[],
+  env: NodeJS.ProcessEnv
+): BillingBetaSubscriptionRecord[] {
+  if (!truthy(env.AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY)) return records;
+  const merged = new Map(records.map((record) => [record.tenantId, record]));
+  for (const [tenantId, record] of billingSubscriptionMemoryStore()) {
+    merged.set(tenantId, record);
+  }
+
+  return [...merged.values()];
 }
 
 function billingWebhookIdempotencyConfigured(env: NodeJS.ProcessEnv): boolean {
@@ -688,6 +936,15 @@ function webhookIntakeResult(
     privacy: "billing-webhook-intake-metadata-only",
     ...input,
     ...(input.idempotency ? { idempotency: boundedBillingWebhookReservation(input.idempotency) } : {})
+  };
+}
+
+function billingSubscriptionLifecycleResult(
+  input: Omit<BillingSubscriptionLifecycleSyncResult, "privacy">
+): BillingSubscriptionLifecycleSyncResult {
+  return {
+    privacy: "billing-subscription-lifecycle-metadata-only",
+    ...input
   };
 }
 
@@ -862,6 +1119,13 @@ function billingWebhookMemoryStore(): Set<string> {
   global.__agentproofBillingWebhookEvents ??= new Set<string>();
 
   return global.__agentproofBillingWebhookEvents;
+}
+
+function billingSubscriptionMemoryStore(): Map<string, BillingBetaSubscriptionRecord> {
+  const global = globalThis as GlobalWithBillingWebhookStore;
+  global.__agentproofBillingSubscriptions ??= new Map<string, BillingBetaSubscriptionRecord>();
+
+  return global.__agentproofBillingSubscriptions;
 }
 
 function trimTrailingSlash(value: string): string {
