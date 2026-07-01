@@ -1,4 +1,4 @@
-import { verifyTenantAdminAccess } from "@/lib/github-onboarding";
+import { verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson } from "@/lib/http";
 import {
   filterTenantSavedReportSummaries,
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     query: url.searchParams.get("query")
   });
   const hasFilters = filters.priority !== "all" || filters.status !== "all" || Boolean(filters.query);
-  const access = verifyTenantAdminAccess({
+  const access = await verifyTenantAccess({
     tenantId,
     inviteToken,
     cookieHeader: request.headers.get("cookie")
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
-      error: "Tenant saved reports require a valid tenant-bound invite token.",
+      error: "Tenant saved reports require valid tenant authorization.",
       code: "tenant_reports_unauthorized"
     }, { status: 401 });
   }

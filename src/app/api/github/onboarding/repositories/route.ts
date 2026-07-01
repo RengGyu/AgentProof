@@ -10,6 +10,7 @@ import {
 import { noStoreJson, parseJsonSafely } from "@/lib/http";
 import { createTenantRepositoryGrant, getTenantControlPlaneSettings, TenantControlPlaneStoreError } from "@/lib/tenant-control-plane";
 import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/lib/tenant-deletion-state";
+import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -43,6 +44,17 @@ export async function GET(request: Request) {
       error: "GitHub App activation session is invalid or expired.",
       code: "github_onboarding_activation_invalid"
     }, { status: 401 });
+  }
+  const access = await verifyTenantAccess({
+    tenantId: activation.tenantId,
+    inviteToken: request.headers.get("x-agentproof-beta-invite-token") ?? undefined,
+    cookieHeader: request.headers.get("cookie")
+  });
+  if (!access.authorized || !access.tenantId || !canUsePrivilegedTenantAccess(access)) {
+    return noStoreJson({
+      error: "GitHub App repository setup requires an owner or admin role.",
+      code: "github_onboarding_role_required"
+    }, { status: 403 });
   }
   try {
     await assertTenantDeletionNotActiveAsync({ tenantId: activation.tenantId });
@@ -132,6 +144,17 @@ export async function POST(request: Request) {
       error: "GitHub App activation session is invalid or expired.",
       code: "github_onboarding_activation_invalid"
     }, { status: 401 });
+  }
+  const access = await verifyTenantAccess({
+    tenantId: activation.tenantId,
+    inviteToken: request.headers.get("x-agentproof-beta-invite-token") ?? undefined,
+    cookieHeader: request.headers.get("cookie")
+  });
+  if (!access.authorized || !access.tenantId || !canUsePrivilegedTenantAccess(access)) {
+    return noStoreJson({
+      error: "GitHub App repository setup requires an owner or admin role.",
+      code: "github_onboarding_role_required"
+    }, { status: 403 });
   }
   try {
     await assertTenantDeletionNotActiveAsync({ tenantId: activation.tenantId });

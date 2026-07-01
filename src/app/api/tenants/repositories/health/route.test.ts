@@ -48,7 +48,7 @@ describe("GET /api/tenants/repositories/health", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      error: "Tenant repository health requires a valid tenant-bound invite token.",
+      error: "Tenant repository health requires valid tenant authorization.",
       code: "tenant_repository_health_unauthorized"
     });
   });
@@ -70,7 +70,7 @@ describe("GET /api/tenants/repositories/health", () => {
     expect(missing.headers.get("Cache-Control")).toContain("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(wrongTenant.json()).resolves.toEqual({
-      error: "Tenant repository health requires a valid tenant-bound invite token.",
+      error: "Tenant repository health requires valid tenant authorization.",
       code: "tenant_repository_health_unauthorized"
     });
   });

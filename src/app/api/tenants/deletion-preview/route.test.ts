@@ -40,7 +40,7 @@ describe("GET /api/tenants/deletion-preview", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(json).toEqual({
-      error: "Tenant deletion preview requires a valid tenant-bound invite token.",
+      error: "Tenant deletion preview requires valid tenant authorization.",
       code: "tenant_deletion_preview_unauthorized"
     });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe("GET /api/tenants/deletion-preview", () => {
     });
     expect(wrong.status).toBe(401);
     await expect(wrong.json()).resolves.toEqual({
-      error: "Tenant deletion preview requires a valid tenant-bound invite token.",
+      error: "Tenant deletion preview requires valid tenant authorization.",
       code: "tenant_deletion_preview_unauthorized"
     });
   });

@@ -4,7 +4,7 @@ import {
   AnalysisJobQueueError,
   type AnalysisJobStatus
 } from "@/lib/analysis-jobs";
-import { verifyTenantAdminAccess } from "@/lib/github-onboarding";
+import { verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson } from "@/lib/http";
 
 export async function GET(request: Request) {
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const inviteToken = request.headers.get("x-agentproof-beta-invite-token") ?? undefined;
   const limit = normalizeLimit(url.searchParams.get("limit"));
   const filter = parseStatusFilter(url.searchParams.get("status"));
-  const access = verifyTenantAdminAccess({
+  const access = await verifyTenantAccess({
     tenantId,
     inviteToken,
     cookieHeader: request.headers.get("cookie")
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
-      error: "Tenant analysis jobs require a valid tenant-bound invite token.",
+      error: "Tenant analysis jobs require valid tenant authorization.",
       code: "tenant_analysis_jobs_unauthorized"
     }, { status: 401 });
   }

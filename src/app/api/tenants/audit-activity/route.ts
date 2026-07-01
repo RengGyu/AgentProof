@@ -1,5 +1,5 @@
 import { listTenantAuditEvents, AuditLogError } from "@/lib/audit-log";
-import { verifyTenantAdminAccess } from "@/lib/github-onboarding";
+import { verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson } from "@/lib/http";
 
 export async function GET(request: Request) {
@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const tenantId = url.searchParams.get("tenantId");
   const inviteToken = request.headers.get("x-agentproof-beta-invite-token") ?? undefined;
   const limit = normalizeLimit(url.searchParams.get("limit"));
-  const access = verifyTenantAdminAccess({
+  const access = await verifyTenantAccess({
     tenantId,
     inviteToken,
     cookieHeader: request.headers.get("cookie")
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
-      error: "Tenant audit activity requires a valid tenant-bound invite token.",
+      error: "Tenant audit activity requires valid tenant authorization.",
       code: "tenant_audit_unauthorized"
     }, { status: 401 });
   }

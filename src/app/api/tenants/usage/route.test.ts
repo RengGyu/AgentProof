@@ -24,7 +24,7 @@ describe("GET /api/tenants/usage", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      error: "Tenant usage status requires a valid tenant-bound invite token.",
+      error: "Tenant usage status requires valid tenant authorization.",
       code: "tenant_usage_unauthorized"
     });
   });

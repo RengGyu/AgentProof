@@ -23,7 +23,7 @@ describe("GET /api/tenants/audit-activity", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      error: "Tenant audit activity requires a valid tenant-bound invite token.",
+      error: "Tenant audit activity requires valid tenant authorization.",
       code: "tenant_audit_unauthorized"
     });
   });

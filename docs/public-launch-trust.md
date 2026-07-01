@@ -37,7 +37,7 @@ The GitHub App should request only the permissions needed for evidence-report au
 | Checks/statuses | Read CI, test, lint, typecheck, and build signals. | Passing or failing checks are evidence inputs; unavailable checks stay unavailable. |
 | Issues or pull request comments, when enabled | Update one AgentProof marker comment with a summary-only handoff. | Commenting is a separate repo-level opt-in and is off by default. |
 
-Design-partner onboarding is still invite-only. A tenant admin can install the App, select a repository, and configure repository settings through tenant-bound invite/session access. Repository settings mutations require bounded `owner` or `admin` role metadata. This is not full self-serve authentication or durable account RBAC.
+Design-partner onboarding is still invite/bootstrap-gated. A tenant admin can install the App, select a repository, and configure repository settings through tenant-bound authorization. Repository settings mutations require bounded `owner` or `admin` role metadata from a durable tenant auth session or the current tenant-bound invite header; the legacy stateless tenant admin session is kept as a short-lived read compatibility path. This is not full self-serve authentication or account RBAC.
 
 ## Slack Summaries
 

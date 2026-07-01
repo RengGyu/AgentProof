@@ -24,7 +24,7 @@ describe("GET /api/tenants/audit-export", () => {
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      error: "Tenant audit export requires a valid tenant-bound invite token.",
+      error: "Tenant audit export requires valid tenant authorization.",
       code: "tenant_audit_export_unauthorized"
     });
   });

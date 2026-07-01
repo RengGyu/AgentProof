@@ -26,7 +26,7 @@ describe("GET /api/tenants/reports", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
-      error: "Tenant saved reports require a valid tenant-bound invite token.",
+      error: "Tenant saved reports require valid tenant authorization.",
       code: "tenant_reports_unauthorized"
     });
   });

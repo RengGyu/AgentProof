@@ -19,7 +19,7 @@ describe("GET /api/tenants/entitlements", () => {
 
     expect(response.status).toBe(401);
     expect(json).toEqual({
-      error: "Tenant plan access requires a valid tenant-bound invite token.",
+      error: "Tenant plan access requires valid tenant authorization.",
       code: "tenant_entitlements_unauthorized"
     });
   });
