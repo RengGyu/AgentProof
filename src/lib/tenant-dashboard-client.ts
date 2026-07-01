@@ -127,6 +127,10 @@ export function tenantOnboardingStartPayload(tenantId: string): { tenantId: stri
   return { tenantId: tenantId.trim() };
 }
 
+export function tenantBillingPortalPayload(tenantId: string): { tenantId: string } {
+  return { tenantId: tenantId.trim() };
+}
+
 export function tenantSettingsPatchPayload(input: {
   tenantId: string;
   installationId: number;

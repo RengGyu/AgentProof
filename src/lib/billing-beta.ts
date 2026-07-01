@@ -59,6 +59,35 @@ export interface BillingBetaGateDecision {
   privacy: "billing-beta-gate-metadata-only";
 }
 
+export type BillingPortalSessionBoundaryStatus =
+  | "ready"
+  | "not_configured"
+  | "manual_review_required"
+  | "unavailable";
+
+export interface BillingPortalSessionBoundary {
+  privacy: "billing-portal-session-boundary-only";
+  configured: boolean;
+  providerBacked: boolean;
+  subscriptionStatus: BillingBetaSubscriptionStatus;
+  plan?: string;
+  portal: BillingBetaSummary["portal"];
+  status: BillingPortalSessionBoundaryStatus;
+  reason?:
+    | "billing_record_missing"
+    | "billing_record_not_provider_backed"
+    | "billing_subscription_inactive"
+    | "billing_portal_not_configured"
+    | "billing_summary_unavailable";
+  next:
+    | "configure_billing_record"
+    | "configure_provider_backed_billing"
+    | "resolve_subscription_status"
+    | "enable_customer_portal"
+    | "redirect_via_provider_adapter"
+    | "review_billing_summary";
+}
+
 interface BillingBetaSubscriptionInput {
   tenantId?: unknown;
   provider?: unknown;
@@ -215,6 +244,81 @@ export function evaluateBillingBetaGate(
   return {
     ...base,
     allowed: true
+  };
+}
+
+export function buildBillingPortalSessionBoundary(
+  input: { tenantId?: unknown },
+  env = process.env
+): BillingPortalSessionBoundary {
+  let summary: BillingBetaSummary;
+  try {
+    summary = readBillingBetaSummary(input, env);
+  } catch {
+    return {
+      privacy: "billing-portal-session-boundary-only",
+      configured: false,
+      providerBacked: false,
+      subscriptionStatus: "unknown",
+      portal: {
+        available: false,
+        mode: "not_configured"
+      },
+      status: "unavailable",
+      reason: "billing_summary_unavailable",
+      next: "review_billing_summary"
+    };
+  }
+
+  const base = {
+    privacy: "billing-portal-session-boundary-only" as const,
+    configured: summary.configured,
+    providerBacked: summary.providerBacked,
+    subscriptionStatus: summary.subscriptionStatus,
+    ...(summary.plan ? { plan: summary.plan } : {}),
+    portal: summary.portal
+  };
+
+  if (!summary.configured) {
+    return {
+      ...base,
+      status: "not_configured",
+      reason: "billing_record_missing",
+      next: "configure_billing_record"
+    };
+  }
+
+  if (!summary.providerBacked) {
+    return {
+      ...base,
+      status: "manual_review_required",
+      reason: "billing_record_not_provider_backed",
+      next: "configure_provider_backed_billing"
+    };
+  }
+
+  if (!billingSubscriptionAllowsAccess(summary)) {
+    return {
+      ...base,
+      status: "manual_review_required",
+      reason: "billing_subscription_inactive",
+      next: "resolve_subscription_status"
+    };
+  }
+
+  if (!summary.portal.available) {
+    return {
+      ...base,
+      status: "manual_review_required",
+      reason: "billing_portal_not_configured",
+      next: "enable_customer_portal"
+    };
+  }
+
+  return {
+    ...base,
+    status: "ready",
+    next: "redirect_via_provider_adapter"
   };
 }
 

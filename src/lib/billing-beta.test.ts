@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BillingBetaStoreError,
+  buildBillingPortalSessionBoundary,
   billingSubscriptionAllowsAccess,
   clearBillingWebhookEventsForTests,
   evaluateBillingBetaGate,
@@ -67,6 +68,68 @@ describe("billing beta metadata boundary", () => {
         mode: "not_configured"
       }
     });
+  });
+
+  it("builds a metadata-only portal session boundary without provider ids", () => {
+    const ready = buildBillingPortalSessionBoundary({ tenantId: "tenant_a" }, billingEnv({
+      subscriptionStatus: "active",
+      customerPortalEnabled: true
+    }));
+    const inactive = buildBillingPortalSessionBoundary({ tenantId: "tenant_a" }, billingEnv({
+      subscriptionStatus: "past_due",
+      customerPortalEnabled: true
+    }));
+    const missing = buildBillingPortalSessionBoundary({ tenantId: "tenant_missing" }, billingEnv({
+      subscriptionStatus: "active",
+      customerPortalEnabled: true
+    }));
+    const manual = buildBillingPortalSessionBoundary({ tenantId: "tenant_a" }, testEnv({
+      AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS: JSON.stringify([
+        {
+          tenantId: "tenant_a",
+          provider: "manual",
+          subscriptionStatus: "trialing",
+          plan: "team"
+        }
+      ])
+    }));
+    const serialized = JSON.stringify({ ready, inactive, missing, manual });
+
+    expect(ready).toEqual({
+      privacy: "billing-portal-session-boundary-only",
+      configured: true,
+      providerBacked: true,
+      subscriptionStatus: "active",
+      plan: "team",
+      portal: {
+        available: true,
+        mode: "server_redirect_required"
+      },
+      status: "ready",
+      next: "redirect_via_provider_adapter"
+    });
+    expect(inactive).toMatchObject({
+      status: "manual_review_required",
+      reason: "billing_subscription_inactive",
+      next: "resolve_subscription_status"
+    });
+    expect(missing).toMatchObject({
+      configured: false,
+      status: "not_configured",
+      reason: "billing_record_missing",
+      next: "configure_billing_record"
+    });
+    expect(manual).toMatchObject({
+      providerBacked: false,
+      status: "manual_review_required",
+      reason: "billing_record_not_provider_backed",
+      next: "configure_provider_backed_billing"
+    });
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("price_secret");
+    expect(serialized).not.toContain("payment");
+    expect(serialized).not.toContain("owner@example.com");
   });
 
   it.each([

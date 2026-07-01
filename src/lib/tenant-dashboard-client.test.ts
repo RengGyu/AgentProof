@@ -7,6 +7,7 @@ import {
   tenantAnalysisJobsUrl,
   tenantAccountUrl,
   tenantEntitlementsUrl,
+  tenantBillingPortalPayload,
   tenantOnboardingStartPayload,
   tenantAuditActivityUrl,
   tenantAuditExportUrl,
@@ -75,6 +76,21 @@ describe("tenant dashboard client request helpers", () => {
     expect(url).not.toContain("repositoryId");
     expect(url).not.toContain("rawDiff");
     expect(url).not.toContain("service-role");
+  });
+
+  it("builds billing portal payloads without provider ids or payment fields", () => {
+    const payload = tenantBillingPortalPayload(" tenant_a ");
+    const serialized = JSON.stringify(payload);
+
+    expect(payload).toEqual({ tenantId: "tenant_a" });
+    expect(Object.keys(payload)).toEqual(["tenantId"]);
+    expect(serialized).not.toContain("token");
+    expect(serialized).not.toContain("invite");
+    expect(serialized).not.toContain("customer");
+    expect(serialized).not.toContain("subscription");
+    expect(serialized).not.toContain("provider");
+    expect(serialized).not.toContain("payment");
+    expect(serialized).not.toContain("portal");
   });
 
   it("builds summary report list URLs without invite tokens or raw report internals", () => {

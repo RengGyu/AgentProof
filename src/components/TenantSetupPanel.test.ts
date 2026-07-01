@@ -100,12 +100,16 @@ describe("TenantSetupPanel product and privacy boundary", () => {
 
   it("uses plan access summaries without provider identifiers or raw evidence", () => {
     expect(source).toContain("tenantEntitlementsUrl");
+    expect(source).toContain("tenantBillingPortalPayload");
     expect(source).toContain("Plan Access");
     expect(source).toContain("plan-entitlement-summary-only");
     expect(source).toContain("billing-beta-summary-only");
+    expect(source).toContain("billing-portal-session-boundary-only");
+    expect(source).toContain("Portal Boundary");
     expect(source).toContain("subscriptionStatus");
     expect(source).toContain("Portal boundary ready");
     expect(source).toContain("Tenant plan access summary");
+    expect(source).toContain("Tenant billing portal response did not match the summary-only boundary.");
     expect(source).not.toContain("providerCustomerId");
     expect(source).not.toContain("subscriptionId");
     expect(source).not.toContain("providerSubscriptionId");
