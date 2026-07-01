@@ -58,6 +58,7 @@ describe("tenant dashboard setup warnings", () => {
       },
       repositoryHealth: [
         { status: "disabled", githubAccess: "not-checked" },
+        { status: "installation-suspended", githubAccess: "not-checked" },
         { status: "github-inaccessible", githubAccess: "inaccessible" },
         { status: "github-rate-limited", githubAccess: "rate-limited" }
       ],

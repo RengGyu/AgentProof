@@ -151,7 +151,14 @@ function repositoryHealthWarnings(repositoryHealth: TenantSetupRepositoryHealthI
     return [warning("repository_health_not_loaded", "info", "Repository health not loaded", "Load repository health before first report activation.", "Load Health")];
   }
 
-  const criticalStatuses = new Set(["disabled", "analysis-disabled", "app-credentials-not-ready", "github-inaccessible"]);
+  const criticalStatuses = new Set([
+    "disabled",
+    "analysis-disabled",
+    "installation-suspended",
+    "installation-deleted",
+    "app-credentials-not-ready",
+    "github-inaccessible"
+  ]);
   const warningStatuses = new Set(["github-rate-limited", "github-unavailable"]);
   const notCheckedCount = repositoryHealth.filter((item) => item.status === "github-not-checked").length;
   const criticalCount = repositoryHealth.filter((item) => criticalStatuses.has(item.status)).length;

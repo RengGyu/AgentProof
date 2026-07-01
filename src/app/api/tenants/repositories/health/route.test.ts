@@ -1,6 +1,10 @@
 import { generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clearTenantGitHubInstallationsForTests,
+  upsertTenantGitHubInstallation
+} from "@/lib/github-installations";
+import {
   clearTenantRepositoryGrantsForTests,
   createTenantRepositoryGrant
 } from "@/lib/tenant-control-plane";
@@ -11,6 +15,7 @@ describe("GET /api/tenants/repositories/health", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    clearTenantGitHubInstallationsForTests();
     clearTenantRepositoryGrantsForTests();
   });
 
@@ -117,6 +122,7 @@ describe("GET /api/tenants/repositories/health", () => {
           checks: {
             grantActive: true,
             analysisEnabled: true,
+            installationStatus: "unknown",
             appCredentialsReady: false,
             githubAccess: "not-checked"
           },
@@ -138,6 +144,82 @@ describe("GET /api/tenants/repositories/health", () => {
     expect(serialized).not.toContain("comment_body");
     expect(serialized).not.toContain("GITHUB_PRIVATE_KEY");
     expect(serialized).not.toContain("github_pat_secret");
+  });
+
+  it("reports suspended and deleted installations before live GitHub probes without exposing account metadata", async () => {
+    stubSettingsEnv();
+    vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/Suspended"
+    });
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 322,
+      repositoryId: 101,
+      repositoryFullName: "RengGyu/Deleted"
+    });
+    await upsertTenantGitHubInstallation({
+      tenantId: "tenant_a",
+      installationId: 321,
+      accountId: 1001,
+      accountLogin: "private-account-login",
+      accountType: "Organization",
+      status: "suspended"
+    });
+    await upsertTenantGitHubInstallation({
+      tenantId: "tenant_a",
+      installationId: 322,
+      accountId: 1002,
+      accountLogin: "deleted-account-login",
+      accountType: "Organization",
+      status: "deleted"
+    });
+
+    const response = await GET(new Request("http://localhost/api/tenants/repositories/health?tenantId=tenant_a&probe=github", {
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" }
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json.repositories).toEqual([
+      expect.objectContaining({
+        repositoryId: 101,
+        status: "installation-deleted",
+        githubAccess: "not-checked",
+        checks: expect.objectContaining({
+          installationStatus: "deleted"
+        }),
+        nextAction: "Reconnect the GitHub App installation before verifying this repository."
+      }),
+      expect.objectContaining({
+        repositoryId: 100,
+        status: "installation-suspended",
+        githubAccess: "not-checked",
+        checks: expect.objectContaining({
+          installationStatus: "suspended"
+        }),
+        nextAction: "Resume the GitHub App installation before verifying this repository."
+      })
+    ]);
+    expect(json.githubProbe).toEqual({
+      checkedRepositories: 0,
+      maxRepositories: 10
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("private-account-login");
+    expect(serialized).not.toContain("deleted-account-login");
+    expect(serialized).not.toContain("accountId");
+    expect(serialized).not.toContain("accountType");
+    expect(serialized).not.toContain("installation-token");
   });
 
   it("returns metadata-only repository health with a tenant admin session cookie", async () => {
@@ -483,6 +565,36 @@ describe("GET /api/tenants/repositories/health", () => {
       error: "Tenant repository grant store is unavailable.",
       code: "tenant_repository_grant_store_unavailable"
     });
+  });
+
+  it("fails closed with bounded JSON when installation metadata is partially configured", async () => {
+    stubSettingsEnv();
+    vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(new Request("http://localhost/api/tenants/repositories/health?tenantId=tenant_a", {
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" }
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(503);
+    expect(json).toEqual({
+      error: "GitHub installation metadata is unavailable.",
+      code: "tenant_repository_health_installation_metadata_unavailable"
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("agentproof-test.supabase.co");
+    expect(serialized).not.toContain("SUPABASE");
+    expect(serialized).not.toContain("service-role");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
   });
 
   it("rejects malformed requested repository ids without GitHub calls", async () => {

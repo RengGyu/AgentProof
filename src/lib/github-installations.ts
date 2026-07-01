@@ -20,6 +20,11 @@ export interface TenantGitHubInstallationCount {
   disabled?: boolean;
 }
 
+export interface TenantGitHubInstallationStatusSummary {
+  installationId: number;
+  status: GitHubInstallationStatus;
+}
+
 export interface GitHubInstallationMetadataStoreStatus {
   mode: "disabled" | "memory" | "supabase";
   configured: boolean;
@@ -167,6 +172,37 @@ export async function countTenantGitHubInstallations(
     configured: false,
     disabled: true
   };
+}
+
+export async function listTenantGitHubInstallationStatuses(
+  input: { tenantId?: unknown; installationIds?: unknown },
+  env = process.env
+): Promise<TenantGitHubInstallationStatusSummary[]> {
+  const tenantId = normalizeTenantId(input.tenantId);
+  const installationIds = normalizeInstallationIdList(input.installationIds);
+  if (!tenantId) {
+    throw new GitHubInstallationStoreError("Tenant id is invalid.");
+  }
+  if (installationIds.length === 0) return [];
+
+  const config = getGitHubInstallationStoreConfig(env);
+  if (config) {
+    return listSupabaseTenantGitHubInstallationStatuses(config, tenantId, installationIds);
+  }
+
+  if (truthy(env.AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY)) {
+    const installationIdSet = new Set(installationIds);
+    return Array.from(githubInstallationMemoryStore().values())
+      .filter((record) => record.tenantId === tenantId && installationIdSet.has(record.installationId))
+      .map((record) => ({
+        installationId: record.installationId,
+        status: record.status
+      }))
+      .sort((left, right) => left.installationId - right.installationId)
+      .slice(0, 500);
+  }
+
+  return [];
 }
 
 export function clearTenantGitHubInstallationsForTests() {
@@ -322,6 +358,35 @@ async function countSupabaseTenantGitHubInstallations(
   return count;
 }
 
+async function listSupabaseTenantGitHubInstallationStatuses(
+  config: GitHubInstallationStoreConfig,
+  tenantId: string,
+  installationIds: number[]
+): Promise<TenantGitHubInstallationStatusSummary[]> {
+  const response = await githubInstallationFetch(
+    config,
+    [
+      `?tenant_id=eq.${encodeURIComponent(tenantId)}`,
+      `installation_id=in.(${installationIds.map((id) => encodeURIComponent(String(id))).join(",")})`,
+      "select=installation_id,status",
+      "limit=500"
+    ].join("&"),
+    { method: "GET" }
+  );
+
+  if (!response.ok) {
+    throw new GitHubInstallationStoreError(`GitHub installation metadata status lookup failed with HTTP ${response.status}.`);
+  }
+
+  const rows = (await response.json().catch(() => [])) as unknown;
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .map((row) => rowToInstallationStatusSummary(row))
+    .filter((row): row is TenantGitHubInstallationStatusSummary => Boolean(row))
+    .slice(0, 500);
+}
+
 async function githubInstallationFetch(config: GitHubInstallationStoreConfig, query: string, init: RequestInit) {
   return fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}${query}`, {
     ...init,
@@ -377,6 +442,18 @@ function toSupabaseGitHubInstallationRow(record: GitHubInstallationRecord): GitH
   };
 }
 
+function rowToInstallationStatusSummary(row: unknown): TenantGitHubInstallationStatusSummary | null {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+  const value = row as Partial<GitHubInstallationRow>;
+  const installationId = normalizePositiveInteger(value.installation_id);
+  if (!installationId || !isGitHubInstallationStatus(value.status)) return null;
+
+  return {
+    installationId,
+    status: value.status
+  };
+}
+
 function githubInstallationMemoryStore() {
   const globalStore = globalThis as GlobalWithGitHubInstallations;
   globalStore.__agentproofGitHubInstallations ??= new Map<string, GitHubInstallationRecord>();
@@ -405,6 +482,15 @@ function normalizeTenantId(value: unknown): string | null {
 function normalizePositiveInteger(value: unknown): number | null {
   const parsed = typeof value === "string" ? Number(value) : value;
   return typeof parsed === "number" && Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeInstallationIdList(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const ids = value
+    .map((item) => normalizePositiveInteger(item))
+    .filter((item): item is number => Boolean(item));
+
+  return Array.from(new Set(ids)).slice(0, 500);
 }
 
 function normalizeAccountText(value: unknown): string | null {

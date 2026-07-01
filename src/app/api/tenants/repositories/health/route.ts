@@ -1,4 +1,9 @@
 import {
+  GitHubInstallationStoreError,
+  listTenantGitHubInstallationStatuses,
+  type GitHubInstallationStatus
+} from "@/lib/github-installations";
+import {
   createGitHubInstallationAccessToken,
   getGitHubAppConfigStatus,
   GitHubAppTokenError
@@ -20,6 +25,8 @@ type GrantHealthStatus =
   | "ready"
   | "disabled"
   | "analysis-disabled"
+  | "installation-suspended"
+  | "installation-deleted"
   | "app-credentials-not-ready"
   | "github-accessible"
   | "github-inaccessible"
@@ -35,6 +42,8 @@ type GitHubAccessStatus =
   | "unavailable"
   | "credentials-not-ready";
 
+type InstallationHealthStatus = GitHubInstallationStatus | "unknown";
+
 interface RepositoryHealth {
   installationId: number;
   repositoryId?: number;
@@ -49,6 +58,7 @@ interface RepositoryHealth {
   checks: {
     grantActive: boolean;
     analysisEnabled: boolean;
+    installationStatus: InstallationHealthStatus;
     appCredentialsReady: boolean;
     githubAccess: GitHubAccessStatus;
   };
@@ -105,8 +115,21 @@ export async function GET(request: Request) {
 
   const appStatus = getGitHubAppConfigStatus();
   const boundedRepositories = repositories.slice(0, MAX_HEALTH_REPOSITORIES);
+  let installationStatuses: Map<number, InstallationHealthStatus>;
+  try {
+    installationStatuses = await readInstallationStatuses(authorizedTenantId, boundedRepositories);
+  } catch (error) {
+    if (error instanceof GitHubInstallationStoreError) {
+      return noStoreJson({
+        error: "GitHub installation metadata is unavailable.",
+        code: "tenant_repository_health_installation_metadata_unavailable"
+      }, { status: 503 });
+    }
+
+    throw error;
+  }
   const probeCandidates = probeGitHub && appStatus.ready
-    ? selectProbeCandidates(boundedRepositories, requestedRepositoryId)
+    ? selectProbeCandidates(boundedRepositories, requestedRepositoryId, installationStatuses)
     : [];
   const accessByRepository = probeCandidates.length > 0
     ? await probeRepositoryAccess(probeCandidates)
@@ -114,6 +137,7 @@ export async function GET(request: Request) {
   const health = boundedRepositories.map((grant) =>
     toRepositoryHealth(grant, {
       appCredentialsReady: appStatus.ready,
+      installationStatus: installationStatusForGrant(grant, installationStatuses),
       githubAccess: probeGitHub
         ? accessByRepository.get(repositoryHealthKey(grant)) ?? (appStatus.ready ? "not-checked" : "credentials-not-ready")
         : "not-checked"
@@ -138,9 +162,13 @@ export async function GET(request: Request) {
 
 function selectProbeCandidates(
   grants: TenantRepositoryGrant[],
-  requestedRepositoryId?: number
+  requestedRepositoryId: number | undefined,
+  installationStatuses: Map<number, InstallationHealthStatus>
 ): TenantRepositoryGrant[] {
-  const withRepositoryIds = grants.filter((grant) => Number.isInteger(grant.repositoryId));
+  const withRepositoryIds = grants.filter((grant) =>
+    Number.isInteger(grant.repositoryId) &&
+    isInstallationActiveForProbe(installationStatusForGrant(grant, installationStatuses))
+  );
 
   if (requestedRepositoryId) {
     return withRepositoryIds.filter((grant) => grant.repositoryId === requestedRepositoryId).slice(0, 1);
@@ -209,13 +237,14 @@ async function fetchRepositoryAccess(repositoryId: number, token: string): Promi
 
 function toRepositoryHealth(
   grant: TenantRepositoryGrant,
-  options: { appCredentialsReady: boolean; githubAccess: GitHubAccessStatus }
+  options: { appCredentialsReady: boolean; installationStatus: InstallationHealthStatus; githubAccess: GitHubAccessStatus }
 ): RepositoryHealth {
   const grantActive = grant.enabled;
   const analysisEnabled = grant.analysisEnabled;
   const status = healthStatus({
     grantActive,
     analysisEnabled,
+    installationStatus: options.installationStatus,
     appCredentialsReady: options.appCredentialsReady,
     githubAccess: options.githubAccess
   });
@@ -234,6 +263,7 @@ function toRepositoryHealth(
     checks: {
       grantActive,
       analysisEnabled,
+      installationStatus: options.installationStatus,
       appCredentialsReady: options.appCredentialsReady,
       githubAccess: options.githubAccess
     },
@@ -244,11 +274,14 @@ function toRepositoryHealth(
 function healthStatus(input: {
   grantActive: boolean;
   analysisEnabled: boolean;
+  installationStatus: InstallationHealthStatus;
   appCredentialsReady: boolean;
   githubAccess: GitHubAccessStatus;
 }): GrantHealthStatus {
   if (!input.grantActive) return "disabled";
   if (!input.analysisEnabled) return "analysis-disabled";
+  if (input.installationStatus === "deleted") return "installation-deleted";
+  if (input.installationStatus === "suspended") return "installation-suspended";
   if (!input.appCredentialsReady) return "app-credentials-not-ready";
   if (input.githubAccess === "credentials-not-ready") return "app-credentials-not-ready";
   if (input.githubAccess === "accessible") return "github-accessible";
@@ -263,6 +296,8 @@ function healthStatus(input: {
 function nextActionForStatus(status: GrantHealthStatus): string {
   if (status === "disabled") return "Enable this repository grant before AgentProof can verify PRs.";
   if (status === "analysis-disabled") return "Enable evidence report analysis for this repository.";
+  if (status === "installation-deleted") return "Reconnect the GitHub App installation before verifying this repository.";
+  if (status === "installation-suspended") return "Resume the GitHub App installation before verifying this repository.";
   if (status === "app-credentials-not-ready") return "Configure GitHub App credentials before running repository health probes.";
   if (status === "github-inaccessible") return "Check GitHub App installation access for this repository.";
   if (status === "github-rate-limited") return "Wait for GitHub rate limits to recover, then rerun the health probe.";
@@ -274,6 +309,29 @@ function nextActionForStatus(status: GrantHealthStatus): string {
 
 function repositoryHealthKey(grant: TenantRepositoryGrant): string {
   return `${grant.installationId}:${grant.repositoryId ?? grant.repositoryFullName.toLowerCase()}`;
+}
+
+async function readInstallationStatuses(
+  tenantId: string,
+  grants: TenantRepositoryGrant[]
+): Promise<Map<number, InstallationHealthStatus>> {
+  const statuses = await listTenantGitHubInstallationStatuses({
+    tenantId,
+    installationIds: grants.map((grant) => grant.installationId)
+  });
+
+  return new Map(statuses.map((status) => [status.installationId, status.status]));
+}
+
+function installationStatusForGrant(
+  grant: TenantRepositoryGrant,
+  installationStatuses: Map<number, InstallationHealthStatus>
+): InstallationHealthStatus {
+  return installationStatuses.get(grant.installationId) ?? "unknown";
+}
+
+function isInstallationActiveForProbe(status: InstallationHealthStatus): boolean {
+  return status === "unknown" || status === "active";
 }
 
 function normalizeRepositoryId(value: string | null): number | undefined {

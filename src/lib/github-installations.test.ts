@@ -5,6 +5,7 @@ import {
   getTenantGitHubInstallationsForTests,
   getGitHubInstallationMetadataStoreStatus,
   GitHubInstallationStoreError,
+  listTenantGitHubInstallationStatuses,
   markTenantGitHubInstallationStatus,
   upsertTenantGitHubInstallation
 } from "./github-installations";
@@ -71,6 +72,53 @@ describe("GitHub installation metadata store", () => {
     await expect(
       upsertTenantGitHubInstallation({ tenantId: "tenant_b", installationId: 321 }, env)
     ).rejects.toBeInstanceOf(GitHubInstallationStoreError);
+  });
+
+  it("lists tenant installation statuses as bounded metadata only", async () => {
+    const env = {
+      AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY: "true"
+    } as unknown as NodeJS.ProcessEnv;
+
+    await upsertTenantGitHubInstallation({
+      tenantId: "tenant_a",
+      installationId: 321,
+      accountId: 1001,
+      accountLogin: "RengGyu",
+      accountType: "User",
+      status: "suspended"
+    }, env);
+    await upsertTenantGitHubInstallation({
+      tenantId: "tenant_a",
+      installationId: 322,
+      accountId: 1002,
+      accountLogin: "PrivateOrg",
+      accountType: "Organization",
+      status: "deleted"
+    }, env);
+    await upsertTenantGitHubInstallation({
+      tenantId: "tenant_b",
+      installationId: 999,
+      accountId: 9999,
+      accountLogin: "OtherTenant",
+      accountType: "Organization",
+      status: "deleted"
+    }, env);
+
+    const statuses = await listTenantGitHubInstallationStatuses({
+      tenantId: "tenant_a",
+      installationIds: [322, 321, 321, 999, "bad"]
+    }, env);
+    const serialized = JSON.stringify(statuses);
+
+    expect(statuses).toEqual([
+      { installationId: 321, status: "suspended" },
+      { installationId: 322, status: "deleted" }
+    ]);
+    expect(serialized).not.toContain("RengGyu");
+    expect(serialized).not.toContain("PrivateOrg");
+    expect(serialized).not.toContain("OtherTenant");
+    expect(serialized).not.toContain("accountId");
+    expect(serialized).not.toContain("accountType");
   });
 
   it("uses Supabase lookup and upsert without storing tokens or raw payloads", async () => {
@@ -167,6 +215,38 @@ describe("GitHub installation metadata store", () => {
     expect(init.body).toBeUndefined();
     expect(new Headers(init.headers).get("Prefer")).toBe("count=exact");
     expect(new Headers(init.headers).get("Range")).toBe("0-0");
+  });
+
+  it("lists Supabase installation statuses with tenant and installation filters only", async () => {
+    const fetchMock = vi.fn(async () => Response.json([
+      {
+        installation_id: 321,
+        status: "suspended",
+        account_login: "PrivateOrg",
+        raw_payload: "must not be returned"
+      },
+      {
+        installation_id: 322,
+        status: "deleted"
+      },
+      {
+        installation_id: 323,
+        status: "invalid"
+      }
+    ]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listTenantGitHubInstallationStatuses({
+      tenantId: "tenant_a",
+      installationIds: [321, 322, 322]
+    }, supabaseEnv())).resolves.toEqual([
+      { installationId: 321, status: "suspended" },
+      { installationId: 322, status: "deleted" }
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agentproof-test.supabase.co/rest/v1/github_installations_test?tenant_id=eq.tenant_a&installation_id=in.(321,322)&select=installation_id,status&limit=500",
+      expect.objectContaining({ method: "GET" })
+    );
   });
 
   it("is disabled when no durable or explicit memory store is configured", async () => {
