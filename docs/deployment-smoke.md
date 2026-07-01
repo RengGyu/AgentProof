@@ -89,6 +89,32 @@ Most recent live pass:
 - Manual Slack notification smoke: passed, sent one summary-only message with the local/operator smoke gate enabled.
 - GitHub PR comment smoke: passed on PR #18, created an AgentProof marker comment.
 
+## Ops Drill Gate Evidence
+
+Before public launch review, the operator-only `GET /api/ops/drill-gate` endpoint should report `status: "ready"` from fresh bounded evidence for:
+
+- `deletion_drill`
+- `restore_drill`
+- `incident_runbook_review`
+- `production_smoke`
+
+The evidence source is `AGENTPROOF_OPS_DRILL_EVIDENCE`, a JSON array of records:
+
+```json
+[
+  {
+    "key": "deletion_drill",
+    "status": "passed",
+    "completedAt": "2026-07-01T00:00:00Z",
+    "evidenceRef": "docs/tenant-data-retention.md#before-destructive-deletion"
+  }
+]
+```
+
+Allowed `evidenceRef` values are bounded references only: `docs/...#anchor`, `github-actions:<run_id>`, `vercel-deploy:<deployment_id>`, or `manual-record:<id>`. Do not put raw logs, webhook payloads, tokens, repository names, PR numbers, installation objects, full reports, report keys, diffs, claims, raw re-prompt text, provider ids, table names, env names, backup contents, or screenshots into this env value or endpoint output.
+
+The drill gate is an evidence gate only. It does not execute deletion, restore, incident response, or smoke workflows. If evidence is missing, stale, failed, unclear, or malformed, launch review stays blocked.
+
 Most recent no-secret production gate:
 
 - `/` returned 200.

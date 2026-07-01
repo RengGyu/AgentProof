@@ -120,4 +120,30 @@ describe("tenant data retention policy", () => {
     expect(serialized).not.toContain("token");
     expect(serialized).not.toContain("secret");
   });
+
+  it("does not let guarded deletion drills imply full tenant deletion completion", () => {
+    const plan = getTenantRetentionDeletionPlan();
+    const byKey = Object.fromEntries(plan.map((item) => [item.key, item]));
+
+    for (const key of [
+      "github_installations",
+      "audit_events",
+      "usage_records",
+      "account_member_records",
+      "billing_account_records"
+    ] satisfies TenantDataRetentionCategoryKey[]) {
+      expect(byKey[key]).toMatchObject({
+        deletionMode: "manual-review",
+        deletionReadiness: "manual-review-required"
+      });
+    }
+    expect(byKey.backups).toMatchObject({
+      deletionMode: "ttl-only",
+      deletionReadiness: "blocked"
+    });
+    expect(byKey.tenant_tombstones).toMatchObject({
+      deletionMode: "tombstone",
+      deletionReadiness: "blocked"
+    });
+  });
 });

@@ -15,6 +15,10 @@ export function opsDeadLetterUrl(limit = 25): string {
   return `/api/ops/analysis-jobs/dead-letter?${params.toString()}`;
 }
 
+export function opsDrillGateUrl(): string {
+  return "/api/ops/drill-gate";
+}
+
 export function opsTenantDeletionPlanUrl(tenantId: string): string {
   const params = new URLSearchParams({
     tenantId: tenantId.trim()
