@@ -77,7 +77,7 @@ These checks use server-side env and caller tokens. They should never print secr
 | GitHub webhook | `AGENTPROOF_WEBHOOK_SMOKE_SECRET=<same value as deployed GITHUB_WEBHOOK_SECRET> pnpm smoke:github-webhook` | Coarse status, invalid signature rejected, signed `ping` accepted, signed `pull_request` `closed` does not plan analysis/comments | No GitHub write; uses a PR action that must be ignored |
 | Controlled GitHub App live automation | Follow `docs/github-app-live-smoke-runbook.md`, then run `AGENTPROOF_ALLOW_LIVE_WEBHOOK_AUTOMATION=1 AGENTPROOF_WEBHOOK_LIVE_PR_URL=https://github.com/owner/repo/pull/123 AGENTPROOF_WEBHOOK_LIVE_INSTALLATION_ID=<id> pnpm smoke:github-webhook-live` | Public status is `event-mode`, `dryRun: false`, `willAnalyze: true`, `willComment: false`, `analysis.status: "completed"` | Analysis-only on a maintainer-owned test PR; comments and saved reports are suppressed by default |
 | GitHub App operator diagnostics | GET `/api/ops/github-app/status` with `x-agentproof-ops-token` | Bounded status enums for signed intake, App credentials, automation, repo scope, comment opt-in, saved-report opt-in, and idempotency | No GitHub write; no env values, repository names, table names, tokens, payloads, diffs, or logs |
-| Slack notification | POST a demo report to `/api/notifications/slack` with `x-agentproof-notify-token` | `{ "sent": true }` | Sends one summary-only Slack message |
+| Manual Slack notification | With tenant control disabled and `AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED=true`, POST a demo report to `/api/notifications/slack` with `x-agentproof-notify-token` | `{ "sent": true }` | Sends one summary-only local/operator smoke message; not a SaaS tenant automation path |
 | Explicit token PR comment endpoint | `pnpm smoke:github-comment` with an intentional target PR and write token | `action: "created"` or `"updated"`, comment URL, priority metadata only | Creates or updates one AgentProof marker comment |
 
 Most recent live pass:
@@ -86,7 +86,7 @@ Most recent live pass:
 - OpenAI verifier smoke: passed, `source: openai`.
 - GitHub signed webhook ping: passed, dry-run default verified.
 - Controlled GitHub App live automation persistence check: Supabase safe query observed one completed `pull_request` / `synchronize` analysis row for `RengGyu/AgentProof#27` at head SHA prefix `3e3703f63a07`, with `priority: medium`, `evidence_coverage: 18`, `has_saved_report: false`, `has_comment: false`, and `error_code: null`; privacy query checked 1 row and found 0 suspicious rows.
-- Slack notification smoke: passed, sent one summary-only message.
+- Manual Slack notification smoke: passed, sent one summary-only message with the local/operator smoke gate enabled.
 - GitHub PR comment smoke: passed on PR #18, created an AgentProof marker comment.
 
 Most recent no-secret production gate:

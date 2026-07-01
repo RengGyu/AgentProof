@@ -42,9 +42,55 @@ describe("POST /api/notifications/slack", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("keeps manual Slack notifications disabled unless explicitly allowed", async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/notifications/slack", {
+        method: "POST",
+        headers: { "x-agentproof-notify-token": "secret" },
+        body: JSON.stringify({ report: generateVerificationReport(demoScenarios.clean) })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json).toEqual({
+      error: "Manual Slack notifications are disabled.",
+      code: "manual_slack_notifications_disabled"
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks manual Slack notifications when tenant control is enabled", async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/notifications/slack", {
+        method: "POST",
+        headers: { "x-agentproof-notify-token": "secret" },
+        body: JSON.stringify({ report: generateVerificationReport(demoScenarios.clean) })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.code).toBe("manual_slack_notifications_disabled");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized notification payloads before sending", async () => {
     vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
     vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED", "true");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -65,6 +111,7 @@ describe("POST /api/notifications/slack", () => {
   it("rejects full reports with missing provenance before sending", async () => {
     vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
     vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED", "true");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
@@ -87,6 +134,7 @@ describe("POST /api/notifications/slack", () => {
   it("redacts validation details before returning them", async () => {
     vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
     vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED", "true");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
@@ -110,6 +158,7 @@ describe("POST /api/notifications/slack", () => {
   it("accepts summary-only reports for summary notifications", async () => {
     vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
     vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED", "true");
     const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const report = decodeSharedReport(encodeReportForShare(generateVerificationReport(demoScenarios["scope-creep"])));
@@ -129,6 +178,7 @@ describe("POST /api/notifications/slack", () => {
   it("rejects unsafe report URLs before sending", async () => {
     vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
     vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED", "true");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 

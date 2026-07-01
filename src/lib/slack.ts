@@ -8,6 +8,24 @@ export interface SlackWebhookPayload {
   blocks: Array<Record<string, unknown>>;
 }
 
+export interface SlackReportNotificationResult {
+  action: "sent";
+  privacy: "summary-only";
+}
+
+export class SlackNotificationError extends Error {
+  constructor(
+    public readonly code: "slack_summary_not_configured" | "slack_summary_webhook_invalid" | "slack_summary_webhook_failed",
+    message: string,
+    public readonly status?: number
+  ) {
+    super(message);
+    this.name = "SlackNotificationError";
+  }
+}
+
+export const SLACK_NOTIFICATION_TIMEOUT_MS = 5000;
+
 export function reportToSlackPayload(report: VerificationReport, reportUrl?: string): SlackWebhookPayload {
   const safeReport = sanitizeReportForShare(report);
   const topRisks = safeReport.summary.topRisks.slice(0, 3).map((risk) => `- ${risk}`).join("\n");
@@ -142,6 +160,52 @@ export function isAllowedSlackWebhookUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function assertSlackReportNotificationConfigured(env = process.env): string {
+  const webhookUrl = env.SLACK_WEBHOOK_URL?.trim();
+  if (!webhookUrl) {
+    throw new SlackNotificationError(
+      "slack_summary_not_configured",
+      "Slack summary notifications are not configured."
+    );
+  }
+
+  if (!isAllowedSlackWebhookUrl(webhookUrl)) {
+    throw new SlackNotificationError(
+      "slack_summary_webhook_invalid",
+      "Slack summary webhook URL is invalid."
+    );
+  }
+
+  return webhookUrl;
+}
+
+export async function sendSlackReportSummary(
+  report: VerificationReport,
+  options: { reportUrl?: string } = {},
+  env = process.env
+): Promise<SlackReportNotificationResult> {
+  const webhookUrl = assertSlackReportNotificationConfigured(env);
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reportToSlackPayload(report, options.reportUrl)),
+    signal: AbortSignal.timeout(SLACK_NOTIFICATION_TIMEOUT_MS)
+  });
+
+  if (!response.ok) {
+    throw new SlackNotificationError(
+      "slack_summary_webhook_failed",
+      `Slack webhook returned HTTP ${response.status}.`,
+      response.status
+    );
+  }
+
+  return {
+    action: "sent",
+    privacy: "summary-only"
+  };
 }
 
 export function neutralizeSlackMentions(value: string): string {

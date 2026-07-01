@@ -25,7 +25,8 @@ function toPublicAnalysisWorkerRunItem(result: AnalysisWorkerRunResult) {
         priority: result.resultSummary.priority,
         evidenceCoverage: result.resultSummary.evidenceCoverage,
         savedReport: result.resultSummary.savedReport,
-        comment: result.resultSummary.comment
+        comment: result.resultSummary.comment,
+        slack: result.resultSummary.slack
       }
       : undefined,
     sideEffects: result.sideEffects

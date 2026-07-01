@@ -27,6 +27,10 @@ export interface TenantAuditExportEvent {
   comment?: {
     action?: string;
   };
+  slack?: {
+    action?: string;
+    privacy?: string;
+  };
 }
 
 export interface TenantAuditExport {
@@ -84,6 +88,10 @@ function toExportEvent(row: TenantAuditActivitySummary): TenantAuditExportEvent 
     }),
     comment: objectWithDefinedValues({
       action: row.comment?.action
+    }),
+    slack: objectWithDefinedValues({
+      action: row.slack?.action,
+      privacy: row.slack?.privacy
     })
   });
 }

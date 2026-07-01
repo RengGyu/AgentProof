@@ -81,6 +81,10 @@ export interface GitHubWebhookDeliveryResultSummary {
   comment?: {
     action?: string;
   };
+  slack?: {
+    action?: string;
+    privacy?: string;
+  };
 }
 
 export interface GitHubWebhookIdempotencyStoreStatus {

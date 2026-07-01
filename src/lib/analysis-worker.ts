@@ -24,6 +24,11 @@ import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
 import { SavedReportStoreError } from "./server-report-store";
 import {
+  assertSlackReportNotificationConfigured,
+  sendSlackReportSummary,
+  SlackNotificationError
+} from "./slack";
+import {
   authorizeTenantRepositoryGrantAsync,
   tenantGrantPublicReason,
   TenantControlPlaneStoreError
@@ -46,6 +51,7 @@ export interface AnalysisWorkerPreflightResult {
   sideEffects?: {
     saveReport: boolean;
     comment: boolean;
+    slackSummary?: boolean;
   };
 }
 
@@ -65,6 +71,7 @@ export interface AnalysisWorkerRunResult {
   sideEffects?: {
     saveReport: boolean;
     comment: boolean;
+    slackSummary?: boolean;
   };
 }
 
@@ -103,6 +110,12 @@ class AnalysisWorkerRetryableError extends Error {
     this.name = "AnalysisWorkerRetryableError";
   }
 }
+
+type WorkerSideEffects = {
+  saveReport: boolean;
+  comment: boolean;
+  slackSummary?: boolean;
+};
 
 export async function preflightNextAnalysisJob(
   options: AnalysisJobClaimOptions = {},
@@ -175,7 +188,8 @@ export async function preflightNextAnalysisJob(
         job,
         sideEffects: {
           saveReport: job.save_report && grant.grant.saveReportsEnabled,
-          comment: job.comment && grant.grant.commentEnabled
+          comment: job.comment && grant.grant.commentEnabled,
+          ...(job.slack_summary === true && grant.grant.slackNotificationsEnabled ? { slackSummary: true } : {})
         }
       };
     }
@@ -272,15 +286,24 @@ export async function runNextAnalysisJob(
       })
       : undefined;
 
-    const sideEffectsBeforeComment = sideEffectsBeforeSave.comment
+    const sideEffectsBeforeRemaining = (sideEffectsBeforeSave.comment || sideEffectsBeforeSave.slackSummary)
       ? await revalidateWorkerSideEffects(job, {
         saveReport: false,
-        comment: sideEffectsBeforeSave.comment
+        comment: sideEffectsBeforeSave.comment,
+        ...(sideEffectsBeforeSave.slackSummary ? { slackSummary: true } : {})
       }, env)
       : sideEffectsBeforeSave;
+    const sideEffectsBeforeSlack = sideEffectsBeforeRemaining.slackSummary
+      ? await revalidateWorkerSideEffects(job, {
+        saveReport: false,
+        comment: false,
+        slackSummary: true
+      }, env)
+      : sideEffectsBeforeRemaining;
     const completedSideEffects = {
       saveReport: sideEffectsBeforeSave.saveReport,
-      comment: sideEffectsBeforeComment.comment
+      comment: sideEffectsBeforeRemaining.comment,
+      ...(sideEffectsBeforeSlack.slackSummary ? { slackSummary: true } : {})
     };
     const comment = completedSideEffects.comment
       ? await postGitHubAppMarkerComment({
@@ -288,6 +311,9 @@ export async function runNextAnalysisJob(
         pullRequestNumber: job.pull_request_number,
         pullRequestUrl: job.pull_request_url
       }, token, report)
+      : undefined;
+    const slack = completedSideEffects.slackSummary
+      ? await sendSlackReportSummary(report, {}, env)
       : undefined;
 
     const resultSummary: AnalysisJobResultSummary = {
@@ -303,6 +329,10 @@ export async function runNextAnalysisJob(
       } : undefined,
       comment: comment ? {
         action: comment.action
+      } : undefined,
+      slack: slack ? {
+        action: slack.action,
+        privacy: slack.privacy
       } : undefined
     };
 
@@ -317,7 +347,8 @@ export async function runNextAnalysisJob(
       priority: resultSummary.priority,
       evidenceCoverage: resultSummary.evidenceCoverage,
       savedReport: resultSummary.savedReport,
-      comment: resultSummary.comment
+      comment: resultSummary.comment,
+      slack: resultSummary.slack
     }, env);
 
     return {
@@ -393,10 +424,14 @@ export async function runAnalysisJobBatch(
 
 async function prepareWorkerSideEffects(
   job: AnalysisJobRow,
-  sideEffects: { saveReport: boolean; comment: boolean },
+  sideEffects: WorkerSideEffects,
   env: NodeJS.ProcessEnv
 ): Promise<void> {
-  if (!sideEffects.saveReport && !sideEffects.comment) return;
+  if (!hasWorkerSideEffects(sideEffects)) return;
+  if (sideEffects.slackSummary) {
+    assertSlackReportNotificationConfigured(env);
+  }
+
   if (!requiresDurableAuditForSideEffects(env)) return;
 
   const status = getAuditLogStoreStatus(env);
@@ -416,6 +451,10 @@ async function prepareWorkerSideEffects(
       } : undefined,
       comment: sideEffects.comment ? {
         action: "planned"
+      } : undefined,
+      slack: sideEffects.slackSummary ? {
+        action: "planned",
+        privacy: "summary-only"
       } : undefined
     }, env, { swallowErrors: false });
   } catch (error) {
@@ -432,10 +471,10 @@ async function prepareWorkerSideEffects(
 
 async function revalidateWorkerSideEffects(
   job: AnalysisJobRow,
-  sideEffects: { saveReport: boolean; comment: boolean },
+  sideEffects: WorkerSideEffects,
   env: NodeJS.ProcessEnv
-): Promise<{ saveReport: boolean; comment: boolean }> {
-  if (!sideEffects.saveReport && !sideEffects.comment) return sideEffects;
+): Promise<WorkerSideEffects> {
+  if (!hasWorkerSideEffects(sideEffects)) return sideEffects;
 
   try {
     const grant = await authorizeTenantRepositoryGrantAsync({
@@ -456,7 +495,8 @@ async function revalidateWorkerSideEffects(
     if (grant.required && grant.grant) {
       return {
         saveReport: sideEffects.saveReport && grant.grant.saveReportsEnabled,
-        comment: sideEffects.comment && grant.grant.commentEnabled
+        comment: sideEffects.comment && grant.grant.commentEnabled,
+        ...(sideEffects.slackSummary && grant.grant.slackNotificationsEnabled ? { slackSummary: true } : {})
       };
     }
   } catch (error) {
@@ -500,6 +540,10 @@ async function recordWorkerAudit(
     comment?: {
       action?: string;
     };
+    slack?: {
+      action?: string;
+      privacy?: string;
+    };
   },
   env: NodeJS.ProcessEnv,
   options: { swallowErrors?: boolean } = {}
@@ -520,7 +564,8 @@ async function recordWorkerAudit(
     priority: metadata.priority,
     evidenceCoverage: metadata.evidenceCoverage,
     savedReport: metadata.savedReport,
-    comment: metadata.comment
+    comment: metadata.comment,
+    slack: metadata.slack
   }, env);
 
   if (options.swallowErrors === false) {
@@ -566,6 +611,14 @@ function classifyWorkerFailure(error: unknown): { retryable: boolean; code: stri
     return { retryable: true, code: "github_app_token_failed", summary };
   }
 
+  if (error instanceof SlackNotificationError) {
+    return {
+      retryable: error.status === undefined || error.status === 429 || error.status >= 500,
+      code: error.code,
+      summary
+    };
+  }
+
   return { retryable: true, code: "analysis_worker_failed", summary };
 }
 
@@ -573,9 +626,16 @@ function requiresDurableAuditForSideEffects(env: NodeJS.ProcessEnv): boolean {
   return /^(1|true|yes|on)$/i.test(env.AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS ?? "");
 }
 
-function sideEffectAuditCode(sideEffects: { saveReport: boolean; comment: boolean }): string {
-  if (sideEffects.saveReport && sideEffects.comment) return "github_app_side_effects_ready";
+function hasWorkerSideEffects(sideEffects: WorkerSideEffects): boolean {
+  return sideEffects.saveReport || sideEffects.comment || sideEffects.slackSummary === true;
+}
+
+function sideEffectAuditCode(sideEffects: WorkerSideEffects): string {
+  const plannedCount = [sideEffects.saveReport, sideEffects.comment, sideEffects.slackSummary === true]
+    .filter(Boolean).length;
+  if (plannedCount > 1) return "github_app_side_effects_ready";
   if (sideEffects.saveReport) return "github_app_saved_report_ready";
+  if (sideEffects.slackSummary) return "github_app_slack_summary_ready";
   return "github_app_comment_ready";
 }
 

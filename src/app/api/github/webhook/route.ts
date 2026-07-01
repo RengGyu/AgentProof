@@ -31,6 +31,11 @@ import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
 import {
+  assertSlackReportNotificationConfigured,
+  sendSlackReportSummary,
+  SlackNotificationError
+} from "@/lib/slack";
+import {
   authorizeTenantRepositoryGrantAsync,
   disableTenantRepositoryGrantsForInstallation,
   disableTenantRepositoryGrantsForRepositories,
@@ -547,8 +552,21 @@ async function handlePullRequestAutomation(
     saveReport: context.saveReportsEnabled
       && (!tenantGrant.enabled || tenantGrant.grant?.saveReportsEnabled === true),
     comment: context.commentEnabled
-      && (!tenantGrant.enabled || tenantGrant.grant?.commentEnabled === true)
+      && (!tenantGrant.enabled || tenantGrant.grant?.commentEnabled === true),
+    ...(tenantGrant.enabled && tenantGrant.grant?.slackNotificationsEnabled === true ? { slackSummary: true } : {})
   };
+  const slackGate = validateSlackSummaryForSideEffects(plannedSideEffects);
+  if (slackGate) {
+    await failGitHubWebhookDelivery({
+      key: idempotencyKey
+    }, {
+      code: slackGate.code,
+      summary: slackGate.summary
+    }).catch(() => undefined);
+
+    return slackGate.response;
+  }
+
   const sideEffectGateResponse = await requireDurableAuditForSideEffects(
     automation,
     context,
@@ -581,7 +599,8 @@ async function handlePullRequestAutomation(
         pullRequestUrl: automation.pullRequestUrl,
         headSha: automation.headSha,
         saveReport: plannedSideEffects.saveReport,
-        comment: plannedSideEffects.comment
+        comment: plannedSideEffects.comment,
+        slackSummary: plannedSideEffects.slackSummary
       });
 
       await recordWebhookAuditEvent("github_app_analysis_queued", "completed", automation, context, {
@@ -669,6 +688,9 @@ async function handlePullRequestAutomation(
     const comment = canPostComment
       ? await postGitHubAppMarkerComment(automation, token, report)
       : undefined;
+    const slack = plannedSideEffects.slackSummary
+      ? await sendSlackReportSummary(report)
+      : undefined;
     const analysis = {
       status: "completed",
       repository: automation.repositoryFullName,
@@ -677,7 +699,8 @@ async function handlePullRequestAutomation(
       priority: report.summary.priority,
       evidenceCoverage: report.summary.evidenceCoverage,
       savedReport: saved,
-      comment
+      comment,
+      slack
     };
 
     await completeGitHubWebhookDelivery({ key: idempotencyKey }, {
@@ -693,6 +716,10 @@ async function handlePullRequestAutomation(
       } : undefined,
       comment: comment ? {
         action: comment.action
+      } : undefined,
+      slack: slack ? {
+        action: slack.action,
+        privacy: slack.privacy
       } : undefined
     }).catch(() => undefined);
 
@@ -707,6 +734,10 @@ async function handlePullRequestAutomation(
       } : undefined,
       comment: comment ? {
         action: comment.action
+      } : undefined,
+      slack: slack ? {
+        action: slack.action,
+        privacy: slack.privacy
       } : undefined
     });
 
@@ -724,17 +755,25 @@ async function handlePullRequestAutomation(
     });
   } catch (error) {
     const errorMessage = redactSecrets(error instanceof Error ? error.message : "GitHub App automation failed.");
-    const status = error instanceof SavedReportStoreError ? 503 : 502;
+    const status = error instanceof SavedReportStoreError || error instanceof SlackNotificationError ? 503 : 502;
     await failGitHubWebhookDelivery({
       key: idempotencyKey
     }, {
-      code: error instanceof SavedReportStoreError ? "saved_report_store_error" : "github_app_automation_failed",
+      code: error instanceof SavedReportStoreError
+        ? "saved_report_store_error"
+        : error instanceof SlackNotificationError
+          ? error.code
+          : "github_app_automation_failed",
       summary: errorMessage
     }).catch(() => undefined);
     await recordWebhookAuditEvent("github_app_analysis_failed", "failed", automation, context, {
       tenantId: tenantGrant.grant?.tenantId,
       statusCode: status,
-      code: error instanceof SavedReportStoreError ? "saved_report_store_error" : "github_app_automation_failed"
+      code: error instanceof SavedReportStoreError
+        ? "saved_report_store_error"
+        : error instanceof SlackNotificationError
+          ? error.code
+          : "github_app_automation_failed"
     });
 
     return noStoreJson({
@@ -765,6 +804,10 @@ async function recordWebhookAuditEvent(
     comment?: {
       action?: string;
     };
+    slack?: {
+      action?: string;
+      privacy?: string;
+    };
   } = {}
 ) {
   await recordAuditEvent({
@@ -783,8 +826,35 @@ async function recordWebhookAuditEvent(
     priority: options.priority,
     evidenceCoverage: options.evidenceCoverage,
     savedReport: options.savedReport,
-    comment: options.comment
+    comment: options.comment,
+    slack: options.slack
   }).catch(() => undefined);
+}
+
+function validateSlackSummaryForSideEffects(sideEffects: {
+  slackSummary?: boolean;
+}): { response: Response; code: SlackNotificationError["code"]; summary: string } | null {
+  if (!sideEffects.slackSummary) return null;
+
+  try {
+    assertSlackReportNotificationConfigured();
+    return null;
+  } catch (error) {
+    if (error instanceof SlackNotificationError) {
+      return {
+        response: noStoreJson({
+          error: redactSecrets(error.message),
+          code: error.code,
+          willAnalyze: false,
+          willComment: false
+        }, { status: 503 }),
+        code: error.code,
+        summary: error.message
+      };
+    }
+
+    throw error;
+  }
 }
 
 async function requireDurableAuditForSideEffects(
@@ -797,9 +867,10 @@ async function requireDurableAuditForSideEffects(
   sideEffects: {
     saveReport: boolean;
     comment: boolean;
+    slackSummary?: boolean;
   }
 ): Promise<Response | null> {
-  if (!requiresDurableAuditForSideEffects() || (!sideEffects.saveReport && !sideEffects.comment)) {
+  if (!requiresDurableAuditForSideEffects() || !hasPlannedSideEffects(sideEffects)) {
     return null;
   }
 
@@ -827,6 +898,10 @@ async function requireDurableAuditForSideEffects(
       } : undefined,
       comment: sideEffects.comment ? {
         action: "planned"
+      } : undefined,
+      slack: sideEffects.slackSummary ? {
+        action: "planned",
+        privacy: "summary-only"
       } : undefined
     });
   } catch {
@@ -849,9 +924,16 @@ function durableAuditRequiredResponse(): Response {
   }, { status: 503 });
 }
 
-function sideEffectAuditCode(sideEffects: { saveReport: boolean; comment: boolean }): string {
-  if (sideEffects.saveReport && sideEffects.comment) return "github_app_side_effects_ready";
+function hasPlannedSideEffects(sideEffects: { saveReport: boolean; comment: boolean; slackSummary?: boolean }): boolean {
+  return sideEffects.saveReport || sideEffects.comment || sideEffects.slackSummary === true;
+}
+
+function sideEffectAuditCode(sideEffects: { saveReport: boolean; comment: boolean; slackSummary?: boolean }): string {
+  const plannedCount = [sideEffects.saveReport, sideEffects.comment, sideEffects.slackSummary === true]
+    .filter(Boolean).length;
+  if (plannedCount > 1) return "github_app_side_effects_ready";
   if (sideEffects.saveReport) return "github_app_saved_report_ready";
+  if (sideEffects.slackSummary) return "github_app_slack_summary_ready";
   return "github_app_comment_ready";
 }
 

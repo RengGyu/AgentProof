@@ -28,7 +28,8 @@ describe("tenant audit export", () => {
       priority: "medium",
       evidenceCoverage: 64,
       savedReport: { privacy: "summary-only", durability: "summary-only-supabase" },
-      comment: { action: "updated" }
+      comment: { action: "updated" },
+      slack: { action: "sent", privacy: "summary-only" }
     });
 
     const exportJson = await buildTenantAuditExport({
@@ -62,6 +63,10 @@ describe("tenant audit export", () => {
           },
           comment: {
             action: "updated"
+          },
+          slack: {
+            action: "sent",
+            privacy: "summary-only"
           }
         })
       ],
@@ -84,7 +89,8 @@ describe("tenant audit export", () => {
       "priority",
       "evidenceCoverage",
       "savedReport",
-      "comment"
+      "comment",
+      "slack"
     ]);
     expect(serialized).not.toContain("tenant_id");
     expect(serialized).not.toContain("tenantId\":\"tenant_a\",\"createdAt");

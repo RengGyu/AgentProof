@@ -40,6 +40,10 @@ describe("audit log", () => {
       },
       comment: {
         action: "updated"
+      },
+      slack: {
+        action: "sent",
+        privacy: "summary-only"
       }
     });
     const serialized = JSON.stringify(row);
@@ -67,6 +71,10 @@ describe("audit log", () => {
       },
       comment: {
         action: "updated"
+      },
+      slack: {
+        action: "sent",
+        privacy: "summary-only"
       }
     });
     expect(serialized).not.toContain("evidenceIndex");
@@ -158,7 +166,8 @@ describe("audit log", () => {
       priority: "medium",
       evidenceCoverage: 42,
       savedReport: { privacy: "summary-only", durability: "summary-only-supabase" },
-      comment: { action: "updated" }
+      comment: { action: "updated" },
+      slack: { action: "sent", privacy: "summary-only" }
     });
     await recordAuditEvent({
       action: "github_app_quota_blocked",
@@ -192,6 +201,10 @@ describe("audit log", () => {
       },
       comment: {
         action: "updated"
+      },
+      slack: {
+        action: "sent",
+        privacy: "summary-only"
       }
     }));
     expect(serialized).not.toContain("tenant_b");

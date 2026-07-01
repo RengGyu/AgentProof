@@ -1213,7 +1213,8 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
       saveReportsEnabled: true,
-      commentEnabled: true
+      commentEnabled: true,
+      slackNotificationsEnabled: true
     }));
     vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY", "true");
@@ -1246,6 +1247,7 @@ describe("POST /api/github/webhook", () => {
     expect(json.note).toContain("quota");
     expect(json).not.toHaveProperty("analysis");
     expect(serialized).not.toContain("tenant_test");
+    expect(serialized).not.toContain("hooks.slack.com");
     expect(serialized).not.toContain("RengGyu/AgentProof");
     expect(serialized).not.toContain("abc123");
     const audit = getAuditEventsForTests();
@@ -1265,6 +1267,63 @@ describe("POST /api/github/webhook", () => {
     });
     expectAuditEventIsSummaryOnly(audit[0]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks Slack summary side effects before token fetch when the webhook is missing or invalid", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: false,
+      commentEnabled: false,
+      slackNotificationsEnabled: true
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const missingResponse = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-slack-missing",
+        secret: "secret"
+      })
+    );
+    const missingJson = await missingResponse.json();
+
+    expect(missingResponse.status).toBe(503);
+    expect(missingJson).toEqual({
+      error: "Slack summary notifications are not configured.",
+      code: "slack_summary_not_configured",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    clearGitHubWebhookDeliveriesForTests();
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://example.com/not-slack");
+
+    const invalidResponse = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-slack-invalid",
+        secret: "secret"
+      })
+    );
+    const invalidJson = await invalidResponse.json();
+    const serialized = JSON.stringify({ missingJson, invalidJson });
+
+    expect(invalidResponse.status).toBe(503);
+    expect(invalidJson).toEqual({
+      error: "Slack summary webhook URL is invalid.",
+      code: "slack_summary_webhook_invalid",
+      willAnalyze: false,
+      willComment: false
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("example.com/not-slack");
+    expect(serialized).not.toContain("hooks.slack.com");
   });
 
   it("fails closed for invalid tenant quota configuration before durable idempotency or token fetch", async () => {

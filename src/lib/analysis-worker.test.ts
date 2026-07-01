@@ -175,6 +175,29 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("service-role");
   });
 
+  it("does not plan Slack delivery when the repository grant Slack opt-in is off", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: false } });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: true }));
+
+    const result = await preflightNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+
+    expect(result).toMatchObject({
+      status: "ready",
+      job: {
+        id,
+        status: "processing"
+      },
+      sideEffects: {
+        saveReport: false,
+        comment: false
+      }
+    });
+    expect(result.sideEffects).not.toHaveProperty("slackSummary");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("executes a ready job, validates the report, and completes with summary-only result metadata", async () => {
     stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
     const fetchMock = mockWorkerFetch();
@@ -227,6 +250,57 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
     expect(serialized).not.toContain("key=");
+  });
+
+  it("sends a summary-only Slack report only when the repository grant opts in", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: true } });
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const githubFetch = mockWorkerFetch({
+      pullRequestBody: "Acceptance criteria: notify @channel with summary only. Do not leak github_pat_secret_should_not_leak_1234567890."
+    });
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://hooks.slack.com/services/T/B/C") {
+        return Response.json({ ok: true });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const slackCall = fetchMock.mock.calls.find((call) => String(call[0]) === "https://hooks.slack.com/services/T/B/C");
+    const slackBody = String((slackCall?.[1] as RequestInit | undefined)?.body);
+    const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0], slackBody });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      job: expect.objectContaining({ id }),
+      resultSummary: {
+        slack: {
+          action: "sent",
+          privacy: "summary-only"
+        }
+      },
+      sideEffects: {
+        saveReport: false,
+        comment: false,
+        slackSummary: true
+      }
+    });
+    expect(slackCall).toBeDefined();
+    expect(slackBody).toContain("Summary-only notification");
+    expect(slackBody).not.toContain("Patch excerpt");
+    expect(slackBody).not.toContain("evidenceIndex");
+    expect(slackBody).not.toContain("Added raw claim");
+    expect(slackBody).not.toContain("reprompt");
+    expect(slackBody).not.toContain("github_pat_secret");
+    expect(slackBody).not.toContain("hooks.slack.com/services");
+    expect(serialized).not.toContain("installation-token");
+    expect(serialized).not.toContain("SLACK_WEBHOOK_URL");
   });
 
   it("creates summary-only saved reports but stores no saved-report URL or key in the job result", async () => {
@@ -371,6 +445,150 @@ describe("analysis worker preflight", () => {
       locked_at: null
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stops before token fetch when Slack delivery is opted in but the webhook is missing or invalid", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: true } });
+    const missingFetchMock = vi.fn();
+    vi.stubGlobal("fetch", missingFetchMock);
+    const missing = await enqueueAnalysisJob(jobInput({
+      saveReport: false,
+      comment: false,
+      slackSummary: true,
+      idempotencyKey: "missing-slack-webhook",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174310"
+    }));
+
+    const missingResult = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(missingResult).toEqual({
+      status: "failed_retryable",
+      job: expect.objectContaining({ id: missing.id, status: "processing" }),
+      reason: "slack_summary_not_configured",
+      sideEffects: {
+        saveReport: false,
+        comment: false,
+        slackSummary: true
+      }
+    });
+    expect(missingFetchMock).not.toHaveBeenCalled();
+
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://example.com/not-slack");
+    const invalidFetchMock = vi.fn();
+    vi.stubGlobal("fetch", invalidFetchMock);
+    const invalid = await enqueueAnalysisJob(jobInput({
+      saveReport: false,
+      comment: false,
+      slackSummary: true,
+      idempotencyKey: "invalid-slack-webhook",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174311"
+    }));
+
+    const invalidResult = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(invalidResult).toEqual({
+      status: "failed_retryable",
+      job: expect.objectContaining({ id: invalid.id, status: "processing" }),
+      reason: "slack_summary_webhook_invalid",
+      sideEffects: {
+        saveReport: false,
+        comment: false,
+        slackSummary: true
+      }
+    });
+    expect(invalidFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("requires durable audit before Slack summary side effects when the gate is enabled", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: true } });
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toEqual({
+      status: "failed_retryable",
+      job: expect.objectContaining({ id, status: "processing" }),
+      reason: "github_app_durable_audit_required",
+      sideEffects: {
+        saveReport: false,
+        comment: false,
+        slackSummary: true
+      }
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("records bounded durable audit metadata before Slack summary delivery", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: true } });
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY", "audit-service-role-secret");
+    vi.stubEnv("AGENTPROOF_AUDIT_EVENTS_TABLE", "audit_events_test");
+    const githubFetch = mockWorkerFetch();
+    const auditBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://agentproof-test.supabase.co/rest/v1/audit_events_test") {
+        auditBodies.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 201 });
+      }
+
+      if (String(url) === "https://hooks.slack.com/services/T/B/C") {
+        return Response.json({ ok: true });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const serializedAudit = JSON.stringify(auditBodies);
+
+    expect(result.status).toBe("completed");
+    expect(auditBodies[0]).toMatchObject({
+      action: "github_app_side_effects_ready",
+      result: "completed",
+      metadata: {
+        code: "github_app_slack_summary_ready",
+        slack: {
+          action: "planned",
+          privacy: "summary-only"
+        }
+      }
+    });
+    expect(auditBodies[1]).toMatchObject({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      metadata: {
+        slack: {
+          action: "sent",
+          privacy: "summary-only"
+        }
+      }
+    });
+    expect(serializedAudit).not.toContain("hooks.slack.com/services");
+    expect(serializedAudit).not.toContain("audit-service-role-secret");
+    expect(serializedAudit).not.toContain("Patch excerpt");
+    expect(serializedAudit).not.toContain("evidenceIndex");
+    expect(serializedAudit).not.toContain("claims");
+    expect(serializedAudit).not.toContain("reprompt");
   });
 
   it("marks GitHub evidence fetch failures retryable with redacted bounded summaries", async () => {
@@ -542,6 +760,7 @@ function grantRecord(overrides: Partial<{
   analysisEnabled: boolean;
   commentEnabled: boolean;
   saveReportsEnabled: boolean;
+  slackNotificationsEnabled: boolean;
 }> = {}) {
   return {
     tenantId: "tenant_a",
@@ -552,6 +771,7 @@ function grantRecord(overrides: Partial<{
     analysisEnabled: true,
     commentEnabled: true,
     saveReportsEnabled: true,
+    slackNotificationsEnabled: false,
     ...overrides
   };
 }
@@ -559,6 +779,7 @@ function grantRecord(overrides: Partial<{
 function jobInput(overrides: Partial<{
   saveReport: boolean;
   comment: boolean;
+  slackSummary: boolean;
   idempotencyKey: string;
   deliveryId: string;
   pullRequestNumber: number;
@@ -580,6 +801,7 @@ function jobInput(overrides: Partial<{
     headSha: overrides.headSha ?? "abc123",
     saveReport: overrides.saveReport ?? true,
     comment: overrides.comment ?? true,
+    slackSummary: overrides.slackSummary ?? false,
     now: new Date("2026-06-30T00:00:00Z")
   };
 }
@@ -590,7 +812,7 @@ function testPrivateKey(): string {
   return privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 }
 
-function mockWorkerFetch() {
+function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url);
     const method = init?.method ?? "GET";
@@ -602,7 +824,8 @@ function mockWorkerFetch() {
     if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
       return Response.json({
         title: "Fetched PR title",
-        body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
+        body: options.pullRequestBody
+          ?? "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
         url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
         user: { login: "agent-author" },
         base: { ref: "main" },

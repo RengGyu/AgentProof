@@ -52,6 +52,7 @@ export interface EnqueueAnalysisJobInput {
   headSha: string;
   saveReport: boolean;
   comment: boolean;
+  slackSummary?: boolean;
   now?: Date;
 }
 
@@ -103,6 +104,10 @@ export interface AnalysisJobResultSummary {
   comment?: {
     action?: string;
   };
+  slack?: {
+    action?: string;
+    privacy?: string;
+  };
 }
 
 export interface AnalysisJobRow {
@@ -121,6 +126,7 @@ export interface AnalysisJobRow {
   head_sha: string;
   save_report: boolean;
   comment: boolean;
+  slack_summary?: boolean;
   attempts: number;
   created_at: string;
   updated_at: string;
@@ -149,6 +155,7 @@ export interface TenantAnalysisJobSummary {
   sideEffects: {
     saveReport: boolean;
     comment: boolean;
+    slackSummary?: boolean;
   };
   result?: {
     priority?: string;
@@ -159,6 +166,10 @@ export interface TenantAnalysisJobSummary {
     };
     comment?: {
       action?: string;
+    };
+    slack?: {
+      action?: string;
+      privacy?: string;
     };
   };
   privacy: "analysis-job-summary-only";
@@ -243,6 +254,7 @@ const ANALYSIS_JOB_SELECT = [
   "head_sha",
   "save_report",
   "comment",
+  "slack_summary",
   "attempts",
   "created_at",
   "updated_at",
@@ -263,6 +275,7 @@ const TENANT_ANALYSIS_JOB_SELECT = [
   "head_sha",
   "save_report",
   "comment",
+  "slack_summary",
   "attempts",
   "created_at",
   "updated_at",
@@ -779,6 +792,7 @@ function toAnalysisJobRow(input: EnqueueAnalysisJobInput): AnalysisJobRow {
     head_sha: headSha,
     save_report: input.saveReport === true,
     comment: input.comment === true,
+    slack_summary: input.slackSummary === true,
     attempts: 0,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
@@ -1358,17 +1372,29 @@ function toTenantAnalysisJobSummary(row: AnalysisJobRow): TenantAnalysisJobSumma
     ? {
       priority: safeOptionalSummarySlug(row.result_summary.priority),
       evidenceCoverage: safeOptionalPercent(row.result_summary.evidenceCoverage),
-      savedReport: row.result_summary.savedReport
+      ...(row.result_summary.savedReport
         ? {
-          privacy: safeOptionalSummarySlug(row.result_summary.savedReport.privacy),
-          durability: safeOptionalSummarySlug(row.result_summary.savedReport.durability)
+          savedReport: {
+            privacy: safeOptionalSummarySlug(row.result_summary.savedReport.privacy),
+            durability: safeOptionalSummarySlug(row.result_summary.savedReport.durability)
+          }
         }
-        : undefined,
-      comment: row.result_summary.comment
+        : {}),
+      ...(row.result_summary.comment
         ? {
-          action: safeOptionalSummarySlug(row.result_summary.comment.action)
+          comment: {
+            action: safeOptionalSummarySlug(row.result_summary.comment.action)
+          }
         }
-        : undefined
+        : {}),
+      ...(row.result_summary.slack
+        ? {
+          slack: {
+            action: safeOptionalSummarySlug(row.result_summary.slack.action),
+            privacy: safeOptionalSummarySlug(row.result_summary.slack.privacy)
+          }
+        }
+        : {})
     }
     : undefined;
 
@@ -1388,7 +1414,8 @@ function toTenantAnalysisJobSummary(row: AnalysisJobRow): TenantAnalysisJobSumma
     errorSummary: row.error_summary ? safePublicErrorSummary(row.error_summary) : undefined,
     sideEffects: {
       saveReport: row.save_report,
-      comment: row.comment
+      comment: row.comment,
+      ...(row.slack_summary === true ? { slackSummary: true } : {})
     },
     result,
     privacy: "analysis-job-summary-only" as const
@@ -1427,6 +1454,12 @@ function sanitizeAnalysisJobResultSummary(summary: AnalysisJobResultSummary): An
     comment: summary.comment
       ? {
         action: summary.comment.action ? safeJobErrorCode(summary.comment.action) : undefined
+      }
+      : undefined,
+    slack: summary.slack
+      ? {
+        action: summary.slack.action ? safeJobErrorCode(summary.slack.action) : undefined,
+        privacy: summary.slack.privacy ? safeJobErrorCode(summary.slack.privacy) : undefined
       }
       : undefined
   };

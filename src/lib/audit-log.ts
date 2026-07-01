@@ -45,6 +45,10 @@ export interface AuditEventInput {
   comment?: {
     action?: string;
   };
+  slack?: {
+    action?: string;
+    privacy?: string;
+  };
 }
 
 export interface AuditEventRow {
@@ -93,6 +97,10 @@ export interface TenantAuditActivitySummary {
   };
   comment?: {
     action?: string;
+  };
+  slack?: {
+    action?: string;
+    privacy?: string;
   };
 }
 
@@ -286,6 +294,10 @@ function toAuditEventRow(input: AuditEventInput): AuditEventRow {
     } : undefined,
     comment: input.comment ? {
       action: safeSlug(input.comment.action)
+    } : undefined,
+    slack: input.slack ? {
+      action: safeSlug(input.slack.action),
+      privacy: safeSlug(input.slack.privacy)
     } : undefined
   };
 
@@ -414,6 +426,7 @@ function toTenantAuditSummary(row: AuditEventRow): TenantAuditActivitySummary {
     : {};
   const savedReport = objectValue(metadata.savedReport);
   const comment = objectValue(metadata.comment);
+  const slack = objectValue(metadata.slack);
   const summary = dropUndefined({
     id: row.id,
     createdAt: row.created_at,
@@ -436,6 +449,10 @@ function toTenantAuditSummary(row: AuditEventRow): TenantAuditActivitySummary {
     }),
     comment: objectWithSafeStrings({
       action: stringValue(comment?.action)
+    }),
+    slack: objectWithSafeStrings({
+      action: stringValue(slack?.action),
+      privacy: stringValue(slack?.privacy)
     })
   }) as unknown as TenantAuditActivitySummary;
 
