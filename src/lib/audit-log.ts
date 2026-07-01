@@ -16,6 +16,8 @@ export type AuditEventAction =
   | "github_app_installation_disabled"
   | "github_app_lifecycle_store_unavailable"
   | "github_app_not_ready"
+  | "github_app_billing_blocked"
+  | "github_app_billing_unavailable"
   | "github_app_quota_blocked"
   | "github_app_quota_unavailable"
   | "github_app_repository_access_removed"
@@ -128,19 +130,24 @@ const FORBIDDEN_AUDIT_KEYS = [
   "agent_claims",
   "authorization",
   "body",
+  "card",
   "claims",
   "comment_body",
   "comment_url",
+  "customer_id",
   "diff",
   "evidence_index",
   "evidenceindex",
   "github_token",
   "installation_token",
+  "invoice_id",
   "log",
   "logs",
+  "payment_method",
   "payload",
   "patch",
   "private_key",
+  "provider_customer_id",
   "raw",
   "raw_body",
   "raw_diff",
@@ -151,6 +158,7 @@ const FORBIDDEN_AUDIT_KEYS = [
   "saved_report_url",
   "secret",
   "signature",
+  "subscription_id",
   "token",
   "url",
   "webhook_payload"

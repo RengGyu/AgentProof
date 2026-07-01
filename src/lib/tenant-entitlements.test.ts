@@ -14,6 +14,7 @@ describe("tenant plan entitlement summary boundary", () => {
   it("composes account, quota, and repository grant signals without exposing ids or provider data", async () => {
     stubAccountEnv("team", "active");
     stubQuotaEnv({ limit: 5, plan: "team" });
+    stubBillingEnv("active", "team");
     vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
     await reserveUsageQuota({
       tenantId: "tenant_a",
@@ -44,6 +45,20 @@ describe("tenant plan entitlement summary boundary", () => {
         configured: true,
         source: "tenant_account_summary"
       },
+      billing: {
+        privacy: "billing-beta-summary-only",
+        configured: true,
+        providerBacked: true,
+        subscriptionStatus: "active",
+        plan: "team",
+        portal: {
+          available: true,
+          mode: "server_redirect_required"
+        },
+        webhooks: {
+          idempotency: "configured"
+        }
+      },
       quota: {
         state: "available",
         configured: true,
@@ -52,7 +67,8 @@ describe("tenant plan entitlement summary boundary", () => {
         used: 1,
         remaining: 4,
         plan: "team",
-        planMatchesAccount: true
+        planMatchesAccount: true,
+        planMatchesBilling: true
       },
       repositories: {
         state: "configured",
@@ -84,9 +100,11 @@ describe("tenant plan entitlement summary boundary", () => {
     expect(serialized).not.toContain("installation");
     expect(serialized).not.toContain("repositoryId");
     expect(serialized).not.toContain("delivery-one");
-    expect(serialized).not.toContain("idempotency");
+    expect(serialized).not.toContain("idempotencyKey");
     expect(serialized).not.toContain("cus_secret");
-    expect(serialized).not.toContain("subscription");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("price_secret");
+    expect(serialized).not.toContain("subscriptionId");
     expect(serialized).not.toContain("owner@example.com");
     expect(serialized).not.toContain("rawDiff");
     expect(serialized).not.toContain("claims");
@@ -149,7 +167,8 @@ describe("tenant plan entitlement summary boundary", () => {
     expect(serialized).not.toContain("installation");
     expect(serialized).not.toContain("repositoryId");
     expect(serialized).not.toContain("cus_secret");
-    expect(serialized).not.toContain("subscription");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("subscriptionId");
     expect(serialized).not.toContain("owner@example.com");
     expect(serialized).not.toContain("rawDiff");
     expect(serialized).not.toContain("evidenceIndex");
@@ -205,6 +224,79 @@ describe("tenant plan entitlement summary boundary", () => {
     expect(result.features.find((feature) => feature.key === "github_app_analysis")).toMatchObject({
       state: "enabled"
     });
+  });
+
+  it("disables feature access when provider subscription status is inactive", async () => {
+    stubAccountEnv("team", "active");
+    stubQuotaEnv({ limit: 5, plan: "team" });
+    stubBillingEnv("past_due", "team");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        installationId: 123,
+        repositoryId: 456,
+        repositoryFullName: "RengGyu/AgentProof",
+        enabled: true,
+        analysisEnabled: true,
+        saveReportsEnabled: true,
+        commentEnabled: true,
+        slackNotificationsEnabled: true
+      }
+    ]));
+
+    const result = await readTenantEntitlementSummary({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify(result);
+
+    expect(result.billing).toMatchObject({
+      configured: true,
+      providerBacked: true,
+      subscriptionStatus: "past_due",
+      plan: "team"
+    });
+    expect(result.features.find((feature) => feature.key === "github_app_analysis")).toMatchObject({
+      state: "disabled",
+      enabled: false,
+      reason: "billing_subscription_inactive"
+    });
+    expect(result.features.find((feature) => feature.key === "slack_summaries")).toMatchObject({
+      state: "disabled",
+      enabled: false,
+      reason: "billing_subscription_inactive"
+    });
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("price_secret");
+  });
+
+  it("marks billing and quota plan mismatch without exposing provider ids", async () => {
+    stubAccountEnv("team", "active");
+    stubQuotaEnv({ limit: 5, plan: "pro" });
+    stubBillingEnv("active", "team");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        installationId: 123,
+        repositoryId: 456,
+        repositoryFullName: "RengGyu/AgentProof",
+        enabled: true,
+        analysisEnabled: true
+      }
+    ]));
+
+    const result = await readTenantEntitlementSummary({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify(result);
+
+    expect(result.quota).toMatchObject({
+      plan: "pro",
+      planMatchesAccount: false,
+      planMatchesBilling: false
+    });
+    expect(result.features.find((feature) => feature.key === "github_app_analysis")).toMatchObject({
+      state: "disabled",
+      reason: "billing_plan_mismatch"
+    });
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("sub_secret");
   });
 
   it("marks account or repository store failures as unavailable", async () => {
@@ -299,6 +391,22 @@ function stubQuotaEnv(input: {
       markerCommentsEnabled: input.markerCommentsEnabled,
       slackSummariesEnabled: input.slackSummariesEnabled,
       structuredLlmVerifierEnabled: input.structuredLlmVerifierEnabled
+    }
+  ]));
+}
+
+function stubBillingEnv(subscriptionStatus: string, plan: string) {
+  vi.stubEnv("AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS", JSON.stringify([
+    {
+      tenantId: "tenant_a",
+      provider: "stripe",
+      providerCustomerId: "cus_secret_should_not_leak",
+      providerSubscriptionId: "sub_secret_should_not_leak",
+      providerPriceId: "price_secret_should_not_leak",
+      subscriptionStatus,
+      plan,
+      customerPortalEnabled: true
     }
   ]));
 }

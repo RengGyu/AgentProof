@@ -18,6 +18,7 @@ import {
   markTenantDeletionStartedIfConfigured
 } from "./tenant-deletion-state";
 import { clearUsageQuotaForTests } from "./usage-quota";
+import { clearBillingWebhookEventsForTests } from "./billing-beta";
 
 describe("analysis worker preflight", () => {
   afterEach(() => {
@@ -28,6 +29,7 @@ describe("analysis worker preflight", () => {
     clearSavedReportsForTests();
     clearAuditEventsForTests();
     clearUsageQuotaForTests();
+    clearBillingWebhookEventsForTests();
     clearTenantDeletionStateForTests();
   });
 
@@ -148,6 +150,35 @@ describe("analysis worker preflight", () => {
       locked_at: null
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails terminal before token fetch when provider billing is inactive", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: true, commentEnabled: true } });
+    vi.stubEnv("AGENTPROOF_BILLING_BETA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS", billingSubscriptionsJson({
+      subscriptionStatus: "past_due"
+    }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true }));
+
+    const result = await preflightNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    const serialized = JSON.stringify({ result, jobs: getAnalysisJobsForTests() });
+
+    expect(result).toEqual({
+      status: "failed_terminal",
+      reason: "github_app_billing_subscription_blocked"
+    });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "failed_terminal",
+      error_code: "github_app_billing_subscription_blocked",
+      locked_at: null
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("price_secret");
+    expect(serialized).not.toContain("installation-token");
   });
 
   it("returns ready and clamps queued side effects to the current tenant grant", async () => {
@@ -1053,6 +1084,21 @@ function jobInput(overrides: Partial<{
     slackSummary: overrides.slackSummary ?? false,
     now: new Date("2026-06-30T00:00:00Z")
   };
+}
+
+function billingSubscriptionsJson(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify([
+    {
+      tenantId: "tenant_a",
+      provider: "stripe",
+      providerCustomerId: "cus_secret_should_not_leak",
+      providerSubscriptionId: "sub_secret_should_not_leak",
+      providerPriceId: "price_secret_should_not_leak",
+      subscriptionStatus: "active",
+      plan: "team",
+      ...overrides
+    }
+  ]);
 }
 
 function testPrivateKey(): string {
