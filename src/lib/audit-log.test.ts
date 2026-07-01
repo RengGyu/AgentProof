@@ -351,6 +351,11 @@ describe("audit log", () => {
     expect(() => assertAuditEventIsPrivate({ metadata: { privateKey: "[redacted]" } })).toThrow(AuditPrivacyError);
     expect(() => assertAuditEventIsPrivate({ metadata: { evidenceIndex: [] } })).toThrow(AuditPrivacyError);
     expect(() => assertAuditEventIsPrivate({ metadata: { commentBody: "body" } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { providerCustomerId: "cus_secret_should_not_leak" } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { subscriptionId: "sub_secret_should_not_leak" } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { invoiceId: "in_secret_should_not_leak" } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { paymentMethod: "pm_secret_should_not_leak" } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { card: { last4: "4242" } } })).toThrow(AuditPrivacyError);
     expect(() => assertAuditEventIsPrivate({
       metadata: {
         savedReportUrl: "https://agentproof.example/reports/r_123?key=secret"

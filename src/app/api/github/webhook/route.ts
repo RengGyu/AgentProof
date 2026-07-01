@@ -27,6 +27,11 @@ import {
   postGitHubAppMarkerComment
 } from "@/lib/github-app-side-effects";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
+import {
+  billingBetaPublicReason,
+  BillingBetaStoreError,
+  evaluateBillingBetaGate
+} from "@/lib/billing-beta";
 import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
@@ -46,6 +51,7 @@ import {
 import { TenantDeletionStateError } from "@/lib/tenant-deletion-state";
 import {
   clampTenantPlanSideEffects,
+  readUsageQuotaPlanCapabilities,
   reserveUsageQuota,
   usageQuotaPublicReason,
   UsageQuotaStoreError,
@@ -437,6 +443,51 @@ async function handlePullRequestAutomation(
   }
 
   if (tenantGrant.enabled) {
+    try {
+      const tenantId = tenantGrant.grant?.tenantId;
+      const quotaPlan = readUsageQuotaPlanCapabilities({ tenantId }).plan;
+      const billing = evaluateBillingBetaGate({ tenantId, quotaPlan });
+
+      if (!billing.allowed) {
+        await recordWebhookAuditEvent("github_app_billing_blocked", "blocked", automation, context, {
+          tenantId,
+          statusCode: 200,
+          code: "github_app_billing_subscription_blocked"
+        });
+
+        return noStoreJson({
+          ok: true,
+          ignored: true,
+          dryRun: false,
+          event: safeWebhookString(context.event),
+          delivery: safeWebhookString(context.delivery),
+          action: context.action,
+          automationEnabled: true,
+          willAnalyze: false,
+          willComment: false,
+          code: "github_app_billing_subscription_blocked",
+          note: billingBetaPublicReason(billing.reason)
+        });
+      }
+    } catch (error) {
+      if (error instanceof BillingBetaStoreError) {
+        await recordWebhookAuditEvent("github_app_billing_unavailable", "failed", automation, context, {
+          tenantId: tenantGrant.grant?.tenantId,
+          statusCode: 503,
+          code: "github_app_billing_gate_unavailable"
+        });
+
+        return noStoreJson({
+          error: "Tenant billing gate is unavailable.",
+          code: "github_app_billing_gate_unavailable",
+          willAnalyze: false,
+          willComment: false
+        }, { status: 503 });
+      }
+
+      throw error;
+    }
+
     let quota: UsageQuotaReservation;
     try {
       quota = await reserveUsageQuota({

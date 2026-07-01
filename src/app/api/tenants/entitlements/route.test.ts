@@ -28,6 +28,7 @@ describe("GET /api/tenants/entitlements", () => {
     stubSessionEnv();
     stubAccountEnv();
     stubQuotaEnv();
+    stubBillingEnv();
     vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
     await reserveUsageQuota({
       tenantId: "tenant_a",
@@ -62,6 +63,20 @@ describe("GET /api/tenants/entitlements", () => {
         configured: true,
         source: "tenant_account_summary"
       },
+      billing: {
+        privacy: "billing-beta-summary-only",
+        configured: true,
+        providerBacked: true,
+        subscriptionStatus: "active",
+        plan: "team",
+        portal: {
+          available: true,
+          mode: "server_redirect_required"
+        },
+        webhooks: {
+          idempotency: "configured"
+        }
+      },
       quota: {
         state: "available",
         configured: true,
@@ -70,7 +85,8 @@ describe("GET /api/tenants/entitlements", () => {
         used: 1,
         remaining: 4,
         plan: "team",
-        planMatchesAccount: true
+        planMatchesAccount: true,
+        planMatchesBilling: true
       },
       repositories: {
         state: "configured",
@@ -110,9 +126,10 @@ describe("GET /api/tenants/entitlements", () => {
     expect(serialized).not.toContain("installationId");
     expect(serialized).not.toContain("repositoryId");
     expect(serialized).not.toContain("delivery-one");
-    expect(serialized).not.toContain("idempotency");
+    expect(serialized).not.toContain("idempotencyKey");
     expect(serialized).not.toContain("cus_secret");
     expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("price_secret");
     expect(serialized).not.toContain("owner@example.com");
   });
 
@@ -211,6 +228,22 @@ function stubQuotaEnv() {
       monthlyAnalysisLimit: 5,
       enabled: true,
       plan: "team"
+    }
+  ]));
+}
+
+function stubBillingEnv() {
+  vi.stubEnv("AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS", JSON.stringify([
+    {
+      tenantId: "tenant_a",
+      provider: "stripe",
+      providerCustomerId: "cus_secret_should_not_leak",
+      providerSubscriptionId: "sub_secret_should_not_leak",
+      providerPriceId: "price_secret_should_not_leak",
+      subscriptionStatus: "active",
+      plan: "team",
+      customerPortalEnabled: true
     }
   ]));
 }

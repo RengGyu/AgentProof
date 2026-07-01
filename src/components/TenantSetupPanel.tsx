@@ -130,6 +130,20 @@ interface TenantEntitlementStatus {
     configured: boolean;
     source: "tenant_account_summary" | "unavailable";
   };
+  billing: {
+    privacy: "billing-beta-summary-only";
+    configured: boolean;
+    providerBacked: boolean;
+    subscriptionStatus: string;
+    plan?: string;
+    portal: {
+      available: boolean;
+      mode: "server_redirect_required" | "not_configured";
+    };
+    webhooks: {
+      idempotency: "configured" | "not_configured";
+    };
+  };
   quota: {
     state: "available" | "exhausted" | "not_configured" | "not_enforced" | "unavailable" | "unclear";
     configured: boolean;
@@ -139,6 +153,7 @@ interface TenantEntitlementStatus {
     remaining?: number;
     plan?: string;
     planMatchesAccount?: boolean;
+    planMatchesBilling?: boolean;
   };
   repositories: {
     state: "configured" | "not_configured" | "unavailable";
@@ -1057,8 +1072,10 @@ export function TenantSetupPanel() {
               <div className="tenant-rollup-row" aria-label="Tenant plan access summary">
                 <span>Plan {entitlementStatus.plan}</span>
                 <span>Account {entitlementStatus.account.status}</span>
+                <span>Billing {entitlementStatus.billing.subscriptionStatus.replace(/_/g, " ")}</span>
                 <span>Quota {entitlementStatus.quota.state.replace(/_/g, " ")}</span>
                 <span>Repos {entitlementStatus.repositories.connectedRepositoryCount ?? 0}</span>
+                {entitlementStatus.billing.portal.available ? <span>Portal boundary ready</span> : null}
               </div>
               <ul className="tenant-usage-list">
                 {entitlementStatus.features.map((feature) => (

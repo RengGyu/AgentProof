@@ -59,7 +59,7 @@ describe("TenantSetupPanel product and privacy boundary", () => {
   it("uses read-only usage status instead of quota reservation paths", () => {
     expect(source).toContain("tenantUsageUrl");
     expect(source).not.toContain("reserveUsageQuota");
-    expect(source).not.toContain("idempotency");
+    expect(source).not.toContain("idempotencyKey");
   });
 
   it("uses summary-only setup warning rollups without raw setup internals", () => {
@@ -80,7 +80,7 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).not.toContain("rawLog");
   });
 
-  it("uses account summary metadata without full auth, billing, or contact fields", () => {
+  it("uses account summary metadata without full auth or contact fields", () => {
     expect(source).toContain("tenantAccountUrl");
     expect(source).toContain("Tenant Account");
     expect(source).toContain("tenant-account-summary-only");
@@ -90,9 +90,7 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).toContain("membersTruncated");
     expect(source).toContain("memberCount}{accountStatus.account.membersTruncated ? \"+\" : \"\"}");
     expect(source).not.toContain("email");
-    expect(source).not.toContain("billing");
     expect(source).not.toContain("customerId");
-    expect(source).not.toContain("subscription");
     expect(source).not.toContain("oauth");
     expect(source).not.toContain("accessToken");
     expect(source).not.toContain("refreshToken");
@@ -104,9 +102,14 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).toContain("tenantEntitlementsUrl");
     expect(source).toContain("Plan Access");
     expect(source).toContain("plan-entitlement-summary-only");
+    expect(source).toContain("billing-beta-summary-only");
+    expect(source).toContain("subscriptionStatus");
+    expect(source).toContain("Portal boundary ready");
     expect(source).toContain("Tenant plan access summary");
     expect(source).not.toContain("providerCustomerId");
     expect(source).not.toContain("subscriptionId");
+    expect(source).not.toContain("providerSubscriptionId");
+    expect(source).not.toContain("providerPriceId");
     expect(source).not.toContain("payment");
     expect(source).not.toContain("rawDiff");
     expect(source).not.toContain("rawLog");

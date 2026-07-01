@@ -46,7 +46,7 @@ Slack summaries are optional. They should be sent only when all of these are tru
 - the tenant repository grant is active
 - evidence report analysis is enabled for the repository
 - the repository has Slack summaries opted in
-- plan/quota gates allow the side effect
+- plan, quota, and billing beta gates allow the side effect
 - Slack configuration is valid on the server
 - durable side-effect audit requirements pass when enabled
 
@@ -67,17 +67,23 @@ The public promise should be conservative: AgentProof does not durably retain ra
 
 Failed invite/bootstrap session attempts may be audited as bounded system events. Audit rows should include only action, result, status code, normalized tenant id when valid, and a public reason code. They must not include invite tokens, bootstrap credentials, cookies, session hashes, request bodies, provider identifiers, table names, or raw storage errors.
 
+## Billing Beta Boundary
+
+Billing beta is a server-side launch gate, not a public payment surface. Tenant-facing setup can show only summary fields: whether billing is configured, whether it is provider-backed, the coarse subscription status, the plan label, whether a server-side portal boundary is available, and webhook idempotency readiness. It must not show provider customer ids, subscription ids, price ids, invoice ids, payment method data, card fields, provider webhook event ids, service-role keys, table names, raw provider responses, or raw webhook bodies.
+
+When billing beta enforcement is enabled, GitHub App automation should stop before quota reservation, webhook idempotency, GitHub token fetch, PR evidence fetch, saved reports, marker comments, or Slack summaries if the tenant billing record is missing, manual-only, inactive, or mismatched with the quota plan. If billing evidence cannot be collected, say that billing status is unavailable or not configured; do not infer billing state from account plan labels, quota rows, repository grants, or usage records.
+
 ## Troubleshooting
 
 Use setup language when explaining activation blockers:
 
 | Symptom | Likely evidence to check | Safe customer response |
 | --- | --- | --- |
-| No report generated from a PR event | GitHub App mode, tenant grant, repo analysis setting, first-report readiness, queue status, quota status | The repository or PR is not ready for automated evidence reports yet. |
+| No report generated from a PR event | GitHub App mode, tenant grant, repo analysis setting, first-report readiness, queue status, quota status, billing beta status | The repository or PR is not ready for automated evidence reports yet. |
 | Private repository cannot be analyzed | Installation access, repository grant, GitHub rate limit or unavailable metadata | The GitHub App cannot currently confirm repository access. |
 | No CI or test evidence appears | First-report check/status availability and PR checks | The report cannot verify execution evidence that GitHub did not provide. |
-| Slack summary not delivered | Repo Slack opt-in, plan/quota gate, server Slack configuration, audit gate | Slack delivery is not ready for this repository. |
-| Saved link unavailable | Saved-report setting, quota/plan gate, storage status, TTL expiry | Summary links are unavailable or expired; raw evidence is not recovered from storage. |
+| Slack summary not delivered | Repo Slack opt-in, plan/quota/billing gate, server Slack configuration, audit gate | Slack delivery is not ready for this repository. |
+| Saved link unavailable | Saved-report setting, quota/plan/billing gate, storage status, TTL expiry | Summary links are unavailable or expired; raw evidence is not recovered from storage. |
 
 When evidence cannot be collected, say what is unavailable. Do not infer test results, permissions, billing state, repository access, or Slack delivery from unrelated signals.
 
@@ -106,5 +112,6 @@ Before treating a page or doc as public launch material, confirm that it:
 - states that AgentProof does not auto-merge or prove full correctness
 - states that durable storage excludes raw diffs, logs, webhook payloads, tokens, evidence indexes, claims, and raw re-prompt text
 - keeps Slack, comments, saved links, OpenAI verifier calls, and destructive deletion as explicit opt-ins or guarded workflows
+- keeps billing provider ids and payment data server-side and out of tenant-facing setup, audit export, Slack, comments, saved reports, and support screenshots
 - avoids unsupported market claims and unsupported security claims
 - has a source-level copy boundary test when it is part of the product surface

@@ -38,8 +38,14 @@ import {
   TenantDeletionStateError
 } from "./tenant-deletion-state";
 import {
+  billingBetaPublicReason,
+  BillingBetaStoreError,
+  evaluateBillingBetaGate
+} from "./billing-beta";
+import {
   assertTenantPlanAllowsGitHubAppAnalysis,
   clampTenantPlanSideEffects,
+  readUsageQuotaPlanCapabilities,
   UsageQuotaStoreError
 } from "./usage-quota";
 import { generateVerificationReport } from "./verifier";
@@ -214,6 +220,23 @@ export async function preflightNextAnalysisJob(
     }
 
     if (grant.required && grant.grant) {
+      const quotaPlan = readUsageQuotaPlanCapabilities({ tenantId: grant.grant.tenantId }, env).plan;
+      const billing = evaluateBillingBetaGate({ tenantId: grant.grant.tenantId, quotaPlan }, env);
+      if (!billing.allowed) {
+        await failAnalysisJob({
+          id: job.id,
+          retryable: false,
+          code: "github_app_billing_subscription_blocked",
+          summary: billingBetaPublicReason(billing.reason),
+          now: options.now
+        }, env);
+
+        return {
+          status: "failed_terminal",
+          reason: "github_app_billing_subscription_blocked"
+        };
+      }
+
       assertTenantPlanAllowsGitHubAppAnalysis({ tenantId: grant.grant.tenantId }, env);
 
       const sideEffects = clampTenantPlanSideEffects({
@@ -257,6 +280,21 @@ export async function preflightNextAnalysisJob(
       return {
         status: "failed_retryable",
         reason: "github_app_plan_gate_unavailable"
+      };
+    }
+
+    if (error instanceof BillingBetaStoreError) {
+      await failAnalysisJob({
+        id: job.id,
+        retryable: true,
+        code: "github_app_billing_gate_unavailable",
+        summary: "Tenant billing gate is unavailable during analysis worker preflight.",
+        now: options.now
+      }, env);
+
+      return {
+        status: "failed_retryable",
+        reason: "github_app_billing_gate_unavailable"
       };
     }
 
@@ -551,6 +589,15 @@ async function revalidateWorkerSideEffects(
     }
 
     if (grant.required && grant.grant) {
+      const quotaPlan = readUsageQuotaPlanCapabilities({ tenantId: grant.grant.tenantId }, env).plan;
+      const billing = evaluateBillingBetaGate({ tenantId: grant.grant.tenantId, quotaPlan }, env);
+      if (!billing.allowed) {
+        throw new AnalysisWorkerTerminalError(
+          "github_app_billing_subscription_blocked",
+          billingBetaPublicReason(billing.reason)
+        );
+      }
+
       const grantedSideEffects = {
         saveReport: sideEffects.saveReport && grant.grant.saveReportsEnabled,
         comment: sideEffects.comment && grant.grant.commentEnabled,
@@ -576,6 +623,13 @@ async function revalidateWorkerSideEffects(
       throw new AnalysisWorkerRetryableError(
         "github_app_plan_gate_unavailable",
         "Tenant plan side-effect gate is unavailable before GitHub App worker side effects."
+      );
+    }
+
+    if (error instanceof BillingBetaStoreError) {
+      throw new AnalysisWorkerRetryableError(
+        "github_app_billing_gate_unavailable",
+        "Tenant billing side-effect gate is unavailable before GitHub App worker side effects."
       );
     }
 

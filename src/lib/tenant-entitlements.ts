@@ -14,6 +14,11 @@ import {
   type UsageQuotaPlanCapabilities,
   type UsageQuotaStatus
 } from "./usage-quota";
+import {
+  billingSubscriptionAllowsAccess,
+  readBillingBetaSummary,
+  type BillingBetaSummary
+} from "./billing-beta";
 import { redactSecrets } from "./redact";
 
 export type TenantEntitlementPlan = TenantAccountPlan;
@@ -51,6 +56,7 @@ export interface TenantEntitlementQuotaSummary {
   remaining?: number;
   plan?: string;
   planMatchesAccount?: boolean;
+  planMatchesBilling?: boolean;
 }
 
 export interface TenantEntitlementRepositorySummary {
@@ -68,6 +74,7 @@ export interface TenantEntitlementSummary {
   tenantId: string;
   plan: TenantEntitlementPlan;
   account: TenantEntitlementAccountSummary;
+  billing: BillingBetaSummary;
   quota: TenantEntitlementQuotaSummary;
   repositories: TenantEntitlementRepositorySummary;
   features: TenantEntitlementFeature[];
@@ -108,8 +115,9 @@ export async function readTenantEntitlementSummary(
     throw new TenantEntitlementStoreError("Tenant entitlement id is invalid.");
   }
 
-  const [account, quotaRead, repositoryRead] = await Promise.all([
+  const [account, billing, quotaRead, repositoryRead] = await Promise.all([
     readAccountBoundary(tenantId, env),
+    readBillingBoundary(tenantId, env),
     readQuotaBoundary(tenantId, env),
     readRepositoryBoundary(tenantId, env)
   ]);
@@ -124,20 +132,45 @@ export async function readTenantEntitlementSummary(
     tenantId,
     plan: account.plan,
     account: account.account,
+    billing,
     quota: {
       ...quota,
       planMatchesAccount: account.plan !== "unknown" && quota.plan
         ? account.plan === quota.plan
+        : undefined,
+      planMatchesBilling: billing.plan && quota.plan
+        ? billing.plan === quota.plan
         : undefined
     },
     repositories,
     features: buildFeatures({
       account: account.account,
+      billing,
       quota,
       repositories,
       planCapabilities: quotaRead.planCapabilities
     })
   };
+}
+
+function readBillingBoundary(tenantId: string, env: NodeJS.ProcessEnv): BillingBetaSummary {
+  try {
+    return readBillingBetaSummary({ tenantId }, env);
+  } catch {
+    return {
+      privacy: "billing-beta-summary-only",
+      configured: false,
+      providerBacked: false,
+      subscriptionStatus: "unknown",
+      portal: {
+        available: false,
+        mode: "not_configured"
+      },
+      webhooks: {
+        idempotency: "not_configured"
+      }
+    };
+  }
 }
 
 async function readAccountBoundary(tenantId: string, env: NodeJS.ProcessEnv): Promise<AccountRead> {
@@ -250,6 +283,7 @@ function quotaState(quota: UsageQuotaStatus): TenantEntitlementQuotaSummary["sta
 
 function buildFeatures(input: {
   account: TenantEntitlementAccountSummary;
+  billing: BillingBetaSummary;
   quota: TenantEntitlementQuotaSummary;
   repositories: TenantEntitlementRepositorySummary;
   planCapabilities: UsageQuotaPlanCapabilities;
@@ -266,11 +300,15 @@ function buildFeatures(input: {
 
 function githubAnalysisState(input: {
   account: TenantEntitlementAccountSummary;
+  billing: BillingBetaSummary;
   quota: TenantEntitlementQuotaSummary;
   repositories: TenantEntitlementRepositorySummary;
+  planCapabilities: UsageQuotaPlanCapabilities;
 }): Pick<TenantEntitlementFeature, "state" | "reason"> {
   const base = activeTenantBaseState(input.account);
   if (base) return base;
+  const billing = billingBaseState(input.billing, input.quota.plan ?? input.planCapabilities.plan);
+  if (billing) return billing;
   if (input.quota.state === "unavailable") return { state: "unavailable", reason: "quota_unavailable" };
   if (input.repositories.state === "unavailable") return { state: "unavailable", reason: "repository_grants_unavailable" };
   if (input.quota.state === "not_configured" || input.quota.state === "not_enforced") {
@@ -287,11 +325,14 @@ function githubAnalysisState(input: {
 
 function repositoryVerificationState(input: {
   account: TenantEntitlementAccountSummary;
+  billing: BillingBetaSummary;
   repositories: TenantEntitlementRepositorySummary;
   planCapabilities: UsageQuotaPlanCapabilities;
 }): Pick<TenantEntitlementFeature, "state" | "reason"> {
   const base = activeTenantBaseState(input.account);
   if (base) return base;
+  const billing = billingBaseState(input.billing, input.planCapabilities.plan);
+  if (billing) return billing;
   if (input.planCapabilities.connectedRepositoryLimit === 0) {
     return { state: "disabled", reason: "plan_feature_disabled" };
   }
@@ -306,6 +347,7 @@ function repositoryVerificationState(input: {
 function repoSettingState(
   input: {
     account: TenantEntitlementAccountSummary;
+    billing: BillingBetaSummary;
     repositories: TenantEntitlementRepositorySummary;
     planCapabilities: UsageQuotaPlanCapabilities;
   },
@@ -314,6 +356,8 @@ function repoSettingState(
 ): Pick<TenantEntitlementFeature, "state" | "reason"> {
   const base = activeTenantBaseState(input.account);
   if (base) return base;
+  const billing = billingBaseState(input.billing, input.planCapabilities.plan);
+  if (billing) return billing;
   if (input.planCapabilities[planKey] === false) return { state: "disabled", reason: "plan_feature_disabled" };
   if (input.repositories.state === "unavailable") return { state: "unavailable", reason: "repository_grants_unavailable" };
   if ((input.repositories.connectedRepositoryCount ?? 0) <= 0) {
@@ -328,10 +372,13 @@ function repoSettingState(
 
 function structuredLlmVerifierState(input: {
   account: TenantEntitlementAccountSummary;
+  billing: BillingBetaSummary;
   planCapabilities: UsageQuotaPlanCapabilities;
 }): Pick<TenantEntitlementFeature, "state" | "reason"> {
   const base = activeTenantBaseState(input.account);
   if (base) return base;
+  const billing = billingBaseState(input.billing, input.planCapabilities.plan);
+  if (billing) return billing;
   if (input.planCapabilities.structuredLlmVerifierEnabled === false) {
     return { state: "disabled", reason: "plan_feature_disabled" };
   }
@@ -340,6 +387,21 @@ function structuredLlmVerifierState(input: {
   }
 
   return { state: "not_configured", reason: "plan_not_configured" };
+}
+
+function billingBaseState(
+  billing: BillingBetaSummary,
+  quotaPlan?: string
+): Pick<TenantEntitlementFeature, "state" | "reason"> | null {
+  if (!billingSubscriptionAllowsAccess(billing)) {
+    return { state: "disabled", reason: "billing_subscription_inactive" };
+  }
+
+  if (billing.plan && quotaPlan && billing.plan !== quotaPlan) {
+    return { state: "disabled", reason: "billing_plan_mismatch" };
+  }
+
+  return null;
 }
 
 function activeTenantBaseState(

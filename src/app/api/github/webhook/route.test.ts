@@ -8,6 +8,7 @@ import {
   getTenantGitHubInstallationsForTests
 } from "@/lib/github-installations";
 import { clearSavedReportsForTests } from "@/lib/server-report-store";
+import { clearBillingWebhookEventsForTests } from "@/lib/billing-beta";
 import {
   clearTenantRepositoryGrantsForTests,
   createTenantRepositoryGrant,
@@ -28,6 +29,7 @@ describe("POST /api/github/webhook", () => {
     clearTenantGitHubInstallationsForTests();
     clearTenantRepositoryGrantsForTests();
     clearUsageQuotaForTests();
+    clearBillingWebhookEventsForTests();
   });
 
   it("is disabled until a webhook secret is configured", async () => {
@@ -1287,6 +1289,67 @@ describe("POST /api/github/webhook", () => {
       willComment: false
     }));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks inactive provider billing before quota idempotency, token fetch, saved reports, or comments", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    }));
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", quotaLimitsJson({ monthlyAnalysisLimit: 5 }));
+    vi.stubEnv("AGENTPROOF_BILLING_BETA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS", billingSubscriptionsJson({
+      subscriptionStatus: "past_due"
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload({
+        rawDiff: "Patch excerpt: + token = 'github_pat_secret_should_not_leak_1234567890'"
+      })), {
+        event: "pull_request",
+        delivery: "delivery-tenant-billing-past-due",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const serialized = JSON.stringify({ json, audit: getAuditEventsForTests() });
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({
+      ok: true,
+      ignored: true,
+      code: "github_app_billing_subscription_blocked",
+      willAnalyze: false,
+      willComment: false
+    }));
+    expect(json.note).toContain("subscription");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_billing_blocked",
+      result: "blocked",
+      tenant_id: "tenant_test",
+      status_code: 200,
+      metadata: {
+        code: "github_app_billing_subscription_blocked"
+      }
+    });
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("price_secret");
   });
 
   it("blocks exhausted tenant quota before durable idempotency, token fetch, saved reports, or comments", async () => {
@@ -2591,6 +2654,21 @@ function quotaLimitsJson(overrides: Record<string, unknown> = {}) {
       tenantId: "tenant_test",
       monthlyAnalysisLimit: 1,
       enabled: true,
+      plan: "team",
+      ...overrides
+    }
+  ]);
+}
+
+function billingSubscriptionsJson(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify([
+    {
+      tenantId: "tenant_test",
+      provider: "stripe",
+      providerCustomerId: "cus_secret_should_not_leak",
+      providerSubscriptionId: "sub_secret_should_not_leak",
+      providerPriceId: "price_secret_should_not_leak",
+      subscriptionStatus: "active",
       plan: "team",
       ...overrides
     }

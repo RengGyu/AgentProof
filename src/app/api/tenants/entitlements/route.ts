@@ -27,6 +27,7 @@ export async function GET(request: Request) {
       tenantId: access.tenantId,
       plan: summary.plan,
       account: summary.account,
+      billing: summary.billing,
       quota: summary.quota,
       repositories: summary.repositories,
       features: summary.features,
