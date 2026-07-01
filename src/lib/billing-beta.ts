@@ -1,9 +1,11 @@
-import { createHash } from "crypto";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { redactSecrets } from "./redact";
 
 export const BILLING_BETA_SUBSCRIPTIONS_ENV = "AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS";
 export const BILLING_BETA_ENFORCEMENT_ENV = "AGENTPROOF_BILLING_BETA_ENFORCEMENT_ENABLED";
+export const BILLING_WEBHOOK_SECRET_ENV = "AGENTPROOF_BILLING_WEBHOOK_SECRET";
 export const DEFAULT_BILLING_WEBHOOK_EVENTS_TABLE = "agentproof_billing_webhook_events";
+export const DEFAULT_BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS = 300;
 
 export type BillingBetaProvider = "stripe" | "manual";
 export type BillingBetaSubscriptionStatus =
@@ -39,6 +41,38 @@ export interface BillingWebhookReservation {
   eventType?: string;
   reason?: "billing-webhook-idempotency-not-configured";
   privacy: "billing-webhook-idempotency-metadata-only";
+}
+
+export type BillingWebhookIntakeStatus =
+  | "accepted"
+  | "duplicate"
+  | "signature_unconfigured"
+  | "signature_missing"
+  | "signature_invalid"
+  | "signature_stale"
+  | "payload_malformed"
+  | "idempotency_unavailable";
+
+export interface BillingWebhookIntakeResult {
+  privacy: "billing-webhook-intake-metadata-only";
+  provider: "stripe";
+  verified: boolean;
+  accepted: boolean;
+  duplicate: boolean;
+  status: BillingWebhookIntakeStatus;
+  tenantId?: string;
+  eventType?: string;
+  subscriptionStatus?: BillingBetaSubscriptionStatus;
+  plan?: string;
+  idempotency?: Pick<BillingWebhookReservation, "privacy" | "store" | "provider" | "tenantId" | "eventType" | "accepted" | "duplicate">;
+  next:
+    | "configure_billing_webhook_secret"
+    | "retry_with_signed_provider_payload"
+    | "retry_with_recent_provider_signature"
+    | "review_provider_webhook_payload"
+    | "configure_billing_webhook_idempotency"
+    | "process_billing_event_metadata"
+    | "ignore_duplicate_billing_event";
 }
 
 export type BillingBetaGateReason =
@@ -115,6 +149,17 @@ interface BillingWebhookStoreConfig {
   url: string;
   serviceRoleKey: string;
   table: string;
+}
+
+interface StripeBillingWebhookPayload {
+  id?: unknown;
+  type?: unknown;
+  data?: {
+    object?: {
+      status?: unknown;
+      metadata?: Record<string, unknown>;
+    };
+  };
 }
 
 type GlobalWithBillingWebhookStore = typeof globalThis & {
@@ -427,6 +472,110 @@ export async function reserveBillingWebhookEvent(
   };
 }
 
+export async function processSignedBillingWebhook(
+  input: {
+    rawBody?: unknown;
+    signatureHeader?: string | null;
+    receivedAt?: Date;
+    toleranceSeconds?: number;
+  },
+  env = process.env
+): Promise<BillingWebhookIntakeResult> {
+  const provider = "stripe" as const;
+  const rawBody = typeof input.rawBody === "string" ? input.rawBody : "";
+  const receivedAt = input.receivedAt ?? new Date();
+  const secret = normalizeWebhookSecret(env[BILLING_WEBHOOK_SECRET_ENV]);
+
+  if (!secret) {
+    return webhookIntakeResult({
+      provider,
+      verified: false,
+      accepted: false,
+      duplicate: false,
+      status: "signature_unconfigured",
+      next: "configure_billing_webhook_secret"
+    });
+  }
+
+  const signature = verifyStripeWebhookSignature({
+    rawBody,
+    signatureHeader: input.signatureHeader,
+    secret,
+    receivedAt,
+    toleranceSeconds: input.toleranceSeconds ?? DEFAULT_BILLING_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS
+  });
+
+  if (signature !== "ok") {
+    return webhookIntakeResult({
+      provider,
+      verified: false,
+      accepted: false,
+      duplicate: false,
+      status: signature,
+      next: signature === "signature_stale" ? "retry_with_recent_provider_signature" : "retry_with_signed_provider_payload"
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return webhookIntakeResult({
+      provider,
+      verified: true,
+      accepted: false,
+      duplicate: false,
+      status: "payload_malformed",
+      next: "review_provider_webhook_payload"
+    });
+  }
+
+  const metadata = extractStripeWebhookMetadata(parsed);
+  if (!metadata.providerEventId || !metadata.publicMetadata.eventType) {
+    return webhookIntakeResult({
+      provider,
+      verified: true,
+      accepted: false,
+      duplicate: false,
+      status: "payload_malformed",
+      next: "review_provider_webhook_payload",
+      ...metadata.publicMetadata
+    });
+  }
+
+  const idempotency = await reserveBillingWebhookEvent({
+    provider,
+    providerEventId: metadata.providerEventId,
+    tenantId: metadata.publicMetadata.tenantId,
+    eventType: metadata.publicMetadata.eventType,
+    receivedAt
+  }, env);
+
+  if (!idempotency.accepted) {
+    return webhookIntakeResult({
+      provider,
+      verified: true,
+      accepted: false,
+      duplicate: false,
+      status: "idempotency_unavailable",
+      next: "configure_billing_webhook_idempotency",
+      idempotency,
+      ...metadata.publicMetadata
+    });
+  }
+
+  return webhookIntakeResult({
+    provider,
+    verified: true,
+    accepted: true,
+    duplicate: idempotency.duplicate,
+    status: idempotency.duplicate ? "duplicate" : "accepted",
+    next: idempotency.duplicate ? "ignore_duplicate_billing_event" : "process_billing_event_metadata",
+    idempotency,
+    ...metadata.publicMetadata
+  });
+}
+
 export function clearBillingWebhookEventsForTests() {
   billingWebhookMemoryStore().clear();
 }
@@ -530,6 +679,121 @@ function getBillingWebhookStoreConfig(env = process.env): BillingWebhookStoreCon
     serviceRoleKey,
     table: env.AGENTPROOF_BILLING_WEBHOOK_EVENTS_TABLE || DEFAULT_BILLING_WEBHOOK_EVENTS_TABLE
   };
+}
+
+function webhookIntakeResult(
+  input: Omit<BillingWebhookIntakeResult, "privacy">
+): BillingWebhookIntakeResult {
+  return {
+    privacy: "billing-webhook-intake-metadata-only",
+    ...input,
+    ...(input.idempotency ? { idempotency: boundedBillingWebhookReservation(input.idempotency) } : {})
+  };
+}
+
+function boundedBillingWebhookReservation(
+  input: BillingWebhookReservation
+): NonNullable<BillingWebhookIntakeResult["idempotency"]> {
+  return {
+    privacy: input.privacy,
+    store: input.store,
+    provider: input.provider,
+    tenantId: input.tenantId,
+    eventType: input.eventType,
+    accepted: input.accepted,
+    duplicate: input.duplicate
+  };
+}
+
+function verifyStripeWebhookSignature(input: {
+  rawBody: string;
+  signatureHeader?: string | null;
+  secret: string;
+  receivedAt: Date;
+  toleranceSeconds: number;
+}): "ok" | "signature_missing" | "signature_invalid" | "signature_stale" {
+  const parsed = parseStripeSignatureHeader(input.signatureHeader);
+  if (!parsed) return "signature_missing";
+
+  const nowSeconds = Math.floor(input.receivedAt.getTime() / 1000);
+  if (!Number.isFinite(parsed.timestamp) || Math.abs(nowSeconds - parsed.timestamp) > input.toleranceSeconds) {
+    return "signature_stale";
+  }
+
+  const signedPayload = `${parsed.timestamp}.${input.rawBody}`;
+  const expected = createHmac("sha256", input.secret).update(signedPayload).digest("hex");
+  const matched = parsed.signatures.some((signature) => timingSafeHexEqual(signature, expected));
+
+  return matched ? "ok" : "signature_invalid";
+}
+
+function parseStripeSignatureHeader(value?: string | null): { timestamp: number; signatures: string[] } | null {
+  if (!value?.trim()) return null;
+  const parts = value.split(",").map((part) => part.trim());
+  const timestampPart = parts.find((part) => part.startsWith("t="));
+  const timestamp = Number(timestampPart?.slice(2));
+  const signatures = parts
+    .filter((part) => part.startsWith("v1="))
+    .map((part) => part.slice(3).trim().toLowerCase())
+    .filter((part) => /^[a-f0-9]{64}$/.test(part));
+
+  if (!Number.isSafeInteger(timestamp) || signatures.length === 0) return null;
+
+  return { timestamp, signatures };
+}
+
+function timingSafeHexEqual(left: string, right: string): boolean {
+  if (!/^[a-f0-9]{64}$/.test(left) || !/^[a-f0-9]{64}$/.test(right)) return false;
+  const leftBuffer = Buffer.from(left, "hex");
+  const rightBuffer = Buffer.from(right, "hex");
+  if (leftBuffer.length !== rightBuffer.length) return false;
+
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function extractStripeWebhookMetadata(value: unknown): {
+  providerEventId?: string;
+  publicMetadata: Pick<BillingWebhookIntakeResult, "tenantId" | "eventType" | "subscriptionStatus" | "plan">;
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { publicMetadata: {} };
+  }
+
+  const payload = value as StripeBillingWebhookPayload;
+  const object = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+    ? payload.data.object
+    : undefined;
+  const metadata = object && typeof object === "object" && !Array.isArray(object)
+    && object.metadata && typeof object.metadata === "object" && !Array.isArray(object.metadata)
+    ? object.metadata
+    : undefined;
+  const providerEventId = normalizeProviderEventId(payload.id) ?? undefined;
+  const eventType = normalizeEventType(payload.type);
+  const tenantId = normalizeTenantId(
+    metadata?.agentproofTenantId
+    ?? metadata?.tenantId
+    ?? metadata?.agentproof_tenant_id
+  ) ?? undefined;
+  const subscriptionStatus = normalizeSubscriptionStatus(object?.status) ?? undefined;
+  const plan = normalizePlanLabel(metadata?.agentproofPlan ?? metadata?.plan) ?? undefined;
+
+  return {
+    providerEventId,
+    publicMetadata: {
+      ...(tenantId ? { tenantId } : {}),
+      ...(eventType ? { eventType } : {}),
+      ...(subscriptionStatus ? { subscriptionStatus } : {}),
+      ...(plan ? { plan } : {})
+    }
+  };
+}
+
+function normalizeWebhookSecret(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = redactSecrets(value).trim();
+  if (normalized.length < 16 || normalized.includes("[redacted]")) return null;
+
+  return normalized;
 }
 
 function normalizeTenantId(value: unknown): string | null {

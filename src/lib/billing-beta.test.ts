@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "crypto";
 import {
   BillingBetaStoreError,
   buildBillingPortalSessionBoundary,
   billingSubscriptionAllowsAccess,
   clearBillingWebhookEventsForTests,
   evaluateBillingBetaGate,
+  processSignedBillingWebhook,
   readBillingBetaSummary,
   reserveBillingWebhookEvent
 } from "./billing-beta";
@@ -234,7 +236,7 @@ describe("billing beta metadata boundary", () => {
       duplicate: true,
       store: "memory"
     });
-    expect(serialized).not.toContain("evt_secret");
+    expect(serialized).not.toContain("evt_secret_should_not_leak_123");
   });
 
   it("refuses billing webhook reservations when idempotency is not configured", async () => {
@@ -255,7 +257,7 @@ describe("billing beta metadata boundary", () => {
       reason: "billing-webhook-idempotency-not-configured",
       privacy: "billing-webhook-idempotency-metadata-only"
     });
-    expect(JSON.stringify(result)).not.toContain("evt_secret");
+    expect(JSON.stringify(result)).not.toContain("evt_secret_should_not_leak_123");
   });
 
   it("stores only hashed provider event ids in Supabase webhook idempotency rows", async () => {
@@ -294,7 +296,7 @@ describe("billing beta metadata boundary", () => {
     });
     expect(bodies[0]).not.toHaveProperty("provider_event_id");
     expect(bodies[0]).not.toHaveProperty("payload");
-    expect(serialized).not.toContain("evt_secret");
+    expect(serialized).not.toContain("evt_secret_should_not_leak_456");
     expect(serialized).not.toContain("service-role-secret");
   });
 
@@ -317,7 +319,169 @@ describe("billing beta metadata boundary", () => {
       store: "supabase",
       privacy: "billing-webhook-idempotency-metadata-only"
     });
-    expect(JSON.stringify(result)).not.toContain("evt_secret");
+    expect(JSON.stringify(result)).not.toContain("evt_secret_should_not_leak_789");
+  });
+
+  it("accepts signed Stripe webhook payloads as metadata-only billing intake", async () => {
+    const secret = "whsec_test_secret_with_enough_entropy";
+    const rawBody = JSON.stringify({
+      id: "evt_intake_999",
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: "sub_secret_should_not_leak",
+          customer: "cus_secret_should_not_leak",
+          status: "active",
+          metadata: {
+            agentproofTenantId: "tenant_a",
+            agentproofPlan: "team",
+            paymentMethod: "pm_secret_should_not_leak"
+          }
+        }
+      }
+    });
+    const receivedAt = new Date("2026-07-02T00:00:00Z");
+    const signatureHeader = stripeSignature(rawBody, secret, Math.floor(receivedAt.getTime() / 1000));
+
+    const first = await processSignedBillingWebhook({
+      rawBody,
+      signatureHeader,
+      receivedAt
+    }, testEnv({
+      AGENTPROOF_BILLING_WEBHOOK_SECRET: secret,
+      AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY: "true"
+    }));
+    const duplicate = await processSignedBillingWebhook({
+      rawBody,
+      signatureHeader,
+      receivedAt
+    }, testEnv({
+      AGENTPROOF_BILLING_WEBHOOK_SECRET: secret,
+      AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY: "true"
+    }));
+    const serialized = JSON.stringify({ first, duplicate });
+
+    expect(first).toMatchObject({
+      privacy: "billing-webhook-intake-metadata-only",
+      provider: "stripe",
+      verified: true,
+      accepted: true,
+      duplicate: false,
+      status: "accepted",
+      tenantId: "tenant_a",
+      eventType: "customer.subscription.updated",
+      subscriptionStatus: "active",
+      plan: "team",
+      next: "process_billing_event_metadata",
+      idempotency: {
+        privacy: "billing-webhook-idempotency-metadata-only",
+        store: "memory",
+        accepted: true,
+        duplicate: false
+      }
+    });
+    expect(duplicate).toMatchObject({
+      accepted: true,
+      duplicate: true,
+      status: "duplicate",
+      next: "ignore_duplicate_billing_event"
+    });
+    expect(serialized).not.toContain("evt_intake_999");
+    expect(serialized).not.toContain("sub_secret");
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("pm_secret");
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain(rawBody);
+  });
+
+  it("rejects unsigned or stale billing webhooks before idempotency reservation", async () => {
+    const secret = "whsec_test_secret_with_enough_entropy";
+    const rawBody = JSON.stringify({
+      id: "evt_missing_signature_123",
+      type: "invoice.payment_succeeded",
+      data: { object: { metadata: { tenantId: "tenant_a" } } }
+    });
+    const receivedAt = new Date("2026-07-02T00:00:00Z");
+    const staleTimestamp = Math.floor(new Date("2026-07-01T23:00:00Z").getTime() / 1000);
+
+    const missing = await processSignedBillingWebhook({ rawBody, receivedAt }, testEnv({
+      AGENTPROOF_BILLING_WEBHOOK_SECRET: secret,
+      AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY: "true"
+    }));
+    const stale = await processSignedBillingWebhook({
+      rawBody,
+      signatureHeader: stripeSignature(rawBody, secret, staleTimestamp),
+      receivedAt
+    }, testEnv({
+      AGENTPROOF_BILLING_WEBHOOK_SECRET: secret,
+      AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY: "true"
+    }));
+    const accepted = await processSignedBillingWebhook({
+      rawBody,
+      signatureHeader: stripeSignature(rawBody, secret, Math.floor(receivedAt.getTime() / 1000)),
+      receivedAt
+    }, testEnv({
+      AGENTPROOF_BILLING_WEBHOOK_SECRET: secret,
+      AGENTPROOF_BILLING_WEBHOOK_IDEMPOTENCY_ALLOW_MEMORY: "true"
+    }));
+
+    expect(missing).toMatchObject({
+      verified: false,
+      accepted: false,
+      status: "signature_missing"
+    });
+    expect(stale).toMatchObject({
+      verified: false,
+      accepted: false,
+      status: "signature_stale"
+    });
+    expect(accepted).toMatchObject({
+      accepted: true,
+      duplicate: false,
+      status: "accepted"
+    });
+  });
+
+  it("fails signed billing webhook intake closed when idempotency is not configured", async () => {
+    const secret = "whsec_test_secret_with_enough_entropy";
+    const rawBody = JSON.stringify({
+      id: "evt_no_store_123",
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          status: "past_due",
+          metadata: { tenantId: "tenant_a" }
+        }
+      }
+    });
+    const receivedAt = new Date("2026-07-02T00:00:00Z");
+
+    const result = await processSignedBillingWebhook({
+      rawBody,
+      signatureHeader: stripeSignature(rawBody, secret, Math.floor(receivedAt.getTime() / 1000)),
+      receivedAt
+    }, testEnv({
+      AGENTPROOF_BILLING_WEBHOOK_SECRET: secret
+    }));
+
+    expect(result).toMatchObject({
+      privacy: "billing-webhook-intake-metadata-only",
+      verified: true,
+      accepted: false,
+      duplicate: false,
+      status: "idempotency_unavailable",
+      tenantId: "tenant_a",
+      eventType: "customer.subscription.updated",
+      subscriptionStatus: "past_due",
+      next: "configure_billing_webhook_idempotency",
+      idempotency: {
+        privacy: "billing-webhook-idempotency-metadata-only",
+        store: "none",
+        accepted: false,
+        duplicate: false
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("evt_no_store_123");
   });
 });
 
@@ -347,4 +511,10 @@ function testEnv(input: Record<string, string | undefined>): NodeJS.ProcessEnv {
     NODE_ENV: "test",
     ...input
   } as NodeJS.ProcessEnv;
+}
+
+function stripeSignature(rawBody: string, secret: string, timestamp: number): string {
+  const digest = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+
+  return `t=${timestamp},v1=${digest}`;
 }
