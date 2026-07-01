@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, AlertTriangle, FileCheck2, HelpCircle, MessageSquareWarning, ShieldCheck } from "lucide-react";
+import { Activity, AlertTriangle, CreditCard, FileCheck2, HelpCircle, MessageSquareWarning, ShieldCheck } from "lucide-react";
 
 const statusAreas = [
   {
@@ -89,6 +89,10 @@ export default function StatusPage() {
           </p>
         </div>
         <div className="integration-head-actions">
+          <Link className="button" href="/billing">
+            <CreditCard size={16} />
+            Billing
+          </Link>
           <Link className="button" href="/integrations">
             <Activity size={16} />
             Integrations

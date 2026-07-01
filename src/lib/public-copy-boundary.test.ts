@@ -10,6 +10,7 @@ const publicCopyFiles = [
   ["app metadata", "../app/layout.tsx"],
   ["home page", "../app/page.tsx"],
   ["workspace surface", "../components/AnalyzeWorkspace.tsx"],
+  ["billing boundary page", "../app/billing/page.tsx"],
   ["integrations page", "../app/integrations/page.tsx"],
   ["status and support page", "../app/status/page.tsx"],
   ["tenant setup page", "../app/tenant/page.tsx"]
@@ -178,5 +179,45 @@ describe("public launch copy boundary", () => {
     expect(source).not.toMatch(/\$\d/);
     expect(source).not.toMatch(/customer id/i);
     expect(source).not.toMatch(/subscription id/i);
+  });
+
+  it("keeps the public billing surface bounded without provider or payment identifiers", () => {
+    const source = readFileSync(new URL("../app/billing/page.tsx", import.meta.url), "utf8");
+
+    for (const expected of [
+      "Billing Beta Boundary",
+      "Plan, quota, and billing beta status",
+      "does not create subscriptions",
+      "does not create portal sessions",
+      "Plan label",
+      "Subscription status",
+      "Quota summary",
+      "Feature gates",
+      "Portal boundary",
+      "Webhook idempotency",
+      "Blocked Before Provider Work",
+      "GitHub installation token fetch",
+      "PR evidence fetch",
+      "OpenAI verifier calls",
+      "summary report saves",
+      "marker comments",
+      "Slack summaries",
+      "Never Show In Customer Surfaces",
+      "provider customer ids",
+      "provider subscription ids",
+      "payment method data",
+      "raw webhook bodies",
+      "service-role keys",
+      "Still Separate Launch Work"
+    ]) {
+      expect(source).toContain(expected);
+    }
+
+    expect(source).not.toMatch(/\bSLA\b/);
+    expect(source).not.toMatch(/\b\d+%\b/);
+    expect(source).not.toMatch(/\$\d/);
+    expect(source).not.toMatch(/checkout session/i);
+    expect(source).not.toMatch(/stripe portal/i);
+    expect(source).not.toMatch(/card number/i);
   });
 });

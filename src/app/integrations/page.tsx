@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Bot, Database, FileCheck2, GitPullRequest, KeyRound, LifeBuoy, ShieldCheck, SlidersHorizontal, Wrench } from "lucide-react";
+import { Bell, Bot, CreditCard, Database, FileCheck2, GitPullRequest, KeyRound, LifeBuoy, ShieldCheck, SlidersHorizontal, Wrench } from "lucide-react";
 import { getPublicGitHubAppReadinessStatus } from "@/lib/github-app";
 
 const rows = [
@@ -109,6 +109,10 @@ export default function IntegrationsPage() {
           </p>
         </div>
         <div className="integration-head-actions">
+          <Link className="button" href="/billing">
+            <CreditCard size={16} />
+            Billing
+          </Link>
           <Link className="button" href="/status">
             <LifeBuoy size={16} />
             Status
