@@ -6,6 +6,7 @@ import type { VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_SERVER_REPORTS = 100;
+export const TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT = 100;
 export const SAVED_REPORT_DURABILITY = "short-lived-in-memory";
 export const SAVED_REPORT_DURABILITY_WARNING =
   "Saved reports are summary-only, short-lived, and stored in memory; they may expire or disappear after a serverless instance change.";
@@ -70,6 +71,15 @@ export interface TenantSavedReportSummary {
   reviewPriorityCount: number;
   scopeCreepSuspected: boolean;
   privacy: "summary-only";
+}
+
+export type TenantSavedReportPriorityFilter = "all" | VerificationReport["summary"]["priority"];
+export type TenantSavedReportStatusFilter = "all" | "missing_tests" | "scope_creep" | "weak_evidence";
+
+export interface TenantSavedReportFilters {
+  priority: TenantSavedReportPriorityFilter;
+  status: TenantSavedReportStatusFilter;
+  query?: string;
 }
 
 export interface TenantSavedReportCount {
@@ -164,6 +174,43 @@ export async function listTenantSavedReports(
   return rows
     .map(toTenantSavedReportSummary)
     .filter((summary): summary is TenantSavedReportSummary => Boolean(summary));
+}
+
+export function normalizeTenantSavedReportFilters(input: {
+  priority?: unknown;
+  status?: unknown;
+  query?: unknown;
+}): TenantSavedReportFilters {
+  const priority = typeof input.priority === "string" && isTenantSavedReportPriorityFilter(input.priority)
+    ? input.priority
+    : "all";
+  const status = typeof input.status === "string" && isTenantSavedReportStatusFilter(input.status)
+    ? input.status
+    : "all";
+  const query = normalizeSavedReportQuery(input.query);
+
+  return {
+    priority,
+    status,
+    ...(query ? { query } : {})
+  };
+}
+
+export function filterTenantSavedReportSummaries(
+  reports: TenantSavedReportSummary[],
+  filters: TenantSavedReportFilters
+): TenantSavedReportSummary[] {
+  const query = filters.query?.toLowerCase();
+
+  return reports.filter((report) => {
+    if (filters.priority !== "all" && report.priority !== filters.priority) return false;
+    if (filters.status === "missing_tests" && report.testing.missingTestCount <= 0) return false;
+    if (filters.status === "scope_creep" && !report.scopeCreepSuspected) return false;
+    if (filters.status === "weak_evidence" && report.evidenceCoverage >= 70) return false;
+    if (query && !tenantSavedReportMatchesQuery(report, query)) return false;
+
+    return true;
+  });
 }
 
 export async function countTenantSavedReports(
@@ -839,8 +886,60 @@ function normalizeTenantId(value: string): string | undefined {
 
 function normalizeSavedReportListLimit(value: number | undefined): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0
-    ? Math.min(value, 26)
+    ? Math.min(value, TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT + 1)
     : 10;
+}
+
+function isTenantSavedReportPriorityFilter(value: string): value is TenantSavedReportPriorityFilter {
+  return ["all", "blocker", "high", "medium", "low"].includes(value);
+}
+
+function isTenantSavedReportStatusFilter(value: string): value is TenantSavedReportStatusFilter {
+  return ["all", "missing_tests", "scope_creep", "weak_evidence"].includes(value);
+}
+
+function normalizeSavedReportQuery(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = stripReportFilterForbiddenTerms(redactReportFilterSecrets(redactSecrets(value)))
+    .replace(/[^a-zA-Z0-9_.:/#-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+
+  return normalized || undefined;
+}
+
+function redactReportFilterSecrets(value: string): string {
+  return value.replace(/\b(?:key|api_key|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi, "[redacted]");
+}
+
+function stripReportFilterForbiddenTerms(value: string): string {
+  return value.replace(
+    /\b(rawDiff|rawLog|rawPatch|evidenceIndex|claims|reprompt|reportBody|savedReportUrl|commentBody|payload|serviceRole|service-role|table)\b/gi,
+    " "
+  );
+}
+
+function tenantSavedReportSearchText(report: TenantSavedReportSummary): string {
+  return [
+    report.sourceTitle,
+    report.sourceUrl,
+    report.priority,
+    report.testing.ciStatus,
+    report.testing.lintStatus,
+    report.testing.typecheckStatus
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function tenantSavedReportMatchesQuery(report: TenantSavedReportSummary, query: string): boolean {
+  const searchText = tenantSavedReportSearchText(report);
+  const tokens = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item && item !== "redacted");
+
+  return tokens.length === 0 || tokens.every((token) => searchText.includes(token));
 }
 
 function countFromContentRange(value: string | null): number | null {

@@ -1,3 +1,5 @@
+import { redactSecrets } from "./redact";
+
 export type TenantRepositorySettingKey =
   | "enabled"
   | "analysisEnabled"
@@ -53,11 +55,25 @@ export function tenantEntitlementsUrl(tenantId: string): string {
   return `/api/tenants/entitlements?${params.toString()}`;
 }
 
-export function tenantReportsUrl(tenantId: string, limit = 10): string {
+export type TenantReportPriorityFilter = "all" | "blocker" | "high" | "medium" | "low";
+export type TenantReportStatusFilter = "all" | "missing_tests" | "scope_creep" | "weak_evidence";
+
+export interface TenantReportUrlOptions {
+  priority?: TenantReportPriorityFilter;
+  status?: TenantReportStatusFilter;
+  query?: string;
+}
+
+export function tenantReportsUrl(tenantId: string, limit = 10, options: TenantReportUrlOptions = {}): string {
   const params = new URLSearchParams({
     tenantId: tenantId.trim(),
     limit: String(Math.min(Math.max(Math.trunc(limit), 1), 25))
   });
+
+  if (options.priority && options.priority !== "all") params.set("priority", options.priority);
+  if (options.status && options.status !== "all") params.set("status", options.status);
+  const query = sanitizeTenantReportQuery(options.query);
+  if (query) params.set("query", query);
 
   return `/api/tenants/reports?${params.toString()}`;
 }
@@ -133,4 +149,25 @@ function normalizeTenantAuditExportClientLimit(value: number): number {
   if (!Number.isFinite(value)) return 100;
 
   return Math.min(Math.max(Math.trunc(value), 1), 250);
+}
+
+function sanitizeTenantReportQuery(value: string | undefined): string {
+  if (!value) return "";
+
+  return stripReportFilterForbiddenTerms(redactReportFilterSecrets(redactSecrets(value)))
+    .replace(/[^a-zA-Z0-9_.:/#-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function redactReportFilterSecrets(value: string): string {
+  return value.replace(/\b(?:key|api_key|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi, "[redacted]");
+}
+
+function stripReportFilterForbiddenTerms(value: string): string {
+  return value.replace(
+    /\b(rawDiff|rawLog|rawPatch|evidenceIndex|claims|reprompt|reportBody|savedReportUrl|commentBody|payload|serviceRole|service-role|table)\b/gi,
+    " "
+  );
 }

@@ -32,6 +32,8 @@ import {
   tenantSettingsPatchPayload,
   tenantSettingsUrl,
   tenantUsageUrl,
+  type TenantReportPriorityFilter,
+  type TenantReportStatusFilter,
   type TenantRepositorySettingKey
 } from "@/lib/tenant-dashboard-client";
 
@@ -192,6 +194,12 @@ interface ReportSummary {
   privacy: "summary-only";
 }
 
+interface TenantReportFilterSummary {
+  priority: TenantReportPriorityFilter;
+  status: TenantReportStatusFilter;
+  query?: string;
+}
+
 interface AnalysisJobSummary {
   id: string;
   status: string;
@@ -325,6 +333,10 @@ export function TenantSetupPanel() {
   const [entitlementStatus, setEntitlementStatus] = useState<TenantEntitlementStatus | null>(null);
   const [usage, setUsage] = useState<UsageSummary[]>([]);
   const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [reportPriorityFilter, setReportPriorityFilter] = useState<TenantReportPriorityFilter>("all");
+  const [reportStatusFilter, setReportStatusFilter] = useState<TenantReportStatusFilter>("all");
+  const [reportQuery, setReportQuery] = useState("");
+  const [reportFilterSummary, setReportFilterSummary] = useState<TenantReportFilterSummary | null>(null);
   const [analysisJobs, setAnalysisJobs] = useState<AnalysisJobSummary[]>([]);
   const [analysisJobFilter, setAnalysisJobFilter] = useState<AnalysisJobFilter>("all");
   const [analysisJobSummary, setAnalysisJobSummary] = useState<AnalysisJobFilterSummary | null>(null);
@@ -659,18 +671,32 @@ export function TenantSetupPanel() {
     }
   }
 
-  async function loadSavedReports(feedback: "visible" | "silent" = "visible") {
+  async function loadSavedReports(
+    feedback: "visible" | "silent" = "visible",
+    filters: TenantReportFilterSummary = {
+      priority: reportPriorityFilter,
+      status: reportStatusFilter,
+      query: reportQuery
+    }
+  ) {
     setMode("loading");
     if (feedback === "visible") setMessage(null);
 
     try {
       const json = await requestJson<{
         reports?: ReportSummary[];
-      }>(tenantReportsUrl(tenantId, 10), {
+        filters?: TenantReportFilterSummary;
+        filterBasis?: "tenant_recent_summary" | "tenant_recent_summary_sample";
+      }>(tenantReportsUrl(tenantId, 10, {
+        priority: filters.priority,
+        status: filters.status,
+        query: filters.query
+      }), {
         headers: tenantInviteHeaders(inviteToken)
       });
 
       setReports(Array.isArray(json.reports) ? json.reports : []);
+      setReportFilterSummary(json.filters ?? null);
       if (feedback === "visible") {
         setMessage({ kind: "ok", text: "Recent summary reports loaded." });
       }
@@ -1119,6 +1145,63 @@ export function TenantSetupPanel() {
               Load Reports
             </button>
           </div>
+          <div className="tenant-filter-row" aria-label="Summary report priority filter">
+            {(["all", "blocker", "high", "medium", "low"] as const).map((filter) => (
+              <button
+                key={filter}
+                className={reportPriorityFilter === filter ? "button compact active" : "button compact ghost"}
+                type="button"
+                onClick={() => {
+                  setReportPriorityFilter(filter);
+                  void loadSavedReports("visible", {
+                    priority: filter,
+                    status: reportStatusFilter,
+                    query: reportQuery
+                  });
+                }}
+                disabled={!credentialsReady || busy}
+              >
+                {reportPriorityLabel(filter)}
+              </button>
+            ))}
+          </div>
+          <div className="tenant-filter-row" aria-label="Summary report status filter">
+            {(["all", "missing_tests", "scope_creep", "weak_evidence"] as const).map((filter) => (
+              <button
+                key={filter}
+                className={reportStatusFilter === filter ? "button compact active" : "button compact ghost"}
+                type="button"
+                onClick={() => {
+                  setReportStatusFilter(filter);
+                  void loadSavedReports("visible", {
+                    priority: reportPriorityFilter,
+                    status: filter,
+                    query: reportQuery
+                  });
+                }}
+                disabled={!credentialsReady || busy}
+              >
+                {reportStatusLabel(filter)}
+              </button>
+            ))}
+          </div>
+          <div className="field tenant-search-field">
+            <label htmlFor="reportQuery">Report search</label>
+            <input
+              id="reportQuery"
+              className="input"
+              value={reportQuery}
+              onChange={(event) => setReportQuery(event.target.value)}
+              placeholder="Repository, PR, or title"
+              autoComplete="off"
+            />
+          </div>
+          {reportFilterSummary ? (
+            <p className="muted small">
+              Filters: {reportPriorityLabel(reportFilterSummary.priority)} · {reportStatusLabel(reportFilterSummary.status)}
+              {reportFilterSummary.query ? ` · ${reportFilterSummary.query}` : ""}
+            </p>
+          ) : null}
           {reports.length > 0 ? (
             <ul className="tenant-report-list">
               {reports.map((report) => (
@@ -1320,6 +1403,23 @@ function reportDetail(report: ReportSummary): string {
   const scopeText = report.scopeCreepSuspected ? "scope check flagged" : "scope check clear";
 
   return `${requirementText} · ${testingText} · ${reviewText} · ${scopeText}`;
+}
+
+function reportPriorityLabel(filter: TenantReportPriorityFilter): string {
+  if (filter === "blocker") return "Blocker";
+  if (filter === "high") return "High";
+  if (filter === "medium") return "Medium";
+  if (filter === "low") return "Low";
+
+  return "All priorities";
+}
+
+function reportStatusLabel(filter: TenantReportStatusFilter): string {
+  if (filter === "missing_tests") return "Missing tests";
+  if (filter === "scope_creep") return "Scope check";
+  if (filter === "weak_evidence") return "Weak evidence";
+
+  return "All signals";
 }
 
 function auditActionLabel(action: string): string {

@@ -121,6 +121,14 @@ describe("TenantSetupPanel product and privacy boundary", () => {
   it("uses summary-only recent reports without report access internals", () => {
     expect(source).toContain("tenantReportsUrl");
     expect(source).toContain("Recent Summary Reports");
+    expect(source).toContain("Summary report priority filter");
+    expect(source).toContain("Summary report status filter");
+    expect(source).toContain("Report search");
+    expect(source).toContain("All priorities");
+    expect(source).toContain("Missing tests");
+    expect(source).toContain("Scope check");
+    expect(source).toContain("Weak evidence");
+    expect(source).toContain("filterBasis?: \"tenant_recent_summary\" | \"tenant_recent_summary_sample\"");
     expect(source).not.toContain("accessToken");
     expect(source).not.toContain("access_token_hash");
     expect(source).not.toContain("reportKey");
@@ -128,6 +136,9 @@ describe("TenantSetupPanel product and privacy boundary", () => {
     expect(source).not.toContain("commentBody");
     expect(source).not.toContain("rawLog");
     expect(source).not.toContain("rawPatch");
+    expect(source).not.toContain("AI code review");
+    expect(source).not.toContain("Approve");
+    expect(source).not.toContain("Merge");
   });
 
   it("uses summary-only analysis jobs without queue or worker internals", () => {

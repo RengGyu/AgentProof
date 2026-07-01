@@ -1,12 +1,24 @@
 import { verifyTenantAdminAccess } from "@/lib/github-onboarding";
 import { noStoreJson } from "@/lib/http";
-import { listTenantSavedReports, SavedReportStoreError } from "@/lib/server-report-store";
+import {
+  filterTenantSavedReportSummaries,
+  listTenantSavedReports,
+  normalizeTenantSavedReportFilters,
+  SavedReportStoreError,
+  TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT
+} from "@/lib/server-report-store";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const tenantId = url.searchParams.get("tenantId");
   const inviteToken = request.headers.get("x-agentproof-beta-invite-token") ?? undefined;
   const limit = normalizeLimit(url.searchParams.get("limit"));
+  const filters = normalizeTenantSavedReportFilters({
+    priority: url.searchParams.get("priority"),
+    status: url.searchParams.get("status"),
+    query: url.searchParams.get("query")
+  });
+  const hasFilters = filters.priority !== "all" || filters.status !== "all" || Boolean(filters.query);
   const access = verifyTenantAdminAccess({
     tenantId,
     inviteToken,
@@ -22,15 +34,22 @@ export async function GET(request: Request) {
   const authorizedTenantId = access.tenantId;
 
   try {
-    const rows = await listTenantSavedReports({ tenantId: authorizedTenantId, limit: limit + 1 });
-    const reports = rows.slice(0, limit);
+    const candidateLimit = hasFilters ? TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT + 1 : limit + 1;
+    const rows = await listTenantSavedReports({ tenantId: authorizedTenantId, limit: candidateLimit });
+    const filteredRows = filterTenantSavedReportSummaries(rows, filters);
+    const reports = filteredRows.slice(0, limit);
 
     return noStoreJson({
       ok: true,
       tenantId: authorizedTenantId,
       reports,
       count: reports.length,
-      truncated: rows.length > limit,
+      limit,
+      truncated: hasFilters
+        ? filteredRows.length > limit || rows.length > TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT
+        : rows.length > limit,
+      filters,
+      filterBasis: hasFilters ? "tenant_recent_summary_sample" : "tenant_recent_summary",
       privacy: "saved-report-summary-only",
       next: "review_recent_reports"
     });

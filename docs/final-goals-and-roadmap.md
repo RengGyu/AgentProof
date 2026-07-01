@@ -90,7 +90,7 @@ Turn first setup into a repeatable merge-review workflow.
 
 Required changes:
 
-- Add a tenant dashboard showing recent summary-only reports, failed analyses, repo status, quota usage, and setup warnings. The first `/tenant` setup dashboard exists for install, grants, settings, repo health, read-only monthly usage, recent summary report metadata, recent verification activity, and async analysis status filters with recent-sample rollups; broader report search/filter and warning rollups remain.
+- Add a tenant dashboard showing recent summary-only reports, failed analyses, repo status, quota usage, and setup warnings. The first `/tenant` setup dashboard exists for install, grants, settings, repo health, read-only monthly usage, recent summary report metadata with priority/status/query filters over a bounded recent summary sample, recent verification activity, and async analysis status filters with recent-sample rollups; broader warning rollups remain.
 - Add customer-facing GitHub App health checks for missing permissions, expired/suspended installations, inaccessible repos, rate limits, large PR caps, and unavailable checks. The first metadata-only repository health API and explicit per-repo probe UI exist; broader permission/job health coverage remains.
 - Keep the report layout focused on top risk, weakest evidence, requirement coverage, missing tests, scope creep, review priority, and next action.
 - Keep GitHub PR comments marker-based and summary-only.

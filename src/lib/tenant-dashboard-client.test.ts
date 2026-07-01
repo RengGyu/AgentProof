@@ -69,14 +69,28 @@ describe("tenant dashboard client request helpers", () => {
 
   it("builds summary report list URLs without invite tokens or raw report internals", () => {
     const url = tenantReportsUrl(" tenant_a ", 999);
+    const filteredUrl = tenantReportsUrl(" tenant_a ", 10, {
+      priority: "high",
+      status: "missing_tests",
+      query: "AgentProof key=secret_should_not_leak rawDiff"
+    });
 
     expect(url).toBe("/api/tenants/reports?tenantId=tenant_a&limit=25");
+    expect(filteredUrl).toBe("/api/tenants/reports?tenantId=tenant_a&limit=10&priority=high&status=missing_tests&query=AgentProof+redacted");
     expect(url).not.toContain("token");
     expect(url).not.toContain("invite");
     expect(url).not.toContain("key=");
     expect(url).not.toContain("reportBody");
     expect(url).not.toContain("table");
     expect(url).not.toContain("service-role");
+    expect(filteredUrl).not.toContain("invite");
+    expect(filteredUrl).not.toContain("accessToken");
+    expect(filteredUrl).not.toContain("reportKey");
+    expect(filteredUrl).not.toContain("key=");
+    expect(filteredUrl).not.toContain("secret_should_not_leak");
+    expect(filteredUrl).not.toContain("rawDiff");
+    expect(filteredUrl).not.toContain("table");
+    expect(filteredUrl).not.toContain("service-role");
   });
 
   it("builds analysis job status URLs without invite tokens or worker internals", () => {

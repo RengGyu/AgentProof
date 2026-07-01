@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTenantAdminSession } from "@/lib/github-onboarding";
 import { clearSavedReportsForTests, createSavedReport } from "@/lib/server-report-store";
+import { sanitizeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
 import { GET } from "./route";
@@ -66,7 +67,13 @@ describe("GET /api/tenants/reports", () => {
         })
       ],
       count: 1,
+      limit: 25,
       truncated: false,
+      filters: {
+        priority: "all",
+        status: "all"
+      },
+      filterBasis: "tenant_recent_summary",
       privacy: "saved-report-summary-only",
       next: "review_recent_reports"
     });
@@ -118,8 +125,107 @@ describe("GET /api/tenants/reports", () => {
 
     expect(response.status).toBe(200);
     expect(json.count).toBe(2);
+    expect(json.limit).toBe(2);
     expect(json.truncated).toBe(true);
     expect(json.reports).toHaveLength(2);
+  });
+
+  it("filters saved reports over summary-only fields without exposing report bodies", async () => {
+    stubInviteEnv();
+    const matchingReport = generateVerificationReport(demoScenarios["scope-creep"]);
+    matchingReport.source.title = "AgentProof payment setup verification";
+    matchingReport.source.url = "https://github.com/RengGyu/AgentProof/pull/27?key=secret_should_not_leak";
+    matchingReport.summary.priority = "high";
+    matchingReport.summary.evidenceCoverage = 42;
+    matchingReport.testing.missingTests = [{ path: "src/app/api/billing/route.ts", why: "No quota test", evidenceRefs: [] }];
+    const otherReport = generateVerificationReport(demoScenarios.clean);
+    otherReport.source.title = "Unrelated summary should not match";
+    otherReport.source.url = "https://github.com/RengGyu/OtherRepo/pull/99";
+    otherReport.summary.priority = "low";
+    otherReport.summary.evidenceCoverage = 95;
+    otherReport.testing.missingTests = [];
+    await createSavedReport(matchingReport, { tenantId: "tenant_a" });
+    await createSavedReport(otherReport, { tenantId: "tenant_a" });
+
+    const response = await GET(new Request("http://localhost/api/tenants/reports?tenantId=tenant_a&priority=high&status=missing_tests&query=AgentProof%20key%3Dsecret_should_not_leak", {
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" }
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({
+      ok: true,
+      tenantId: "tenant_a",
+      count: 1,
+      limit: 10,
+      truncated: false,
+      filters: {
+        priority: "high",
+        status: "missing_tests",
+        query: "AgentProof redacted"
+      },
+      filterBasis: "tenant_recent_summary_sample",
+      privacy: "saved-report-summary-only"
+    });
+    expect(json.reports).toEqual([
+      expect.objectContaining({
+        sourceTitle: "AgentProof payment setup verification",
+        sourceUrl: "https://github.com/RengGyu/AgentProof/pull/27",
+        priority: "high",
+        testing: expect.objectContaining({
+          missingTestCount: 1
+        })
+      })
+    ]);
+    expect(serialized).not.toContain("Unrelated summary should not match");
+    expect(serialized).not.toContain("OtherRepo");
+    expect(serialized).not.toContain("secret_should_not_leak");
+    expect(serialized).not.toContain("?key=");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+    expect(serialized).not.toContain("src/app/api/billing/route.ts");
+  });
+
+  it("uses a bounded Supabase candidate window for filtered summary report search", async () => {
+    stubInviteEnv();
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_REPORTS_TABLE", "saved_reports_test");
+    const report = sanitizeReportForShare(generateVerificationReport(demoScenarios.clean));
+    report.source.title = "AgentProof saved summary";
+    report.summary.priority = "high";
+    const row = {
+      id: "tenant_report",
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      tenant_id: "tenant_a",
+      access_token_hash: "a".repeat(64),
+      report
+    };
+    const fetchMock = vi.fn(async () => Response.json([row]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(new Request("http://localhost/api/tenants/reports?tenantId=tenant_a&priority=high&query=AgentProof", {
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" }
+    }));
+    const json = await response.json();
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit | undefined];
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json.count).toBe(1);
+    expect(json.filterBasis).toBe("tenant_recent_summary_sample");
+    expect(String(url)).toContain("tenant_id=eq.tenant_a");
+    expect(String(url)).toContain("expires_at=gt.");
+    expect(String(url)).toContain("select=id%2Ccreated_at%2Cexpires_at%2Creport%2Ctenant_id");
+    expect(String(url)).toContain("limit=101");
+    expect(String(url)).not.toContain("service-role-secret");
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer service-role-secret");
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("saved_reports_test");
+    expect(serialized).not.toContain("access_token_hash");
   });
 
   it("fails closed when saved report storage is unavailable", async () => {
