@@ -13,6 +13,10 @@ import {
   createTenantRepositoryGrant,
   updateTenantRepositoryGrantSettings
 } from "./tenant-control-plane";
+import {
+  clearTenantDeletionStateForTests,
+  markTenantDeletionStartedIfConfigured
+} from "./tenant-deletion-state";
 import { clearUsageQuotaForTests } from "./usage-quota";
 
 describe("analysis worker preflight", () => {
@@ -24,6 +28,7 @@ describe("analysis worker preflight", () => {
     clearSavedReportsForTests();
     clearAuditEventsForTests();
     clearUsageQuotaForTests();
+    clearTenantDeletionStateForTests();
   });
 
   it("returns idle when no queued job is due", async () => {
@@ -198,6 +203,161 @@ describe("analysis worker preflight", () => {
     });
     expect(result.sideEffects).not.toHaveProperty("slackSummary");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stops a queued tenant job after deletion starts before token fetch or side effects", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: true, commentEnabled: true, slackNotificationsEnabled: true } });
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+    markTenantDeletionStartedIfConfigured({ tenantId: "tenant_a" });
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const savedReportCount = await countTenantSavedReports({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify({ result, jobs: getAnalysisJobsForTests(), savedReportCount });
+
+    expect(result).toEqual({
+      status: "failed_terminal",
+      reason: "tenant-deletion-active"
+    });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id,
+      status: "failed_terminal",
+      error_code: "tenant-deletion-active",
+      locked_at: null,
+      result_summary: null
+    });
+    expect(savedReportCount).toMatchObject({
+      count: 0
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("installation-token");
+    expect(serialized).not.toContain("hooks.slack.com");
+    expect(serialized).not.toContain("/reports/");
+    expect(serialized).not.toContain("comment_body");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
+  it("rechecks deletion state after side-effect audit before token fetch", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: true, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS", "true");
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY", "audit-service-role-secret");
+    vi.stubEnv("AGENTPROOF_AUDIT_EVENTS_TABLE", "audit_events_test");
+    const auditBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://agentproof-test.supabase.co/rest/v1/audit_events_test") {
+        auditBodies.push(JSON.parse(String(init?.body)));
+        markTenantDeletionStartedIfConfigured({ tenantId: "tenant_a" });
+        return new Response(null, { status: 201 });
+      }
+
+      return new Response(JSON.stringify({ message: `Unexpected fetch ${String(url)}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: false }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const savedReportCount = await countTenantSavedReports({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify({ result, jobs: getAnalysisJobsForTests(), savedReportCount, auditBodies });
+
+    expect(result).toMatchObject({
+      status: "failed_terminal",
+      job: expect.objectContaining({ id }),
+      reason: "tenant-deletion-active",
+      sideEffects: {
+        saveReport: true,
+        comment: false
+      }
+    });
+    expect(savedReportCount).toMatchObject({ count: 0 });
+    expect(fetchMock.mock.calls.some((call) =>
+      String(call[0]) === "https://api.github.com/app/installations/321/access_tokens"
+    )).toBe(false);
+    expect(auditBodies[0]).toMatchObject({
+      action: "github_app_side_effects_ready",
+      metadata: {
+        savedReport: {
+          privacy: "summary-only"
+        }
+      }
+    });
+    expect(serialized).not.toContain("installation-token");
+    expect(serialized).not.toContain("/reports/");
+    expect(serialized).not.toContain("comment_body");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
+  it("rechecks deletion state immediately before saved-report side effects", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: true, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY", "deletion-service-role-secret");
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_TABLE", "tenant_deletion_state_test");
+    const githubFetch = mockWorkerFetch();
+    let deletionStateChecks = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).startsWith("https://agentproof-test.supabase.co/rest/v1/tenant_deletion_state_test")) {
+        deletionStateChecks += 1;
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "content-range": deletionStateChecks >= 7 ? "0-0/1" : "0-0/0"
+          }
+        });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: false }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const savedReportCount = await countTenantSavedReports({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify({ result, jobs: getAnalysisJobsForTests(), savedReportCount });
+
+    expect(result).toMatchObject({
+      status: "failed_terminal",
+      job: expect.objectContaining({ id }),
+      reason: "tenant-deletion-active",
+      sideEffects: {
+        saveReport: true,
+        comment: false
+      }
+    });
+    expect(fetchMock.mock.calls.some((call) =>
+      String(call[0]) === "https://api.github.com/app/installations/321/access_tokens"
+    )).toBe(true);
+    expect(fetchMock.mock.calls.some((call) =>
+      String(call[0]).includes("/issues/7/comments")
+    )).toBe(false);
+    expect(savedReportCount).toMatchObject({ count: 0 });
+    expect(serialized).not.toContain("/reports/");
+    expect(serialized).not.toContain("comment_body");
+    expect(serialized).not.toContain("deletion-service-role-secret");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
   });
 
   it("stops queued analysis before token fetch when the tenant analysis plan is unavailable", async () => {

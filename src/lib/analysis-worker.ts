@@ -34,6 +34,10 @@ import {
   TenantControlPlaneStoreError
 } from "./tenant-control-plane";
 import {
+  assertTenantDeletionNotActiveAsync,
+  TenantDeletionStateError
+} from "./tenant-deletion-state";
+import {
   assertTenantPlanAllowsGitHubAppAnalysis,
   clampTenantPlanSideEffects,
   UsageQuotaStoreError
@@ -42,6 +46,7 @@ import { generateVerificationReport } from "./verifier";
 
 export const DEFAULT_ANALYSIS_WORKER_BATCH_LIMIT = 1;
 export const MAX_ANALYSIS_WORKER_BATCH_LIMIT = 5;
+const TENANT_DELETION_ACTIVE_ERROR = "Tenant deletion is in progress.";
 
 export type AnalysisWorkerPreflightStatus =
   | "idle"
@@ -146,6 +151,27 @@ export async function preflightNextAnalysisJob(
       status: "failed_retryable",
       reason: "github_app_not_ready"
     };
+  }
+
+  try {
+    await assertWorkerTenantDeletionNotActive(job, env);
+  } catch (error) {
+    if (error instanceof AnalysisWorkerTerminalError || error instanceof AnalysisWorkerRetryableError) {
+      await failAnalysisJob({
+        id: job.id,
+        retryable: error instanceof AnalysisWorkerRetryableError,
+        code: error.code,
+        summary: error.message,
+        now: options.now
+      }, env);
+
+      return {
+        status: error instanceof AnalysisWorkerRetryableError ? "failed_retryable" : "failed_terminal",
+        reason: error.code
+      };
+    }
+
+    throw error;
   }
 
   try {
@@ -277,6 +303,7 @@ export async function runNextAnalysisJob(
 
   try {
     await prepareWorkerSideEffects(job, sideEffects, env);
+    await assertWorkerTenantDeletionNotActive(job, env);
 
     const token = await createGitHubInstallationAccessToken(job.installation_id, env);
     const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "");
@@ -304,12 +331,14 @@ export async function runNextAnalysisJob(
     }
 
     const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, sideEffects, env);
-    const saved = sideEffectsBeforeSave.saveReport
-      ? await createAutomationSavedReport(report, {
+    let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
+    if (sideEffectsBeforeSave.saveReport) {
+      await assertWorkerTenantDeletionNotActive(job, env);
+      saved = await createAutomationSavedReport(report, {
         requestUrl: options.requestUrl,
         tenantId: job.tenant_id ?? undefined
-      })
-      : undefined;
+      });
+    }
 
     const sideEffectsBeforeRemaining = (sideEffectsBeforeSave.comment || sideEffectsBeforeSave.slackSummary)
       ? await revalidateWorkerSideEffects(job, {
@@ -330,16 +359,20 @@ export async function runNextAnalysisJob(
       comment: sideEffectsBeforeRemaining.comment,
       ...(sideEffectsBeforeSlack.slackSummary ? { slackSummary: true } : {})
     };
-    const comment = completedSideEffects.comment
-      ? await postGitHubAppMarkerComment({
+    let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
+    if (completedSideEffects.comment) {
+      await assertWorkerTenantDeletionNotActive(job, env);
+      comment = await postGitHubAppMarkerComment({
         repositoryFullName: job.repository_full_name,
         pullRequestNumber: job.pull_request_number,
         pullRequestUrl: job.pull_request_url
-      }, token, report)
-      : undefined;
-    const slack = completedSideEffects.slackSummary
-      ? await sendSlackReportSummary(report, {}, env)
-      : undefined;
+      }, token, report);
+    }
+    let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
+    if (completedSideEffects.slackSummary) {
+      await assertWorkerTenantDeletionNotActive(job, env);
+      slack = await sendSlackReportSummary(report, {}, env);
+    }
 
     const resultSummary: AnalysisJobResultSummary = {
       status: "completed",
@@ -659,6 +692,25 @@ function classifyWorkerFailure(error: unknown): { retryable: boolean; code: stri
   }
 
   return { retryable: true, code: "analysis_worker_failed", summary };
+}
+
+async function assertWorkerTenantDeletionNotActive(job: AnalysisJobRow, env: NodeJS.ProcessEnv): Promise<void> {
+  try {
+    await assertTenantDeletionNotActiveAsync({ tenantId: job.tenant_id ?? undefined }, env);
+  } catch (error) {
+    if (error instanceof TenantDeletionStateError) {
+      if (error.message === TENANT_DELETION_ACTIVE_ERROR) {
+        throw new AnalysisWorkerTerminalError("tenant-deletion-active", TENANT_DELETION_ACTIVE_ERROR);
+      }
+
+      throw new AnalysisWorkerRetryableError(
+        "tenant_deletion_state_unavailable",
+        "Tenant deletion state is unavailable during analysis worker execution."
+      );
+    }
+
+    throw error;
+  }
 }
 
 function requiresDurableAuditForSideEffects(env: NodeJS.ProcessEnv): boolean {
