@@ -44,7 +44,13 @@ import {
   TenantControlPlaneStoreError
 } from "@/lib/tenant-control-plane";
 import { TenantDeletionStateError } from "@/lib/tenant-deletion-state";
-import { reserveUsageQuota, usageQuotaPublicReason, UsageQuotaStoreError, type UsageQuotaReservation } from "@/lib/usage-quota";
+import {
+  clampTenantPlanSideEffects,
+  reserveUsageQuota,
+  usageQuotaPublicReason,
+  UsageQuotaStoreError,
+  type UsageQuotaReservation
+} from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
 
 const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
@@ -548,13 +554,48 @@ async function handlePullRequestAutomation(
     });
   }
 
-  const plannedSideEffects = {
+  let plannedSideEffects = {
     saveReport: context.saveReportsEnabled
       && (!tenantGrant.enabled || tenantGrant.grant?.saveReportsEnabled === true),
     comment: context.commentEnabled
       && (!tenantGrant.enabled || tenantGrant.grant?.commentEnabled === true),
     ...(tenantGrant.enabled && tenantGrant.grant?.slackNotificationsEnabled === true ? { slackSummary: true } : {})
   };
+
+  try {
+    plannedSideEffects = tenantGrant.enabled
+      ? clampTenantPlanSideEffects({
+        tenantId: tenantGrant.grant?.tenantId,
+        saveReport: plannedSideEffects.saveReport,
+        comment: plannedSideEffects.comment,
+        slackSummary: plannedSideEffects.slackSummary
+      })
+      : plannedSideEffects;
+  } catch (error) {
+    if (error instanceof UsageQuotaStoreError) {
+      await failGitHubWebhookDelivery({
+        key: idempotencyKey
+      }, {
+        code: "github_app_plan_gate_unavailable",
+        summary: "Tenant plan side-effect gate is unavailable."
+      }).catch(() => undefined);
+      await recordWebhookAuditEvent("github_app_quota_unavailable", "failed", automation, context, {
+        tenantId: tenantGrant.grant?.tenantId,
+        statusCode: 503,
+        code: "github_app_plan_gate_unavailable"
+      });
+
+      return noStoreJson({
+        error: "Tenant plan side-effect gate is unavailable.",
+        code: "github_app_plan_gate_unavailable",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 503 });
+    }
+
+    throw error;
+  }
+
   const slackGate = validateSlackSummaryForSideEffects(plannedSideEffects);
   if (slackGate) {
     await failGitHubWebhookDelivery({

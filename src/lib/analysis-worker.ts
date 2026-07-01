@@ -33,6 +33,11 @@ import {
   tenantGrantPublicReason,
   TenantControlPlaneStoreError
 } from "./tenant-control-plane";
+import {
+  assertTenantPlanAllowsGitHubAppAnalysis,
+  clampTenantPlanSideEffects,
+  UsageQuotaStoreError
+} from "./usage-quota";
 import { generateVerificationReport } from "./verifier";
 
 export const DEFAULT_ANALYSIS_WORKER_BATCH_LIMIT = 1;
@@ -183,14 +188,19 @@ export async function preflightNextAnalysisJob(
     }
 
     if (grant.required && grant.grant) {
+      assertTenantPlanAllowsGitHubAppAnalysis({ tenantId: grant.grant.tenantId }, env);
+
+      const sideEffects = clampTenantPlanSideEffects({
+        tenantId: grant.grant.tenantId,
+        saveReport: job.save_report && grant.grant.saveReportsEnabled,
+        comment: job.comment && grant.grant.commentEnabled,
+        slackSummary: job.slack_summary === true && grant.grant.slackNotificationsEnabled ? true : undefined
+      }, env);
+
       return {
         status: "ready",
         job,
-        sideEffects: {
-          saveReport: job.save_report && grant.grant.saveReportsEnabled,
-          comment: job.comment && grant.grant.commentEnabled,
-          ...(job.slack_summary === true && grant.grant.slackNotificationsEnabled ? { slackSummary: true } : {})
-        }
+        sideEffects
       };
     }
   } catch (error) {
@@ -206,6 +216,21 @@ export async function preflightNextAnalysisJob(
       return {
         status: "failed_retryable",
         reason: "github_app_tenant_grant_store_unavailable"
+      };
+    }
+
+    if (error instanceof UsageQuotaStoreError) {
+      await failAnalysisJob({
+        id: job.id,
+        retryable: true,
+        code: "github_app_plan_gate_unavailable",
+        summary: "Tenant plan side-effect gate is unavailable during analysis worker preflight.",
+        now: options.now
+      }, env);
+
+      return {
+        status: "failed_retryable",
+        reason: "github_app_plan_gate_unavailable"
       };
     }
 
@@ -493,17 +518,31 @@ async function revalidateWorkerSideEffects(
     }
 
     if (grant.required && grant.grant) {
-      return {
+      const grantedSideEffects = {
         saveReport: sideEffects.saveReport && grant.grant.saveReportsEnabled,
         comment: sideEffects.comment && grant.grant.commentEnabled,
         ...(sideEffects.slackSummary && grant.grant.slackNotificationsEnabled ? { slackSummary: true } : {})
       };
+
+      return clampTenantPlanSideEffects({
+        tenantId: grant.grant.tenantId,
+        saveReport: grantedSideEffects.saveReport,
+        comment: grantedSideEffects.comment,
+        slackSummary: grantedSideEffects.slackSummary
+      }, env);
     }
   } catch (error) {
     if (error instanceof TenantControlPlaneStoreError) {
       throw new AnalysisWorkerRetryableError(
         "github_app_tenant_grant_store_unavailable",
         "Tenant repository grant store is unavailable before GitHub App worker side effects."
+      );
+    }
+
+    if (error instanceof UsageQuotaStoreError) {
+      throw new AnalysisWorkerRetryableError(
+        "github_app_plan_gate_unavailable",
+        "Tenant plan side-effect gate is unavailable before GitHub App worker side effects."
       );
     }
 

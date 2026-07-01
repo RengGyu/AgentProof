@@ -93,6 +93,70 @@ describe("tenant plan entitlement summary boundary", () => {
     expect(serialized).not.toContain("reprompt");
   });
 
+  it("uses bounded plan capability flags to downgrade repository side-effect features", async () => {
+    stubAccountEnv("team", "active");
+    stubQuotaEnv({
+      limit: 5,
+      plan: "team",
+      connectedRepositoryLimit: 0,
+      savedSummaryLinksEnabled: false,
+      markerCommentsEnabled: false,
+      slackSummariesEnabled: false,
+      structuredLlmVerifierEnabled: false
+    });
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 123,
+      repositoryId: 456,
+      repositoryFullName: "RengGyu/AgentProof",
+      enabled: true,
+      analysisEnabled: true,
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    });
+
+    const result = await readTenantEntitlementSummary({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify(result);
+
+    expect(result.quota).toMatchObject({
+      state: "available",
+      plan: "team"
+    });
+    expect(result.repositories).toMatchObject({
+      state: "configured",
+      connectedRepositoryCount: 1,
+      connectedRepositoryLimit: 0,
+      saveReportsEnabledCount: 1,
+      commentEnabledCount: 1,
+      slackNotificationsEnabledCount: 1
+    });
+    for (const key of [
+      "connected_repository_verification",
+      "saved_summary_links",
+      "marker_comments",
+      "slack_summaries",
+      "structured_llm_verifier"
+    ] as const) {
+      expect(result.features.find((feature) => feature.key === key)).toMatchObject({
+        state: "disabled",
+        enabled: false,
+        reason: "plan_feature_disabled"
+      });
+    }
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("installation");
+    expect(serialized).not.toContain("repositoryId");
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("subscription");
+    expect(serialized).not.toContain("owner@example.com");
+    expect(serialized).not.toContain("rawDiff");
+    expect(serialized).not.toContain("evidenceIndex");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
   it("reports missing quota and missing repo grants as not configured instead of guessing", async () => {
     stubAccountEnv("team", "active");
 
@@ -213,7 +277,15 @@ function stubAccountEnv(plan: string, status: string) {
   ]));
 }
 
-function stubQuotaEnv(input: { limit: number; plan: string }) {
+function stubQuotaEnv(input: {
+  limit: number;
+  plan: string;
+  connectedRepositoryLimit?: number;
+  savedSummaryLinksEnabled?: boolean;
+  markerCommentsEnabled?: boolean;
+  slackSummariesEnabled?: boolean;
+  structuredLlmVerifierEnabled?: boolean;
+}) {
   vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
   vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY", "true");
   vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", JSON.stringify([
@@ -221,7 +293,12 @@ function stubQuotaEnv(input: { limit: number; plan: string }) {
       tenantId: "tenant_a",
       monthlyAnalysisLimit: input.limit,
       enabled: true,
-      plan: input.plan
+      plan: input.plan,
+      connectedRepositoryLimit: input.connectedRepositoryLimit,
+      savedSummaryLinksEnabled: input.savedSummaryLinksEnabled,
+      markerCommentsEnabled: input.markerCommentsEnabled,
+      slackSummariesEnabled: input.slackSummariesEnabled,
+      structuredLlmVerifierEnabled: input.structuredLlmVerifierEnabled
     }
   ]));
 }

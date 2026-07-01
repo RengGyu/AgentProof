@@ -13,6 +13,7 @@ import {
   createTenantRepositoryGrant,
   updateTenantRepositoryGrantSettings
 } from "./tenant-control-plane";
+import { clearUsageQuotaForTests } from "./usage-quota";
 
 describe("analysis worker preflight", () => {
   afterEach(() => {
@@ -22,6 +23,7 @@ describe("analysis worker preflight", () => {
     clearTenantRepositoryGrantsForTests();
     clearSavedReportsForTests();
     clearAuditEventsForTests();
+    clearUsageQuotaForTests();
   });
 
   it("returns idle when no queued job is due", async () => {
@@ -196,6 +198,93 @@ describe("analysis worker preflight", () => {
     });
     expect(result.sideEffects).not.toHaveProperty("slackSummary");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stops queued analysis before token fetch when the tenant analysis plan is unavailable", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        monthlyAnalysisLimit: 0,
+        enabled: true,
+        plan: "team"
+      }
+    ]));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const serialized = JSON.stringify({ result, jobs: getAnalysisJobsForTests() });
+
+    expect(result).toEqual({
+      status: "failed_retryable",
+      reason: "github_app_plan_gate_unavailable"
+    });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id,
+      status: "failed_retryable",
+      error_code: "github_app_plan_gate_unavailable",
+      locked_at: null
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(serialized).not.toContain("installation-token");
+    expect(serialized).not.toContain("rawDiff");
+    expect(serialized).not.toContain("claims");
+    expect(serialized).not.toContain("reprompt");
+  });
+
+  it("clamps queued worker side effects to the tenant plan before Slack config", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: true, commentEnabled: true, slackNotificationsEnabled: true } });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", JSON.stringify([
+      {
+        tenantId: "tenant_a",
+        monthlyAnalysisLimit: 5,
+        enabled: true,
+        plan: "team",
+        savedSummaryLinksEnabled: false,
+        markerCommentsEnabled: false,
+        slackSummariesEnabled: false
+      }
+    ]));
+    const fetchMock = mockWorkerFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const job = getAnalysisJobsForTests()[0];
+    const serialized = JSON.stringify({ result, job });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      job: expect.objectContaining({ id }),
+      resultSummary: {
+        status: "completed"
+      },
+      sideEffects: {
+        saveReport: false,
+        comment: false
+      }
+    });
+    expect(result.sideEffects).not.toHaveProperty("slackSummary");
+    expect(job.result_summary?.savedReport).toBeUndefined();
+    expect(job.result_summary?.comment).toBeUndefined();
+    expect(job.result_summary?.slack).toBeUndefined();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/issues/7/comments"))).toBe(false);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("hooks.slack.com"))).toBe(false);
+    expect(serialized).not.toContain("installation-token");
+    expect(serialized).not.toContain("hooks.slack.com");
+    expect(serialized).not.toContain("/reports/");
+    expect(serialized).not.toContain("comment_body");
   });
 
   it("executes a ready job, validates the report, and completes with summary-only result metadata", async () => {

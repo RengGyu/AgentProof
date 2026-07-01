@@ -868,6 +868,91 @@ describe("POST /api/github/webhook", () => {
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
+  it("clamps queued side effects to the tenant plan before Slack config or token fetch", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_USAGE_QUOTA_LIMITS", quotaLimitsJson({
+      monthlyAnalysisLimit: 5,
+      savedSummaryLinksEnabled: false,
+      markerCommentsEnabled: false,
+      slackSummariesEnabled: false
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    });
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === "https://agentproof-test.supabase.co/rest/v1/analysis_jobs_test") {
+        return new Response(null, { status: 201 });
+      }
+
+      return new Response(JSON.stringify({ message: `Unexpected fetch ${href}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify({
+        ...automationPayload(),
+        rawDiff: "Patch excerpt: + token = 'github_pat_secret_should_not_leak_1234567890'"
+      }), {
+        event: "pull_request",
+        delivery: "123e4567-e89b-12d3-a456-426614174301",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+    const [, init] = fetchMock.mock.calls[0] as unknown as [unknown, RequestInit];
+    const queuedBody = JSON.parse(String(init.body));
+    const serialized = JSON.stringify({ json, queuedBody });
+
+    expect(response.status).toBe(202);
+    expect(json).toEqual(expect.objectContaining({
+      ok: true,
+      queued: true,
+      willAnalyze: true,
+      willComment: false
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "https://api.github.com/app/installations/321/access_tokens",
+      expect.anything()
+    );
+    expect(queuedBody).toMatchObject({
+      tenant_id: "tenant_test",
+      save_report: false,
+      comment: false,
+      slack_summary: false
+    });
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("hooks.slack.com");
+    expect(serialized).not.toContain("installation-token");
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_queued",
+      result: "completed",
+      tenant_id: "tenant_test"
+    });
+    expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
   it("fails closed before quota, idempotency, or token fetch when queue mode lacks storage", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");

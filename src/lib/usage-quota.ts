@@ -18,6 +18,11 @@ export interface UsageQuotaLimit {
   monthlyAnalysisLimit: number;
   enabled: boolean;
   plan?: string;
+  connectedRepositoryLimit?: number;
+  savedSummaryLinksEnabled: boolean;
+  markerCommentsEnabled: boolean;
+  slackSummariesEnabled: boolean;
+  structuredLlmVerifierEnabled: boolean;
 }
 
 export interface UsageQuotaReservationInput {
@@ -55,6 +60,19 @@ export interface UsageQuotaStatus {
   reason?: UsageQuotaDenyReason | "quota-store-unavailable";
 }
 
+export interface UsageQuotaPlanCapabilities {
+  enforced: boolean;
+  configured: boolean;
+  tenantId?: string;
+  plan?: string;
+  connectedRepositoryLimit?: number;
+  savedSummaryLinksEnabled?: boolean;
+  markerCommentsEnabled?: boolean;
+  slackSummariesEnabled?: boolean;
+  structuredLlmVerifierEnabled?: boolean;
+  reason?: UsageQuotaDenyReason;
+}
+
 export interface TenantUsageRecordCount {
   count: number;
   store: "none" | "memory" | "supabase";
@@ -68,6 +86,11 @@ interface UsageQuotaLimitInput {
   monthlyAnalysisLimit?: unknown;
   enabled?: unknown;
   plan?: unknown;
+  connectedRepositoryLimit?: unknown;
+  savedSummaryLinksEnabled?: unknown;
+  markerCommentsEnabled?: unknown;
+  slackSummariesEnabled?: unknown;
+  structuredLlmVerifierEnabled?: unknown;
 }
 
 interface UsageQuotaStoreConfig {
@@ -92,6 +115,45 @@ export class UsageQuotaStoreError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "UsageQuotaStoreError";
+  }
+}
+
+export interface TenantPlanSideEffectsInput {
+  tenantId?: string | null;
+  saveReport: boolean;
+  comment: boolean;
+  slackSummary?: boolean;
+}
+
+export interface TenantPlanSideEffects {
+  saveReport: boolean;
+  comment: boolean;
+  slackSummary?: boolean;
+}
+
+export function assertTenantPlanAllowsGitHubAppAnalysis(
+  input: { tenantId?: unknown },
+  env = process.env
+): void {
+  if (!truthy(env.AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED)) return;
+
+  const tenantId = normalizeTenantId(input.tenantId);
+  if (!tenantId) {
+    throw new UsageQuotaStoreError("Tenant plan analysis gate requires a tenant id.");
+  }
+
+  const limits = readUsageQuotaLimits(env);
+  if (!limits) {
+    throw new UsageQuotaStoreError("Tenant plan analysis limits are invalid.");
+  }
+
+  const limit = limits.find((item) => item.tenantId === tenantId && item.enabled);
+  if (!limit) {
+    throw new UsageQuotaStoreError("Tenant plan analysis limits are not configured.");
+  }
+
+  if (limit.monthlyAnalysisLimit <= 0) {
+    throw new UsageQuotaStoreError("Tenant plan monthly analysis quota is not available.");
   }
 }
 
@@ -176,6 +238,98 @@ export function readUsageQuotaLimits(env = process.env): UsageQuotaLimit[] | nul
   }
 
   return limits.slice(0, 500);
+}
+
+export function clampTenantPlanSideEffects(
+  input: TenantPlanSideEffectsInput,
+  env = process.env
+): TenantPlanSideEffects {
+  const requested = {
+    saveReport: input.saveReport,
+    comment: input.comment,
+    ...(input.slackSummary === true ? { slackSummary: true } : {})
+  };
+
+  if (!hasRequestedSideEffect(requested) || !truthy(env.AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED)) {
+    return requested;
+  }
+
+  const tenantId = input.tenantId ? normalizeTenantId(input.tenantId) : undefined;
+  if (!tenantId) {
+    throw new UsageQuotaStoreError("Tenant plan side-effect gate requires a tenant id.");
+  }
+
+  const limits = readUsageQuotaLimits(env);
+  if (!limits) {
+    throw new UsageQuotaStoreError("Tenant plan side-effect limits are invalid.");
+  }
+
+  const limit = limits.find((item) => item.tenantId === tenantId && item.enabled);
+  if (!limit) {
+    throw new UsageQuotaStoreError("Tenant plan side-effect limits are not configured.");
+  }
+
+  return {
+    saveReport: requested.saveReport && limit.savedSummaryLinksEnabled,
+    comment: requested.comment && limit.markerCommentsEnabled,
+    ...(requested.slackSummary && limit.slackSummariesEnabled ? { slackSummary: true } : {})
+  };
+}
+
+export function readUsageQuotaPlanCapabilities(
+  input: { tenantId?: unknown },
+  env = process.env
+): UsageQuotaPlanCapabilities {
+  const tenantId = normalizeTenantId(input.tenantId);
+
+  if (!truthy(env.AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED)) {
+    return {
+      enforced: false,
+      configured: false,
+      tenantId: tenantId ?? undefined,
+      reason: "quota-disabled"
+    };
+  }
+
+  if (!tenantId) {
+    return {
+      enforced: true,
+      configured: false,
+      reason: "quota-tenant-missing"
+    };
+  }
+
+  const limits = readUsageQuotaLimits(env);
+  if (!limits) {
+    return {
+      enforced: true,
+      configured: false,
+      tenantId,
+      reason: "quota-limits-invalid"
+    };
+  }
+
+  const limit = limits.find((item) => item.tenantId === tenantId && item.enabled);
+  if (!limit) {
+    return {
+      enforced: true,
+      configured: false,
+      tenantId,
+      reason: "quota-limit-missing"
+    };
+  }
+
+  return {
+    enforced: true,
+    configured: true,
+    tenantId: limit.tenantId,
+    plan: limit.plan,
+    connectedRepositoryLimit: limit.connectedRepositoryLimit,
+    savedSummaryLinksEnabled: limit.savedSummaryLinksEnabled,
+    markerCommentsEnabled: limit.markerCommentsEnabled,
+    slackSummariesEnabled: limit.slackSummariesEnabled,
+    structuredLlmVerifierEnabled: limit.structuredLlmVerifierEnabled
+  };
 }
 
 export function usageQuotaPublicReason(reason: UsageQuotaDenyReason | undefined): string {
@@ -544,15 +698,35 @@ async function parseSupabaseUsageQuotaRpcResult(response: Response): Promise<Sup
 function normalizeUsageQuotaLimit(input: UsageQuotaLimitInput): UsageQuotaLimit | null {
   const tenantId = normalizeTenantId(input.tenantId);
   const monthlyAnalysisLimit = normalizeLimit(input.monthlyAnalysisLimit);
-  const plan = typeof input.plan === "string" ? redactSecrets(input.plan).trim().slice(0, 80) : undefined;
+  const connectedRepositoryLimit = input.connectedRepositoryLimit === undefined
+    ? undefined
+    : normalizeLimit(input.connectedRepositoryLimit);
+  const plan = normalizePlanLabel(input.plan);
+  const savedSummaryLinksEnabled = optionalBoolean(input.savedSummaryLinksEnabled, true);
+  const markerCommentsEnabled = optionalBoolean(input.markerCommentsEnabled, true);
+  const slackSummariesEnabled = optionalBoolean(input.slackSummariesEnabled, true);
+  const structuredLlmVerifierEnabled = optionalBoolean(input.structuredLlmVerifierEnabled, false);
 
-  if (!tenantId || monthlyAnalysisLimit === null) return null;
+  if (
+    !tenantId ||
+    monthlyAnalysisLimit === null ||
+    connectedRepositoryLimit === null ||
+    savedSummaryLinksEnabled === null ||
+    markerCommentsEnabled === null ||
+    slackSummariesEnabled === null ||
+    structuredLlmVerifierEnabled === null
+  ) return null;
 
   return {
     tenantId,
     monthlyAnalysisLimit,
     enabled: input.enabled !== false,
-    plan: plan || undefined
+    plan: plan || undefined,
+    connectedRepositoryLimit,
+    savedSummaryLinksEnabled,
+    markerCommentsEnabled,
+    slackSummariesEnabled,
+    structuredLlmVerifierEnabled
   };
 }
 
@@ -562,6 +736,24 @@ function normalizeLimit(value: unknown): number | null {
   }
 
   return value;
+}
+
+function normalizePlanLabel(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const plan = redactSecrets(value).trim().slice(0, 80);
+  if (!plan) return undefined;
+  if (/\b(?:acct|cus|cs|evt|in|pi|pm|price|prod|si|sub)_[a-z0-9_-]{4,}/i.test(plan)) return undefined;
+
+  return /^[a-zA-Z0-9][a-zA-Z0-9 ._-]{0,79}$/.test(plan) ? plan : undefined;
+}
+
+function optionalBoolean(value: unknown, fallback: boolean): boolean | null {
+  if (value === undefined) return fallback;
+  return typeof value === "boolean" ? value : null;
+}
+
+function hasRequestedSideEffect(sideEffects: TenantPlanSideEffects): boolean {
+  return sideEffects.saveReport || sideEffects.comment || sideEffects.slackSummary === true;
 }
 
 function allowed(

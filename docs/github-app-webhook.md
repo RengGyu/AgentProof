@@ -193,7 +193,7 @@ For invite-only quota enforcement, add a server-only quota seed:
 
 ```text
 AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED=true
-AGENTPROOF_USAGE_QUOTA_LIMITS=[{"tenantId":"tenant_demo","monthlyAnalysisLimit":100,"enabled":true,"plan":"team"}]
+AGENTPROOF_USAGE_QUOTA_LIMITS=[{"tenantId":"tenant_demo","monthlyAnalysisLimit":100,"enabled":true,"plan":"team","connectedRepositoryLimit":10,"savedSummaryLinksEnabled":true,"markerCommentsEnabled":true,"slackSummariesEnabled":true,"structuredLlmVerifierEnabled":false}]
 ```
 
 Required durable usage records for SaaS/beta quota enforcement:
@@ -206,6 +206,10 @@ AGENTPROOF_USAGE_RESERVATION_RPC=agentproof_reserve_usage_quota
 ```
 
 When quota enforcement is enabled, tenant GitHub App analysis reserves quota before webhook idempotency, GitHub installation-token fetch, PR evidence fetch, saved reports, marker comments, or Slack summaries. Quota-blocked webhooks return bounded metadata only and do not include tenant ids, repositories, head SHAs, diffs, logs, or usage counts. If durable usage storage is missing or unavailable, AgentProof fails closed with `usage_quota_unavailable`. `AGENTPROOF_USAGE_QUOTA_ALLOW_MEMORY=true` is only for local/demo quota tests and should not be set for SaaS/beta operation.
+
+The quota seed also carries server-only plan capability flags for connected repository limits, saved summary links, marker comments, Slack summaries, and structured verifier access. These flags are not a billing provider integration and must not contain provider customer ids, subscription ids, contact details, payment state, or payment method data. Tenant-facing readiness surfaces may show plan labels, quota status, connected repository count/limit, and bounded feature states such as `plan_feature_disabled`; they must not echo raw plan config.
+
+When quota enforcement is enabled, `/api/llm/verify` also requires tenant plan context through `x-agentproof-tenant-id` or `tenantId=<tenant>` and `structuredLlmVerifierEnabled: true` before it calls OpenAI. Missing tenant context, malformed quota seed config, or a disabled verifier plan returns a bounded fallback response and does not call the model. The route still requires `AGENTPROOF_LLM_TOKEN`; the tenant id is a plan gate, not customer authentication.
 
 Customer-visible usage status is read-only:
 
@@ -224,7 +228,7 @@ AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS=true
 AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE=agentproof_github_webhook_deliveries
 ```
 
-Keep comment automation disabled until the repository owner explicitly wants AgentProof comments on PRs. Keep Slack summaries disabled until the repository-level `slackNotificationsEnabled` grant is explicitly enabled and a server-side `SLACK_WEBHOOK_URL` is configured. In beta/SaaS operation, enable `AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS=true` before enabling saved links, marker comments, or Slack summaries. With that gate enabled, AgentProof writes a bounded `github_app_side_effects_ready` audit event before fetching a GitHub installation token for side-effecting automation. If durable audit storage is missing or unavailable, the webhook returns `github_app_durable_audit_required` and does not create saved reports, comments, or Slack notifications.
+Keep comment automation disabled until the repository owner explicitly wants AgentProof comments on PRs. Keep Slack summaries disabled until both the server-side plan seed and repository-level `slackNotificationsEnabled` grant explicitly allow Slack and a server-side `SLACK_WEBHOOK_URL` is configured. In beta/SaaS operation, enable `AGENTPROOF_REQUIRE_DURABLE_AUDIT_FOR_SIDE_EFFECTS=true` before enabling saved links, marker comments, or Slack summaries. With that gate enabled, AgentProof writes a bounded `github_app_side_effects_ready` audit event before fetching a GitHub installation token for side-effecting automation. If durable audit storage is missing or unavailable, the webhook returns `github_app_durable_audit_required` and does not create saved reports, comments, or Slack notifications.
 
 Durable idempotency uses the same server-only Supabase URL and service-role env accepted by saved reports. Optional GitHub-webhook-specific names can override them:
 

@@ -9,7 +9,9 @@ import {
   type TenantRepositoryGrant
 } from "./tenant-control-plane";
 import {
+  readUsageQuotaPlanCapabilities,
   readUsageQuotaStatus,
+  type UsageQuotaPlanCapabilities,
   type UsageQuotaStatus
 } from "./usage-quota";
 import { redactSecrets } from "./redact";
@@ -54,6 +56,7 @@ export interface TenantEntitlementQuotaSummary {
 export interface TenantEntitlementRepositorySummary {
   state: "configured" | "not_configured" | "unavailable";
   connectedRepositoryCount?: number;
+  connectedRepositoryLimit?: number;
   analysisEnabledCount?: number;
   saveReportsEnabledCount?: number;
   commentEnabledCount?: number;
@@ -73,6 +76,11 @@ export interface TenantEntitlementSummary {
 interface AccountRead {
   plan: TenantEntitlementPlan;
   account: TenantEntitlementAccountSummary;
+}
+
+interface QuotaRead {
+  quota: TenantEntitlementQuotaSummary;
+  planCapabilities: UsageQuotaPlanCapabilities;
 }
 
 const FEATURE_LABELS: Record<TenantEntitlementFeatureKey, string> = {
@@ -100,11 +108,16 @@ export async function readTenantEntitlementSummary(
     throw new TenantEntitlementStoreError("Tenant entitlement id is invalid.");
   }
 
-  const [account, quota, repositories] = await Promise.all([
+  const [account, quotaRead, repositoryRead] = await Promise.all([
     readAccountBoundary(tenantId, env),
     readQuotaBoundary(tenantId, env),
     readRepositoryBoundary(tenantId, env)
   ]);
+  const quota = quotaRead.quota;
+  const repositories = {
+    ...repositoryRead,
+    connectedRepositoryLimit: quotaRead.planCapabilities.connectedRepositoryLimit
+  };
 
   return {
     privacy: "plan-entitlement-summary-only",
@@ -121,7 +134,8 @@ export async function readTenantEntitlementSummary(
     features: buildFeatures({
       account: account.account,
       quota,
-      repositories
+      repositories,
+      planCapabilities: quotaRead.planCapabilities
     })
   };
 }
@@ -150,19 +164,27 @@ async function readAccountBoundary(tenantId: string, env: NodeJS.ProcessEnv): Pr
   }
 }
 
-async function readQuotaBoundary(tenantId: string, env: NodeJS.ProcessEnv): Promise<TenantEntitlementQuotaSummary> {
+async function readQuotaBoundary(tenantId: string, env: NodeJS.ProcessEnv): Promise<QuotaRead> {
+  const planCapabilities = readUsageQuotaPlanCapabilities({ tenantId }, env);
+
   try {
     const quota = await readUsageQuotaStatus({
       tenantId,
       feature: "github_app_analysis"
     }, env);
 
-    return toQuotaSummary(quota);
+    return {
+      quota: toQuotaSummary(quota),
+      planCapabilities
+    };
   } catch {
     return {
-      state: "unavailable",
-      configured: false,
-      enforced: true
+      quota: {
+        state: "unavailable",
+        configured: false,
+        enforced: true
+      },
+      planCapabilities
     };
   }
 }
@@ -230,17 +252,15 @@ function buildFeatures(input: {
   account: TenantEntitlementAccountSummary;
   quota: TenantEntitlementQuotaSummary;
   repositories: TenantEntitlementRepositorySummary;
+  planCapabilities: UsageQuotaPlanCapabilities;
 }): TenantEntitlementFeature[] {
   return [
     feature("github_app_analysis", githubAnalysisState(input)),
     feature("connected_repository_verification", repositoryVerificationState(input)),
-    feature("saved_summary_links", repoSettingState(input, "saveReportsEnabledCount")),
-    feature("marker_comments", repoSettingState(input, "commentEnabledCount")),
-    feature("slack_summaries", repoSettingState(input, "slackNotificationsEnabledCount")),
-    feature("structured_llm_verifier", {
-      state: "not_configured",
-      reason: "tenant_llm_opt_in_not_implemented"
-    })
+    feature("saved_summary_links", repoSettingState(input, "saveReportsEnabledCount", "savedSummaryLinksEnabled")),
+    feature("marker_comments", repoSettingState(input, "commentEnabledCount", "markerCommentsEnabled")),
+    feature("slack_summaries", repoSettingState(input, "slackNotificationsEnabledCount", "slackSummariesEnabled")),
+    feature("structured_llm_verifier", structuredLlmVerifierState(input))
   ];
 }
 
@@ -268,9 +288,13 @@ function githubAnalysisState(input: {
 function repositoryVerificationState(input: {
   account: TenantEntitlementAccountSummary;
   repositories: TenantEntitlementRepositorySummary;
+  planCapabilities: UsageQuotaPlanCapabilities;
 }): Pick<TenantEntitlementFeature, "state" | "reason"> {
   const base = activeTenantBaseState(input.account);
   if (base) return base;
+  if (input.planCapabilities.connectedRepositoryLimit === 0) {
+    return { state: "disabled", reason: "plan_feature_disabled" };
+  }
   if (input.repositories.state === "unavailable") return { state: "unavailable", reason: "repository_grants_unavailable" };
   if ((input.repositories.connectedRepositoryCount ?? 0) <= 0) {
     return { state: "not_configured", reason: "no_connected_repositories" };
@@ -283,11 +307,14 @@ function repoSettingState(
   input: {
     account: TenantEntitlementAccountSummary;
     repositories: TenantEntitlementRepositorySummary;
+    planCapabilities: UsageQuotaPlanCapabilities;
   },
-  countKey: "saveReportsEnabledCount" | "commentEnabledCount" | "slackNotificationsEnabledCount"
+  countKey: "saveReportsEnabledCount" | "commentEnabledCount" | "slackNotificationsEnabledCount",
+  planKey: "savedSummaryLinksEnabled" | "markerCommentsEnabled" | "slackSummariesEnabled"
 ): Pick<TenantEntitlementFeature, "state" | "reason"> {
   const base = activeTenantBaseState(input.account);
   if (base) return base;
+  if (input.planCapabilities[planKey] === false) return { state: "disabled", reason: "plan_feature_disabled" };
   if (input.repositories.state === "unavailable") return { state: "unavailable", reason: "repository_grants_unavailable" };
   if ((input.repositories.connectedRepositoryCount ?? 0) <= 0) {
     return { state: "not_configured", reason: "no_connected_repositories" };
@@ -297,6 +324,22 @@ function repoSettingState(
   }
 
   return { state: "enabled" };
+}
+
+function structuredLlmVerifierState(input: {
+  account: TenantEntitlementAccountSummary;
+  planCapabilities: UsageQuotaPlanCapabilities;
+}): Pick<TenantEntitlementFeature, "state" | "reason"> {
+  const base = activeTenantBaseState(input.account);
+  if (base) return base;
+  if (input.planCapabilities.structuredLlmVerifierEnabled === false) {
+    return { state: "disabled", reason: "plan_feature_disabled" };
+  }
+  if (input.planCapabilities.structuredLlmVerifierEnabled === true) {
+    return { state: "not_configured", reason: "tenant_llm_gate_not_integrated" };
+  }
+
+  return { state: "not_configured", reason: "plan_not_configured" };
 }
 
 function activeTenantBaseState(

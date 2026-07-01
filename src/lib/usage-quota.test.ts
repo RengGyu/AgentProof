@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clampTenantPlanSideEffects,
   clearUsageQuotaForTests,
+  readUsageQuotaPlanCapabilities,
   readUsageQuotaLimits,
   readUsageQuotaStatus,
   reserveUsageQuota,
@@ -47,6 +49,90 @@ describe("usage quota", () => {
       reason: "quota-limits-invalid"
     }));
     expect(usageQuotaPublicReason("quota-limits-invalid")).not.toContain("{not-json");
+  });
+
+  it("reads bounded plan capabilities and clamps tenant side effects", () => {
+    const env = quotaEnv({
+      monthlyAnalysisLimit: 5,
+      connectedRepositoryLimit: 2,
+      savedSummaryLinksEnabled: false,
+      markerCommentsEnabled: false,
+      slackSummariesEnabled: false,
+      structuredLlmVerifierEnabled: true
+    });
+
+    expect(readUsageQuotaLimits(env)?.[0]).toMatchObject({
+      tenantId: "tenant_a",
+      monthlyAnalysisLimit: 5,
+      connectedRepositoryLimit: 2,
+      savedSummaryLinksEnabled: false,
+      markerCommentsEnabled: false,
+      slackSummariesEnabled: false,
+      structuredLlmVerifierEnabled: true
+    });
+    expect(readUsageQuotaPlanCapabilities({ tenantId: "tenant_a" }, env)).toEqual({
+      enforced: true,
+      configured: true,
+      tenantId: "tenant_a",
+      plan: "team",
+      connectedRepositoryLimit: 2,
+      savedSummaryLinksEnabled: false,
+      markerCommentsEnabled: false,
+      slackSummariesEnabled: false,
+      structuredLlmVerifierEnabled: true
+    });
+    expect(clampTenantPlanSideEffects({
+      tenantId: "tenant_a",
+      saveReport: true,
+      comment: true,
+      slackSummary: true
+    }, env)).toEqual({
+      saveReport: false,
+      comment: false
+    });
+  });
+
+  it("treats malformed plan feature flags as invalid quota config", () => {
+    const env = quotaEnv({
+      monthlyAnalysisLimit: 5,
+      savedSummaryLinksEnabled: "yes"
+    });
+
+    expect(readUsageQuotaLimits(env)).toBeNull();
+    expect(readUsageQuotaPlanCapabilities({ tenantId: "tenant_a" }, env)).toEqual({
+      enforced: true,
+      configured: false,
+      tenantId: "tenant_a",
+      reason: "quota-limits-invalid"
+    });
+    expect(() => clampTenantPlanSideEffects({
+      tenantId: "tenant_a",
+      saveReport: true,
+      comment: false
+    }, env)).toThrow(UsageQuotaStoreError);
+  });
+
+  it("omits provider-looking values from tenant-facing plan labels", () => {
+    for (const plan of [
+      "cus_secret_should_not_leak",
+      "sub_secret_should_not_leak",
+      "price_secret_should_not_leak",
+      "prod_secret_should_not_leak",
+      "acct_secret_should_not_leak"
+    ]) {
+      const env = quotaEnv({
+        monthlyAnalysisLimit: 5,
+        plan
+      });
+      const capabilities = readUsageQuotaPlanCapabilities({ tenantId: "tenant_a" }, env);
+      const serialized = JSON.stringify(capabilities);
+
+      expect(capabilities.plan).toBeUndefined();
+      expect(serialized).not.toContain(plan);
+      expect(serialized).not.toContain("secret_should_not_leak");
+      expect(serialized).not.toContain("subscription");
+      expect(serialized).not.toContain("owner@example.com");
+    }
   });
 
   it("requires configured tenant quota when enforcement is enabled", async () => {
@@ -313,6 +399,10 @@ describe("usage quota", () => {
 });
 
 function quotaEnv(values: Record<string, unknown>): NodeJS.ProcessEnv {
+  const limitOverrides = Object.fromEntries(Object.entries(values).filter(([key]) =>
+    !key.startsWith("AGENTPROOF_") && key !== "monthlyAnalysisLimit"
+  ));
+
   return {
     AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED: "true",
     AGENTPROOF_USAGE_QUOTA_LIMITS: JSON.stringify([
@@ -320,7 +410,8 @@ function quotaEnv(values: Record<string, unknown>): NodeJS.ProcessEnv {
         tenantId: "tenant_a",
         monthlyAnalysisLimit: values.monthlyAnalysisLimit ?? 1,
         enabled: values.enabled ?? true,
-        plan: "team"
+        plan: "team",
+        ...limitOverrides
       }
     ]),
     ...Object.fromEntries(Object.entries(values).filter(([key]) => key.startsWith("AGENTPROOF_")))
