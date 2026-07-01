@@ -90,6 +90,7 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     vi.stubEnv("AGENTPROOF_OPS_TOKEN", "ops-secret-value");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const recentTerminalAt = new Date().toISOString();
     await enqueueAnalysisJob(jobInput());
     await enqueueAnalysisJob(jobInput({
       idempotencyKey: "terminal-idempotency-2",
@@ -107,13 +108,13 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     }));
     Object.assign(getAnalysisJobsForTests()[0], {
       status: "failed_terminal",
-      updated_at: "2026-06-30T00:00:00.000Z",
+      updated_at: recentTerminalAt,
       error_code: "grant_denied",
       error_summary: "Repo https://github.com/RengGyu/AgentProof/pull/7?token=secret_should_not_leak"
     });
     Object.assign(getAnalysisJobsForTests()[1], {
       status: "failed_terminal",
-      updated_at: "2026-06-30T00:01:00.000Z",
+      updated_at: recentTerminalAt,
       error_code: "github_fetch_failed",
       error_summary: "Patch excerpt should not leak"
     });
@@ -140,6 +141,22 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
           { errorCode: "grant_denied", count: 1 }
         ]
       }
+    });
+    expect(json.opsStatus).toEqual({
+      privacy: "analysis-job-dead-letter-ops-status-summary-only",
+      basis: "failed_terminal_recent_sample",
+      state: "needs_attention",
+      alerts: [
+        {
+          code: "analysis_dead_letter_terminal_failures",
+          severity: "info",
+          metric: "sampledTerminalCount",
+          count: 2,
+          threshold: 1,
+          nextAction: "review_top_error_codes"
+        }
+      ],
+      nextActions: ["review_top_error_codes"]
     });
     expect(json.summary.oldestTerminalAgeSeconds).toEqual(expect.any(Number));
     expect(serialized).not.toContain("ops-secret-value");
@@ -178,6 +195,13 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
         truncated: false,
         sampledTerminalCount: 0,
         topErrorCodes: []
+      },
+      opsStatus: {
+        privacy: "analysis-job-dead-letter-ops-status-summary-only",
+        basis: "failed_terminal_recent_sample",
+        state: "clear",
+        alerts: [],
+        nextActions: ["continue_monitoring"]
       }
     });
   });
@@ -222,6 +246,68 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     expect(serialized).not.toContain("analysis_jobs_test");
   });
 
+  it("reports truncated dead-letter ops status without exposing durable store internals", async () => {
+    vi.stubEnv("AGENTPROOF_OPS_TOKEN", "ops-secret-value");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const recentTerminalAt = new Date().toISOString();
+    const fetchMock = vi.fn(async () => Response.json([
+      { error_code: "github_fetch_failed", updated_at: recentTerminalAt },
+      { error_code: "saved_report_store_error", updated_at: recentTerminalAt }
+    ]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(new Request("http://localhost/api/ops/analysis-jobs/dead-letter?limit=1", {
+      headers: { "x-agentproof-ops-token": "ops-secret-value" }
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+
+    expect(response.status).toBe(200);
+    expect(json.summary).toMatchObject({
+      privacy: "analysis-job-dead-letter-summary-only",
+      sampled: 1,
+      truncated: true,
+      sampledTerminalCount: 1,
+      topErrorCodes: [{ errorCode: "github_fetch_failed", count: 1 }]
+    });
+    expect(json.opsStatus).toEqual({
+      privacy: "analysis-job-dead-letter-ops-status-summary-only",
+      basis: "failed_terminal_recent_sample",
+      state: "incident",
+      alerts: [
+        {
+          code: "analysis_dead_letter_terminal_failures",
+          severity: "info",
+          metric: "sampledTerminalCount",
+          count: 1,
+          threshold: 1,
+          nextAction: "review_top_error_codes"
+        },
+        {
+          code: "analysis_dead_letter_summary_truncated",
+          severity: "warning",
+          metric: "sampled",
+          count: 1,
+          threshold: 1,
+          nextAction: "increase_sample_or_check_durable_store"
+        }
+      ],
+      nextActions: [
+        "review_top_error_codes",
+        "increase_sample_or_check_durable_store"
+      ]
+    });
+    expect(url).toContain("select=error_code%2Cupdated_at");
+    expect(url).toContain("limit=2");
+    expect(serialized).not.toContain("service-role-secret");
+    expect(serialized).not.toContain("analysis_jobs_test");
+    expect(serialized).not.toContain("agentproof-test.supabase.co");
+  });
+
   it("caps error-code buckets and normalizes malformed codes", async () => {
     vi.stubEnv("AGENTPROOF_OPS_TOKEN", "ops-secret-value");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
@@ -238,7 +324,13 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
       Object.assign(getAnalysisJobsForTests()[index], {
         status: "failed_terminal",
         updated_at: `2026-06-30T00:${String(index).padStart(2, "0")}:00.000Z`,
-        error_code: index >= 9 ? "bad code with spaces and github_pat_secret_should_not_leak" : `error_code_${index}`
+        error_code: index === 9
+          ? "cus_secret_should_not_leak"
+          : index === 10
+            ? "stripe_sub_secret_should_not_leak"
+            : index >= 11
+              ? "bad code with spaces and github_pat_secret_should_not_leak"
+              : `error_code_${index}`
       });
     }
 
@@ -254,7 +346,82 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     expect(serialized).toContain("\"unknown\"");
     expect(serialized).not.toContain("bad code with spaces");
     expect(serialized).not.toContain("github_pat_secret");
+    expect(serialized).not.toContain("cus_secret");
+    expect(serialized).not.toContain("stripe_sub_secret");
+    expect(serialized).not.toContain("sub_secret");
     expect(serialized).not.toContain("terminal-idempotency");
+  });
+
+  it("escalates dead-letter ops status using aggregate thresholds only", async () => {
+    vi.stubEnv("AGENTPROOF_OPS_TOKEN", "ops-secret-value");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    for (let index = 0; index < 5; index += 1) {
+      await enqueueAnalysisJob(jobInput({
+        idempotencyKey: `incident-idempotency-${index}`,
+        deliveryId: `123e4567-e89b-12d3-a456-4266141744${String(index).padStart(2, "0")}`,
+        pullRequestNumber: index + 20,
+        pullRequestUrl: `https://github.com/RengGyu/AgentProof/pull/${index + 20}`,
+        headSha: `abc45${index}`
+      }));
+      Object.assign(getAnalysisJobsForTests()[index], {
+        status: "failed_terminal",
+        updated_at: "2026-06-30T00:00:00.000Z",
+        error_code: "github_app_token_failed",
+        error_summary: "raw provider response should not leak"
+      });
+    }
+
+    const response = await GET(new Request("http://localhost/api/ops/analysis-jobs/dead-letter", {
+      headers: { "x-agentproof-ops-token": "ops-secret-value" }
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json.opsStatus).toEqual({
+      privacy: "analysis-job-dead-letter-ops-status-summary-only",
+      basis: "failed_terminal_recent_sample",
+      state: "incident",
+      alerts: expect.arrayContaining([
+        {
+          code: "analysis_dead_letter_terminal_failures",
+          severity: "info",
+          metric: "sampledTerminalCount",
+          count: 5,
+          threshold: 1,
+          nextAction: "review_top_error_codes"
+        },
+        {
+          code: "analysis_dead_letter_terminal_spike",
+          severity: "warning",
+          metric: "sampledTerminalCount",
+          count: 5,
+          threshold: 5,
+          nextAction: "pause_batch_drains_and_check_provider_or_storage"
+        },
+        {
+          code: "analysis_dead_letter_stale_terminal",
+          severity: "warning",
+          metric: "oldestTerminalAgeSeconds",
+          count: expect.any(Number),
+          threshold: 3600,
+          nextAction: "triage_or_record_follow_up"
+        }
+      ]),
+      nextActions: [
+        "review_top_error_codes",
+        "pause_batch_drains_and_check_provider_or_storage",
+        "triage_or_record_follow_up"
+      ]
+    });
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("incident-idempotency");
+    expect(serialized).not.toContain("raw provider response");
+    expect(serialized).not.toContain("pull_request_url");
+    expect(serialized).not.toContain("delivery_id");
   });
 });
 

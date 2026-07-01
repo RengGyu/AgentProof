@@ -80,6 +80,20 @@ interface DeadLetterResponse {
     }>;
     oldestTerminalAgeSeconds?: number;
   };
+  opsStatus?: {
+    privacy: "analysis-job-dead-letter-ops-status-summary-only";
+    basis: "failed_terminal_recent_sample";
+    state: "clear" | "needs_attention" | "incident";
+    alerts: Array<{
+      code: string;
+      severity: "info" | "warning";
+      metric: string;
+      count: number;
+      threshold: number;
+      nextAction: string;
+    }>;
+    nextActions: string[];
+  };
   error?: string;
   code?: string;
 }
@@ -345,8 +359,20 @@ export function OpsDashboardPanel() {
                 <div className="tenant-rollup-row">
                   <span>Sampled {deadLetter.summary.sampled}</span>
                   <span>Terminal {deadLetter.summary.sampledTerminalCount}</span>
+                  {deadLetter.opsStatus ? <span>Status {deadLetter.opsStatus.state}</span> : null}
                   <span>{deadLetter.summary.truncated ? "Truncated" : "Complete sample"}</span>
                 </div>
+                {deadLetter.opsStatus?.alerts.length ? (
+                  <ul className="ops-alert-list" aria-label="Dead-letter ops alerts">
+                    {deadLetter.opsStatus.alerts.map((alert) => (
+                      <li key={`${alert.code}:${alert.metric}`}>
+                        <strong>{alert.severity}</strong>
+                        <span>{alert.code} · {alert.metric} {alert.count}/{alert.threshold}</span>
+                        <span>{alert.nextAction}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 {deadLetter.summary.topErrorCodes.length > 0 ? (
                   <ul className="ops-alert-list" aria-label="Dead-letter error codes">
                     {deadLetter.summary.topErrorCodes.map((item) => (

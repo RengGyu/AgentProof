@@ -3,6 +3,7 @@ import {
   getAnalysisJobDeadLetterSummary,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
+import { toAnalysisDeadLetterOpsStatus } from "@/lib/analysis-job-alerts";
 import { noStoreJson } from "@/lib/http";
 import { verifyOpsRequest } from "@/lib/ops-auth";
 
@@ -43,7 +44,8 @@ export async function GET(request: Request) {
       ok: true,
       privacy: summary.privacy,
       status: "ready",
-      summary
+      summary,
+      opsStatus: toAnalysisDeadLetterOpsStatus(summary)
     });
   } catch (error) {
     if (error instanceof AnalysisJobQueueError) {

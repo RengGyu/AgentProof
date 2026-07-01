@@ -31,9 +31,11 @@ describe("OpsDashboardPanel product and privacy boundary", () => {
     expect(combined).toContain("bounded metadata");
     expect(combined).toContain("Queue Summary");
     expect(combined).toContain("Dead Letter Summary");
+    expect(combined).toContain("Dead-letter ops alerts");
     expect(combined).toContain("Tenant Deletion Plan");
     expect(combined).toContain("analysis-job-queue-summary-only");
     expect(combined).toContain("analysis-job-dead-letter-summary-only");
+    expect(combined).toContain("analysis-job-dead-letter-ops-status-summary-only");
     expect(combined).toContain("tenant-deletion-execution-plan-metadata-only");
     expect(combined).toContain("json.destructiveDataDeletion !== false");
     expect(combined).not.toContain("repositoryFullName");

@@ -1787,6 +1787,7 @@ function safeSlug(value: string | undefined): string | undefined {
 
 function safeJobErrorCode(value: string): string {
   const normalized = redactSecrets(value).trim();
+  if (isProviderLookingIdentifier(normalized)) return "unknown";
   return /^[a-z0-9_.:-]{1,80}$/i.test(normalized) ? normalized : "unknown";
 }
 
@@ -1870,6 +1871,10 @@ function stripUrlQueryAndHash(value: string): string {
   } catch {
     return "[redacted-url]";
   }
+}
+
+function isProviderLookingIdentifier(value: string): boolean {
+  return /(^|[^a-z0-9])(acct|cs|cus|evt|in|pi|pm|price|prod|si|sub)_[a-z0-9_:-]+/i.test(value);
 }
 
 function safeDurationMs(value: number | undefined, fallback: number): number {

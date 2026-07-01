@@ -686,7 +686,7 @@ describe("analysis job queue", () => {
     Object.assign(getAnalysisJobsForTests()[2], {
       status: "failed_terminal",
       updated_at: "2026-06-30T00:02:00.000Z",
-      error_code: "github_fetch_failed",
+      error_code: "stripe_cus_secret_should_not_leak",
       error_summary: "Patch excerpt should not leak"
     });
     Object.assign(getAnalysisJobsForTests()[3], {
@@ -708,7 +708,7 @@ describe("analysis job queue", () => {
       sampledTerminalCount: 3,
       topErrorCodes: [
         { errorCode: "grant_denied", count: 2 },
-        { errorCode: "github_fetch_failed", count: 1 }
+        { errorCode: "unknown", count: 1 }
       ],
       oldestTerminalAgeSeconds: 300
     });
@@ -716,6 +716,8 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("tenant_a");
     expect(serialized).not.toContain("pull");
     expect(serialized).not.toContain("secret_should_not_leak");
+    expect(serialized).not.toContain("stripe_cus");
+    expect(serialized).not.toContain("cus_secret");
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("terminal-idempotency");
     expect(serialized).not.toContain("delivery_id");
