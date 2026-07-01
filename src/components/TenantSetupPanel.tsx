@@ -5,6 +5,7 @@ import {
   Activity,
   BarChart3,
   CheckCircle2,
+  CreditCard,
   Database,
   Download,
   ExternalLink,
@@ -26,6 +27,7 @@ import {
   tenantAccountUrl,
   tenantAuditActivityUrl,
   tenantAuditExportUrl,
+  tenantBillingPortalPayload,
   tenantDeletionPreviewUrl,
   tenantEntitlementsUrl,
   tenantOnboardingStartPayload,
@@ -166,6 +168,27 @@ interface TenantEntitlementStatus {
   features: TenantEntitlementFeature[];
   privacy: "plan-entitlement-summary-only";
   next: "review_plan_access" | "configure_plan_access";
+}
+
+interface TenantBillingPortalStatus {
+  ok: boolean;
+  tenantId: string;
+  billing: {
+    privacy: "billing-portal-session-boundary-only";
+    configured: boolean;
+    providerBacked: boolean;
+    subscriptionStatus: string;
+    plan?: string;
+    portal: {
+      available: boolean;
+      mode: "server_redirect_required" | "not_configured";
+    };
+    status: "ready" | "not_configured" | "manual_review_required" | "unavailable";
+    reason?: string;
+    next: string;
+  };
+  privacy: "billing-portal-session-boundary-only";
+  next: string;
 }
 
 interface UsageSummary {
@@ -640,6 +663,34 @@ export function TenantSetupPanel() {
     }
   }
 
+  async function requestBillingPortalBoundary() {
+    setMode("saving");
+    setMessage(null);
+
+    try {
+      const json = await requestJson<TenantBillingPortalStatus>("/api/tenants/billing/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...tenantMutationHeaders() },
+        body: JSON.stringify(tenantBillingPortalPayload(tenantId))
+      });
+
+      if (json.privacy !== "billing-portal-session-boundary-only" || json.billing.privacy !== "billing-portal-session-boundary-only") {
+        throw new PanelRequestError("Tenant billing portal response did not match the summary-only boundary.");
+      }
+
+      setMessage({
+        kind: json.ok ? "ok" : "error",
+        text: json.ok
+          ? "Billing portal boundary is ready for the provider adapter."
+          : `Billing portal boundary is ${json.billing.status.replace(/_/g, " ")}: ${json.next.replace(/_/g, " ")}.`
+      });
+    } catch (error) {
+      setMessage(errorMessage(error, "Billing portal boundary could not be checked."));
+    } finally {
+      setMode("idle");
+    }
+  }
+
   async function loadUsageStatus(feedback: "visible" | "silent" = "visible") {
     setMode("loading");
     if (feedback === "visible") setMessage(null);
@@ -1065,6 +1116,10 @@ export function TenantSetupPanel() {
           <div className="button-row tenant-inline-actions">
             <button className="button compact" type="button" onClick={() => loadEntitlementStatus()} disabled={!credentialsReady || busy}>
               Load Access
+            </button>
+            <button className="button compact" type="button" onClick={requestBillingPortalBoundary} disabled={!credentialsReady || busy}>
+              <CreditCard size={14} />
+              Portal Boundary
             </button>
           </div>
           {entitlementStatus ? (
