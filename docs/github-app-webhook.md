@@ -142,7 +142,7 @@ PATCH /api/tenants/repositories
 GET /api/tenants/repositories/health?tenantId=<tenant>
 ```
 
-The settings endpoint updates only `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and `slackNotificationsEnabled`. It requires tenant-bound `AGENTPROOF_BETA_INVITES`; the legacy global invite token is not accepted for settings changes.
+The settings endpoint updates only `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and `slackNotificationsEnabled`. It requires tenant-bound `AGENTPROOF_BETA_INVITES`; the legacy global invite token is not accepted for settings changes. Settings mutations also require bounded `owner` or `admin` role metadata from the invite or the derived HttpOnly tenant admin session. Role-less or `member` invites can read tenant-bound setup metadata but cannot change repository settings.
 
 The health endpoint is customer-facing setup status for the same tenant grants. It is metadata-only by default and performs no GitHub calls unless `probe=github` is supplied. A live probe checks bounded repository metadata access only, with at most 10 repositories per request or one repository when `repositoryId=<id>` is supplied. Health responses are allowlisted to grant metadata, coarse statuses, bounded next actions, `privacy`, `probe`, and `truncated`.
 
@@ -171,7 +171,7 @@ For invite-only GitHub App onboarding:
 ```text
 AGENTPROOF_GITHUB_APP_SLUG=
 AGENTPROOF_ONBOARDING_STATE_SECRET=
-AGENTPROOF_BETA_INVITES=[{"tenantId":"tenant_demo","tokenHash":"sha256-hex-without-prefix"}]
+AGENTPROOF_BETA_INVITES=[{"tenantId":"tenant_demo","tokenHash":"sha256-hex-without-prefix","role":"owner"}]
 AGENTPROOF_ONBOARDING_STATES_TABLE=agentproof_github_onboarding_states
 ```
 

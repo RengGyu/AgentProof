@@ -122,6 +122,12 @@ export async function PATCH(request: Request) {
       code: "tenant_repository_settings_unauthorized"
     }, { status: 401 });
   }
+  if (!canMutateRepositorySettings(access.role)) {
+    return noStoreJson({
+      error: "Tenant repository settings require an owner or admin role.",
+      code: "tenant_repository_settings_role_required"
+    }, { status: 403 });
+  }
   const authorizedTenantId = access.tenantId;
 
   try {
@@ -218,6 +224,10 @@ function toPublicRepositorySettings(grant: TenantRepositoryGrant) {
     commentEnabled: grant.commentEnabled,
     slackNotificationsEnabled: grant.slackNotificationsEnabled
   };
+}
+
+function canMutateRepositorySettings(role: unknown): boolean {
+  return role === "owner" || role === "admin";
 }
 
 function normalizePositiveInteger(value: unknown): number | undefined {

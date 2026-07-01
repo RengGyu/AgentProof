@@ -169,7 +169,7 @@ The health API is allowlisted to tenant-owned grant metadata, coarse statuses, b
 - Start GitHub App installation using a valid tenant admin session or the tenant-bound invite header fallback.
 - Load installed repositories after the GitHub callback sets the short-lived activation cookie.
 - Create one repository grant from server-fetched installation metadata.
-- Read and update only `enabled`, `analysisEnabled`, `saveReportsEnabled`, and `commentEnabled`.
+- Read repository settings through tenant-bound auth, and update only `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and `slackNotificationsEnabled` when the tenant invite/session carries `owner` or `admin` role metadata.
 - Load metadata-only repository health, then run an explicit bounded GitHub access probe per repository.
 - Load read-only monthly usage summaries without reserving quota.
 - Load recent async analysis job summaries with public status filters and recent-sample rollups, without raw idempotency keys, delivery ids, webhook payloads, reports, diffs, logs, claims, raw re-prompt text, saved-report keys, comment bodies, or storage internals.
@@ -177,7 +177,7 @@ The health API is allowlisted to tenant-owned grant metadata, coarse statuses, b
 - Load recent summary report metadata without report bodies, evidence indexes, claims, raw re-prompt text, access keys, diffs, or logs.
 - Load recent verification activity summaries from the audit store without raw payloads, reports, diffs, logs, claims, re-prompt text, comment bodies, saved-report URLs, or storage internals.
 
-The dashboard keeps the invite token in React state only long enough to bootstrap the tenant admin session. It sends the token in `x-agentproof-beta-invite-token`, never in query strings, JSON request bodies, PATCH bodies, localStorage, or sessionStorage, then clears the input after a successful session start. Tenant APIs accept the HttpOnly session cookie or the tenant-bound invite header fallback. The session cookie is stateless and short-lived; logout clears the browser cookie, but durable server-side revocation is still future account-system work. The dashboard does not render PR evidence, diffs, logs, findings, claims, evidence indexes, report bodies, raw re-prompt text, comment bodies, or merge decisions.
+The dashboard keeps the invite token in React state only long enough to bootstrap the tenant admin session. It sends the token in `x-agentproof-beta-invite-token`, never in query strings, JSON request bodies, PATCH bodies, localStorage, or sessionStorage, then clears the input after a successful session start. Tenant APIs accept the HttpOnly session cookie or the tenant-bound invite header fallback. Repository settings mutations require bounded `owner` or `admin` role metadata from that invite/session; `member` or role-less invites can still read tenant-bound setup metadata but cannot change repository settings. The session cookie is stateless and short-lived; logout clears the browser cookie, but durable server-side revocation is still future account-system work. The dashboard does not render PR evidence, diffs, logs, findings, claims, evidence indexes, report bodies, raw re-prompt text, comment bodies, or merge decisions.
 
 ## Required Environment
 
@@ -200,12 +200,13 @@ Recommended invite format:
 [
   {
     "tenantId": "tenant_demo",
-    "tokenHash": "sha256-hex-without-prefix"
+    "tokenHash": "sha256-hex-without-prefix",
+    "role": "owner"
   }
 ]
 ```
 
-For local smoke only, `AGENTPROOF_BETA_INVITES` may use raw `token` values. `AGENTPROOF_BETA_INVITE_TOKEN` remains a legacy helper for older local paths, but tenant dashboard access, session bootstrap, and onboarding start require tenant-bound invite records. Do not use the global token as the only production tenant boundary.
+For local smoke only, `AGENTPROOF_BETA_INVITES` may use raw `token` values. `role` is optional for read-only tenant setup metadata and must be one of `owner`, `admin`, or `member`; repository settings mutations require `owner` or `admin`. Malformed role values fail closed. `AGENTPROOF_BETA_INVITE_TOKEN` remains a legacy helper for older local paths, but tenant dashboard access, session bootstrap, and onboarding start require tenant-bound invite records. Do not use the global token as the only production tenant boundary.
 
 Optional table overrides:
 

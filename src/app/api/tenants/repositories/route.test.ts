@@ -123,6 +123,45 @@ describe("/api/tenants/repositories", () => {
     ]);
   });
 
+  it("allows role-less and member tenant invites to read repository settings only", async () => {
+    stubSettingsEnvWithoutRole();
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+
+    const roleless = await GET(new Request("http://localhost/api/tenants/repositories?tenantId=tenant_a", {
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" }
+    }));
+    const rolelessJson = await roleless.json();
+
+    vi.unstubAllEnvs();
+    stubSettingsEnvWithRole("member");
+
+    const member = await GET(new Request("http://localhost/api/tenants/repositories?tenantId=tenant_a", {
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" }
+    }));
+    const memberJson = await member.json();
+    const serialized = JSON.stringify([rolelessJson, memberJson]);
+
+    expect(roleless.status).toBe(200);
+    expect(member.status).toBe(200);
+    expect(rolelessJson).toMatchObject({
+      ok: true,
+      tenantId: "tenant_a",
+      privacy: "grant-metadata-only"
+    });
+    expect(memberJson).toMatchObject({
+      ok: true,
+      tenantId: "tenant_a",
+      privacy: "grant-metadata-only"
+    });
+    expect(serialized).not.toContain("tenant-a-invite-token");
+    expect(serialized).not.toContain("member");
+  });
+
   it("updates only known boolean repository verification settings", async () => {
     stubSettingsEnv();
     await createTenantRepositoryGrant({
@@ -179,6 +218,153 @@ describe("/api/tenants/repositories", () => {
       slackNotificationsEnabled: false
     });
     expect(serialized).not.toContain("Patch excerpt");
+  });
+
+  it("blocks repository settings updates when tenant invite metadata has no role", async () => {
+    stubSettingsEnvWithoutRole();
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      analysisEnabled: true
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({
+        tenantId: "tenant_a",
+        installationId: 321,
+        repositoryId: 100,
+        settings: {
+          analysisEnabled: false
+        }
+      })
+    }));
+    const json = await response.json();
+    const grants = await listTenantRepositoryGrants({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(403);
+    expect(json).toEqual({
+      error: "Tenant repository settings require an owner or admin role.",
+      code: "tenant_repository_settings_role_required"
+    });
+    expect(grants[0].analysisEnabled).toBe(true);
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("tenant-a-invite-token");
+  });
+
+  it("blocks repository settings updates for tenant members without exposing repository metadata", async () => {
+    stubSettingsEnvWithRole("member");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      commentEnabled: true
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({
+        tenantId: "tenant_a",
+        installationId: 321,
+        repositoryId: 100,
+        settings: {
+          commentEnabled: false
+        }
+      })
+    }));
+    const json = await response.json();
+    const grants = await listTenantRepositoryGrants({ tenantId: "tenant_a" });
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(403);
+    expect(json).toEqual({
+      error: "Tenant repository settings require an owner or admin role.",
+      code: "tenant_repository_settings_role_required"
+    });
+    expect(grants[0].commentEnabled).toBe(true);
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("RengGyu/AgentProof");
+    expect(serialized).not.toContain("member");
+  });
+
+  it("updates repository settings from an admin session cookie without invite header", async () => {
+    stubSettingsEnvWithRole("admin");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: true
+    });
+    const session = createTenantAdminSession({
+      tenantId: "tenant_a",
+      inviteToken: "tenant-a-invite-token"
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { cookie: session.sessionCookie },
+      body: JSON.stringify({
+        tenantId: "tenant_a",
+        installationId: 321,
+        repositoryId: 100,
+        settings: {
+          saveReportsEnabled: false
+        }
+      })
+    }));
+    const json = await response.json();
+    const serialized = JSON.stringify(json);
+
+    expect(response.status).toBe(200);
+    expect(json.repository.saveReportsEnabled).toBe(false);
+    expect(json.privacy).toBe("grant-metadata-only");
+    expect(serialized).not.toContain("tenant-a-invite-token");
+    expect(serialized).not.toContain("tenant-session-secret");
+  });
+
+  it("fails closed for malformed invite roles before mutating repository settings", async () => {
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_SESSION_SECRET", "tenant-session-secret-value-with-enough-entropy");
+    vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
+      { tenantId: "tenant_a", token: "tenant-a-invite-token", role: "superadmin" }
+    ]));
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      enabled: true
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({
+        tenantId: "tenant_a",
+        installationId: 321,
+        repositoryId: 100,
+        settings: {
+          enabled: false
+        }
+      })
+    }));
+    const grants = await listTenantRepositoryGrants({ tenantId: "tenant_a" });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Tenant repository settings require a valid tenant-bound invite token.",
+      code: "tenant_repository_settings_unauthorized"
+    });
+    expect(grants[0].enabled).toBe(true);
   });
 
   it("blocks repository settings updates for an unavailable tenant with bounded JSON", async () => {
@@ -357,16 +543,30 @@ function stubSettingsEnv() {
   stubInviteEnv();
 }
 
-function stubInviteEnv() {
+function stubSettingsEnvWithRole(role: "owner" | "admin" | "member") {
+  vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+  vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+  stubInviteEnv(role);
+}
+
+function stubSettingsEnvWithoutRole() {
+  vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+  vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+  stubInviteEnv(null);
+}
+
+function stubInviteEnv(role: "owner" | "admin" | "member" | null = "owner") {
   vi.stubEnv("AGENTPROOF_TENANT_SESSION_SECRET", "tenant-session-secret-value-with-enough-entropy");
   vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
     {
       tenantId: "tenant_a",
-      token: "tenant-a-invite-token"
+      token: "tenant-a-invite-token",
+      ...(role ? { role } : {})
     },
     {
       tenantId: "tenant_b",
-      token: "tenant-b-invite-token"
+      token: "tenant-b-invite-token",
+      role: "admin"
     }
   ]));
 }

@@ -341,6 +341,63 @@ describe("github onboarding helpers", () => {
     });
   });
 
+  it("carries bounded invite roles into tenant admin access without exposing invite secrets", () => {
+    const sessionEnv = {
+      AGENTPROOF_TENANT_SESSION_SECRET: "tenant-session-secret-value-with-enough-entropy",
+      AGENTPROOF_BETA_INVITES: JSON.stringify([
+        { tenantId: "tenant_a", token: "tenant-a-invite-token", role: "admin" },
+        { tenantId: "tenant_b", token: "tenant-b-invite-token", role: "member" }
+      ])
+    } as unknown as NodeJS.ProcessEnv;
+    const session = createTenantAdminSession({
+      tenantId: "tenant_a",
+      inviteToken: "tenant-a-invite-token"
+    }, sessionEnv, now);
+    const serialized = JSON.stringify(session);
+
+    expect(verifyTenantAdminAccess({
+      tenantId: "tenant_a",
+      inviteToken: "tenant-a-invite-token"
+    }, sessionEnv, now + 1_000)).toEqual({
+      authorized: true,
+      tenantId: "tenant_a",
+      method: "invite",
+      role: "admin"
+    });
+    expect(verifyTenantAdminAccess({
+      tenantId: "tenant_a",
+      cookieHeader: session.sessionCookie
+    }, sessionEnv, now + 1_000)).toEqual({
+      authorized: true,
+      tenantId: "tenant_a",
+      method: "session",
+      role: "admin"
+    });
+    expect(serialized).not.toContain("tenant-a-invite-token");
+    expect(serialized).not.toContain("tenant-session-secret-value");
+  });
+
+  it("fails closed for malformed invite roles", () => {
+    const malformedEnv = {
+      AGENTPROOF_GITHUB_APP_SLUG: "agentproof-test",
+      AGENTPROOF_ONBOARDING_STATE_SECRET: "state-secret-value-with-enough-entropy",
+      AGENTPROOF_TENANT_SESSION_SECRET: "tenant-session-secret-value-with-enough-entropy",
+      AGENTPROOF_BETA_INVITES: JSON.stringify([
+        { tenantId: "tenant_a", token: "tenant-a-invite-token", role: "superadmin" }
+      ])
+    } as unknown as NodeJS.ProcessEnv;
+
+    expect(getGitHubOnboardingConfigStatus(malformedEnv).configured).toBe(false);
+    expect(verifyTenantAdminAccess({
+      tenantId: "tenant_a",
+      inviteToken: "tenant-a-invite-token"
+    }, malformedEnv, now + 1_000)).toEqual({ authorized: false });
+    expect(() => createTenantAdminSession({
+      tenantId: "tenant_a",
+      inviteToken: "tenant-a-invite-token"
+    }, malformedEnv, now)).toThrow("invalid");
+  });
+
   it("requires a dedicated tenant session secret before issuing or accepting session cookies", () => {
     const scopedEnv = {
       AGENTPROOF_ONBOARDING_STATE_SECRET: "state-secret-value-with-enough-entropy",

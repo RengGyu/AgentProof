@@ -56,10 +56,13 @@ export interface TenantAdminSession {
   sessionCookie: string;
 }
 
+export type TenantAdminRole = "owner" | "admin" | "member";
+
 export interface TenantAdminAccessResult {
   authorized: boolean;
   tenantId?: string;
   method?: "session" | "invite";
+  role?: TenantAdminRole;
 }
 
 interface GitHubRepositoryApiItem {
@@ -99,6 +102,7 @@ interface BetaInviteRecord {
   tenantId: string;
   token?: string;
   tokenHash?: string;
+  role?: TenantAdminRole;
 }
 
 interface OnboardingStoreConfig {
@@ -314,8 +318,9 @@ export function createTenantAdminSession(
 ): TenantAdminSession {
   const tenantId = normalizeTenantId(input.tenantId);
   const secret = tenantSessionSecret(env);
+  const invite = tenantId ? findBetaInviteRecordForTenant(input.inviteToken, tenantId, env) : undefined;
 
-  if (!tenantId || !secret || !verifyTenantBoundBetaInviteToken(input.inviteToken, tenantId, env)) {
+  if (!tenantId || !secret || !invite) {
     throw new GitHubOnboardingError("Tenant admin session request is invalid.");
   }
 
@@ -326,7 +331,8 @@ export function createTenantAdminSession(
     tenantId,
     iat: now,
     exp: Date.parse(expiresAt),
-    nonce: randomToken()
+    nonce: randomToken(),
+    ...(invite.role ? { role: invite.role } : {})
   })).toString("base64url");
   const signature = signTenantSessionPayload(payload, secret);
 
@@ -353,12 +359,24 @@ export function verifyTenantAdminAccess(
   const tenantId = normalizeTenantId(input.tenantId);
   if (!tenantId) return { authorized: false };
 
-  if (verifyTenantAdminSession({ tenantId, cookieHeader: input.cookieHeader }, env, now)) {
-    return { authorized: true, tenantId, method: "session" };
+  const session = readTenantAdminSession({ tenantId, cookieHeader: input.cookieHeader }, env, now);
+  if (session) {
+    return {
+      authorized: true,
+      tenantId,
+      method: "session",
+      ...(session.role ? { role: session.role } : {})
+    };
   }
 
-  if (verifyTenantBoundBetaInviteToken(input.inviteToken, tenantId, env)) {
-    return { authorized: true, tenantId, method: "invite" };
+  const invite = findBetaInviteRecordForTenant(input.inviteToken, tenantId, env);
+  if (invite) {
+    return {
+      authorized: true,
+      tenantId,
+      method: "invite",
+      ...(invite.role ? { role: invite.role } : {})
+    };
   }
 
   return { authorized: false };
@@ -369,23 +387,34 @@ export function verifyTenantAdminSession(
   env = process.env,
   now = Date.now()
 ): boolean {
+  return Boolean(readTenantAdminSession(input, env, now));
+}
+
+function readTenantAdminSession(
+  input: { tenantId: unknown; cookieHeader?: string | null },
+  env = process.env,
+  now = Date.now()
+): { tenantId: string; role?: TenantAdminRole } | null {
   const tenantId = normalizeTenantId(input.tenantId);
   const secret = tenantSessionSecret(env);
   const cookieValue = readCookie(input.cookieHeader, TENANT_ADMIN_SESSION_COOKIE);
-  if (!tenantId || !secret || !cookieValue) return false;
+  if (!tenantId || !secret || !cookieValue) return null;
 
   const [payload, signature] = cookieValue.split(".");
-  if (!payload || !signature) return false;
-  if (!safeEqual(signTenantSessionPayload(payload, secret), signature)) return false;
+  if (!payload || !signature) return null;
+  if (!safeEqual(signTenantSessionPayload(payload, secret), signature)) return null;
 
   const session = parseTenantSessionPayload(payload);
-  if (!session) return false;
-  if (session.tenantId !== tenantId) return false;
-  if (session.exp <= now) return false;
-  if (session.iat > now + 60_000) return false;
-  if (session.exp - session.iat > TENANT_ADMIN_SESSION_TTL_MS) return false;
+  if (!session) return null;
+  if (session.tenantId !== tenantId) return null;
+  if (session.exp <= now) return null;
+  if (session.iat > now + 60_000) return null;
+  if (session.exp - session.iat > TENANT_ADMIN_SESSION_TTL_MS) return null;
 
-  return true;
+  return {
+    tenantId,
+    ...(session.role ? { role: session.role } : {})
+  };
 }
 
 export function normalizeInstallationId(value: unknown): number | null {
@@ -676,7 +705,7 @@ function readBetaInviteRecords(env = process.env): BetaInviteRecord[] | null | u
   const invites: BetaInviteRecord[] = [];
   for (const item of parsed) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return null;
-    const value = item as { tenantId?: unknown; token?: unknown; tokenHash?: unknown };
+    const value = item as { tenantId?: unknown; token?: unknown; tokenHash?: unknown; role?: unknown };
     const tenantId = normalizeTenantId(value.tenantId);
     const token = typeof value.token === "string" && value.token.trim().length >= 16
       ? value.token.trim()
@@ -684,13 +713,16 @@ function readBetaInviteRecords(env = process.env): BetaInviteRecord[] | null | u
     const tokenHash = typeof value.tokenHash === "string" && /^[a-f0-9]{64}$/i.test(value.tokenHash.trim())
       ? value.tokenHash.trim().toLowerCase()
       : undefined;
+    const role = value.role === undefined ? undefined : normalizeTenantAdminRole(value.role);
+    if (value.role !== undefined && !role) return null;
 
     if (!tenantId || (!token && !tokenHash)) return null;
 
     invites.push({
       tenantId,
       ...(token ? { token } : {}),
-      ...(tokenHash ? { tokenHash } : {})
+      ...(tokenHash ? { tokenHash } : {}),
+      ...(role ? { role } : {})
     });
   }
 
@@ -709,11 +741,38 @@ function betaInviteRecordsContain(invites: BetaInviteRecord[], token: string, te
   });
 }
 
+function findBetaInviteRecordForTenant(
+  token: string | undefined,
+  tenantId: string,
+  env = process.env
+): BetaInviteRecord | undefined {
+  if (!token) return undefined;
+
+  const invites = readBetaInviteRecords(env);
+  if (!invites) return undefined;
+
+  const providedToken = token.trim();
+  const providedHash = hashInviteToken(providedToken);
+
+  return invites.find((invite) => {
+    if (invite.tenantId !== tenantId) return false;
+    if (invite.token && safeEqual(providedToken, invite.token)) return true;
+
+    return Boolean(invite.tokenHash && safeEqual(providedHash, invite.tokenHash));
+  });
+}
+
 function normalizeTenantId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = redactSecrets(value).trim();
 
   return /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,79}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeTenantAdminRole(value: unknown): TenantAdminRole | null {
+  if (value === "owner" || value === "admin" || value === "member") return value;
+
+  return null;
 }
 
 function normalizeRepositoryFullName(value: unknown): string | null {
@@ -742,7 +801,7 @@ function tenantSessionSecret(env = process.env): string | undefined {
   return env.AGENTPROOF_TENANT_SESSION_SECRET?.trim() || undefined;
 }
 
-function parseTenantSessionPayload(payload: string): { tenantId: string; iat: number; exp: number } | null {
+function parseTenantSessionPayload(payload: string): { tenantId: string; iat: number; exp: number; role?: TenantAdminRole } | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
@@ -751,7 +810,7 @@ function parseTenantSessionPayload(payload: string): { tenantId: string; iat: nu
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-  const value = parsed as { v?: unknown; aud?: unknown; tenantId?: unknown; exp?: unknown; iat?: unknown; nonce?: unknown };
+  const value = parsed as { v?: unknown; aud?: unknown; tenantId?: unknown; exp?: unknown; iat?: unknown; nonce?: unknown; role?: unknown };
   if (value.v !== 1) return null;
   if (value.aud !== TENANT_ADMIN_SESSION_AUDIENCE) return null;
   const tenantId = normalizeTenantId(value.tenantId);
@@ -760,10 +819,14 @@ function parseTenantSessionPayload(payload: string): { tenantId: string; iat: nu
   if (typeof value.iat !== "number" || !Number.isFinite(value.iat)) return null;
   if (typeof value.nonce !== "string" || value.nonce.length < 32) return null;
 
+  const role = value.role === undefined ? undefined : normalizeTenantAdminRole(value.role);
+  if (value.role !== undefined && !role) return null;
+
   return {
     tenantId,
     iat: value.iat,
-    exp: value.exp
+    exp: value.exp,
+    ...(role ? { role } : {})
   };
 }
 
