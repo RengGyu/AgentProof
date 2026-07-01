@@ -10,6 +10,7 @@ import { POST as postRun } from "./analysis-jobs/run/route";
 import { POST as postRunBatch } from "./analysis-jobs/run-batch/route";
 import { GET as getDeadLetter } from "./analysis-jobs/dead-letter/route";
 import { POST as postSlackAlerts } from "./analysis-jobs/alerts/slack/route";
+import { GET as getDrillGate } from "./drill-gate/route";
 
 describe("ops route auth boundary", () => {
   afterEach(() => {
@@ -25,7 +26,8 @@ describe("ops route auth boundary", () => {
       () => postRun(new Request("http://localhost/api/ops/analysis-jobs/run", { method: "POST" })),
       () => postRunBatch(new Request("http://localhost/api/ops/analysis-jobs/run-batch", { method: "POST" })),
       () => getDeadLetter(new Request("http://localhost/api/ops/analysis-jobs/dead-letter")),
-      () => postSlackAlerts(new Request("http://localhost/api/ops/analysis-jobs/alerts/slack", { method: "POST" }))
+      () => postSlackAlerts(new Request("http://localhost/api/ops/analysis-jobs/alerts/slack", { method: "POST" })),
+      () => getDrillGate(new Request("http://localhost/api/ops/drill-gate"))
     ];
 
     for (const callRoute of routes) {
@@ -68,7 +70,8 @@ describe("ops route auth boundary", () => {
       () => postSlackAlerts(new Request(
         "http://localhost/api/ops/analysis-jobs/alerts/slack?token=ops-secret-value&includeInfo=true",
         { method: "POST" }
-      ))
+      )),
+      () => getDrillGate(new Request("http://localhost/api/ops/drill-gate?token=ops-secret-value"))
     ];
 
     for (const callRoute of routes) {

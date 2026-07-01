@@ -65,6 +65,8 @@ Current deletion support is deliberately staged:
 
 The public promise should be conservative: AgentProof does not durably retain raw code evidence by design, and deletion workflows remain subject to the documented retention policy and operational readiness gates.
 
+Operator launch review can use the ops drill evidence gate to track whether deletion drill, restore drill, incident runbook review, and production smoke evidence are fresh. The gate is metadata-only and must not include raw logs, tokens, repository or PR payloads, report contents, provider ids, table/env names, backup contents, screenshots, or secrets. It is not itself a deletion, restore, or incident-response workflow.
+
 Failed invite/bootstrap session attempts may be audited as bounded system events. Audit rows should include only action, result, status code, normalized tenant id when valid, and a public reason code. They must not include invite tokens, bootstrap credentials, cookies, session hashes, request bodies, provider identifiers, table names, or raw storage errors.
 
 ## Billing Beta Boundary
