@@ -33,6 +33,26 @@ For each PR, run the report first using only the public PR URL path. Then fill t
 
 If no external reviewer is available, mark the session `biased and insufficient`; do not treat internal review as real-user validation.
 
+## Smoke Runner
+
+Run the five public PRs through the same analyze and summary-only saved-report smoke path used by production regression:
+
+```bash
+AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app pnpm smoke:external-pr-pilot
+```
+
+By default, the runner sends only the public PR URL for each case. Set `AGENTPROOF_EXTERNAL_PR_PILOT_INCLUDE_PUBLIC_CONTEXT=1` only when a reviewer session explicitly wants the bounded public task context from the fixture included. Do not pass a GitHub token to production unless the run is intentionally private and `AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN=1` is also set.
+
+The output is `external-pr-pilot-run-summary-only`: case id, category, quality gate status, timing summaries, saved-report privacy metadata, and pending manual-label status. It does not emit raw report bodies, raw diffs, logs, tokens, oracle labels, or top-files manual labels.
+
+Latest production runner evidence, 2026-07-03:
+
+- Command: `AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app node scripts/external-pr-pilot-smoke.mjs`
+- Result: `ok: true`, `caseCount: 5`, `qualityGateSummary.ok: true`
+- Privacy: `external-pr-pilot-run-summary-only`; saved reports were `summary-only` with zero saved evidence items and zero saved claims.
+- Token boundary: `productionTokenForwarded: false` for every case.
+- Manual labels: `pendingManualLabels: 5`; next step is `fill_manual_labels_after_reviewer_sessions`.
+
 ## Scale Rule
 
 Do not expand to 20 external PRs until:

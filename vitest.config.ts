@@ -13,7 +13,8 @@ export default defineConfig({
       "scripts/smoke-github-webhook-live.test.mjs",
       "scripts/ops-drill-gate-readiness.test.mjs",
       "scripts/smoke-analyze-pr-url.test.mjs",
-      "scripts/smoke-real-pr-evaluation.test.mjs"
+      "scripts/smoke-real-pr-evaluation.test.mjs",
+      "scripts/external-pr-pilot-smoke.test.mjs"
     ]
   },
   resolve: {
