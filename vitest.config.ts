@@ -15,6 +15,7 @@ export default defineConfig({
       "scripts/smoke-analyze-pr-url.test.mjs",
       "scripts/smoke-real-pr-evaluation.test.mjs",
       "scripts/external-pr-pilot-smoke.test.mjs",
+      "scripts/external-pr-pilot-labels.test.mjs",
       "scripts/reviewer-validation-fixture.test.mjs",
       "scripts/p0-beta-readiness.test.mjs"
     ]

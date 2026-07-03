@@ -21,6 +21,7 @@
     "ops:drill-gate": "node scripts/ops-drill-gate-readiness.mjs",
     "p0:beta-readiness": "node scripts/p0-beta-readiness.mjs",
     "reviewer:validation": "node scripts/reviewer-validation-fixture.mjs",
+    "external-pr-pilot:labels": "node scripts/external-pr-pilot-labels.mjs",
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
     "eval:promote:fixture": "node scripts/promote-eval-fixture.mjs",
     "eval:pack": "vitest run src/lib/evaluation-pack.test.ts scripts/build-eval-pack.test.mjs scripts/promote-eval-fixture.test.mjs",
