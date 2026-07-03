@@ -74,6 +74,8 @@ Use concrete target-reviewer outreach instead of vague intent. Do not commit per
 
 If these sessions cannot be scheduled, record the result as `biased and insufficient` and do not treat internal feedback as product validation.
 
+For ready-to-send outreach messages and the bounded feedback form, use `docs/reviewer-validation-packet.md`.
+
 ## Success And Pause Criteria
 
 Success signals:

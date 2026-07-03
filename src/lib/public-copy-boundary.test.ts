@@ -6,6 +6,7 @@ const publicCopyFiles = [
   ["public launch trust doc", "../../docs/public-launch-trust.md"],
   ["support status feedback doc", "../../docs/support-status-feedback.md"],
   ["first real PR report guide", "../../docs/first-real-pr-report.md"],
+  ["reviewer validation packet", "../../docs/reviewer-validation-packet.md"],
   ["external PR pilot doc", "../../docs/external-pr-pilot.md"],
   ["linked issue ingestion doc", "../../docs/linked-issue-ingestion.md"],
   ["GitHub App onboarding doc", "../../docs/github-app-onboarding.md"],
@@ -147,6 +148,42 @@ describe("public launch copy boundary", () => {
     expect(source).not.toMatch(/\bSLA\b/);
     expect(source).not.toMatch(/\b\d+%\b/);
     expect(source).not.toMatch(/\$\d/);
+  });
+
+  it("keeps reviewer validation outreach concrete, bounded, and bias-aware", () => {
+    const source = readFileSync(new URL("../../docs/reviewer-validation-packet.md", import.meta.url), "utf8");
+
+    for (const expected of [
+      "reviewer-1",
+      "reviewer-2",
+      "reviewer-3",
+      "ready-to-send",
+      "biased and insufficient",
+      "internal-only-biased-and-insufficient",
+      "30 seconds",
+      "summary-only",
+      "outreach prepared, reviewer usefulness still unclear",
+      "Do not count AgentProof self PRs as P0 quality proof",
+      "Do not scale the external PR pilot from five cases to twenty"
+    ]) {
+      expect(source).toContain(expected);
+    }
+
+    for (const forbidden of [
+      /raw diffs, full logs/i,
+      /private tokens/i,
+      /provider ids/i,
+      /table names/i,
+      /environment variable names/i,
+      /personal contact details/i
+    ]) {
+      expect(source).toMatch(forbidden);
+    }
+
+    expect(source).not.toMatch(/\bSLA\b/);
+    expect(source).not.toMatch(/\$\d/);
+    expect(source).not.toMatch(/customer id/i);
+    expect(source).not.toMatch(/subscription id/i);
   });
 
   it("keeps the public status support surface bounded and non-operational", () => {
