@@ -122,6 +122,12 @@ export function runReviewerValidationCli(argv, {
     return summarizeFixture(updated);
   }
 
+  if (command === "mark-outreach-pack-sent") {
+    const updated = markOutreachPackSent(fixture, options);
+    writeValidatedFixture(targetPath, updated, writeFile);
+    return summarizeFixture(updated);
+  }
+
   if (command === "add-feedback") {
     const updated = addFeedback(fixture, options);
     writeValidatedFixture(targetPath, updated, writeFile);
@@ -140,6 +146,7 @@ function outreachPack(fixture) {
     outreachSlotCount: validated.outreachSlots.length,
     readyToSendCount: validated.outreachSlots.filter((slot) => slot.status === "ready-to-send").length,
     messages,
+    recordAllSentCommand: "pnpm reviewer:validation mark-outreach-pack-sent --confirm-sent yes --next-action \"Wait for bounded reviewer responses.\"",
     recordAllSentCommands: messages.map((message) => message.recordCommand),
     reminder: "Send only to real reviewer candidates. Do not store recipient names, handles, email addresses, private repo names, raw diffs, full logs, screenshots with secrets, tokens, provider ids, table names, or environment variable names in the fixture."
   };
@@ -192,6 +199,28 @@ function markOutreach(fixture, options) {
 
   target.status = status;
   target.nextAction = nextAction;
+  updated.status = deriveFixtureStatus(updated);
+
+  return validateFixture(updated);
+}
+
+function markOutreachPackSent(fixture, options) {
+  if (options.confirmSent !== "yes" && options["confirm-sent"] !== "yes") {
+    throw new Error("--confirm-sent yes is required after the three outreach messages have actually been sent.");
+  }
+
+  const nextAction = boundedText(options.nextAction ?? options["next-action"] ?? "Wait for bounded reviewer responses.", "--next-action", 10, 240);
+  const updated = structuredCloneCompat(validateFixture(fixture));
+  const notReadySlots = updated.outreachSlots.filter((slot) => slot.status !== "ready-to-send");
+
+  if (notReadySlots.length > 0) {
+    throw new Error("Bulk outreach recording requires all reviewer slots to be ready-to-send; use mark-outreach for partial updates.");
+  }
+
+  for (const slot of updated.outreachSlots) {
+    slot.status = "outreach-sent";
+    slot.nextAction = nextAction;
+  }
   updated.status = deriveFixtureStatus(updated);
 
   return validateFixture(updated);
@@ -451,6 +480,7 @@ function usage() {
       "outreach-pack",
       "message --slot reviewer-1",
       "mark-outreach --slot reviewer-1 --status outreach-sent --next-action \"Record reviewer response.\"",
+      "mark-outreach-pack-sent --confirm-sent yes --next-action \"Wait for bounded reviewer responses.\"",
       "add-feedback --slot reviewer-1 --session-status completed --reviewer-profile cto-or-tech-lead --pr-source public-oss-pr --report-path public-pr-url-only --time-to-top-risk 24 --top-risk-understood yes --missing-proof-understood yes --first-file-or-check-understood yes --next-reprompt-understood yes --report-usefulness useful --false-blocker-observed no --would-use-again yes --follow-up \"Reviewer found the first inspection target quickly.\""
     ]
   };

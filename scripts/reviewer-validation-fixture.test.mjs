@@ -68,6 +68,9 @@ describe("reviewer-validation-fixture CLI", () => {
       subject: "10-minute check on an AI-agent PR evidence report",
       recordCommand: "pnpm reviewer:validation mark-outreach --slot reviewer-1 --status outreach-sent --next-action \"Wait for bounded reviewer response.\""
     }));
+    expect(result.recordAllSentCommand).toBe(
+      "pnpm reviewer:validation mark-outreach-pack-sent --confirm-sent yes --next-action \"Wait for bounded reviewer responses.\""
+    );
     expect(result.recordAllSentCommands).toEqual([
       "pnpm reviewer:validation mark-outreach --slot reviewer-1 --status outreach-sent --next-action \"Wait for bounded reviewer response.\"",
       "pnpm reviewer:validation mark-outreach --slot reviewer-2 --status outreach-sent --next-action \"Wait for bounded reviewer response.\"",
@@ -107,6 +110,67 @@ describe("reviewer-validation-fixture CLI", () => {
     }));
     expect(JSON.stringify(written)).not.toContain("email");
     expect(JSON.stringify(written)).not.toContain("rawDiff");
+  });
+
+  it("marks the whole outreach pack as sent only after explicit confirmation", () => {
+    const writes = [];
+    const result = runReviewerValidationCli([
+      "mark-outreach-pack-sent",
+      "--confirm-sent", "yes",
+      "--next-action", "Wait for bounded reviewer responses."
+    ], {
+      fixturePath: "fixture.json",
+      readFile: () => JSON.stringify(fixture()),
+      writeFile: (path, body) => writes.push({ path, body })
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      status: "reviewer_validation_in_progress",
+      readyToSendCount: 0,
+      sentOrScheduledOrCompletedCount: 3,
+      next: "record_reviewer_sessions"
+    }));
+    expect(writes).toHaveLength(1);
+    const written = JSON.parse(writes[0].body);
+    expect(written.outreachSlots.map((slot) => slot.status)).toEqual([
+      "outreach-sent",
+      "outreach-sent",
+      "outreach-sent"
+    ]);
+    expect(written.outreachSlots.map((slot) => slot.nextAction)).toEqual([
+      "Wait for bounded reviewer responses.",
+      "Wait for bounded reviewer responses.",
+      "Wait for bounded reviewer responses."
+    ]);
+    expect(JSON.stringify(written)).not.toContain("reviewer@example.com");
+    expect(JSON.stringify(written)).not.toContain("rawDiff");
+  });
+
+  it("rejects bulk outreach recording without confirmation or on partial updates", () => {
+    const writeFile = vi.fn();
+    const partialFixture = fixture();
+    partialFixture.outreachSlots[0].status = "outreach-sent";
+
+    expect(() => runReviewerValidationCli([
+      "mark-outreach-pack-sent",
+      "--next-action", "Wait for bounded reviewer responses."
+    ], {
+      fixturePath: "fixture.json",
+      readFile: () => JSON.stringify(fixture()),
+      writeFile
+    })).toThrow(/--confirm-sent yes is required/i);
+
+    expect(() => runReviewerValidationCli([
+      "mark-outreach-pack-sent",
+      "--confirm-sent", "yes",
+      "--next-action", "Wait for bounded reviewer responses."
+    ], {
+      fixturePath: "fixture.json",
+      readFile: () => JSON.stringify(partialFixture),
+      writeFile
+    })).toThrow(/requires all reviewer slots to be ready-to-send/i);
+
+    expect(writeFile).not.toHaveBeenCalled();
   });
 
   it("adds bounded feedback and derives ready-for-review only after three sessions with real PR usage", () => {
