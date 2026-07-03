@@ -112,6 +112,10 @@ export function runReviewerValidationCli(argv, {
     return outreachMessage(fixture, options);
   }
 
+  if (command === "outreach-pack") {
+    return outreachPack(fixture);
+  }
+
   if (command === "mark-outreach") {
     const updated = markOutreach(fixture, options);
     writeValidatedFixture(targetPath, updated, writeFile);
@@ -127,9 +131,31 @@ export function runReviewerValidationCli(argv, {
   throw new Error(`Unsupported reviewer validation command: ${command}`);
 }
 
+function outreachPack(fixture) {
+  const validated = validateFixture(fixture);
+  const messages = REVIEWER_SLOTS.map((slot) => outreachMessageForSlot(validated, slot));
+  const result = {
+    privacy: "reviewer-validation-outreach-pack-only",
+    status: validated.status,
+    outreachSlotCount: validated.outreachSlots.length,
+    readyToSendCount: validated.outreachSlots.filter((slot) => slot.status === "ready-to-send").length,
+    messages,
+    recordAllSentCommands: messages.map((message) => message.recordCommand),
+    reminder: "Send only to real reviewer candidates. Do not store recipient names, handles, email addresses, private repo names, raw diffs, full logs, screenshots with secrets, tokens, provider ids, table names, or environment variable names in the fixture."
+  };
+
+  assertNoPrivateOrRawPayloads(result, "outreach-pack");
+
+  return result;
+}
+
 function outreachMessage(fixture, options) {
   const validated = validateFixture(fixture);
   const slot = requiredEnum(options.slot, REVIEWER_SLOTS, "--slot");
+  return outreachMessageForSlot(validated, slot);
+}
+
+function outreachMessageForSlot(validated, slot) {
   const outreachSlot = validated.outreachSlots.find((item) => item.slot === slot);
 
   if (!outreachSlot) {
@@ -422,6 +448,7 @@ function usage() {
     privacy: "reviewer-validation-summary-only",
     commands: [
       "summary",
+      "outreach-pack",
       "message --slot reviewer-1",
       "mark-outreach --slot reviewer-1 --status outreach-sent --next-action \"Record reviewer response.\"",
       "add-feedback --slot reviewer-1 --session-status completed --reviewer-profile cto-or-tech-lead --pr-source public-oss-pr --report-path public-pr-url-only --time-to-top-risk 24 --top-risk-understood yes --missing-proof-understood yes --first-file-or-check-understood yes --next-reprompt-understood yes --report-usefulness useful --false-blocker-observed no --would-use-again yes --follow-up \"Reviewer found the first inspection target quickly.\""
