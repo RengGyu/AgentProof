@@ -4,6 +4,7 @@ import type {
   CheckRun,
   EvidenceItem,
   LogSnippet,
+  PullRequestInput,
   Requirement
 } from "./types";
 import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
@@ -56,7 +57,11 @@ const CLAIM_VERB_PATTERN =
 const CLAIM_START_PATTERN =
   /^\s*(add(?:ed)?|align(?:ed)?|implement(?:ed)?|fix(?:ed)?|update(?:d)?|create(?:d)?|change(?:d)?|remove(?:d)?|redesign(?:ed)?|reframe(?:d)?|refresh(?:ed)?|rename(?:d)?|rework(?:ed)?|validate(?:d)?|verif(?:y|ied)|test(?:ed)?|pass(?:ed)?)\s+(.+)$/i;
 
-export function extractRequirements(taskText: string, prDescription: string): Requirement[] {
+export function extractRequirements(
+  taskText: string,
+  prDescription: string,
+  taskSource: PullRequestInput["taskSource"] = "task"
+): Requirement[] {
   const rawSourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
   const sourceText = cleanRequirementSourceText(rawSourceText);
   const contextKeywords = extractKeywords(collectUsefulFencedContent(rawSourceText));
@@ -73,7 +78,7 @@ export function extractRequirements(taskText: string, prDescription: string): Re
     .slice(0, 8)
     .map((text, index) => ({
       id: `req_${index + 1}`,
-      source: taskText.trim() ? "task" : "pr_description",
+      source: taskText.trim() ? taskSource ?? "task" : "pr_description",
       text: normalizeSentence(text),
       keywords: mergeKeywords(extractKeywords(text), contextKeywords),
       priority: /\b(must|required|acceptance|criteria)\b/i.test(text) ? "must" : "should"
@@ -221,7 +226,8 @@ export function buildEvidenceIndex(
   prDescription: string,
   changedFiles: ChangedFile[],
   checks: CheckRun[],
-  logs: LogSnippet[]
+  logs: LogSnippet[],
+  taskSource: PullRequestInput["taskSource"] = "task"
 ): EvidenceItem[] {
   const items: EvidenceItem[] = [];
 
@@ -229,7 +235,7 @@ export function buildEvidenceIndex(
     items.push({
       id: `ev_${items.length + 1}`,
       kind: "task",
-      label: "Original task",
+      label: taskSource === "issue" ? "Linked issue" : "Original task",
       summary: compactText(redactSecrets(taskText), 700),
       confidence: 0.95
     });

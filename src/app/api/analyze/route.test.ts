@@ -456,6 +456,82 @@ describe("POST /api/analyze", () => {
     expect(json.report.evidenceIndex.filter((item) => item.kind === "check")).toHaveLength(3);
   });
 
+  it("uses a single linked issue title and body before PR description for live PR reports", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/142")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Fix reset expiry",
+            body: "Fixes #77",
+            url: "https://api.github.com/repos/acme/app/pulls/142",
+            user: { login: "coding-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/reset-expiry", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.endsWith("/issues/77")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Expired reset links should be rejected",
+            body: "Acceptance criteria:\n- Reject expired reset links.\n- Add a regression test for expired tokens."
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([
+          {
+            filename: "src/features/auth/reset.ts",
+            additions: 8,
+            deletions: 2,
+            status: "modified",
+            patch: "+ if (token.expiresAt < now) return rejectExpiredToken()"
+          },
+          {
+            filename: "src/features/auth/reset.test.ts",
+            additions: 10,
+            deletions: 0,
+            status: "modified",
+            patch: "+ it('rejects expired reset tokens', () => {})"
+          }
+        ]));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prUrl: "https://github.com/acme/app/pull/142" })
+      })
+    );
+    const json = await response.json() as { report: VerificationReport };
+    const taskEvidence = json.report.evidenceIndex.find((item) => item.kind === "task");
+
+    expect(response.status).toBe(200);
+    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(taskEvidence?.label).toBe("Linked issue");
+    expect(taskEvidence?.summary).toContain("Expired reset links should be rejected");
+    expect(json.report.requirements.some((requirement) =>
+      requirement.requirementText.includes("Reject expired reset links")
+    )).toBe(true);
+    expect(json.report.limitations.join(" ")).not.toContain("No original task text was provided");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/77"))).toBe(true);
+  });
+
   it("preserves legacy commit-status timing and evidence when check-runs are present", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/88")) {

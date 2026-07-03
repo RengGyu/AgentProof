@@ -757,11 +757,6 @@ async function handlePullRequestAutomation(
       throw new Error("GitHub App PR analysis could not build a pull request input.");
     }
 
-    input.limitations = [
-      ...(input.limitations ?? []),
-      "GitHub App automation v1 does not fetch linked issue/task text; requirements are extracted from the PR description unless the original request is included there."
-    ];
-
     const report = generateVerificationReport(input);
     const validation = validateVerificationReport(report, { mode: "full" });
 

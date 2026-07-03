@@ -87,4 +87,27 @@ describe("report share", () => {
 
     expect(summaryOnlyLimitations).toHaveLength(1);
   });
+
+  it("does not retain raw linked issue body evidence in share summaries", () => {
+    const rawIssueBody = "RAW_LINKED_ISSUE_BODY_SHOULD_NOT_SHARE";
+    const report = generateVerificationReport({
+      ...demoScenarios.clean,
+      taskSource: "issue",
+      taskText: [
+        "Linked issue acme/repo#42: Reject expired reset links",
+        "Acceptance criteria:",
+        "- Reject expired reset links.",
+        "```text",
+        rawIssueBody,
+        "```"
+      ].join("\n")
+    });
+    const shared = sanitizeReportForShare(report);
+    const serialized = JSON.stringify(shared);
+
+    expect(report.evidenceIndex.some((item) => item.summary.includes(rawIssueBody))).toBe(true);
+    expect(serialized).not.toContain(rawIssueBody);
+    expect(serialized).not.toContain("Linked issue acme/repo#42");
+    expect(shared.evidenceIndex).toEqual([]);
+  });
 });

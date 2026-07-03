@@ -31,9 +31,10 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     input.description,
     input.changedFiles,
     input.checks,
-    input.logs
+    input.logs,
+    input.taskSource
   );
-  const requirements = extractRequirements(input.taskText, input.description);
+  const requirements = extractRequirements(input.taskText, input.description, input.taskSource);
   const requirementFindings = requirements.map((requirement) =>
     evaluateRequirement(requirement, evidenceIndex, input)
   );

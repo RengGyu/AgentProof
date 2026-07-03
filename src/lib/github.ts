@@ -1,5 +1,10 @@
 import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput } from "./types";
 import { isExecutionEvidenceSignal } from "./evidence-status";
+import {
+  extractSupportedIssueReferences,
+  formatIssueReference,
+  type SupportedIssueReference
+} from "./github-linked-issues";
 import { compactText, redactSecrets } from "./redact";
 
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
@@ -67,6 +72,12 @@ interface GitHubPullUrl {
   owner: string;
   repo: string;
   number: number;
+}
+
+interface GitHubIssueResponse {
+  title?: string;
+  body?: string | null;
+  pull_request?: unknown;
 }
 
 interface GitHubFileResponse {
@@ -218,6 +229,7 @@ function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: 
     url: safePrUrl,
     title: safePrUrl ? `PR analysis for ${safePrUrl}` : "Pasted PR evidence",
     description: redactSecrets(request.prDescription ?? ""),
+    taskSource: request.taskText?.trim() ? "task" : undefined,
     taskText: redactSecrets(request.taskText ?? ""),
     changedFiles: parseChangedFiles(request.changedFiles ?? ""),
     checks: parseChecks(request.checks ?? ""),
@@ -277,6 +289,13 @@ async function fetchGitHubPullRequest(
 
   const pr = await prResponse.json();
   const limitations: string[] = [];
+  const linkedIssueTask = await resolveLinkedIssueTaskText({
+    prBody: String(pr.body ?? ""),
+    repository: { owner: parsed.owner, repo: parsed.repo },
+    headers,
+    limitations,
+    hasToken
+  });
   const [files, checkRuns, statuses] = await Promise.all([
     measureGitHubEvidenceTiming(
       evidenceTiming,
@@ -325,7 +344,8 @@ async function fetchGitHubPullRequest(
     author: pr.user?.login,
     baseBranch: pr.base?.ref,
     headBranch: pr.head?.ref,
-    taskText: redactSecrets(taskText),
+    taskSource: taskText.trim() ? "task" : linkedIssueTask ? "issue" : undefined,
+    taskText: taskText.trim() ? redactSecrets(taskText) : linkedIssueTask ?? "",
     changedFiles: files.map((file) => ({
       path: file.filename,
       additions: file.additions,
@@ -454,6 +474,7 @@ function mergePastedOverrides(live: PullRequestInput, request: AnalyzeRequest): 
   return {
     ...live,
     taskText: request.taskText ? redactSecrets(request.taskText) : live.taskText,
+    taskSource: request.taskText ? "task" : live.taskSource,
     description: request.prDescription?.trim() ? redactSecrets(request.prDescription) : live.description,
     changedFiles: request.changedFiles?.trim() ? parseChangedFiles(request.changedFiles) : live.changedFiles,
     checks: request.checks?.trim() ? parseChecks(request.checks) : live.checks,
@@ -475,6 +496,96 @@ function hasPastedEvidence(request: AnalyzeRequest): boolean {
       request.checks?.trim() ||
       request.logs?.trim()
   );
+}
+
+async function resolveLinkedIssueTaskText(input: {
+  prBody: string;
+  repository: Pick<GitHubPullUrl, "owner" | "repo">;
+  headers: Record<string, string>;
+  limitations: string[];
+  hasToken: boolean;
+}): Promise<string | null> {
+  const extraction = extractSupportedIssueReferences(input.prBody, input.repository);
+
+  if (extraction.totalSupportedReferences === 0) {
+    return null;
+  }
+
+  if (extraction.totalSupportedReferences > 1) {
+    const refs = extraction.references.map(formatIssueReference).join(", ");
+    input.limitations.push(
+      `Multiple supported issue references found (${refs});${extraction.capped ? " capped at 3 and" : ""} did not choose a single issue as requirement source. Original request mapping is ambiguous.`
+    );
+    return null;
+  }
+
+  const [reference] = extraction.references;
+  if (!reference) {
+    return null;
+  }
+
+  const result = await fetchLinkedIssue(reference, input.headers, input.hasToken);
+
+  if (result.status === "failed") {
+    input.limitations.push(result.limitation);
+    return null;
+  }
+
+  return result.taskText;
+}
+
+async function fetchLinkedIssue(
+  reference: SupportedIssueReference,
+  headers: Record<string, string>,
+  hasToken: boolean
+): Promise<{ status: "ok"; taskText: string } | { status: "failed"; limitation: string }> {
+  const ref = formatIssueReference(reference);
+  let response: Response;
+
+  try {
+    response = await githubFetch(
+      `https://api.github.com/repos/${reference.owner}/${reference.repo}/issues/${reference.number}`,
+      headers
+    );
+  } catch {
+    return {
+      status: "failed",
+      limitation: `Linked issue ${ref} could not be fetched: request timed out or network failed. Requirement source fell back to PR description.`
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      status: "failed",
+      limitation: `Linked issue ${ref} could not be fetched: ${githubLinkedIssueFailureReason(response, hasToken)} Requirement source fell back to PR description.`
+    };
+  }
+
+  const issue = (await response.json()) as GitHubIssueResponse;
+
+  if (issue.pull_request) {
+    return {
+      status: "failed",
+      limitation: `Linked reference ${ref} points to a pull request, not an issue. Requirement source fell back to PR description.`
+    };
+  }
+
+  const title = compactText(redactSecrets(issue.title ?? ""), 300);
+  const body = compactText(redactSecrets(issue.body ?? ""), 5000);
+  const taskText = [`Linked issue ${ref}: ${title}`, body].filter((part) => part.trim()).join("\n\n");
+
+  if (!taskText.trim()) {
+    return {
+      status: "failed",
+      limitation: `Linked issue ${ref} had no title or body text. Requirement source fell back to PR description.`
+    };
+  }
+
+  return { status: "ok", taskText };
+}
+
+function githubLinkedIssueFailureReason(response: Response, hasToken: boolean): string {
+  return classifyGitHubFailure(response, hasToken).reason.replace(/\bPR\b/g, "issue");
 }
 
 function githubFetch(

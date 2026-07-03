@@ -153,6 +153,174 @@ describe("buildPullRequestInput", () => {
     expect(firstFetchOptions?.headers?.Authorization).toBeUndefined();
   });
 
+  it("uses a single supported linked issue as the requirement source", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Fix expired reset links",
+            body: "Fixes #42",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "coding-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/reset", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.endsWith("/issues/42")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Reject expired password reset links",
+            body: "Acceptance criteria:\n- Reject expired reset links.\n- Add regression coverage."
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.taskSource).toBe("issue");
+    expect(input.taskText).toContain("Linked issue acme/repo#42: Reject expired password reset links");
+    expect(input.taskText).toContain("Reject expired reset links");
+    expect(input.description).toBe("Fixes #42");
+    expect(input.limitations?.join(" ") ?? "").not.toContain("No original task text");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/42"))).toBe(true);
+  });
+
+  it("keeps pasted task text ahead of linked issue text", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Fix expired reset links",
+            body: "Fixes #42",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "coding-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/reset", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.endsWith("/issues/42")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Issue title should not override pasted task",
+            body: "Acceptance criteria: do something else."
+          })
+        );
+      }
+
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      taskText: "Acceptance criteria: preserve the pasted task."
+    });
+
+    expect(input.taskSource).toBe("task");
+    expect(input.taskText).toBe("Acceptance criteria: preserve the pasted task.");
+    expect(JSON.stringify(input)).not.toContain("Issue title should not override pasted task");
+  });
+
+  it("does not choose a requirement source when multiple issue refs are ambiguous", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Ambiguous linked work",
+            body: "Fixes #1. Closes #2. Resolves owner/other#3. docs/site#4.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "coding-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/ambiguous", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    const limitations = input.limitations?.join(" ") ?? "";
+
+    expect(input.taskText).toBe("");
+    expect(input.taskSource).toBeUndefined();
+    expect(limitations).toContain("Multiple supported issue references found");
+    expect(limitations).toContain("acme/repo#1, acme/repo#2, owner/other#3");
+    expect(limitations).toContain("capped at 3");
+    expect(limitations).toContain("ambiguous");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/issues/"))).toBe(false);
+  });
+
+  it("keeps inaccessible linked issues as limitations instead of verified task evidence", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Fix expired reset links",
+            body: "Fixes #42",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "coding-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/reset", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.endsWith("/issues/42")) {
+        return Promise.resolve(new Response("not found with github_pat_secret_should_not_leak", { status: 404 }));
+      }
+
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      githubToken: "github_pat_secret_should_not_leak"
+    });
+    const serialized = JSON.stringify(input);
+
+    expect(input.taskText).toBe("");
+    expect(input.taskSource).toBeUndefined();
+    expect(input.limitations?.join(" ")).toContain("Linked issue acme/repo#42 could not be fetched");
+    expect(input.limitations?.join(" ")).toContain("fell back to PR description");
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
+    expect(serialized).not.toContain("not found with");
+  });
+
   it("records bounded GitHub evidence timing phases without source details", async () => {
     const fetchMock = vi
       .fn()
