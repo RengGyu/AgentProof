@@ -168,9 +168,35 @@ function deferredScopeGate({ root, readFile }) {
 }
 
 function nextReadinessAction(gates) {
-  const blocked = gates.find((gate) => gate.status === "blocked");
-  if (blocked) {
-    return blocked.next;
+  const docsGate = gates.find((gate) => gate.key === "p0_docs");
+  if (docsGate?.status === "blocked") {
+    return docsGate.next;
+  }
+
+  const deferredScopeGate = gates.find((gate) => gate.key === "p1_p2_deferred_scope");
+  if (deferredScopeGate?.status === "blocked") {
+    return deferredScopeGate.next;
+  }
+
+  const reviewerGate = gates.find((gate) => gate.key === "reviewer_validation");
+  if (
+    reviewerGate?.status === "blocked" &&
+    (
+      reviewerGate.next === "send_prepared_reviewer_outreach" ||
+      reviewerGate.next === "record_three_reviewer_sessions" ||
+      reviewerGate.next === "run_at_least_one_real_pr_session"
+    )
+  ) {
+    return reviewerGate.next;
+  }
+
+  const externalPilotGate = gates.find((gate) => gate.key === "external_pr_5_case_pilot");
+  if (externalPilotGate?.status === "blocked") {
+    return externalPilotGate.next;
+  }
+
+  if (reviewerGate?.status === "blocked") {
+    return reviewerGate.next;
   }
 
   const unclear = gates.find((gate) => gate.status === "unclear");
