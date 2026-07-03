@@ -33,6 +33,24 @@ For each PR, run the report first using only the public PR URL path. Then fill t
 
 If no external reviewer is available, mark the session `biased and insufficient`; do not treat internal review as real-user validation.
 
+## Manual Label Recorder
+
+Use the recorder after a reviewer has already read the generated report. It updates only `manualLabels` and validates that `reportInput` stays separate from reviewer/oracle labels.
+
+```bash
+pnpm external-pr-pilot:labels summary
+pnpm external-pr-pilot:labels show --case-id external-pr-pilot-clean-nextjs-95403
+pnpm external-pr-pilot:labels record-labels \
+  --case-id external-pr-pilot-clean-nextjs-95403 \
+  --requirement-status met \
+  --missing-targeted-test-evidence no \
+  --scope-creep no \
+  --top-files "packages/next/src/file.ts,packages/next/src/file.test.ts" \
+  --notes "Reviewer confirmed bounded labels after reading the generated report."
+```
+
+Allowed requirement statuses are `met`, `partial`, `missing`, and `unclear`. The missing-test and scope-creep labels are reviewer-confirmed `yes`/`no` values. A reviewed case must include at least one first-inspection file in `--top-files`; if the reviewer cannot identify one, do not mark that case as reviewed yet. Notes must remain summary-only and must not include raw diffs, logs, tokens, private contact details, or private repository data.
+
 ## Smoke Runner
 
 Run the five public PRs through the same analyze and summary-only saved-report smoke path used by production regression:
