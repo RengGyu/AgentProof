@@ -14,14 +14,16 @@ describe("GET /api/cron/analysis-jobs/run", () => {
     vi.clearAllMocks();
   });
 
-  it("fails closed when cron authentication is not configured", async () => {
+  it("returns a metadata-only no-op when cron authentication is not configured", async () => {
     const response = await GET(new Request("http://localhost/api/cron/analysis-jobs/run"));
     const json = await response.json();
 
-    expect(response.status).toBe(501);
+    expect(response.status).toBe(200);
     expect(json).toEqual({
-      error: "Analysis job cron is not configured.",
-      code: "analysis_job_cron_not_configured"
+      ok: true,
+      privacy: "analysis-worker-cron-metadata-only",
+      status: "disabled",
+      reason: "cron_auth_not_configured"
     });
     expect(mockedRunAnalysisJobBatch).not.toHaveBeenCalled();
   });

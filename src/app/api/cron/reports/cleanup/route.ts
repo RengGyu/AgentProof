@@ -7,9 +7,11 @@ export async function GET(request: Request) {
 
   if (cronTokens.length === 0) {
     return noStoreJson({
-      error: "Saved report cleanup cron is not configured.",
-      code: "saved_report_cleanup_cron_not_configured"
-    }, { status: 501 });
+      ok: true,
+      privacy: "saved-report-cleanup-cron-metadata-only",
+      status: "disabled",
+      reason: "cron_auth_not_configured"
+    });
   }
 
   if (!cronTokenMatches(request, cronTokens)) {

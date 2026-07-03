@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const publicCopyFiles = [
+  ["README", "../../README.md"],
   ["public launch trust doc", "../../docs/public-launch-trust.md"],
   ["support status feedback doc", "../../docs/support-status-feedback.md"],
+  ["first real PR report guide", "../../docs/first-real-pr-report.md"],
   ["GitHub App onboarding doc", "../../docs/github-app-onboarding.md"],
   ["tenant data retention doc", "../../docs/tenant-data-retention.md"],
   ["saved report storage doc", "../../docs/saved-report-storage.md"],

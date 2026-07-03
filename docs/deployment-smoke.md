@@ -6,7 +6,7 @@ Production alias:
 
 https://agentproof-pearl.vercel.app
 
-Last no-secret production gate: 2026-06-29
+Last no-secret production gate: 2026-07-03
 
 Last credentialed live integration pass: 2026-06-29
 
@@ -30,6 +30,7 @@ Expected:
 - `/api/github/webhook/status` returns 200 with coarse status only; it must not expose env-specific booleans, repository allowlists, private-key validity, secret names, or secret values.
 - `/api/ops/github-app/status` returns 401 without `x-agentproof-ops-token` when operator diagnostics are configured; 501 means the diagnostics token is not configured for that deployment.
 - `/api/analyze` rejects GET with 405.
+- If cron auth is intentionally not configured for the public demo, `/api/cron/analysis-jobs/run` and `/api/cron/reports/cleanup` return metadata-only disabled no-ops instead of running work. Invalid configured cron tokens still return 401.
 - Production regression smoke passes for the public AgentProof PR set.
 - Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
 - Saved reports retain zero evidence items, zero claims, no raw re-prompt text, and cleared evidence references.
@@ -65,6 +66,12 @@ Expected workflow proof:
 - The smoke output includes `qualityGateSummary.ok: true` for deterministic report trust checks; this is a guardrail, not a verifier quality score.
 - When budgets are enforced, the smoke output includes `performanceBudget.ok: true`.
 - The run output contains bounded metadata only. It must not include GitHub tokens, private task text, raw diffs, raw logs, full reports, or saved-report contents.
+
+## P0 Cron Decision
+
+The public demo keeps the Vercel cron entries in `vercel.json`, but cron work only runs when `CRON_SECRET` or `AGENTPROOF_CRON_TOKEN` is configured and the request presents that token by `Authorization: Bearer ...` or `x-agentproof-cron-token`. Query-string tokens are rejected.
+
+For design-partner beta readiness, token-unconfigured cron requests are harmless metadata-only no-ops. This avoids noisy scheduled failures on the public demo while preserving fail-closed behavior for invalid tokens and unavailable queue/storage dependencies. The no-op response must not return repository names, tenant ids, report ids, raw reports, evidence, claims, diffs, logs, re-prompt text, table/env names, or secrets.
 
 ## Live Integration Checks
 
@@ -141,7 +148,7 @@ Most recent no-secret production gate:
 - `/` returned 200.
 - `/integrations` returned 200.
 - `/api/analyze` rejected GET with 405.
-- Production regression smoke passed for six public AgentProof PRs.
+- Production regression smoke passed for six public AgentProof PRs on 2026-07-03, with `qualityGateSummary.ok: true`, saved reports `privacy: "summary-only"`, `durability: "summary-only-supabase"`, zero saved evidence items, zero saved claims, omitted raw re-prompt text, cleared evidence refs, and no production token forwarding.
 - `/api/llm/verify`, `/api/notifications/slack`, `/api/github/webhook`, and `/api/ops/github-app/status` returned 401 without trusted caller credentials, signatures, or the operator diagnostics token.
 
 ## Manual Demo Checks
