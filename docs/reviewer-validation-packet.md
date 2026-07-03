@@ -7,13 +7,14 @@ The machine-readable tracker is `eval/fixtures/reviewer-validation.v1.json`. It 
 Use the recorder instead of editing the tracker by hand:
 
 ```bash
+pnpm p0:beta-readiness
 pnpm reviewer:validation summary
 pnpm reviewer:validation message --slot reviewer-1
 pnpm reviewer:validation mark-outreach --slot reviewer-1 --status outreach-sent --next-action "Wait for bounded reviewer response."
 pnpm reviewer:validation add-feedback --slot reviewer-1 --session-status completed --reviewer-profile cto-or-tech-lead --pr-source public-oss-pr --report-path public-pr-url-only --time-to-top-risk 24 --top-risk-understood yes --missing-proof-understood yes --first-file-or-check-understood yes --next-reprompt-understood yes --report-usefulness useful --false-blocker-observed no --would-use-again yes --follow-up "Reviewer identified inspection priority from bounded report metadata."
 ```
 
-The recorder prints only `reviewer-validation-summary-only` or `reviewer-validation-message-only` output and rejects private contact details, raw diffs, full logs, token-looking values, provider ids, table names, environment variable names, and multi-line free-form notes.
+The readiness gate prints only `p0-beta-readiness-summary-only`. The recorder prints only `reviewer-validation-summary-only` or `reviewer-validation-message-only` output and rejects private contact details, raw diffs, full logs, token-looking values, provider ids, table names, environment variable names, and multi-line free-form notes.
 
 ## Outreach Rule
 
