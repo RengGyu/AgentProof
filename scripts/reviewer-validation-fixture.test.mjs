@@ -19,6 +19,31 @@ describe("reviewer-validation-fixture CLI", () => {
     expect(writes).toEqual([]);
   });
 
+  it("prints a slot-specific outreach message without writing the fixture", () => {
+    const writes = [];
+    const result = runReviewerValidationCli(["message", "--slot", "reviewer-2"], {
+      fixturePath: "fixture.json",
+      readFile: () => JSON.stringify(fixture()),
+      writeFile: (path, body) => writes.push({ path, body })
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      privacy: "reviewer-validation-message-only",
+      slot: "reviewer-2",
+      targetProfile: "senior-reviewer",
+      subject: "Quick feedback on agent PR verification",
+      recordCommand: "pnpm reviewer:validation mark-outreach --slot reviewer-2 --status outreach-sent --next-action \"Wait for bounded reviewer response.\""
+    }));
+    expect(result.bodyLines).toEqual(expect.arrayContaining([
+      expect.stringContaining("not a merge decision"),
+      expect.stringContaining("Feedback should stay summary-only")
+    ]));
+    expect(JSON.stringify(result)).not.toContain("reviewer@example.com");
+    expect(JSON.stringify(result)).not.toContain("github_pat_");
+    expect(JSON.stringify(result)).not.toContain("rawDiff");
+    expect(writes).toEqual([]);
+  });
+
   it("marks outreach as sent and writes only metadata", () => {
     const writes = [];
     const result = runReviewerValidationCli([
@@ -134,6 +159,14 @@ describe("reviewer-validation-fixture CLI", () => {
     })).toThrow(/private or secret-looking value/i);
 
     expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects message requests for unknown slots", () => {
+    expect(() => runReviewerValidationCli(["message", "--slot", "reviewer-4"], {
+      fixturePath: "fixture.json",
+      readFile: () => JSON.stringify(fixture()),
+      writeFile: vi.fn()
+    })).toThrow("--slot must be one of: reviewer-1, reviewer-2, reviewer-3.");
   });
 });
 

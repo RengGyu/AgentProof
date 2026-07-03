@@ -56,6 +56,38 @@ const SECRET_PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
 ];
+const OUTREACH_MESSAGES = {
+  "message-a": {
+    subject: "10-minute check on an AI-agent PR evidence report",
+    bodyLines: [
+      "I am testing AgentProof with a few reviewers before treating it as beta-ready.",
+      "It creates an evidence report for an agent-authored pull request: requirement coverage, weak proof, missing tests, scope signals, first files to inspect, and the next re-prompt for the coding agent.",
+      "Could you spend 10 minutes on one public or shareable PR and tell me whether the report helps you decide what to inspect first before merge?",
+      "Please open https://agentproof-pearl.vercel.app, paste one public GitHub PR URL or use a demo PR, and say the top risk, missing proof, first files, and next re-prompt within the first 30 seconds.",
+      "Please do not send raw diffs, full logs, private tokens, screenshots with secrets, or private customer data."
+    ]
+  },
+  "message-b": {
+    subject: "Quick feedback on agent PR verification",
+    bodyLines: [
+      "I am validating whether AgentProof helps reviewers of AI-agent pull requests find weak evidence faster.",
+      "The report is not a merge decision. It should help a human reviewer decide what to inspect first and what to ask the coding agent to fix next.",
+      "Could you try it on one public or shareable PR where the original task or linked issue is visible?",
+      "I am measuring whether you can find the top risk within 30 seconds, whether missing proof or targeted tests are clear, whether any blocker is overstated, and whether the next re-prompt is useful.",
+      "Feedback should stay summary-only. Please avoid raw code, logs, tokens, private repository names, or provider identifiers."
+    ]
+  },
+  "message-c": {
+    subject: "Design-partner feedback on PR evidence handoff",
+    bodyLines: [
+      "I am looking for a practical reviewer check, not product praise.",
+      "AgentProof maps a PR back to the original issue, task, or prompt and produces a grounded evidence report for human review.",
+      "Could you review one generated report and tell me whether it changes your inspection priority?",
+      "The useful signal is narrow: requirement coverage, missing proof, scope creep, risky files to inspect first, test/build evidence status, and the next re-prompt to the coding agent.",
+      "If the report is noisy, unclear, or not useful, that is the most important feedback. Please keep feedback bounded to outcome labels and short notes."
+    ]
+  }
+};
 
 export function runReviewerValidationCli(argv, {
   fixturePath = DEFAULT_FIXTURE_PATH,
@@ -76,6 +108,10 @@ export function runReviewerValidationCli(argv, {
     return summarizeFixture(validateFixture(fixture));
   }
 
+  if (command === "message") {
+    return outreachMessage(fixture, options);
+  }
+
   if (command === "mark-outreach") {
     const updated = markOutreach(fixture, options);
     writeValidatedFixture(targetPath, updated, writeFile);
@@ -89,6 +125,32 @@ export function runReviewerValidationCli(argv, {
   }
 
   throw new Error(`Unsupported reviewer validation command: ${command}`);
+}
+
+function outreachMessage(fixture, options) {
+  const validated = validateFixture(fixture);
+  const slot = requiredEnum(options.slot, REVIEWER_SLOTS, "--slot");
+  const outreachSlot = validated.outreachSlots.find((item) => item.slot === slot);
+
+  if (!outreachSlot) {
+    throw new Error(`Reviewer validation fixture is missing ${slot}.`);
+  }
+
+  const message = OUTREACH_MESSAGES[outreachSlot.messageTemplate];
+  const result = {
+    privacy: "reviewer-validation-message-only",
+    slot,
+    targetProfile: outreachSlot.targetProfile,
+    outreachChannelClass: outreachSlot.outreachChannelClass,
+    subject: message.subject,
+    bodyLines: message.bodyLines,
+    recordCommand: `pnpm reviewer:validation mark-outreach --slot ${slot} --status outreach-sent --next-action "Wait for bounded reviewer response."`,
+    reminder: "Do not add recipient names, handles, email addresses, private repo names, raw diffs, full logs, screenshots with secrets, tokens, provider ids, table names, or environment variable names to the fixture."
+  };
+
+  assertNoPrivateOrRawPayloads(result, "message");
+
+  return result;
 }
 
 function markOutreach(fixture, options) {
@@ -360,6 +422,7 @@ function usage() {
     privacy: "reviewer-validation-summary-only",
     commands: [
       "summary",
+      "message --slot reviewer-1",
       "mark-outreach --slot reviewer-1 --status outreach-sent --next-action \"Record reviewer response.\"",
       "add-feedback --slot reviewer-1 --session-status completed --reviewer-profile cto-or-tech-lead --pr-source public-oss-pr --report-path public-pr-url-only --time-to-top-risk 24 --top-risk-understood yes --missing-proof-understood yes --first-file-or-check-understood yes --next-reprompt-understood yes --report-usefulness useful --false-blocker-observed no --would-use-again yes --follow-up \"Reviewer found the first inspection target quickly.\""
     ]
