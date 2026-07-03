@@ -12,10 +12,13 @@ pnpm reviewer:validation summary
 pnpm reviewer:validation outreach-pack
 pnpm reviewer:validation message --slot reviewer-1
 pnpm reviewer:validation mark-outreach --slot reviewer-1 --status outreach-sent --next-action "Wait for bounded reviewer response."
+pnpm reviewer:validation mark-outreach-pack-sent --confirm-sent yes --next-action "Wait for bounded reviewer responses."
 pnpm reviewer:validation add-feedback --slot reviewer-1 --session-status completed --reviewer-profile cto-or-tech-lead --pr-source public-oss-pr --report-path public-pr-url-only --time-to-top-risk 24 --top-risk-understood yes --missing-proof-understood yes --first-file-or-check-understood yes --next-reprompt-understood yes --report-usefulness useful --false-blocker-observed no --would-use-again yes --follow-up "Reviewer identified inspection priority from bounded report metadata."
 ```
 
 The readiness gate prints only `p0-beta-readiness-summary-only`. The recorder prints only `reviewer-validation-summary-only`, `reviewer-validation-message-only`, or `reviewer-validation-outreach-pack-only` output and rejects private contact details, raw diffs, full logs, token-looking values, provider ids, table names, environment variable names, and multi-line free-form notes.
+
+Use `mark-outreach-pack-sent` only after all three prepared outreach messages were actually sent. If only one or two slots were sent, use the slot-specific `mark-outreach` command instead.
 
 ## Outreach Rule
 
