@@ -22,7 +22,7 @@ describe("p0-beta-readiness", () => {
       ok: false,
       privacy: "p0-beta-readiness-summary-only",
       status: "blocked",
-      next: "fill_manual_labels_after_reviewer_sessions"
+      next: "send_prepared_reviewer_outreach"
     }));
     expect(result.gates).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -47,6 +47,35 @@ describe("p0-beta-readiness", () => {
     expect(JSON.stringify(result)).not.toContain("github_pat_");
     expect(JSON.stringify(result)).not.toContain("rawDiff");
     expect(JSON.stringify(result)).not.toContain("reviewer@example.com");
+  });
+
+  it("points to manual labels after outreach is already sent or scheduled", () => {
+    const result = runP0BetaReadiness({
+      root: "/repo",
+      readFile: fixtureReader({
+        "/repo/eval/fixtures/reviewer-validation.v1.json": JSON.stringify(reviewerFixture({
+          outreachSent: true,
+          completed: true
+        })),
+        "/repo/eval/fixtures/external-pr-pilot.v1.json": JSON.stringify(externalPilotFixture({ reviewed: false })),
+        "/repo/docs/external-pr-pilot.md": externalPilotDoc(),
+        "/repo/docs/reviewer-validation-packet.md": reviewerPacketDoc(),
+        "/repo/README.md": readme(),
+        "/repo/docs/first-real-pr-report.md": "first real PR guide",
+        "/repo/docs/linked-issue-ingestion.md": "linked issue ingestion",
+        "/repo/docs/deployment-smoke.md": "deployment smoke"
+      }),
+      exists: () => true
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      status: "blocked",
+      next: "fill_manual_labels_after_reviewer_sessions"
+    }));
+    expect(result.gates.find((gate) => gate.key === "reviewer_validation")).toEqual(expect.objectContaining({
+      status: "ready"
+    }));
   });
 
   it("reports ready only when pilot labels and real reviewer evidence exist", () => {
@@ -116,14 +145,14 @@ function fixtureReader(files) {
   };
 }
 
-function reviewerFixture({ completed = false } = {}) {
+function reviewerFixture({ outreachSent = false, completed = false } = {}) {
   return {
     schemaVersion: "reviewer-validation.v1",
     privacy: "reviewer-validation-metadata-only",
     status: completed ? "reviewer_validation_ready_for_review" : "outreach_prepared_reviewer_usefulness_unclear",
     outreachSlots: ["reviewer-1", "reviewer-2", "reviewer-3"].map((slot) => ({
       slot,
-      status: completed ? "scheduled" : "ready-to-send"
+      status: completed || outreachSent ? "scheduled" : "ready-to-send"
     })),
     feedbackRecords: completed
       ? ["reviewer-1", "reviewer-2", "reviewer-3"].map((slot, index) => ({
