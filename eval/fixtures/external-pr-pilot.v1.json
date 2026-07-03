@@ -1,0 +1,198 @@
+{
+  "schemaVersion": "external-pr-pilot.v1",
+  "privacy": "external-pr-pilot-metadata-only",
+  "createdAt": "2026-07-03",
+  "purpose": "Seed a five-public-PR pilot before any twenty-case evaluation expansion.",
+  "scaleRule": "Do not expand to 20 external PRs until these 5 cases have been run, reviewed, and revised without report-input oracle leakage.",
+  "cases": [
+    {
+      "id": "external-pr-pilot-clean-nextjs-95403",
+      "category": "clean_pr",
+      "source": {
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95403,
+        "url": "https://github.com/vercel/next.js/pull/95403",
+        "observedAt": "2026-07-03"
+      },
+      "reportInput": {
+        "pullRequestUrl": "https://github.com/vercel/next.js/pull/95403",
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95403,
+        "title": "fix: handle prototype-colliding segment names in segment explorer trie",
+        "publicTaskContext": "Fixes vercel/next.js#95395; checks prototype-colliding names in the segment explorer trie.",
+        "linkedIssueRefs": ["vercel/next.js#95395"],
+        "knownPublicSignals": {
+          "changedFiles": [
+            "packages/next/src/next-devtools/dev-overlay/segment-explorer-trie.ts",
+            "packages/next/src/next-devtools/dev-overlay/segment-explorer-trie.test.tsx"
+          ],
+          "checkSummary": "Public check rollup showed completed build-and-test jobs with success conclusions when observed."
+        }
+      },
+      "manualLabels": {
+        "labelStatus": "pending_reviewer_confirmation",
+        "requirementStatus": "pending_manual_review",
+        "missingTargetedTestEvidence": "pending_manual_review",
+        "scopeCreep": "pending_manual_review",
+        "topFilesReviewerShouldInspect": [
+          "packages/next/src/next-devtools/dev-overlay/segment-explorer-trie.ts",
+          "packages/next/src/next-devtools/dev-overlay/segment-explorer-trie.test.tsx"
+        ],
+        "notes": "Candidate for a clean PR pilot; do not feed these manual labels into report generation."
+      },
+      "limitations": [
+        "Manual labels are not confirmed until a reviewer session records the expected first inspection path."
+      ]
+    },
+    {
+      "id": "external-pr-pilot-missing-tests-nextjs-95441",
+      "category": "missing_tests",
+      "source": {
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95441,
+        "url": "https://github.com/vercel/next.js/pull/95441",
+        "observedAt": "2026-07-03"
+      },
+      "reportInput": {
+        "pullRequestUrl": "https://github.com/vercel/next.js/pull/95441",
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95441,
+        "title": "Update font data",
+        "publicTaskContext": "Auto-generated public PR that updates font data with the latest available data.",
+        "linkedIssueRefs": [],
+        "knownPublicSignals": {
+          "changedFiles": [
+            "packages/font/src/google/font-data.json",
+            "packages/font/src/google/index.ts"
+          ],
+          "checkSummary": "Public check rollup was observed on an open PR; targeted test evidence should be evaluated from report output, not this label file."
+        }
+      },
+      "manualLabels": {
+        "labelStatus": "pending_reviewer_confirmation",
+        "requirementStatus": "pending_manual_review",
+        "missingTargetedTestEvidence": "pending_manual_review",
+        "scopeCreep": "pending_manual_review",
+        "topFilesReviewerShouldInspect": [
+          "packages/font/src/google/font-data.json",
+          "packages/font/src/google/index.ts"
+        ],
+        "notes": "Candidate for the missing-test-evidence pilot; reviewer must confirm whether existing automation is enough."
+      },
+      "limitations": [
+        "Bot-generated data updates can have repository-specific validation that is not visible from changed file names alone."
+      ]
+    },
+    {
+      "id": "external-pr-pilot-scope-creep-nextjs-95426",
+      "category": "scope_creep",
+      "source": {
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95426,
+        "url": "https://github.com/vercel/next.js/pull/95426",
+        "observedAt": "2026-07-03"
+      },
+      "reportInput": {
+        "pullRequestUrl": "https://github.com/vercel/next.js/pull/95426",
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95426,
+        "title": "Turbopack: add extension alias config option to match alternate file extensions",
+        "publicTaskContext": "Adds a Turbopack config option for extension aliases and mentions a known dynamic-import limitation.",
+        "linkedIssueRefs": ["vercel/next.js#82945"],
+        "knownPublicSignals": {
+          "changedFiles": [
+            "crates/next-core/src/next_config.rs",
+            "crates/next-core/src/next_import_map.rs",
+            "docs/01-app/03-api-reference/05-config/01-next-config-js/turbopack.mdx",
+            "packages/next/src/server/config-schema.ts",
+            "packages/next/src/server/config-shared.ts",
+            "test/e2e/turbopack-resolve-extension-alias/turbopack-resolve-extension-alias.test.ts"
+          ],
+          "checkSummary": "Public check rollup showed completed build-and-test jobs with success conclusions when observed."
+        }
+      },
+      "manualLabels": {
+        "labelStatus": "pending_reviewer_confirmation",
+        "requirementStatus": "pending_manual_review",
+        "missingTargetedTestEvidence": "pending_manual_review",
+        "scopeCreep": "pending_manual_review",
+        "topFilesReviewerShouldInspect": [
+          "crates/next-core/src/next_config.rs",
+          "crates/next-core/src/next_import_map.rs",
+          "packages/next/src/server/config-shared.ts",
+          "test/e2e/turbopack-resolve-extension-alias/turbopack-resolve-extension-alias.test.ts"
+        ],
+        "notes": "Candidate for a broad-surface scope-creep audit; the label is unresolved until reviewer confirmation."
+      },
+      "limitations": [
+        "Broad file coverage can be justified by feature shape; AgentProof must not mark scope creep without evidence."
+      ]
+    },
+    {
+      "id": "external-pr-pilot-failed-ci-nextjs-95432",
+      "category": "failed_ci",
+      "source": {
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95432,
+        "url": "https://github.com/vercel/next.js/pull/95432",
+        "observedAt": "2026-07-03"
+      },
+      "reportInput": {
+        "pullRequestUrl": "https://github.com/vercel/next.js/pull/95432",
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95432,
+        "title": "fix(create-next-app): make AGENTS.md blue",
+        "publicTaskContext": "Small visual/copy change in create-next-app output with a screenshot in the public PR description.",
+        "linkedIssueRefs": [],
+        "knownPublicSignals": {
+          "changedFiles": ["packages/create-next-app/index.ts"],
+          "checkSummary": "Public check rollup showed failed lint and final build-and-test summary conclusions when observed."
+        }
+      },
+      "manualLabels": {
+        "labelStatus": "pending_reviewer_confirmation",
+        "requirementStatus": "pending_manual_review",
+        "missingTargetedTestEvidence": "pending_manual_review",
+        "scopeCreep": "pending_manual_review",
+        "topFilesReviewerShouldInspect": ["packages/create-next-app/index.ts"],
+        "notes": "Candidate for failed-CI prioritization; report generation must discover check evidence separately."
+      },
+      "limitations": [
+        "Open PR check state can change; the pilot session must record the observed check state at run time."
+      ]
+    },
+    {
+      "id": "external-pr-pilot-visual-proof-nextjs-95054",
+      "category": "vague_task_or_visual_gap",
+      "source": {
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95054,
+        "url": "https://github.com/vercel/next.js/pull/95054",
+        "observedAt": "2026-07-03"
+      },
+      "reportInput": {
+        "pullRequestUrl": "https://github.com/vercel/next.js/pull/95054",
+        "repository": "vercel/next.js",
+        "pullRequestNumber": 95054,
+        "title": "fix: update next/image usage and improve accessibility in TwoColumnWithImage",
+        "publicTaskContext": "Updates next/image usage and says layout was verified across image positions and screen sizes.",
+        "linkedIssueRefs": [],
+        "knownPublicSignals": {
+          "changedFiles": [],
+          "checkSummary": "Candidate should be run live so AgentProof can decide whether visual proof is available or only asserted."
+        }
+      },
+      "manualLabels": {
+        "labelStatus": "pending_reviewer_confirmation",
+        "requirementStatus": "pending_manual_review",
+        "missingTargetedTestEvidence": "pending_manual_review",
+        "scopeCreep": "pending_manual_review",
+        "topFilesReviewerShouldInspect": [],
+        "notes": "Candidate for vague-task or visual-proof-gap handling; reviewer must fill first files after a live run."
+      },
+      "limitations": [
+        "Changed files were not copied into this fixture; live PR fetch should provide deterministic file evidence before scoring."
+      ]
+    }
+  ]
+}

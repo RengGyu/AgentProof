@@ -12,6 +12,18 @@ This document defines the MVP evaluation approach for AgentProof. The goal is no
 | [BugsInPy](https://github.com/soarsmu/BugsInPy) | Later Python bug/fix pack | Strong | License and redistribution need a separate check. |
 | [AIDev](https://huggingface.co/datasets/hao-li/AIDev) | Exploratory only | Weak | Merge/reject/review states are proxy labels, not correctness. |
 
+## External PR Pilot
+
+P0 design-partner validation starts with a five-public-PR pilot before any 20-case external PR expansion. The pilot fixture is `eval/fixtures/external-pr-pilot.v1.json`, and the runbook is `docs/external-pr-pilot.md`.
+
+This pilot is separate from SWE-bench scoring:
+
+- It uses public PR URLs and bounded public metadata as report input.
+- Manual reviewer labels are stored beside the input, not inside it.
+- Labels start as `pending_reviewer_confirmation` and must be filled after report generation.
+- AgentProof's own PRs do not count as external quality proof.
+- The pilot must cover clean PR, missing tests, scope creep, failed CI, and vague task or visual-proof gap cases before scaling.
+
 ## Scoring Rules
 
 - Score only deterministic or dataset-provided signals: schema validity, evidence IDs, changed file evidence, visible test file evidence, unsupported verified requirements, future-label leakage, and secret-looking payloads.
