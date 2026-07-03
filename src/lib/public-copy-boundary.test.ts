@@ -6,6 +6,7 @@ const publicCopyFiles = [
   ["public launch trust doc", "../../docs/public-launch-trust.md"],
   ["support status feedback doc", "../../docs/support-status-feedback.md"],
   ["first real PR report guide", "../../docs/first-real-pr-report.md"],
+  ["external PR pilot doc", "../../docs/external-pr-pilot.md"],
   ["GitHub App onboarding doc", "../../docs/github-app-onboarding.md"],
   ["tenant data retention doc", "../../docs/tenant-data-retention.md"],
   ["saved report storage doc", "../../docs/saved-report-storage.md"],
