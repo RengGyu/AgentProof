@@ -49,6 +49,7 @@ export interface PullRequestInput {
   author?: string;
   baseBranch?: string;
   headBranch?: string;
+  taskSource?: "task" | "issue";
   changedFiles: ChangedFile[];
   checks: CheckRun[];
   logs: LogSnippet[];

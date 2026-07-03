@@ -353,11 +353,6 @@ export async function runNextAnalysisJob(
       );
     }
 
-    input.limitations = [
-      ...(input.limitations ?? []),
-      "GitHub App queued worker v1 does not fetch linked issue/task text; requirements are extracted from the PR description unless the original request is included there."
-    ];
-
     const report = generateVerificationReport(input);
     const validation = validateVerificationReport(report, { mode: "full" });
 

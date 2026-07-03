@@ -80,6 +80,29 @@ describe("server report store", () => {
     );
   });
 
+  it("does not store raw linked issue body evidence in saved reports", async () => {
+    const rawIssueBody = "RAW_LINKED_ISSUE_BODY_SHOULD_NOT_SAVE";
+    const fullReport = generateVerificationReport({
+      ...demoScenarios.clean,
+      taskSource: "issue",
+      taskText: [
+        "Linked issue acme/repo#42: Reject expired reset links",
+        "Acceptance criteria:",
+        "- Reject expired reset links.",
+        "```text",
+        rawIssueBody,
+        "```"
+      ].join("\n")
+    });
+    const saved = await createSavedReport(fullReport);
+    const serialized = JSON.stringify(saved.report);
+
+    expect(fullReport.evidenceIndex.some((item) => item.summary.includes(rawIssueBody))).toBe(true);
+    expect(saved.report.evidenceIndex).toEqual([]);
+    expect(serialized).not.toContain(rawIssueBody);
+    expect(serialized).not.toContain("Linked issue acme/repo#42");
+  });
+
   it("scopes tenant saved reports by tenant id or report access key", async () => {
     const report = decodeSharedReport(encodeReportForShare(generateVerificationReport(demoScenarios.clean)));
     const saved = await createSavedReport(report, { tenantId: "tenant_a" });

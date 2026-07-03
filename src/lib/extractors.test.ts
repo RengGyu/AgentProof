@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { buildEvidenceIndex, extractClaims, extractKeywords, extractRequirements } from "./extractors";
 
 describe("extractRequirements", () => {
+  it("marks requirements from linked issue text as issue-sourced", () => {
+    const requirements = extractRequirements(
+      "Linked issue acme/repo#42: Reject expired reset links\n\nAcceptance criteria:\n- Reject expired reset links.\n- Add regression coverage.",
+      "Fixes #42",
+      "issue"
+    );
+
+    expect(requirements[0].source).toBe("issue");
+    expect(requirements.map((requirement) => requirement.text).join(" ")).toContain("Reject expired reset links");
+  });
+
   it("ignores GitHub issue template comments and fenced traces", () => {
     const requirements = extractRequirements(
       [
