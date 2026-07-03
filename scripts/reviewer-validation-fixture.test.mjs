@@ -44,6 +44,41 @@ describe("reviewer-validation-fixture CLI", () => {
     expect(writes).toEqual([]);
   });
 
+  it("prints a ready-to-send outreach pack for all reviewer slots without writing private details", () => {
+    const writes = [];
+    const result = runReviewerValidationCli(["outreach-pack"], {
+      fixturePath: "fixture.json",
+      readFile: () => JSON.stringify(fixture()),
+      writeFile: (path, body) => writes.push({ path, body })
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      privacy: "reviewer-validation-outreach-pack-only",
+      status: "outreach_prepared_reviewer_usefulness_unclear",
+      outreachSlotCount: 3,
+      readyToSendCount: 3
+    }));
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages.map((message) => message.slot)).toEqual([
+      "reviewer-1",
+      "reviewer-2",
+      "reviewer-3"
+    ]);
+    expect(result.messages[0]).toEqual(expect.objectContaining({
+      subject: "10-minute check on an AI-agent PR evidence report",
+      recordCommand: "pnpm reviewer:validation mark-outreach --slot reviewer-1 --status outreach-sent --next-action \"Wait for bounded reviewer response.\""
+    }));
+    expect(result.recordAllSentCommands).toEqual([
+      "pnpm reviewer:validation mark-outreach --slot reviewer-1 --status outreach-sent --next-action \"Wait for bounded reviewer response.\"",
+      "pnpm reviewer:validation mark-outreach --slot reviewer-2 --status outreach-sent --next-action \"Wait for bounded reviewer response.\"",
+      "pnpm reviewer:validation mark-outreach --slot reviewer-3 --status outreach-sent --next-action \"Wait for bounded reviewer response.\""
+    ]);
+    expect(JSON.stringify(result)).not.toContain("reviewer@example.com");
+    expect(JSON.stringify(result)).not.toContain("github_pat_");
+    expect(JSON.stringify(result)).not.toContain("rawDiff");
+    expect(writes).toEqual([]);
+  });
+
   it("marks outreach as sent and writes only metadata", () => {
     const writes = [];
     const result = runReviewerValidationCli([
