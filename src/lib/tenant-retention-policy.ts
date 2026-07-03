@@ -161,14 +161,14 @@ export const TENANT_DATA_RETENTION_POLICY = {
       storedFields: "Tenant/job metadata, status, bounded error code/summary, planned side effects, and result summary.",
       prohibitedFields: "Raw webhook bodies, PR titles/bodies, diffs, logs, full reports, evidence indexes, claims, re-prompts, URLs with keys, or tokens.",
       retention: "Operational queue retention until completion cleanup or dead-letter review.",
-      deletionBehavior: "Delete or cancel tenant-owned queued, processing, completed, retryable, and terminal rows.",
+      deletionBehavior: "Block new work, require active queued/processing/retryable jobs to drain or be manually cancelled, then delete terminal/completed tenant-owned rows through the guarded purge primitive.",
       backupBehavior: "Restore bounded metadata only when needed for operational recovery.",
       retentionWindowDays: 30,
-      retentionWindowTrigger: "Job terminal/completed updated_at; active tenant deletion cancels queued or processing work.",
+      retentionWindowTrigger: "Job terminal/completed updated_at; active tenant deletion blocks new work while queued, processing, or retryable jobs drain or receive manual cancellation.",
       deletionMode: "automatic",
-      deletionReadiness: "blocked",
+      deletionReadiness: "manual-review-required",
       deletionBlockers: [
-        "Tenant deletion orchestrator does not yet call tenant-wide grant disable, block new enqueues, drain active processing jobs, and execute the tenant-scoped purge primitive."
+        "Active queued, processing, or retryable jobs must drain or be manually cancelled before the guarded purge can complete."
       ],
       previewCounting: "counted"
     },

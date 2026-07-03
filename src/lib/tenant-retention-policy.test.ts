@@ -93,7 +93,7 @@ describe("tenant data retention policy", () => {
     expect(byKey.webhook_deliveries.retentionWindowDays).toBe(GITHUB_WEBHOOK_IDEMPOTENCY_DURABLE_TTL_MS / DAY_MS);
     expect(byKey.transient_pr_evidence.retentionWindowDays).toBe(0);
     expect(byKey.onboarding_states.retentionWindowDays).toBe(1);
-    expect(byKey.analysis_jobs.deletionReadiness).toBe("blocked");
+    expect(byKey.analysis_jobs.deletionReadiness).toBe("manual-review-required");
     expect(byKey.account_member_records.deletionReadiness).toBe("manual-review-required");
     expect(byKey.backups.deletionReadiness).toBe("blocked");
     expect(byKey.tenant_tombstones.deletionReadiness).toBe("blocked");
@@ -110,7 +110,6 @@ describe("tenant data retention policy", () => {
       retentionWindowDays: 0
     });
     expect(plan.filter((item) => item.deletionReadiness === "blocked").map((item) => item.key)).toEqual([
-      "analysis_jobs",
       "backups",
       "tenant_tombstones"
     ]);
@@ -137,6 +136,13 @@ describe("tenant data retention policy", () => {
         deletionReadiness: "manual-review-required"
       });
     }
+    expect(byKey.analysis_jobs).toMatchObject({
+      deletionMode: "automatic",
+      deletionReadiness: "manual-review-required"
+    });
+    expect(byKey.analysis_jobs.deletionBlockers).toContain(
+      "Active queued, processing, or retryable jobs must drain or be manually cancelled before the guarded purge can complete."
+    );
     expect(byKey.backups).toMatchObject({
       deletionMode: "ttl-only",
       deletionReadiness: "blocked"

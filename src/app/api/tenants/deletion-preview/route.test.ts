@@ -78,7 +78,7 @@ describe("GET /api/tenants/deletion-preview", () => {
         policyReviewCategory("repository_grants", 1),
         policyReviewCategory("github_installations", 1),
         readyCategory("webhook_deliveries", 1),
-        policyBlockedCategory("analysis_jobs", 1),
+        policyReviewCategory("analysis_jobs", 1),
         policyReviewCategory("audit_events", 1),
         policyReviewCategory("usage_records", 2)
       ],
@@ -247,7 +247,7 @@ describe("GET /api/tenants/deletion-preview", () => {
       policyReviewCategory("repository_grants", 3),
       policyReviewCategory("github_installations", 4),
       readyCategory("webhook_deliveries", 5),
-      policyBlockedCategory("analysis_jobs", 6),
+      policyReviewCategory("analysis_jobs", 6),
       policyReviewCategory("audit_events", 7),
       policyReviewCategory("usage_records", 8)
     ]);
