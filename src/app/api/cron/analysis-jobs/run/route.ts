@@ -8,9 +8,11 @@ export async function GET(request: Request) {
 
   if (cronTokens.length === 0) {
     return noStoreJson({
-      error: "Analysis job cron is not configured.",
-      code: "analysis_job_cron_not_configured"
-    }, { status: 501 });
+      ok: true,
+      privacy: "analysis-worker-cron-metadata-only",
+      status: "disabled",
+      reason: "cron_auth_not_configured"
+    });
   }
 
   if (!cronTokenMatches(request, cronTokens)) {
