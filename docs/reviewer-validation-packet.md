@@ -2,6 +2,8 @@
 
 Use this packet to move P0 validation from internal confidence to real reviewer evidence. It prepares three concrete outreach attempts and one bounded feedback form. Do not record personal contact details in the repository.
 
+The machine-readable tracker is `eval/fixtures/reviewer-validation.v1.json`. It starts as `outreach_prepared_reviewer_usefulness_unclear`; do not change it to in-progress or ready-for-review until outreach/session evidence exists.
+
 ## Outreach Rule
 
 Prepare at least three real reviewer sessions or concrete outreach attempts before claiming design-partner validation.
