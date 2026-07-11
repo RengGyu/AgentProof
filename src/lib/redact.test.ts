@@ -25,6 +25,38 @@ describe("redaction", () => {
     expect(redacted).not.toContain("BEGIN PRIVATE KEY");
   });
 
+  it("redacts realistic JSON, namespaced, AWS, and CI payload secrets", () => {
+    const input = [
+      '{"password": "super-secret-password", "token": "github_pat_abcdefghijklmnopqrstuvwxyz123456", "secret": "plain-secret-value", "api_key": "sk-abcdefghijklmnopqrstuvwxyz123456"}',
+      "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "namespace.secret=prod-secret-value",
+      "ci.token: ghs_abcdefghijklmnopqrstuvwxyz123456",
+      "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret",
+      ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/"),
+      "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----",
+      "check summary leaked token='ghp_abcdefghijklmnopqrstuvwxyz123456'"
+    ].join("\n");
+    const redacted = redactSecrets(input);
+
+    for (const forbidden of [
+      "super-secret-password",
+      "github_pat_",
+      "plain-secret-value",
+      "sk-",
+      "wJalrXUtnFEMI",
+      "prod-secret-value",
+      "ghs_",
+      "eyJhbGciOi",
+      "hooks.slack.com/services",
+      "BEGIN OPENSSH PRIVATE KEY",
+      "ghp_"
+    ]) {
+      expect(redacted).not.toContain(forbidden);
+    }
+    expect(redacted).toContain("[redacted]");
+  });
+
   it("does not mistake risk-sensitive prose for an OpenAI-style key", () => {
     expect(redactSecrets("Risk-sensitive path changed.")).toBe("Risk-sensitive path changed.");
   });
