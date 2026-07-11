@@ -1,11 +1,47 @@
 import type { VerificationReport } from "./types";
-import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
+import {
+  hasPassingEvidenceStatusPrefix,
+  isExecutionEvidenceSignal,
+  isFailedAmbiguousActionsExecutionSignal
+} from "./evidence-status";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
 const EVIDENCE_KINDS = new Set(["task", "pr_description", "diff", "changed_file", "check", "log", "test", "inference"]);
 const TARGET_AGENTS = new Set(["codex", "claude_code", "cursor", "copilot"]);
+const REQUIREMENT_CONTEXT_ROLES = new Set([
+  "problem_context",
+  "reproduction_context",
+  "environment_context",
+  "visual_context",
+  "external_reference",
+  "solution_hint",
+  "author_claim"
+]);
+const REQUIREMENT_SOURCE_QUALITIES = new Set([
+  "linked_issue",
+  "explicit_acceptance_criteria",
+  "expected_behavior",
+  "requirement_language",
+  "problem_statement",
+  "solution_hint",
+  "author_claim",
+  "manual_check",
+  "fallback"
+]);
+const REQUIREMENT_SOURCES = new Set(["task", "issue", "pr_description", "manual"]);
+const PROOF_GAP_KINDS = new Set([
+  "missing_implementation",
+  "missing_targeted_test",
+  "missing_execution",
+  "failed_execution",
+  "ambiguous_requirement",
+  "self_reported_test_gap",
+  "evidence_unavailable",
+  "visual_proof_missing"
+]);
+const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
 
 const LIMITS = {
   analysisId: 160,
@@ -23,6 +59,10 @@ const LIMITS = {
   scopeFiles: 100,
   missingTests: 100,
   reviewPriority: 100,
+  proofGraphNodes: 40,
+  proofGraphContext: 30,
+  proofGraphGaps: 20,
+  proofGraphFiles: 20,
   reprompt: 6000,
   evidenceIndex: 200,
   evidenceLabel: 600,
@@ -67,6 +107,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
       "scope",
       "testing",
       "reviewPriority",
+      "proofGraph",
       "reprompt",
       "evidenceIndex",
       "limitations"
@@ -79,6 +120,8 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateString(report.createdAt, "createdAt", LIMITS.createdAt, errors);
 
   const evidenceIds = validateEvidenceIndex(report.evidenceIndex, errors);
+  const evidenceById = collectEvidenceById(report.evidenceIndex);
+  const requirementIds = collectRequirementIds(report.requirements);
   validateSource(report.source, errors);
   validateSummary(report.summary, errors);
   validateRequirements(report.requirements, evidenceIds, errors);
@@ -86,6 +129,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateScope(report.scope, evidenceIds, errors);
   validateTesting(report.testing, evidenceIds, errors);
   validateReviewPriority(report.reviewPriority, evidenceIds, errors);
+  validateProofGraph(report.proofGraph, evidenceIds, evidenceById, requirementIds, mode, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
   if (mode === "summary") {
@@ -238,6 +282,257 @@ function validateReviewPriority(value: unknown, evidenceIds: Set<string>, errors
   }
 }
 
+function validateProofGraph(
+  value: unknown,
+  evidenceIds: Set<string>,
+  evidenceById: Map<string, RecordValue>,
+  requirementIds: Set<string>,
+  mode: ReportValidationOptions["mode"],
+  errors: string[]
+) {
+  if (!isRecord(value)) {
+    errors.push("proofGraph must be an object.");
+    return;
+  }
+
+  requireKeys(value, ["version", "nodes", "context", "summary"], "proofGraph", errors);
+  if (value.version !== 1) {
+    errors.push("proofGraph.version must be 1.");
+  }
+
+  const nodes = validateArray(value.nodes, "proofGraph.nodes", LIMITS.proofGraphNodes, errors);
+  if (nodes) {
+    const seenRequirementIds = new Set<string>();
+    for (const [index, item] of nodes.entries()) {
+      const path = `proofGraph.nodes[${index}]`;
+      if (!isRecord(item)) {
+        errors.push(`${path} must be an object.`);
+        continue;
+      }
+
+      requireKeys(
+        item,
+        [
+          "requirementId",
+          "requirementText",
+          "sourceRole",
+          "sourceQuality",
+          "sourceSection",
+          "contextRoles",
+          "status",
+          "confidence",
+          "implementationEvidenceRefs",
+          "targetedTestEvidenceRefs",
+          "executionEvidenceRefs",
+          "gapSignals",
+          "firstFiles"
+        ],
+        path,
+        errors
+      );
+      validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
+      if (typeof item.requirementId === "string" && requirementIds.size > 0 && !requirementIds.has(item.requirementId)) {
+        errors.push(`${path}.requirementId must match a report requirement.`);
+      }
+      if (typeof item.requirementId === "string") {
+        if (seenRequirementIds.has(item.requirementId)) {
+          errors.push(`${path}.requirementId duplicates proofGraph node for ${item.requirementId}.`);
+        }
+        seenRequirementIds.add(item.requirementId);
+      }
+      validateString(item.requirementText, `${path}.requirementText`, LIMITS.requirementText, errors);
+      validateEnum(item.sourceRole, `${path}.sourceRole`, new Set(["core_requirement"]), errors);
+      validateEnum(item.sourceQuality, `${path}.sourceQuality`, REQUIREMENT_SOURCE_QUALITIES, errors);
+      validateOptionalString(item.sourceSection, `${path}.sourceSection`, LIMITS.shortText, errors);
+      validateStringEnumArray(item.contextRoles, `${path}.contextRoles`, LIMITS.proofGraphContext, REQUIREMENT_CONTEXT_ROLES, errors);
+      validateEnum(item.status, `${path}.status`, REQUIREMENT_STATUSES, errors);
+      validateRange(item.confidence, `${path}.confidence`, 0, 1, errors);
+      validateEvidenceRefs(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceIds, errors);
+      validateEvidenceRefs(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceIds, errors);
+      validateEvidenceRefs(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceIds, errors);
+      validateProofEvidenceClass(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceById, isImplementationProofEvidence, errors);
+      validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
+      validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
+      validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
+      validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
+    }
+    for (const requirementId of requirementIds) {
+      if (!seenRequirementIds.has(requirementId)) {
+        errors.push(`proofGraph.nodes must include requirement ${requirementId}.`);
+      }
+    }
+  }
+
+  validateProofGraphContext(value.context, errors);
+  validateProofGraphSummary(value.summary, errors);
+  validateProofGraphSummaryMatchesNodes(value.summary, nodes, mode === "summary", errors);
+}
+
+function validateProofGraphContext(value: unknown, errors: string[]) {
+  const contexts = validateArray(value, "proofGraph.context", LIMITS.proofGraphContext, errors);
+  if (!contexts) return;
+
+  for (const [index, item] of contexts.entries()) {
+    const path = `proofGraph.context[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+
+    requireKeys(item, ["id", "source", "role", "sourceQuality", "sourceSection", "text"], path, errors);
+    validateString(item.id, `${path}.id`, LIMITS.shortText, errors);
+    validateEnum(item.source, `${path}.source`, REQUIREMENT_SOURCES, errors);
+    validateEnum(item.role, `${path}.role`, REQUIREMENT_CONTEXT_ROLES, errors);
+    validateEnum(item.sourceQuality, `${path}.sourceQuality`, REQUIREMENT_SOURCE_QUALITIES, errors);
+    validateOptionalString(item.sourceSection, `${path}.sourceSection`, LIMITS.shortText, errors);
+    validateString(item.text, `${path}.text`, LIMITS.shortText, errors);
+  }
+}
+
+function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {
+  const gaps = validateArray(value, path, LIMITS.proofGraphGaps, errors);
+  if (!gaps) return;
+
+  for (const [index, item] of gaps.entries()) {
+    const itemPath = `${path}[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${itemPath} must be an object.`);
+      continue;
+    }
+
+    requireKeys(item, ["kind", "severity", "message", "evidenceRefs"], itemPath, errors);
+    validateEnum(item.kind, `${itemPath}.kind`, PROOF_GAP_KINDS, errors);
+    validateEnum(item.severity, `${itemPath}.severity`, PRIORITIES, errors);
+    validateString(item.message, `${itemPath}.message`, LIMITS.shortText, errors);
+    validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+  }
+}
+
+function validateProofGraphSummary(value: unknown, errors: string[]) {
+  if (!isRecord(value)) {
+    errors.push("proofGraph.summary must be an object.");
+    return;
+  }
+
+  const keys = [
+    "requirementCount",
+    "requirementsWithImplementation",
+    "requirementsWithTargetedTests",
+    "requirementsWithExecution",
+    "requirementsWithGaps",
+    "gapCount"
+  ];
+  requireKeys(value, keys, "proofGraph.summary", errors);
+
+  for (const key of keys) {
+    const field = value[key];
+    if (typeof field !== "number" || !Number.isSafeInteger(field) || field < 0 || field > LIMITS.requirementCount * LIMITS.proofGraphGaps) {
+      errors.push(`proofGraph.summary.${key} must be a non-negative integer.`);
+    }
+  }
+}
+
+function validateProofGraphSummaryMatchesNodes(
+  summary: unknown,
+  nodes: unknown[] | null,
+  allowOmittedEvidenceCounters: boolean,
+  errors: string[]
+) {
+  if (!isRecord(summary) || !nodes) return;
+
+  const proofNodes = nodes.filter(isRecord);
+  const expected = {
+    requirementCount: proofNodes.length,
+    requirementsWithImplementation: proofNodes.filter((node) => getStringArray(node.implementationEvidenceRefs).length > 0).length,
+    requirementsWithTargetedTests: proofNodes.filter((node) => getStringArray(node.targetedTestEvidenceRefs).length > 0).length,
+    requirementsWithExecution: proofNodes.filter((node) => getStringArray(node.executionEvidenceRefs).length > 0).length,
+    requirementsWithGaps: proofNodes.filter((node) => Array.isArray(node.gapSignals) && node.gapSignals.length > 0).length,
+    gapCount: proofNodes.reduce((count, node) => count + (Array.isArray(node.gapSignals) ? node.gapSignals.length : 0), 0)
+  };
+  const omittedCounterKeys = new Set([
+    "requirementsWithImplementation",
+    "requirementsWithTargetedTests",
+    "requirementsWithExecution"
+  ]);
+
+  for (const [key, value] of Object.entries(expected)) {
+    if (allowOmittedEvidenceCounters && omittedCounterKeys.has(key)) {
+      continue;
+    }
+    if (summary[key] !== value) {
+      errors.push(`proofGraph.summary.${key} must match proofGraph.nodes.`);
+    }
+  }
+}
+
+function validateProofEvidenceClass(
+  refs: unknown,
+  path: string,
+  evidenceById: Map<string, RecordValue>,
+  predicate: (evidence: RecordValue) => boolean,
+  errors: string[]
+) {
+  for (const ref of getStringArray(refs)) {
+    const evidence = evidenceById.get(ref);
+    if (evidence && !predicate(evidence)) {
+      errors.push(`${path} cites incompatible evidence ${ref}.`);
+    }
+  }
+}
+
+function collectEvidenceById(value: unknown): Map<string, RecordValue> {
+  const evidenceById = new Map<string, RecordValue>();
+  if (!Array.isArray(value)) return evidenceById;
+
+  for (const item of value) {
+    if (isRecord(item) && typeof item.id === "string") {
+      evidenceById.set(item.id, item);
+    }
+  }
+
+  return evidenceById;
+}
+
+function collectRequirementIds(value: unknown): Set<string> {
+  const requirementIds = new Set<string>();
+  if (!Array.isArray(value)) return requirementIds;
+
+  for (const item of value) {
+    if (isRecord(item) && typeof item.requirementId === "string") {
+      requirementIds.add(item.requirementId);
+    }
+  }
+
+  return requirementIds;
+}
+
+function isImplementationProofEvidence(evidence: RecordValue): boolean {
+  return evidence.kind === "diff" || evidence.kind === "changed_file";
+}
+
+function isTargetedTestProofEvidence(evidence: RecordValue): boolean {
+  return evidence.kind === "test";
+}
+
+function isExecutionProofEvidence(evidence: RecordValue): boolean {
+  const kind = evidence.kind;
+  const label = typeof evidence.label === "string" ? evidence.label : "";
+  const summary = typeof evidence.summary === "string" ? evidence.summary : "";
+  const locator = typeof evidence.locator === "string" ? evidence.locator : "";
+
+  return (kind === "check" || kind === "log") &&
+    (
+      isExecutionEvidenceSignal(label, summary, locator) ||
+      isFailedAmbiguousActionsExecutionSignal(label, evidenceStatusFromSummary(summary), locator, summary)
+    );
+}
+
+function evidenceStatusFromSummary(summary: string): string {
+  const match = summary.trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
+
+  return match ? match[1].toLowerCase() : "unknown";
+}
+
 function validateReprompt(value: unknown, errors: string[]) {
   if (!isRecord(value)) {
     errors.push("reprompt must be an object.");
@@ -364,6 +659,50 @@ function validateSummaryOnlyReport(report: RecordValue, errors: string[]) {
     report.testing.missingTests.forEach((item, index) => {
       if (isRecord(item) && "provenance" in item) {
         errors.push(`summary-only reports must omit testing.missingTests[${index}].provenance.`);
+      }
+    });
+  }
+
+  if (isRecord(report.proofGraph) && Array.isArray(report.proofGraph.nodes)) {
+    report.proofGraph.nodes.forEach((node, index) => {
+      if (!isRecord(node)) return;
+
+      for (const key of ["implementationEvidenceRefs", "targetedTestEvidenceRefs", "executionEvidenceRefs"]) {
+        if (Array.isArray(node[key]) && node[key].length > 0) {
+          errors.push(`summary-only reports must omit proofGraph.nodes[${index}].${key}.`);
+        }
+      }
+
+      for (const key of ["requirementText", "firstFiles"]) {
+        const value = node[key];
+        const values = Array.isArray(value) ? value : [value];
+        if (values.some((item) => typeof item === "string" && SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN.test(item))) {
+          errors.push(`summary-only reports must omit raw-looking proofGraph.nodes[${index}].${key}.`);
+        }
+      }
+
+      if (Array.isArray(node.gapSignals)) {
+        node.gapSignals.forEach((gap, gapIndex) => {
+          if (isRecord(gap) && Array.isArray(gap.evidenceRefs) && gap.evidenceRefs.length > 0) {
+            errors.push(`summary-only reports must omit proofGraph.nodes[${index}].gapSignals[${gapIndex}].evidenceRefs.`);
+          }
+          if (isRecord(gap) && typeof gap.message === "string" && SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN.test(gap.message)) {
+            errors.push(`summary-only reports must omit raw-looking proofGraph.nodes[${index}].gapSignals[${gapIndex}].message.`);
+          }
+        });
+      }
+    });
+  }
+
+  if (isRecord(report.proofGraph) && Array.isArray(report.proofGraph.context)) {
+    report.proofGraph.context.forEach((context, index) => {
+      if (!isRecord(context)) return;
+
+      for (const key of ["sourceSection", "text"]) {
+        const value = context[key];
+        if (typeof value === "string" && SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN.test(value)) {
+          errors.push(`summary-only reports must omit raw-looking proofGraph.context[${index}].${key}.`);
+        }
       }
     });
   }
@@ -535,6 +874,23 @@ function validateStringArray(
   }
 
   return items.filter((item): item is string => typeof item === "string");
+}
+
+function validateStringEnumArray(
+  value: unknown,
+  path: string,
+  maxItems: number,
+  allowed: Set<string>,
+  errors: string[]
+): string[] | null {
+  const items = validateStringArray(value, path, maxItems, LIMITS.shortText, errors);
+  if (!items) return null;
+
+  for (const [index, item] of items.entries()) {
+    validateEnum(item, `${path}[${index}]`, allowed, errors);
+  }
+
+  return items;
 }
 
 function validateString(value: unknown, path: string, maxLength: number, errors: string[]) {

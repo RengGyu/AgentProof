@@ -1,12 +1,16 @@
 import {
   buildEvidenceIndex,
   extractClaims,
-  extractRequirements,
+  extractRequirementEvidence,
   fileKeywords,
   isRiskFile,
   isTestFile
 } from "./extractors";
-import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
+import {
+  hasPassingEvidenceStatusPrefix,
+  isExecutionEvidenceSignal,
+  isFailedAmbiguousActionsExecutionSignal
+} from "./evidence-status";
 import { redactSecrets } from "./redact";
 import type {
   CheckStatus,
@@ -14,8 +18,11 @@ import type {
   FindingProvenance,
   MissingTestFinding,
   PriorityLevel,
+  ProofGraph,
   PullRequestInput,
   Requirement,
+  RequirementContextSignal,
+  RequirementProofNode,
   RequirementFinding,
   ReviewPriorityItem,
   VerificationReport
@@ -24,6 +31,7 @@ import type {
 const MAX_MISSING_TEST_FINDINGS = 100;
 const MAX_FINDING_PROVENANCE_ITEMS = 5;
 const MAX_FINDING_PROVENANCE_TEXT = 240;
+const MAX_EVIDENCE_REFS_PER_FIELD = 50;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
   const evidenceIndex = buildEvidenceIndex(
@@ -34,19 +42,28 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     input.logs,
     input.taskSource
   );
-  const requirements = extractRequirements(input.taskText, input.description, input.taskSource);
-  const requirementFindings = requirements.map((requirement) =>
+  const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+  const requirements = requirementEvidence.requirements;
+  const ciStatus = aggregateStatus(input.checks, input.logs);
+  const rawRequirementFindings = requirements.map((requirement) =>
     evaluateRequirement(requirement, evidenceIndex, input)
   );
-  const scope = detectScopeCreep(requirements, input.changedFiles, evidenceIndex);
   const missingTests = detectMissingTests(input, evidenceIndex);
-  const ciStatus = aggregateStatus(input.checks, input.logs);
+  const proofGraph = buildProofGraph(requirements, rawRequirementFindings, input, evidenceIndex, missingTests, ciStatus, requirementEvidence.contexts);
+  const proofAdjustedRequirementFindings = applyProofGraphToRequirements(rawRequirementFindings, proofGraph);
+  const cappedRequirements = capRequirementFindingRefs(proofAdjustedRequirementFindings, requirements, evidenceIndex);
+  const requirementFindings = cappedRequirements.findings;
+  const rawScope = detectScopeCreep(requirements, input.changedFiles, evidenceIndex);
+  const cappedScope = capScopeFindingRefs(rawScope, evidenceIndex);
+  const scope = cappedScope.scope;
   const lintStatus = statusForCheck(input.checks, /lint/i);
   const typecheckStatus = statusForCheck(input.checks, /type(check|script)/i);
   const failedNonExecutionChecks = nonExecutionFailures(input);
-  const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex);
+  const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex, proofGraph);
   const priority = highestPriority(reviewPriority);
-  const limitations = buildLimitations(input, requirementFindings, ciStatus);
+  const evidenceRefsCapped = cappedRequirements.capped || cappedScope.capped || hasRequirementEvidenceRefPressure(requirements, evidenceIndex);
+  const hasExecutionEvidence = hasTestBuildExecutionEvidence(input);
+  const limitations = buildLimitations(input, requirementFindings, ciStatus, hasExecutionEvidence, evidenceRefsCapped);
   const evidenceCoverage = computeEvidenceCoverage(
     requirementFindings,
     input.changedFiles.length,
@@ -55,8 +72,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     ciStatus,
     limitations.length
   );
-  const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks.length > 0);
-  const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks);
+  const topRisks = buildTopRisks(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks.length > 0, proofGraph);
+  const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks, proofGraph);
   const claims = extractClaims(input.description, evidenceIndex);
 
   return {
@@ -71,7 +88,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     },
     summary: {
       oneLine: summarize(priority, evidenceCoverage, topRisks),
-      confidence: computeSummaryConfidence(evidenceCoverage, priority, limitations.length),
+      confidence: computeSummaryConfidence(evidenceCoverage, priority, limitations.length, hasExecutionEvidence),
       priority,
       evidenceCoverage,
       topRisks
@@ -92,6 +109,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
       missingTests
     },
     reviewPriority,
+    proofGraph,
     reprompt: {
       targetAgent: "codex",
       prompt: reprompt
@@ -123,6 +141,20 @@ function evaluateRequirement(
   evidenceIndex: EvidenceItem[],
   input: PullRequestInput
 ): RequirementFinding {
+  if (isUntrustedPrDescriptionRequirementSource(requirement, input)) {
+    const refs = sourceEvidenceRefs(evidenceIndex);
+
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "unclear",
+      evidenceRefs: refs,
+      gaps: ["The linked issue source is ambiguous or unavailable, so the PR body alone is not enough to verify this requirement."],
+      reviewerNote: "Fetch or paste the original issue/task before treating this requirement as satisfied.",
+      confidence: 0.28
+    };
+  }
+
   if (requirement.keywords.length === 0) {
     const refs = sourceEvidenceRefs(evidenceIndex);
 
@@ -303,6 +335,114 @@ function evaluateRequirement(
   };
 }
 
+function isUntrustedPrDescriptionRequirementSource(requirement: Requirement, input: PullRequestInput): boolean {
+  if (requirement.source !== "pr_description" || input.taskText.trim()) {
+    return false;
+  }
+
+  return (input.limitations ?? []).some((limitation) =>
+    /Multiple supported issue references found|Linked issue .* could not be fetched|Linked issue .* had no title or body text|Linked reference .* points to a pull request/i.test(limitation)
+  );
+}
+
+function capRequirementFindingRefs(
+  findings: RequirementFinding[],
+  requirements: Requirement[],
+  evidenceIndex: EvidenceItem[]
+): { findings: RequirementFinding[]; capped: boolean } {
+  let capped = false;
+  const requirementById = new Map(requirements.map((requirement) => [requirement.id, requirement]));
+  const cappedFindings = findings.map((finding) => {
+    const requirement = requirementById.get(finding.requirementId);
+    const refs = capEvidenceRefs(
+      finding.evidenceRefs,
+      evidenceIndex,
+      (item) => rankRequirementEvidenceRef(requirement, item)
+    );
+
+    if (refs.length < uniqueRefs(finding.evidenceRefs).length) {
+      capped = true;
+    }
+
+    return {
+      ...finding,
+      evidenceRefs: refs
+    };
+  });
+
+  return { findings: cappedFindings, capped };
+}
+
+function capScopeFindingRefs(
+  scope: ReturnType<typeof detectScopeCreep>,
+  evidenceIndex: EvidenceItem[]
+): { scope: ReturnType<typeof detectScopeCreep>; capped: boolean } {
+  const evidenceRefs = capEvidenceRefs(scope.evidenceRefs ?? [], evidenceIndex, (item) =>
+    item.kind === "diff" || item.kind === "changed_file" ? 0 : item.kind === "task" || item.kind === "pr_description" ? 1 : 2
+  );
+  const capped = evidenceRefs.length < uniqueRefs(scope.evidenceRefs ?? []).length;
+
+  if (!capped) {
+    return { scope, capped: false };
+  }
+
+  return {
+    scope: {
+      ...scope,
+      evidenceRefs,
+      provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs)
+    },
+    capped: true
+  };
+}
+
+function capEvidenceRefs(
+  refs: string[],
+  evidenceIndex: EvidenceItem[],
+  rank: (item: EvidenceItem) => number
+): string[] {
+  const order = new Map(evidenceIndex.map((item, index) => [item.id, index]));
+  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
+
+  return uniqueRefs(refs)
+    .sort((left, right) => {
+      const leftEvidence = evidenceById.get(left);
+      const rightEvidence = evidenceById.get(right);
+      const leftRank = leftEvidence ? rank(leftEvidence) : 99;
+      const rightRank = rightEvidence ? rank(rightEvidence) : 99;
+
+      return leftRank - rightRank ||
+        (order.get(left) ?? Number.MAX_SAFE_INTEGER) - (order.get(right) ?? Number.MAX_SAFE_INTEGER);
+    })
+    .slice(0, MAX_EVIDENCE_REFS_PER_FIELD);
+}
+
+function rankRequirementEvidenceRef(requirement: Requirement | undefined, item: EvidenceItem): number {
+  if (item.kind === "task" || item.kind === "pr_description") {
+    return 0;
+  }
+
+  const match = requirement ? requirementEvidenceMatch(requirement, item) : { score: 0, strong: false };
+
+  if ((item.kind === "diff" || item.kind === "changed_file") && match.score > 0) {
+    return 1;
+  }
+
+  if (item.kind === "test" && match.score > 0) {
+    return 2;
+  }
+
+  if ((item.kind === "check" || item.kind === "log") && isEvidenceExecutionSignal(item)) {
+    return 3;
+  }
+
+  if (match.score > 0) {
+    return 4;
+  }
+
+  return 5;
+}
+
 function requirementEvidenceMatch(
   requirement: Requirement,
   item: EvidenceItem
@@ -355,6 +495,12 @@ function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
     hasPassingEvidenceStatusPrefix(item.summary);
 }
 
+function evidenceStatusFromSummary(summary: string): CheckStatus {
+  const match = summary.trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
+
+  return match ? match[1].toLowerCase() as CheckStatus : "unknown";
+}
+
 function isVisualRequirement(text: string): boolean {
   return /\b(accessibility|browser|desktop|layout|mobile|overlap|overflow|responsive|screenshot|screen|visual|viewport|ui|ux)\b/i.test(text) ||
     /\b(readable|readability|30 seconds?)\b/i.test(text);
@@ -367,6 +513,395 @@ function isVisualVerificationEvidence(item: EvidenceItem): boolean {
 
   return hasPassingEvidenceStatusPrefix(item.summary) &&
     isVisualVerificationSignal(item.label, item.summary, item.locator);
+}
+
+function buildProofGraph(
+  requirements: Requirement[],
+  findings: RequirementFinding[],
+  input: PullRequestInput,
+  evidenceIndex: EvidenceItem[],
+  missingTests: MissingTestFinding[],
+  ciStatus: CheckStatus,
+  contexts: RequirementContextSignal[]
+): ProofGraph {
+  const findingByRequirement = new Map(findings.map((finding) => [finding.requirementId, finding]));
+  const failedExecutionRefs = executionFailureEvidenceRefs(input, evidenceIndex);
+  const allExecutionRefs = executionEvidenceRefs(input, evidenceIndex);
+  const selfReportedTestGapRefs = selfReportedTestGapEvidenceRefs(evidenceIndex);
+  const changedFileEvidenceUnavailable = hasChangedFileEvidenceUnavailable(input);
+  const diffEvidenceUnavailable = hasDiffEvidenceUnavailable(input);
+
+  const nodes = requirements.map((requirement): RequirementProofNode => {
+    const finding = findingByRequirement.get(requirement.id);
+    const implementationEvidenceRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+      (item.kind === "diff" || item.kind === "changed_file") && match.score > 0
+    );
+    const targetedTestEvidenceRefs = targetedTestEvidenceRefsForRequirement(
+      requirement,
+      evidenceIndex,
+      input,
+      implementationEvidenceRefs
+    );
+    const matchingExecutionRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+      (item.kind === "check" || item.kind === "log") &&
+      isEvidenceExecutionSignal(item) &&
+      isUsefulArtifactMatch(match)
+    );
+    const executionEvidenceRefs = uniqueRefs([
+      ...matchingExecutionRefs,
+      ...(ciStatus === "failed" ? failedExecutionRefs : [])
+    ]).slice(0, 8);
+    const relatedMissingTests = missingTests.filter((missing) =>
+      implementationEvidenceRefs.some((ref) => evidenceRefsForPath(evidenceIndex, missing.path).includes(ref)) ||
+      missing.evidenceRefs.some((ref) => implementationEvidenceRefs.includes(ref))
+    );
+    const gapSignals: RequirementProofNode["gapSignals"] = [];
+    const expectsTargetedProof = shouldExpectTargetedProof(requirement.text, input);
+
+    if ((!finding || finding.status === "missing" || implementationEvidenceRefs.length === 0) && changedFileEvidenceUnavailable) {
+      gapSignals.push({
+        kind: "evidence_unavailable",
+        severity: "medium",
+        message: "Changed-file evidence could not be collected, so missing implementation proof is inconclusive rather than proven absent.",
+        evidenceRefs: finding?.evidenceRefs.length ? finding.evidenceRefs : sourceEvidenceRefs(evidenceIndex)
+      });
+    } else if (!finding || finding.status === "missing" || implementationEvidenceRefs.length === 0) {
+      gapSignals.push({
+        kind: "missing_implementation",
+        severity: missingImplementationSeverity(requirement, input),
+        message: "No implementation evidence clearly maps to this requirement.",
+        evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
+      });
+    }
+
+    if (finding?.status === "unclear") {
+      gapSignals.push({
+        kind: "ambiguous_requirement",
+        severity: "medium",
+        message: "Requirement needs human interpretation before trusting the report.",
+        evidenceRefs: finding.evidenceRefs
+      });
+    }
+
+    if (implementationEvidenceRefs.length > 0 && expectsTargetedProof && targetedTestEvidenceRefs.length === 0) {
+      gapSignals.push({
+        kind: "missing_targeted_test",
+        severity: targetedProofGapSeverity(requirement, input, ciStatus),
+        message: "Implementation evidence exists, but no targeted test-file evidence maps to this requirement.",
+        evidenceRefs: uniqueRefs([...implementationEvidenceRefs, ...relatedMissingTests.flatMap((item) => item.evidenceRefs)]).slice(0, 8)
+      });
+    }
+
+    if (
+      implementationEvidenceRefs.length > 0 &&
+      diffEvidenceUnavailable &&
+      implementationEvidenceRefs.every((ref) =>
+        refsToEvidence(evidenceIndex, [ref]).every((item) => item.kind !== "diff")
+      )
+    ) {
+      gapSignals.push({
+        kind: "evidence_unavailable",
+        severity: "medium",
+        message: "Changed-file metadata was collected, but patch evidence was unavailable for at least one mapped file.",
+        evidenceRefs: implementationEvidenceRefs.slice(0, 8)
+      });
+    }
+
+    if (implementationEvidenceRefs.length > 0 && allExecutionRefs.length === 0) {
+      gapSignals.push({
+        kind: "missing_execution",
+        severity: "medium",
+        message: "No deterministic test/build execution evidence was collected for this requirement.",
+        evidenceRefs: implementationEvidenceRefs.slice(0, 8)
+      });
+    }
+
+    if (ciStatus === "failed") {
+      gapSignals.push({
+        kind: "failed_execution",
+        severity: "blocker",
+        message: "A relevant test/build execution signal failed, so this requirement is not proven ready.",
+        evidenceRefs: failedExecutionRefs.slice(0, 8)
+      });
+    }
+
+    if (implementationEvidenceRefs.length > 0 && selfReportedTestGapRefs.length > 0) {
+      gapSignals.push({
+        kind: "self_reported_test_gap",
+        severity: targetedProofGapSeverity(requirement, input, ciStatus),
+        message: "The PR text indicates targeted tests may be absent or incomplete.",
+        evidenceRefs: selfReportedTestGapRefs.slice(0, 5)
+      });
+    }
+
+    if ((finding?.gaps ?? []).some((gap) => /visual|screenshot|browser|ux|ui/i.test(gap)) || requirement.contextRoles.includes("visual_context")) {
+      gapSignals.push({
+        kind: "visual_proof_missing",
+        severity: "medium",
+        message: "Visual or browser-facing behavior needs proof beyond test/build status.",
+        evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
+      });
+    }
+
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      sourceRole: requirement.role,
+      sourceQuality: requirement.sourceQuality,
+      sourceSection: requirement.sourceSection,
+      contextRoles: requirement.contextRoles,
+      status: finding?.status ?? "unclear",
+      confidence: finding?.confidence ?? 0.2,
+      implementationEvidenceRefs: implementationEvidenceRefs.slice(0, 8),
+      targetedTestEvidenceRefs: targetedTestEvidenceRefs.slice(0, 8),
+      executionEvidenceRefs,
+      gapSignals: dedupeGapSignals(gapSignals),
+      firstFiles: firstProofFiles(evidenceIndex, uniqueRefs([
+        ...implementationEvidenceRefs,
+        ...targetedTestEvidenceRefs,
+        ...relatedMissingTests.flatMap((item) => item.evidenceRefs)
+      ])).slice(0, 5)
+    };
+  });
+
+  return {
+    version: 1,
+    nodes,
+    context: contexts.map((context) => ({
+      ...context,
+      text: shortEvidenceText(context.text)
+    })).slice(0, 30),
+    summary: {
+      requirementCount: nodes.length,
+      requirementsWithImplementation: nodes.filter((node) => node.implementationEvidenceRefs.length > 0).length,
+      requirementsWithTargetedTests: nodes.filter((node) => node.targetedTestEvidenceRefs.length > 0).length,
+      requirementsWithExecution: nodes.filter((node) => node.executionEvidenceRefs.length > 0).length,
+      requirementsWithGaps: nodes.filter((node) => node.gapSignals.length > 0).length,
+      gapCount: nodes.reduce((count, node) => count + node.gapSignals.length, 0)
+    }
+  };
+}
+
+function applyProofGraphToRequirements(
+  findings: RequirementFinding[],
+  proofGraph: ProofGraph
+): RequirementFinding[] {
+  const nodeByRequirement = new Map(proofGraph.nodes.map((node) => [node.requirementId, node]));
+
+  return findings.map((finding) => {
+    const node = nodeByRequirement.get(finding.requirementId);
+    if (!node || node.gapSignals.length === 0) {
+      return finding;
+    }
+
+    const gapMessages = node.gapSignals.map((gap) => gap.message);
+    const hasHardGap = node.gapSignals.some((gap) => gap.severity === "blocker" || gap.severity === "high");
+    const hasEvidenceUnavailable = node.gapSignals.some((gap) => gap.kind === "evidence_unavailable");
+    const status = finding.status === "met" && hasHardGap
+      ? "partial"
+      : finding.status === "missing" && hasEvidenceUnavailable
+        ? "unclear"
+        : finding.status;
+    const confidence = hasHardGap ? Math.min(finding.confidence, 0.58) : finding.confidence;
+
+    return {
+      ...finding,
+      status,
+      confidence,
+      gaps: uniqueRefs([...finding.gaps, ...gapMessages]).slice(0, 8),
+      evidenceRefs: uniqueRefs([
+        ...finding.evidenceRefs,
+        ...node.implementationEvidenceRefs,
+        ...node.targetedTestEvidenceRefs,
+        ...node.executionEvidenceRefs,
+        ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
+      ]).slice(0, 12),
+      reviewerNote: hasHardGap
+        ? `${finding.reviewerNote} Review implementation, targeted test, and execution proof together before trusting this requirement.`
+        : hasEvidenceUnavailable
+          ? `${finding.reviewerNote} Treat unavailable file or patch evidence as a collection gap, not proof that implementation is absent.`
+        : finding.reviewerNote
+    };
+  });
+}
+
+function hasRequirementEvidenceRefPressure(requirements: Requirement[], evidenceIndex: EvidenceItem[]): boolean {
+  return requirements.some((requirement) =>
+    evidenceIndex.filter((item) => requirementEvidenceMatch(requirement, item).score > 0).length > MAX_EVIDENCE_REFS_PER_FIELD
+  );
+}
+
+function requirementEvidenceRefs(
+  requirement: Requirement,
+  evidenceIndex: EvidenceItem[],
+  predicate: (item: EvidenceItem, match: ReturnType<typeof requirementEvidenceMatch>) => boolean
+): string[] {
+  return evidenceIndex
+    .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
+    .filter(({ item, match }) => predicate(item, match))
+    .map(({ item }) => item.id);
+}
+
+function targetedTestEvidenceRefsForRequirement(
+  requirement: Requirement,
+  evidenceIndex: EvidenceItem[],
+  input: PullRequestInput,
+  implementationEvidenceRefs: string[]
+): string[] {
+  const directRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+    item.kind === "test" && isUsefulArtifactMatch(match)
+  );
+  const implementationPaths = new Set(
+    implementationEvidenceRefs
+      .flatMap((ref) => refsToPaths(evidenceIndex, [ref]))
+      .map((path) => path.toLowerCase())
+  );
+  const implementationFiles = input.changedFiles.filter((file) =>
+    implementationPaths.has(file.path.toLowerCase())
+  );
+  const testFiles = input.changedFiles.filter((file) => isTestFile(file.path));
+  const relatedRefs = evidenceIndex
+    .filter((item) => item.kind === "test")
+    .filter((item) => {
+      const testFile = testFiles.find((file) => file.path === item.locator || file.path === item.label);
+      if (!testFile) return false;
+
+      return implementationFiles.some((implementationFile) =>
+        testEvidenceLooksRelated(implementationFile, testFile)
+      );
+    })
+    .map((item) => item.id);
+
+  return uniqueRefs([...directRefs, ...relatedRefs]);
+}
+
+function refsToPaths(evidenceIndex: EvidenceItem[], refs: string[]): string[] {
+  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
+
+  return refs
+    .map((ref) => evidenceById.get(ref))
+    .map((item) => item?.locator ?? item?.label ?? "")
+    .filter(Boolean);
+}
+
+function refsToEvidence(evidenceIndex: EvidenceItem[], refs: string[]): EvidenceItem[] {
+  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
+
+  return refs
+    .map((ref) => evidenceById.get(ref))
+    .filter((item): item is EvidenceItem => Boolean(item));
+}
+
+function executionEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
+  const checkLabels = new Set(input.checks
+    .filter((check) => isCheckExecutionSignal(check))
+    .map((check) => redactSecrets(check.name)));
+  const logLabels = new Set(input.logs
+    .filter((log) => isLogExecutionSignal(log))
+    .map((log) => redactSecrets(log.source)));
+
+  return evidenceIndex
+    .filter((item) =>
+      (item.kind === "check" && checkLabels.has(item.label)) ||
+      (item.kind === "log" && logLabels.has(item.label))
+    )
+    .map((item) => item.id);
+}
+
+function selfReportedTestGapEvidenceRefs(evidenceIndex: EvidenceItem[]): string[] {
+  return evidenceIndex
+    .filter((item) =>
+      item.kind === "pr_description" &&
+      /\b(no|none|without|unrelated|not sure|open to suggestions|could be added|no tests?|not tested|test gap)\b.{0,120}\b(tests?|coverage|spec|failures?)\b|\b(tests?|coverage|spec|failures?)\b.{0,120}\b(no|none|without|unrelated|not sure|open to suggestions|could be added|not tested|gap)\b/i.test(item.summary)
+    )
+    .map((item) => item.id);
+}
+
+function shouldExpectTargetedProof(requirementText: string, input: PullRequestInput): boolean {
+  const combined = `${requirementText} ${input.taskText} ${input.description}`;
+
+  return /\b(tests?|coverage|specs?|crash|segfault|regression|data loss|mutat(?:e|ion)|security|auth|permission|billing|payment)\b/i.test(combined);
+}
+
+function missingImplementationSeverity(requirement: Requirement, input: PullRequestInput): PriorityLevel {
+  if (isManualCheckRequirement(requirement)) {
+    return "medium";
+  }
+
+  return isRiskSensitiveRequirement(requirement, input) ? "high" : "medium";
+}
+
+function targetedProofGapSeverity(
+  requirement: Requirement,
+  input: PullRequestInput,
+  ciStatus: CheckStatus
+): PriorityLevel {
+  if (ciStatus === "failed") {
+    return "blocker";
+  }
+
+  if (isRiskSensitiveRequirement(requirement, input) || explicitlyRequiresTestEvidence(requirement.text)) {
+    return "high";
+  }
+
+  return "medium";
+}
+
+function isManualCheckRequirement(requirement: Requirement): boolean {
+  return requirement.sourceQuality === "manual_check" ||
+    requirement.sourceQuality === "fallback" ||
+    requirement.sourceQuality === "author_claim" ||
+    requirement.source === "pr_description";
+}
+
+function explicitlyRequiresTestEvidence(text: string): boolean {
+  return /\b(must|shall|required|acceptance criteria).{0,100}\b(tests?|coverage|specs?)\b|\b(tests?|coverage|specs?).{0,100}\b(must|shall|required)\b/i.test(text);
+}
+
+function isRiskSensitiveRequirement(requirement: Requirement, input: PullRequestInput): boolean {
+  const combined = `${requirement.text} ${input.taskText} ${input.description}`;
+
+  return /\b(crash|segfault|panic|security|auth|authorization|permission|billing|payment|data loss|data corruption|corrupt|credential|password|secret|token|directory traversal|path traversal|xss|csrf|injection)\b/i.test(combined) ||
+    input.changedFiles.some((file) => isRiskFile(file.path));
+}
+
+function hasChangedFileEvidenceUnavailable(input: PullRequestInput): boolean {
+  return (input.limitations ?? []).some((limitation) =>
+    /changed-file evidence unavailable|changed-file fetch failed|file evidence may be incomplete/i.test(limitation)
+  );
+}
+
+function hasDiffEvidenceUnavailable(input: PullRequestInput): boolean {
+  return (input.limitations ?? []).some((limitation) =>
+    /patch text|diff evidence is unavailable/i.test(limitation)
+  );
+}
+
+function firstProofFiles(evidenceIndex: EvidenceItem[], refs: string[]): string[] {
+  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
+
+  return uniqueRefs(refs
+    .map((ref) => evidenceById.get(ref))
+    .map((item) => item?.locator ?? item?.label ?? "")
+    .filter((value) => isConcreteFilePath(value))
+    .map(safeReportPath));
+}
+
+function dedupeGapSignals(signals: RequirementProofNode["gapSignals"]): RequirementProofNode["gapSignals"] {
+  const seen = new Set<string>();
+  const result: RequirementProofNode["gapSignals"] = [];
+
+  for (const signal of signals) {
+    const key = `${signal.kind}:${signal.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      ...signal,
+      evidenceRefs: uniqueRefs(signal.evidenceRefs).slice(0, 8)
+    });
+  }
+
+  return result;
 }
 
 function detectScopeCreep(
@@ -402,13 +937,13 @@ function detectScopeCreep(
   const evidenceRefs = uniqueRefs(outOfScopeFiles.flatMap((path) => evidenceRefsForPath(evidenceIndex, path)));
 
   return {
-    outOfScopeFiles,
+    outOfScopeFiles: outOfScopeFiles.map(safeReportPath),
     evidenceRefs,
     provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs),
     reasons: outOfScopeFiles.map((path) =>
       isRiskFile(path)
-        ? `${path} is risk-sensitive and does not clearly map to the stated criteria.`
-        : `${path} does not clearly map to the stated criteria.`
+        ? `${safeReportPath(path)} is risk-sensitive and does not clearly map to the stated criteria.`
+        : `${safeReportPath(path)} does not clearly map to the stated criteria.`
     )
   };
 }
@@ -441,7 +976,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
       const evidenceRefs = uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5);
 
       return {
-        path: file.path,
+        path: safeReportPath(file.path),
         why: missingTestReason(hasRelatedTestFile, hasTestFileChange, hasPassingTestSignal),
         evidenceRefs,
         provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs)
@@ -512,7 +1047,7 @@ function missingTestReason(
 }
 
 function isBehaviorAffectingPath(path: string): boolean {
-  return /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|rb|go|rs|java|kt|cs|cfg|ini|toml|ya?ml|json)$/.test(path) ||
+  return /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|rb|go|rs|java|kt|cs|c|cc|cpp|cxx|h|hh|hpp|hxx|m|mm|swift|cfg|ini|toml|ya?ml|json)$/.test(path) ||
     /(^|\/)(setup\.cfg|pyproject\.toml|tox\.ini|noxfile\.py|setup\.py|package\.json)$/.test(path);
 }
 
@@ -802,7 +1337,8 @@ function buildReviewPriority(
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
   ciStatus: CheckStatus,
-  evidenceIndex: EvidenceItem[]
+  evidenceIndex: EvidenceItem[],
+  proofGraph: ProofGraph
 ): ReviewPriorityItem[] {
   const items: ReviewPriorityItem[] = [];
   const sourceRefs = sourceEvidenceRefs(evidenceIndex);
@@ -831,29 +1367,32 @@ function buildReviewPriority(
   const partialRequirements = requirements.filter((finding) => finding.status === "partial");
 
   if (missingRequirements.length > 0) {
+    const refs = refsForFindings(missingRequirements, sourceRefs);
     items.push({
-      path: "Requirement evidence",
+      path: reviewPriorityPathForEvidence(refs, evidenceIndex),
       reason: `${missingRequirements.length} requirement(s) have no matching implementation evidence.`,
       priority: "high",
-      evidenceRefs: refsForFindings(missingRequirements, sourceRefs)
+      evidenceRefs: refs
     });
   }
 
   if (unclearRequirements.length > 0) {
+    const refs = refsForFindings(unclearRequirements, sourceRefs);
     items.push({
-      path: "Requirement evidence",
+      path: reviewPriorityPathForEvidence(refs, evidenceIndex),
       reason: `${unclearRequirements.length} requirement(s) need human interpretation before trusting the report.`,
       priority: "medium",
-      evidenceRefs: refsForFindings(unclearRequirements, sourceRefs)
+      evidenceRefs: refs
     });
   }
 
   if (partialRequirements.length > 0) {
+    const refs = refsForFindings(partialRequirements, sourceRefs);
     items.push({
-      path: "Requirement evidence",
+      path: reviewPriorityPathForEvidence(refs, evidenceIndex),
       reason: `${partialRequirements.length} requirement(s) have only partial evidence.`,
       priority: "medium",
-      evidenceRefs: refsForFindings(partialRequirements, sourceRefs)
+      evidenceRefs: refs
     });
   }
 
@@ -877,11 +1416,33 @@ function buildReviewPriority(
     });
   }
 
+  const proofGapItems = proofGraph.nodes
+    .flatMap((node) => node.gapSignals.map((gap) => ({ node, gap })))
+    .filter(({ gap }) =>
+      gap.kind === "missing_targeted_test" ||
+      gap.kind === "self_reported_test_gap" ||
+      gap.kind === "evidence_unavailable" ||
+      gap.kind === "failed_execution"
+    )
+    .slice(0, 6);
+
+  for (const { node, gap } of proofGapItems) {
+    const path = node.firstFiles[0] ?? reviewPriorityPathForEvidence(gap.evidenceRefs, evidenceIndex);
+    items.push({
+      path,
+      reason: `Requirement proof gap: ${gap.message}`,
+      priority: gap.severity,
+      evidenceRefs: gap.evidenceRefs
+    });
+  }
+
   for (const file of input.changedFiles.filter((changed) => isRiskFile(changed.path) && !isTestFile(changed.path)).slice(0, 6)) {
-    if (!items.some((item) => item.path === file.path)) {
-      const hasSpecificRisk = outOfScopeFiles.includes(file.path) || missingTests.some((missing) => missing.path === file.path);
+    const safePath = safeReportPath(file.path);
+
+    if (!items.some((item) => item.path === safePath)) {
+      const hasSpecificRisk = outOfScopeFiles.includes(safePath) || missingTests.some((missing) => missing.path === safePath);
       items.push({
-        path: file.path,
+        path: safePath,
         reason: "Risk-sensitive path changed; verify manually even if other evidence passes.",
         priority: hasSpecificRisk ? "high" : "medium",
         evidenceRefs: evidenceRefsForPath(evidenceIndex, file.path)
@@ -901,12 +1462,48 @@ function buildReviewPriority(
     });
   }
 
-  return items;
+  return dedupeReviewPriorityItems(items);
+}
+
+function dedupeReviewPriorityItems(items: ReviewPriorityItem[]): ReviewPriorityItem[] {
+  const priorityRank: Record<PriorityLevel, number> = {
+    blocker: 0,
+    high: 1,
+    medium: 2,
+    low: 3
+  };
+  const indexByPath = new Map<string, number>();
+  const deduped: ReviewPriorityItem[] = [];
+
+  for (const item of items) {
+    const key = item.path.toLowerCase();
+    const existingIndex = indexByPath.get(key);
+
+    if (existingIndex !== undefined) {
+      const existing = deduped[existingIndex];
+      if (existing && priorityRank[item.priority] < priorityRank[existing.priority]) {
+        deduped[existingIndex] = {
+          ...item,
+          evidenceRefs: uniqueRefs([...(existing.evidenceRefs ?? []), ...(item.evidenceRefs ?? [])])
+        };
+      } else if (existing) {
+        existing.evidenceRefs = uniqueRefs([...(existing.evidenceRefs ?? []), ...(item.evidenceRefs ?? [])]);
+      }
+      continue;
+    }
+
+    indexByPath.set(key, deduped.length);
+    deduped.push(item);
+  }
+
+  return deduped;
 }
 
 function evidenceRefsForPath(evidenceIndex: EvidenceItem[], path: string): string[] {
+  const safePath = safeReportPath(path);
+
   return evidenceIndex
-    .filter((item) => item.locator === path || item.label === path)
+    .filter((item) => item.locator === path || item.label === path || item.locator === safePath || item.label === safePath)
     .map((item) => item.id);
 }
 
@@ -922,6 +1519,60 @@ function refsForFindings(findings: RequirementFinding[], fallbackRefs: string[])
   return (refs.length > 0 ? refs : fallbackRefs).slice(0, 5);
 }
 
+function reviewPriorityPathForEvidence(refs: string[], evidenceIndex: EvidenceItem[]): string {
+  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
+  const concrete = refs
+    .map((ref) => evidenceById.get(ref))
+    .find((item) =>
+      item &&
+      (item.kind === "diff" || item.kind === "changed_file" || item.kind === "test") &&
+      item.locator &&
+      item.locator !== "task" &&
+      item.locator !== "pr_description"
+    );
+
+  if (concrete?.locator) {
+    return safeReportPath(concrete.locator);
+  }
+
+  const fallbackConcrete = evidenceIndex.find((item) =>
+    (item.kind === "diff" || item.kind === "changed_file" || item.kind === "test") &&
+    item.locator &&
+    item.locator !== "task" &&
+    item.locator !== "pr_description"
+  );
+
+  return fallbackConcrete?.locator ? safeReportPath(fallbackConcrete.locator) : "Requirement evidence";
+}
+
+function safeReportPath(path: string): string {
+  return redactSecrets(path);
+}
+
+function isConcreteFilePath(value: string): boolean {
+  const trimmed = value.trim();
+
+  if (
+    !trimmed ||
+    trimmed === "task" ||
+    trimmed === "pr_description" ||
+    trimmed.startsWith("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("?") ||
+    trimmed.includes("#") ||
+    /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)
+  ) {
+    return false;
+  }
+
+  const parts = trimmed.split("/");
+  if (parts.some((part) => part === "." || part === ".." || part.trim() === "")) {
+    return false;
+  }
+
+  return /(^|\/)[^/\s]+\.[^/\s]+$/.test(trimmed) || (trimmed.includes("/") && !/\s/.test(trimmed));
+}
+
 function uniqueRefs(refs: string[]): string[] {
   return Array.from(new Set(refs));
 }
@@ -931,10 +1582,12 @@ function buildReprompt(
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
   ciStatus: CheckStatus,
-  failedNonExecutionChecks: string[]
+  failedNonExecutionChecks: string[],
+  proofGraph: ProofGraph
 ): string {
   const actions: string[] = [];
   const weakRequirements = requirements.filter((finding) => finding.status !== "met");
+  const proofGapNodes = proofGraph.nodes.filter((node) => node.gapSignals.length > 0);
 
   for (const finding of weakRequirements.slice(0, 4)) {
     actions.push(`Address requirement "${finding.requirementText}" and provide evidence for the implementation.`);
@@ -950,6 +1603,10 @@ function buildReprompt(
 
   if (ciStatus === "failed") {
     actions.push("Fix the failing test/build check and summarize the exact log line that proves it now passes.");
+  }
+
+  if (proofGapNodes.length > 0) {
+    actions.push(`Return requirement-by-requirement proof for: ${proofGapNodes.slice(0, 4).map((node) => `"${node.requirementText}"`).join(", ")}.`);
   }
 
   if (failedNonExecutionChecks.length > 0) {
@@ -991,7 +1648,7 @@ function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestIn
     return "pending";
   }
 
-  if (executionStatuses.length > 0 && executionStatuses.every((status) => status === "passed")) {
+  if (executionStatuses.some((status) => status === "passed")) {
     return "passed";
   }
 
@@ -999,7 +1656,8 @@ function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestIn
 }
 
 function isCheckExecutionSignal(check: PullRequestInput["checks"][number]): boolean {
-  return isExecutionEvidenceSignal(check.name, check.summary ?? "", check.url);
+  return isExecutionEvidenceSignal(check.name, check.summary ?? "", check.url) ||
+    isFailedAmbiguousActionsExecutionSignal(check.name, check.status, check.url, check.summary ?? "");
 }
 
 function isLogExecutionSignal(log: PullRequestInput["logs"][number]): boolean {
@@ -1007,7 +1665,8 @@ function isLogExecutionSignal(log: PullRequestInput["logs"][number]): boolean {
 }
 
 function isEvidenceExecutionSignal(item: EvidenceItem): boolean {
-  return isExecutionEvidenceSignal(item.label, item.summary, item.locator);
+  return isExecutionEvidenceSignal(item.label, item.summary, item.locator) ||
+    isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
 }
 
 function hasFailingExecutionEvidence(input: PullRequestInput): boolean {
@@ -1019,10 +1678,10 @@ function nonExecutionFailures(input: PullRequestInput): string[] {
   return [
     ...input.checks
       .filter((check) => check.status === "failed" && !isCheckExecutionSignal(check))
-      .map((check) => check.name),
+      .map((check) => redactSecrets(check.name)),
     ...input.logs
       .filter((log) => log.status === "failed" && !isLogExecutionSignal(log))
-      .map((log) => log.source)
+      .map((log) => redactSecrets(log.source))
   ];
 }
 
@@ -1096,7 +1755,12 @@ function computeEvidenceCoverage(
   return Math.round(requirementScore * filePenalty * missingTestPenalty * scopePenalty * ciPenalty * limitationPenalty * 100);
 }
 
-function computeSummaryConfidence(evidenceCoverage: number, priority: PriorityLevel, limitationCount: number): number {
+function computeSummaryConfidence(
+  evidenceCoverage: number,
+  priority: PriorityLevel,
+  limitationCount: number,
+  hasExecutionEvidence: boolean
+): number {
   const priorityCap: Record<PriorityLevel, number> = {
     low: 0.95,
     medium: 0.82,
@@ -1104,7 +1768,8 @@ function computeSummaryConfidence(evidenceCoverage: number, priority: PriorityLe
     blocker: 0.45
   };
   const limitationPenalty = Math.max(0.85, 1 - limitationCount * 0.03);
-  const confidence = Math.min(evidenceCoverage / 100, priorityCap[priority]) * limitationPenalty;
+  const executionCap = hasExecutionEvidence ? 1 : 0.7;
+  const confidence = Math.min(evidenceCoverage / 100, priorityCap[priority], executionCap) * limitationPenalty;
 
   return round2(Math.max(0.2, confidence));
 }
@@ -1114,12 +1779,21 @@ function buildTopRisks(
   outOfScopeFiles: string[],
   missingTests: MissingTestFinding[],
   ciStatus: CheckStatus,
-  hasNonExecutionCheckFailures: boolean
+  hasNonExecutionCheckFailures: boolean,
+  proofGraph: ProofGraph
 ): string[] {
   const risks: string[] = [];
+  const highProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.severity === "high" || gap.severity === "blocker");
+  const unavailableProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.kind === "evidence_unavailable");
 
   if (ciStatus === "failed") risks.push("Test/build execution failed, so the PR is not proven ready.");
   if (hasNonExecutionCheckFailures) risks.push("Static or merge-gate checks failed outside test/build proof.");
+  if (unavailableProofGaps.length > 0) {
+    risks.push("Some implementation proof is unavailable because file or patch evidence could not be collected.");
+  }
+  if (highProofGaps.some((gap) => gap.kind === "missing_targeted_test" || gap.kind === "self_reported_test_gap")) {
+    risks.push("Requirement-level proof graph found missing targeted proof.");
+  }
   if (requirements.some((finding) => finding.status === "missing")) risks.push("One or more requirements have no matching implementation evidence.");
   if (requirements.some((finding) => finding.status === "unclear")) risks.push("Some requirements are too vague or weakly evidenced.");
   if (requirements.some((finding) => finding.status === "partial")) risks.push("Some requirements have only partial evidence.");
@@ -1138,19 +1812,50 @@ function buildTopRisks(
 function buildLimitations(
   input: PullRequestInput,
   requirements: RequirementFinding[],
-  ciStatus: CheckStatus
+  ciStatus: CheckStatus,
+  hasExecutionEvidence: boolean,
+  evidenceRefsCapped: boolean
 ): string[] {
   const limitations: string[] = [];
 
   limitations.push(...(input.limitations ?? []));
   if (!input.taskText.trim()) limitations.push("No original task text was provided; criteria were inferred from PR description.");
-  if (input.logs.length === 0) limitations.push("No CI or test logs were available.");
-  if (ciStatus === "unknown") limitations.push("Check status is unknown or incomplete.");
+  if (!hasExecutionEvidence) {
+    if (!hasSourceConditionLimitation(limitations)) {
+      limitations.push(
+        hasAnyCheckOrLogMetadata(input)
+          ? "Public check/status metadata was available, but no test/build execution evidence was found."
+          : "No public test/build workflow run, check, or raw CI log was available."
+      );
+    }
+    limitations.push("Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found.");
+  }
+  if (ciStatus === "unknown" && !hasSourceConditionLimitation(limitations)) {
+    limitations.push("No public test/build workflow run, check, or raw CI log was available.");
+  }
+  if (evidenceRefsCapped) {
+    limitations.push(`Some evidence references were capped at ${MAX_EVIDENCE_REFS_PER_FIELD} per field to keep the report bounded.`);
+  }
   if (requirements.some((finding) => finding.status === "unclear")) {
     limitations.push("At least one requirement needs human interpretation.");
   }
 
-  return limitations;
+  return uniqueRefs(limitations);
+}
+
+function hasTestBuildExecutionEvidence(input: PullRequestInput): boolean {
+  return input.checks.some((check) => isCheckExecutionSignal(check)) ||
+    input.logs.some((log) => isLogExecutionSignal(log));
+}
+
+function hasAnyCheckOrLogMetadata(input: PullRequestInput): boolean {
+  return input.checks.length > 0 || input.logs.length > 0;
+}
+
+function hasSourceConditionLimitation(limitations: string[]): boolean {
+  return limitations.some((limitation) =>
+    /Public GitHub Actions metadata showed|Public commit status metadata (?:was available|showed)|No public test\/build workflow run/i.test(limitation)
+  );
 }
 
 function summarize(priority: PriorityLevel, evidenceCoverage: number, topRisks: string[]): string {

@@ -23,7 +23,7 @@ export function buildLlmVerifierPackage(
   return {
     system: [
       llmBoundaryPrompt.trim(),
-      "Use the deterministic report as a baseline. You may downgrade confidence when evidence is weak.",
+      "Use the deterministic report as an immutable baseline. Return it unchanged unless the runtime validator rejects the output.",
       "Preserve analysisId, createdAt, source, evidenceIndex, extracted requirement IDs/text, extracted claim IDs/text, and testing status exactly.",
       "Do not invent files, logs, tests, comments, or evidence IDs.",
       "Every evidenceRefs entry must refer to an ID present in evidenceIndex."

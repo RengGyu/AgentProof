@@ -1,0 +1,887 @@
+{
+  "schemaVersion": "evidence-status-matrix.v1",
+  "privacy": "synthetic-evidence-status-matrix-no-private-data",
+  "status": "synthetic_regression_fixture",
+  "notes": [
+    "Synthetic cases exercise evidence classes, not specific repositories or PR numbers.",
+    "These fixtures must not contain raw diffs, full logs, tokens, private data, or hidden oracle labels.",
+    "Safety-critical test/build status is expected to come from deterministic evidence only."
+  ],
+  "cases": [
+    {
+      "id": "ci-build-test-success",
+      "description": "Execution-like CI build/test metadata passed.",
+      "input": {
+        "taskText": "Fix request handling and verify it with tests.",
+        "description": "Implements the request and links the changed behavior to public CI.",
+        "changedFiles": [
+          { "path": "src/request-handler.ts", "patch": "bounded implementation summary" },
+          { "path": "src/request-handler.test.ts", "patch": "bounded targeted test summary" }
+        ],
+        "checks": [
+          {
+            "name": "CI / Build&Test",
+            "status": "passed",
+            "summary": "Build&Test workflow completed successfully."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "static-only-passed-checks",
+      "description": "Static-only passed checks must not become test/build execution proof.",
+      "input": {
+        "taskText": "Fix request handling and verify behavior.",
+        "description": "Lint and typecheck passed, but no test/build execution metadata was available.",
+        "changedFiles": [
+          { "path": "src/request-handler.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Static checks",
+            "status": "passed",
+            "summary": "eslint, tsc, and typecheck passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public check/status metadata was available, but no test/build execution evidence was found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public check/status metadata was available, but no test/build execution evidence was found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "lint-typecheck-only",
+      "description": "Lint/typecheck-only success is separate from test/build status.",
+      "input": {
+        "taskText": "Fix API timeout validation.",
+        "description": "Only static checks were available.",
+        "changedFiles": [
+          { "path": "src/api-timeout.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "lint",
+            "status": "passed",
+            "summary": "pnpm run lint passed."
+          },
+          {
+            "name": "typecheck",
+            "status": "passed",
+            "summary": "pnpm run typecheck and tsc passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public check/status metadata was available, but no test/build execution evidence was found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public check/status metadata was available, but no test/build execution evidence was found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "workflow-tests-failure",
+      "description": "A test workflow failure must fail test/build status.",
+      "input": {
+        "taskText": "Fix the parser regression and verify unit tests.",
+        "description": "Implementation is present, but the test workflow failed.",
+        "changedFiles": [
+          { "path": "src/parser.ts", "patch": "bounded parser change summary" },
+          { "path": "src/parser.test.ts", "patch": "bounded test change summary" }
+        ],
+        "checks": [
+          {
+            "name": "Tests",
+            "status": "failed",
+            "summary": "Unit tests failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "build-and-test-workflow-failure",
+      "description": "A Build&Test workflow failure must not be downgraded to unknown or passed.",
+      "input": {
+        "taskText": "Fix loading state and verify build plus tests.",
+        "description": "Build&Test failed on the head commit.",
+        "changedFiles": [
+          { "path": "src/loading-state.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Build&Test",
+            "status": "failed",
+            "summary": "Workflow Build&Test failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "generic-build-and-test-workflow-failure-with-passed-subjobs",
+      "description": "A failed generic build-and-test workflow overrides passed sub-jobs.",
+      "input": {
+        "taskText": "Fix cache accounting and verify build/test.",
+        "description": "A broad build-and-test workflow failed even though a narrower unit job passed.",
+        "changedFiles": [
+          { "path": "src/cache.ts", "patch": "bounded implementation summary" },
+          { "path": "src/cache.test.ts", "patch": "bounded test artifact summary" }
+        ],
+        "checks": [
+          {
+            "name": "Build and Test",
+            "status": "failed",
+            "summary": "Workflow-level Build and Test failed."
+          },
+          {
+            "name": "unit tests",
+            "status": "passed",
+            "summary": "A narrower unit-test job passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "docs-readthedocs-only",
+      "description": "Documentation status alone is not test/build execution evidence.",
+      "input": {
+        "taskText": "Fix API timeout validation.",
+        "description": "PR body says the docs build passed.",
+        "changedFiles": [
+          { "path": "src/api-timeout.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Read the Docs",
+            "status": "passed",
+            "summary": "Documentation build passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public commit status metadata was available, but only non-execution statuses were found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "deploy-preview-only",
+      "description": "Deploy preview success alone is non-execution metadata.",
+      "input": {
+        "taskText": "Fix app-router navigation.",
+        "description": "Preview deployment is green.",
+        "changedFiles": [
+          { "path": "src/app-router.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Vercel Preview Deployment",
+            "status": "passed",
+            "summary": "Deploy preview ready."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public commit status metadata was available, but only non-execution statuses were found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "stats-cancelled-only",
+      "description": "A cancelled or failed stats status is non-execution metadata.",
+      "input": {
+        "taskText": "Fix cache accounting.",
+        "description": "Stats check did not complete.",
+        "changedFiles": [
+          { "path": "src/cache.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Stats",
+            "status": "failed",
+            "summary": "Stats check was cancelled before producing a report."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public commit status metadata was available, but only non-execution statuses were found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "security-check-only",
+      "description": "Security scan status is not test/build execution evidence.",
+      "input": {
+        "taskText": "Fix credential parsing.",
+        "description": "Security scan completed.",
+        "changedFiles": [
+          { "path": "src/auth.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Security scan",
+            "status": "passed",
+            "summary": "SAST/security scan passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public commit status metadata was available, but only non-execution statuses were found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "self-reported-tests-only",
+      "description": "PR body test claims are self-reported testing only.",
+      "input": {
+        "taskText": "Fix timeout validation.",
+        "description": "The agent says: all tests passed locally.",
+        "changedFiles": [
+          { "path": "src/timeout.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [],
+        "logs": [],
+        "limitations": []
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "No public test/build workflow run, check, or raw CI log was available.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "changed-test-file-only",
+      "description": "A changed test file is artifact evidence, not execution evidence.",
+      "input": {
+        "taskText": "Add a regression test for digest credentials.",
+        "description": "A test file changed.",
+        "changedFiles": [
+          { "path": "tests/test_digest_auth.py", "patch": "bounded test artifact summary" }
+        ],
+        "checks": [],
+        "logs": [],
+        "limitations": []
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "No public test/build workflow run, check, or raw CI log was available.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "changed-test-file-plus-self-report",
+      "description": "Changed test file plus PR-body test claim still lacks execution evidence.",
+      "input": {
+        "taskText": "Fix digest bytes credentials and add tests.",
+        "description": "Added tests and ran pytest successfully.",
+        "changedFiles": [
+          { "path": "src/digest-auth.py", "patch": "bounded implementation summary" },
+          { "path": "tests/test_digest_auth.py", "patch": "bounded test artifact summary" }
+        ],
+        "checks": [],
+        "logs": [],
+        "limitations": []
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "No public test/build workflow run, check, or raw CI log was available.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "mixed-relevant-failure-and-success",
+      "description": "Any failed execution evidence wins over passed execution evidence.",
+      "input": {
+        "taskText": "Fix nested dynamic import CSS and verify build/test.",
+        "description": "Some execution checks passed, but one relevant test/build check failed.",
+        "changedFiles": [
+          { "path": "src/css-imports.ts", "patch": "bounded implementation summary" },
+          { "path": "src/css-imports.test.ts", "patch": "bounded test summary" }
+        ],
+        "checks": [
+          {
+            "name": "Unit tests",
+            "status": "passed",
+            "summary": "Unit tests passed."
+          },
+          {
+            "name": "Build&Test Windows",
+            "status": "failed",
+            "summary": "Build&Test job failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "stats-cancelled-plus-build-and-test-success",
+      "description": "Non-execution stats failure must not mask passing build/test execution evidence.",
+      "input": {
+        "taskText": "Fix LRU cache accounting.",
+        "description": "Build/test passed, stats check failed separately.",
+        "changedFiles": [
+          { "path": "src/lru-cache.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Stats",
+            "status": "failed",
+            "summary": "Stats check cancelled."
+          },
+          {
+            "name": "Build and Test",
+            "status": "passed",
+            "summary": "Build and Test workflow passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "codecov-project-failure-only",
+      "description": "Codecov/project status is a coverage report gate, not test/build execution by itself.",
+      "input": {
+        "taskText": "Fix plotting scale handling.",
+        "description": "Only a coverage gate failed.",
+        "changedFiles": [
+          { "path": "src/plot-scale.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "codecov/project",
+            "status": "failed",
+            "summary": "Coverage threshold decreased below policy."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public commit status metadata was available, but only non-execution statuses were found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "codecov-failure-plus-unit-tests-passed",
+      "description": "Codecov gate failure must not hide passing unit-test execution metadata.",
+      "input": {
+        "taskText": "Fix plotting scale handling and verify unit tests.",
+        "description": "Unit tests passed while Codecov reported a coverage gate failure.",
+        "changedFiles": [
+          { "path": "src/plot-scale.ts", "patch": "bounded implementation summary" },
+          { "path": "tests/plot-scale.test.ts", "patch": "bounded targeted test summary" }
+        ],
+        "checks": [
+          {
+            "name": "codecov/project",
+            "status": "failed",
+            "summary": "Coverage threshold decreased below policy."
+          },
+          {
+            "name": "Unit Tests",
+            "status": "passed",
+            "summary": "Unit tests passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "changelog-cancelled-only",
+      "description": "A cancelled changelog/release-note gate is non-execution metadata.",
+      "input": {
+        "taskText": "Fix provider schema parsing.",
+        "description": "Changelog gate was cancelled.",
+        "changedFiles": [
+          { "path": "src/provider-schema.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Check Changelog Entry",
+            "status": "failed",
+            "summary": "Changelog validation was cancelled."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public commit status metadata was available, but only non-execution statuses were found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "changelog-cancelled-plus-unit-tests-passed",
+      "description": "Cancelled changelog metadata must not mask passing test execution.",
+      "input": {
+        "taskText": "Fix provider schema parsing and verify unit tests.",
+        "description": "Unit tests passed while changelog validation was cancelled.",
+        "changedFiles": [
+          { "path": "src/provider-schema.ts", "patch": "bounded implementation summary" },
+          { "path": "tests/provider-schema.test.ts", "patch": "bounded targeted test summary" }
+        ],
+        "checks": [
+          {
+            "name": "Check Changelog Entry",
+            "status": "failed",
+            "summary": "Changelog validation was cancelled."
+          },
+          {
+            "name": "Unit Tests",
+            "status": "passed",
+            "summary": "Unit tests passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "optional-failed-workflow-plus-unit-tests-passed",
+      "description": "Optional or allowed-failure workflow metadata must not turn passing tests into a blocker.",
+      "input": {
+        "taskText": "Fix router back navigation and verify unit tests.",
+        "description": "Unit tests passed while an optional smoke check failed.",
+        "changedFiles": [
+          { "path": "src/router.ts", "patch": "bounded implementation summary" },
+          { "path": "tests/router.test.ts", "patch": "bounded targeted test summary" }
+        ],
+        "checks": [
+          {
+            "name": "Optional browser smoke",
+            "status": "failed",
+            "summary": "Allowed failure for optional browser smoke."
+          },
+          {
+            "name": "Unit Tests",
+            "status": "passed",
+            "summary": "Unit tests passed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "real-unit-test-failure-with-codecov-docs-failure",
+      "description": "Real unit-test failure stays failed even with Codecov/docs noise.",
+      "input": {
+        "taskText": "Fix array indexing and verify regression tests.",
+        "description": "Unit tests failed; Codecov and docs also reported failures.",
+        "changedFiles": [
+          { "path": "src/array-index.ts", "patch": "bounded implementation summary" },
+          { "path": "tests/array-index.test.ts", "patch": "bounded targeted test summary" }
+        ],
+        "checks": [
+          {
+            "name": "codecov/project",
+            "status": "failed",
+            "summary": "Coverage threshold decreased below policy."
+          },
+          {
+            "name": "docs-python3",
+            "status": "failed",
+            "summary": "Documentation build failed."
+          },
+          {
+            "name": "Unit Tests",
+            "status": "failed",
+            "summary": "Unit tests failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "real-build-failure-with-changelog-cancelled",
+      "description": "Real build/test failure stays failed even when a changelog gate is cancelled.",
+      "input": {
+        "taskText": "Fix generated schema output and verify build.",
+        "description": "Build and Test failed; changelog validation was cancelled separately.",
+        "changedFiles": [
+          { "path": "src/generated-schema.ts", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Check Changelog Entry",
+            "status": "failed",
+            "summary": "Changelog validation was cancelled."
+          },
+          {
+            "name": "Build and Test",
+            "status": "failed",
+            "summary": "Build and Test workflow failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "provider-only-failed-status",
+      "description": "A provider/pipeline label without test/build text is not execution evidence.",
+      "input": {
+        "taskText": "Fix model serialization.",
+        "description": "Provider status failed without test/build detail.",
+        "changedFiles": [
+          { "path": "src/model-serialization.rb", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "buildkite/rails",
+            "status": "failed",
+            "summary": "Buildkite pipeline failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public commit status metadata was available, but only non-execution statuses were found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "provider-tests-failure-summary",
+      "description": "A provider/pipeline label with explicit test failure summary is execution evidence.",
+      "input": {
+        "taskText": "Fix model serialization and verify Rails tests.",
+        "description": "Provider status summary says the test suite failed.",
+        "changedFiles": [
+          { "path": "src/model-serialization.rb", "patch": "bounded implementation summary" },
+          { "path": "test/model_serialization_test.rb", "patch": "bounded targeted test summary" }
+        ],
+        "checks": [
+          {
+            "name": "buildkite/rails",
+            "status": "failed",
+            "summary": "Rails test suite failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "metadata-timeout-plus-known-failure",
+      "description": "Metadata timeout cannot erase known failed execution evidence.",
+      "input": {
+        "taskText": "Fix Flask pytest compatibility.",
+        "description": "Job metadata timed out, but a bounded failed test/build status was still collected.",
+        "changedFiles": [
+          { "path": "tests/test_pytest_compat.py", "patch": "bounded test artifact summary" }
+        ],
+        "checks": [
+          {
+            "name": "Tests",
+            "status": "failed",
+            "summary": "Pytest compatibility tests failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "mustNotBe": ["passed"],
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "python-tox-workflow-failure",
+      "description": "Python tox workflow/job metadata is test execution evidence and failed tox must fail test/build status.",
+      "input": {
+        "taskText": "Fix Python compatibility and verify tox.",
+        "description": "Tests workflow failed while running uv run tox.",
+        "changedFiles": [
+          { "path": "tests/test_pytest_compat.py", "patch": "bounded test artifact summary" }
+        ],
+        "checks": [
+          {
+            "name": "Tests",
+            "status": "failed",
+            "summary": "uv run tox failed."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "executionEvidenceFound": true,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "metadata-timeout-with-no-known-execution",
+      "description": "Metadata timeout with no known execution evidence must remain unknown.",
+      "input": {
+        "taskText": "Fix compatibility behavior.",
+        "description": "Metadata timed out before test/build status could be collected.",
+        "changedFiles": [
+          { "path": "src/compat.py", "patch": "bounded implementation summary" }
+        ],
+        "checks": [],
+        "logs": [],
+        "limitations": [
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "No public test/build workflow run, check, or raw CI log was available.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      }
+    }
+  ]
+}

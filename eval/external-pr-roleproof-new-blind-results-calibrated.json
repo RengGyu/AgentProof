@@ -1,0 +1,744 @@
+{
+  "privacy": "external-pr-roleproof-new-blind-results-summary-only",
+  "status": "roleproof_blind_reports_need_human_labeling",
+  "generatedAt": "2026-07-09T13:02:04.960Z",
+  "candidateSource": "eval/external-pr-roleproof-new-blind-candidates.json",
+  "analysisBaseUrl": "http://127.0.0.1:3001",
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokens": true,
+    "noRawFullLogs": true,
+    "noRawDiffs": true,
+    "noRawPrompts": true,
+    "noPrivateUserData": true,
+    "notes": [
+      "Candidate data and results are public GitHub metadata summaries only.",
+      "AgentProof output is not a correctness label.",
+      "Manual labels remain incomplete."
+    ]
+  },
+  "results": [
+    {
+      "candidateId": "roleproof-blind-001",
+      "repository": "sveltejs/svelte",
+      "prNumber": 18388,
+      "prUrl": "https://github.com/sveltejs/svelte/pull/18388",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "high",
+        "evidenceCoverage": 40,
+        "confidence": 0.38,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 2,
+        "firstReviewPriorityFiles": [
+          ".changeset/some-parts-watch.md",
+          "packages/svelte/src/ambient.d.ts",
+          "packages/svelte/types/index.d.ts"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 4 partial requirement(s), 2 missing targeted test lead(s), 4 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "high",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "unknown"
+        },
+        "missingTestCount": {
+          "before": 2,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            ".changeset/some-parts-watch.md",
+            "packages/svelte/src/ambient.d.ts",
+            "packages/svelte/types/index.d.ts"
+          ],
+          "after": [
+            "Requirement evidence"
+          ]
+        },
+        "limitationsChanged": true
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": false,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": false,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": false,
+        "nonExecutionStatusesFound": false,
+        "executionEvidenceCount": 0,
+        "nonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 18,
+        "confidence": 0.2,
+        "testBuildStatus": "unknown",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 4
+        },
+        "topRisks": [
+          "Some implementation proof is unavailable because file or patch evidence could not be collected.",
+          "Some requirements are too vague or weakly evidenced."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Requirement evidence"
+        ],
+        "rePromptSummary": "1. Address requirement \"$state.snapshot with BigInt properties infer as never\" and provide evidence for the implementation. 2. Address requirement \"Hey, I noticed when I try using $state.snapshot with an object that contains a BigInt, the property is inferred as `never`\" and provide evidence for the implementation. 3. Address requirement \"In the types for $state.snapshot:\" and provide evidence for the implementation.",
+        "limitations": [
+          "GitHub changed-file fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. File evidence may be incomplete.",
+          "GitHub check-run fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. CI evidence may be incomplete.",
+          "GitHub commit-status fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. Legacy status evidence may be incomplete.",
+          "No public test/build workflow run, check, or raw CI log was available.",
+          "Raw CI logs were not fetched or stored.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 4,
+          "requirementsWithImplementation": 0,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 4,
+          "gapCount": 8
+        },
+        "gapKinds": {
+          "evidence_unavailable": 4,
+          "ambiguous_requirement": 4
+        },
+        "requirementSourceQualities": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "contextRoles": [
+              "problem_context",
+              "reproduction_context"
+            ],
+            "requirementText": "$state.snapshot with BigInt properties infer as never",
+            "status": "unclear",
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "evidence_unavailable",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_2",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Describe the bug",
+            "contextRoles": [
+              "problem_context",
+              "reproduction_context"
+            ],
+            "requirementText": "Hey, I noticed when I try using $state.snapshot with an object that contains a BigInt, the property is inferred as `never`",
+            "status": "unclear",
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "evidence_unavailable",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_3",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Describe the bug",
+            "contextRoles": [
+              "problem_context",
+              "reproduction_context"
+            ],
+            "requirementText": "In the types for $state.snapshot:",
+            "status": "unclear",
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "evidence_unavailable",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_4",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Describe the bug",
+            "contextRoles": [
+              "problem_context"
+            ],
+            "requirementText": "It first checks if `T` is a Primitive, which is defined as such:",
+            "status": "unclear",
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "evidence_unavailable",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium"
+            ],
+            "firstFiles": []
+          }
+        ],
+        "contextRoleCounts": {
+          "problem_context": 9,
+          "reproduction_context": 4,
+          "external_reference": 1,
+          "author_claim": 16
+        },
+        "contextSamples": [
+          {
+            "role": "problem_context",
+            "source": "issue",
+            "sourceQuality": "linked_issue",
+            "sourceSection": null,
+            "text": "$state.snapshot with BigInt properties infer as never"
+          },
+          {
+            "role": "problem_context",
+            "source": "issue",
+            "sourceQuality": "linked_issue",
+            "sourceSection": "Describe the bug",
+            "text": "Hey, I noticed when I try using $state.snapshot with an object that contains a BigInt, the property is inferred as `never`"
+          },
+          {
+            "role": "problem_context",
+            "source": "issue",
+            "sourceQuality": "linked_issue",
+            "sourceSection": "Describe the bug",
+            "text": "In the types for $state.snapshot:"
+          },
+          {
+            "role": "problem_context",
+            "source": "issue",
+            "sourceQuality": "linked_issue",
+            "sourceSection": "Describe the bug",
+            "text": "It first checks if `T` is a Primitive, which is defined as such:"
+          },
+          {
+            "role": "problem_context",
+            "source": "issue",
+            "sourceQuality": "linked_issue",
+            "sourceSection": "Describe the bug",
+            "text": "It then checks if `T` is a Cloneable, which is defined as such:"
+          },
+          {
+            "role": "problem_context",
+            "source": "issue",
+            "sourceQuality": "linked_issue",
+            "sourceSection": "Describe the bug",
+            "text": "BigInts are not only supported by structuredClone, they are also primitives"
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": true,
+          "usedInReprompt": true
+        }
+      },
+      "roleExtractionAssessment": {
+        "status": "looks_clean",
+        "templateNoiseInRequirements": false,
+        "coreRequirementCount": 4,
+        "contextSignalCount": 30,
+        "contextRoleCounts": {
+          "problem_context": 9,
+          "reproduction_context": 4,
+          "external_reference": 1,
+          "author_claim": 16
+        },
+        "notes": [
+          "No obvious template/environment heading in summarized requirements.",
+          "Context signals were preserved in proofGraph.context."
+        ]
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-002",
+      "repository": "sveltejs/svelte",
+      "prNumber": 18425,
+      "prUrl": "https://github.com/sveltejs/svelte/pull/18425",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 21,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          ".changeset/quick-meals-shout.md"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 unclear requirement(s), 2 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Multiple supported issue references found (sveltejs/svelte#17218, sveltejs/kit#16031); did not choose a single issue as requirement source. Original request mapping is ambiguous.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-003",
+      "repository": "tailwindlabs/tailwindcss",
+      "prNumber": 20310,
+      "prUrl": "https://github.com/tailwindlabs/tailwindcss/pull/20310",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 37,
+        "confidence": 0.34,
+        "testBuildStatus": "unknown",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 1,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Behavior changed without strong test evidence."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "CHANGELOG.md",
+          "packages/@tailwindcss-postcss/src/index.ts"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 partial requirement(s), 1 missing targeted test lead(s), 1 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "No public test/build workflow run, check, or raw CI log was available from the collected metadata.",
+          "Raw CI logs were not fetched or stored.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-004",
+      "repository": "tailwindlabs/tailwindcss",
+      "prNumber": 20292,
+      "prUrl": "https://github.com/tailwindlabs/tailwindcss/pull/20292",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "high",
+        "evidenceCoverage": 37,
+        "confidence": 0.34,
+        "testBuildStatus": "unknown",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 1,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements have only partial evidence.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "CHANGELOG.md"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 partial requirement(s), 2 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "No public test/build workflow run, check, or raw CI log was available from the collected metadata.",
+          "Raw CI logs were not fetched or stored.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-005",
+      "repository": "microsoft/TypeScript",
+      "prNumber": 62923,
+      "prUrl": "https://github.com/microsoft/TypeScript/pull/62923",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 46,
+        "confidence": 0.43,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 1,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "src/compiler/checker.ts"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 partial requirement(s), 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-006",
+      "repository": "rust-lang/rust",
+      "prNumber": 150102,
+      "prUrl": "https://github.com/rust-lang/rust/pull/150102",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "blocker",
+        "evidenceCoverage": 11,
+        "confidence": 0.2,
+        "testBuildStatus": "failed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Test/build execution failed, so the PR is not proven ready.",
+          "Some requirements are too vague or weakly evidenced.",
+          "Behavior changed without strong test evidence."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "Test/build checks",
+          "compiler/rustc_passes/src/eii.rs"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 unclear requirement(s), 1 missing targeted test lead(s), failing test/build evidence, 3 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.",
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-007",
+      "repository": "golang/go",
+      "prNumber": 54390,
+      "prUrl": "https://github.com/golang/go/pull/54390",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 18,
+        "confidence": 0.2,
+        "testBuildStatus": "unknown",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 4
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Requirement evidence"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 4 unclear requirement(s), 8 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "No public test/build workflow run, check, or raw CI log was available.",
+          "Raw CI logs were not fetched or stored.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-008",
+      "repository": "sympy/sympy",
+      "prNumber": 30015,
+      "prUrl": "https://github.com/sympy/sympy/pull/30015",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 48,
+        "confidence": 0.44,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 2,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "sympy/polys/constructor.py"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 2 partial requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-009",
+      "repository": "numpy/numpy",
+      "prNumber": 31771,
+      "prUrl": "https://github.com/numpy/numpy/pull/31771",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 19,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "doc/release/upcoming_changes/31771.c_api.rust"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 unclear requirement(s), 2 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-010",
+      "repository": "ansible/ansible",
+      "prNumber": 86660,
+      "prUrl": "https://github.com/ansible/ansible/pull/86660",
+      "analysisStatus": "failed",
+      "failureReason": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403).",
+      "previousSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 17,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 2,
+        "firstReviewPriorityFiles": [
+          "changelogs/fragments/86656-fix-step-in-free-strat.yml",
+          "lib/ansible/plugins/strategy/__init__.py",
+          "lib/ansible/plugins/strategy/linear.py"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 unclear requirement(s), 2 missing targeted test lead(s), 2 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "beforeAfter": null,
+      "diagnosticMetadata": null,
+      "reportSummary": null,
+      "proofGraphDiagnostics": null,
+      "roleExtractionAssessment": null,
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "unclear",
+        "obviousProblem": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-07-09T13:59:37.000Z. (HTTP 403)."
+      }
+    }
+  ],
+  "summary": {
+    "candidateCount": 10,
+    "completedCount": 1,
+    "failedCount": 9,
+    "skippedCount": 0,
+    "repoDistribution": {
+      "sveltejs/svelte": 2,
+      "tailwindlabs/tailwindcss": 2,
+      "microsoft/TypeScript": 1,
+      "rust-lang/rust": 1,
+      "golang/go": 1,
+      "sympy/sympy": 1,
+      "numpy/numpy": 1,
+      "ansible/ansible": 1
+    },
+    "testBuildStatusCounts": {
+      "passed": 0,
+      "failed": 0,
+      "pending": 0,
+      "unknown": 1
+    },
+    "possibleFalsePassCount": 0,
+    "possibleFalseBlockerCount": 0,
+    "roleExtractionNeedsReviewCount": 0,
+    "proofGraphUsedCount": 1
+  }
+}

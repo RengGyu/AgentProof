@@ -1,0 +1,8 @@
+{
+  "protocolVersion": "agentproof-human-ab.v1",
+  "experimentId": "replace-after-holdout-seal",
+  "preflightVersion": "agentproof-human-ab-preflight.v1",
+  "minReviewersPerCaseArm": 2,
+  "status": "template_not_assigned",
+  "assignments": []
+}

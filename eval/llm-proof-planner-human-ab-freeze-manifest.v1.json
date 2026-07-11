@@ -1,0 +1,100 @@
+{
+  "manifestVersion": "agentproof-human-ab-freeze.v1",
+  "status": "prepared_not_frozen",
+  "generatedAt": "2026-07-11T01:25:00Z",
+  "protocolVersion": "agentproof-human-ab.v1",
+  "privacy": "human-ab-coordinator-metadata-only",
+  "source": {
+    "commit": "8807c8987ef857300fd519bb108869fa72faad22",
+    "workingTreeDirty": false,
+    "changedPathCount": 0,
+    "stagedPathCount": 0,
+    "reproducibleFromCommit": true
+  },
+  "planner": {
+    "requestedModel": "gpt-5.6-luna",
+    "resolvedModelSnapshot": null,
+    "modelSnapshotStatus": "unavailable",
+    "promptVersion": "llm-proof-planner-v2-semantic-integrity",
+    "plannerInputSchemaVersion": 1,
+    "plannerOutputSchemaVersion": "2.1",
+    "evaluationArtifactSchemaVersion": "llm-proof-planner-evaluation.v2.1",
+    "compatibility": {
+      "compactEvidencePackageV1": "supported",
+      "legacyPlannerOutputV1": "measurement_only_rejected",
+      "historicalPlannerOutputV2": "historical_only_rejected",
+      "semanticIntegrityPlannerOutputV2_1": "accepted_exact_version_only"
+    }
+  },
+  "workbooks": {
+    "hashAlgorithm": "sha256",
+    "builderPath": "scripts/build-llm-proof-planner-human-ab-workbooks.mjs",
+    "builderSha256": "54120f378aa53f8e02d438ec3be21e3c808a0fc5b9c59530d846a3d32e434a6e",
+    "artifactToolVersion": "2.8.6",
+    "generationMode": "offline_no_live_llm_or_network",
+    "defaultOutputRoot": "outputs/controlled-human-ab-v1",
+    "binaryOutputDeterminism": "not_guaranteed_artifact_tool_randomizes_ooxml_relationship_ids",
+    "regenerationVerification": "normalized_ooxml_semantic_match_binary_sha256_differs",
+    "raterTemplatePath": "outputs/controlled-human-ab-v1/rater/AgentProof-Human-AB-Rater-Workbook-Template-v1.xlsx",
+    "raterTemplateSha256": "24abce3dc9cc3aa5e97ee01887cb8af9829dfa752238325cc79e65f74646d9a8",
+    "raterWorkbookHashes": {},
+    "coordinatorSummaryPath": "outputs/controlled-human-ab-v1/coordinator/AgentProof-Human-AB-Coordinator-Summary-v1.xlsx",
+    "coordinatorSummarySha256": "5e1a2c5a043f563a0e95708c5e815034eae98f381e03438539799c928c9e6d76",
+    "labelsHeaderFreezeVerified": false,
+    "labelsHeaderFreezeBlocker": "artifact-tool-2.8.6-freeze-pane-not-serialized",
+    "combinedWorkbookPreserved": true,
+    "combinedWorkbookUseAllowed": false
+  },
+  "assignmentPreflight": {
+    "version": "agentproof-human-ab-preflight.v1",
+    "passed": false,
+    "status": "assignment_roster_not_created",
+    "minReviewersPerCaseArm": 2,
+    "planTemplatePath": "eval/llm-proof-planner-human-ab-assignment-plan.template.v1.json",
+    "planTemplateSha256": "a5cc6f13fd885560361fec0575eb6fd0efe7d6964ccd497bed0e367bcbf57739"
+  },
+  "devSmoke": {
+    "planVersion": "agentproof-llm-planner-dev10-smoke.v1",
+    "status": "planned_not_run",
+    "baselineRole": "regression_dev_set_not_holdout",
+    "candidateCount": 10,
+    "repeatCount": 1,
+    "apiKeyVariable": "OPENAI_API_KEY",
+    "apiKeyConfiguredAtPreparation": true,
+    "executionAuthorizationVariable": "AGENTPROOF_LLM_PROOF_PLANNER_EXECUTION_AUTHORIZED",
+    "executionAuthorized": false,
+    "isolatedNoClobberOutputs": true,
+    "workflowStatus": "prepared_not_run",
+    "workflowPath": ".github/workflows/llm-proof-planner-dev10-smoke.yml",
+    "workflowSha256": "defd74a4c8d8ac48a3bf18b1d0bf127f6870c92d1371706b55796a293dae0355",
+    "planPath": "eval/llm-proof-planner-dev10-smoke-plan.v1.json",
+    "planSha256": "a94ce63fec6b27f44d76439f0032d621928cab837a6d6abae48ef997d5498653"
+  },
+  "holdoutReceipt": null,
+  "holdoutReceiptTemplate": {
+    "status": "template_only_not_sealed",
+    "templatePath": "eval/llm-proof-planner-sealed-holdout-receipt.template.v1.json",
+    "templateSha256": "f53b6e7120b9d0d27fdce51374ccb05300ab1086372590c680897a029c6d7e38",
+    "sealedReceiptSha256": null
+  },
+  "hashes": {
+    "algorithm": "sha256",
+    "plannerSourceSha256": "c5fad756455f043877dbaf12cdc59287c106da813ce579a7a867cb6e16d553b1",
+    "promptSha256": "9fbc2bb4a509d54d062b86e6bedcca0f281aac0cb8475802b62d1fe93b1af52e",
+    "plannerSchemaSha256": "4769885c07e1e9bdcdeb2530f6e63f3eeb74c26d654737ef6a98b6558e18b362",
+    "evaluationHarnessSha256": "c694b1b9cfec2f76b94345a72fbbf84a2825977a6550a7e7819157a24044de14",
+    "baselineSourceSha256": "0af4c4b528cc155c7916686f6c6f97119b24f134d42cc8e62103908738e960cf",
+    "protocolSha256": "af4be32bc27c53145fdb3da9f62f7586653d92c5094c6bc6addedcceb4af036d",
+    "assignmentPreflightSourceSha256": "dc20e0856f8507d6d77119d254037e5004e28febf10d99163e3d45fa7ed3c055",
+    "automaticTimerRunnerSha256": "8e6ab5daa7d61fb612cdbd4766530ac586b0eae107ebae9319c4db1a3e8cd89f"
+  },
+  "blockers": [
+    "resolved_model_snapshot_not_frozen",
+    "per_rater_workbook_hashes_missing",
+    "labels_header_freeze_not_verified",
+    "assignment_preflight_not_passed",
+    "sealed_holdout_receipt_not_bound"
+  ],
+  "productDefaultChanged": false,
+  "existingEvaluationArtifactsChanged": false
+}

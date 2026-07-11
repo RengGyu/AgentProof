@@ -16,6 +16,8 @@ import {
 } from "./server-report-store";
 import { generateVerificationReport } from "./verifier";
 
+const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
+
 describe("server report store", () => {
   const originalEnv = { ...process.env };
   const originalFetch = global.fetch;
@@ -76,7 +78,7 @@ describe("server report store", () => {
     expect(serialized).toContain("[redacted]");
     expect(serialized).not.toContain(fullReport.reprompt.prompt);
     expect(saved.report.limitations).toContain(
-      "Shared report omits raw evidence, patch/log excerpts, claims, and re-prompt text."
+      "Shared report omits raw evidence, patch/log excerpts, claims, proof-graph evidence refs, and re-prompt text."
     );
   });
 
@@ -170,6 +172,50 @@ describe("server report store", () => {
     });
   });
 
+  it("sanitizes legacy in-memory report rows at read time", async () => {
+    const legacyReport = generateVerificationReport(demoScenarios["scope-creep"]);
+    legacyReport.evidenceIndex.push({
+      id: "ev_legacy_secret",
+      kind: "diff",
+      label: "Patch excerpt",
+      summary: "Patch excerpt with token=github_pat_abcdefghijklmnopqrstuvwxyz123456",
+      confidence: 0.9
+    });
+    legacyReport.claims.push({
+      id: "claim_legacy_secret",
+      text: "Agent claim with AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      evidenceRefs: ["ev_legacy_secret"],
+      supported: false
+    });
+    legacyReport.reprompt.prompt = `raw re-prompt with ${TEST_SLACK_WEBHOOK}`;
+    const store = globalThis as typeof globalThis & {
+      __agentproofReportStore?: Map<string, unknown>;
+    };
+
+    store.__agentproofReportStore = new Map([
+      [
+        "legacy_report",
+        {
+          id: "legacy_report",
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          report: legacyReport
+        }
+      ]
+    ]);
+
+    const saved = await getSavedReport("legacy_report");
+    const serialized = JSON.stringify(saved?.report);
+
+    expect(saved?.report.evidenceIndex).toEqual([]);
+    expect(saved?.report.claims).toEqual([]);
+    expect(saved?.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
+    expect(serialized).not.toContain("Patch excerpt");
+    expect(serialized).not.toContain("github_pat_");
+    expect(serialized).not.toContain("wJalrXUtnFEMI");
+    expect(serialized).not.toContain("hooks.slack.com/services");
+  });
+
   it("expires and deletes old reports", async () => {
     const fullReport = generateVerificationReport(demoScenarios.clean);
     const saved = await createSavedReport(fullReport, -1);
@@ -222,6 +268,20 @@ describe("server report store", () => {
 
   it("caps in-memory saved reports by removing oldest entries", async () => {
     const report = generateVerificationReport(demoScenarios.clean);
+    report.evidenceIndex.push({
+      id: "ev_legacy_supabase_secret",
+      kind: "log",
+      label: "Patch excerpt",
+      summary: "Patch excerpt with token=github_pat_abcdefghijklmnopqrstuvwxyz123456",
+      confidence: 0.9
+    });
+    report.claims.push({
+      id: "claim_legacy_supabase_secret",
+      text: "Agent claim with AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      evidenceRefs: ["ev_legacy_supabase_secret"],
+      supported: false
+    });
+    report.reprompt.prompt = `raw re-prompt with ${TEST_SLACK_WEBHOOK}`;
     const saved = [];
 
     for (let index = 0; index < MAX_SERVER_REPORTS + 1; index += 1) {
@@ -349,7 +409,17 @@ describe("server report store", () => {
     });
     global.fetch = fetchMock as typeof fetch;
 
-    await expect(getSavedReport("public_report")).resolves.toMatchObject({ id: "public_report" });
+    const publicSaved = await getSavedReport("public_report");
+    const serializedPublic = JSON.stringify(publicSaved?.report);
+
+    expect(publicSaved).toMatchObject({ id: "public_report" });
+    expect(publicSaved?.report.evidenceIndex).toEqual([]);
+    expect(publicSaved?.report.claims).toEqual([]);
+    expect(publicSaved?.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
+    expect(serializedPublic).not.toContain("Patch excerpt");
+    expect(serializedPublic).not.toContain("github_pat_");
+    expect(serializedPublic).not.toContain("wJalrXUtnFEMI");
+    expect(serializedPublic).not.toContain("hooks.slack.com/services");
     await expect(getSavedReport("tenant_report", { tenantId: "tenant_b" })).resolves.toBeNull();
     await expect(getSavedReport("tenant_report", { tenantId: "tenant_a" })).resolves.toMatchObject({
       id: "tenant_report",

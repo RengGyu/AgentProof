@@ -212,6 +212,33 @@ describe("openai verifier adapter", () => {
     ).rejects.toThrow("changed deterministic evidence");
   });
 
+  it("rejects structured model output that changes the deterministic proof graph", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    invalid.proofGraph.nodes[0].gapSignals.push({
+      kind: "missing_execution",
+      severity: "medium",
+      message: "Fabricated proof gap.",
+      evidenceRefs: []
+    });
+    invalid.proofGraph.summary.gapCount += 1;
+    invalid.proofGraph.summary.requirementsWithGaps += 1;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("proofGraph changed");
+  });
+
   it("rejects structured model output that changes deterministic metadata", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);
@@ -274,6 +301,29 @@ describe("openai verifier adapter", () => {
         fetchFn: fetchMock as unknown as typeof fetch
       })
     ).rejects.toThrow("testing changed");
+  });
+
+  it("rejects structured model output that rewrites summary, review priority, limitations, or reprompt", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const invalid = structuredClone(report);
+    invalid.summary.topRisks = ["LLM says this is safe to merge."];
+    invalid.reviewPriority = [];
+    invalid.limitations = [];
+    invalid.reprompt.prompt = "No follow-up needed.";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(
+      verifyReportWithOpenAI(input, report, {
+        apiKey: "test-key",
+        fetchFn: fetchMock as unknown as typeof fetch
+      })
+    ).rejects.toThrow("full deterministic report changed");
   });
 
   it("allows deterministic testing fields when only JSON object key order changes", async () => {

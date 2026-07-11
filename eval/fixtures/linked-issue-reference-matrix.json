@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "linked-issue-reference-matrix.v1",
+  "privacy": "synthetic-linked-issue-reference-matrix-no-private-data",
+  "status": "synthetic_regression_fixture",
+  "notes": [
+    "Synthetic cases exercise linked issue reference extraction, not specific repositories or PR numbers.",
+    "Placeholder examples must not become requirement source mappings.",
+    "Ambiguous real references should remain ambiguous until a single source issue is selected."
+  ],
+  "cases": [
+    {
+      "id": "placeholder-only-ignored",
+      "repository": { "owner": "acme", "repo": "app" },
+      "inputText": "Fixes #123.",
+      "expectedRefs": [],
+      "totalSupportedReferences": 0,
+      "capped": false
+    },
+    {
+      "id": "placeholder-plus-real-prefers-real",
+      "repository": { "owner": "acme", "repo": "app" },
+      "inputText": "### Linked issues\nFixes #123.\n\nFixes #94890.",
+      "expectedRefs": ["acme/app#94890"],
+      "totalSupportedReferences": 1,
+      "capped": false
+    },
+    {
+      "id": "template-comment-placeholder-ignored",
+      "repository": { "owner": "acme", "repo": "app" },
+      "inputText": "<!--\n- Reference the issues it solves (e.g. `fixes #123`).\n-->\n\nFixes #22242.",
+      "expectedRefs": ["acme/app#22242"],
+      "totalSupportedReferences": 1,
+      "capped": false
+    },
+    {
+      "id": "ambiguous-real-refs-remain-multiple",
+      "repository": { "owner": "acme", "repo": "app" },
+      "inputText": "Fixes #124. Closes #125. Resolves owner/other#126.",
+      "expectedRefs": ["acme/app#124", "acme/app#125", "owner/other#126"],
+      "totalSupportedReferences": 3,
+      "capped": false
+    }
+  ]
+}

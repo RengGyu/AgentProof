@@ -382,7 +382,9 @@ function getMemorySavedReport(id: string, access: SavedReportAccessContext): Sto
     return null;
   }
 
-  return canAccessSavedReport(saved, access) ? saved : null;
+  if (!canAccessSavedReport(saved, access)) return null;
+
+  return sanitizeStoredReport(saved);
 }
 
 function listMemoryTenantSavedReports(tenantId: string, limit: number): StoredServerReport[] {
@@ -390,6 +392,8 @@ function listMemoryTenantSavedReports(tenantId: string, limit: number): StoredSe
 
   return [...reportStore().values()]
     .filter((saved) => saved.tenantId === tenantId)
+    .map(sanitizeStoredReport)
+    .filter((saved): saved is StoredServerReport => Boolean(saved))
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .slice(0, limit);
 }
@@ -724,14 +728,25 @@ function toSupabaseRow(saved: StoredServerReport): SupabaseReportRow {
 function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerReport | null {
   if (!row) return null;
 
-  return {
+  return sanitizeStoredReport({
     id: row.id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     report: row.report,
     tenantId: row.tenant_id ?? undefined,
     accessTokenHash: row.access_token_hash ?? undefined
-  };
+  });
+}
+
+function sanitizeStoredReport(saved: StoredServerReport): StoredServerReport | null {
+  try {
+    return {
+      ...saved,
+      report: sanitizeSummaryReport(saved.report)
+    };
+  } catch {
+    return null;
+  }
 }
 
 function isSupabaseReportRow(value: unknown): value is SupabaseReportRow {

@@ -1,0 +1,2004 @@
+{
+  "privacy": "external-pr-proofgraph-new-blind-results-summary-only",
+  "status": "new_blind_reports_need_human_labeling",
+  "generatedAt": "2026-07-09T02:11:18.791Z",
+  "analysisBaseUrl": "http://127.0.0.1:3001",
+  "usedTransientGithubToken": true,
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokensStored": true,
+    "noRawFullLogs": true,
+    "noRawDiffs": true,
+    "noPrivateUserData": true,
+    "noRawPrompts": true,
+    "correctnessLabelsCompleted": false,
+    "notes": [
+      "New blind candidate set rerun after reviewer-signal proofGraph evidence classification changes.",
+      "Candidate list is carried forward from the previous new-blind result file; no new candidates were fetched by this script.",
+      "Results are AgentProof output summaries for human review only.",
+      "AgentProof output is not treated as truth.",
+      "Manual labels remain incomplete and must not be inferred from these results.",
+      "The full report is processed in memory only; output files store summary-only fields."
+    ]
+  },
+  "candidates": [
+    {
+      "id": "proofgraph-blind-001",
+      "repository": "django/django",
+      "prNumber": 21121,
+      "prUrl": "https://github.com/django/django/pull/21121",
+      "classification": "crash_regression_clean_fix",
+      "selectionReason": "Crash/regression-style Django ORM fix with reproduction, changed implementation/test files, and public check metadata."
+    },
+    {
+      "id": "proofgraph-blind-002",
+      "repository": "scikit-learn/scikit-learn",
+      "prNumber": 33048,
+      "prUrl": "https://github.com/scikit-learn/scikit-learn/pull/33048",
+      "classification": "normal_clean_fix",
+      "selectionReason": "Small issue-linked classifier bug fix with a regression test and broad public unit-test metadata."
+    },
+    {
+      "id": "proofgraph-blind-003",
+      "repository": "matplotlib/matplotlib",
+      "prNumber": 31353,
+      "prUrl": "https://github.com/matplotlib/matplotlib/pull/31353",
+      "classification": "visual_proof_mixed_status",
+      "selectionReason": "Visual/layout regression with targeted tests plus mixed public statuses, useful for execution/non-execution separation."
+    },
+    {
+      "id": "proofgraph-blind-004",
+      "repository": "rails/rails",
+      "prNumber": 57451,
+      "prUrl": "https://github.com/rails/rails/pull/57451",
+      "classification": "crash_regression_failed_or_unclear_ci",
+      "selectionReason": "Rails formatter crash fix with self-reported verification and a public failed buildkite status."
+    },
+    {
+      "id": "proofgraph-blind-005",
+      "repository": "hashicorp/terraform",
+      "prNumber": 38770,
+      "prUrl": "https://github.com/hashicorp/terraform/pull/38770",
+      "classification": "regression_clean_fix",
+      "selectionReason": "Terraform regression fix with changed tests, quick-check execution metadata, and cancelled non-execution metadata."
+    },
+    {
+      "id": "proofgraph-blind-006",
+      "repository": "go-gitea/gitea",
+      "prNumber": 38274,
+      "prUrl": "https://github.com/go-gitea/gitea/pull/38274",
+      "classification": "auth_flow_clean_fix",
+      "selectionReason": "OIDC/2FA HTTP 500 fix with integration test and multiple public check groups."
+    },
+    {
+      "id": "proofgraph-blind-007",
+      "repository": "django/django",
+      "prNumber": 20312,
+      "prUrl": "https://github.com/django/django/pull/20312",
+      "classification": "no_new_test_claim_with_test_artifact",
+      "selectionReason": "Crash/debug-path compatibility fix whose PR text says the ticket required no new tests, but test files changed."
+    }
+  ],
+  "results": [
+    {
+      "candidateId": "proofgraph-blind-001",
+      "repository": "django/django",
+      "prNumber": 21121,
+      "prUrl": "https://github.com/django/django/pull/21121",
+      "classification": "crash_regression_clean_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "django/db/models/sql/query.py",
+          "tests/aggregation_regress/tests.py"
+        ],
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 1,
+          "after": 1
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "django/db/models/sql/query.py",
+            "tests/aggregation_regress/tests.py"
+          ],
+          "after": [
+            "django/db/models/sql/query.py",
+            "tests/aggregation_regress/tests.py"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": false,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 7,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 41,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 39,
+        "confidence": 0.34,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 7,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "django/db/models/sql/query.py",
+          "tests/aggregation_regress/tests.py"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 7 partial requirement(s), 1 unclear requirement(s), 1 missing targeted test lead(s), 9 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 0,
+          "requirementsWithTargetedTests": 7,
+          "requirementsWithExecution": 7,
+          "requirementsWithGaps": 8,
+          "gapCount": 9
+        },
+        "gapKinds": {
+          "missing_implementation": 8,
+          "ambiguous_requirement": 1
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "#### Trac ticket number",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/aggregation_regress/tests.py"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "#### Branch description",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/aggregation_regress/tests.py"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "ticket-26434 caused a crash",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/aggregation_regress/tests.py"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "It can be reproduced with:",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/aggregation_regress/tests.py"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "You should see the following exception:",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/aggregation_regress/tests.py"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "#### AI Assistance Disclosure (REQUIRED)",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/aggregation_regress/tests.py"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "[ ] **No AI tools were used** in preparing this PR",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/aggregation_regress/tests.py"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "[x] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "proofgraph-blind-002",
+      "repository": "scikit-learn/scikit-learn",
+      "prNumber": 33048,
+      "prUrl": "https://github.com/scikit-learn/scikit-learn/pull/33048",
+      "classification": "normal_clean_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst"
+        ],
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 0,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst"
+          ],
+          "after": [
+            "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 18,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 32,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 66,
+        "confidence": 0.62,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 3,
+          "partial": 5,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 5 partial requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 4,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue scikit-learn/scikit-learn#33034: `KNeighborsClassifier` fails on non-numeric labels with `ValueError` on certain parameters combination",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 8,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst",
+              "sklearn/neighbors/_classification.py",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Describe the bug",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst",
+              "sklearn/neighbors/_classification.py",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "When used with `algorithm=\"brute\"` (or `algorithm=\"auto\"` and the heuristic suggests brute force) and `p = 1`, `KNeighborsClassifier.predict` crashes when y lab",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst",
+              "sklearn/neighbors/_classification.py",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "Note that this only crashes for this specific param combination, and `p=2`, for example, works fine with non-integer labels",
+            "status": "partial",
+            "confidence": 0.5,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "This happens because `self.classes_` is passed to `unique_Y_labels` here:",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 8,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "sklearn/neighbors/_classification.py",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "And the [docs](https://github.com/scikit-learn/scikit-learn/blob/66200f149ba6c64a3a93dd73e37bdeea87bb5db8/sklearn/metrics/_pairwise_distances_reduction/_dispatc",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 8,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst",
+              "sklearn/neighbors/_classification.py",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "while `self.classes_` contains actual values, not indices",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "sklearn/neighbors/_classification.py",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "### Steps/Code to Reproduce",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 8,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "doc/whats_new/upcoming_changes/sklearn.neighbors/33048.fix.rst",
+              "sklearn/neighbors/_classification.py",
+              "sklearn/neighbors/tests/test_neighbors.py"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": false
+      }
+    },
+    {
+      "candidateId": "proofgraph-blind-003",
+      "repository": "matplotlib/matplotlib",
+      "prNumber": 31353,
+      "prUrl": "https://github.com/matplotlib/matplotlib/pull/31353",
+      "classification": "visual_proof_mixed_status",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Static or merge-gate checks",
+          "lib/matplotlib/axes/_base.py"
+        ],
+        "topRisks": [
+          "Static or merge-gate checks failed outside test/build proof.",
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "high",
+          "after": "high"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 0,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "Static or merge-gate checks",
+            "lib/matplotlib/axes/_base.py"
+          ],
+          "after": [
+            "Static or merge-gate checks",
+            "lib/matplotlib/axes/_base.py"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": true,
+        "executionEvidenceCount": 10,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 36,
+        "failedNonExecutionStatusCount": 5
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 60,
+        "confidence": 0.53,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 4,
+          "partial": 2,
+          "missing": 0,
+          "unclear": 2
+        },
+        "topRisks": [
+          "Static or merge-gate checks failed outside test/build proof.",
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Static or merge-gate checks",
+          "lib/matplotlib/axes/_base.py"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 2 partial requirement(s), 2 unclear requirement(s), 4 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 6,
+          "requirementsWithTargetedTests": 6,
+          "requirementsWithExecution": 6,
+          "requirementsWithGaps": 2,
+          "gapCount": 4
+        },
+        "gapKinds": {
+          "missing_implementation": 2,
+          "ambiguous_requirement": 2
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": true,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue matplotlib/matplotlib#21409: [Bug]: twinx and twiny ignores previous set_position",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 3,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "If I manually set the position of an Axes, then call twinx or twiny, the new twinned Axes appears in the original position of the parent Axes, not in the new po",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "![MPL_Bug_Image](https://user-images.githubusercontent.com/51108483/138197926-c1dc8d1b-e36c-4089-a1dd-073bf6c61ca7.png)",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 3,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "I note that `ax.get_position(original=True)` and `ax.get_position(original=False)` both give the same answer",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "I also note that the same issue occurs for `ax.twiny()`",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 3,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "![MPL_Bug_Expected](https://user-images.githubusercontent.com/51108483/138198030-c9e091d9-3475-4413-9908-7cdd22028e7e.png)",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 3,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "This expected outcome can be obtained by adding the line",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 3,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "after calling `ax2=ax.twinx()`",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 3,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "proofgraph-blind-004",
+      "repository": "rails/rails",
+      "prNumber": 57451,
+      "prUrl": "https://github.com/rails/rails/pull/57451",
+      "classification": "crash_regression_failed_or_unclear_ci",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "blocker",
+        "testBuildStatus": "failed",
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "Test/build checks",
+          "activesupport/CHANGELOG.md",
+          "activesupport/lib/active_support/number_helper/rounding_helper.rb"
+        ],
+        "topRisks": [
+          "Test/build execution failed, so the PR is not proven ready.",
+          "Some requirements have only partial evidence.",
+          "Behavior changed without strong test evidence."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "blocker",
+          "after": "blocker"
+        },
+        "testBuildStatus": {
+          "before": "failed",
+          "after": "failed"
+        },
+        "missingTestCount": {
+          "before": 1,
+          "after": 1
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "Test/build checks",
+            "activesupport/CHANGELOG.md",
+            "activesupport/lib/active_support/number_helper/rounding_helper.rb"
+          ],
+          "after": [
+            "Test/build checks",
+            "activesupport/CHANGELOG.md",
+            "activesupport/lib/active_support/number_helper/rounding_helper.rb"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": false,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": false,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 1,
+        "failedExecutionEvidenceCount": 1,
+        "nonExecutionStatusCount": 3,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "blocker",
+        "evidenceCoverage": 24,
+        "confidence": 0.22,
+        "testBuildStatus": "failed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Test/build execution failed, so the PR is not proven ready.",
+          "Some requirements have only partial evidence.",
+          "Behavior changed without strong test evidence."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "Test/build checks",
+          "activesupport/CHANGELOG.md",
+          "activesupport/lib/active_support/number_helper/rounding_helper.rb"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), 1 missing targeted test lead(s), failing test/build evidence, 16 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public commit status metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 8,
+          "requirementsWithGaps": 8,
+          "gapCount": 16
+        },
+        "gapKinds": {
+          "failed_execution": 8,
+          "visual_proof_missing": 8
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": true,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "### Motivation / Background",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/lib/active_support/number_helper/rounding_helper.rb",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "`ActiveSupport::NumberHelper.number_to_rounded` already formats infinities and NaN as `\"Inf\"`, `\"-Inf\"`, `\"NaN\"`:",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/lib/active_support/number_helper/rounding_helper.rb",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "This is the explicit `rounded_number.finite?` branch in `NumberToRoundedConverter#convert` that falls back to `\"%f\" % rounded_number`",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/lib/active_support/number_helper/rounding_helper.rb",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "Once `significant: true` is added, however, the same input raises `FloatDomainError`:",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "The crash propagates to every helper that routes through `RoundingHelper` with the same options — `number_to_percentage`, `number_to_currency`, `number_to_delim",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/lib/active_support/number_helper/rounding_helper.rb",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "The default options for `number_to_human` and `number_to_human_size` use `significant: true` internally too, but those helpers have additional `log10` / `log` c",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/lib/active_support/number_helper/rounding_helper.rb",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "The bug shows up most often when a calculation can produce `Infinity` — division by zero on a Float, an overflowed `**`, an imported value with a literal `\"Infi",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/lib/active_support/number_helper/rounding_helper.rb",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "The crash is on this line in `RoundingHelper#digit_count`:",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "activesupport/CHANGELOG.md",
+              "activesupport/lib/active_support/number_helper/rounding_helper.rb",
+              "activesupport/test/number_helper_test.rb"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "proofgraph-blind-005",
+      "repository": "hashicorp/terraform",
+      "prNumber": 38770,
+      "prUrl": "https://github.com/hashicorp/terraform/pull/38770",
+      "classification": "regression_clean_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          ".changes/v1.15/BUG FIXES-20260624-114503.yaml"
+        ],
+        "topRisks": [
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 1,
+          "after": 1
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            ".changes/v1.15/BUG FIXES-20260624-114503.yaml"
+          ],
+          "after": [
+            ".changes/v1.15/BUG FIXES-20260624-114503.yaml"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 12,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 10,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 75,
+        "confidence": 0.71,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 8,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          ".changes/v1.15/BUG FIXES-20260624-114503.yaml"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 8,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue hashicorp/terraform#38689: Missing required argument error on main.tf.json",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Terraform Version",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "### Terraform Configuration Files",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "### Debug Output",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "cdktf get should have ran successfully",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "It runs successfully in 1.14.9 version",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "`cdktf get` should have ran successfully",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "It runs successfully in 1.14.9 version",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "internal/terraform/graph_builder_init.go",
+              "internal/terraform/transform_module_variable.go",
+              "internal/terraform/context_init_test.go"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": false
+      }
+    },
+    {
+      "candidateId": "proofgraph-blind-006",
+      "repository": "go-gitea/gitea",
+      "prNumber": 38274,
+      "prUrl": "https://github.com/go-gitea/gitea/pull/38274",
+      "classification": "auth_flow_clean_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "missingTestCount": 3,
+        "firstReviewPriorityFiles": [
+          "routers/common/middleware.go",
+          "routers/web/auth/linkaccount.go",
+          "routers/web/auth/openid.go",
+          "routers/web/auth/auth.go",
+          "routers/web/auth/oauth.go"
+        ],
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "high",
+          "after": "high"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 3,
+          "after": 3
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "routers/common/middleware.go",
+            "routers/web/auth/linkaccount.go",
+            "routers/web/auth/openid.go",
+            "routers/web/auth/auth.go",
+            "routers/web/auth/oauth.go"
+          ],
+          "after": [
+            "routers/common/middleware.go",
+            "routers/web/auth/linkaccount.go",
+            "routers/web/auth/openid.go",
+            "routers/web/auth/auth.go",
+            "routers/web/auth/oauth.go"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 14,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 18,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 35,
+        "confidence": 0.33,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 3,
+        "firstReviewPriorityFiles": [
+          "routers/common/middleware.go",
+          "routers/web/auth/linkaccount.go",
+          "routers/web/auth/openid.go",
+          "routers/web/auth/auth.go",
+          "routers/web/auth/oauth.go"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), 3 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 3,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue go-gitea/gitea#38171: OIDC auto account linking fails with HTTP 500 when the existing Gitea user has local 2FA/WebAuthn enabled",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 4,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 3,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/common/middleware.go",
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Gitea Version",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 5,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 3,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/common/middleware.go",
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "### What happened?",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 5,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/common/middleware.go",
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "Hey there, I encountered the following bug:",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 5,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/common/middleware.go",
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "When `[oauth2_client].ACCOUNT_LINKING = auto` is enabled and an OIDC user logs in whose email/username matches an existing local Gitea account, Gitea enters the",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go",
+              "tests/integration/auth_oauth2_test.go"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "If that existing account has local Gitea 2FA/WebAuthn configured, Gitea redirects to the 2FA flow",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 5,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 3,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/common/middleware.go",
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "After entering a valid TOTP code, the login fails with HTTP",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 5,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/common/middleware.go",
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "The relevant log line is:",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 5,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "routers/common/middleware.go",
+              "routers/web/auth/auth.go",
+              "routers/web/auth/linkaccount.go",
+              "routers/web/auth/oauth.go"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": false
+      }
+    },
+    {
+      "candidateId": "proofgraph-blind-007",
+      "repository": "django/django",
+      "prNumber": 20312,
+      "prUrl": "https://github.com/django/django/pull/20312",
+      "classification": "no_new_test_claim_with_test_artifact",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "django/db/backends/oracle/operations.py"
+        ],
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 0,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "django/db/backends/oracle/operations.py"
+          ],
+          "after": [
+            "django/db/backends/oracle/operations.py"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": false,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 7,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 65,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 40,
+        "confidence": 0.35,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 6,
+          "missing": 0,
+          "unclear": 2
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "django/db/backends/oracle/operations.py"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 6 partial requirement(s), 2 unclear requirement(s), 4 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 6,
+          "requirementsWithTargetedTests": 6,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 2,
+          "gapCount": 4
+        },
+        "gapKinds": {
+          "missing_implementation": 2,
+          "ambiguous_requirement": 2
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "#### Trac ticket number",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "#### Branch description",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "This PR fixes the issue described in ticket #36112, where ``DatabaseOperations.last_executed_query()`` in the Oracle backend may return ``None`` when a query fa",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "django/db/backends/oracle/operations.py",
+              "django/db/backends/postgresql/operations.py",
+              "tests/backends/base/test_operations.py"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "This causes SQL formatting to crash under ``--debug-sql``",
+            "status": "partial",
+            "confidence": 0.5,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "django/db/backends/oracle/operations.py",
+              "django/db/backends/postgresql/operations.py",
+              "tests/backends/base/test_operations.py"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "Following the core team’s guidance on the ticket (Jacob Walls & Mariusz Felisiak), backend implementations should fall back to ``super().last_executed_query()``",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "django/db/backends/oracle/operations.py",
+              "django/db/backends/postgresql/operations.py",
+              "tests/backends/base/test_operations.py"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "Adds the fallback for Oracle",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "django/db/backends/oracle/operations.py",
+              "tests/backends/base/test_operations.py"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "Matches the expected backend contract",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "django/db/backends/oracle/operations.py",
+              "django/db/backends/postgresql/operations.py",
+              "tests/backends/base/test_operations.py"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "Has no behavioral impact on successful queries",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "django/db/backends/oracle/operations.py",
+              "django/db/backends/postgresql/operations.py",
+              "tests/backends/base/test_operations.py"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    }
+  ],
+  "summary": {
+    "completedCount": 7,
+    "failedCount": 0,
+    "skippedCount": 0,
+    "testBuildStatusCounts": {
+      "passed": 6,
+      "failed": 1
+    },
+    "priorityCounts": {
+      "medium": 4,
+      "high": 2,
+      "blocker": 1
+    },
+    "possibleFalsePassCount": 0,
+    "possibleFalseBlockerCount": 0,
+    "proofGraphUsedCount": 4
+  }
+}

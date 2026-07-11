@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEvidenceIndex, extractClaims, extractKeywords, extractRequirements } from "./extractors";
+import { buildEvidenceIndex, extractClaims, extractKeywords, extractRequirementEvidence, extractRequirements } from "./extractors";
 
 describe("extractRequirements", () => {
   it("marks requirements from linked issue text as issue-sourced", () => {
@@ -10,6 +10,8 @@ describe("extractRequirements", () => {
     );
 
     expect(requirements[0].source).toBe("issue");
+    expect(requirements[0].role).toBe("core_requirement");
+    expect(requirements.some((requirement) => requirement.sourceQuality === "explicit_acceptance_criteria")).toBe(true);
     expect(requirements.map((requirement) => requirement.text).join(" ")).toContain("Reject expired reset links");
   });
 
@@ -109,7 +111,7 @@ describe("extractRequirements", () => {
   });
 
   it("drops issue-template headings without dropping useful expected behavior", () => {
-    const requirements = extractRequirements(
+    const result = extractRequirementEvidence(
       [
         "[Bug]: Unable to pickle figure with aligned labels",
         "### Bug summary",
@@ -126,15 +128,18 @@ describe("extractRequirements", () => {
       ].join("\n"),
       ""
     );
+    const requirements = result.requirements;
     const text = requirements.map((requirement) => requirement.text).join("\n");
+    const contextText = result.contexts.map((context) => context.text).join("\n");
 
-    expect(text).toContain("Unable to pickle figure");
     expect(text).toContain("Pickling successful");
+    expect(contextText).toContain("Unable to pickle figure");
+    expect(result.contexts.some((context) => context.role === "problem_context")).toBe(true);
     expect(text).not.toMatch(/Bug summary|Code for reproduction|Expected outcome|Additional information|No response/i);
   });
 
   it("drops REPL prompts from requirement text", () => {
-    const requirements = extractRequirements(
+    const result = extractRequirementEvidence(
       [
         "Latex parsing of fractions yields wrong expression due to missing brackets.",
         "## Reproduce:",
@@ -149,16 +154,17 @@ describe("extractRequirements", () => {
       ].join("\n"),
       ""
     );
-    const text = requirements.map((requirement) => requirement.text).join("\n");
+    const text = result.requirements.map((requirement) => requirement.text).join("\n");
+    const contextText = result.contexts.map((context) => context.text).join("\n");
 
-    expect(text).toContain("Latex parsing");
+    expect(contextText).toContain("Latex parsing");
     expect(text).toContain("Expected is a correctly grouped denominator");
     expect(text).not.toContain("parse_latex");
     expect(text).not.toContain("python3");
   });
 
-  it("does not extract PR validation commands as requirements when task text is absent", () => {
-    const requirements = extractRequirements(
+  it("treats PR-body summary and validation as author claims when task text is absent", () => {
+    const result = extractRequirementEvidence(
       "",
       [
         "## Summary",
@@ -170,10 +176,13 @@ describe("extractRequirements", () => {
         "- corepack pnpm build"
       ].join("\n")
     );
-    const text = requirements.map((requirement) => requirement.text).join("\n");
+    const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
+    const contextText = result.contexts.map((context) => context.text).join("\n");
 
-    expect(text).toContain("Rework report UI around evidence cards");
-    expect(text).not.toMatch(/Validation|corepack|pnpm|typecheck|build/i);
+    expect(requirementText).toContain("Original requirement is too vague");
+    expect(contextText).toContain("Rework report UI around evidence cards");
+    expect(result.contexts.some((context) => context.role === "author_claim")).toBe(true);
+    expect(requirementText).not.toMatch(/Validation|corepack|pnpm|typecheck|build|Rework report UI/i);
   });
 
   it("keeps Node runtime requirements while still dropping node command lines", () => {
@@ -189,6 +198,138 @@ describe("extractRequirements", () => {
 
     expect(text).toContain("Node should handle malformed input without crashing");
     expect(text).not.toContain("node scripts/repro.js");
+  });
+
+  it("drops Electron template metadata while keeping expected crash behavior as the requirement", () => {
+    const result = extractRequirementEvidence(
+      [
+        "### Preflight Checklist",
+        "[x] I have read the contributing guidelines.",
+        "### Electron Version",
+        "38.0.0-nightly",
+        "### What operating system(s) are you using?",
+        "Windows",
+        "### Actual behavior",
+        "Replacing menu while open causes a segfault on Windows.",
+        "### Expected behavior",
+        "Menu.setApplicationMenu should not crash while the user interacts with an open menu."
+      ].join("\n"),
+      "",
+      "issue"
+    );
+    const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
+    const contextText = result.contexts.map((context) => context.text).join("\n");
+
+    expect(requirementText).toContain("Menu.setApplicationMenu should not crash");
+    expect(result.requirements[0]?.sourceQuality).toBe("expected_behavior");
+    expect(result.contexts.some((context) => context.role === "environment_context" && /Windows|38/.test(context.text))).toBe(true);
+    expect(result.contexts.some((context) => context.role === "problem_context" && /segfault/.test(context.text))).toBe(true);
+    expect(requirementText).not.toMatch(/Preflight|Electron Version|operating system|contributing guidelines/i);
+    expect(contextText).not.toMatch(/Preflight Checklist|contributing guidelines/i);
+  });
+
+  it("keeps Django PR template fields as context or claims, not core requirements", () => {
+    const result = extractRequirementEvidence(
+      "",
+      [
+        "#### Trac ticket number",
+        "26434",
+        "#### Branch description",
+        "This PR fixes SQL formatting crash when debug SQL includes parameters.",
+        "#### AI Assistance Disclosure (REQUIRED)",
+        "[x] If AI tools were used, I have disclosed which ones, and fully reviewed and verified their output."
+      ].join("\n")
+    );
+    const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
+    const contextText = result.contexts.map((context) => context.text).join("\n");
+
+    expect(requirementText).toContain("Original requirement is too vague");
+    expect(contextText).toContain("SQL formatting crash");
+    expect(result.contexts.some((context) => context.role === "external_reference")).toBe(true);
+    expect(result.contexts.some((context) => context.role === "author_claim")).toBe(true);
+    expect(requirementText).not.toMatch(/Trac ticket|Branch description|AI Assistance|AI tools/i);
+  });
+
+  it("treats PR-body acceptance language as author claims when no task source exists", () => {
+    const result = extractRequirementEvidence(
+      "",
+      [
+        "### Acceptance criteria",
+        "The widget should preserve search params.",
+        "### Testing",
+        "I verified the unit tests pass."
+      ].join("\n")
+    );
+    const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(result.requirements[0]?.sourceQuality).toBe("manual_check");
+    expect(requirementText).toContain("Original requirement is too vague");
+    expect(result.contexts.some((context) =>
+      context.role === "author_claim" && /preserve search params/i.test(context.text)
+    )).toBe(true);
+  });
+
+  it("keeps suggested fix sections as solution hints instead of core requirements", () => {
+    const result = extractRequirementEvidence(
+      [
+        "### Actual behavior",
+        "The PostCSS watcher returns stale output when input CSS changes without an mtime update.",
+        "### Suggested fix",
+        "Invalidate the compiler cache whenever the input text changes.",
+        "### Environment",
+        "Node 22 on macOS"
+      ].join("\n"),
+      "",
+      "issue"
+    );
+    const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(requirementText).toContain("stale output");
+    expect(requirementText).not.toContain("Invalidate the compiler cache");
+    expect(result.contexts.some((context) =>
+      context.role === "solution_hint" && /compiler cache/i.test(context.text)
+    )).toBe(true);
+  });
+
+  it("treats standalone would-fix implementation advice as a solution hint", () => {
+    const result = extractRequirementEvidence(
+      [
+        "Preflight applies auto outline to focus-visible iframes.",
+        "Deleting this rule would fix the problem: packages/theme/preflight.css#L173-L175"
+      ].join("\n"),
+      "",
+      "issue"
+    );
+    const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(requirementText).toContain("Preflight applies auto outline");
+    expect(requirementText).not.toContain("Deleting this rule would fix");
+    expect(result.contexts.some((context) =>
+      context.role === "solution_hint" && /Deleting this rule/i.test(context.text)
+    )).toBe(true);
+  });
+
+  it("keeps Terraform expected behavior as requirement while preserving debug and environment context", () => {
+    const result = extractRequirementEvidence(
+      [
+        "### Terraform Version",
+        "1.13.4",
+        "### Terraform Configuration Files",
+        "main.tf.json",
+        "### Debug Output",
+        "Missing required argument error on main.tf.json",
+        "### Expected Behavior",
+        "cdktf get should have ran successfully."
+      ].join("\n"),
+      "",
+      "issue"
+    );
+    const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(requirementText).toContain("cdktf get should have ran successfully");
+    expect(result.requirements[0]?.sourceQuality).toBe("expected_behavior");
+    expect(result.contexts.some((context) => context.role === "environment_context" && /1.13.4|main.tf.json|Missing required argument/.test(context.text))).toBe(true);
+    expect(requirementText).not.toMatch(/Terraform Version|Configuration Files|Debug Output/i);
   });
 });
 

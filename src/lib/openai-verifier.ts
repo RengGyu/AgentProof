@@ -77,7 +77,8 @@ export async function verifyReportWithOpenAI(
     throw new Error(`OpenAI verifier output failed validation: ${validation.errors.map(redactSecrets).join(" ")}`);
   }
 
-  const baselineErrors = validateOutputMatchesDeterministicBaseline(report as VerificationReport, baselineReport);
+  const normalizedBaselineReport = normalizeOpenAIReport(baselineReport) as VerificationReport;
+  const baselineErrors = validateOutputMatchesDeterministicBaseline(report as VerificationReport, normalizedBaselineReport);
   if (baselineErrors.length > 0) {
     throw new Error(`OpenAI verifier output changed deterministic evidence: ${baselineErrors.join(" ")}`);
   }
@@ -95,7 +96,7 @@ function normalizeOpenAIReport(value: unknown): unknown {
   if (isRecord(report.source)) {
     const source: Record<string, unknown> = { ...report.source };
     for (const key of ["url", "author", "baseBranch", "headBranch"]) {
-      if (source[key] === null) {
+      if (source[key] === null || source[key] === undefined) {
         delete source[key];
       }
     }
@@ -104,7 +105,7 @@ function normalizeOpenAIReport(value: unknown): unknown {
 
   if (Array.isArray(report.evidenceIndex)) {
     report.evidenceIndex = report.evidenceIndex.map((item) => {
-      if (!isRecord(item) || item.locator !== null) {
+      if (!isRecord(item) || (item.locator !== null && item.locator !== undefined)) {
         return item;
       }
 
@@ -129,7 +130,9 @@ function validateOutputMatchesDeterministicBaseline(
   compareRequirementIdentity(report, deterministicReport, errors);
   compareClaimIdentity(report, deterministicReport, errors);
   compareJson(report.testing, deterministicReport.testing, "testing", errors);
+  compareJson(report.proofGraph, deterministicReport.proofGraph, "proofGraph", errors);
   compareEvidenceIndex(report, deterministicReport, errors);
+  compareJson(report, deterministicReport, "full deterministic report", errors);
 
   return errors;
 }

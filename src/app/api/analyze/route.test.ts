@@ -357,7 +357,7 @@ describe("POST /api/analyze", () => {
     expect(json.report.evidenceIndex.some((item) => item.kind === "diff" && item.label === "src/features/auth/reset.ts")).toBe(true);
     expect(json.report.evidenceIndex.some((item) => item.kind === "test" && item.label === "src/features/auth/reset.test.ts")).toBe(true);
     expect(json.report.testing.ciStatus).toBe("unknown");
-    expect(json.report.limitations.join(" ")).toContain("No CI or test logs were available");
+    expect(json.report.limitations.join(" ")).toContain("No public test/build workflow run, check, or raw CI log was available");
     expect(json.report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
     expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
     expect(githubEvidenceTiming).not.toContain("github_pat_secret_should_not_leak_1234567890");
@@ -452,7 +452,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(200);
     expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.testing.ciStatus).toBe("unknown");
-    expect(json.report.limitations.join(" ")).toContain("Check status is unknown or incomplete");
+    expect(json.report.limitations.join(" ")).toContain("No public test/build workflow run, check, or raw CI log was available from the collected metadata.");
     expect(json.report.evidenceIndex.filter((item) => item.kind === "check")).toHaveLength(3);
   });
 

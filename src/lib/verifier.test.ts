@@ -28,6 +28,41 @@ describe("generateVerificationReport", () => {
     expect(serialized).not.toContain("#files");
   });
 
+  it("redacts secret-looking paths and non-execution check names from full report surfaces", () => {
+    const report = generateVerificationReport({
+      title: "Fix export validation",
+      description: "Implemented export validation.",
+      taskText: "Acceptance criteria: validate export payloads.",
+      changedFiles: [
+        {
+          path: "src/billing/AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/export.ts",
+          additions: 12,
+          deletions: 1,
+          status: "modified",
+          patch: "+ export function validateExportPayload() { return true }"
+        }
+      ],
+      checks: [
+        {
+          name: "Socket Security token=github_pat_abcdefghijklmnopqrstuvwxyz123456",
+          status: "failed",
+          summary: "Static security policy failed with Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+    const serialized = JSON.stringify(report);
+
+    expect(validateVerificationReport(report).valid).toBe(true);
+    expect(serialized).toContain("[redacted]");
+    expect(serialized).not.toContain("wJalrXUtnFEMI");
+    expect(serialized).not.toContain("github_pat_");
+    expect(serialized).not.toContain("eyJhbGciOi");
+    expect(report.reprompt.prompt).not.toContain("github_pat_");
+    expect(report.testing.missingTests[0]?.path).toContain("[redacted]");
+    expect(report.evidenceIndex.some((item) => item.label.includes("[redacted]"))).toBe(true);
+  });
+
   it("classifies patched test files as test evidence", () => {
     const evidence = buildEvidenceIndex("", "", [
       {
@@ -89,9 +124,11 @@ describe("generateVerificationReport", () => {
 
   it("recognizes demo test evidence for the invalid email acceptance criterion", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    const invalidEmailTestRequirement = report.requirements.find((requirement) =>
+      requirement.requirementText === "add tests for invalid email"
+    );
 
-    expect(report.requirements[2]?.requirementText).toBe("add tests for invalid email");
-    expect(report.requirements[2]?.status).toBe("met");
+    expect(invalidEmailTestRequirement?.status).toBe("met");
   });
 
   it("does not mark test requirements met from test-file patches without passing execution evidence", () => {
@@ -149,7 +186,7 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(report.testing.ciStatus).toBe("unknown");
-    expect(report.limitations.join(" ")).toContain("Check status is unknown or incomplete");
+    expect(report.limitations.join(" ")).toContain("Public check/status metadata was available, but no test/build execution evidence was found.");
     expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
   });
 
@@ -383,6 +420,602 @@ describe("generateVerificationReport", () => {
     expect(report.testing.ciStatus).toBe("passed");
   });
 
+  it("marks test/build passed from public workflow job metadata with passing test/build steps", () => {
+    const report = generateVerificationReport({
+      title: "Strip pure CSS chunk imports",
+      description: "Fixes CSS chunk imports and updates tests.",
+      taskText: "Acceptance criteria: fix CSS chunk imports when chunkImportMap is enabled.",
+      changedFiles: [
+        {
+          path: "packages/vite/src/node/plugins/importAnalysisBuild.ts",
+          additions: 12,
+          deletions: 4,
+          status: "modified",
+          patch: "+ removePureCssChunkImports(chunkImportMap)"
+        },
+        {
+          path: "playground/css/vite.config.js",
+          additions: 5,
+          deletions: 1,
+          status: "modified",
+          patch: "+ chunkImportMap: true"
+        }
+      ],
+      checks: [{ name: "CI", status: "passed", summary: "Workflow completed successfully." }],
+      logs: [
+        {
+          source: "GitHub Actions job: Build&Test: node-24, ubuntu-latest",
+          status: "passed",
+          text: "GitHub Actions job Build&Test: node-24, ubuntu-latest: passed. Steps: Test unit: passed; pnpm build: passed"
+        }
+      ],
+      limitations: [
+        "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("passed");
+    expect(report.limitations.join(" ")).toContain("Public GitHub Actions metadata showed passing build/test jobs");
+    expect(report.limitations.join(" ")).not.toContain("No CI or test logs were available");
+  });
+
+  it("keeps passed execution status when skipped aggregator checks are unknown", () => {
+    const report = generateVerificationReport({
+      title: "Strip pure CSS chunk imports",
+      description: "Fixes CSS chunk imports and updates tests.",
+      taskText: "Acceptance criteria: fix CSS chunk imports when chunkImportMap is enabled.",
+      changedFiles: [
+        {
+          path: "packages/vite/src/node/plugins/importAnalysisBuild.ts",
+          additions: 12,
+          deletions: 4,
+          status: "modified",
+          patch: "+ removePureCssChunkImports(chunkImportMap)"
+        }
+      ],
+      checks: [
+        { name: "Build & Test Failed", status: "unknown", summary: "Skipped aggregator check." },
+        { name: "Build&Test: node-24, ubuntu-latest", status: "passed", summary: "Build&Test matrix passed." }
+      ],
+      logs: [
+        {
+          source: "GitHub Actions job: Build&Test: node-24, ubuntu-latest",
+          status: "passed",
+          text: "GitHub Actions job Build&Test: node-24, ubuntu-latest: passed. Steps: Test unit: passed; pnpm build: passed"
+        },
+        {
+          source: "GitHub Actions job: Build & Test Failed",
+          status: "unknown",
+          text: "GitHub Actions job Build & Test Failed: unknown"
+        }
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("passed");
+  });
+
+  it("keeps failed Build&Test job metadata as blocker execution evidence", () => {
+    const report = generateVerificationReport({
+      title: "Preload CSS for nested dynamic imports",
+      description: "Fixes nested dynamic import CSS preload handling.",
+      taskText: "Acceptance criteria: preserve CSS preload dependencies for nested dynamic imports.",
+      changedFiles: [
+        {
+          path: "packages/vite/src/node/plugins/importAnalysisBuild.ts",
+          additions: 12,
+          deletions: 4,
+          status: "modified",
+          patch: "+ preloadCssForNestedDynamicImports()"
+        },
+        {
+          path: "playground/preload/__tests__/nested-dynamic-import.spec.ts",
+          additions: 12,
+          deletions: 0,
+          status: "added",
+          patch: "+ test('preloads css for nested dynamic imports', async () => {})"
+        }
+      ],
+      checks: [],
+      logs: [
+        {
+          source: "GitHub Actions job: Build&Test: node-24, windows-latest",
+          status: "failed",
+          text: "GitHub Actions job Build&Test: node-24, windows-latest: failed. Steps: Test unit: failed; pnpm build: passed"
+        }
+      ],
+      limitations: [
+        "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(report.summary.priority).toBe("blocker");
+    expect(report.summary.topRisks).toContain("Test/build execution failed, so the PR is not proven ready.");
+  });
+
+  it("lets relevant workflow failure override passing sub-signals", () => {
+    const report = generateVerificationReport({
+      title: "Fix cache item size accounting",
+      description: "Fixes LRU cache accounting and includes build evidence.",
+      taskText: "Acceptance criteria: include URL key length in LRU cache size accounting.",
+      changedFiles: [
+        {
+          path: "packages/next/src/server/lib/lru-cache.ts",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ size += key.length"
+        }
+      ],
+      checks: [
+        {
+          name: "Build&Test",
+          status: "failed",
+          summary: "Workflow-level Build&Test failed."
+        },
+        {
+          name: "unit tests",
+          status: "passed",
+          summary: "A narrower unit test job passed."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(report.summary.priority).toBe("blocker");
+    expect(report.reviewPriority[0]?.path).toBe("Test/build checks");
+  });
+
+  it("treats tox workflow metadata as failed test execution evidence", () => {
+    const report = generateVerificationReport({
+      title: "Fix pytest compatibility",
+      description: "Fixes compatibility with new pytest behavior.",
+      taskText: "Acceptance criteria: keep Flask test suite compatible with pytest.",
+      changedFiles: [
+        {
+          path: "tests/test_basic.py",
+          additions: 4,
+          deletions: 1,
+          status: "modified",
+          patch: "+ def test_pytest_compat(): pass"
+        }
+      ],
+      checks: [
+        {
+          name: "Tests",
+          status: "failed",
+          summary: "uv run tox failed."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(report.summary.priority).toBe("blocker");
+  });
+
+  it("treats opaque failed GitHub Actions matrix jobs as execution failures", () => {
+    const report = generateVerificationReport({
+      title: "Fix dataframe copy-on-write mutation",
+      description: "Fixes copy-on-write handling and expands constructor tests.",
+      taskText: "Acceptance criteria: prevent derived dataframes from mutating the original index and include regression coverage.",
+      changedFiles: [
+        {
+          path: "src/core/internals/construction.py",
+          additions: 12,
+          deletions: 4,
+          status: "modified",
+          patch: "+ track copy references for dataframe constructor"
+        },
+        {
+          path: "tests/copy_view/test_constructors.py",
+          additions: 16,
+          deletions: 1,
+          status: "modified",
+          patch: "+ def test_dataframe_constructor_preserves_index_copy(): pass"
+        }
+      ],
+      checks: [
+        {
+          name: "Unit Tests",
+          status: "passed",
+          summary: "Unit test matrix passed.",
+          url: "https://github.com/example/project/actions/runs/100/job/200"
+        },
+        {
+          name: "PANDAS_FUTURE_INFER_STRING=0",
+          status: "failed",
+          summary: "Matrix job failed on the head commit.",
+          url: "https://github.com/example/project/actions/runs/100/job/201"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(report.summary.priority).toBe("blocker");
+    expect(report.summary.topRisks).toContain("Test/build execution failed, so the PR is not proven ready.");
+    expect(report.reviewPriority[0]).toEqual(expect.objectContaining({ path: "Test/build checks", priority: "blocker" }));
+    expect(refsToEvidence(report, report.reviewPriority[0]?.evidenceRefs ?? []).map((item) => item.label)).toContain("PANDAS_FUTURE_INFER_STRING=0");
+    expect(report.proofGraph.nodes.some((node) =>
+      node.gapSignals.some((gap) => gap.kind === "failed_execution" && gap.severity === "blocker")
+    )).toBe(true);
+  });
+
+  it("keeps opaque failed statuses without GitHub Actions job URLs out of test/build status", () => {
+    const report = generateVerificationReport({
+      title: "Fix dataframe copy-on-write mutation",
+      description: "Fixes copy-on-write handling and expands constructor tests.",
+      taskText: "Acceptance criteria: prevent derived dataframes from mutating the original index and include regression coverage.",
+      changedFiles: [
+        {
+          path: "src/core/internals/construction.py",
+          additions: 12,
+          deletions: 4,
+          status: "modified",
+          patch: "+ track copy references for dataframe constructor"
+        },
+        {
+          path: "tests/copy_view/test_constructors.py",
+          additions: 16,
+          deletions: 1,
+          status: "modified",
+          patch: "+ def test_dataframe_constructor_preserves_index_copy(): pass"
+        }
+      ],
+      checks: [
+        {
+          name: "Unit Tests",
+          status: "passed",
+          summary: "Unit test matrix passed.",
+          url: "https://github.com/example/project/actions/runs/100/job/200"
+        },
+        {
+          name: "PANDAS_FUTURE_INFER_STRING=0",
+          status: "failed",
+          summary: "Opaque commit status failed without job metadata.",
+          url: "https://ci.example.invalid/status/opaque"
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("passed");
+    expect(report.summary.topRisks).toContain("Static or merge-gate checks failed outside test/build proof.");
+    expect(report.reviewPriority.some((item) => item.path === "Static or merge-gate checks")).toBe(true);
+    expect(report.proofGraph.nodes.some((node) =>
+      node.gapSignals.some((gap) => gap.kind === "failed_execution")
+    )).toBe(false);
+  });
+
+  it("keeps self-reported tests and changed test files from proving test/build status", () => {
+    const report = generateVerificationReport({
+      title: "Validate timeout type before passing to urllib3",
+      description: "Fixes #5185. Testing: all tests passed locally.",
+      taskText: "Acceptance criteria: return a clearer error for invalid timeout values.",
+      changedFiles: [
+        {
+          path: "src/requests/adapters.py",
+          additions: 8,
+          deletions: 1,
+          status: "modified",
+          patch: "+ if isinstance(timeout, bool): raise ValueError('Invalid timeout')"
+        },
+        {
+          path: "tests/test_requests.py",
+          additions: 10,
+          deletions: 0,
+          status: "modified",
+          patch: "+ def test_invalid_bool_timeout(): pass"
+        }
+      ],
+      checks: [
+        {
+          name: "docs/readthedocs.org:requests",
+          status: "passed",
+          summary: "Read the Docs build passed."
+        }
+      ],
+      logs: [],
+      limitations: [
+        "Public commit status metadata was available, but only non-execution statuses were found.",
+        "Raw CI logs were not fetched or stored."
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.limitations.join(" ")).toContain("Public commit status metadata was available, but only non-execution statuses were found.");
+    expect(report.limitations.join(" ")).toContain("Confidence is based only on issue, diff, and test-artifact evidence");
+    expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
+  });
+
+  it("keeps self-reported tests with implementation-only changes from proving test/build status", () => {
+    const report = generateVerificationReport({
+      title: "HTTPDigestAuth handles bytes credentials",
+      description: "Fixes #6102. Testing: pytest passed locally.",
+      taskText: "Acceptance criteria: handle bytes credentials in HTTPDigestAuth.",
+      changedFiles: [
+        {
+          path: "src/requests/auth.py",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if isinstance(username, bytes): username = username.decode('latin1')"
+        }
+      ],
+      checks: [
+        {
+          name: "docs/readthedocs.org:requests",
+          status: "passed",
+          summary: "Read the Docs build passed."
+        }
+      ],
+      logs: [],
+      limitations: [
+        "Public commit status metadata was available, but only non-execution statuses were found.",
+        "Raw CI logs were not fetched or stored."
+      ]
+    } satisfies PullRequestInput);
+
+    expect(report.testing.ciStatus).toBe("unknown");
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("src/requests/auth.py");
+    expect(report.summary.priority).toBe("high");
+  });
+
+  it("surfaces missing targeted proof for native crash fixes without test files", () => {
+    const report = generateVerificationReport({
+      title: "Restore menu self keep alive",
+      description: [
+        "Fixes a crash when replacing an open application menu.",
+        "Since the original change did not have tests, there may be no tests for this aspect of the system.",
+        "I am open to suggestions about where tests could be added."
+      ].join(" "),
+      taskText: [
+        "Linked issue: replacing the application menu while it is open causes a segfault on Windows.",
+        "Expected behavior: Menu.setApplicationMenu should not crash while the user interacts with an open menu.",
+        "Actual behavior: the Menu object can be garbage-collected before the menu closes."
+      ].join("\n"),
+      changedFiles: [
+        {
+          path: "shell/browser/api/electron_api_menu.cc",
+          additions: 10,
+          deletions: 2,
+          status: "modified",
+          patch: "+ keep_alive_.Reset(isolate, wrapper);"
+        },
+        {
+          path: "shell/browser/api/electron_api_menu.h",
+          additions: 2,
+          deletions: 1,
+          status: "modified",
+          patch: "+ v8::Global<v8::Object> keep_alive_;"
+        }
+      ],
+      checks: [
+        {
+          name: "Build&Test",
+          status: "passed",
+          summary: "Build and test workflow passed."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const gapKinds = report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind));
+
+    expect(report.testing.ciStatus).toBe("passed");
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("shell/browser/api/electron_api_menu.cc");
+    expect(gapKinds).toContain("missing_targeted_test");
+    expect(gapKinds).toContain("self_reported_test_gap");
+    expect(report.summary.priority).toBe("high");
+    expect(report.summary.topRisks).toContain("Requirement-level proof graph found missing targeted proof.");
+    expect(report.reviewPriority.some((item) => item.path === "shell/browser/api/electron_api_menu.cc")).toBe(true);
+  });
+
+  it("keeps template metadata out of requirements while preserving source roles in the proof graph", () => {
+    const report = generateVerificationReport({
+      title: "Restore menu self keep alive",
+      description: "Fixes a crash when replacing an open application menu.",
+      taskSource: "issue",
+      taskText: [
+        "### Preflight Checklist",
+        "[x] I have read the contributing guidelines.",
+        "### Electron Version",
+        "38.0.0-nightly",
+        "### Actual behavior",
+        "Replacing menu while open causes a segfault on Windows.",
+        "### Expected behavior",
+        "Menu.setApplicationMenu should not crash while the user interacts with an open menu."
+      ].join("\n"),
+      changedFiles: [
+        {
+          path: "shell/browser/api/electron_api_menu.cc",
+          additions: 10,
+          deletions: 2,
+          status: "modified",
+          patch: "+ keep_alive_.Reset(isolate, wrapper);"
+        }
+      ],
+      checks: [{ name: "Build&Test", status: "passed", summary: "Build and test workflow passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    const requirementText = report.requirements.map((requirement) => requirement.requirementText).join("\n");
+    const node = report.proofGraph.nodes[0];
+
+    expect(requirementText).toContain("Menu.setApplicationMenu should not crash");
+    expect(requirementText).not.toMatch(/Preflight|Electron Version|contributing guidelines/i);
+    expect(node).toEqual(expect.objectContaining({
+      sourceRole: "core_requirement",
+      sourceQuality: "expected_behavior",
+      sourceSection: "Expected behavior"
+    }));
+    expect(node?.contextRoles).toContain("problem_context");
+    expect(report.proofGraph.context.some((context) => context.role === "environment_context")).toBe(true);
+    expect(report.proofGraph.context.some((context) => context.role === "problem_context" && /segfault/.test(context.text))).toBe(true);
+  });
+
+  it("clears native missing-test findings only when targeted native tests and execution evidence are present", () => {
+    const report = generateVerificationReport({
+      title: "Restore menu self keep alive",
+      description: "Fixes a crash when replacing an open application menu and adds a targeted native test.",
+      taskText: "Acceptance criteria: prevent the menu replacement crash and cover the regression with a targeted test.",
+      changedFiles: [
+        {
+          path: "shell/browser/api/electron_api_menu.cc",
+          additions: 10,
+          deletions: 2,
+          status: "modified",
+          patch: "+ keep_alive_.Reset(isolate, wrapper);"
+        },
+        {
+          path: "shell/browser/api/electron_api_menu_unittest.cc",
+          additions: 18,
+          deletions: 0,
+          status: "added",
+          patch: "+ TEST_F(MenuTest, ReplacingOpenMenuKeepsMenuAlive) {}"
+        }
+      ],
+      checks: [
+        {
+          name: "native unit tests",
+          status: "passed",
+          summary: "electron_api_menu_unittest passed."
+        }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+    const proofNode = report.proofGraph.nodes.find((node) =>
+      node.implementationEvidenceRefs.some((ref) =>
+        refsToEvidence(report, [ref]).some((item) => item.locator === "shell/browser/api/electron_api_menu.cc")
+      )
+    );
+
+    expect(report.testing.ciStatus).toBe("passed");
+    expect(report.testing.missingTests.map((item) => item.path)).not.toContain("shell/browser/api/electron_api_menu.cc");
+    expect(proofNode?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
+    expect(proofNode?.executionEvidenceRefs.length).toBeGreaterThan(0);
+    expect(proofNode?.gapSignals.some((gap) => gap.kind === "missing_targeted_test")).toBe(false);
+  });
+
+  it("prioritizes concrete file paths over repeated generic requirement labels", () => {
+    const report = generateVerificationReport({
+      title: "Fix digest auth credentials",
+      description: "Updates digest auth credential handling.",
+      taskText: "Acceptance criteria: handle bytes credentials in HTTPDigestAuth and preserve request behavior.",
+      changedFiles: [
+        {
+          path: "src/requests/auth.py",
+          additions: 8,
+          deletions: 2,
+          status: "modified",
+          patch: "+ if isinstance(username, bytes): username = username.decode('latin1')"
+        }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const firstFiles = report.reviewPriority.slice(0, 4).map((item) => item.path);
+
+    expect(firstFiles).toContain("src/requests/auth.py");
+    expect(firstFiles.filter((path) => path === "Requirement evidence")).toHaveLength(0);
+  });
+
+  it("marks PR-body-only criteria as manual check instead of confident requirements", () => {
+    const report = generateVerificationReport({
+      title: "Preserve URL params",
+      description: [
+        "### Acceptance criteria",
+        "The widget should preserve search params.",
+        "### Testing",
+        "I verified the unit tests pass."
+      ].join("\n"),
+      taskText: "",
+      changedFiles: [
+        {
+          path: "src/widget/url-params.ts",
+          additions: 4,
+          deletions: 1,
+          status: "modified",
+          patch: "+ preserveSearchParams(params)"
+        }
+      ],
+      checks: [{ name: "unit tests", status: "passed", summary: "unit tests passed" }],
+      logs: []
+    } satisfies PullRequestInput);
+    const node = report.proofGraph.nodes[0];
+
+    expect(node?.sourceQuality).toBe("manual_check");
+    expect(report.requirements[0]?.status).toBe("unclear");
+    expect(report.limitations.join(" ")).toContain("No original task text was provided");
+    expect(report.proofGraph.context.some((context) =>
+      context.role === "author_claim" && /preserve search params/i.test(context.text)
+    )).toBe(true);
+  });
+
+  it("treats unavailable changed-file evidence as inconclusive instead of missing implementation", () => {
+    const report = generateVerificationReport({
+      title: "Strip relative paths",
+      description: "Fix path traversal-like relative path handling.",
+      taskText: "Expected behavior: JoinPath should strip relative path components consistently.",
+      changedFiles: [],
+      checks: [],
+      logs: [],
+      limitations: ["GitHub changed-file evidence unavailable: request timed out or network failed."]
+    } satisfies PullRequestInput);
+    const gapKinds = report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind));
+
+    expect(gapKinds).toContain("evidence_unavailable");
+    expect(gapKinds).not.toContain("missing_implementation");
+    expect(report.requirements[0]?.status).toBe("unclear");
+    expect(report.summary.topRisks.join(" ")).toContain("implementation proof is unavailable");
+  });
+
+  it("keeps normal bug proof gaps at medium when CI passes", () => {
+    const report = generateVerificationReport({
+      title: "Fix stale cache output",
+      description: "Fixes stale output when CSS changes.",
+      taskText: "Expected behavior: the CSS watcher should return fresh output when input CSS changes.",
+      changedFiles: [
+        {
+          path: "packages/postcss/src/cache.ts",
+          additions: 6,
+          deletions: 2,
+          status: "modified",
+          patch: "+ cacheKey = hash(inputCss)"
+        }
+      ],
+      checks: [{ name: "Build&Test", status: "passed", summary: "Build and test workflow passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    expect(report.testing.missingTests.map((item) => item.path)).toContain("packages/postcss/src/cache.ts");
+    expect(report.summary.priority).toBe("medium");
+    expect(report.summary.priority).not.toBe("high");
+  });
+
+  it("caps requirement evidence refs before runtime validation", () => {
+    const report = generateVerificationReport({
+      title: "Add import coverage",
+      description: "Updates import coverage.",
+      taskText: "Acceptance criteria: add tests for import coverage.",
+      changedFiles: Array.from({ length: 75 }, (_value, index) => ({
+        path: `src/import/import-coverage-${index}.ts`,
+        additions: 2,
+        deletions: 1,
+        status: "modified" as const,
+        patch: "+ importCoverage()"
+      })),
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+    const validation = validateVerificationReport(report, { mode: "full" });
+
+    expect(report.requirements[0]?.evidenceRefs.length).toBeLessThanOrEqual(50);
+    expect(report.limitations.join(" ")).toContain("evidence references were capped at 50");
+    expect(validation).toEqual({ valid: true, errors: [] });
+  });
+
   it("keeps passing execution evidence on met requirements when diff refs hit the cap", () => {
     const report = generateVerificationReport({
       title: "Validate export evidence report",
@@ -469,7 +1102,7 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(report.requirements[0]?.status).not.toBe("met");
-    expect(report.reviewPriority.some((item) => item.path === "Requirement evidence")).toBe(true);
+    expect(report.reviewPriority.some((item) => item.path === "src/users/settings.ts")).toBe(true);
   });
 
   it("does not mark a requirement met from diff-only implementation evidence", () => {

@@ -1,0 +1,634 @@
+{
+  "privacy": "external-pr-blind-results-summary-only",
+  "status": "blind_reports_need_human_labeling",
+  "generatedAt": "2026-07-08T00:59:24.542Z",
+  "candidateSource": "eval/external-pr-blind-candidates.json",
+  "analysisBaseUrl": "http://localhost:3000",
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokens": true,
+    "noRawFullLogs": true,
+    "noRawDiffs": true,
+    "noPrivateUserData": true,
+    "noRawPrompts": true,
+    "noCorrectnessLabels": true,
+    "notes": [
+      "Results are AgentProof output summaries for human review only.",
+      "Manual labels remain incomplete and must not be inferred from these results.",
+      "The full report is processed in memory only; this file stores summary-only fields.",
+      "Failures are recorded as observed and are not backfilled or faked."
+    ]
+  },
+  "blindGeneralizationFindings": [
+    {
+      "candidateId": "blind-008",
+      "type": "candidate-check-vs-agentproof-status-mismatch",
+      "summary": "Candidate metadata found a failed public check/status item, but AgentProof reported testBuildStatus as passed and surfaced the failed signal as static/merge-gate risk. This is a human-review finding, not a correctness label."
+    }
+  ],
+  "results": [
+    {
+      "candidateId": "blind-001",
+      "prUrl": "https://github.com/eslint/eslint/pull/20958",
+      "repository": "eslint/eslint",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 66,
+        "confidence": 0.62,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 3,
+          "partial": 5,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "lib/rules/use-isnan.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 5 partial requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-002",
+      "prUrl": "https://github.com/prettier/prettier/pull/19565",
+      "repository": "prettier/prettier",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 68,
+        "confidence": 0.64,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 3,
+          "partial": 2,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "changelog_unreleased/typescript/19565.md",
+          "src/language-js/comments/can-attach-comment.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 2 partial requirement(s), 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-003",
+      "prUrl": "https://github.com/microsoft/playwright/pull/41681",
+      "repository": "microsoft/playwright",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": false,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 48,
+        "confidence": 0.44,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "packages/playwright/src/common/config.ts"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 4 partial requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-004",
+      "prUrl": "https://github.com/rollup/rollup/pull/6403",
+      "repository": "rollup/rollup",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 46,
+        "confidence": 0.43,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+          "src/utils/addons.ts"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-005",
+      "prUrl": "https://github.com/webpack/webpack/pull/21340",
+      "repository": "webpack/webpack",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 23,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 2,
+          "partial": 6,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 11,
+        "firstReviewPriorityFiles": [
+          ".changeset/amd-async-external-type.md",
+          "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+          "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+          "schemas/plugins/container/ContainerReferencePlugin.check.js",
+          "schemas/plugins/container/ContainerReferencePlugin.json"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 6 partial requirement(s), 11 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "GitHub did not return patch text for 1 changed file(s); file metadata was collected, but diff evidence is unavailable for those files."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-006",
+      "prUrl": "https://github.com/axios/axios/pull/11040",
+      "repository": "axios/axios",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 46,
+        "confidence": 0.43,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "PRE_RELEASE_CHANGELOG.md",
+          "lib/helpers/progressEventReducer.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-007",
+      "prUrl": "https://github.com/pytest-dev/pytest/pull/14639",
+      "repository": "pytest-dev/pytest",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": false
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 45,
+        "confidence": 0.42,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 1,
+          "partial": 7,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "changelog/14637.bugfix.rst",
+          "AUTHORS",
+          "src/_pytest/assertion/compare_text.py"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 7 partial requirement(s), 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-008",
+      "prUrl": "https://github.com/pandas-dev/pandas/pull/63908",
+      "repository": "pandas-dev/pandas",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 51,
+        "confidence": 0.48,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Static or merge-gate checks failed outside test/build proof.",
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Static or merge-gate checks",
+          "doc/source/whatsnew/v3.0.1.rst"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-009",
+      "prUrl": "https://github.com/nodejs/node/pull/64287",
+      "repository": "nodejs/node",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": false,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 34,
+        "confidence": 0.3,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 2
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "test/parallel/test-vfs-mkdir.js",
+          "lib/internal/vfs/providers/memory.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 4 partial requirement(s), 2 unclear requirement(s), 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    },
+    {
+      "candidateId": "blind-010",
+      "prUrl": "https://github.com/electron/electron/pull/52248",
+      "repository": "electron/electron",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": false,
+        "nonExecutionStatusesFound": true
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 45,
+        "confidence": 0.4,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 1,
+          "partial": 5,
+          "missing": 0,
+          "unclear": 2
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Requirement evidence",
+          "shell/browser/api/electron_api_menu.cc"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 5 partial requirement(s), 2 unclear requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "Raw CI logs were not fetched or stored.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": []
+      }
+    }
+  ],
+  "summary": {
+    "completedCount": 10,
+    "failedCount": 0,
+    "skippedCount": 0,
+    "testBuildStatusCounts": {
+      "passed": 10
+    },
+    "priorityCounts": {
+      "medium": 7,
+      "high": 3
+    }
+  }
+}

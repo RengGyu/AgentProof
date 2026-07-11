@@ -3,7 +3,8 @@ import { redactSecrets } from "./redact";
 
 export const MAX_SHARE_PAYLOAD_LENGTH = 18_000;
 export const SUMMARY_ONLY_LIMITATION =
-  "Shared report omits raw evidence, patch/log excerpts, claims, and re-prompt text.";
+  "Shared report omits raw evidence, patch/log excerpts, claims, proof-graph evidence refs, and re-prompt text.";
+const SUMMARY_PROOF_RAW_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
 
 interface ShareableReport {
   version: 1;
@@ -13,6 +14,7 @@ interface ShareableReport {
   requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "gaps" | "reviewerNote" | "confidence">>;
   testing: VerificationReport["testing"];
   reviewPriority: VerificationReport["reviewPriority"];
+  proofGraph: VerificationReport["proofGraph"];
   limitations: string[];
 }
 
@@ -77,6 +79,7 @@ function toShareableReport(report: VerificationReport): ShareableReport {
       reason: redactSecrets(item.reason),
       priority: item.priority
     })),
+    proofGraph: sanitizeProofGraphForShare(report.proofGraph),
     limitations: appendSummaryOnlyLimitation(report.limitations.map(redactSecrets))
   };
 }
@@ -105,6 +108,7 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
       }))
     },
     reviewPriority: shared.reviewPriority,
+    proofGraph: sanitizeProofGraphForShare(shared.proofGraph),
     reprompt: {
       targetAgent: "codex",
       prompt: "Shared summary links omit re-prompt text. Open the original report owner session or copy the full report for re-prompt details."
@@ -112,6 +116,55 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
     evidenceIndex: [],
     limitations: shared.limitations
   };
+}
+
+function sanitizeProofGraphForShare(proofGraph: VerificationReport["proofGraph"] | undefined): VerificationReport["proofGraph"] {
+  const nodes = (proofGraph?.nodes ?? []).map((node) => ({
+    requirementId: redactSecrets(node.requirementId),
+    requirementText: summaryProofText(node.requirementText, "Requirement proof text omitted from summary view."),
+    sourceRole: node.sourceRole,
+    sourceQuality: node.sourceQuality,
+    sourceSection: node.sourceSection ? summaryProofText(node.sourceSection, "source-section") : null,
+    contextRoles: node.contextRoles,
+    status: node.status,
+    confidence: node.confidence,
+    implementationEvidenceRefs: [],
+    targetedTestEvidenceRefs: [],
+    executionEvidenceRefs: [],
+    gapSignals: node.gapSignals.map((gap) => ({
+      kind: gap.kind,
+      severity: gap.severity,
+      message: summaryProofText(gap.message, "Proof gap detail omitted from summary view."),
+      evidenceRefs: []
+    })),
+    firstFiles: node.firstFiles.map((path) => summaryProofText(path, "redacted-path")).slice(0, 5)
+  }));
+
+  return {
+    version: 1,
+    nodes,
+    context: (proofGraph?.context ?? []).map((context) => ({
+      id: redactSecrets(context.id),
+      source: context.source,
+      role: context.role,
+      sourceQuality: context.sourceQuality,
+      sourceSection: context.sourceSection ? summaryProofText(context.sourceSection, "source-section") : null,
+      text: summaryProofText(context.text, "Context text omitted from summary view.")
+    })),
+    summary: {
+      requirementCount: nodes.length,
+      requirementsWithImplementation: nodes.filter((node) => node.implementationEvidenceRefs.length > 0).length,
+      requirementsWithTargetedTests: nodes.filter((node) => node.targetedTestEvidenceRefs.length > 0).length,
+      requirementsWithExecution: nodes.filter((node) => node.executionEvidenceRefs.length > 0).length,
+      requirementsWithGaps: nodes.filter((node) => node.gapSignals.length > 0).length,
+      gapCount: nodes.reduce((count, node) => count + node.gapSignals.length, 0)
+    }
+  };
+}
+
+function summaryProofText(value: string, fallback: string): string {
+  const redacted = redactSecrets(value);
+  return SUMMARY_PROOF_RAW_TEXT_PATTERN.test(redacted) ? fallback : redacted;
 }
 
 function encodeBase64Url(value: string): string {

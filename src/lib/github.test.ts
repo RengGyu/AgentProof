@@ -153,6 +153,69 @@ describe("buildPullRequestInput", () => {
     expect(firstFetchOptions?.headers?.Authorization).toBeUndefined();
   });
 
+  it("redacts token-looking values from GitHub check and status summaries", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Redacted metadata PR",
+            body: "Adds validation.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/validation", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "unit tests",
+              status: "completed",
+              conclusion: "success",
+              output: {
+                summary: "Tests passed with token=github_pat_secret_should_not_leak"
+              }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({
+          statuses: [
+            {
+              context: "legacy unit tests",
+              state: "success",
+              description: "legacy CI passed with Authorization: Bearer sk-should_not_leak"
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      githubToken: "github_pat_request_token_should_not_leak"
+    });
+    const serialized = JSON.stringify(input);
+
+    expect(serialized).not.toContain("github_pat_secret_should_not_leak");
+    expect(serialized).not.toContain("github_pat_request_token_should_not_leak");
+    expect(serialized).not.toContain("sk-should_not_leak");
+    expect(serialized).toContain("[redacted]");
+  });
+
   it("uses a single supported linked issue as the requirement source", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
@@ -631,7 +694,7 @@ describe("buildPullRequestInput", () => {
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
     const checkRunUrl = String(fetchMock.mock.calls.find(([url]) => String(url).includes("/check-runs"))?.[0] ?? "");
 
-    expect(checkRunUrl).toContain("per_page=60");
+    expect(checkRunUrl).toContain("per_page=100");
     expect(checkRunUrl).toContain("page=1");
     expect(input.checks).toHaveLength(60);
     expect(input.limitations?.join(" ")).toContain("GitHub check-run evidence was capped at 60 checks.");
@@ -1202,7 +1265,7 @@ describe("buildPullRequestInput", () => {
 
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
     const annotationLimitationIndex = input.limitations?.findIndex((item) => item.includes("check annotation metadata was collected")) ?? -1;
-    const jobLimitationIndex = input.limitations?.findIndex((item) => item.includes("Actions job-step metadata was collected")) ?? -1;
+    const jobLimitationIndex = input.limitations?.findIndex((item) => item.includes("Public GitHub Actions metadata showed failing build/test jobs")) ?? -1;
 
     expect(maxActiveEnrichmentFetches).toBeGreaterThan(1);
     expect(input.checks[0]?.summary).toContain("failure at src/app/api/analyze/route.test.ts:42");
@@ -1213,7 +1276,7 @@ describe("buildPullRequestInput", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/456/logs"))).toBe(false);
   });
 
-  it("does not fetch Actions job metadata when generic CI summaries only mention preview tests", async () => {
+  it("does not keep Actions job metadata when generic CI jobs only contain preview steps", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
         return Promise.resolve(
@@ -1253,6 +1316,22 @@ describe("buildPullRequestInput", () => {
         return Promise.resolve(Response.json({ statuses: [] }));
       }
 
+      if (url.includes("/actions/runs/123456/jobs")) {
+        return Promise.resolve(Response.json({
+          jobs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "success",
+              steps: [
+                { name: "Deploy preview", status: "completed", conclusion: "success" },
+                { name: "Upload test report", status: "completed", conclusion: "success" }
+              ]
+            }
+          ]
+        }));
+      }
+
       return Promise.resolve(new Response("unexpected url", { status: 500 }));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1260,7 +1339,7 @@ describe("buildPullRequestInput", () => {
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
 
     expect(input.logs).toEqual([]);
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/jobs"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/jobs"))).toBe(true);
   });
 
   it("keeps only execution-like Actions steps for generic CI jobs", async () => {
@@ -1337,6 +1416,293 @@ describe("buildPullRequestInput", () => {
     expect(input.logs[0]?.text).not.toContain("Checkout");
     expect(input.logs[0]?.text).not.toContain("Upload test report");
     expect(JSON.stringify(input)).not.toContain("ghp_secret");
+  });
+
+  it("collects Build&Test job metadata from a generic CI workflow check", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "CSS preload PR",
+            body: "Fixes CSS preload handling.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/css-preload", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/acme/repo/actions/runs/123456/job/999"
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/actions/runs/123456/jobs")) {
+        return Promise.resolve(Response.json({
+          jobs: [
+            {
+              name: "Build&Test: node-24, ubuntu-latest",
+              status: "completed",
+              conclusion: "success",
+              html_url: "https://github.com/acme/repo/actions/runs/123456/job/999",
+              steps: [
+                { name: "Checkout", status: "completed", conclusion: "success" },
+                { name: "Test unit", status: "completed", conclusion: "success" },
+                { name: "pnpm build", status: "completed", conclusion: "success" }
+              ]
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.logs).toEqual([
+      expect.objectContaining({
+        source: "GitHub Actions job: Build&Test: node-24, ubuntu-latest",
+        status: "passed",
+        text: expect.stringContaining("Test unit: passed")
+      })
+    ]);
+    expect(input.logs[0]?.text).toContain("pnpm build: passed");
+    expect(input.limitations?.join(" ")).toContain("Public GitHub Actions metadata showed passing build/test jobs");
+  });
+
+  it("collects Build&Test job metadata from generic workflow and checks check-runs", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Generic workflow metadata PR",
+            body: "Fixes #42.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/build-test", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/issues/42")) {
+        return Promise.resolve(Response.json({ title: "Fix build test behavior", body: "Expected build and test to pass." }));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 2,
+          check_runs: [
+            {
+              name: "workflow",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/acme/repo/actions/runs/111/job/1"
+            },
+            {
+              name: "checks",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/acme/repo/actions/runs/222/job/2"
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/actions/runs/111/jobs")) {
+        return Promise.resolve(Response.json({
+          jobs: [
+            {
+              name: "Build&Test",
+              status: "completed",
+              conclusion: "success",
+              steps: [{ name: "Test unit", status: "completed", conclusion: "success" }]
+            }
+          ]
+        }));
+      }
+
+      if (url.includes("/actions/runs/222/jobs")) {
+        return Promise.resolve(Response.json({
+          jobs: [
+            {
+              name: "checks",
+              status: "completed",
+              conclusion: "success",
+              steps: [{ name: "pnpm build", status: "completed", conclusion: "success" }]
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.logs.map((log) => log.source)).toEqual([
+      "GitHub Actions job: Build&Test",
+      "GitHub Actions job: checks"
+    ]);
+    expect(input.logs.map((log) => log.status)).toEqual(["passed", "passed"]);
+    expect(input.limitations?.join(" ")).toContain("Public GitHub Actions metadata showed passing build/test jobs");
+  });
+
+  it("keeps failed execution check-runs when check-run evidence is capped", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Capped checks PR",
+            body: "Fixes #42.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/capped-checks", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/issues/42")) {
+        return Promise.resolve(Response.json({ title: "Fix cache behavior", body: "Expected cache accounting to be correct." }));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 65,
+          check_runs: [
+            ...Array.from({ length: 64 }, (_value, index) => ({
+              name: `docs preview ${index}`,
+              status: "completed",
+              conclusion: "success",
+              output: { summary: "Documentation preview passed." }
+            })),
+            {
+              name: "Build&Test",
+              status: "completed",
+              conclusion: "failure",
+              output: { summary: "Workflow-level Build&Test failed." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.checks.some((check) => check.name === "Build&Test" && check.status === "failed")).toBe(true);
+    expect(input.limitations?.join(" ")).toContain("GitHub check-run evidence was capped at 60 checks.");
+  });
+
+  it("collects tox failure from GitHub Actions job metadata", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Python tests PR",
+            body: "Fixes #42.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/python-tests", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/issues/42")) {
+        return Promise.resolve(Response.json({ title: "Fix pytest compatibility", body: "Expected tox tests to pass." }));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "CI",
+              status: "completed",
+              conclusion: "failure",
+              details_url: "https://github.com/acme/repo/actions/runs/333/job/1"
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      if (url.includes("/actions/runs/333/jobs")) {
+        return Promise.resolve(Response.json({
+          jobs: [
+            {
+              name: "Tests",
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/acme/repo/actions/runs/333/job/1",
+              steps: [{ name: "uv run tox", status: "completed", conclusion: "failure" }]
+            }
+          ]
+        }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.logs).toEqual([
+      expect.objectContaining({
+        source: "GitHub Actions job: Tests",
+        status: "failed",
+        text: expect.stringContaining("uv run tox: failed")
+      })
+    ]);
+    expect(input.limitations?.join(" ")).toContain("Public GitHub Actions metadata showed failing build/test jobs");
   });
 
   it("collects bounded failed check annotations without raw details or secrets", async () => {
@@ -1806,6 +2172,63 @@ describe("buildPullRequestInput", () => {
 
     expect(input.logs).toEqual([]);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/jobs"))).toBe(false);
+  });
+
+  it("keeps cancelled changelog check-runs unknown and out of Actions job metadata", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(
+          Response.json({
+            title: "Changelog gate PR",
+            body: "Fixes #42.",
+            url: "https://api.github.com/repos/acme/repo/pulls/12",
+            user: { login: "ai-agent" },
+            base: { ref: "main" },
+            head: { ref: "agent/changelog", sha: "abc123" }
+          })
+        );
+      }
+
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([]));
+      }
+
+      if (url.includes("/issues/42")) {
+        return Promise.resolve(Response.json({ title: "Fix schema parsing", body: "Expected parser behavior to be correct." }));
+      }
+
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [
+            {
+              name: "Check Changelog Entry",
+              status: "completed",
+              conclusion: "cancelled",
+              details_url: "https://github.com/acme/repo/actions/runs/123456/job/999",
+              output: { summary: "Changelog validation was cancelled." }
+            }
+          ]
+        }));
+      }
+
+      if (url.endsWith("/status")) {
+        return Promise.resolve(Response.json({ statuses: [] }));
+      }
+
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.checks[0]).toEqual(expect.objectContaining({
+      name: "Check Changelog Entry",
+      status: "unknown"
+    }));
+    expect(input.logs).toEqual([]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/jobs"))).toBe(false);
+    expect(input.limitations?.join(" ")).toContain("No public test/build workflow run, check, or raw CI log was available");
   });
 
   it("does not fetch Actions job metadata from external or cross-repo details URLs", async () => {

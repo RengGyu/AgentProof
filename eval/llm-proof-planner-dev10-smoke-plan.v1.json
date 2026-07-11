@@ -1,0 +1,33 @@
+{
+  "planVersion": "agentproof-llm-planner-dev10-smoke.v1",
+  "status": "planned_not_run",
+  "baselineRole": "regression_dev_set_not_holdout",
+  "baselineSource": "eval/deterministic-baseline-blind-results.json",
+  "baselineSourceSha256": "0af4c4b528cc155c7916686f6c6f97119b24f134d42cc8e62103908738e960cf",
+  "candidateIds": [
+    "roleproof-blind-001",
+    "roleproof-blind-002",
+    "roleproof-blind-003",
+    "roleproof-blind-004",
+    "roleproof-blind-005",
+    "roleproof-blind-006",
+    "roleproof-blind-007",
+    "roleproof-blind-008",
+    "roleproof-blind-009",
+    "roleproof-blind-010"
+  ],
+  "candidateCount": 10,
+  "repeatCount": 1,
+  "requestedModel": "gpt-5.6-luna",
+  "apiKeyVariable": "OPENAI_API_KEY",
+  "apiKeyRequired": true,
+  "apiKeyConfiguredAtPreparation": true,
+  "executionAuthorizationVariable": "AGENTPROOF_LLM_PROOF_PLANNER_EXECUTION_AUTHORIZED",
+  "executionAuthorized": false,
+  "isolatedOutputRequired": true,
+  "existingEvaluationArtifactOverwriteAllowed": false,
+  "resultsPath": "outputs/controlled-human-ab-v1/dev10-smoke/gpt-5.6-luna-dev10-once-results.json",
+  "reportPath": "outputs/controlled-human-ab-v1/dev10-smoke/gpt-5.6-luna-dev10-once-report.md",
+  "resolvedModelSnapshot": null,
+  "note": "Preparation only. Never use these dev cases as the sealed holdout or run without a separate explicit request."
+}
