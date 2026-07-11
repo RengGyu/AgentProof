@@ -29,7 +29,9 @@
     "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:strict": "AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
-    "eval:summary:fixture:strict": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose"
+    "eval:summary:fixture:strict": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
+    "eval:external:regression": "vitest run src/lib/evidence-status.test.ts src/lib/external-regression-cases.test.ts src/lib/github-linked-issues.test.ts && node scripts/external-regression-cases.mjs",
+    "eval:llm-proof-planner:ab": "node scripts/llm-proof-planner-ab.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
