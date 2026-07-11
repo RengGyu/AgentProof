@@ -66,7 +66,7 @@
     "isolatedNoClobberOutputs": true,
     "workflowStatus": "prepared_not_run",
     "workflowPath": ".github/workflows/llm-proof-planner-dev10-smoke.yml",
-    "workflowSha256": "defd74a4c8d8ac48a3bf18b1d0bf127f6870c92d1371706b55796a293dae0355",
+    "workflowSha256": "48f4f6fe253b78b996e1f39546a7c28f4a1f6bc1c4ae0160e0f7faaa5047bf8c",
     "planPath": "eval/llm-proof-planner-dev10-smoke-plan.v1.json",
     "planSha256": "a94ce63fec6b27f44d76439f0032d621928cab837a6d6abae48ef997d5498653"
   },
@@ -84,7 +84,7 @@
     "plannerSchemaSha256": "4769885c07e1e9bdcdeb2530f6e63f3eeb74c26d654737ef6a98b6558e18b362",
     "evaluationHarnessSha256": "c694b1b9cfec2f76b94345a72fbbf84a2825977a6550a7e7819157a24044de14",
     "baselineSourceSha256": "0af4c4b528cc155c7916686f6c6f97119b24f134d42cc8e62103908738e960cf",
-    "protocolSha256": "af4be32bc27c53145fdb3da9f62f7586653d92c5094c6bc6addedcceb4af036d",
+    "protocolSha256": "451e624c7bd759ff301a4a436c2ebdd25d7dd34d841988f244e083869c60c58e",
     "assignmentPreflightSourceSha256": "dc20e0856f8507d6d77119d254037e5004e28febf10d99163e3d45fa7ed3c055",
     "automaticTimerRunnerSha256": "8e6ab5daa7d61fb612cdbd4766530ac586b0eae107ebae9319c4db1a3e8cd89f"
   },

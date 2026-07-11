@@ -85,11 +85,13 @@ jobs:
           }
 
       - name: Run one paid dev-10 smoke
+        id: run
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: node scripts/llm-proof-planner-ab.mjs
 
-      - name: Validate summary-only smoke artifact
+      - name: Scan artifact privacy before validation
+        id: privacy
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         shell: bash
@@ -97,11 +99,24 @@ jobs:
           set -euo pipefail
           node <<'NODE'
           const fs = require("node:fs");
-          const crypto = require("node:crypto");
           const resultsPath = process.env.AGENTPROOF_LLM_PROOF_PLANNER_RESULTS_PATH;
           const reportPath = process.env.AGENTPROOF_LLM_PROOF_PLANNER_REPORT_PATH;
+          const artifactText = [fs.readFileSync(resultsPath, "utf8"), fs.readFileSync(reportPath, "utf8")].join("\n");
+          const forbiddenField = /"(?:rawPrompt|rawPrompts|rawReasoning|rawDiff|rawDiffs|rawLog|rawLogs|apiKey|authorization)"\s*:/i;
+          const secretPattern = /sk-[A-Za-z0-9_-]{12,}|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|OPENAI_API_KEY\s*=/i;
+          if (forbiddenField.test(artifactText) || secretPattern.test(artifactText)) throw new Error("Artifact failed the privacy/secret field scan.");
+          if (process.env.OPENAI_API_KEY && artifactText.includes(process.env.OPENAI_API_KEY)) throw new Error("Artifact contains the configured API key.");
+          NODE
+
+      - name: Validate reproducibility and completion gates
+        id: validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const resultsPath = process.env.AGENTPROOF_LLM_PROOF_PLANNER_RESULTS_PATH;
           const result = JSON.parse(fs.readFileSync(resultsPath, "utf8"));
-          const sha256 = (path) => crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
           const reproducibility = result.reproducibility;
           const modelSettings = result.modelSettings;
           const resolved = reproducibility?.resolvedModelSnapshots;
@@ -132,23 +147,47 @@ jobs:
             if (reproducibility?.digests?.[key] !== expected) throw new Error(`${key} drifted from the frozen manifest.`);
           }
           if (result.privacy !== "llm-proof-planner-semantic-integrity-summary-only") throw new Error("Unexpected privacy boundary.");
+          NODE
 
-          const artifactText = [fs.readFileSync(resultsPath, "utf8"), fs.readFileSync(reportPath, "utf8")].join("\n");
-          const forbiddenField = /"(?:rawPrompt|rawPrompts|rawReasoning|rawDiff|rawDiffs|rawLog|rawLogs|apiKey|authorization)"\s*:/i;
-          const secretPattern = /sk-[A-Za-z0-9_-]{12,}|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|OPENAI_API_KEY\s*=/i;
-          if (forbiddenField.test(artifactText) || secretPattern.test(artifactText)) throw new Error("Artifact failed the privacy/secret field scan.");
-          if (process.env.OPENAI_API_KEY && artifactText.includes(process.env.OPENAI_API_KEY)) throw new Error("Artifact contains the configured API key.");
-
+      - name: Create bounded smoke receipt
+        id: receipt
+        if: ${{ always() && steps.run.outcome == 'success' && steps.privacy.outcome == 'success' }}
+        env:
+          VALIDATION_OUTCOME: ${{ steps.validation.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const crypto = require("node:crypto");
+          const resultsPath = process.env.AGENTPROOF_LLM_PROOF_PLANNER_RESULTS_PATH;
+          const reportPath = process.env.AGENTPROOF_LLM_PROOF_PLANNER_REPORT_PATH;
+          const result = JSON.parse(fs.readFileSync(resultsPath, "utf8"));
+          const sha256 = (path) => crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
+          const reproducibility = result?.reproducibility && typeof result.reproducibility === "object" ? result.reproducibility : {};
+          const modelSettings = result?.modelSettings && typeof result.modelSettings === "object" ? result.modelSettings : {};
+          const resolved = Array.isArray(reproducibility.resolvedModelSnapshots) ? reproducibility.resolvedModelSnapshots : [];
+          const failedCandidateIds = (result.results ?? [])
+            .filter((item) => item?.analysisStatus !== "completed")
+            .map((item) => item?.candidateId)
+            .filter((value) => typeof value === "string" && /^roleproof-blind-\d{3}$/.test(value))
+            .slice(0, 10);
           const receipt = {
             receiptVersion: "agentproof-llm-planner-dev10-smoke-receipt.v1",
-            sourceCommit: reproducibility.sourceCommit,
-            requestedModel: modelSettings.requestedModel,
-            resolvedModelSnapshot: resolved[0],
-            promptVersion: reproducibility.promptVersion,
-            plannerInputSchemaVersion: reproducibility.plannerInputSchemaVersion,
-            plannerOutputSchemaVersion: reproducibility.plannerOutputSchemaVersion,
+            validationPassed: process.env.VALIDATION_OUTCOME === "success",
+            validationOutcome: process.env.VALIDATION_OUTCOME,
+            sourceCommit: typeof reproducibility.sourceCommit === "string" ? reproducibility.sourceCommit : null,
+            requestedModel: typeof modelSettings.requestedModel === "string" ? modelSettings.requestedModel : null,
+            resolvedModelSnapshot: resolved.length === 1 ? resolved[0] : null,
+            promptVersion: typeof reproducibility.promptVersion === "string" ? reproducibility.promptVersion : null,
+            plannerInputSchemaVersion: reproducibility.plannerInputSchemaVersion ?? null,
+            plannerOutputSchemaVersion: reproducibility.plannerOutputSchemaVersion ?? null,
             candidateCount: result.requestedCandidateCount,
             repeatCount: result.repeatCount,
+            completedCount: result.summary?.actualLlmCompletedCount ?? null,
+            failedCount: result.summary?.failedCount ?? null,
+            guardrailAcceptedCount: result.summary?.harnessMetrics?.guardrailAcceptedCount ?? null,
+            failedCandidateIds,
             resultsSha256: sha256(resultsPath),
             reportSha256: sha256(reportPath),
             rawInputsStored: false,
@@ -156,10 +195,15 @@ jobs:
             rawReasoningStored: false,
             apiKeyStored: false
           };
-          fs.writeFileSync("outputs/controlled-human-ab-v1/dev10-smoke/receipt.json", `${JSON.stringify(receipt, null, 2)}\n`);
+          const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
+          const receiptForbidden = /"(?:rawPrompt|rawPrompts|rawReasoning|rawDiff|rawDiffs|rawLog|rawLogs|apiKey|authorization)"\s*:/i;
+          const receiptSecret = /sk-[A-Za-z0-9_-]{12,}|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|OPENAI_API_KEY\s*=/i;
+          if (receiptText.length > 10_000 || receiptForbidden.test(receiptText) || receiptSecret.test(receiptText)) throw new Error("Bounded receipt failed privacy validation.");
+          fs.writeFileSync("outputs/controlled-human-ab-v1/dev10-smoke/receipt.json", receiptText);
           NODE
 
       - name: Upload immutable summary artifacts
+        if: ${{ always() && steps.privacy.outcome == 'success' && steps.receipt.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.AGENTPROOF_SMOKE_ARTIFACT_NAME }}
