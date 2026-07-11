@@ -1,15 +1,15 @@
 {
   "manifestVersion": "agentproof-human-ab-freeze.v1",
   "status": "prepared_not_frozen",
-  "generatedAt": "2026-07-10T15:17:06Z",
+  "generatedAt": "2026-07-11T01:25:00Z",
   "protocolVersion": "agentproof-human-ab.v1",
   "privacy": "human-ab-coordinator-metadata-only",
   "source": {
-    "commit": "04ef1fdc8f9d91f3f72b0a6ac1df3213e27ef249",
-    "workingTreeDirty": true,
-    "changedPathCount": 104,
+    "commit": "8807c8987ef857300fd519bb108869fa72faad22",
+    "workingTreeDirty": false,
+    "changedPathCount": 0,
     "stagedPathCount": 0,
-    "reproducibleFromCommit": false
+    "reproducibleFromCommit": true
   },
   "planner": {
     "requestedModel": "gpt-5.6-luna",
@@ -86,7 +86,6 @@
     "automaticTimerRunnerSha256": "8e6ab5daa7d61fb612cdbd4766530ac586b0eae107ebae9319c4db1a3e8cd89f"
   },
   "blockers": [
-    "source_tree_not_clean",
     "resolved_model_snapshot_not_frozen",
     "per_rater_workbook_hashes_missing",
     "labels_header_freeze_not_verified",
