@@ -20,6 +20,13 @@ describe("report share", () => {
       evidenceRefs: ["ev_annotation_secret"],
       supported: false
     });
+    report.proofGraph.nodes[0].implementationEvidenceRefs = ["ev_annotation_secret"];
+    report.proofGraph.nodes[0].gapSignals.push({
+      kind: "missing_execution",
+      severity: "medium",
+      message: "Patch excerpt raw_details should not survive summary sharing.",
+      evidenceRefs: ["ev_annotation_secret"]
+    });
     report.reprompt.prompt = "raw_details re-prompt with github_pat_secret_should_not_leak";
     const payload = encodeReportForShare(report);
     const shared = decodeSharedReport(payload);
@@ -34,6 +41,12 @@ describe("report share", () => {
     expect(shared.reprompt.prompt).not.toContain("Explain or revert");
     expect(shared.testing.missingTests.every((item) => item.evidenceRefs.length === 0)).toBe(true);
     expect(shared.reviewPriority.every((item) => !item.evidenceRefs || item.evidenceRefs.length === 0)).toBe(true);
+    expect(shared.proofGraph.nodes.every((node) =>
+      node.implementationEvidenceRefs.length === 0 &&
+      node.targetedTestEvidenceRefs.length === 0 &&
+      node.executionEvidenceRefs.length === 0 &&
+      node.gapSignals.every((gap) => gap.evidenceRefs.length === 0)
+    )).toBe(true);
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("raw_details");
     expect(serialized).not.toContain("src/private/auth.test.ts:42");
