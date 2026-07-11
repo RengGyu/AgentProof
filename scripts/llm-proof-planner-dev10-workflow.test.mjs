@@ -36,6 +36,16 @@ describe("LLM planner dev-10 smoke workflow", () => {
     expect(workflow).toContain("apiKeyStored: false");
     expect(workflow).toContain("artifactText.includes(process.env.OPENAI_API_KEY)");
     expect(workflow).toContain("forbiddenField.test(artifactText)");
+    expect(workflow).toContain("Scan artifact privacy before validation");
+    expect(workflow).toContain("Create bounded smoke receipt");
+    expect(workflow).toContain("steps.privacy.outcome == 'success'");
+    expect(workflow).toContain("VALIDATION_OUTCOME: ${{ steps.validation.outcome }}");
+    expect(workflow).toContain("validationPassed: process.env.VALIDATION_OUTCOME === \"success\"");
+    expect(workflow).toContain("failedCandidateIds");
+    expect(workflow).toContain(".slice(0, 10)");
+    expect(workflow).toContain("receiptText.length > 10_000");
+    expect(workflow).toContain("Bounded receipt failed privacy validation");
+    expect(workflow).toContain('typeof reproducibility.sourceCommit === "string" ? reproducibility.sourceCommit : null');
     expect(workflow).toContain('evaluationArtifactSchemaVersion !== "llm-proof-planner-evaluation.v2.1"');
     expect(workflow).toContain('plannerOutputSchemaVersion !== "2.1"');
     expect(workflow).toContain("evaluationHarnessSha256");
