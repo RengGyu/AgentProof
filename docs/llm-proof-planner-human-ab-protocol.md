@@ -103,6 +103,8 @@ Rows marked `insufficient_source_evidence` or `operational_failure` require `run
 
 `gpt-5.6-luna` is prepared only for one smoke pass over the existing 10 regression/dev cases. It is not a holdout run and cannot support a generalization claim.
 
+The live smoke is isolated from the product API in `.github/workflows/llm-proof-planner-dev10-smoke.yml`. It is manual-only, requires the exact confirmation phrase and the protected `llm-evaluation` environment, checks out frozen source commit `8807c8987ef857300fd519bb108869fa72faad22`, scopes `OPENAI_API_KEY` to the model-call and artifact-validation steps, and uploads only the two summary artifacts plus a bounded hash receipt. A fixed immutable artifact name, serialized concurrency, and a pre-call artifact lookup refuse a second paid run while the 90-day receipt is retained; the coordinator must disable the workflow or preserve an external permanent receipt after the successful run. The workflow never changes the product default or invokes the deployed `/api/llm/verify` route.
+
 - Exact source: ordered `roleproof-blind-001` through `roleproof-blind-010`.
 - Exact run count: 10 candidates × 1 run.
 - Required before network or output write: `AGENTPROOF_LLM_PROOF_PLANNER_DEV10_SMOKE=1`, a separately approved `AGENTPROOF_LLM_PROOF_PLANNER_EXECUTION_AUTHORIZED=1`, openai mode, exact `OPENAI_MODEL=gpt-5.6-luna`, non-empty `OPENAI_API_KEY`, candidate limit 10, run count 1, isolated output paths, existing output absence, and no-clobber enabled.

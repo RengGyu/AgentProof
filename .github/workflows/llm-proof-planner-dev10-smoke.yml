@@ -1,0 +1,174 @@
+name: AgentProof LLM Planner Dev-10 Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type RUN_GPT_5_6_LUNA_DEV10_ONCE to authorize one paid dev-only smoke."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: agentproof-llm-planner-dev10-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Frozen planner dev-10 smoke
+    if: ${{ inputs.confirmation == 'RUN_GPT_5_6_LUNA_DEV10_ONCE' }}
+    environment: llm-evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: "1"
+      OPENAI_MODEL: gpt-5.6-luna
+      AGENTPROOF_LLM_PROOF_PLANNER_MODE: openai
+      AGENTPROOF_LLM_PROOF_PLANNER_DEV10_SMOKE: "1"
+      AGENTPROOF_LLM_PROOF_PLANNER_EXECUTION_AUTHORIZED: "1"
+      AGENTPROOF_LLM_PROOF_PLANNER_REQUIRE_API_KEY: "1"
+      AGENTPROOF_LLM_PROOF_PLANNER_RUNS: "1"
+      AGENTPROOF_LLM_PROOF_PLANNER_LIMIT: "10"
+      AGENTPROOF_LLM_PROOF_PLANNER_NO_CLOBBER: "1"
+      AGENTPROOF_LLM_PROOF_PLANNER_REASONING_EFFORT: low
+      AGENTPROOF_LLM_PROOF_PLANNER_RESULTS_PATH: outputs/controlled-human-ab-v1/dev10-smoke/gpt-5.6-luna-dev10-once-results.json
+      AGENTPROOF_LLM_PROOF_PLANNER_REPORT_PATH: outputs/controlled-human-ab-v1/dev10-smoke/gpt-5.6-luna-dev10-once-report.md
+      AGENTPROOF_FROZEN_SOURCE_COMMIT: 8807c8987ef857300fd519bb108869fa72faad22
+      AGENTPROOF_SMOKE_ARTIFACT_NAME: agentproof-gpt-5-6-luna-dev10-once
+      AGENTPROOF_EXPECTED_PROMPT_SHA256: 9fbc2bb4a509d54d062b86e6bedcca0f281aac0cb8475802b62d1fe93b1af52e
+      AGENTPROOF_EXPECTED_SCHEMA_SHA256: 4769885c07e1e9bdcdeb2530f6e63f3eeb74c26d654737ef6a98b6558e18b362
+      AGENTPROOF_EXPECTED_HARNESS_SHA256: c694b1b9cfec2f76b94345a72fbbf84a2825977a6550a7e7819157a24044de14
+      AGENTPROOF_EXPECTED_BASELINE_SHA256: 0af4c4b528cc155c7916686f6c6f97119b24f134d42cc8e62103908738e960cf
+    steps:
+      - name: Checkout frozen evaluation source
+        uses: actions/checkout@v5
+        with:
+          ref: 8807c8987ef857300fd519bb108869fa72faad22
+          persist-credentials: false
+
+      - name: Verify frozen clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$AGENTPROOF_FROZEN_SOURCE_COMMIT"
+          test -z "$(git status --porcelain)"
+          test "$OPENAI_MODEL" = "gpt-5.6-luna"
+          test ! -e "$AGENTPROOF_LLM_PROOF_PLANNER_RESULTS_PATH"
+          test ! -e "$AGENTPROOF_LLM_PROOF_PLANNER_REPORT_PATH"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Enforce one-shot artifact gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${AGENTPROOF_SMOKE_ARTIFACT_NAME}" --jq '.total_count')"
+          test "$existing" = "0" || {
+            echo "The immutable dev-10 smoke artifact already exists; refusing another paid run."
+            exit 1
+          }
+
+      - name: Run one paid dev-10 smoke
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node scripts/llm-proof-planner-ab.mjs
+
+      - name: Validate summary-only smoke artifact
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const crypto = require("node:crypto");
+          const resultsPath = process.env.AGENTPROOF_LLM_PROOF_PLANNER_RESULTS_PATH;
+          const reportPath = process.env.AGENTPROOF_LLM_PROOF_PLANNER_REPORT_PATH;
+          const result = JSON.parse(fs.readFileSync(resultsPath, "utf8"));
+          const sha256 = (path) => crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
+          const reproducibility = result.reproducibility;
+          const modelSettings = result.modelSettings;
+          const resolved = reproducibility?.resolvedModelSnapshots;
+          const summaryResolved = result.summary?.tokenUsage?.resolvedModels;
+          const expectedDigests = {
+            promptSha256: process.env.AGENTPROOF_EXPECTED_PROMPT_SHA256,
+            plannerSchemaSha256: process.env.AGENTPROOF_EXPECTED_SCHEMA_SHA256,
+            evaluationHarnessSha256: process.env.AGENTPROOF_EXPECTED_HARNESS_SHA256,
+            baselineSourceSha256: process.env.AGENTPROOF_EXPECTED_BASELINE_SHA256
+          };
+
+          if (result.actualLlmAttempted !== true) throw new Error("Live LLM smoke was not attempted.");
+          if (result.requestedCandidateCount !== 10 || result.repeatCount !== 1) throw new Error("Expected exactly 10 dev candidates and one run.");
+          if (modelSettings?.requestedModel !== "gpt-5.6-luna" || reproducibility?.requestedModel !== "gpt-5.6-luna") throw new Error("Requested model drifted.");
+          if (reproducibility?.evaluationArtifactSchemaVersion !== "llm-proof-planner-evaluation.v2.1") throw new Error("Evaluation artifact schema drifted.");
+          if (reproducibility?.plannerInputSchemaVersion !== 1 || reproducibility?.plannerOutputSchemaVersion !== "2.1") throw new Error("Planner schema drifted.");
+          if (modelSettings?.plannerInputSchemaVersion !== 1 || modelSettings?.plannerOutputSchemaVersion !== "2.1") throw new Error("Model-settings schema drifted.");
+          if (reproducibility?.promptVersion !== "llm-proof-planner-v2-semantic-integrity" || modelSettings?.promptVersion !== reproducibility.promptVersion) throw new Error("Prompt version drifted.");
+          if (reproducibility?.sourceCommit !== process.env.AGENTPROOF_FROZEN_SOURCE_COMMIT || modelSettings?.sourceCommit !== reproducibility.sourceCommit) throw new Error("Source commit is not frozen consistently.");
+          if (reproducibility?.workingTreeDirty !== false || reproducibility?.workingTreeChangedPathCount !== 0 || modelSettings?.workingTreeDirty !== false || modelSettings?.workingTreeChangedPathCount !== 0) throw new Error("Source provenance is not clean.");
+          if (result.summary?.actualLlmCompletedCount !== 10 || result.summary?.failedCount !== 0) throw new Error("All 10 dev candidates must complete.");
+          if (result.summary?.harnessMetrics?.guardrailAcceptedCount !== 10) throw new Error("All 10 outputs must pass guardrails.");
+          if (!Array.isArray(resolved) || resolved.length !== 1 || typeof resolved[0] !== "string") throw new Error("A single resolved model snapshot is required.");
+          if (reproducibility?.modelSnapshotStatus !== "single" || reproducibility?.modelSnapshot !== resolved[0]) throw new Error("Resolved model snapshot is inconsistent.");
+          if (modelSettings?.modelSnapshotStatus !== "single" || modelSettings?.modelSnapshot !== resolved[0] || JSON.stringify(modelSettings?.resolvedModelSnapshots) !== JSON.stringify(resolved)) throw new Error("Model-settings snapshot is inconsistent.");
+          if (JSON.stringify(summaryResolved) !== JSON.stringify(resolved)) throw new Error("Token-usage snapshot is inconsistent.");
+          for (const [key, expected] of Object.entries(expectedDigests)) {
+            if (reproducibility?.digests?.[key] !== expected) throw new Error(`${key} drifted from the frozen manifest.`);
+          }
+          if (result.privacy !== "llm-proof-planner-semantic-integrity-summary-only") throw new Error("Unexpected privacy boundary.");
+
+          const artifactText = [fs.readFileSync(resultsPath, "utf8"), fs.readFileSync(reportPath, "utf8")].join("\n");
+          const forbiddenField = /"(?:rawPrompt|rawPrompts|rawReasoning|rawDiff|rawDiffs|rawLog|rawLogs|apiKey|authorization)"\s*:/i;
+          const secretPattern = /sk-[A-Za-z0-9_-]{12,}|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|OPENAI_API_KEY\s*=/i;
+          if (forbiddenField.test(artifactText) || secretPattern.test(artifactText)) throw new Error("Artifact failed the privacy/secret field scan.");
+          if (process.env.OPENAI_API_KEY && artifactText.includes(process.env.OPENAI_API_KEY)) throw new Error("Artifact contains the configured API key.");
+
+          const receipt = {
+            receiptVersion: "agentproof-llm-planner-dev10-smoke-receipt.v1",
+            sourceCommit: reproducibility.sourceCommit,
+            requestedModel: modelSettings.requestedModel,
+            resolvedModelSnapshot: resolved[0],
+            promptVersion: reproducibility.promptVersion,
+            plannerInputSchemaVersion: reproducibility.plannerInputSchemaVersion,
+            plannerOutputSchemaVersion: reproducibility.plannerOutputSchemaVersion,
+            candidateCount: result.requestedCandidateCount,
+            repeatCount: result.repeatCount,
+            resultsSha256: sha256(resultsPath),
+            reportSha256: sha256(reportPath),
+            rawInputsStored: false,
+            rawPromptsStored: false,
+            rawReasoningStored: false,
+            apiKeyStored: false
+          };
+          fs.writeFileSync("outputs/controlled-human-ab-v1/dev10-smoke/receipt.json", `${JSON.stringify(receipt, null, 2)}\n`);
+          NODE
+
+      - name: Upload immutable summary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.AGENTPROOF_SMOKE_ARTIFACT_NAME }}
+          path: |
+            outputs/controlled-human-ab-v1/dev10-smoke/gpt-5.6-luna-dev10-once-results.json
+            outputs/controlled-human-ab-v1/dev10-smoke/gpt-5.6-luna-dev10-once-report.md
+            outputs/controlled-human-ab-v1/dev10-smoke/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
