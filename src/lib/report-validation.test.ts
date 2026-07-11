@@ -242,6 +242,67 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("testing.ciStatus cannot be passed without passing test, build, or CI execution evidence");
   });
 
+  it("rejects proofGraph summaries that do not match their nodes", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.proofGraph.summary.requirementCount += 1;
+    report.proofGraph.summary.requirementsWithGaps += 1;
+    report.proofGraph.summary.gapCount += 1;
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("proofGraph.summary.requirementCount must match proofGraph.nodes");
+    expect(result.errors.join("\n")).toContain("proofGraph.summary.requirementsWithGaps must match proofGraph.nodes");
+    expect(result.errors.join("\n")).toContain("proofGraph.summary.gapCount must match proofGraph.nodes");
+  });
+
+  it("rejects proofGraph nodes that do not map to report requirements", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.proofGraph.nodes[0].requirementId = "req_missing";
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("proofGraph.nodes[0].requirementId must match a report requirement");
+  });
+
+  it("rejects proofGraph nodes that omit or duplicate report requirements", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    const duplicatedRequirementId = report.proofGraph.nodes[0].requirementId;
+    const omittedRequirementId = report.proofGraph.nodes[1]?.requirementId;
+
+    expect(omittedRequirementId).toBeTruthy();
+    report.proofGraph.nodes[1].requirementId = duplicatedRequirementId;
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain(`proofGraph.nodes[1].requirementId duplicates proofGraph node for ${duplicatedRequirementId}`);
+    expect(result.errors.join("\n")).toContain(`proofGraph.nodes must include requirement ${omittedRequirementId}`);
+  });
+
+  it("rejects proofGraph evidence refs assigned to incompatible proof classes", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    const diffRef = report.evidenceIndex.find((item) => item.kind === "diff" || item.kind === "changed_file")?.id;
+    const testRef = report.evidenceIndex.find((item) => item.kind === "test")?.id;
+    const executionRef = report.evidenceIndex.find((item) => item.kind === "check" || item.kind === "log")?.id;
+
+    expect(diffRef).toBeTruthy();
+    expect(testRef).toBeTruthy();
+    expect(executionRef).toBeTruthy();
+
+    report.proofGraph.nodes[0].implementationEvidenceRefs = [testRef as string];
+    report.proofGraph.nodes[0].targetedTestEvidenceRefs = [diffRef as string];
+    report.proofGraph.nodes[0].executionEvidenceRefs = [diffRef as string];
+
+    const result = validateVerificationReport(report);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("proofGraph.nodes[0].implementationEvidenceRefs cites incompatible evidence");
+    expect(result.errors.join("\n")).toContain("proofGraph.nodes[0].targetedTestEvidenceRefs cites incompatible evidence");
+    expect(result.errors.join("\n")).toContain("proofGraph.nodes[0].executionEvidenceRefs cites incompatible evidence");
+  });
+
   it("rejects missing nested fields and unknown report properties", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     delete (report.summary as Partial<typeof report.summary>).oneLine;

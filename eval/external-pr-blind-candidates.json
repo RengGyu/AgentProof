@@ -1,0 +1,907 @@
+{
+  "privacy": "external-pr-blind-candidates-public-metadata-only",
+  "status": "blind_candidate_pack_needs_human_review",
+  "generatedAt": "2026-07-08T00:59:24.542Z",
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokens": true,
+    "noRawFullLogs": true,
+    "noRawDiffs": true,
+    "noPrivateUserData": true,
+    "noCorrectnessLabels": true,
+    "notes": [
+      "Candidate data is public GitHub metadata only.",
+      "This blind pack intentionally excludes the prior Vite, Next.js, Requests, and Flask pilot repositories where possible.",
+      "Manual labels must be stored separately from AgentProof report input.",
+      "Do not use AgentProof output as truth or hidden oracle labels."
+    ]
+  },
+  "candidates": [
+    {
+      "id": "blind-001",
+      "status": "needs_review",
+      "classification": "clean_issue_fix",
+      "repository": "eslint/eslint",
+      "prNumber": 20958,
+      "prUrl": "https://github.com/eslint/eslint/pull/20958",
+      "prTitle": "fix: use-isnan false positive on shadowed NaN/Number",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 20950,
+          "issueUrl": "https://github.com/eslint/eslint/issues/20950",
+          "issueTitle": "Bug: use-isnan false positive on shadowed NaN/Number",
+          "issueBodySummary": "### Environment Node version: v24.15.0 npm version: v11.12.1 Local ESLint version: v10.4.1 Global ESLint version: Not installed Operating System: Windows ### What parser are you using? Default (Espree) ### What did you do? [details omitted] [code block omitted] ### What did you expect to happen? I expected no errors to be reported. In the provided cases, the NaN and Number identifiers are explicitly shadowed by local variables or function parameters. Because they no longer reference the built-in global NaN, comparing against them is perfectly valid JavaScript. The rule should use scope analysis to ensure it only flags references to the true global object. ### What actually happened? ESLint incorrectly reported false positives for all the shadowed bindings because it matched them by name only. [code block omitted] ### Link to Minimal Reproducible Example https://eslint.org/play/#eyJ0ZXh0IjoiLy8gMS4gU2hhZG93aW5nIE5hTiBpbiBhIGxvY2FsIHNjb3BlXG5sZXQgTmFOID0gNTtcbmlmICh4ID09PSBOYU4pIHt9XG5cbi8vIDIuIFNoYWRvd2luZyBOdW1iZXIgaW4gYSBmdW5jdGlvbiBwYXJhbWV0ZXJcbmZ1bmN0aW9uIHRlc3ROdW1iZXIoTnVtYmVyKSB7XG4gICAgcmV0dXJuIHggPT09IE51bWJlci5OYU47XG59XG5cbi8vIDMuIFNoYWRvd2luZyBOYU4gaW4gYSBzd2l0Y2ggY2FzZ",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": true,
+            "hasScreenshotsOrVisualContext": false,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "#### Prerequisites checklist - [x] I have read the [contributing guidelines](https://github.com/eslint/eslint/blob/HEAD/CONTRIBUTING.md). #### AI acknowledgment - [x] I did _not_ use AI to generate this PR. - [ ] (If the above is not checked) I have reviewed the AI-generated content before submitting. #### What is the purpose of this pull request? (put an \"X\" next to an item) [ ] Documentation update [ ] Bug fix ([template](https://raw.githubusercontent.com/eslint/eslint/HEAD/templates/bug-report.md)) [ ] New rule ([template](https://raw.githubusercontent.com/eslint/eslint/HEAD/templates/rule-proposal.md)) [x] Changes an existing rule ([template](https://raw.githubusercontent.com/eslint/eslint/HEAD/templates/rule-change-proposal.md)) [ ] Add autofix to a rule [ ] Add a CLI option [ ] Add something to the core [ ] Other, please explain: **What rule do you want to change?** `use-isnan` **What change do you want to make (place an \"X\" next to just one item)?** [ ] Generate more warnings [x] Generate fewer warnings [ ] Implement autofix [ ] Implement suggestions **How will the change be implemented (place an \"X\" next to just one item)?** [ ] A new option [x] A new default behavior [ ] O",
+      "changedFiles": {
+        "count": 2,
+        "files": [
+          {
+            "path": "lib/rules/use-isnan.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "tests/lib/rules/use-isnan.js",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "passed",
+        "typecheckStatus": "passed",
+        "notes": "Observed 35 public check/status item(s); raw logs were not fetched. Sample: CodeQL: passed; Test Package Managers / bun-install: passed; Test Package Managers / yarn-v1-install: passed; Test Package Managers / pnpm-install: passed; Test Package Managers / yarn-install: passed; Test Package Managers / npm-install: passed; Redirect rules - docs-eslint: passed; Header rules - docs-eslint: passed; Test (macOS-latest, lts/*): passed; Test (ubuntu-latest, 24.x): passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "eslint/eslint PR #20958 links to issue #20950 and includes public PR metadata. The issue has reproduction or steps. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "lib/rules/use-isnan.js",
+          "tests/lib/rules/use-isnan.js"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-002",
+      "status": "needs_review",
+      "classification": "clean_issue_fix",
+      "repository": "prettier/prettier",
+      "prNumber": 19565,
+      "prUrl": "https://github.com/prettier/prettier/pull/19565",
+      "prTitle": "Handle comments in export declarations between `type` and type name.",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 19564,
+          "issueUrl": "https://github.com/prettier/prettier/issues/19564",
+          "issueTitle": "prettier errors on comment in export declaration",
+          "issueBodySummary": "**Prettier v3.9.4** [Playground link](https://prettier.io/playground/#N4Igxg9gdgLgprEAuEcAeAHCAnGACYPGATwzjwHoAqAMwgjyorwBU8BfAbhABoQIMMAJbQAzslABDbNggB3AArSE4lJIA2cycXF8ARtklgA1nBgBlSQFs4AGSFQ4yGhtFw+EPQCs4YGAHVDDGQQDGw4N2wANyd9QxMzcwwjBwBzZBhsAFd3EDcrIQzs3PQybCEbWA0AeTLJGBwFCFEhYWgQhAATXlRMOHLKmA0WfqhpIQjnV1yWqFT1OABFLIh4KfU3Pi9RNHM0heXVpyQXDdyARxX4BVkMVRBJUQBaRzhOt57MySF1NIBhCBWKySEIadQ9WbzOAAQRgmSEeiy1369kc602IAAFjArOp-JjWhFkmA4OYVK0hFFWsQQmBRLoQFEcgBJKDvWDmMDlQTQtnmEgLdG5MLNOCBSTBFBhCL9GI9LrVGio44gdQ0HoOSIwG6SVLAoV8ZLYSIhEhkURcoSCHphBwBISdGCY5AADgADHxwpchOEdXqQSdpnwhnp-A6ncgAEx8LJuFiSPSqU4YuBWPRvd6dWySOZZXVwABiOGBcLSoKREBA7HYQA) [code block omitted] **Input:** [code block omitted] **Output:** [code block omitted] **Second Output:** [code block omitted] **Expected output:** [code block omitted] **Why?**",
+          "issueSignals": {
+            "hasReproduction": false,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": false,
+            "hasScreenshotsOrVisualContext": false,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "## Description fixes #19564 ## Checklist - [x] I’ve added tests to confirm my change works. - [ ] (If changing the API or CLI) I’ve documented the changes I’ve made (in the `docs/` directory). - [x] (If the change is user-facing) I’ve added my changes to `changelog_unreleased/*/XXXX.md` file following `changelog_unreleased/TEMPLATE.md`. - [x] I’ve read the [contributing guidelines](https://github.com/prettier/prettier/blob/main/CONTRIBUTING.md). - [ ] I did _not_ use AI to generate this PR. - [x] (If the above is not checked) I have reviewed the AI-generated content before submitting.",
+      "changedFiles": {
+        "count": 4,
+        "files": [
+          {
+            "path": "changelog_unreleased/typescript/19565.md",
+            "kind": "docs"
+          },
+          {
+            "path": "src/language-js/comments/can-attach-comment.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "tests/format/typescript/import-export/__snapshots__/format.test.js.snap",
+            "kind": "test"
+          },
+          {
+            "path": "tests/format/typescript/import-export/type-modifier.ts",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "passed",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 36 public check/status item(s); raw logs were not fetched. Sample: codecov/patch: passed; codecov/project: passed; CodeQL: passed; Continuous Releases: passed; Node.js 20 on Linux: passed; Node.js 14 on Linux: passed; Node.js 18 on Linux: passed; Node.js 16 on Linux: passed; Node.js 26 on MacOS: passed; Node.js 24 on Linux: passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "prettier/prettier PR #19565 links to issue #19564 and includes public PR metadata. The issue has bounded task context. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "src/language-js/comments/can-attach-comment.js",
+          "tests/format/typescript/import-export/__snapshots__/format.test.js.snap",
+          "tests/format/typescript/import-export/type-modifier.ts"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-003",
+      "status": "needs_review",
+      "classification": "clean_issue_fix",
+      "repository": "microsoft/playwright",
+      "prNumber": 41681,
+      "prUrl": "https://github.com/microsoft/playwright/pull/41681",
+      "prTitle": "fix(test-runner): validate NaN and non-positive worker percentages",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 41679,
+          "issueUrl": "https://github.com/microsoft/playwright/issues/41679",
+          "issueTitle": "[Bug]: workers: 'abc%' runs zero tests and exits 0 (\"using NaN workers\")",
+          "issueBodySummary": "### Version 1.62.0-next (reproduced on main, c4a3b4d887); the percentage branch has been unvalidated since it was introduced ### Steps to reproduce [code block omitted] Also reproduces with `workers: 'abc%'` in the config file, and with `--workers \"$UNSET_VAR%\"` (i.e. `--workers=%`) — an easy CI misconfiguration. ### Expected behavior The same validation error the non-percentage branch produces: [code block omitted] ### Actual behavior [code block omitted] …then the process exits with code **0**. No tests execute (the suite contains a failing test), no summary is printed, reporters never receive results. CI reports success while nothing ran. ### Additional context `resolveWorkers` in `packages/playwright/src/common/config.ts` validates `NaN` and `< 1` only in the non-percentage branch. The `endsWith('%')` branch does `Math.max(1, Math.floor(cpus * (parseInt(workers, 10) / 100)))`, and `Math.max(1, NaN)` is `NaN`. The dispatcher then allocates zero worker slots (`for (let i = 0; i < NaN; i++)` never iterates in `runner/dispatcher.ts`), its finished-promise never resolves, the event loop drains, and Node exits 0. This is the same silent-success failure mode as #39938 (workers `0`/neg",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": true,
+            "hasScreenshotsOrVisualContext": false,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "## Summary - The `%` branch of `resolveWorkers` skipped the NaN validation the numeric branch performs, so `--workers=abc%` (or an unset env var expanding to `--workers=%`) resolved to `NaN` workers. The dispatcher then allocated zero worker slots, ran no tests, and exited 0 — silent success while nothing ran. - Apply the same validation to the percentage branch and add a regression test. Fixes https://github.com/microsoft/playwright/issues/41679",
+      "changedFiles": {
+        "count": 2,
+        "files": [
+          {
+            "path": "packages/playwright/src/common/config.ts",
+            "kind": "implementation"
+          },
+          {
+            "path": "tests/playwright-test/config.spec.ts",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "passed",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 48 public check/status item(s); raw logs were not fetched. Sample: ubuntu-latest - chrome: passed; ubuntu-latest - webkit: passed; macos-latest - firefox: passed; windows-latest - chromium: passed; ubuntu-latest - firefox: passed; windows-latest - webkit: passed; macos-latest - chrome: passed; windows-latest - firefox: passed; ubuntu-latest - chromium: passed; macos-latest - chromium: passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "microsoft/playwright PR #41681 links to issue #41679 and includes public PR metadata. The issue has reproduction or steps. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "packages/playwright/src/common/config.ts",
+          "tests/playwright-test/config.spec.ts"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-004",
+      "status": "needs_review",
+      "classification": "visual_proof_candidate",
+      "repository": "rollup/rollup",
+      "prNumber": 6403,
+      "prUrl": "https://github.com/rollup/rollup/pull/6403",
+      "prTitle": "Does not add an extra leading line feed for addons",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 6401,
+          "issueUrl": "https://github.com/rollup/rollup/issues/6401",
+          "issueTitle": "always one LF above plugin added banner",
+          "issueBodySummary": "### Rollup Version 4.61.0 ### Operating System (or Browser) node and deno and browser ### Node Version (if applicable) v26.2.0 ### Link To Reproduction [code block omitted] ### Expected Behaviour [code block omitted] ### Actual Behaviour [code block omitted]",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": false,
+            "hasScreenshotsOrVisualContext": true,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "This PR contains: - [x] bugfix - [ ] feature - [ ] refactor - [ ] documentation - [ ] other Are tests included? - [x] yes (_bugfixes and features will not be merged without tests_) - [ ] no Breaking Changes? - [ ] yes (_breaking changes will not be merged unless absolutely necessary_) - [x] no List any relevant issue numbers: resolves #6401 ### Description",
+      "changedFiles": {
+        "count": 10,
+        "files": [
+          {
+            "path": "src/utils/addons.ts",
+            "kind": "implementation"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/es.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/iife.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/system.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/umd.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/addon-functions-no-extra-leading-line-feed/main.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/form/samples/enforce-addon-order/_expected.js",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "passed",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 49 public check/status item(s); raw logs were not fetched. Sample: cleanup: passed; Publish: unknown; codecov/patch: passed; codecov/project: passed; Test with Additional Tests Node 18.20.0 (x86_64-unknown-linux-gnu): passed; Test Node 18.20.0 (x86_64-pc-windows-msvc): passed; Test Node 24 (aarch64-unknown-linux-gnu): passed; Smoke Test aarch64-unknown-linux-musl: passed; Test Node 18.20.0 (aarch64-unknown-linux-gnu): passed; Test Node 24 (x86_64-pc-windows-msvc): passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "rollup/rollup PR #6403 links to issue #6401 and includes public PR metadata. The issue has reproduction or steps. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "visual proof",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "src/utils/addons.ts",
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js",
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/es.js",
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/iife.js"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-005",
+      "status": "needs_review",
+      "classification": "large_pr_capped_evidence_candidate",
+      "repository": "webpack/webpack",
+      "prNumber": 21340,
+      "prUrl": "https://github.com/webpack/webpack/pull/21340",
+      "prTitle": "feat: add amd-async externals type and error on misconfigured object externals",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 8079,
+          "issueUrl": "https://github.com/webpack/webpack/issues/8079",
+          "issueTitle": "AMD externals fail silently if libraryTarget is not 'amd'",
+          "issueBodySummary": "# Bug report **What is the current behavior?** External dependencies that are only available via AMD are only supported if the output libraryTarget is also 'amd'. This is rather surprising, and not at all documented. **If the current behavior is a bug, please provide the steps to reproduce.** Using this Webpack config: [code block omitted] Transpiling the code `require('amd-module')` results in a dependency like this being included in the output: [code block omitted] **What is the expected behavior?** Given any AMD dependency and no libraryTarget, I would expect one of the following outcomes: 1. The output is surrounded by a `require(...)` or `requirejs(...)` wrapper, much as is done already with `define(...)` when `libraryTarget: 'amd'` is set. 2. A build-time error is shown about the unresolved dependency, as is already done if `libraryTarget: 'umd'` is set. Adding that to the above config results in a build error \"Missing external configuration for type:commonjs2\". In this case I would also expect a mention in the docs about this incompatibility. The current behaviour of leaving the dependency as `undefined` is surprising and hard to debug. **Other relevant information:** webpac",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": false,
+            "hasScreenshotsOrVisualContext": false,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "**Summary** Object externals with no entry for the used externals type silently resolved to `undefined` at runtime; they now emit a build error, and the new `amd-async` externals type loads AMD-only externals through the asynchronous AMD `require` API (as an async module) so they work without an AMD library wrapper. Fixes #8079. **What kind of change does this PR introduce?** feat **Did you add tests for your changes?** Yes — `test/configCases/externals/missing-external-configuration`, `amd-async-externals` and `amd-async-externals-amd-container`. **Does this PR introduce a breaking change?** No — externals that previously emitted `undefined` silently now fail the build with an actionable error. **If relevant, what needs to be documented once your changes are merged or what have you already documented?** Document the new `amd-async` externals type on webpack.js.org. **Use of AI** AI (Claude Code) was used to implement the change, write the tests, and draft this PR description; the changes were verified against the repository test suites (config, config-cache, stats, validation, CLI, tsc). 🤖 Generated with [Claude Code](https://claude.com/claude-code) https://claude.ai/code/session",
+      "changedFiles": {
+        "count": 23,
+        "files": [
+          {
+            "path": ".changeset/amd-async-external-type.md",
+            "kind": "docs"
+          },
+          {
+            "path": ".changeset/missing-external-configuration-error.md",
+            "kind": "docs"
+          },
+          {
+            "path": "declarations/WebpackOptions.d.ts",
+            "kind": "implementation"
+          },
+          {
+            "path": "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+            "kind": "implementation"
+          },
+          {
+            "path": "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+            "kind": "implementation"
+          },
+          {
+            "path": "lib/ExternalModule.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "lib/errors/EnvironmentNotSupportAsyncWarning.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "schemas/WebpackOptions.check.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "schemas/WebpackOptions.json",
+            "kind": "implementation"
+          },
+          {
+            "path": "schemas/plugins/container/ContainerReferencePlugin.check.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "schemas/plugins/container/ContainerReferencePlugin.json",
+            "kind": "implementation"
+          },
+          {
+            "path": "schemas/plugins/container/ExternalsType.check.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "schemas/plugins/container/ModuleFederationPlugin.check.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "schemas/plugins/container/ModuleFederationPlugin.json",
+            "kind": "implementation"
+          },
+          {
+            "path": "test/__snapshots__/Cli.basictest.js.snap",
+            "kind": "test"
+          },
+          {
+            "path": "test/configCases/externals/amd-async-externals-amd-container/index.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/configCases/externals/amd-async-externals-amd-container/webpack.config.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/configCases/externals/amd-async-externals/index.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/configCases/externals/amd-async-externals/webpack.config.js",
+            "kind": "test"
+          },
+          {
+            "path": "test/configCases/externals/missing-external-configuration/errors.js",
+            "kind": "test"
+          }
+        ],
+        "capped": true
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "passed",
+        "typecheckStatus": "passed",
+        "notes": "Observed 63 public check/status item(s); raw logs were not fetched. Sample: CodSpeed Performance Analysis: passed; codecov/changes: passed; codecov/patch: passed; codecov/project: passed; integration (ubuntu-latest, 18.x, a): passed; integration (ubuntu-latest, 16.x, a): passed; integration (macos-latest, 22.x, a): passed; integration (ubuntu-latest, 20.x, a): passed; integration (ubuntu-latest, lts/*, a, 1): passed; integration (ubuntu-latest, 24.x, a): passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "webpack/webpack PR #21340 links to issue #8079 and includes public PR metadata. The issue has reproduction or steps. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "scope creep",
+          "execution evidence",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "declarations/WebpackOptions.d.ts",
+          "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+          "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+          "lib/ExternalModule.js",
+          "lib/errors/EnvironmentNotSupportAsyncWarning.js",
+          "schemas/WebpackOptions.check.js"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-006",
+      "status": "needs_review",
+      "classification": "visual_proof_candidate",
+      "repository": "axios/axios",
+      "prNumber": 11040,
+      "prUrl": "https://github.com/axios/axios/pull/11040",
+      "prTitle": "fix(http): flush download progress before stream close",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 6878,
+          "issueUrl": "https://github.com/axios/axios/issues/6878",
+          "issueTitle": "onDownloadProgress occurred after request solved",
+          "issueBodySummary": "### Describe the bug env: node v22 Starting from axios 1.7.3 (https://github.com/axios/axios/pull/6518), in node environment `onDownloadProgress` maybe invoke after request solved It may be affected by the throttling method. Although the last task is finally executed through flush function, the execution order of queueMicroTask is later than response.data.on('close', callback) ### To Reproduce [code block omitted] output [code block omitted] If the frequency of receiving file stream chunks is bigger than 3, this phenomenon will be triggered ### Code snippet [code block omitted] ### Expected behavior _No response_ ### Axios Version 1.7.3 ### Adapter Version _No response_ ### Browser _No response_ ### Browser Version _No response_ ### Node.js Version 20 ### OS _No response_ ### Additional Library Versions [code block omitted] ### Additional context/Screenshots [code block omitted]",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": false,
+            "hasScreenshotsOrVisualContext": true,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "## Summary Fixes the Node HTTP adapter ordering where the final throttled `onDownloadProgress` callback could run after a streamed response emitted `close`. ## Linked issue Closes #6878 ## Changes - Schedule HTTP adapter progress callbacks with Node's next-tick queue so a final flush runs before stream `close` listeners. - Add a regression test for streamed downloads with throttled progress events. - Add the fix to the pre-release changelog. #### Checklist - [x] Tests added or updated - [x] Docs/types updated if public API changed (N/A, no public API change) - [x] No breaking changes :surfer: --- ## Summary by cubic Ensures the final `onDownloadProgress` event fires before a streamed response emits `close`, preventing progress after consumers see the stream closed. Uses `process.nextTick` (fallback to `utils.asap`) to flush progress in the right order. **Description** - Summary of changes - Schedule progress callbacks with `process.nextTick` (fallback to `utils.asap`). - Let `asyncDecorator` accept a scheduler; pass it from the `http` adapter for both upload and download progress. - Add a regression test ensuring final progress fires before `close` and none fire after. - Update the",
+      "changedFiles": {
+        "count": 4,
+        "files": [
+          {
+            "path": "PRE_RELEASE_CHANGELOG.md",
+            "kind": "docs"
+          },
+          {
+            "path": "lib/adapters/http.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "lib/helpers/progressEventReducer.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "tests/unit/adapters/http.test.js",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "unknown",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 26 public check/status item(s); raw logs were not fetched. Sample: ESM smoke tests (Node 24): passed; ESM module tests (Node 24): passed; CJS module tests (Node 16): passed; ESM module tests (Node 22): passed; CJS module tests (Node 12): passed; CJS module tests (Node 18): passed; ESM module tests (Node 20): passed; ESM module tests (Node 26): passed; CJS module tests (Node 14): passed; CJS smoke tests (Node 12): passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "axios/axios PR #11040 links to issue #6878 and includes public PR metadata. The issue has reproduction or steps. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "visual proof",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "lib/adapters/http.js",
+          "lib/helpers/progressEventReducer.js",
+          "tests/unit/adapters/http.test.js"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-007",
+      "status": "needs_review",
+      "classification": "clean_issue_fix",
+      "repository": "pytest-dev/pytest",
+      "prNumber": 14639,
+      "prUrl": "https://github.com/pytest-dev/pytest/pull/14639",
+      "prTitle": "Fix off-by-one in trailing assertion diff skipping (#14637)",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 14637,
+          "issueUrl": "https://github.com/pytest-dev/pytest/issues/14637",
+          "issueTitle": "assertion diff: trailing character skip fails when first characters differ (off-by-one in `left[-i]` when `i=0`)",
+          "issueBodySummary": "Was looking at assertion diff output and noticed the trailing skip optimization wasn't kicking in when the compared strings differed at the start. Traced it to `_diff_text` in `compare_text.py` line 62: [code block omitted] `-0 == 0` in Python, so `left[-0]` is actually `left[0]` — the first character, not the last. When the first chars differ, the loop breaks at `i=0`, `i > 42` is False, and the trailing identical characters never get skipped. Dozens of them, just sitting there in the diff output. Reproducer: [code block omitted] Fix: loop from `i=1` instead of `i=0`: [code block omitted] The existing test `test_text_skipping_trailing` doesn't catch this because both test strings start with `'a'`, so the accidental `left[-0]` comparison happens to pass and the loop continues to the actual trailing characters. This code has been around since 2013 (originally in `assertion/util.py`, moved to `compare_text.py` in #14520).",
+          "issueSignals": {
+            "hasReproduction": false,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": false,
+            "hasScreenshotsOrVisualContext": false,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "Closes #14637 Fix an off-by-one in trailing text diff skipping so pytest compares from the last character first instead of accidentally checking the first character via `-0`. This adds a regression test for the case where the compared strings differ at the beginning but share a long identical trailing suffix, and includes a changelog entry. Thanks to @EternalRights for finding and reporting this bug.",
+      "changedFiles": {
+        "count": 4,
+        "files": [
+          {
+            "path": "AUTHORS",
+            "kind": "implementation"
+          },
+          {
+            "path": "changelog/14637.bugfix.rst",
+            "kind": "docs"
+          },
+          {
+            "path": "src/_pytest/assertion/compare_text.py",
+            "kind": "implementation"
+          },
+          {
+            "path": "testing/test_assertion.py",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "unknown",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 36 public check/status item(s); raw logs were not fetched. Sample: check: passed; codecov/patch: passed; build (ubuntu-py310-pluggy): passed; build (macos-py315): passed; build (ubuntu-py314): passed; build (ubuntu-py310-xdist): passed; build (doctesting): passed; build (windows-py315): passed; build (macos-py310): passed; build (windows-py312): passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "pytest-dev/pytest PR #14639 links to issue #14637 and includes public PR metadata. The issue has bounded task context. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "AUTHORS",
+          "src/_pytest/assertion/compare_text.py",
+          "testing/test_assertion.py"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-008",
+      "status": "needs_review",
+      "classification": "failed_or_unclear_ci_candidate",
+      "repository": "pandas-dev/pandas",
+      "prNumber": 63908,
+      "prUrl": "https://github.com/pandas-dev/pandas/pull/63908",
+      "prTitle": "BUG: fix CoW handling of DataFrame(index/series) constructor",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 63899,
+          "issueUrl": "https://github.com/pandas-dev/pandas/issues/63899",
+          "issueTitle": "BUG: DataFrame derived from Index can mutate the Index",
+          "issueBodySummary": "### Pandas version checks - [x] I have checked that this issue has not already been reported. - [x] I have confirmed this bug exists on the [latest version](https://pandas.pydata.org/docs/whatsnew/index.html) of pandas. - [x] I have confirmed this bug exists on the [main branch](https://pandas.pydata.org/docs/dev/getting_started/install.html#installing-the-development-version-of-pandas) of pandas. ### Reproducible Example [code block omitted] ### Issue Description When creating a DataFrame from the columns of another DataFrame the underlying array is reused, even when calling `Index.copy()`. Changes to the derived DataFrame affect the original Index. This also seems to break some internal invariants -- we experienced ipython kernel crashes when trying to display a DataFrame whose columns had been modified this way. ### Expected Behavior The original df should not be affected. ### Installed Versions [details omitted]",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": true,
+            "hasScreenshotsOrVisualContext": false,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "- [x] closes #63899 - [x] [Tests added and passed](https://pandas.pydata.org/pandas-docs/dev/development/contributing_codebase.html#writing-tests) if fixing a bug or adding a new feature - [x] Added an entry in the latest `doc/source/whatsnew/vX.X.X.rst` file if fixing a bug or adding a new feature. This fixes a few issues in the DataFrame constructor: - when a Series/Index object with EA was passed with the default `copy=False` path, no references were tracked. By passing `copy=False` as `consolidate` to `arrays_to_mgr` -> `create_block_manager_from_column_arrays`, it ensures to take a code path that extracts the references - for the same case as above, but for an explicit `copy=True`, we were currently also not actually copying (because the default consolidation only copies in case of 2d blocks, and thus does not copy 1d-only EAs) - specifically for 2d EAs (eg datetimetz) in a Series/Index, we were not tracking the refs because this case was currently handled separately if an `elif` case before the series/index block. Moved the extraction of the refs for Series/Index before the if/elif block. And expanded the existing test case to cover the different array types",
+      "changedFiles": {
+        "count": 4,
+        "files": [
+          {
+            "path": "doc/source/whatsnew/v3.0.1.rst",
+            "kind": "docs"
+          },
+          {
+            "path": "pandas/core/internals/construction.py",
+            "kind": "implementation"
+          },
+          {
+            "path": "pandas/tests/copy_view/test_constructors.py",
+            "kind": "test"
+          },
+          {
+            "path": "pandas/tests/indexing/test_iloc.py",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "failed",
+        "lintStatus": "unknown",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 43 public check/status item(s); raw logs were not fetched. Sample: cleanup: passed; publish: unknown; Install Extras - ${{ matrix.extra }}: unknown; Build wheel for ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}: unknown; Build sdist: unknown; Test Conda Forge Recipe: unknown; ubuntu-24.04 actions-312.yaml: passed; PANDAS_FUTURE_INFER_STRING=0: failed; ubuntu-24.04-arm actions-312.yaml: passed; Freethreading: passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "pandas-dev/pandas PR #63908 links to issue #63899 and includes public PR metadata. The issue has reproduction or steps. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "pandas/core/internals/construction.py",
+          "pandas/tests/copy_view/test_constructors.py",
+          "pandas/tests/indexing/test_iloc.py"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-009",
+      "status": "needs_review",
+      "classification": "clean_issue_fix",
+      "repository": "nodejs/node",
+      "prNumber": 64287,
+      "prUrl": "https://github.com/nodejs/node/pull/64287",
+      "prTitle": "vfs: follow symlinked dirs in recursive mkdir",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 64286,
+          "issueUrl": "https://github.com/nodejs/node/issues/64286",
+          "issueTitle": "vfs: recursive mkdir does not follow symlinked intermediate directories",
+          "issueBodySummary": "### Version main ### Platform [code block omitted] ### Subsystem vfs ### What steps will reproduce the bug? [code block omitted] ### How often does it reproduce? Is there a required condition? Always ### What is the expected behavior? Why is that the expected behavior? [code block omitted] Native recursive `mkdir` follows symlinked intermediate path components, so creating through `/link/subdir` should create `subdir` inside `/target`. ### What do you see instead? throws `ENOTDIR` The recursive mkdir loop checks the symlink entry itself with `entry.isDirectory()` instead of resolving the intermediate symlink to its directory target. ### Additional information fs equivalent [code block omitted] Output [code block omitted]",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": true,
+            "hasScreenshotsOrVisualContext": false,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "Fixes: https://github.com/nodejs/node/issues/64286 Fix recursive `mkdir` in `node:vfs` so symlinked intermediate directories are followed, matching native `fs` behavior. The change preserves the caller-facing return value for the first created path while creating directories in the resolved symlink target. --- Assisted-by: openai:gpt-5.5",
+      "changedFiles": {
+        "count": 2,
+        "files": [
+          {
+            "path": "lib/internal/vfs/providers/memory.js",
+            "kind": "implementation"
+          },
+          {
+            "path": "test/parallel/test-vfs-mkdir.js",
+            "kind": "test"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "passed",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 72 public check/status item(s); raw logs were not fetched. Sample: notable-change: unknown; fast-track: unknown; Notify on Review Wanted: unknown; stale-comment: unknown; fast-track: unknown; Notify on Review Wanted: unknown; notable-change: unknown; stale-comment: unknown; test-tarball-linux: passed; aarch64-linux: with shared openssl-3.6.2 / build: passed"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "nodejs/node PR #64287 links to issue #64286 and includes public PR metadata. The issue has reproduction or steps. Changed files include tests. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "missing tests",
+          "execution evidence",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "lib/internal/vfs/providers/memory.js",
+          "test/parallel/test-vfs-mkdir.js"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    },
+    {
+      "id": "blind-010",
+      "status": "needs_review",
+      "classification": "missing_tests_candidate",
+      "repository": "electron/electron",
+      "prNumber": 52248,
+      "prUrl": "https://github.com/electron/electron/pull/52248",
+      "prTitle": "fix: restore SelfKeepAlive in Menu",
+      "prState": "closed",
+      "merged": true,
+      "linkedIssues": [
+        {
+          "issueNumber": 52247,
+          "issueUrl": "https://github.com/electron/electron/issues/52247",
+          "issueTitle": "Replacing menu while open causes segfault on Windows",
+          "issueBodySummary": "### Preflight Checklist - [x] I have read the [Contributing Guidelines](https://github.com/electron/electron/blob/main/CONTRIBUTING.md) for this project. - [x] I agree to follow the [Code of Conduct](https://github.com/electron/electron/blob/main/CODE_OF_CONDUCT.md) that this project adheres to. - [x] I have searched the [issue tracker](https://www.github.com/electron/electron/issues) for a bug report that matches the one I want to file, without success. ### Electron Version 43.0.0 ### What operating system(s) are you using? Windows ### Operating System Version Windows 10.0.19045 (6466) ### What arch are you using? x64 ### Last Known Working Electron version 41.2.0 ### Does the issue also appear in Chromium / Google Chrome? No ### Expected Behavior Calling `Menu.setApplicationMenu()` while the user interacts with an open menu should not crash the app. ### Actual Behavior If the application menu is replaced while being displayed, and a GC triggers before the menu closes, the relevant `Menu` object will be garbage-collected, causing various kinds of segfaults in menu-related UI code. For example: [code block omitted] ### Testcase Gist URL https://gist.github.com/rf-figma/103e9c2d4919",
+          "issueSignals": {
+            "hasReproduction": true,
+            "hasExpectedActual": true,
+            "hasAcceptanceCriteria": true,
+            "hasScreenshotsOrVisualContext": true,
+            "isVague": false
+          }
+        }
+      ],
+      "prBodySummary": "#### Description of Change This fixes #52247 by ensuring that a `Menu` instance will stay alive as long as the menu is open, even if its owner has cleared or replaced it. It's a (very) partial revert of 9be03cbe54697, which removed this `keep_alive_` property because it was thought to be unnecessary. Since 9be03cbe54697 didn't need to change any tests I'm assuming there are none for this aspect of the system, but I'd definitely be open to suggestions about where they could be added. #### Checklist - [x] I have built and tested this change - [x] I have filled out the PR description - [x] `npm test` passes — there were a handful of unrelated-looking failures on my machine - [x] [PR release notes](https://github.com/electron/clerk/blob/main/README.md) describe the change in a way relevant to app developers, and are [capitalized, punctuated, and past tense](https://github.com/electron/clerk/blob/main/README.md#examples). #### Release Notes Notes: Fixed crash triggered by replacing an open application menu.",
+      "changedFiles": {
+        "count": 2,
+        "files": [
+          {
+            "path": "shell/browser/api/electron_api_menu.cc",
+            "kind": "implementation"
+          },
+          {
+            "path": "shell/browser/api/electron_api_menu.h",
+            "kind": "implementation"
+          }
+        ],
+        "capped": false
+      },
+      "checksSummary": {
+        "available": true,
+        "testBuildStatus": "passed",
+        "lintStatus": "passed",
+        "typecheckStatus": "unknown",
+        "notes": "Observed 101 public check/status item(s); raw logs were not fetched. Sample: deprecation-review/complete label added: unknown; ai-pr label added: unknown; backport/requested label added: unknown; Semver Label Enforcement: passed; deprecation-review/complete label added: unknown; ai-pr label added: unknown; backport/requested label added: unknown; deprecation-review/complete label added: unknown; ai-pr label added: unknown; backport/requested label added: unknown"
+      },
+      "agentProofEvaluationUse": {
+        "whyUseful": "electron/electron PR #52248 links to issue #52247 and includes public PR metadata. The issue has reproduction or steps. Changed files do not clearly include tests, useful for missing-proof behavior. Public check/status metadata exists.",
+        "expectedSignalsToCheck": [
+          "requirement extraction",
+          "issue-to-evidence mapping",
+          "execution evidence",
+          "visual proof",
+          "false blocker risk"
+        ],
+        "manualLabelNeeded": true
+      },
+      "manualLabelTemplate": {
+        "requirementOutcome": "not_labeled",
+        "missingTargetedTestEvidence": "not_labeled",
+        "scopeCreep": "not_labeled",
+        "topFilesToInspect": [
+          "shell/browser/api/electron_api_menu.cc",
+          "shell/browser/api/electron_api_menu.h"
+        ],
+        "falseBlockerRisk": "not_labeled",
+        "humanNotes": ""
+      },
+      "rejectionReason": null
+    }
+  ],
+  "summary": {
+    "candidateCount": 10,
+    "repoDistribution": {
+      "eslint/eslint": 1,
+      "prettier/prettier": 1,
+      "microsoft/playwright": 1,
+      "rollup/rollup": 1,
+      "webpack/webpack": 1,
+      "axios/axios": 1,
+      "pytest-dev/pytest": 1,
+      "pandas-dev/pandas": 1,
+      "nodejs/node": 1,
+      "electron/electron": 1
+    },
+    "classificationCounts": {
+      "clean_issue_fix": 5,
+      "visual_proof_candidate": 2,
+      "large_pr_capped_evidence_candidate": 1,
+      "failed_or_unclear_ci_candidate": 1,
+      "missing_tests_candidate": 1
+    },
+    "mergedCount": 10,
+    "unmergedCount": 0
+  }
+}

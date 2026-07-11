@@ -458,7 +458,6 @@ function hasRequirementEvidenceLead(): SentinelCheckBuilder {
     "requirement-evidence-lead",
     "Review priority asks humans to interpret requirement evidence",
     report.reviewPriority.some((item) =>
-      item.path === "Requirement evidence" &&
       /human interpretation|partial evidence|no matching implementation/i.test(item.reason)
     ),
     `leads=${report.reviewPriority.length}`

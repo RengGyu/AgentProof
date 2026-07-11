@@ -1,6 +1,7 @@
 import {
   hasPassingEvidenceStatusPrefix,
-  isExecutionEvidenceSignal
+  isExecutionEvidenceSignal,
+  isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import type { CheckStatus, EvidenceItem } from "./types";
 
@@ -94,7 +95,10 @@ function displaySummaryWithoutAnnotations(summary: string): string {
 
 export function isExecutionEvidenceItem(item: EvidenceItem): boolean {
   return (item.kind === "check" || item.kind === "log") &&
-    isExecutionEvidenceSignal(item.label, item.summary, item.locator);
+    (
+      isExecutionEvidenceSignal(item.label, item.summary, item.locator) ||
+      isFailedAmbiguousActionsExecutionSignal(item.label, statusFromEvidenceSummary(item.summary), item.locator, item.summary)
+    );
 }
 
 export function statusFromEvidenceSummary(summary: string): CheckStatus {

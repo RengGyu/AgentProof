@@ -1,0 +1,2674 @@
+{
+  "privacy": "external-pr-proofgraph-rerun-results-summary-only",
+  "status": "proofgraph_rerun_reports_need_human_labeling",
+  "generatedAt": "2026-07-09T02:11:18.790Z",
+  "candidateSource": "eval/external-pr-blind-candidates.json",
+  "analysisBaseUrl": "http://127.0.0.1:3001",
+  "usedTransientGithubToken": true,
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokensStored": true,
+    "noRawFullLogs": true,
+    "noRawDiffs": true,
+    "noPrivateUserData": true,
+    "noRawPrompts": true,
+    "correctnessLabelsCompleted": false,
+    "notes": [
+      "Existing blind set rerun after reviewer-signal proofGraph evidence classification changes.",
+      "Before/after fields are summary-only and compare against the previous summary result file when present.",
+      "Results are AgentProof output summaries for human review only.",
+      "AgentProof output is not treated as truth.",
+      "Manual labels remain incomplete and must not be inferred from these results.",
+      "The full report is processed in memory only; output files store summary-only fields."
+    ]
+  },
+  "results": [
+    {
+      "candidateId": "blind-001",
+      "repository": "eslint/eslint",
+      "prNumber": 20958,
+      "prUrl": "https://github.com/eslint/eslint/pull/20958",
+      "classification": "clean_issue_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "lib/rules/use-isnan.js"
+        ],
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 0,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "lib/rules/use-isnan.js"
+          ],
+          "after": [
+            "lib/rules/use-isnan.js"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 29,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 18,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 66,
+        "confidence": 0.62,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 3,
+          "partial": 5,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "lib/rules/use-isnan.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 5 partial requirement(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 4,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue eslint/eslint#20950: Bug: use-isnan false positive on shadowed NaN/Number",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Environment",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "Node version: v24.15.0",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "Local ESLint version: v10.4.1",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "Global ESLint version: Not installed",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 1,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "Operating System: Windows",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 2,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "### What parser are you using?",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "Default (Espree)",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/rules/use-isnan.js",
+              "tests/lib/rules/use-isnan.js"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": false
+      }
+    },
+    {
+      "candidateId": "blind-002",
+      "repository": "prettier/prettier",
+      "prNumber": 19565,
+      "prUrl": "https://github.com/prettier/prettier/pull/19565",
+      "classification": "clean_issue_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "changelog_unreleased/typescript/19565.md",
+          "src/language-js/comments/can-attach-comment.js"
+        ],
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 1,
+          "after": 1
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "changelog_unreleased/typescript/19565.md",
+            "src/language-js/comments/can-attach-comment.js"
+          ],
+          "after": [
+            "changelog_unreleased/typescript/19565.md",
+            "src/language-js/comments/can-attach-comment.js"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 16,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 32,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 46,
+        "confidence": 0.43,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 5,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "changelog_unreleased/typescript/19565.md",
+          "src/language-js/comments/can-attach-comment.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 5 partial requirement(s), 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 5,
+          "requirementsWithImplementation": 5,
+          "requirementsWithTargetedTests": 5,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue prettier/prettier#19564: prettier errors on comment in export declaration",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog_unreleased/typescript/19565.md",
+              "src/language-js/comments/can-attach-comment.js",
+              "tests/format/typescript/import-export/__snapshots__/format.test.js.snap",
+              "tests/format/typescript/import-export/type-modifier.ts"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "*Prettier v3.9.4**",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog_unreleased/typescript/19565.md",
+              "src/language-js/comments/can-attach-comment.js",
+              "tests/format/typescript/import-export/__snapshots__/format.test.js.snap",
+              "tests/format/typescript/import-export/type-modifier.ts"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "[Playground link](https://prettier.io/playground/#N4Igxg9gdgLgprEAuEcAeAHCAnGACYPGATwzjwHoAqAMwgjyorwBU8BfAbhABoQIMMAJbQAzslABDbNggB3AArSE4lJIA2cycXF8ARtklgA1nB",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog_unreleased/typescript/19565.md",
+              "tests/format/typescript/import-export/__snapshots__/format.test.js.snap",
+              "tests/format/typescript/import-export/type-modifier.ts"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "*Second Output:**",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog_unreleased/typescript/19565.md",
+              "src/language-js/comments/can-attach-comment.js",
+              "tests/format/typescript/import-export/__snapshots__/format.test.js.snap",
+              "tests/format/typescript/import-export/type-modifier.ts"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "*Expected output:**",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog_unreleased/typescript/19565.md",
+              "src/language-js/comments/can-attach-comment.js",
+              "tests/format/typescript/import-export/__snapshots__/format.test.js.snap",
+              "tests/format/typescript/import-export/type-modifier.ts"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": false
+      }
+    },
+    {
+      "candidateId": "blind-003",
+      "repository": "microsoft/playwright",
+      "prNumber": 41681,
+      "prUrl": "https://github.com/microsoft/playwright/pull/41681",
+      "classification": "clean_issue_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "packages/playwright/src/common/config.ts"
+        ],
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements have only partial evidence."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "high",
+          "after": "high"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 0,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "packages/playwright/src/common/config.ts"
+          ],
+          "after": [
+            "packages/playwright/src/common/config.ts"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": false,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 28,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 32,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 48,
+        "confidence": 0.44,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "packages/playwright/src/common/config.ts"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 4 partial requirement(s), 4 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 4,
+          "requirementsWithImplementation": 3,
+          "requirementsWithTargetedTests": 4,
+          "requirementsWithExecution": 1,
+          "requirementsWithGaps": 4,
+          "gapCount": 4
+        },
+        "gapKinds": {
+          "self_reported_test_gap": 3,
+          "missing_implementation": 1
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": true,
+          "usedInTopRisks": true,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "The `%` branch of `resolveWorkers` skipped the NaN validation the numeric branch performs, so `--workers=abc%` (or an unset env var expanding to `--workers=%`) ",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "packages/playwright/src/common/config.ts",
+              "tests/playwright-test/config.spec.ts"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "The dispatcher then allocated zero worker slots, ran no tests, and exited 0 — silent success while nothing ran",
+            "status": "partial",
+            "confidence": 0.52,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "packages/playwright/src/common/config.ts",
+              "tests/playwright-test/config.spec.ts"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "Apply the same validation to the percentage branch and add a regression test",
+            "status": "partial",
+            "confidence": 0.52,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "tests/playwright-test/config.spec.ts"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "Fixes https://github.com/microsoft/playwright/issues/41679",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 8,
+            "gapKinds": [
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "packages/playwright/src/common/config.ts",
+              "tests/playwright-test/config.spec.ts"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "blind-004",
+      "repository": "rollup/rollup",
+      "prNumber": 6403,
+      "prUrl": "https://github.com/rollup/rollup/pull/6403",
+      "classification": "visual_proof_candidate",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+          "src/utils/addons.ts"
+        ],
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Potential scope creep in changed files."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 0,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+            "src/utils/addons.ts"
+          ],
+          "after": [
+            "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+            "src/utils/addons.ts"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 53,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 8,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 46,
+        "confidence": 0.43,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+          "src/utils/addons.ts"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), 3 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 7,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 3,
+          "gapCount": 3
+        },
+        "gapKinds": {
+          "missing_implementation": 1,
+          "visual_proof_missing": 2
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue rollup/rollup#6401: always one LF above plugin added banner",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/es.js"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Rollup Version",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "src/utils/addons.ts",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "### Operating System (or Browser)",
+            "status": "partial",
+            "confidence": 0.6,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "src/utils/addons.ts",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "node and deno and browser",
+            "status": "partial",
+            "confidence": 0.6,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "src/utils/addons.ts",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "### Node Version (if applicable)",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "src/utils/addons.ts",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "### Link To Reproduction",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "src/utils/addons.ts",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "### Expected Behaviour",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "src/utils/addons.ts",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "### Actual Behaviour",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "src/utils/addons.ts",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_config.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/amd.js",
+              "test/form/samples/addon-functions-no-extra-leading-line-feed/_expected/cjs.js"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "blind-005",
+      "repository": "webpack/webpack",
+      "prNumber": 21340,
+      "prUrl": "https://github.com/webpack/webpack/pull/21340",
+      "classification": "large_pr_capped_evidence_candidate",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "missingTestCount": 11,
+        "firstReviewPriorityFiles": [
+          ".changeset/amd-async-external-type.md",
+          "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+          "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+          "schemas/plugins/container/ContainerReferencePlugin.check.js",
+          "schemas/plugins/container/ContainerReferencePlugin.json",
+          "schemas/plugins/container/ModuleFederationPlugin.check.js"
+        ],
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "high",
+          "after": "high"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 11,
+          "after": 11
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            ".changeset/amd-async-external-type.md",
+            "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+            "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+            "schemas/plugins/container/ContainerReferencePlugin.check.js",
+            "schemas/plugins/container/ContainerReferencePlugin.json",
+            "schemas/plugins/container/ModuleFederationPlugin.check.js"
+          ],
+          "after": [
+            ".changeset/amd-async-external-type.md",
+            "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+            "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+            "schemas/plugins/container/ContainerReferencePlugin.check.js",
+            "schemas/plugins/container/ContainerReferencePlugin.json",
+            "schemas/plugins/container/ModuleFederationPlugin.check.js"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 44,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 29,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 21,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 1,
+          "partial": 7,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 11,
+        "firstReviewPriorityFiles": [
+          ".changeset/amd-async-external-type.md",
+          "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+          "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+          "schemas/plugins/container/ContainerReferencePlugin.check.js",
+          "schemas/plugins/container/ContainerReferencePlugin.json",
+          "schemas/plugins/container/ModuleFederationPlugin.check.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 7 partial requirement(s), 11 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "GitHub did not return patch text for 1 changed file(s); file metadata was collected, but diff evidence is unavailable for those files."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 1,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue webpack/webpack#8079: AMD externals fail silently if libraryTarget is not 'amd'",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 8,
+            "targetedTestEvidenceCount": 7,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              ".changeset/amd-async-external-type.md",
+              ".changeset/missing-external-configuration-error.md",
+              "declarations/WebpackOptions.d.ts",
+              "declarations/plugins/container/ContainerReferencePlugin.d.ts"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "*What is the current behavior?**",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 8,
+            "targetedTestEvidenceCount": 7,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              ".changeset/amd-async-external-type.md",
+              ".changeset/missing-external-configuration-error.md",
+              "declarations/WebpackOptions.d.ts",
+              "declarations/plugins/container/ContainerReferencePlugin.d.ts"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "External dependencies that are only available via AMD are only supported if the output libraryTarget is also 'amd'",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 8,
+            "targetedTestEvidenceCount": 7,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              ".changeset/amd-async-external-type.md",
+              ".changeset/missing-external-configuration-error.md",
+              "declarations/WebpackOptions.d.ts",
+              "declarations/plugins/container/ContainerReferencePlugin.d.ts"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "This is rather surprising, and not at all documented",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 8,
+            "targetedTestEvidenceCount": 7,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "declarations/WebpackOptions.d.ts",
+              "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+              "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+              "lib/ExternalModule.js"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "*If the current behavior is a bug, please provide the steps to reproduce.**",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 7,
+            "targetedTestEvidenceCount": 7,
+            "executionEvidenceCount": 8,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "declarations/plugins/container/ModuleFederationPlugin.d.ts",
+              "lib/ExternalModule.js",
+              "lib/errors/EnvironmentNotSupportAsyncWarning.js",
+              "schemas/plugins/container/ExternalsType.check.js"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "Using this Webpack config:",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 8,
+            "targetedTestEvidenceCount": 7,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              ".changeset/amd-async-external-type.md",
+              ".changeset/missing-external-configuration-error.md",
+              "declarations/WebpackOptions.d.ts",
+              "declarations/plugins/container/ContainerReferencePlugin.d.ts"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "Transpiling the code `require('amd-module')` results in a dependency like this being included in the output:",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 8,
+            "targetedTestEvidenceCount": 8,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              ".changeset/amd-async-external-type.md",
+              "declarations/WebpackOptions.d.ts",
+              "declarations/plugins/container/ContainerReferencePlugin.d.ts",
+              "declarations/plugins/container/ModuleFederationPlugin.d.ts"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "*What is the expected behavior?**",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 8,
+            "targetedTestEvidenceCount": 7,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              ".changeset/amd-async-external-type.md",
+              ".changeset/missing-external-configuration-error.md",
+              "declarations/WebpackOptions.d.ts",
+              "declarations/plugins/container/ContainerReferencePlugin.d.ts"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": false
+      }
+    },
+    {
+      "candidateId": "blind-006",
+      "repository": "axios/axios",
+      "prNumber": 11040,
+      "prUrl": "https://github.com/axios/axios/pull/11040",
+      "classification": "visual_proof_candidate",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "PRE_RELEASE_CHANGELOG.md",
+          "lib/helpers/progressEventReducer.js"
+        ],
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 1,
+          "after": 1
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "PRE_RELEASE_CHANGELOG.md",
+            "lib/helpers/progressEventReducer.js"
+          ],
+          "after": [
+            "PRE_RELEASE_CHANGELOG.md",
+            "lib/helpers/progressEventReducer.js"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 32,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 6,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 46,
+        "confidence": 0.43,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "PRE_RELEASE_CHANGELOG.md",
+          "lib/helpers/progressEventReducer.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), 1 missing targeted test lead(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 1,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue axios/axios#6878: onDownloadProgress occurred after request solved",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "lib/adapters/http.js",
+              "lib/helpers/progressEventReducer.js",
+              "tests/unit/adapters/http.test.js"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Describe the bug",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "lib/adapters/http.js",
+              "lib/helpers/progressEventReducer.js",
+              "tests/unit/adapters/http.test.js"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "env: node v22",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "lib/adapters/http.js",
+              "lib/helpers/progressEventReducer.js",
+              "tests/unit/adapters/http.test.js"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "Starting from axios 1.7.3 (https://github.com/axios/axios/pull/6518), in node environment `onDownloadProgress` maybe invoke after request solved",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 8,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "lib/adapters/http.js",
+              "tests/unit/adapters/http.test.js"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "It may be affected by the throttling method",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "lib/adapters/http.js",
+              "lib/helpers/progressEventReducer.js",
+              "tests/unit/adapters/http.test.js"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "Although the last task is finally executed through flush function, the execution order of queueMicroTask is later than response.data.on('close', callback)",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "lib/adapters/http.js",
+              "tests/unit/adapters/http.test.js"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "### To Reproduce",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "lib/adapters/http.js",
+              "lib/helpers/progressEventReducer.js",
+              "tests/unit/adapters/http.test.js"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "If the frequency of receiving file stream chunks is bigger than 3, this phenomenon will be triggered",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "PRE_RELEASE_CHANGELOG.md",
+              "tests/unit/adapters/http.test.js"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": false
+      }
+    },
+    {
+      "candidateId": "blind-007",
+      "repository": "pytest-dev/pytest",
+      "prNumber": 14639,
+      "prUrl": "https://github.com/pytest-dev/pytest/pull/14639",
+      "classification": "clean_issue_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "changelog/14637.bugfix.rst",
+          "AUTHORS",
+          "src/_pytest/assertion/compare_text.py"
+        ],
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "high",
+          "after": "high"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 1,
+          "after": 1
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "changelog/14637.bugfix.rst",
+            "AUTHORS",
+            "src/_pytest/assertion/compare_text.py"
+          ],
+          "after": [
+            "changelog/14637.bugfix.rst",
+            "AUTHORS",
+            "src/_pytest/assertion/compare_text.py"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 45,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 3,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 41,
+        "confidence": 0.39,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "changelog/14637.bugfix.rst",
+          "AUTHORS",
+          "src/_pytest/assertion/compare_text.py"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), 1 missing targeted test lead(s), 2 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 6,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 2,
+          "gapCount": 2
+        },
+        "gapKinds": {
+          "missing_targeted_test": 2
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": true,
+          "usedInTopRisks": true,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue pytest-dev/pytest#14637: assertion diff: trailing character skip fails when first characters differ (off-by-one in `left[-i]` when `i=0`)",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "Was looking at assertion diff output and noticed the trailing skip optimization wasn't kicking in when the compared strings differed at the start",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "Traced it to `_diff_text` in `compare_text.py` line 62:",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "`-0 == 0` in Python, so `left[-0]` is actually `left[0]` — the first character, not the last",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "When the first chars differ, the loop breaks at `i=0`, `i > 42` is False, and the trailing identical characters never get skipped",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "Dozens of them, just sitting there in the diff output",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "Fix: loop from `i=1` instead of `i=0`:",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test"
+            ],
+            "gapSeverities": [
+              "high"
+            ],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "The existing test `test_text_skipping_trailing` doesn't catch this because both test strings start with `'a'`, so the accidental `left[-0]` comparison happens t",
+            "status": "partial",
+            "confidence": 0.52,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "changelog/14637.bugfix.rst",
+              "src/_pytest/assertion/compare_text.py",
+              "testing/test_assertion.py"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "blind-008",
+      "repository": "pandas-dev/pandas",
+      "prNumber": 63908,
+      "prUrl": "https://github.com/pandas-dev/pandas/pull/63908",
+      "classification": "failed_or_unclear_ci_candidate",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "blocker",
+        "testBuildStatus": "failed",
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Test/build checks",
+          "Static or merge-gate checks",
+          "doc/source/whatsnew/v3.0.1.rst"
+        ],
+        "topRisks": [
+          "Test/build execution failed, so the PR is not proven ready.",
+          "Static or merge-gate checks failed outside test/build proof.",
+          "Some requirements have only partial evidence."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "blocker",
+          "after": "blocker"
+        },
+        "testBuildStatus": {
+          "before": "failed",
+          "after": "failed"
+        },
+        "missingTestCount": {
+          "before": 0,
+          "after": 0
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "Test/build checks",
+            "Static or merge-gate checks",
+            "doc/source/whatsnew/v3.0.1.rst"
+          ],
+          "after": [
+            "Test/build checks",
+            "Static or merge-gate checks",
+            "doc/source/whatsnew/v3.0.1.rst"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": true
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": true,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": true,
+        "executionEvidenceCount": 10,
+        "failedExecutionEvidenceCount": 1,
+        "nonExecutionStatusCount": 37,
+        "failedNonExecutionStatusCount": 1
+      },
+      "reportSummary": {
+        "priority": "blocker",
+        "evidenceCoverage": 27,
+        "confidence": 0.25,
+        "testBuildStatus": "failed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 8,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Test/build execution failed, so the PR is not proven ready.",
+          "Static or merge-gate checks failed outside test/build proof.",
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Test/build checks",
+          "Static or merge-gate checks",
+          "doc/source/whatsnew/v3.0.1.rst"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 8 partial requirement(s), failing test/build evidence, 16 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub check annotation metadata was collected; raw annotation details and raw log archives were not fetched or stored.",
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 8,
+          "requirementsWithTargetedTests": 8,
+          "requirementsWithExecution": 8,
+          "requirementsWithGaps": 8,
+          "gapCount": 16
+        },
+        "gapKinds": {
+          "failed_execution": 8,
+          "visual_proof_missing": 8
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": true,
+          "usedInTopRisks": true,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue pandas-dev/pandas#63899: BUG: DataFrame derived from Index can mutate the Index",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Pandas version checks",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "[x] I have checked that this issue has not already been reported",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "[x] I have confirmed this bug exists on the [latest version](https://pandas.pydata.org/docs/whatsnew/index.html) of pandas",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "[x] I have confirmed this bug exists on the [main branch](https://pandas.pydata.org/docs/dev/getting_started/install.html#installing-the-development-version-of-",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "### Reproducible Example",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "### Issue Description",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "When creating a DataFrame from the columns of another DataFrame the underlying array is reused, even when calling `Index.copy()`",
+            "status": "partial",
+            "confidence": 0.45,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 2,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "failed_execution",
+              "visual_proof_missing"
+            ],
+            "gapSeverities": [
+              "blocker",
+              "medium"
+            ],
+            "firstFiles": [
+              "doc/source/whatsnew/v3.0.1.rst",
+              "pandas/core/internals/construction.py",
+              "pandas/tests/copy_view/test_constructors.py",
+              "pandas/tests/indexing/test_iloc.py"
+            ]
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "blind-009",
+      "repository": "nodejs/node",
+      "prNumber": 64287,
+      "prUrl": "https://github.com/nodejs/node/pull/64287",
+      "classification": "clean_issue_fix",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "test/parallel/test-vfs-mkdir.js",
+          "lib/internal/vfs/providers/memory.js"
+        ],
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "medium",
+          "after": "medium"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 1,
+          "after": 1
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "test/parallel/test-vfs-mkdir.js",
+            "lib/internal/vfs/providers/memory.js"
+          ],
+          "after": [
+            "test/parallel/test-vfs-mkdir.js",
+            "lib/internal/vfs/providers/memory.js"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": false,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 58,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 26,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 34,
+        "confidence": 0.3,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 2
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "test/parallel/test-vfs-mkdir.js",
+          "lib/internal/vfs/providers/memory.js"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 4 partial requirement(s), 2 unclear requirement(s), 1 missing targeted test lead(s), 4 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 6,
+          "requirementsWithImplementation": 4,
+          "requirementsWithTargetedTests": 3,
+          "requirementsWithExecution": 1,
+          "requirementsWithGaps": 2,
+          "gapCount": 4
+        },
+        "gapKinds": {
+          "missing_implementation": 2,
+          "ambiguous_requirement": 2
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Fixes: https://github.com/nodejs/node/issues/64286",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 8,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "Fix recursive `mkdir` in `node:vfs` so symlinked intermediate",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/internal/vfs/providers/memory.js",
+              "test/parallel/test-vfs-mkdir.js"
+            ]
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "directories are followed, matching native `fs` behavior",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/internal/vfs/providers/memory.js",
+              "test/parallel/test-vfs-mkdir.js"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "The change preserves the caller-facing return value for the first",
+            "status": "partial",
+            "confidence": 0.48,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/internal/vfs/providers/memory.js",
+              "test/parallel/test-vfs-mkdir.js"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "created path while creating directories in the resolved symlink target",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "lib/internal/vfs/providers/memory.js",
+              "test/parallel/test-vfs-mkdir.js"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "Assisted-by: openai:gpt-5.5",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    },
+    {
+      "candidateId": "blind-010",
+      "repository": "electron/electron",
+      "prNumber": 52248,
+      "prUrl": "https://github.com/electron/electron/pull/52248",
+      "classification": "missing_tests_candidate",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousSummary": {
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "missingTestCount": 2,
+        "firstReviewPriorityFiles": [
+          "shell/browser/api/electron_api_menu.cc",
+          "shell/browser/api/electron_api_menu.h"
+        ],
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ]
+      },
+      "beforeAfter": {
+        "priority": {
+          "before": "high",
+          "after": "high"
+        },
+        "testBuildStatus": {
+          "before": "passed",
+          "after": "passed"
+        },
+        "missingTestCount": {
+          "before": 2,
+          "after": 2
+        },
+        "firstReviewPriorityFiles": {
+          "before": [
+            "shell/browser/api/electron_api_menu.cc",
+            "shell/browser/api/electron_api_menu.h"
+          ],
+          "after": [
+            "shell/browser/api/electron_api_menu.cc",
+            "shell/browser/api/electron_api_menu.h"
+          ]
+        },
+        "topRisksChanged": false,
+        "limitationsChanged": false
+      },
+      "diagnosticMetadata": {
+        "issueFetched": true,
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowRunsFetched": true,
+        "commitStatusesFetched": false,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": false,
+        "nonExecutionStatusesFound": true,
+        "failedNonExecutionStatusesFound": false,
+        "executionEvidenceCount": 44,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 17,
+        "failedNonExecutionStatusCount": 0
+      },
+      "reportSummary": {
+        "priority": "high",
+        "evidenceCoverage": 32,
+        "confidence": 0.27,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 6,
+          "missing": 0,
+          "unclear": 2
+        },
+        "topRisks": [
+          "Requirement-level proof graph found missing targeted proof.",
+          "Some requirements are too vague or weakly evidenced.",
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 2,
+        "firstReviewPriorityFiles": [
+          "shell/browser/api/electron_api_menu.cc",
+          "shell/browser/api/electron_api_menu.h"
+        ],
+        "rePromptSummary": "Summary-only: asks the agent to address 6 partial requirement(s), 2 unclear requirement(s), 2 missing targeted test lead(s), 16 proofGraph gap signal(s), keep scope tied to the original request, and return concise evidence for reviewer verification.",
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "At least one requirement needs human interpretation."
+        ]
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "version": 1,
+        "summary": {
+          "requirementCount": 8,
+          "requirementsWithImplementation": 6,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 4,
+          "requirementsWithGaps": 8,
+          "gapCount": 16
+        },
+        "gapKinds": {
+          "missing_targeted_test": 6,
+          "self_reported_test_gap": 6,
+          "missing_implementation": 2,
+          "ambiguous_requirement": 2
+        },
+        "proofGraphUsedInJudgment": {
+          "graphPresent": true,
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": true,
+          "usedInTopRisks": true,
+          "usedInReprompt": false
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "requirementText": "Linked issue electron/electron#52247: Replacing menu while open causes segfault on Windows",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test",
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high",
+              "high"
+            ],
+            "firstFiles": [
+              "shell/browser/api/electron_api_menu.cc",
+              "shell/browser/api/electron_api_menu.h"
+            ]
+          },
+          {
+            "requirementId": "req_2",
+            "requirementText": "### Preflight Checklist",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 8,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          },
+          {
+            "requirementId": "req_3",
+            "requirementText": "[x] I have read the [Contributing Guidelines](https://github.com/electron/electron/blob/main/CONTRIBUTING.md) for this project",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test",
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high",
+              "high"
+            ],
+            "firstFiles": [
+              "shell/browser/api/electron_api_menu.cc",
+              "shell/browser/api/electron_api_menu.h"
+            ]
+          },
+          {
+            "requirementId": "req_4",
+            "requirementText": "[x] I agree to follow the [Code of Conduct](https://github.com/electron/electron/blob/main/CODE_OF_CONDUCT.md) that this project adheres to",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test",
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high",
+              "high"
+            ],
+            "firstFiles": [
+              "shell/browser/api/electron_api_menu.cc",
+              "shell/browser/api/electron_api_menu.h"
+            ]
+          },
+          {
+            "requirementId": "req_5",
+            "requirementText": "[x] I have searched the [issue tracker](https://www.github.com/electron/electron/issues) for a bug report that matches the one I want to file, without success",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test",
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high",
+              "high"
+            ],
+            "firstFiles": [
+              "shell/browser/api/electron_api_menu.cc",
+              "shell/browser/api/electron_api_menu.h"
+            ]
+          },
+          {
+            "requirementId": "req_6",
+            "requirementText": "### Electron Version",
+            "status": "met",
+            "confidence": 0.85,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 8,
+            "gapKinds": [
+              "missing_targeted_test",
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high",
+              "high"
+            ],
+            "firstFiles": [
+              "shell/browser/api/electron_api_menu.cc",
+              "shell/browser/api/electron_api_menu.h"
+            ]
+          },
+          {
+            "requirementId": "req_7",
+            "requirementText": "### What operating system(s) are you using?",
+            "status": "partial",
+            "confidence": 0.5,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 8,
+            "gapKinds": [
+              "missing_targeted_test",
+              "self_reported_test_gap"
+            ],
+            "gapSeverities": [
+              "high",
+              "high"
+            ],
+            "firstFiles": [
+              "shell/browser/api/electron_api_menu.h",
+              "shell/browser/api/electron_api_menu.cc"
+            ]
+          },
+          {
+            "requirementId": "req_8",
+            "requirementText": "### Operating System Version",
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 8,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": []
+          }
+        ]
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "obviousProblem": null,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "proofGraphUsedInJudgment": true
+      }
+    }
+  ],
+  "summary": {
+    "completedCount": 10,
+    "failedCount": 0,
+    "skippedCount": 0,
+    "testBuildStatusCounts": {
+      "passed": 9,
+      "failed": 1
+    },
+    "priorityCounts": {
+      "medium": 5,
+      "high": 4,
+      "blocker": 1
+    },
+    "possibleFalsePassCount": 0,
+    "possibleFalseBlockerCount": 0,
+    "proofGraphUsedCount": 6
+  }
+}

@@ -24,33 +24,43 @@ export function extractSupportedIssueReferences(
   repository: GitHubRepositoryRef,
   maxReferences = 3
 ): SupportedIssueReferenceExtraction {
-  const allReferences: SupportedIssueReference[] = [];
+  const searchableText = stripIssueReferenceExamples(text);
+  const candidateReferences: Array<SupportedIssueReference & { placeholder: boolean }> = [];
 
-  for (const match of text.matchAll(SUPPORTED_CLOSING_KEYWORD_REF)) {
+  for (const match of searchableText.matchAll(SUPPORTED_CLOSING_KEYWORD_REF)) {
     const qualified = match.groups?.qualified;
     const number = Number(match.groups?.qualifiedNumber ?? match.groups?.localNumber);
     const parsed = qualified ? parseQualifiedRepository(qualified) : repository;
 
     if (parsed && Number.isInteger(number) && number > 0) {
-      allReferences.push({ ...parsed, number });
+      candidateReferences.push({
+        ...parsed,
+        number,
+        placeholder: isPlaceholderIssueReferenceLine(searchableText, match.index ?? 0, match[0])
+      });
     }
   }
 
-  for (const match of text.matchAll(SUPPORTED_QUALIFIED_REF)) {
+  for (const match of searchableText.matchAll(SUPPORTED_QUALIFIED_REF)) {
     const parsed = parseQualifiedRepository(match.groups?.qualified ?? "");
     const number = Number(match.groups?.number);
 
     if (parsed && Number.isInteger(number) && number > 0) {
-      allReferences.push({ ...parsed, number });
+      candidateReferences.push({
+        ...parsed,
+        number,
+        placeholder: isPlaceholderIssueReferenceLine(searchableText, match.index ?? 0, match[0])
+      });
     }
   }
 
-  const unique = uniqueIssueReferences(allReferences);
+  const uniqueCandidates = uniqueIssueReferenceCandidates(candidateReferences);
+  const realReferences = uniqueCandidates.filter((reference) => !reference.placeholder);
 
   return {
-    references: unique.slice(0, maxReferences),
-    totalSupportedReferences: unique.length,
-    capped: unique.length > maxReferences
+    references: realReferences.slice(0, maxReferences),
+    totalSupportedReferences: realReferences.length,
+    capped: realReferences.length > maxReferences
   };
 }
 
@@ -68,9 +78,9 @@ function parseQualifiedRepository(value: string): GitHubRepositoryRef | null {
   return { owner, repo };
 }
 
-function uniqueIssueReferences(references: SupportedIssueReference[]): SupportedIssueReference[] {
+function uniqueIssueReferenceCandidates<T extends SupportedIssueReference>(references: T[]): T[] {
   const seen = new Set<string>();
-  const unique: SupportedIssueReference[] = [];
+  const unique: T[] = [];
 
   for (const reference of references) {
     const key = formatIssueReference(reference).toLowerCase();
@@ -84,4 +94,32 @@ function uniqueIssueReferences(references: SupportedIssueReference[]): Supported
   }
 
   return unique;
+}
+
+function stripIssueReferenceExamples(text: string): string {
+  return text
+    .replace(/<!--[\s\S]*?-->/g, "\n")
+    .replace(/```[\s\S]*?```/g, "\n");
+}
+
+function isPlaceholderIssueReferenceLine(text: string, index: number, matchText: string): boolean {
+  const lineStart = text.lastIndexOf("\n", Math.max(0, index - 1)) + 1;
+  const lineEndIndex = text.indexOf("\n", index);
+  const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+  const line = text.slice(lineStart, lineEnd).trim();
+  const normalizedLine = line
+    .replace(/^[-*]\s*/, "")
+    .replace(/^#+\s*/, "")
+    .trim();
+  const normalizedMatch = matchText.trim().replace(/\s+/g, " ");
+  const standaloneClosingExample = new RegExp(
+    `^(?:example:\\s*)?${escapeRegExp(normalizedMatch)}\\.?$`,
+    "i"
+  ).test(normalizedLine);
+
+  return standaloneClosingExample && /#123\b/.test(normalizedMatch);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

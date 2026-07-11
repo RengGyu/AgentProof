@@ -1,0 +1,194 @@
+{
+  "privacy": "external-pr-roleproof-new-blind-candidates-public-metadata-only",
+  "status": "candidate_pack_needs_human_review",
+  "generatedAt": "2026-07-09T08:56:07.544Z",
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokens": true,
+    "noRawFullLogs": true,
+    "noRawDiffs": true,
+    "noPrivateUserData": true,
+    "notes": [
+      "Candidate data is public GitHub metadata only.",
+      "Manual labels remain separate and incomplete.",
+      "Do not use AgentProof output as truth."
+    ]
+  },
+  "candidates": [
+    {
+      "id": "roleproof-blind-001",
+      "repository": "sveltejs/svelte",
+      "prNumber": 18388,
+      "prUrl": "https://github.com/sveltejs/svelte/pull/18388",
+      "prTitle": "fix: add bigint to Primitive type for $state.snapshot",
+      "selectionReason": "TypeScript/Svelte clean bug fix with linked issue and problem summary.",
+      "expectedStressors": [
+        "clean fix",
+        "type-level requirement mapping",
+        "test evidence separation"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-002",
+      "repository": "sveltejs/svelte",
+      "prNumber": 18425,
+      "prUrl": "https://github.com/sveltejs/svelte/pull/18425",
+      "prTitle": "fix: make SvelteURLSearchParams notifications accurate",
+      "selectionReason": "Runtime reactivity bug with multiple behavior claims.",
+      "expectedStressors": [
+        "regression",
+        "multi-requirement extraction",
+        "targeted tests"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-003",
+      "repository": "tailwindlabs/tailwindcss",
+      "prNumber": 20310,
+      "prUrl": "https://github.com/tailwindlabs/tailwindcss/pull/20310",
+      "prTitle": "Ensure @tailwindcss/postcss rebuilds when input CSS changes but mtime is unchanged",
+      "selectionReason": "Build/cache behavior bug likely tied to user-facing rebuild failure.",
+      "expectedStressors": [
+        "build behavior",
+        "changed files",
+        "execution evidence"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-004",
+      "repository": "tailwindlabs/tailwindcss",
+      "prNumber": 20292,
+      "prUrl": "https://github.com/tailwindlabs/tailwindcss/pull/20292",
+      "prTitle": "fix: exclude iframes from focus-visible auto outline in Preflight",
+      "selectionReason": "Visual/UI CSS behavior fix.",
+      "expectedStressors": [
+        "visual proof",
+        "UI requirement",
+        "non-execution status separation"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-005",
+      "repository": "microsoft/TypeScript",
+      "prNumber": 62923,
+      "prUrl": "https://github.com/microsoft/TypeScript/pull/62923",
+      "prTitle": "Fix crash in abstract property checking",
+      "selectionReason": "Compiler crash fix with linked issue.",
+      "expectedStressors": [
+        "crash",
+        "template filtering",
+        "test/build failure handling"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-006",
+      "repository": "rust-lang/rust",
+      "prNumber": 150102,
+      "prUrl": "https://github.com/rust-lang/rust/pull/150102",
+      "prTitle": "Fixed ICE for EII with multiple defaults due to duplicate definition in nameres",
+      "selectionReason": "Rust compiler ICE regression fix with issue link and template-heavy PR body.",
+      "expectedStressors": [
+        "crash/regression",
+        "template noise",
+        "large repo metadata"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-007",
+      "repository": "golang/go",
+      "prNumber": 54390,
+      "prUrl": "https://github.com/golang/go/pull/54390",
+      "prTitle": "net/url: strip relative path components for JoinPath",
+      "selectionReason": "Go standard library behavior fix with linked issue.",
+      "expectedStressors": [
+        "clean fix",
+        "tests",
+        "non-template issue mapping"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-008",
+      "repository": "sympy/sympy",
+      "prNumber": 30015,
+      "prUrl": "https://github.com/sympy/sympy/pull/30015",
+      "prTitle": "polys: fix construct_domain so construct_domain([x + oo]) returns EX domain",
+      "selectionReason": "Python math bug with template-heavy PR body.",
+      "expectedStressors": [
+        "template checklist",
+        "problem statement extraction",
+        "test evidence"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-009",
+      "repository": "numpy/numpy",
+      "prNumber": 31771,
+      "prUrl": "https://github.com/numpy/numpy/pull/31771",
+      "prTitle": "BUG: fix crash on 32 bit systems using abi3t",
+      "selectionReason": "Native/Python crash fix with PR template.",
+      "expectedStressors": [
+        "crash",
+        "environment context",
+        "template headings",
+        "CI metadata"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    },
+    {
+      "id": "roleproof-blind-010",
+      "repository": "ansible/ansible",
+      "prNumber": 86660,
+      "prUrl": "https://github.com/ansible/ansible/pull/86660",
+      "prTitle": "free: only block a host before queueing a task",
+      "selectionReason": "Python/infra behavior fix with linked issue and Ansible PR template.",
+      "expectedStressors": [
+        "issue template",
+        "mixed CI",
+        "behavior mapping"
+      ],
+      "status": "needs_review",
+      "manualLabelNeeded": true,
+      "rejectionReason": null
+    }
+  ],
+  "summary": {
+    "candidateCount": 10,
+    "repoDistribution": {
+      "sveltejs/svelte": 2,
+      "tailwindlabs/tailwindcss": 2,
+      "microsoft/TypeScript": 1,
+      "rust-lang/rust": 1,
+      "golang/go": 1,
+      "sympy/sympy": 1,
+      "numpy/numpy": 1,
+      "ansible/ansible": 1
+    }
+  }
+}

@@ -1,0 +1,617 @@
+{
+  "privacy": "external-regression-cases-summary-only",
+  "status": "regression_metadata_needs_human_labeling",
+  "readinessEvidence": false,
+  "readinessEvidenceReason": "Regression metadata and executable assertions only; manual labels remain incomplete.",
+  "generatedAt": "2026-07-07T00:33:09.000Z",
+  "sourceFiles": [
+    "eval/external-pr-pilot-candidates.json",
+    "eval/external-pr-first-pilot-results-rerun.json",
+    "eval/external-pr-holdout-results.json",
+    "eval/external-pr-holdout-results-rerun.json"
+  ],
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokens": true,
+    "noRawFullLogs": true,
+    "noRawDiffs": true,
+    "noPrivateUserData": true,
+    "noRawPrompts": true,
+    "notes": [
+      "Known external PRs are regression metadata, not product-logic special cases.",
+      "Manual labels remain incomplete and must not be inferred from AgentProof output.",
+      "Repository names and PR URLs are allowed here as public metadata, but must not appear in product logic."
+    ]
+  },
+  "cases": [
+    {
+      "id": "ext-001",
+      "repository": "vitejs/vite",
+      "prNumber": 22841,
+      "prUrl": "https://github.com/vitejs/vite/pull/22841",
+      "prTitle": "fix: strip pure CSS chunk imports when chunkImportMap is enabled",
+      "candidateStatus": "accepted",
+      "candidateClassification": "visual_proof_candidate",
+      "merged": true,
+      "observedReportSummary": {
+        "source": "eval/external-pr-first-pilot-results-rerun.json",
+        "analysisStatus": "completed",
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "evidenceCoverage": 45,
+        "confidence": 0.42,
+        "missingTestCount": 2,
+        "testBuildExecutionEvidenceFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "regressionInvariants": [
+        "Public build/test workflow or job metadata with passed execution status must produce testBuildStatus passed.",
+        "Non-execution statuses must not erase passing execution evidence.",
+        "Raw log absence must be reported as a limitation, not as unknown execution status."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "ext-005",
+      "repository": "vitejs/vite",
+      "prNumber": 22721,
+      "prUrl": "https://github.com/vitejs/vite/pull/22721",
+      "prTitle": "fix: preload css for nested dynamic imports (fix #22700)",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "failed_or_unclear_ci_candidate",
+      "merged": false,
+      "observedReportSummary": {
+        "source": "eval/external-pr-first-pilot-results-rerun.json",
+        "analysisStatus": "completed",
+        "priority": "blocker",
+        "testBuildStatus": "failed",
+        "evidenceCoverage": 24,
+        "confidence": 0.22,
+        "missingTestCount": 1,
+        "testBuildExecutionEvidenceFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "regressionInvariants": [
+        "Failed public test/build execution evidence must produce testBuildStatus failed.",
+        "Failed execution evidence must be visible as a blocker or high-priority reviewer risk.",
+        "Unmerged PRs must not be treated as final positive baselines without human review."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "ext-008",
+      "repository": "vercel/next.js",
+      "prNumber": 95391,
+      "prUrl": "https://github.com/vercel/next.js/pull/95391",
+      "prTitle": "Fix navigation getting reverted when a Server Action is in flight",
+      "candidateStatus": "accepted",
+      "candidateClassification": "visual_proof_candidate",
+      "merged": true,
+      "observedReportSummary": {
+        "source": "eval/external-pr-first-pilot-results-rerun.json",
+        "analysisStatus": "completed",
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "evidenceCoverage": 34,
+        "confidence": 0.29,
+        "missingTestCount": 1,
+        "testBuildExecutionEvidenceFound": true,
+        "nonExecutionStatusesFound": true,
+        "evidenceRefsCapped": true
+      },
+      "regressionInvariants": [
+        "Many requirement evidence references must be capped before report validation.",
+        "A capped report must remain valid and summary-only.",
+        "Evidence capping must be disclosed as a limitation."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "ext-012",
+      "repository": "psf/requests",
+      "prNumber": 7553,
+      "prUrl": "https://github.com/psf/requests/pull/7553",
+      "prTitle": "Validate timeout type before passing to urllib3",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "clean_issue_fix",
+      "merged": false,
+      "observedReportSummary": {
+        "source": "eval/external-pr-first-pilot-results-rerun.json",
+        "analysisStatus": "completed",
+        "priority": "medium",
+        "testBuildStatus": "unknown",
+        "evidenceCoverage": 36,
+        "confidence": 0.32,
+        "missingTestCount": 1,
+        "testBuildExecutionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "regressionInvariants": [
+        "Self-reported tests plus changed test files must remain testBuildStatus unknown without execution evidence.",
+        "Docs or Read the Docs status must not count as test/build execution evidence.",
+        "Confidence must disclose that no public execution evidence was found."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "ext-014",
+      "repository": "psf/requests",
+      "prNumber": 7545,
+      "prUrl": "https://github.com/psf/requests/pull/7545",
+      "prTitle": "fix: HTTPDigestAuth properly handles bytes credentials",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "missing_tests_candidate",
+      "merged": false,
+      "observedReportSummary": {
+        "source": "eval/external-pr-first-pilot-results-rerun.json",
+        "analysisStatus": "completed",
+        "priority": "high",
+        "testBuildStatus": "unknown",
+        "evidenceCoverage": 36,
+        "confidence": 0.32,
+        "missingTestCount": 1,
+        "testBuildExecutionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": false,
+        "nonExecutionStatusesFound": true
+      },
+      "regressionInvariants": [
+        "Self-reported tests without changed test files must remain testBuildStatus unknown without execution evidence.",
+        "Implementation-only changes should surface missing targeted test evidence when execution proof is absent.",
+        "Docs or Read the Docs status must not count as test/build execution evidence."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "ext-007",
+      "repository": "vercel/next.js",
+      "prNumber": 94942,
+      "prUrl": "https://github.com/vercel/next.js/pull/94942",
+      "prTitle": "fix(lru-cache): include URL key length in getItemsLru size accounting",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "failed_or_unclear_ci_candidate",
+      "merged": false,
+      "observedReportSummary": {
+        "source": "eval/external-pr-holdout-results.json",
+        "analysisStatus": "completed",
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "evidenceCoverage": 39,
+        "confidence": 0.35,
+        "missingTestCount": 2,
+        "testBuildExecutionEvidenceFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "regressionInvariants": [
+        "If a workflow-level Build&Test failure is present, it must not be overridden by broad passed metadata.",
+        "Check-run caps and job metadata timeouts must be surfaced as limitations.",
+        "Unmerged PRs must not be treated as final positive baselines without human review."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "ext-016",
+      "repository": "pallets/flask",
+      "prNumber": 6072,
+      "prUrl": "https://github.com/pallets/flask/pull/6072",
+      "prTitle": "Fix pytest >= 9.1 compatibility",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "dependency_or_compatibility_candidate",
+      "merged": false,
+      "observedReportSummary": {
+        "source": "eval/external-pr-holdout-results.json",
+        "analysisStatus": "completed",
+        "priority": "high",
+        "testBuildStatus": "unknown",
+        "evidenceCoverage": 35,
+        "confidence": 0.31,
+        "missingTestCount": 0,
+        "testBuildExecutionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true
+      },
+      "regressionInvariants": [
+        "If public Flask Tests workflow failure metadata is collected, status must be failed rather than unknown.",
+        "Self-reported pytest compatibility testing plus changed tests remains unknown without execution metadata.",
+        "Compatibility/dependency cases need manual labels before quality conclusions."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "ext-003",
+      "repository": "vitejs/vite",
+      "prNumber": 22259,
+      "prUrl": "https://github.com/vitejs/vite/pull/22259",
+      "prTitle": "fix(css): preserve CSS modules linked from HTML in build",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "clean_issue_fix",
+      "merged": false,
+      "observedReportSummary": {
+        "source": "eval/external-pr-holdout-results.json",
+        "analysisStatus": "completed",
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "evidenceCoverage": 38,
+        "confidence": 0.33,
+        "missingTestCount": 1,
+        "testBuildExecutionEvidenceFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "ambiguousIssueMappingObserved": true
+      },
+      "regressionInvariants": [
+        "Placeholder issue references such as template #123 examples must be ignored.",
+        "Ambiguous linked issue mapping must not produce confident PR-body-only met requirements.",
+        "Linked issue evidence should be preferred only when a single clear issue can be fetched."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "blind-008",
+      "repository": "pandas-dev/pandas",
+      "prNumber": 63908,
+      "prUrl": "https://github.com/pandas-dev/pandas/pull/63908",
+      "prTitle": "BUG: fix CoW handling of DataFrame(index/series) constructor",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "failed_or_unclear_ci_candidate",
+      "merged": true,
+      "observedReportSummary": {
+        "source": "eval/external-pr-blind-results.json",
+        "analysisStatus": "completed",
+        "priority": "high",
+        "testBuildStatus": "passed",
+        "evidenceCoverage": 51,
+        "confidence": 0.48,
+        "missingTestCount": 0,
+        "testBuildExecutionEvidenceFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "contradiction": "Candidate metadata observed a failed public matrix check, but the report summarized test/build status as passed."
+      },
+      "regressionInvariants": [
+        "A failed matrix job with GitHub Actions job provenance must be treated as failed execution evidence.",
+        "A failed relevant workflow or matrix execution signal must override passing sub-signals.",
+        "Known public failure metadata must not be downgraded to static or merge-gate risk when execution provenance exists."
+      ],
+      "manualLabelStatus": "not_labeled"
+    },
+    {
+      "id": "blind-010",
+      "repository": "electron/electron",
+      "prNumber": 52248,
+      "prUrl": "https://github.com/electron/electron/pull/52248",
+      "prTitle": "fix: restore SelfKeepAlive in Menu",
+      "candidateStatus": "needs_review",
+      "candidateClassification": "missing_tests_candidate",
+      "merged": true,
+      "observedReportSummary": {
+        "source": "eval/external-pr-blind-results.json",
+        "analysisStatus": "completed",
+        "priority": "medium",
+        "testBuildStatus": "passed",
+        "evidenceCoverage": 45,
+        "confidence": 0.4,
+        "missingTestCount": 0,
+        "testBuildExecutionEvidenceFound": true,
+        "changedTestFilesFound": false,
+        "nonExecutionStatusesFound": true,
+        "contradiction": "Native crash fix had no changed test files and PR text admitted test uncertainty, but missing targeted proof was not surfaced."
+      },
+      "regressionInvariants": [
+        "Native crash, segfault, or regression fixes should expect targeted proof.",
+        "Implementation-only native crash fixes with no test files must surface missing targeted proof.",
+        "Self-reported uncertainty about tests should be retained as a proof gap, not hidden by broad passing checks."
+      ],
+      "manualLabelStatus": "not_labeled"
+    }
+  ],
+  "executableAssertions": [
+    {
+      "id": "ext-001-public-actions-passed",
+      "caseId": "ext-001",
+      "input": {
+        "title": "Strip pure CSS chunk imports",
+        "taskText": "Acceptance criteria: strip pure CSS chunk imports when chunkImportMap is enabled.",
+        "taskSource": "issue",
+        "description": "Fixes the CSS chunk import behavior and adds regression coverage.",
+        "changedFiles": [
+          { "path": "packages/vite/src/node/plugins/importAnalysisBuild.ts", "status": "modified", "patch": "removePureCssChunkImports(chunkImportMap)" },
+          { "path": "playground/css/vite.config.js", "status": "modified", "patch": "chunkImportMap: true" },
+          { "path": "playground/css/__tests__/tests.ts", "status": "modified", "patch": "test pure CSS chunk imports" }
+        ],
+        "checks": [
+          { "name": "CI", "status": "passed", "summary": "Workflow completed successfully." }
+        ],
+        "logs": [
+          { "source": "GitHub Actions job: Build&Test", "status": "passed", "text": "Steps: Test unit: passed; pnpm build: passed" }
+        ],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "mustNotTestBuildStatuses": ["unknown", "failed"],
+        "requiredLimitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      }
+    },
+    {
+      "id": "ext-005-failed-build-test-blocker",
+      "caseId": "ext-005",
+      "input": {
+        "title": "Preload CSS for nested dynamic imports",
+        "taskText": "Acceptance criteria: preserve CSS preload dependencies for nested dynamic imports.",
+        "taskSource": "issue",
+        "description": "Fixes nested dynamic import CSS preload handling.",
+        "changedFiles": [
+          { "path": "packages/vite/src/node/plugins/importAnalysisBuild.ts", "status": "modified", "patch": "preloadCssForNestedDynamicImports()" },
+          { "path": "playground/preload/__tests__/nested-dynamic-import.spec.ts", "status": "added", "patch": "test preloads css for nested dynamic imports" }
+        ],
+        "checks": [],
+        "logs": [
+          { "source": "GitHub Actions job: Build&Test: windows", "status": "failed", "text": "Steps: Test unit: failed; pnpm build: passed" }
+        ],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "mustNotTestBuildStatuses": ["passed"],
+        "topRiskIncludes": "Test/build execution failed"
+      }
+    },
+    {
+      "id": "ext-008-evidence-refs-capped",
+      "caseId": "ext-008",
+      "inputFactory": {
+        "kind": "many-evidence-refs",
+        "changedFileCount": 75
+      },
+      "expected": {
+        "validation": "valid",
+        "maxRequirementEvidenceRefs": 50,
+        "requiredLimitations": [
+          "Some evidence references were capped at 50 per field to keep the report bounded."
+        ]
+      }
+    },
+    {
+      "id": "ext-012-self-report-test-file-unknown",
+      "caseId": "ext-012",
+      "input": {
+        "title": "Validate timeout type before passing to urllib3",
+        "taskText": "Acceptance criteria: return a clearer error for invalid timeout values.",
+        "taskSource": "issue",
+        "description": "Testing: all tests passed locally.",
+        "changedFiles": [
+          { "path": "src/requests/adapters.py", "status": "modified", "patch": "raise ValueError for invalid timeout" },
+          { "path": "tests/test_requests.py", "status": "modified", "patch": "test invalid bool timeout" }
+        ],
+        "checks": [
+          { "name": "Read the Docs", "status": "passed", "summary": "Documentation build passed." }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "mustNotTestBuildStatuses": ["passed"],
+        "maxMetRequirements": 0,
+        "requiredLimitations": [
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
+    },
+    {
+      "id": "ext-014-self-report-implementation-only-unknown",
+      "caseId": "ext-014",
+      "input": {
+        "title": "HTTPDigestAuth handles bytes credentials",
+        "taskText": "Acceptance criteria: handle bytes credentials in HTTPDigestAuth.",
+        "taskSource": "issue",
+        "description": "Testing: pytest passed locally.",
+        "changedFiles": [
+          { "path": "src/requests/auth.py", "status": "modified", "patch": "decode bytes credentials" }
+        ],
+        "checks": [
+          { "name": "Read the Docs", "status": "passed", "summary": "Documentation build passed." }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public commit status metadata was available, but only non-execution statuses were found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "mustNotTestBuildStatuses": ["passed"],
+        "missingTestCountAtLeast": 1,
+        "priority": "high"
+      }
+    },
+    {
+      "id": "ext-007-failed-workflow-overrides-passed-subjob",
+      "caseId": "ext-007",
+      "input": {
+        "title": "Fix cache item size accounting",
+        "taskText": "Acceptance criteria: include URL key length in LRU cache size accounting.",
+        "taskSource": "issue",
+        "description": "Fixes LRU cache accounting.",
+        "changedFiles": [
+          { "path": "packages/next/src/server/lib/lru-cache.ts", "status": "modified", "patch": "size += key.length" }
+        ],
+        "checks": [
+          { "name": "Build&Test", "status": "failed", "summary": "Workflow-level Build&Test failed." },
+          { "name": "unit tests", "status": "passed", "summary": "A narrower unit test job passed." }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "mustNotTestBuildStatuses": ["passed"]
+      }
+    },
+    {
+      "id": "ext-016-tests-tox-failure",
+      "caseId": "ext-016",
+      "input": {
+        "title": "Fix pytest compatibility",
+        "taskText": "Acceptance criteria: keep Flask test suite compatible with pytest.",
+        "taskSource": "issue",
+        "description": "Fixes pytest compatibility.",
+        "changedFiles": [
+          { "path": "tests/test_basic.py", "status": "modified", "patch": "test pytest compatibility" }
+        ],
+        "checks": [
+          { "name": "Tests", "status": "failed", "summary": "uv run tox failed." }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "mustNotTestBuildStatuses": ["unknown", "passed"]
+      }
+    },
+    {
+      "id": "ext-003-ambiguous-issue-no-confident-pr-body-met",
+      "caseId": "ext-003",
+      "input": {
+        "title": "Preserve CSS modules linked from HTML",
+        "taskText": "",
+        "description": "Fixes #123. Fixes #22242. Preserve CSS modules linked from HTML in production build.",
+        "changedFiles": [
+          { "path": "packages/vite/src/node/plugins/css.ts", "status": "modified", "patch": "preserve html linked css modules" },
+          { "path": "playground/css/__tests__/tests.ts", "status": "modified", "patch": "test html linked css modules" }
+        ],
+        "checks": [
+          { "name": "Build&Test", "status": "passed", "summary": "Build and tests passed." }
+        ],
+        "logs": [],
+        "limitations": [
+          "Multiple supported issue references found (vitejs/vite#123, vitejs/vite#22242); did not choose a single issue as requirement source. Original request mapping is ambiguous."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "maxMetRequirements": 0,
+        "requiredRequirementStatuses": ["unclear"],
+        "maxRequirementConfidence": 0.3,
+        "requiredLimitations": [
+          "At least one requirement needs human interpretation."
+        ]
+      }
+    },
+    {
+      "id": "ext-003-unfetched-issue-no-confident-pr-body-met",
+      "caseId": "ext-003",
+      "input": {
+        "title": "Preserve CSS modules linked from HTML",
+        "taskText": "",
+        "description": "Fixes #22242. Preserve CSS modules linked from HTML in production build.",
+        "changedFiles": [
+          { "path": "packages/vite/src/node/plugins/css.ts", "status": "modified", "patch": "preserve html linked css modules" },
+          { "path": "playground/css/__tests__/tests.ts", "status": "modified", "patch": "test html linked css modules" }
+        ],
+        "checks": [
+          { "name": "Build&Test", "status": "passed", "summary": "Build and tests passed." }
+        ],
+        "logs": [],
+        "limitations": [
+          "Linked issue vitejs/vite#22242 could not be fetched: request timed out or network failed. Requirement source fell back to PR description."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "maxMetRequirements": 0,
+        "requiredRequirementStatuses": ["unclear"],
+        "maxRequirementConfidence": 0.3,
+        "requiredLimitations": [
+          "At least one requirement needs human interpretation."
+        ]
+      }
+    },
+    {
+      "id": "blind-008-failed-matrix-job-overrides-passed-unit-tests",
+      "caseId": "blind-008",
+      "input": {
+        "title": "BUG: fix CoW handling of DataFrame(index/series) constructor",
+        "taskText": "Acceptance criteria: prevent derived DataFrames from mutating the original Index and include regression coverage.",
+        "taskSource": "issue",
+        "description": "Closes #63899. Tests added and passed. Expanded constructor coverage for Index and Series copy-on-write handling.",
+        "changedFiles": [
+          { "path": "pandas/core/internals/construction.py", "status": "modified", "patch": "track references for DataFrame constructor copy-on-write handling" },
+          { "path": "pandas/tests/copy_view/test_constructors.py", "status": "modified", "patch": "test dataframe constructor preserves index copy" },
+          { "path": "pandas/tests/indexing/test_iloc.py", "status": "modified", "patch": "test indexing copy behavior" }
+        ],
+        "checks": [
+          { "name": "Unit Tests", "status": "passed", "summary": "Unit test matrix passed.", "url": "https://github.com/example/project/actions/runs/100/job/200" },
+          { "name": "PANDAS_FUTURE_INFER_STRING=0", "status": "failed", "summary": "Matrix job failed on the head commit.", "url": "https://github.com/example/project/actions/runs/100/job/201" }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "failed",
+        "priority": "blocker",
+        "mustNotTestBuildStatuses": ["passed"],
+        "topRiskIncludes": "Test/build execution failed",
+        "requiredProofGapKinds": ["failed_execution"],
+        "requiredReviewPriorityPaths": ["Test/build checks"]
+      }
+    },
+    {
+      "id": "blind-010-native-crash-fix-missing-targeted-proof",
+      "caseId": "blind-010",
+      "input": {
+        "title": "fix: restore SelfKeepAlive in Menu",
+        "taskText": "Linked issue: replacing the application menu while it is open causes a segfault on Windows.\nExpected behavior: Menu.setApplicationMenu should not crash while the user interacts with an open menu.\nActual behavior: the Menu object can be garbage-collected before the menu closes.",
+        "taskSource": "issue",
+        "description": "Fixes #52247 by keeping a Menu instance alive while the menu is open. Since the original change did not have tests, there may be no tests for this aspect of the system. I am open to suggestions about where tests could be added.",
+        "changedFiles": [
+          { "path": "shell/browser/api/electron_api_menu.cc", "status": "modified", "patch": "keep_alive_.Reset(isolate, wrapper);" },
+          { "path": "shell/browser/api/electron_api_menu.h", "status": "modified", "patch": "v8::Global<v8::Object> keep_alive_;" }
+        ],
+        "checks": [
+          { "name": "Build&Test", "status": "passed", "summary": "Build and test workflow passed." }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "passed",
+        "priority": "high",
+        "missingTestCountAtLeast": 1,
+        "topRiskIncludes": "Requirement-level proof graph found missing targeted proof.",
+        "requiredProofGapKinds": ["missing_targeted_test", "self_reported_test_gap"],
+        "requiredReviewPriorityPaths": ["shell/browser/api/electron_api_menu.cc"]
+      }
+    }
+  ],
+  "summary": {
+    "caseCount": 10,
+    "acceptedCandidateCount": 2,
+    "needsReviewCandidateCount": 8,
+    "manualLabelsCompleted": 0
+  }
+}

@@ -1,6 +1,26 @@
 export type CheckStatus = "passed" | "failed" | "pending" | "unknown";
 export type RequirementStatus = "met" | "partial" | "missing" | "unclear";
 export type PriorityLevel = "low" | "medium" | "high" | "blocker";
+export type RequirementSourceRole =
+  | "core_requirement"
+  | "problem_context"
+  | "reproduction_context"
+  | "environment_context"
+  | "visual_context"
+  | "external_reference"
+  | "solution_hint"
+  | "author_claim"
+  | "template_noise";
+export type RequirementSourceQuality =
+  | "linked_issue"
+  | "explicit_acceptance_criteria"
+  | "expected_behavior"
+  | "requirement_language"
+  | "problem_statement"
+  | "solution_hint"
+  | "author_claim"
+  | "manual_check"
+  | "fallback";
 export type EvidenceKind =
   | "task"
   | "pr_description"
@@ -85,6 +105,19 @@ export interface Requirement {
   text: string;
   keywords: string[];
   priority: "must" | "should" | "could";
+  role: "core_requirement";
+  sourceQuality: RequirementSourceQuality;
+  sourceSection: string | null;
+  contextRoles: RequirementSourceRole[];
+}
+
+export interface RequirementContextSignal {
+  id: string;
+  source: "task" | "issue" | "pr_description" | "manual";
+  role: Exclude<RequirementSourceRole, "core_requirement" | "template_noise">;
+  sourceQuality: RequirementSourceQuality;
+  sourceSection: string | null;
+  text: string;
 }
 
 export interface AgentClaim {
@@ -143,6 +176,53 @@ export interface ReviewPriorityItem {
   evidenceRefs?: string[];
 }
 
+export type ProofGapKind =
+  | "missing_implementation"
+  | "missing_targeted_test"
+  | "missing_execution"
+  | "failed_execution"
+  | "ambiguous_requirement"
+  | "self_reported_test_gap"
+  | "evidence_unavailable"
+  | "visual_proof_missing";
+
+export interface ProofGapSignal {
+  kind: ProofGapKind;
+  severity: PriorityLevel;
+  message: string;
+  evidenceRefs: string[];
+}
+
+export interface RequirementProofNode {
+  requirementId: string;
+  requirementText: string;
+  sourceRole: "core_requirement";
+  sourceQuality: RequirementSourceQuality;
+  sourceSection: string | null;
+  contextRoles: RequirementSourceRole[];
+  status: RequirementStatus;
+  confidence: number;
+  implementationEvidenceRefs: string[];
+  targetedTestEvidenceRefs: string[];
+  executionEvidenceRefs: string[];
+  gapSignals: ProofGapSignal[];
+  firstFiles: string[];
+}
+
+export interface ProofGraph {
+  version: 1;
+  nodes: RequirementProofNode[];
+  context: RequirementContextSignal[];
+  summary: {
+    requirementCount: number;
+    requirementsWithImplementation: number;
+    requirementsWithTargetedTests: number;
+    requirementsWithExecution: number;
+    requirementsWithGaps: number;
+    gapCount: number;
+  };
+}
+
 export interface VerificationReport {
   analysisId: string;
   createdAt: string;
@@ -170,6 +250,7 @@ export interface VerificationReport {
     missingTests: MissingTestFinding[];
   };
   reviewPriority: ReviewPriorityItem[];
+  proofGraph: ProofGraph;
   reprompt: {
     targetAgent: "codex" | "claude_code" | "cursor" | "copilot";
     prompt: string;

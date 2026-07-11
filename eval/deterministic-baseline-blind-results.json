@@ -1,0 +1,1595 @@
+{
+  "privacy": "deterministic-baseline-blind-results-summary-only",
+  "status": "deterministic_baseline_needs_human_review_before_llm_ab",
+  "generatedAt": "2026-07-09T14:52:21.268Z",
+  "candidateSource": "eval/external-pr-roleproof-new-blind-candidates.json",
+  "analysisBaseUrl": "http://127.0.0.1:3001",
+  "usedTransientGithubToken": false,
+  "sourcePolicy": {
+    "publicOnly": true,
+    "noPrivateRepos": true,
+    "noTokens": true,
+    "noRawDiffs": true,
+    "noRawFullLogs": true,
+    "noRawPrompts": true,
+    "noPrivateUserData": true,
+    "notes": [
+      "This is a deterministic proofGraph baseline for LLM A/B comparison.",
+      "AgentProof output is not a correctness label.",
+      "Manual labels remain incomplete.",
+      "GitHub token, if present, was used only in process memory and not written."
+    ]
+  },
+  "results": [
+    {
+      "candidateId": "roleproof-blind-001",
+      "repository": "sveltejs/svelte",
+      "prNumber": 18388,
+      "prUrl": "https://github.com/sveltejs/svelte/pull/18388",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "high",
+      "previousTestBuildStatus": "passed",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 40,
+        "confidence": 0.38,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 2,
+        "firstReviewPriorityFiles": [
+          ".changeset/some-parts-watch.md",
+          "packages/svelte/src/ambient.d.ts",
+          "packages/svelte/types/index.d.ts"
+        ],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ],
+        "rePromptSummary": "1. Address requirement \"$state.snapshot with BigInt properties infer as never\" and provide evidence for the implementation. 2. Address requirement \"Hey, I noticed when I try using $state.snapshot with an object that contains a BigInt, the property is inferred as `never`\" and provide evidence for the implementation. 3. Address requirement \"In the types for $state.snapshot:\" and provide evidence for the implementation. 4. Address requirement \"It first checks if `T` is a Primitive, which is defined as such:\" and provide evidence for the implementation."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": false,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 11,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 13
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 4,
+          "requirementsWithImplementation": 4,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 4,
+          "gapCount": 4
+        },
+        "gapKinds": {
+          "missing_targeted_test": 4
+        },
+        "gapSeverities": {
+          "medium": 4
+        },
+        "sourceQualityCounts": {
+          "problem_statement": 4
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 4
+        },
+        "contextRoleCounts": {
+          "problem_context": 9,
+          "reproduction_context": 4,
+          "external_reference": 1,
+          "author_claim": 16
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              ".changeset/some-parts-watch.md",
+              "packages/svelte/src/ambient.d.ts",
+              "packages/svelte/types/index.d.ts"
+            ],
+            "requirementTextSummary": "$state.snapshot with BigInt properties infer as never"
+          },
+          {
+            "requirementId": "req_2",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Describe the bug",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              ".changeset/some-parts-watch.md",
+              "packages/svelte/src/ambient.d.ts",
+              "packages/svelte/types/index.d.ts"
+            ],
+            "requirementTextSummary": "Hey, I noticed when I try using $state.snapshot with an object that contains a BigInt, the property is inferred as `never`"
+          },
+          {
+            "requirementId": "req_3",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Describe the bug",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              ".changeset/some-parts-watch.md",
+              "packages/svelte/src/ambient.d.ts",
+              "packages/svelte/types/index.d.ts"
+            ],
+            "requirementTextSummary": "In the types for $state.snapshot:"
+          },
+          {
+            "requirementId": "req_4",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Describe the bug",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 3,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_targeted_test"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              ".changeset/some-parts-watch.md",
+              "packages/svelte/src/ambient.d.ts",
+              "packages/svelte/types/index.d.ts"
+            ],
+            "requirementTextSummary": "It first checks if `T` is a Primitive, which is defined as such:"
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-002",
+      "repository": "sveltejs/svelte",
+      "prNumber": 18425,
+      "prUrl": "https://github.com/sveltejs/svelte/pull/18425",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "medium",
+      "previousTestBuildStatus": "passed",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 21,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          ".changeset/quick-meals-shout.md"
+        ],
+        "limitations": [
+          "Multiple supported issue references found (sveltejs/svelte#17218, sveltejs/kit#16031); did not choose a single issue as requirement source. Original request mapping is ambiguous.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ],
+        "rePromptSummary": "1. Address requirement \"Original requirement is too vague to verify automatically.\" and provide evidence for the implementation. 2. Return requirement-by-requirement proof for: \"Original requirement is too vague to verify automatically.\"."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 11,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 13
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 1,
+          "requirementsWithImplementation": 0,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 1,
+          "gapCount": 2
+        },
+        "gapKinds": {
+          "missing_implementation": 1,
+          "ambiguous_requirement": 1
+        },
+        "gapSeverities": {
+          "medium": 2
+        },
+        "sourceQualityCounts": {
+          "manual_check": 1
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 1
+        },
+        "contextRoleCounts": {
+          "author_claim": 21,
+          "external_reference": 1
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "manual_check",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.25,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "Original requirement is too vague to verify automatically."
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-003",
+      "repository": "tailwindlabs/tailwindcss",
+      "prNumber": 20310,
+      "prUrl": "https://github.com/tailwindlabs/tailwindcss/pull/20310",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "medium",
+      "previousTestBuildStatus": "unknown",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 37,
+        "confidence": 0.34,
+        "testBuildStatus": "unknown",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Behavior changed without strong test evidence."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "CHANGELOG.md",
+          "packages/@tailwindcss-postcss/src/index.ts"
+        ],
+        "limitations": [
+          "No public test/build workflow run, check, or raw CI log was available from the collected metadata.",
+          "Raw CI logs were not fetched or stored.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ],
+        "rePromptSummary": "1. Address requirement \"`@tailwindcss/postcss`: compiler cache ignores changed input CSS when `from`'s mtime is unchanged — stale output with any preprocessor (Sass) pipeline\" and provide evidence for the implementation. 2. Address requirement \"`@tailwindcss/postcss` keeps a per-entry compiler cache keyed by `opts.from`\" and provide evidence for the implementation. 3. Address requirement \"On each run it decides between the incremental and full rebuild paths by stat-ing the mtimes of **only** `[...fullRebuildPaths, from]` — i.e\" and provide evidence for the implementation. 4. Address requirement \"the entry file on disk plus Tailwind's own resolved `@import`/`@config`/`@plugin` graph\" and prov"
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": false,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 0,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 10
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 4,
+          "requirementsWithImplementation": 4,
+          "requirementsWithTargetedTests": 4,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 4,
+          "gapCount": 4
+        },
+        "gapKinds": {
+          "missing_execution": 4
+        },
+        "gapSeverities": {
+          "medium": 4
+        },
+        "sourceQualityCounts": {
+          "problem_statement": 4
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 4
+        },
+        "contextRoleCounts": {
+          "problem_context": 17,
+          "environment_context": 2,
+          "reproduction_context": 1,
+          "solution_hint": 5,
+          "author_claim": 5
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/@tailwindcss-postcss/src/index.ts",
+              "packages/@tailwindcss-postcss/src/index.test.ts"
+            ],
+            "requirementTextSummary": "`@tailwindcss/postcss`: compiler cache ignores changed input CSS when `from`'s mtime is unchanged — stale output with any preprocessor (Sass) pipeline"
+          },
+          {
+            "requirementId": "req_2",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Summary",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/@tailwindcss-postcss/src/index.ts",
+              "packages/@tailwindcss-postcss/src/index.test.ts"
+            ],
+            "requirementTextSummary": "`@tailwindcss/postcss` keeps a per-entry compiler cache keyed by `opts.from`"
+          },
+          {
+            "requirementId": "req_3",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Summary",
+            "status": "partial",
+            "confidence": 0.5,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/@tailwindcss-postcss/src/index.ts",
+              "packages/@tailwindcss-postcss/src/index.test.ts"
+            ],
+            "requirementTextSummary": "On each run it decides between the incremental and full rebuild paths by stat-ing the mtimes of **only** `[...fullRebuildPaths, from]` — i.e"
+          },
+          {
+            "requirementId": "req_4",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": "Summary",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/@tailwindcss-postcss/src/index.ts",
+              "packages/@tailwindcss-postcss/src/index.test.ts"
+            ],
+            "requirementTextSummary": "the entry file on disk plus Tailwind's own resolved `@import`/`@config`/`@plugin` graph"
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-004",
+      "repository": "tailwindlabs/tailwindcss",
+      "prNumber": 20292,
+      "prUrl": "https://github.com/tailwindlabs/tailwindcss/pull/20292",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "high",
+      "previousTestBuildStatus": "unknown",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 37,
+        "confidence": 0.34,
+        "testBuildStatus": "unknown",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 4,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Potential scope creep in changed files."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "CHANGELOG.md"
+        ],
+        "limitations": [
+          "No public test/build workflow run, check, or raw CI log was available from the collected metadata.",
+          "Raw CI logs were not fetched or stored.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ],
+        "rePromptSummary": "1. Address requirement \"Preflight applies auto outline to focus-visible iframes\" and provide evidence for the implementation. 2. Address requirement \"What build tool (or framework if it abstracts the build tool) are you using?**\" and provide evidence for the implementation. 3. Address requirement \"N/A (but Vite 7.3.1)\" and provide evidence for the implementation. 4. Address requirement \"N/A (v24.14.0)\" and provide evidence for the implementation."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": false,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 0,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 10
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 4,
+          "requirementsWithImplementation": 4,
+          "requirementsWithTargetedTests": 4,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 4,
+          "gapCount": 4
+        },
+        "gapKinds": {
+          "missing_execution": 4
+        },
+        "gapSeverities": {
+          "medium": 4
+        },
+        "sourceQualityCounts": {
+          "problem_statement": 4
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 4
+        },
+        "contextRoleCounts": {
+          "problem_context": 22,
+          "environment_context": 7,
+          "solution_hint": 1
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 4,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/tailwindcss/preflight.css",
+              "integrations/cli/index.test.ts",
+              "packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap",
+              "packages/tailwindcss/src/__snapshots__/index.test.ts.snap"
+            ],
+            "requirementTextSummary": "Preflight applies auto outline to focus-visible iframes"
+          },
+          {
+            "requirementId": "req_2",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 3,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/tailwindcss/preflight.css",
+              "packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap",
+              "packages/tailwindcss/src/__snapshots__/index.test.ts.snap",
+              "packages/tailwindcss/src/source-maps/source-map.test.ts"
+            ],
+            "requirementTextSummary": "What build tool (or framework if it abstracts the build tool) are you using?**"
+          },
+          {
+            "requirementId": "req_3",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 4,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/tailwindcss/preflight.css",
+              "integrations/cli/index.test.ts",
+              "packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap",
+              "packages/tailwindcss/src/__snapshots__/index.test.ts.snap"
+            ],
+            "requirementTextSummary": "N/A (but Vite 7.3.1)"
+          },
+          {
+            "requirementId": "req_4",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.5,
+            "implementationEvidenceCount": 2,
+            "targetedTestEvidenceCount": 3,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_execution"
+            ],
+            "gapSeverities": [
+              "medium"
+            ],
+            "firstFiles": [
+              "CHANGELOG.md",
+              "packages/tailwindcss/preflight.css",
+              "packages/@tailwindcss-postcss/src/__snapshots__/index.test.ts.snap",
+              "packages/tailwindcss/src/__snapshots__/index.test.ts.snap",
+              "packages/tailwindcss/src/source-maps/source-map.test.ts"
+            ],
+            "requirementTextSummary": "N/A (v24.14.0)"
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-005",
+      "repository": "microsoft/TypeScript",
+      "prNumber": 62923,
+      "prUrl": "https://github.com/microsoft/TypeScript/pull/62923",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "medium",
+      "previousTestBuildStatus": "passed",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 46,
+        "confidence": 0.43,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 1,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "src/compiler/checker.ts"
+        ],
+        "limitations": [
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ],
+        "rePromptSummary": "1. Address requirement \"The compiler should not crash\" and provide evidence for the implementation. 2. Add or identify tests that cover: src/compiler/checker.ts."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 28,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 19
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 1,
+          "requirementsWithImplementation": 1,
+          "requirementsWithTargetedTests": 1,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "gapSeverities": {},
+        "sourceQualityCounts": {
+          "expected_behavior": 1
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 1
+        },
+        "contextRoleCounts": {
+          "problem_context": 5,
+          "environment_context": 3,
+          "external_reference": 1
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "expected_behavior",
+            "sourceSection": "🙂 Expected behavior",
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 4,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "src/compiler/checker.ts",
+              "tests/baselines/reference/errorInUnnamedClassExpression.errors.txt",
+              "tests/baselines/reference/errorInUnnamedClassExpression.symbols",
+              "tests/baselines/reference/errorInUnnamedClassExpression.types",
+              "tests/cases/compiler/errorInUnnamedClassExpression.ts"
+            ],
+            "requirementTextSummary": "The compiler should not crash"
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-006",
+      "repository": "rust-lang/rust",
+      "prNumber": 150102,
+      "prUrl": "https://github.com/rust-lang/rust/pull/150102",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "blocker",
+      "previousTestBuildStatus": "failed",
+      "reportSummary": {
+        "priority": "blocker",
+        "evidenceCoverage": 11,
+        "confidence": 0.2,
+        "testBuildStatus": "failed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Test/build execution failed, so the PR is not proven ready.",
+          "Some requirements are too vague or weakly evidenced.",
+          "Behavior changed without strong test evidence."
+        ],
+        "missingTestCount": 1,
+        "firstReviewPriorityFiles": [
+          "Test/build checks",
+          "compiler/rustc_passes/src/eii.rs"
+        ],
+        "limitations": [
+          "Public GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.",
+          "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ],
+        "rePromptSummary": "1. Address requirement \"Original requirement is too vague to verify automatically.\" and provide evidence for the implementation. 2. Add or identify tests that cover: compiler/rustc_passes/src/eii.rs. 3. Fix the failing test/build check and summarize the exact log line that proves it now passes. 4. Return requirement-by-requirement proof for: \"Original requirement is too vague to verify automatically.\"."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": true,
+        "selfReportedTestingFound": true,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 1,
+        "failedExecutionEvidenceCount": 1,
+        "nonExecutionStatusCount": 12
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 1,
+          "requirementsWithImplementation": 0,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 1,
+          "requirementsWithGaps": 1,
+          "gapCount": 3
+        },
+        "gapKinds": {
+          "missing_implementation": 1,
+          "ambiguous_requirement": 1,
+          "failed_execution": 1
+        },
+        "gapSeverities": {
+          "medium": 2,
+          "blocker": 1
+        },
+        "sourceQualityCounts": {
+          "manual_check": 1
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 1
+        },
+        "contextRoleCounts": {
+          "author_claim": 13,
+          "external_reference": 1
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "manual_check",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.25,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 1,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement",
+              "failed_execution"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium",
+              "blocker"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "Original requirement is too vague to verify automatically."
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": true,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-007",
+      "repository": "golang/go",
+      "prNumber": 54390,
+      "prUrl": "https://github.com/golang/go/pull/54390",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "medium",
+      "previousTestBuildStatus": "unknown",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 18,
+        "confidence": 0.2,
+        "testBuildStatus": "unknown",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 4
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "Requirement evidence"
+        ],
+        "limitations": [
+          "No public test/build workflow run, check, or raw CI log was available.",
+          "Raw CI logs were not fetched or stored.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found.",
+          "At least one requirement needs human interpretation."
+        ],
+        "rePromptSummary": "1. Address requirement \"net/url: JoinPath doesn't strip relative path components in all circumstances\" and provide evidence for the implementation. 2. Address requirement \"`JoinPath` doesn't remove `../` path components appended to a domain that is not terminated by a slash\" and provide evidence for the implementation. 3. Address requirement \"This is surprising and could conceivably lead to a directory traversal attack\" and provide evidence for the implementation. 4. Address requirement \"The result of `JoinPath` shouldn't depend on whether the first component is `/` terminated or not\" and provide evidence for the implementation."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": false,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": false,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": false,
+        "nonExecutionStatusesFound": false,
+        "executionEvidenceCount": 0,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 0
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 4,
+          "requirementsWithImplementation": 0,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 4,
+          "gapCount": 8
+        },
+        "gapKinds": {
+          "missing_implementation": 4,
+          "ambiguous_requirement": 4
+        },
+        "gapSeverities": {
+          "high": 4,
+          "medium": 4
+        },
+        "sourceQualityCounts": {
+          "problem_statement": 4
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 4
+        },
+        "contextRoleCounts": {
+          "problem_context": 5,
+          "external_reference": 1
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "net/url: JoinPath doesn't strip relative path components in all circumstances"
+          },
+          {
+            "requirementId": "req_2",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "`JoinPath` doesn't remove `../` path components appended to a domain that is not terminated by a slash"
+          },
+          {
+            "requirementId": "req_3",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "This is surprising and could conceivably lead to a directory traversal attack"
+          },
+          {
+            "requirementId": "req_4",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "problem_statement",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.38,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "high",
+              "medium"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "The result of `JoinPath` shouldn't depend on whether the first component is `/` terminated or not"
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": true,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-008",
+      "repository": "sympy/sympy",
+      "prNumber": 30015,
+      "prUrl": "https://github.com/sympy/sympy/pull/30015",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "medium",
+      "previousTestBuildStatus": "passed",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 48,
+        "confidence": 0.44,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 2,
+          "missing": 0,
+          "unclear": 0
+        },
+        "topRisks": [
+          "Some requirements have only partial evidence."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "sympy/polys/constructor.py"
+        ],
+        "limitations": [
+          "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored."
+        ],
+        "rePromptSummary": "1. Address requirement \"construct_domain should reject zoo\" and provide evidence for the implementation. 2. Address requirement \"At best this should be the EX domain and not a pseudo polynomial ring\" and provide evidence for the implementation."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 21,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 33
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 2,
+          "requirementsWithImplementation": 2,
+          "requirementsWithTargetedTests": 2,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 0,
+          "gapCount": 0
+        },
+        "gapKinds": {},
+        "gapSeverities": {},
+        "sourceQualityCounts": {
+          "requirement_language": 2
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 2
+        },
+        "contextRoleCounts": {
+          "problem_context": 1,
+          "external_reference": 1,
+          "author_claim": 8
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "requirement_language",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "sympy/polys/constructor.py",
+              "sympy/polys/tests/test_constructor.py"
+            ],
+            "requirementTextSummary": "construct_domain should reject zoo"
+          },
+          {
+            "requirementId": "req_2",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "requirement_language",
+            "sourceSection": null,
+            "status": "partial",
+            "confidence": 0.62,
+            "implementationEvidenceCount": 1,
+            "targetedTestEvidenceCount": 1,
+            "executionEvidenceCount": 0,
+            "gapKinds": [],
+            "gapSeverities": [],
+            "firstFiles": [
+              "sympy/polys/constructor.py",
+              "sympy/polys/tests/test_constructor.py"
+            ],
+            "requirementTextSummary": "At best this should be the EX domain and not a pseudo polynomial ring"
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": false,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-009",
+      "repository": "numpy/numpy",
+      "prNumber": 31771,
+      "prUrl": "https://github.com/numpy/numpy/pull/31771",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "medium",
+      "previousTestBuildStatus": "passed",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 19,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced."
+        ],
+        "missingTestCount": 0,
+        "firstReviewPriorityFiles": [
+          "doc/release/upcoming_changes/31771.c_api.rust"
+        ],
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ],
+        "rePromptSummary": "1. Address requirement \"Original requirement is too vague to verify automatically.\" and provide evidence for the implementation. 2. Return requirement-by-requirement proof for: \"Original requirement is too vague to verify automatically.\"."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 8,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 66
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 1,
+          "requirementsWithImplementation": 0,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 1,
+          "gapCount": 2
+        },
+        "gapKinds": {
+          "missing_implementation": 1,
+          "ambiguous_requirement": 1
+        },
+        "gapSeverities": {
+          "medium": 2
+        },
+        "sourceQualityCounts": {
+          "manual_check": 1
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 1
+        },
+        "contextRoleCounts": {
+          "external_reference": 1,
+          "author_claim": 4
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "manual_check",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.25,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "Original requirement is too vague to verify automatically."
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    },
+    {
+      "candidateId": "roleproof-blind-010",
+      "repository": "ansible/ansible",
+      "prNumber": 86660,
+      "prUrl": "https://github.com/ansible/ansible/pull/86660",
+      "analysisStatus": "completed",
+      "failureReason": null,
+      "previousPriority": "medium",
+      "previousTestBuildStatus": "passed",
+      "reportSummary": {
+        "priority": "medium",
+        "evidenceCoverage": 17,
+        "confidence": 0.2,
+        "testBuildStatus": "passed",
+        "requirementCounts": {
+          "met": 0,
+          "partial": 0,
+          "missing": 0,
+          "unclear": 1
+        },
+        "topRisks": [
+          "Some requirements are too vague or weakly evidenced.",
+          "Some changed files have broad test evidence, but no targeted test mapping."
+        ],
+        "missingTestCount": 2,
+        "firstReviewPriorityFiles": [
+          "changelogs/fragments/86656-fix-step-in-free-strat.yml",
+          "lib/ansible/plugins/strategy/__init__.py",
+          "lib/ansible/plugins/strategy/linear.py"
+        ],
+        "limitations": [
+          "GitHub check-run evidence was capped at 60 checks.",
+          "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.",
+          "Raw CI logs were not fetched or stored.",
+          "No original task text was provided; criteria were inferred from PR description.",
+          "At least one requirement needs human interpretation."
+        ],
+        "rePromptSummary": "1. Address requirement \"Original requirement is too vague to verify automatically.\" and provide evidence for the implementation. 2. Add or identify tests that cover: lib/ansible/plugins/strategy/__init__.py, lib/ansible/plugins/strategy/linear.py. 3. Return requirement-by-requirement proof for: \"Original requirement is too vague to verify automatically.\"."
+      },
+      "diagnosticMetadata": {
+        "prBodyFetched": true,
+        "changedFilesFetched": true,
+        "workflowOrCheckMetadataFetched": true,
+        "rawLogsFetched": false,
+        "testBuildExecutionEvidenceFound": true,
+        "failedExecutionEvidenceFound": false,
+        "selfReportedTestingFound": false,
+        "changedTestFilesFound": true,
+        "nonExecutionStatusesFound": true,
+        "executionEvidenceCount": 2,
+        "failedExecutionEvidenceCount": 0,
+        "nonExecutionStatusCount": 58
+      },
+      "proofGraphDiagnostics": {
+        "present": true,
+        "summary": {
+          "requirementCount": 1,
+          "requirementsWithImplementation": 0,
+          "requirementsWithTargetedTests": 0,
+          "requirementsWithExecution": 0,
+          "requirementsWithGaps": 1,
+          "gapCount": 2
+        },
+        "gapKinds": {
+          "missing_implementation": 1,
+          "ambiguous_requirement": 1
+        },
+        "gapSeverities": {
+          "medium": 2
+        },
+        "sourceQualityCounts": {
+          "manual_check": 1
+        },
+        "sourceRoleCounts": {
+          "core_requirement": 1
+        },
+        "contextRoleCounts": {
+          "external_reference": 1,
+          "author_claim": 2
+        },
+        "requirementSignalSummary": [
+          {
+            "requirementId": "req_1",
+            "sourceRole": "core_requirement",
+            "sourceQuality": "manual_check",
+            "sourceSection": null,
+            "status": "unclear",
+            "confidence": 0.25,
+            "implementationEvidenceCount": 0,
+            "targetedTestEvidenceCount": 0,
+            "executionEvidenceCount": 0,
+            "gapKinds": [
+              "missing_implementation",
+              "ambiguous_requirement"
+            ],
+            "gapSeverities": [
+              "medium",
+              "medium"
+            ],
+            "firstFiles": [],
+            "requirementTextSummary": "Original requirement is too vague to verify automatically."
+          }
+        ],
+        "proofGraphUsedInJudgment": {
+          "usedInRequirementGaps": true,
+          "usedInReviewPriority": false,
+          "usedInTopRisks": false,
+          "usedInReprompt": true
+        }
+      },
+      "quickAssessment": {
+        "looksUsefulFor30SecondReview": "yes",
+        "possibleFalsePass": false,
+        "possibleFalseBlocker": false,
+        "priorityMayBeTooNarrow": false,
+        "stayedEvidenceVerifierFocused": true,
+        "unsupportedMergeSecurityCorrectnessClaims": [],
+        "obviousProblem": null
+      },
+      "humanCheckNeeded": {
+        "issueToEvidenceMapping": true,
+        "falseBlockerRisk": true,
+        "missingTestJudgment": true,
+        "scopeCreepJudgment": true,
+        "rePromptUsefulness": true
+      }
+    }
+  ],
+  "summary": {
+    "candidateCount": 10,
+    "completedCount": 10,
+    "failedCount": 0,
+    "skippedCount": 0,
+    "repoDistribution": {
+      "sveltejs/svelte": 2,
+      "tailwindlabs/tailwindcss": 2,
+      "microsoft/TypeScript": 1,
+      "rust-lang/rust": 1,
+      "golang/go": 1,
+      "sympy/sympy": 1,
+      "numpy/numpy": 1,
+      "ansible/ansible": 1
+    },
+    "priorityCounts": {
+      "medium": 9,
+      "blocker": 1
+    },
+    "testBuildStatusCounts": {
+      "passed": 6,
+      "unknown": 3,
+      "failed": 1
+    },
+    "possibleFalsePassCount": 0,
+    "possibleFalseBlockerCount": 0,
+    "priorityMayBeTooNarrowCount": 1,
+    "proofGraphUsedCount": 10,
+    "manualCheckRequirementCount": 4,
+    "solutionHintContextCount": 6
+  }
+}

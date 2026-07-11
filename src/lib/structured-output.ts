@@ -15,6 +15,146 @@ const findingProvenanceSchema = {
   }
 } as const;
 
+const evidenceRefArraySchema = {
+  type: "array",
+  maxItems: 50,
+  items: { type: "string", maxLength: 600 }
+} as const;
+
+const requirementContextRoleEnum = [
+  "problem_context",
+  "reproduction_context",
+  "environment_context",
+  "visual_context",
+  "external_reference",
+  "solution_hint",
+  "author_claim"
+] as const;
+
+const requirementSourceQualityEnum = [
+  "linked_issue",
+  "explicit_acceptance_criteria",
+  "expected_behavior",
+  "requirement_language",
+  "problem_statement",
+  "solution_hint",
+  "author_claim",
+  "manual_check",
+  "fallback"
+] as const;
+
+const proofGapSignalSchema = {
+  type: "array",
+  maxItems: 20,
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["kind", "severity", "message", "evidenceRefs"],
+    properties: {
+      kind: {
+        type: "string",
+        enum: [
+          "missing_implementation",
+          "missing_targeted_test",
+          "missing_execution",
+          "failed_execution",
+          "ambiguous_requirement",
+          "self_reported_test_gap",
+          "evidence_unavailable",
+          "visual_proof_missing"
+        ]
+      },
+      severity: { type: "string", enum: ["low", "medium", "high", "blocker"] },
+      message: { type: "string", maxLength: 600 },
+      evidenceRefs: evidenceRefArraySchema
+    }
+  }
+} as const;
+
+const proofGraphSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["version", "nodes", "context", "summary"],
+  properties: {
+    version: { type: "number", enum: [1] },
+    nodes: {
+      type: "array",
+      maxItems: 40,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "requirementId",
+          "requirementText",
+          "sourceRole",
+          "sourceQuality",
+          "sourceSection",
+          "contextRoles",
+          "status",
+          "confidence",
+          "implementationEvidenceRefs",
+          "targetedTestEvidenceRefs",
+          "executionEvidenceRefs",
+          "gapSignals",
+          "firstFiles"
+        ],
+        properties: {
+          requirementId: { type: "string", maxLength: 600 },
+          requirementText: { type: "string", maxLength: 2000 },
+          sourceRole: { type: "string", enum: ["core_requirement"] },
+          sourceQuality: { type: "string", enum: requirementSourceQualityEnum },
+          sourceSection: { type: ["string", "null"], maxLength: 600 },
+          contextRoles: { type: "array", maxItems: 30, items: { type: "string", enum: requirementContextRoleEnum } },
+          status: { type: "string", enum: ["met", "partial", "missing", "unclear"] },
+          confidence: { type: "number", minimum: 0, maximum: 1 },
+          implementationEvidenceRefs: evidenceRefArraySchema,
+          targetedTestEvidenceRefs: evidenceRefArraySchema,
+          executionEvidenceRefs: evidenceRefArraySchema,
+          gapSignals: proofGapSignalSchema,
+          firstFiles: { type: "array", maxItems: 20, items: { type: "string", maxLength: 500 } }
+        }
+      }
+    },
+    context: {
+      type: "array",
+      maxItems: 30,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "source", "role", "sourceQuality", "sourceSection", "text"],
+        properties: {
+          id: { type: "string", maxLength: 600 },
+          source: { type: "string", enum: ["task", "issue", "pr_description", "manual"] },
+          role: { type: "string", enum: requirementContextRoleEnum },
+          sourceQuality: { type: "string", enum: requirementSourceQualityEnum },
+          sourceSection: { type: ["string", "null"], maxLength: 600 },
+          text: { type: "string", maxLength: 600 }
+        }
+      }
+    },
+    summary: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "requirementCount",
+        "requirementsWithImplementation",
+        "requirementsWithTargetedTests",
+        "requirementsWithExecution",
+        "requirementsWithGaps",
+        "gapCount"
+      ],
+      properties: {
+        requirementCount: { type: "number", minimum: 0, maximum: 800 },
+        requirementsWithImplementation: { type: "number", minimum: 0, maximum: 800 },
+        requirementsWithTargetedTests: { type: "number", minimum: 0, maximum: 800 },
+        requirementsWithExecution: { type: "number", minimum: 0, maximum: 800 },
+        requirementsWithGaps: { type: "number", minimum: 0, maximum: 800 },
+        gapCount: { type: "number", minimum: 0, maximum: 800 }
+      }
+    }
+  }
+} as const;
+
 export const verificationReportSchema = {
   name: "agentproof_verification_report",
   schema: {
@@ -30,6 +170,7 @@ export const verificationReportSchema = {
       "scope",
       "testing",
       "reviewPriority",
+      "proofGraph",
       "reprompt",
       "evidenceIndex",
       "limitations"
@@ -146,6 +287,7 @@ export const verificationReportSchema = {
           }
         }
       },
+      proofGraph: proofGraphSchema,
       reprompt: {
         type: "object",
         additionalProperties: false,
@@ -182,5 +324,6 @@ export const llmBoundaryPrompt = `
 You are AgentProof's verifier. Do not write a generic code review.
 Use only the normalized evidence provided by the application.
 Every finding must cite evidence IDs. If evidence is weak, use unclear.
+Preserve deterministic testing status and proofGraph evidence classes; do not turn self-reported testing into execution proof.
 Return only JSON that matches the AgentProof verification schema.
 `;

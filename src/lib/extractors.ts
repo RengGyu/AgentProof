@@ -5,7 +5,10 @@ import type {
   EvidenceItem,
   LogSnippet,
   PullRequestInput,
-  Requirement
+  Requirement,
+  RequirementContextSignal,
+  RequirementSourceQuality,
+  RequirementSourceRole
 } from "./types";
 import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText } from "./redact";
@@ -47,7 +50,7 @@ const STOP_WORDS = new Set([
   "existing"
 ]);
 
-const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/|test_|_test\.|spec_)/i;
+const TEST_FILE_PATTERN = /(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/|test_|_test\.|_unittest\.|unittest_|spec_)/i;
 const RISK_FILE_PATTERN = /(auth|permission|billing|payment|migration|schema|infra|session|security|token|secret|admin)/i;
 const VAGUE_TASK_PATTERN = /\b(improve|better|fewer problems|more reliable|clean\s*up|cleanup|polish|enhance|optimi[sz]e|make .* easier|make .* nicer)\b/i;
 const CONCRETE_ACTION_PATTERN =
@@ -56,47 +59,406 @@ const CLAIM_VERB_PATTERN =
   /\b(add(?:ed)?|align(?:ed)?|implement(?:ed)?|fix(?:ed)?|update(?:d)?|create(?:d)?|change(?:d)?|remove(?:d)?|redesign(?:ed)?|reframe(?:d)?|refresh(?:ed)?|rename(?:d)?|rework(?:ed)?|validate(?:d)?|verif(?:y|ied)|test(?:ed)?|pass(?:ed)?)\b/i;
 const CLAIM_START_PATTERN =
   /^\s*(add(?:ed)?|align(?:ed)?|implement(?:ed)?|fix(?:ed)?|update(?:d)?|create(?:d)?|change(?:d)?|remove(?:d)?|redesign(?:ed)?|reframe(?:d)?|refresh(?:ed)?|rename(?:d)?|rework(?:ed)?|validate(?:d)?|verif(?:y|ied)|test(?:ed)?|pass(?:ed)?)\s+(.+)$/i;
+const HEADING_PATTERN = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/;
+const INLINE_SECTION_PATTERN =
+  /^\s*(acceptance criteria|expected behavior|expected outcome|actual behavior|actual outcome|steps to reproduce|reproducible example|code for reproduction|describe the bug|issue description|suggested fix|suggested solution|proposed fix|proposed solution|possible fix|possible solution|debug output|electron version|operating system(?: version)?|browser(?: version)?|platform|trac ticket number|jira ticket number|branch description|ai assistance disclosure|test plan|testing|validation|summary)\s*:?\s*(.*)$/i;
+const ACCEPTANCE_SECTION_PATTERN = /\b(acceptance criteria|requirements?|expected behavior|expected outcome|desired behavior)\b/i;
+const PROBLEM_SECTION_PATTERN = /\b(actual behavior|actual outcome|describe the bug|bug summary|issue description|error|crash|segfault|failure)\b/i;
+const REPRODUCTION_SECTION_PATTERN = /\b(steps to reproduce|reproducible example|code for reproduction|reproduce|reproduction|minimal repro)\b/i;
+const ENVIRONMENT_SECTION_PATTERN = /\b(os|operating system|version|electron version|browser|platform|debug output|system details|system information|environment|configuration files)\b/i;
+const VISUAL_SECTION_PATTERN = /\b(screenshot|screen shot|image|visual|video|recording)\b/i;
+const EXTERNAL_REFERENCE_SECTION_PATTERN = /\b(trac ticket|jira|linear|external issue|ticket number|issue link)\b/i;
+const SOLUTION_HINT_SECTION_PATTERN = /\b(suggested fix|suggested solution|proposed fix|proposed solution|possible fix|possible solution|workaround)\b/i;
+const SOLUTION_HINT_LINE_PATTERN =
+  /\b(?:would|should|could)\s+fix\s+(?:the\s+)?(?:problem|issue|bug)|\b(?:workaround|possible fix|proposed solution|suggested fix)\b/i;
+const AUTHOR_CLAIM_SECTION_PATTERN = /\b(summary|testing|test plan|validation|verified|changes|what changed|implementation)\b/i;
+const TEMPLATE_SECTION_PATTERN = /\b(preflight checklist|checklist|ai assistance disclosure|code of conduct|contributing|submission checklist|before submitting)\b/i;
+const CHECKBOX_ONLY_PATTERN = /^\s*\[[ xX-]\]\s*(?:\*\*)?\s*(?:no ai tools were used|if ai tools were used|i have read|i agree|i confirm|i verified|i have checked|i have searched|this pull request|code of conduct|contributing|tests added|documentation added).*/i;
+const MARKDOWN_IMAGE_PATTERN = /^\s*!\[[^\]]*]\([^)]+\)\s*$/;
+const EXTERNAL_REFERENCE_PATTERN = /\b(?:trac|jira|linear|fixes|closes|resolves|refs?)\b.{0,60}(?:#\d+|[A-Z][A-Z0-9]+-\d+|ticket|\b\d{3,}\b)|https?:\/\/\S*(?:issues?|browse|ticket)\S*/i;
+const REQUIREMENT_LANGUAGE_PATTERN =
+  /\b(acceptance criteria|must|should|shall|required|expected|expectation|add|implement|prevent|preserve|allow|reject|return|support|handle|fix|ensure|validate|do not|don't|without crashing|should not|must not|successfully)\b/i;
+const ISSUE_PROBLEM_PATTERN = /\b(bug|crash|segfault|error|exception|fails?|broken|regression|incorrect|wrong|unable|cannot|does not|doesn't|missing required argument)\b/i;
+
+export interface RequirementExtractionResult {
+  requirements: Requirement[];
+  contexts: RequirementContextSignal[];
+}
+
+interface ClassifiedRequirementLine {
+  text: string;
+  source: Requirement["source"];
+  role: RequirementSourceRole;
+  sourceQuality: RequirementSourceQuality;
+  sourceSection?: string | null;
+}
 
 export function extractRequirements(
   taskText: string,
   prDescription: string,
   taskSource: PullRequestInput["taskSource"] = "task"
 ): Requirement[] {
-  const rawSourceText = redactSecrets(taskText).trim() || redactSecrets(prDescription).trim();
-  const sourceText = cleanRequirementSourceText(rawSourceText);
-  const contextKeywords = extractKeywords(collectUsefulFencedContent(rawSourceText));
-  const explicit = sourceText.match(/acceptance criteria:?([\s\S]*)/i)?.[1] ?? sourceText;
-  const candidateLines = explicit
-    .split(/\n|;|(?<=\.)\s+|(?:^|\s)(?:-|\*|\d+\.)\s+/)
-    .map((line) => line.trim().replace(/^[-*]\s*/, ""))
-    .filter(Boolean)
-    .filter((line) => !isIssueTemplateNoiseLine(line));
+  return extractRequirementEvidence(taskText, prDescription, taskSource).requirements;
+}
 
-  const requirements = candidateLines
-    .filter((line) => line.length > 12)
-    .filter((line) => !isVagueRequirementLine(line, sourceText))
-    .slice(0, 8)
-    .map((text, index) => ({
+export function extractRequirementContexts(
+  taskText: string,
+  prDescription: string,
+  taskSource: PullRequestInput["taskSource"] = "task"
+): RequirementContextSignal[] {
+  return extractRequirementEvidence(taskText, prDescription, taskSource).contexts;
+}
+
+export function extractRequirementEvidence(
+  taskText: string,
+  prDescription: string,
+  taskSource: PullRequestInput["taskSource"] = "task"
+): RequirementExtractionResult {
+  const taskRaw = redactSecrets(taskText).trim();
+  const prRaw = redactSecrets(prDescription).trim();
+  const taskSourceType: Requirement["source"] = taskRaw ? taskSource ?? "task" : "manual";
+  const taskLines = taskRaw ? classifyRequirementSource(taskRaw, taskSourceType, false) : [];
+  const prLines = prRaw ? classifyRequirementSource(prRaw, "pr_description", true) : [];
+  const sourceOfTruthLines = taskLines.length > 0 ? taskLines : [];
+  const sourceText = cleanRequirementSourceText(taskRaw || prRaw);
+  const contexts = toContextSignals([...taskLines, ...prLines]);
+  const coreCandidates = sourceOfTruthLines.filter((line) => line.role === "core_requirement");
+  const promotedProblemCandidates = coreCandidates.length === 0 && taskLines.length > 0
+    ? promoteProblemContexts(taskLines)
+    : [];
+  const requirementCandidates = (coreCandidates.length > 0 ? coreCandidates : promotedProblemCandidates)
+    .filter((line) => line.text.length > 12)
+    .filter((line) => !isVagueRequirementLine(line.text, sourceText))
+    .slice(0, 8);
+  const fencedContextKeywords = extractKeywords(collectUsefulFencedContent(taskRaw || prRaw));
+
+  const requirements = requirementCandidates
+    .map((line, index) => ({
       id: `req_${index + 1}`,
-      source: taskText.trim() ? taskSource ?? "task" : "pr_description",
-      text: normalizeSentence(text),
-      keywords: mergeKeywords(extractKeywords(text), contextKeywords),
-      priority: /\b(must|required|acceptance|criteria)\b/i.test(text) ? "must" : "should"
+      source: line.source,
+      text: normalizeSentence(line.text),
+      keywords: mergeKeywords(
+        extractKeywords(line.text),
+        mergeKeywords(contextKeywordsForRequirement(line, contexts), fencedContextKeywords)
+      ),
+      priority: priorityForRequirement(line.text),
+      role: "core_requirement",
+      sourceQuality: line.sourceQuality,
+      sourceSection: line.sourceSection ?? null,
+      contextRoles: contextRolesForRequirement(line, contexts)
     })) satisfies Requirement[];
 
   if (requirements.length > 0) {
-    return requirements;
+    return {
+      requirements,
+      contexts
+    };
   }
 
-  return [
-    {
-      id: "req_1",
-      source: "manual",
-      text: "Original requirement is too vague to verify automatically.",
-      keywords: [],
-      priority: "must"
+  return {
+    requirements: [
+      {
+        id: "req_1",
+        source: "manual",
+        text: "Original requirement is too vague to verify automatically.",
+        keywords: [],
+        priority: "must",
+        role: "core_requirement",
+        sourceQuality: "manual_check",
+        sourceSection: null,
+        contextRoles: contexts.map((context) => context.role).filter(uniqueRole).slice(0, 8)
+      }
+    ],
+    contexts
+  };
+}
+
+function classifyRequirementSource(
+  rawText: string,
+  source: Requirement["source"],
+  isPrBody: boolean
+): ClassifiedRequirementLine[] {
+  const sourceText = cleanRequirementSourceText(rawText);
+  const lines: ClassifiedRequirementLine[] = [];
+  let currentSection: string | undefined;
+
+  for (const rawLine of sourceText.split(/\n+/)) {
+    const trimmed = normalizeSourceLine(rawLine);
+    if (!trimmed) continue;
+
+    const heading = sectionHeading(trimmed);
+    if (heading) {
+      currentSection = heading;
+      continue;
     }
-  ];
+
+    const inline = inlineSection(trimmed);
+    if (inline && !inline.text) {
+      currentSection = inline.section;
+      continue;
+    }
+
+    const section = inline?.section ?? currentSection;
+    const text = inline?.text || trimmed;
+
+    for (const segment of splitRequirementSegments(text)) {
+      const role = classifyLineRole(segment, section, source, isPrBody);
+      const sourceQuality = sourceQualityForLine(segment, section, role, source, isPrBody);
+      lines.push({
+        text: normalizeSentence(segment),
+        source,
+        role,
+        sourceQuality,
+        sourceSection: section ?? null
+      });
+    }
+  }
+
+  return lines.filter((line) => line.text.length > 0);
+}
+
+function normalizeSourceLine(line: string): string {
+  return line
+    .trim()
+    .replace(/^Linked issue\s+[\w.-]+\/[\w.-]+#\d+:\s*/i, "")
+    .replace(/^Linked issue\s+#\d+:\s*/i, "")
+    .replace(/^[-*]\s*/, "")
+    .replace(/^\d+\.\s*/, "")
+    .replace(/^\s*>\s*/, "")
+    .trim();
+}
+
+function sectionHeading(line: string): string | undefined {
+  const match = line.match(HEADING_PATTERN);
+  if (!match) return undefined;
+
+  const heading = normalizeSection(match[1]);
+  return heading || undefined;
+}
+
+function inlineSection(line: string): { section: string; text: string } | null {
+  const match = line.match(INLINE_SECTION_PATTERN);
+  if (!match) return null;
+
+  const section = normalizeSection(match[1]);
+  const text = match[2]?.trim() ?? "";
+
+  return { section, text };
+}
+
+function normalizeSection(value: string): string {
+  return value
+    .replace(/^#+\s*/, "")
+    .replace(/^_+|_+$/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/:$/, "")
+    .trim();
+}
+
+function splitRequirementSegments(line: string): string[] {
+  if (MARKDOWN_IMAGE_PATTERN.test(line)) {
+    return [line];
+  }
+
+  return line
+    .split(/;|(?<=\.)\s+|(?:^|\s)(?:-|\*|\d+\.)\s+/)
+    .map((segment) => segment.trim().replace(/^[-*]\s*/, ""))
+    .filter(Boolean);
+}
+
+function classifyLineRole(
+  line: string,
+  section: string | undefined,
+  source: Requirement["source"],
+  isPrBody: boolean
+): RequirementSourceRole {
+  const normalized = normalizeSection(line);
+  const sectionText = section ?? "";
+
+  if (isIssueTemplateNoiseLine(line) || TEMPLATE_SECTION_PATTERN.test(sectionText) || CHECKBOX_ONLY_PATTERN.test(line)) {
+    return "template_noise";
+  }
+
+  if (MARKDOWN_IMAGE_PATTERN.test(line) || VISUAL_SECTION_PATTERN.test(sectionText)) {
+    return "visual_context";
+  }
+
+  if (EXTERNAL_REFERENCE_SECTION_PATTERN.test(sectionText) || EXTERNAL_REFERENCE_PATTERN.test(line)) {
+    return "external_reference";
+  }
+
+  if (SOLUTION_HINT_SECTION_PATTERN.test(sectionText) || isSolutionHintLine(line)) {
+    return "solution_hint";
+  }
+
+  if (isPrBody && source === "pr_description") {
+    return "author_claim";
+  }
+
+  if (ACCEPTANCE_SECTION_PATTERN.test(sectionText)) {
+    return "core_requirement";
+  }
+
+  if (/^(expected|should|must|shall|required|do not|don't)\b/i.test(line) || /\bshould not|must not\b/i.test(line)) {
+    return "core_requirement";
+  }
+
+  if (PROBLEM_SECTION_PATTERN.test(sectionText)) {
+    return "problem_context";
+  }
+
+  if (REPRODUCTION_SECTION_PATTERN.test(sectionText) || /^it can be reproduced\b/i.test(line)) {
+    return "reproduction_context";
+  }
+
+  if (ENVIRONMENT_SECTION_PATTERN.test(sectionText) || isEnvironmentLine(normalized)) {
+    return "environment_context";
+  }
+
+  if (isPrBody && AUTHOR_CLAIM_SECTION_PATTERN.test(sectionText)) {
+    return "author_claim";
+  }
+
+  if (REQUIREMENT_LANGUAGE_PATTERN.test(line)) {
+    return "core_requirement";
+  }
+
+  if (ISSUE_PROBLEM_PATTERN.test(line)) {
+    return "problem_context";
+  }
+
+  return "problem_context";
+}
+
+function sourceQualityForLine(
+  line: string,
+  section: string | undefined,
+  role: RequirementSourceRole,
+  source: Requirement["source"],
+  isPrBody: boolean
+): RequirementSourceQuality {
+  const sectionText = section ?? "";
+
+  if (role === "core_requirement" && ACCEPTANCE_SECTION_PATTERN.test(sectionText) && /acceptance/i.test(sectionText)) {
+    return "explicit_acceptance_criteria";
+  }
+  if (role === "core_requirement" && /expected/i.test(sectionText)) {
+    return "expected_behavior";
+  }
+  if (role === "core_requirement" && REQUIREMENT_LANGUAGE_PATTERN.test(line)) {
+    return "requirement_language";
+  }
+  if (role === "solution_hint") {
+    return "solution_hint";
+  }
+  if (role === "author_claim" || isPrBody) {
+    return "author_claim";
+  }
+  if (source === "issue") {
+    return "linked_issue";
+  }
+  if (role === "problem_context") {
+    return "problem_statement";
+  }
+
+  return "fallback";
+}
+
+function promoteProblemContexts(lines: ClassifiedRequirementLine[]): ClassifiedRequirementLine[] {
+  return lines
+    .filter((line) => line.role === "problem_context")
+    .filter((line) => line.text.length > 12)
+    .filter((line) => !isIssueTemplateNoiseLine(line.text))
+    .slice(0, 4)
+    .map((line) => ({
+      ...line,
+      role: "core_requirement",
+      sourceQuality: "problem_statement"
+    }));
+}
+
+function toContextSignals(lines: ClassifiedRequirementLine[]): RequirementContextSignal[] {
+  return lines
+    .filter(isContextLine)
+    .slice(0, 30)
+    .map((line, index) => ({
+      id: `ctx_${index + 1}`,
+      source: line.source,
+      role: line.role,
+      sourceQuality: line.sourceQuality,
+      sourceSection: line.sourceSection ?? null,
+      text: normalizeSentence(line.text)
+    })) satisfies RequirementContextSignal[];
+}
+
+function isContextLine(
+  line: ClassifiedRequirementLine
+): line is ClassifiedRequirementLine & { role: RequirementContextSignal["role"] } {
+  return line.role !== "core_requirement" && line.role !== "template_noise";
+}
+
+function contextKeywordsForRequirement(
+  requirement: ClassifiedRequirementLine,
+  contexts: RequirementContextSignal[]
+): string[] {
+  return contexts
+    .filter((context) => context.source === requirement.source)
+    .filter((context) => isRelevantContext(requirement.text, context))
+    .flatMap((context) => extractKeywords(context.text))
+    .slice(0, 12);
+}
+
+function contextRolesForRequirement(
+  requirement: ClassifiedRequirementLine,
+  contexts: RequirementContextSignal[]
+): RequirementSourceRole[] {
+  return contexts
+    .filter((context) => context.source === requirement.source)
+    .filter((context) => isRelevantContext(requirement.text, context))
+    .map((context) => context.role)
+    .filter(uniqueRole)
+    .slice(0, 8);
+}
+
+function isRelevantContext(requirementText: string, context: RequirementContextSignal): boolean {
+  if (context.role === "visual_context" && isVisualContextText(`${requirementText} ${context.text}`)) {
+    return true;
+  }
+  if (context.role === "external_reference") {
+    return true;
+  }
+
+  const requirementKeywords = new Set(extractKeywords(requirementText));
+  return extractKeywords(context.text).some((keyword) => requirementKeywords.has(keyword));
+}
+
+function isEnvironmentLine(line: string): boolean {
+  return /^(electron|pandas|python|node|npm|browser|chrome|safari|firefox|operating system|os|platform|version)\b/i.test(line) ||
+    /\b(version|windows|macos|linux|ubuntu|ios|android|browser|debug output)\b/i.test(line);
+}
+
+function isSolutionHintLine(line: string): boolean {
+  return SOLUTION_HINT_LINE_PATTERN.test(line) &&
+    !/^(expected|actual|should|must|shall|required|do not|don't)\b/i.test(line);
+}
+
+function isVisualContextText(text: string): boolean {
+  return /\b(screenshot|screen shot|image|visual|browser|ui|ux|layout|viewport|responsive|overlap|overflow)\b/i.test(text);
+}
+
+function priorityForRequirement(text: string): Requirement["priority"] {
+  if (/\b(must|required|acceptance|criteria|must not|shall)\b/i.test(text)) {
+    return "must";
+  }
+  if (/\b(could|nice to have|optional)\b/i.test(text)) {
+    return "could";
+  }
+
+  return "should";
+}
+
+function uniqueRole(role: RequirementSourceRole, index: number, roles: RequirementSourceRole[]): boolean {
+  return roles.indexOf(role) === index;
 }
 
 function cleanRequirementSourceText(text: string): string {
@@ -104,6 +466,7 @@ function cleanRequirementSourceText(text: string): string {
     .replace(/<!--[\s\S]*?-->/g, "\n")
     .replace(/```[\s\S]*?```/g, "\n")
     .replace(/~~~[\s\S]*?~~~/g, "\n")
+    .replace(/\b(Acceptance criteria|Expected behavior|Expected outcome|Actual behavior|Actual outcome|Steps to reproduce|Reproducible example|Code for reproduction|Describe the bug|Issue description|Suggested fix|Suggested solution|Proposed fix|Proposed solution|Possible fix|Possible solution|Debug Output):/gi, "\n$1:")
     .trim();
 }
 
@@ -252,6 +615,7 @@ export function buildEvidenceIndex(
   }
 
   for (const file of changedFiles) {
+    const safePath = redactSecrets(file.path);
     const status = file.status ? `${file.status} ` : "";
     const stats =
       typeof file.additions === "number" || typeof file.deletions === "number"
@@ -265,9 +629,9 @@ export function buildEvidenceIndex(
     items.push({
       id: `ev_${items.length + 1}`,
       kind: isTestFile(file.path) ? "test" : file.patch ? "diff" : "changed_file",
-      label: file.path,
-      locator: file.path,
-      summary: `${status}${file.path}${stats}.${testSignal}${riskSignal}${patchSummary}`.trim(),
+      label: safePath,
+      locator: safePath,
+      summary: `${status}${safePath}${stats}.${testSignal}${riskSignal}${patchSummary}`.trim(),
       confidence: 0.85
     });
   }

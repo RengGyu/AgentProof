@@ -1,5 +1,5 @@
 import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput } from "./types";
-import { isExecutionEvidenceSignal } from "./evidence-status";
+import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
 import {
   extractSupportedIssueReferences,
   formatIssueReference,
@@ -32,7 +32,7 @@ export const GITHUB_EVIDENCE_TIMING_PHASES = [
   "github_jobs"
 ] as const;
 const NON_PROOF_ACTION_STEP_PATTERN =
-  /\b(checkout|setup|cache|install dependencies|upload|download|artifact|publish|preview|deploy|deployment|report|notify)\b/i;
+  /\b(checkout|setup|cache|install dependencies|upload|download|artifact|publish|preview|deploy|deployment|report|notify|changelog|change log|release notes?|towncrier|codecov|coverage (?:gate|policy|report|threshold|upload)|optional|non[- ]?blocking)\b/i;
 const GENERIC_ACTION_JOB_NAME_PATTERN = /^\s*(ci|checks?|workflow|github actions)\s*$/i;
 
 export type GitHubEvidenceTimingPhase = (typeof GITHUB_EVIDENCE_TIMING_PHASES)[number];
@@ -329,6 +329,7 @@ async function fetchGitHubPullRequest(
   ]);
 
   limitations.push(...annotationLimitations, ...actionJobLimitations);
+  limitations.push(...githubEvidenceSourceLimitations(checkRuns, statuses, actionJobLogs));
   const missingPatchCount = files.filter((file) => !file.patch).length;
 
   if (missingPatchCount > 0) {
@@ -361,12 +362,89 @@ async function fetchGitHubPullRequest(
     })).concat(statuses.map((status) => ({
       name: status.context,
       status: mapGitHubCommitStatus(status.state),
-      summary: status.description,
+      summary: status.description ? compactText(status.description, 240) : undefined,
       url: sanitizeGitHubEvidenceUrl(status.target_url)
     }))),
     logs: actionJobLogs,
-    limitations
+    limitations: normalizeGitHubEvidenceLimitations(limitations)
   };
+}
+
+function githubEvidenceSourceLimitations(
+  checkRuns: GitHubCheckRunResponse[],
+  statuses: GitHubStatusResponse[],
+  actionJobLogs: LogSnippet[]
+): string[] {
+  const limitations: string[] = [];
+  const hasExecutionCheckRun = checkRuns.some(isExecutionCheckRun);
+  const hasExecutionStatus = statuses.some((status) =>
+    isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url)
+  );
+  const hasExecutionJobMetadata = actionJobLogs.some((log) => isExecutionEvidenceSignal(log.source, log.text, log.url));
+  const hasExecutionEvidence = hasExecutionCheckRun || hasExecutionStatus || hasExecutionJobMetadata;
+  const executionStatuses = [
+    ...checkRuns
+      .filter(isExecutionCheckRun)
+      .map((check) => mapGitHubCheckStatus(check.status, check.conclusion)),
+    ...statuses
+      .filter((status) => isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url))
+      .map((status) => mapGitHubCommitStatus(status.state)),
+    ...actionJobLogs
+      .filter((log) => isExecutionEvidenceSignal(log.source, log.text, log.url))
+      .map((log) => log.status ?? "unknown")
+  ];
+  const hasAnyPublicCheckMetadata = checkRuns.length > 0 || statuses.length > 0;
+  const hasOnlyNonExecutionCommitStatuses = statuses.length > 0 && !hasExecutionStatus && !hasExecutionEvidence;
+
+  if (hasExecutionEvidence) {
+    const source = hasExecutionCheckRun || hasExecutionJobMetadata
+      ? "Public GitHub Actions metadata"
+      : "Public commit status metadata";
+    if (executionStatuses.some((status) => status === "failed")) {
+      limitations.push(`${source} showed failing build/test jobs; raw log archives were not fetched or stored.`);
+    } else if (executionStatuses.some((status) => status === "pending")) {
+      limitations.push(`${source} showed pending build/test jobs; raw log archives were not fetched or stored.`);
+    } else if (executionStatuses.some((status) => status === "passed")) {
+      limitations.push(`${source} showed passing build/test jobs; raw log archives were not fetched or stored.`);
+    }
+  }
+
+  if (hasOnlyNonExecutionCommitStatuses) {
+    limitations.push("Public commit status metadata was available, but only non-execution statuses were found.");
+  }
+
+  if (!hasExecutionEvidence) {
+    limitations.push(
+      hasAnyPublicCheckMetadata
+        ? "No public test/build workflow run, check, or raw CI log was available from the collected metadata."
+        : "No public test/build workflow run, check, or raw CI log was available."
+    );
+  }
+
+  limitations.push("Raw CI logs were not fetched or stored.");
+
+  return limitations;
+}
+
+function normalizeGitHubEvidenceLimitations(limitations: string[]): string[] {
+  const hasFailingExecutionLimitation = limitations.some((limitation) =>
+    /showed failing build\/test jobs/i.test(limitation)
+  );
+  const hasPendingExecutionLimitation = limitations.some((limitation) =>
+    /showed pending build\/test jobs/i.test(limitation)
+  );
+
+  return Array.from(new Set(limitations.filter((limitation) => {
+    if (hasFailingExecutionLimitation && /showed (?:passing|pending) build\/test jobs/i.test(limitation)) {
+      return false;
+    }
+
+    if (hasPendingExecutionLimitation && /showed passing build\/test jobs/i.test(limitation)) {
+      return false;
+    }
+
+    return true;
+  })));
 }
 
 async function measureGitHubEvidenceTiming<T>(
@@ -651,18 +729,17 @@ async function fetchCheckRuns(
 
   for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
     let response: Response;
-    const perPage = Math.min(GITHUB_PAGE_SIZE, Math.max(1, GITHUB_MAX_CHECK_RUNS - checks.length));
 
     try {
-      response = await githubFetch(`${baseUrl}?per_page=${perPage}&page=${page}`, headers, GITHUB_CHECK_RUNS_TIMEOUT_MS);
+      response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers, GITHUB_CHECK_RUNS_TIMEOUT_MS);
     } catch {
       limitations.push(`GitHub check-run evidence unavailable: request timed out after ${GITHUB_CHECK_RUNS_TIMEOUT_MS} ms or network failed.`);
-      return checks;
+      return prioritizeCheckRunsForEvidence(checks);
     }
 
     if (!response.ok) {
       limitations.push(`GitHub check-run fetch failed: ${githubFailureReason(response, hasToken)} CI evidence may be incomplete.`);
-      return checks;
+      return prioritizeCheckRunsForEvidence(checks);
     }
 
     const pageJson = await response.json();
@@ -670,23 +747,36 @@ async function fetchCheckRuns(
     const pageItems = (pageJson.check_runs ?? []) as GitHubCheckRunResponse[];
     checks.push(...pageItems);
 
-    if (checks.length >= GITHUB_MAX_CHECK_RUNS) {
-      if (totalCount === undefined || totalCount > GITHUB_MAX_CHECK_RUNS) {
-        limitations.push(`GitHub check-run evidence was capped at ${GITHUB_MAX_CHECK_RUNS} checks.`);
-      }
-      return checks.slice(0, GITHUB_MAX_CHECK_RUNS);
-    }
-
-    if (pageItems.length < perPage || (totalCount !== undefined && checks.length >= totalCount)) {
-      return checks;
+    if (pageItems.length < GITHUB_PAGE_SIZE || (totalCount !== undefined && checks.length >= totalCount)) {
+      break;
     }
   }
 
-  if (totalCount === undefined || checks.length < totalCount) {
+  if (checks.length > GITHUB_MAX_CHECK_RUNS || totalCount === undefined || totalCount > GITHUB_MAX_CHECK_RUNS) {
     limitations.push(`GitHub check-run evidence was capped at ${GITHUB_MAX_CHECK_RUNS} checks.`);
   }
 
-  return checks.slice(0, GITHUB_MAX_CHECK_RUNS);
+  return prioritizeCheckRunsForEvidence(checks);
+}
+
+function prioritizeCheckRunsForEvidence(checkRuns: GitHubCheckRunResponse[]): GitHubCheckRunResponse[] {
+  return checkRuns
+    .map((check, index) => ({ check, index, rank: checkRunEvidenceRank(check) }))
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .slice(0, GITHUB_MAX_CHECK_RUNS)
+    .map(({ check }) => check);
+}
+
+function checkRunEvidenceRank(check: GitHubCheckRunResponse): number {
+  const status = mapGitHubCheckStatus(check.status, check.conclusion);
+  const execution = isExecutionCheckRun(check);
+
+  if (execution && status === "failed") return 0;
+  if (execution && status === "pending") return 1;
+  if (execution && status === "passed") return 2;
+  if (status === "failed") return 3;
+  if (status === "pending") return 4;
+  return 5;
 }
 
 async function fetchCommitStatuses(
@@ -872,10 +962,11 @@ function normalizeAnnotationLevel(value: string | undefined): string {
 
 function checkSummaryWithAnnotations(check: GitHubCheckRunResponse): string | undefined {
   const baseSummary = check.output?.summary || check.output?.title;
+  const safeBaseSummary = baseSummary ? compactText(baseSummary, 700) : undefined;
   const annotations = check.annotations ?? [];
 
   if (annotations.length === 0) {
-    return baseSummary;
+    return safeBaseSummary;
   }
 
   const annotationText = annotations
@@ -886,7 +977,7 @@ function checkSummaryWithAnnotations(check: GitHubCheckRunResponse): string | un
     .join(", ");
 
   return compactText(
-    `${baseSummary ?? "Check annotations available."} Check annotations: ${annotationText}. Raw annotation messages and raw annotation details omitted.`,
+    `${safeBaseSummary ?? "Check annotations available."} Check annotations: ${annotationText}. Raw annotation messages and raw annotation details omitted.`,
     900
   );
 }
@@ -900,7 +991,7 @@ async function fetchActionJobSummaries(
   hasToken: boolean
 ): Promise<LogSnippet[]> {
   const runIds = Array.from(new Set(checkRuns
-    .filter((check) => isExecutionCheckRun(check))
+    .filter((check) => shouldFetchActionJobMetadata(check, owner, repo))
     .map((check) => actionRunIdFromCheckRun(check, owner, repo))
     .filter((id): id is string => Boolean(id))))
     .slice(0, GITHUB_MAX_ACTION_RUNS);
@@ -927,7 +1018,7 @@ async function fetchActionJobSummaries(
   }
 
   if (logs.length > 0) {
-    limitations.push("GitHub Actions job-step metadata was collected; raw log archives were not fetched or stored.");
+    limitations.push(githubActionsMetadataLimitation(logs));
   }
 
   return logs;
@@ -985,7 +1076,42 @@ async function fetchActionJobsForRun(
 }
 
 function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
-  return isExecutionEvidenceSignal(check.name, `${check.output?.title ?? ""} ${check.output?.summary ?? ""}`, check.details_url ?? check.html_url);
+  const status = mapGitHubCheckStatus(check.status, check.conclusion);
+  const text = `${check.output?.title ?? ""} ${check.output?.summary ?? ""}`;
+  const locator = check.details_url ?? check.html_url;
+
+  return isExecutionEvidenceSignal(check.name, text, locator) ||
+    isFailedAmbiguousActionsExecutionSignal(check.name, status, locator, text);
+}
+
+function shouldFetchActionJobMetadata(check: GitHubCheckRunResponse, owner: string, repo: string): boolean {
+  if (!actionRunIdFromCheckRun(check, owner, repo)) {
+    return false;
+  }
+
+  if (isExecutionCheckRun(check)) {
+    return true;
+  }
+
+  return GENERIC_ACTION_JOB_NAME_PATTERN.test(check.name);
+}
+
+function githubActionsMetadataLimitation(logs: LogSnippet[]): string {
+  const statuses = logs.map((log) => log.status ?? "unknown");
+
+  if (statuses.some((status) => status === "failed")) {
+    return "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.";
+  }
+
+  if (statuses.some((status) => status === "pending")) {
+    return "Public GitHub Actions metadata showed pending build/test jobs; raw log archives were not fetched or stored.";
+  }
+
+  if (statuses.some((status) => status === "passed")) {
+    return "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.";
+  }
+
+  return "Public GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.";
 }
 
 function isExecutionActionJob(job: GitHubActionJobResponse): boolean {
@@ -1118,7 +1244,7 @@ function mapGitHubCheckStatus(status: string, conclusion: string | null): CheckR
     return "passed";
   }
 
-  if (conclusion === "failure" || conclusion === "timed_out" || conclusion === "cancelled" || conclusion === "action_required") {
+  if (conclusion === "failure" || conclusion === "timed_out") {
     return "failed";
   }
 
