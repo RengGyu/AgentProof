@@ -75,6 +75,13 @@ For design-partner beta readiness, token-unconfigured cron requests are harmless
 
 ## Live Integration Checks
 
+Before enabling durable GitHub App onboarding, apply the checked-in installation
+ownership and claim migrations in order: `202607120001_github_installation_single_tenant.sql`, then
+`202607120002_github_installation_claims.sql`. Confirm the claim, onboarding,
+and installation stores use the same Supabase project. Do not run the live
+approval smoke until those migrations and server-only claim credentials are in
+the deployed environment.
+
 These checks use server-side env and caller tokens. They should never print secret values.
 
 | Integration | Command or request | Expected proof | Side effect |

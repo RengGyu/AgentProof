@@ -79,11 +79,14 @@ const EXTERNAL_REFERENCE_PATTERN = /\b(?:trac|jira|linear|fixes|closes|resolves|
 const REQUIREMENT_LANGUAGE_PATTERN =
   /\b(acceptance criteria|must|should|shall|required|expected|expectation|add|implement|prevent|preserve|allow|reject|return|support|handle|fix|ensure|validate|do not|don't|without crashing|should not|must not|successfully)\b/i;
 const ISSUE_PROBLEM_PATTERN = /\b(bug|crash|segfault|error|exception|fails?|broken|regression|incorrect|wrong|unable|cannot|does not|doesn't|missing required argument)\b/i;
+export const MAX_REPORT_EVIDENCE_ITEMS = 200;
 
 export interface RequirementExtractionResult {
   requirements: Requirement[];
   contexts: RequirementContextSignal[];
+  omittedRequirementCount: number;
 }
+export interface EvidenceIndexResult { items: EvidenceItem[]; omittedByKind: Partial<Record<EvidenceItem["kind"], number>>; }
 
 interface ClassifiedRequirementLine {
   text: string;
@@ -126,10 +129,10 @@ export function extractRequirementEvidence(
   const promotedProblemCandidates = coreCandidates.length === 0 && taskLines.length > 0
     ? promoteProblemContexts(taskLines)
     : [];
-  const requirementCandidates = (coreCandidates.length > 0 ? coreCandidates : promotedProblemCandidates)
+  const allRequirementCandidates = (coreCandidates.length > 0 ? coreCandidates : promotedProblemCandidates)
     .filter((line) => line.text.length > 12)
     .filter((line) => !isVagueRequirementLine(line.text, sourceText))
-    .slice(0, 8);
+  const requirementCandidates = allRequirementCandidates.slice(0, 8);
   const fencedContextKeywords = extractKeywords(collectUsefulFencedContent(taskRaw || prRaw));
 
   const requirements = requirementCandidates
@@ -151,7 +154,8 @@ export function extractRequirementEvidence(
   if (requirements.length > 0) {
     return {
       requirements,
-      contexts
+      contexts,
+      omittedRequirementCount: Math.max(0, allRequirementCandidates.length - requirements.length)
     };
   }
 
@@ -169,7 +173,8 @@ export function extractRequirementEvidence(
         contextRoles: contexts.map((context) => context.role).filter(uniqueRole).slice(0, 8)
       }
     ],
-    contexts
+      contexts,
+      omittedRequirementCount: 0
   };
 }
 
@@ -592,6 +597,12 @@ export function buildEvidenceIndex(
   logs: LogSnippet[],
   taskSource: PullRequestInput["taskSource"] = "task"
 ): EvidenceItem[] {
+  return buildEvidenceIndexResult(taskText, prDescription, changedFiles, checks, logs, taskSource).items;
+}
+
+export function buildEvidenceIndexResult(
+  taskText: string, prDescription: string, changedFiles: ChangedFile[], checks: CheckRun[], logs: LogSnippet[], taskSource: PullRequestInput["taskSource"] = "task"
+): EvidenceIndexResult {
   const items: EvidenceItem[] = [];
 
   if (taskText.trim()) {
@@ -664,7 +675,22 @@ export function buildEvidenceIndex(
     });
   }
 
-  return items;
+  const ranked = items.map((item, index) => ({ item, index })).sort((left, right) => evidenceRank(left.item) - evidenceRank(right.item) || left.index - right.index);
+  // Retain original IDs so existing evidence references remain stable even
+  // when lower-priority items are omitted.
+  const kept = ranked.slice(0, MAX_REPORT_EVIDENCE_ITEMS).map(({ item }) => item);
+  const omittedByKind: EvidenceIndexResult["omittedByKind"] = {};
+  for (const { item } of ranked.slice(MAX_REPORT_EVIDENCE_ITEMS)) omittedByKind[item.kind] = (omittedByKind[item.kind] ?? 0) + 1;
+  return { items: kept, omittedByKind };
+}
+
+function evidenceRank(item: EvidenceItem): number {
+  if ((item.kind === "check" || item.kind === "log") && /Status:\s*(failure|failed|error|cancelled|timed_out)/i.test(item.summary)) return 0;
+  if ((item.kind === "check" || item.kind === "log") && /Status:\s*(pending|in_progress|queued|unknown)/i.test(item.summary)) return 1;
+  if (item.kind === "check" || item.kind === "log") return 2;
+  if (item.kind === "test" || item.kind === "diff") return 3;
+  if (item.kind === "task" || item.kind === "pr_description") return 4;
+  return 5;
 }
 
 export function extractKeywords(text: string): string[] {

@@ -100,6 +100,13 @@ function normalizeOpenAIReport(value: unknown): unknown {
         delete source[key];
       }
     }
+    if (source.provenance === null || source.provenance === undefined) {
+      delete source.provenance;
+    } else if (isRecord(source.provenance) && source.provenance.headSha === null) {
+      const provenance = { ...source.provenance };
+      delete provenance.headSha;
+      source.provenance = provenance;
+    }
     report.source = source;
   }
 
@@ -177,6 +184,7 @@ function compareSource(
   compareValue(source.author, baselineSource.author, "source.author", errors);
   compareValue(source.baseBranch, baselineSource.baseBranch, "source.baseBranch", errors);
   compareValue(source.headBranch, baselineSource.headBranch, "source.headBranch", errors);
+  compareJson(source.provenance, baselineSource.provenance, "source.provenance", errors);
 }
 
 function compareRequirementIdentity(

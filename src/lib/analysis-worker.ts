@@ -7,7 +7,12 @@ import {
   type AnalysisJobRow
 } from "./analysis-jobs";
 import { getAuditLogStoreStatus, recordAuditEvent, AuditLogError } from "./audit-log";
-import { buildGitHubPullRequestInput, GitHubFetchError } from "./github";
+import {
+  buildGitHubPullRequestInput,
+  fetchGitHubPullRequestHead,
+  GitHubFetchError,
+  GitHubPullRequestHeadChangedError
+} from "./github";
 import {
   createGitHubInstallationAccessToken,
   getGitHubAppAutomationSettings,
@@ -94,7 +99,7 @@ export interface AnalysisWorkerRunResult {
 export type AnalysisWorkerBatchStopReason =
   | "idle"
   | "limit_reached"
-  | "retryable_failure";
+  | "systemic_retryable_failure";
 
 export interface AnalysisWorkerBatchResult {
   requestedLimit: number;
@@ -344,7 +349,10 @@ export async function runNextAnalysisJob(
     await assertWorkerTenantDeletionNotActive(job, env);
 
     const token = await createGitHubInstallationAccessToken(job.installation_id, env);
-    const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "");
+    const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
+      expectedHeadSha: job.head_sha,
+      now: () => options.now ?? new Date()
+    });
 
     if (!input) {
       throw new AnalysisWorkerRetryableError(
@@ -354,13 +362,24 @@ export async function runNextAnalysisJob(
     }
 
     const report = generateVerificationReport(input);
-    const validation = validateVerificationReport(report, { mode: "full" });
+    const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
 
     if (!validation.valid) {
       throw new AnalysisWorkerTerminalError(
         "generated_report_validation_failed",
         `Generated report failed runtime validation: ${validation.errors.join("; ")}`
       );
+    }
+
+    const finalHeadSha = await fetchGitHubPullRequestHead(job.pull_request_url, token);
+    if (!finalHeadSha) {
+      throw new AnalysisWorkerRetryableError(
+        "github_app_pr_snapshot_unavailable",
+        "GitHub App worker could not recheck the pull request head before publishing evidence."
+      );
+    }
+    if (finalHeadSha !== job.head_sha || finalHeadSha !== input.sourceProvenance?.headSha) {
+      throw new GitHubPullRequestHeadChangedError(job.head_sha, finalHeadSha, "final");
     }
 
     const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, sideEffects, env);
@@ -495,8 +514,8 @@ export async function runAnalysisJobBatch(
 
     items.push(result);
 
-    if (result.status === "failed_retryable") {
-      stoppedReason = "retryable_failure";
+    if (result.status === "failed_retryable" && isSystemicRetryableFailure(result.reason)) {
+      stoppedReason = "systemic_retryable_failure";
       break;
     }
   }
@@ -511,6 +530,14 @@ export async function runAnalysisJobBatch(
     stoppedReason,
     items
   };
+}
+
+function isSystemicRetryableFailure(reason: string | undefined): boolean {
+  return reason === "github_fetch_failed" ||
+    reason === "github_app_not_ready" ||
+    reason === "github_app_tenant_grant_store_unavailable" ||
+    reason === "github_app_plan_gate_unavailable" ||
+    reason === "github_app_durable_audit_required";
 }
 
 async function prepareWorkerSideEffects(
@@ -706,6 +733,14 @@ function classifyWorkerFailure(error: unknown): { retryable: boolean; code: stri
 
   if (error instanceof AnalysisWorkerRetryableError) {
     return { retryable: true, code: error.code, summary };
+  }
+
+  if (error instanceof GitHubPullRequestHeadChangedError) {
+    return {
+      retryable: false,
+      code: "github_app_pr_head_changed",
+      summary: "GitHub pull request head changed during evidence collection; AgentProof did not save or publish a report."
+    };
   }
 
   if (error instanceof GitHubFetchError) {

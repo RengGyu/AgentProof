@@ -8,6 +8,7 @@ import {
 import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/lib/tenant-deletion-state";
+import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 
 const MAX_SETTINGS_REQUEST_BYTES = 20_000;
 const PATCH_KEYS = new Set(["tenantId", "installationId", "repositoryId", "settings"]);
@@ -80,6 +81,9 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const csrf = verifySameOriginMutationRequest(request);
+  if (!csrf.ok) return csrfFailureResponse();
+
   if (!getTenantControlPlaneSettings().enabled) {
     return noStoreJson({
       error: "Tenant control plane must be enabled before repository settings can be changed.",

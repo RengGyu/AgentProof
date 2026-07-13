@@ -14,7 +14,7 @@ describe("GET /api/github/onboarding/callback", () => {
     clearTenantGitHubInstallationsForTests();
   });
 
-  it("exchanges a valid GitHub installation callback for a short-lived activation cookie", async () => {
+  it("creates a pending operator claim without exposing tenant or installation identity", async () => {
     stubOnboardingEnv();
     const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" });
     const state = new URL(install.installUrl).searchParams.get("state");
@@ -26,19 +26,19 @@ describe("GET /api/github/onboarding/callback", () => {
     const json = await response.json();
     const serialized = JSON.stringify(json);
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_activation=");
+    expect(response.status).toBe(202);
+    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_installation_claim=");
     expect(response.headers.get("Set-Cookie")).toContain("HttpOnly");
     expect(json).toEqual({
       ok: true,
-      tenantId: "tenant_a",
-      installationId: 321,
-      setupAction: "install",
-      activationExpiresAt: expect.any(String),
-      next: "select_repository"
+      claimExpiresAt: expect.any(String),
+      operatorRequestCode: expect.any(String),
+      next: "operator_approval_required"
     });
     expect(serialized).not.toContain(String(state));
     expect(serialized).not.toContain("state-secret-value");
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("321");
   });
 
   it("rejects callback replay for the same state and nonce", async () => {
@@ -50,7 +50,7 @@ describe("GET /api/github/onboarding/callback", () => {
       { headers: { cookie: install.nonceCookie } }
     );
 
-    expect((await GET(request())).status).toBe(200);
+    expect((await GET(request())).status).toBe(202);
     const replay = await GET(request());
 
     expect(replay.status).toBe(401);
@@ -72,12 +72,12 @@ describe("GET /api/github/onboarding/callback", () => {
     const location = response.headers.get("Location") ?? "";
 
     expect(response.status).toBe(303);
-    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_activation=");
+    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_installation_claim=");
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(location).toContain("/tenant?");
-    expect(location).toContain("tenantId=tenant_a");
-    expect(location).toContain("installationId=321");
-    expect(location).toContain("githubApp=connected");
+    expect(location).toContain("githubApp=pending");
+    expect(location).not.toContain("tenantId=");
+    expect(location).not.toContain("installationId=");
     expect(location).not.toContain(String(state));
     expect(location).not.toContain("state-secret-value");
   });
@@ -99,7 +99,7 @@ describe("GET /api/github/onboarding/callback", () => {
     });
   });
 
-  it("fails closed when installation metadata storage is partially configured", async () => {
+  it("does not touch installation metadata before operator approval", async () => {
     stubOnboardingEnv();
     vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" });
@@ -112,12 +112,39 @@ describe("GET /api/github/onboarding/callback", () => {
       { headers: { cookie: install.nonceCookie } }
     ));
 
+    expect(response.status).toBe(202);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed with a bounded 503 when durable claim storage is unavailable", async () => {
+    stubOnboardingEnv();
+    vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_ALLOW_MEMORY", "");
+    const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" });
+    const state = new URL(install.installUrl).searchParams.get("state");
+    const response = await GET(new Request(
+      `http://localhost/api/github/onboarding/callback?installation_id=321&setup_action=install&state=${state}`,
+      { headers: { cookie: install.nonceCookie } }
+    ));
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
-      error: "GitHub App installation metadata store is unavailable.",
-      code: "github_installation_metadata_store_unavailable"
+      error: "GitHub App installation approval storage is unavailable.",
+      code: "github_installation_claim_store_unavailable"
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the same pending path under strict operator-claim configuration", async () => {
+    stubOnboardingEnv();
+    vi.stubEnv("AGENTPROOF_GITHUB_OPERATOR_CLAIMS_REQUIRED", "true");
+    const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" });
+    const state = new URL(install.installUrl).searchParams.get("state");
+
+    const response = await GET(new Request(
+      `http://localhost/api/github/onboarding/callback?installation_id=321&setup_action=install&state=${state}`,
+      { headers: { cookie: install.nonceCookie } }
+    ));
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_installation_claim=");
   });
 });
 
@@ -126,4 +153,6 @@ function stubOnboardingEnv() {
   vi.stubEnv("AGENTPROOF_ONBOARDING_STATE_SECRET", "state-secret-value-with-enough-entropy");
   vi.stubEnv("AGENTPROOF_BETA_INVITE_TOKEN", "invite-token-value");
   vi.stubEnv("AGENTPROOF_ONBOARDING_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATION_CLAIM_OPERATOR_TOKEN", "operator-claim-token");
 }

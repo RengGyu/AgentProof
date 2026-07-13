@@ -6,7 +6,7 @@ import {
 import {
   clearGitHubOnboardingSessionsForTests,
   clearTenantAdminSessionCookie,
-  completeGitHubAppInstallCallback,
+  activateApprovedGitHubInstallationClaim,
   createGitHubAppInstallSession,
   createTenantAdminSession,
   getGitHubOnboardingConfigStatus,
@@ -21,6 +21,7 @@ import {
   verifyGitHubActivationSession,
   consumeGitHubActivationSession
 } from "./github-onboarding";
+import { clearInstallationClaimsForTests, decidePendingInstallationClaim } from "./github-installation-claims";
 
 describe("github onboarding helpers", () => {
   const now = Date.parse("2026-06-30T00:00:00Z");
@@ -31,13 +32,16 @@ describe("github onboarding helpers", () => {
     AGENTPROOF_BETA_INVITES: JSON.stringify([
       { tenantId: "tenant_a", token: "tenant-a-invite-token" }
     ]),
-    AGENTPROOF_ONBOARDING_ALLOW_MEMORY: "true"
+    AGENTPROOF_ONBOARDING_ALLOW_MEMORY: "true",
+    AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_ALLOW_MEMORY: "true",
+    AGENTPROOF_GITHUB_INSTALLATION_CLAIM_OPERATOR_TOKEN: "operator-token"
   } as unknown as NodeJS.ProcessEnv;
 
   afterEach(() => {
     vi.unstubAllGlobals();
     clearGitHubOnboardingSessionsForTests();
     clearTenantGitHubInstallationsForTests();
+    clearInstallationClaimsForTests();
   });
 
   it("creates opaque install sessions without exposing tenant or invite secrets in state", async () => {
@@ -64,13 +68,13 @@ describe("github onboarding helpers", () => {
     const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" }, env, now);
     const state = new URL(install.installUrl).searchParams.get("state");
 
-    await expect(completeGitHubAppInstallCallback({
+    await expect(requestAndApproveClaim({
       state,
       nonceCookieHeader: `${ONBOARDING_NONCE_COOKIE}=wrong`,
       installationId: 321
     }, env, now + 1_000)).rejects.toThrow("invalid");
 
-    const activation = await completeGitHubAppInstallCallback({
+    const activation = await requestAndApproveClaim({
       state,
       nonceCookieHeader: install.nonceCookie,
       installationId: 321
@@ -84,7 +88,7 @@ describe("github onboarding helpers", () => {
     expect(activation.activationCookie).toContain(`${ONBOARDING_ACTIVATION_COOKIE}=`);
     expect(activation.activationCookie).toContain("HttpOnly");
 
-    await expect(completeGitHubAppInstallCallback({
+    await expect(requestAndApproveClaim({
       state,
       nonceCookieHeader: install.nonceCookie,
       installationId: 321
@@ -99,7 +103,7 @@ describe("github onboarding helpers", () => {
     const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" }, installEnv, now);
     const state = new URL(install.installUrl).searchParams.get("state");
 
-    await completeGitHubAppInstallCallback({
+    await requestAndApproveClaim({
       state,
       nonceCookieHeader: install.nonceCookie,
       installationId: 321
@@ -113,9 +117,25 @@ describe("github onboarding helpers", () => {
     });
   });
 
+  it("requires an operator-approved installation claim before durable-style callback activation", async () => {
+    const strictEnv = {
+      ...env,
+      AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY: "true"
+    } as unknown as NodeJS.ProcessEnv;
+    const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" }, strictEnv, now);
+    const state = new URL(install.installUrl).searchParams.get("state");
+
+    const claim = await requestClaim({ state, nonceCookieHeader: install.nonceCookie, installationId: 321 }, strictEnv, now + 1_000);
+    await expect(activateApprovedGitHubInstallationClaim({ claimCookieHeader: claim.claimCookie }, strictEnv, now + 1_000)).resolves.toBeNull();
+    await expect(countTenantGitHubInstallations({ tenantId: "tenant_a" }, strictEnv)).resolves.toMatchObject({ count: 0 });
+
+    await decidePendingInstallationClaim({ operatorRequestCode: claim.operatorRequestCode, operatorToken: "operator-token", decision: "approve" }, strictEnv, now + 2_000);
+    await expect(activateApprovedGitHubInstallationClaim({ claimCookieHeader: claim.claimCookie }, strictEnv, now + 2_000)).resolves.toMatchObject({ tenantId: "tenant_a", installationId: 321 });
+  });
+
   it("verifies activation sessions and rejects replay after repository grant consumption", async () => {
     const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" }, env, now);
-    const activation = await completeGitHubAppInstallCallback({
+    const activation = await requestAndApproveClaim({
       state: new URL(install.installUrl).searchParams.get("state"),
       nonceCookieHeader: install.nonceCookie,
       installationId: 321
@@ -453,6 +473,19 @@ describe("github onboarding helpers", () => {
     ]);
   });
 });
+
+async function requestClaim(input: { state: string | null; nonceCookieHeader: string; installationId: number }, testEnv: NodeJS.ProcessEnv, at: number) {
+  const { requestGitHubInstallationClaim } = await import("./github-onboarding");
+  return requestGitHubInstallationClaim(input, testEnv, at);
+}
+
+async function requestAndApproveClaim(input: { state: string | null; nonceCookieHeader: string; installationId: number }, testEnv: NodeJS.ProcessEnv, at: number) {
+  const claim = await requestClaim(input, testEnv, at);
+  await decidePendingInstallationClaim({ operatorRequestCode: claim.operatorRequestCode, operatorToken: "operator-token", decision: "approve" }, testEnv, at);
+  const activation = await activateApprovedGitHubInstallationClaim({ claimCookieHeader: claim.claimCookie }, testEnv, at);
+  if (!activation) throw new Error("Approved installation claim did not activate.");
+  return activation;
+}
 
 function tenantSessionEnv() {
   return {

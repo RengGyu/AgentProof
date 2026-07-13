@@ -49,7 +49,7 @@ Failed tenant session and durable auth session attempts write bounded audit even
 
 `PATCH /api/tenants/account` is an operator/design-partner account lifecycle v2 boundary for durable account stores only. It requires same-origin mutation proof plus a durable tenant auth session whose current member role re-reads as `owner` or `admin`. The legacy stateless tenant admin session and invite header fallback cannot mutate member lifecycle. The request accepts only `tenantId`, `memberId`, optional `role`, and optional `status`; role is limited to `owner`, `admin`, or `member`, and status is limited to `active`, `invited`, or `disabled`. The route protects the last active owner and returns only `tenant-account-member-lifecycle-metadata-only` fields: tenant id, member id, role, status, privacy label, and next action.
 
-`GET /callback` is called by GitHub with `installation_id`, `setup_action`, and `state`. API clients receive bounded JSON. Browser callbacks that request HTML are redirected to `/tenant?tenantId=<tenant>&installationId=<id>&githubApp=connected` with the activation cookie set; the opaque state token is not copied into the redirect URL.
+`GET /callback` is called by GitHub with `installation_id`, `setup_action`, and `state`. It creates a pending installation claim, not an active installation or activation session. API clients receive only an opaque operator request code and expiry. Browser callbacks redirect to `/tenant?githubApp=pending` with an HttpOnly claim cookie; tenant id, installation id, and opaque state are not copied into the redirect URL. After an operator or future OAuth verifier approves the claim, `POST /api/github/onboarding/claim` exchanges that claim cookie for the short-lived activation session.
 
 `GET /repositories` returns bounded metadata only:
 
@@ -189,7 +189,7 @@ The health API is allowlisted to tenant-owned grant metadata, coarse statuses, b
 - Start a 12-hour tenant admin session from `tenantId` plus a tenant-bound invite token.
 - Start a durable tenant auth session from an active member bootstrap credential when `AGENTPROOF_TENANT_AUTH_BOOTSTRAPS` and a session store are configured.
 - Start GitHub App installation using a valid durable tenant auth session or tenant-bound invite header fallback with `owner` or `admin` role metadata.
-- Load installed repositories after the GitHub callback sets the short-lived activation cookie.
+- Load installed repositories only after the pending claim has been approved and exchanged for the short-lived activation cookie.
 - Create one repository grant from server-fetched installation metadata when the activation session is paired with durable owner/admin tenant auth or the current owner/admin tenant-bound invite header.
 - Mutate tenant member role/status through the server API only when a durable owner/admin session and durable account store are present; invite headers and the legacy tenant admin session remain read/setup compatibility paths.
 - Read repository settings through tenant-bound auth, and update only `enabled`, `analysisEnabled`, `saveReportsEnabled`, `commentEnabled`, and `slackNotificationsEnabled` when the durable session or current invite header carries `owner` or `admin` role metadata.
@@ -262,6 +262,10 @@ AGENTPROOF_TENANT_REPOSITORY_GRANTS_TABLE=agentproof_tenant_repository_grants
 AGENTPROOF_GITHUB_INSTALLATIONS_TABLE=agentproof_github_installations
 AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL=
 AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL=
+AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY=
+AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_TABLE=agentproof_github_installation_claims
+AGENTPROOF_GITHUB_INSTALLATION_CLAIM_OPERATOR_TOKEN=
 AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL=
 AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY=
 ```
@@ -352,6 +356,30 @@ where expires_at < now() - interval '1 day';
 
 Durable installation metadata maps one GitHub App installation to one tenant after the verified callback state and nonce pass. It stores bounded account metadata only. It must not store installation access tokens, private keys, raw webhook payloads, repository contents, diffs, logs, reports, or comments.
 
+### Short-term operator approval
+
+Until GitHub OAuth organization/administrator verification is available, durable onboarding is fail-closed: callback state and nonce create a short-lived pending claim containing only hashed browser/operator capabilities plus bounded tenant and installation identifiers. The operator independently verifies ownership in GitHub, then uses the dedicated operator credential and opaque request code to approve or reject it. Approval is required before installation metadata, an activation session, an installation token, repository listing, or a repository grant can exist. This is an operational exception, not OAuth ownership proof. Memory-only claim storage is local-fixture-only; durable deployments require the checked-in claim migration and server-only claim-store configuration.
+
+Long term, replace this approval with GitHub OAuth identity plus organization/installation administrator authorization. Keep the operator claim only as an auditable exception path; do not treat a callback `installation_id` itself as ownership proof.
+
+#### Operator runbook
+
+1. The invited tenant installs the GitHub App and is returned to `/tenant?githubApp=pending`.
+2. The page displays a short-lived one-time operator request code. The tenant sends that code to the operator through the approved support channel.
+3. The operator independently verifies the GitHub installation owner in GitHub before taking any API action.
+4. The operator calls the server-only endpoint with the dedicated claim token. Do not use the generic diagnostics token and do not put either token in a URL.
+
+```bash
+curl --fail-with-body -X POST https://agentproof-pearl.vercel.app/api/ops/github-installation-claims \
+  -H 'Content-Type: application/json' \
+  -H 'x-agentproof-installation-claim-operator-token: <operator-token>' \
+  --data '{"requestCode":"<one-time-code>","decision":"approve"}'
+```
+
+5. The tenant clicks **Check App Status**. Only then is an activation cookie minted and repository metadata can be requested.
+
+The code expires after 30 minutes, is stored only as a SHA-256 hash, is single-use, and is never placed in a query string. Reject by using `"decision":"reject"`. An invalid/replayed code intentionally receives the same generic failure response as a wrong token. The claim and GitHub installation settings must use the same Supabase project: migration `202607120002_github_installation_claims.sql` activates an approved claim and records its global installation owner in one database transaction. The audit trail records only the approved/rejected outcome plus bounded tenant/installation metadata; it never records the request code or operator token.
+
 ```sql
 create table if not exists agentproof_github_installations (
   tenant_id text not null,
@@ -376,7 +404,7 @@ create index if not exists agentproof_github_installations_tenant_idx
 alter table agentproof_github_installations enable row level security;
 ```
 
-The unique `installation_id` index is required for SaaS operation. AgentProof also checks for cross-tenant conflicts before upsert, but the database constraint is the authoritative guard against concurrent callbacks assigning the same installation to more than one tenant.
+The unique `installation_id` index is required for SaaS operation. Apply the checked-in migration `supabase/migrations/202607120001_github_installation_single_tenant.sql` before enabling durable onboarding. It fails rather than selecting a tenant if historic duplicate claims exist. AgentProof also checks for cross-tenant conflicts before upsert, but the database constraint is the authoritative guard against concurrent callbacks assigning the same installation to more than one tenant.
 
 Operator diagnostics expose this store only as `installationMetadata: "disabled" | "memory-only" | "config-incomplete" | "durable-supabase"` from `GET /api/ops/github-app/status`. The response must not include table names, env var names, Supabase URLs, service-role keys, tenant ids, account logins, installation ids, repository names, tokens, or raw GitHub data.
 

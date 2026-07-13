@@ -1,10 +1,11 @@
 import {
-  completeGitHubAppInstallCallback,
+  requestGitHubInstallationClaim,
   GitHubOnboardingError,
   GitHubOnboardingStoreError,
   normalizeInstallationId
 } from "@/lib/github-onboarding";
 import { GitHubInstallationStoreError } from "@/lib/github-installations";
+import { GitHubInstallationClaimStoreError } from "@/lib/github-installation-claims";
 import { noStoreJson } from "@/lib/http";
 
 export async function GET(request: Request) {
@@ -20,25 +21,23 @@ export async function GET(request: Request) {
   }
 
   try {
-    const activation = await completeGitHubAppInstallCallback({
+    const claim = await requestGitHubInstallationClaim({
       state: url.searchParams.get("state"),
       nonceCookieHeader: request.headers.get("cookie"),
       installationId
     });
-    const activationCookie = activation.activationCookie;
-
     if (prefersBrowserRedirect(request)) {
       const redirectUrl = new URL("/tenant", request.url);
-      redirectUrl.searchParams.set("tenantId", activation.tenantId);
-      redirectUrl.searchParams.set("installationId", String(installationId));
-      redirectUrl.searchParams.set("setupAction", setupAction);
-      redirectUrl.searchParams.set("githubApp", "connected");
+      redirectUrl.searchParams.set("githubApp", "pending");
+      // A URL fragment stays client-side. The one-time operator code is not
+      // sent to the server or included in referrers/logs.
+      redirectUrl.hash = `operatorRequestCode=${encodeURIComponent(claim.operatorRequestCode)}`;
 
       return new Response(null, {
         status: 303,
         headers: {
           Location: redirectUrl.toString(),
-          "Set-Cookie": activationCookie,
+          "Set-Cookie": claim.claimCookie,
           "Cache-Control": "private, no-store",
           "Referrer-Policy": "no-referrer"
         }
@@ -47,14 +46,13 @@ export async function GET(request: Request) {
 
     return noStoreJson({
       ok: true,
-      tenantId: activation.tenantId,
-      installationId,
-      setupAction,
-      activationExpiresAt: activation.expiresAt,
-      next: "select_repository"
+      claimExpiresAt: claim.expiresAt,
+      operatorRequestCode: claim.operatorRequestCode,
+      next: "operator_approval_required"
     }, {
+      status: 202,
       headers: {
-        "Set-Cookie": activationCookie
+        "Set-Cookie": claim.claimCookie
       }
     });
   } catch (error) {
@@ -69,6 +67,13 @@ export async function GET(request: Request) {
       return noStoreJson({
         error: "GitHub App onboarding state store is unavailable.",
         code: "github_onboarding_state_store_unavailable"
+      }, { status: 503 });
+    }
+
+    if (error instanceof GitHubInstallationClaimStoreError) {
+      return noStoreJson({
+        error: "GitHub App installation approval storage is unavailable.",
+        code: "github_installation_claim_store_unavailable"
       }, { status: 503 });
     }
 

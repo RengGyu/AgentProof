@@ -1,5 +1,7 @@
 # AgentProof Controlled Human A/B Protocol
 
+> Historical v1 preparation contract. New execution work must use the fail-closed v2 contract in `docs/llm-proof-planner-human-ab-v2.md`; v1 artifacts are not executable as v2.
+
 Status: protocol and worksheet ready; controlled experiment not yet runnable  
 Protocol version: `agentproof-human-ab.v1`  
 Planner input/output policy: `v1` / `v2.1`

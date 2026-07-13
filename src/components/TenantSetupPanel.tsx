@@ -388,6 +388,7 @@ export function TenantSetupPanel() {
   const [inviteToken, setInviteToken] = useState("");
   const [sessionActive, setSessionActive] = useState(false);
   const [installationId, setInstallationId] = useState("");
+  const [operatorRequestCode, setOperatorRequestCode] = useState("");
   const [repositories, setRepositories] = useState<RepositorySettings[]>([]);
   const [health, setHealth] = useState<RepositoryHealth[]>([]);
   const [accountStatus, setAccountStatus] = useState<TenantAccountStatus | null>(null);
@@ -429,6 +430,12 @@ export function TenantSetupPanel() {
     if (queryInstallationId) setInstallationId(queryInstallationId);
     if (params.get("githubApp") === "connected") {
       setMessage({ kind: "ok", text: "GitHub App installation connected. Select a repository grant next." });
+    }
+    if (params.get("githubApp") === "pending") {
+      const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const requestCode = fragment.get("operatorRequestCode") ?? "";
+      setOperatorRequestCode(requestCode);
+      setMessage({ kind: "ok", text: requestCode ? `GitHub App approval is pending. Send this one-time code to the operator: ${requestCode}` : "GitHub App approval is pending. Ask the operator to approve the installation." });
     }
   }, []);
 
@@ -519,6 +526,26 @@ export function TenantSetupPanel() {
     }
   }
 
+  async function activateInstallationAfterDecision() {
+    setMode("loading");
+    setMessage(null);
+    try {
+      const json = await requestJson<{ installationId?: number; error?: string; code?: string }>("/api/github/onboarding/claim", {
+        method: "POST",
+        headers: tenantMutationHeaders()
+      });
+      if (typeof json.installationId !== "number") throw new PanelRequestError(json.error ?? "GitHub App approval is still pending.", json.code);
+      setInstallationId(String(json.installationId));
+      setOperatorRequestCode("");
+      window.history.replaceState(null, "", "/tenant?githubApp=approved");
+      setMessage({ kind: "ok", text: "GitHub App approval completed. Load installed repositories next." });
+    } catch (error) {
+      setMessage(errorMessage(error, "GitHub App approval is still pending."));
+    } finally {
+      setMode("idle");
+    }
+  }
+
   async function createRepositoryGrant(repositoryId: number) {
     setMode("saving");
     setMessage(null);
@@ -531,7 +558,7 @@ export function TenantSetupPanel() {
         code?: string;
       }>("/api/github/onboarding/repositories", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...tenantMutationHeaders(), ...tenantInviteHeaders(inviteToken) },
         body: JSON.stringify({
           installationId: Number(installationId),
           repositoryId,
@@ -968,6 +995,10 @@ export function TenantSetupPanel() {
           <button className="button primary" type="button" onClick={startInstall} disabled={!credentialsReady || busy}>
             {mode === "loading" ? <Loader2 size={16} className="spin" /> : <ExternalLink size={16} />}
             Install App
+          </button>
+          <button className="button" type="button" onClick={activateInstallationAfterDecision} disabled={busy || !operatorRequestCode}>
+            <ShieldCheck size={16} />
+            Check App Status
           </button>
           <button className="button" type="button" onClick={sessionActive ? endTenantSession : startTenantSession} disabled={busy || (!sessionActive && !canStartSession)}>
             <ShieldCheck size={16} />

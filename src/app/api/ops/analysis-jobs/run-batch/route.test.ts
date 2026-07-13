@@ -106,7 +106,7 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
           job: {
             id: first.id,
             pullRequestNumber: 7,
-            headShaPrefix: "abc123",
+            headShaPrefix: "aaaaaaaaaaaa",
             attempts: 1
           },
           result: {
@@ -125,7 +125,7 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
           job: {
             id: second.id,
             pullRequestNumber: 7,
-            headShaPrefix: "abc123",
+            headShaPrefix: "aaaaaaaaaaaa",
             attempts: 1
           },
           result: {
@@ -224,7 +224,7 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
       failedRetryable: 1,
       failedTerminal: 0,
       idle: false,
-      stoppedReason: "retryable_failure",
+      stoppedReason: "systemic_retryable_failure",
       items: [
         {
           index: 0,
@@ -280,7 +280,7 @@ function jobInput(overrides: Partial<{
     repositoryFullName: "RengGyu/AgentProof",
     pullRequestNumber: 7,
     pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/7",
-    headSha: "abc123",
+    headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     saveReport: false,
     comment: false,
     now: new Date("2026-06-30T00:00:00Z")
@@ -308,7 +308,7 @@ function mockWorkerFetch() {
         url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
         user: { login: "agent-author" },
         base: { ref: "main" },
-        head: { ref: "feature/app-automation", sha: "abc123" }
+        head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }
 
@@ -324,14 +324,14 @@ function mockWorkerFetch() {
       ]);
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/check-runs?per_page=100&page=1") {
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1") {
       return Response.json({
         total_count: 0,
         check_runs: []
       });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/status") {
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/status") {
       return Response.json({ statuses: [] });
     }
 

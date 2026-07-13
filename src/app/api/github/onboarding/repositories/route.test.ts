@@ -1,10 +1,10 @@
 import { generateKeyPairSync } from "crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearGitHubOnboardingSessionsForTests,
-  completeGitHubAppInstallCallback,
-  createGitHubAppInstallSession
+  activateApprovedGitHubInstallationClaim
 } from "@/lib/github-onboarding";
+import { clearInstallationClaimsForTests, createPendingInstallationClaim, decidePendingInstallationClaim } from "@/lib/github-installation-claims";
 import {
   authorizeTenantRepositoryGrantAsync,
   clearTenantRepositoryGrantsForTests
@@ -12,6 +12,8 @@ import {
 import { GET, POST } from "./route";
 
 describe("/api/github/onboarding/repositories", () => {
+  beforeEach(() => installSameOriginRequestDefault());
+
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -124,6 +126,25 @@ describe("/api/github/onboarding/repositories", () => {
         repositoryFullName: "RengGyu/AgentProof"
       }
     });
+  });
+
+  it("rejects cross-origin grant creation before consuming activation or fetching GitHub", async () => {
+    stubOnboardingEnv();
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const activationCookie = await createActivationCookie();
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
+      method: "POST",
+      headers: { origin: "https://attacker.example", cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ installationId: 321, repositoryId: 100 })
+    }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "tenant_mutation_csrf_required" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("blocks repository grant creation for an unavailable tenant before fetching GitHub repositories", async () => {
@@ -296,24 +317,36 @@ describe("/api/github/onboarding/repositories", () => {
   });
 });
 
-async function createActivationCookie() {
-  const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" });
-  const activation = await completeGitHubAppInstallCallback({
-    state: new URL(install.installUrl).searchParams.get("state"),
-    nonceCookieHeader: install.nonceCookie,
-    installationId: 321
+function installSameOriginRequestDefault() {
+  const NativeRequest = globalThis.Request;
+  vi.stubGlobal("Request", class extends NativeRequest {
+    constructor(input: RequestInfo | URL, init: RequestInit = {}) {
+      const headers = new Headers(init.headers);
+      if (!headers.has("x-agentproof-csrf")) headers.set("x-agentproof-csrf", "same-origin");
+      super(input, { ...init, headers });
+    }
   });
+}
+
+async function createActivationCookie() {
+  const claim = await createPendingInstallationClaim({ tenantId: "tenant_a", installationId: 321 });
+  await decidePendingInstallationClaim({ operatorRequestCode: claim.operatorRequestCode, operatorToken: "operator-token", decision: "approve" });
+  const activation = await activateApprovedGitHubInstallationClaim({ claimCookieHeader: claim.claimCookie });
+  if (!activation) throw new Error("Approved installation claim did not activate.");
 
   return activation.activationCookie;
 }
 
 function stubOnboardingEnv(role: "owner" | "admin" | "member" = "owner") {
+  vi.stubEnv("AGENTPROOF_ALLOW_LEGACY_PRIVILEGED_BOOTSTRAP", "true");
   vi.stubEnv("AGENTPROOF_GITHUB_APP_SLUG", "agentproof-test");
   vi.stubEnv("AGENTPROOF_ONBOARDING_STATE_SECRET", "state-secret-value-with-enough-entropy");
   vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
     { tenantId: "tenant_a", token: "tenant-a-invite-token", role }
   ]));
   vi.stubEnv("AGENTPROOF_ONBOARDING_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_ALLOW_MEMORY", "true");
+  vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATION_CLAIM_OPERATOR_TOKEN", "operator-token");
 }
 
 function mockRepositoryFetch() {

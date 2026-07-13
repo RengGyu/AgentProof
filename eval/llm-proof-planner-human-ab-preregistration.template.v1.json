@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "agentproof-human-ab-preregistration.v1",
+  "status": "template_not_approved",
+  "experimentId": "replace-after-holdout-seal",
+  "primaryEstimand": "fixed_output_human_utility_only",
+  "reviewDecisionValues": ["enough", "not_enough", "unclear"],
+  "ordinalOutcomes": ["requirementAccuracy", "proofPlanUsefulness", "warningAccuracy"],
+  "timeOutcome": "reviewDecisionTimeSeconds",
+  "analysisUnit": "case_and_rater_clustered",
+  "minimumDetectableEffectPlan": "fill-before-recruitment",
+  "sampleSizeRationale": "fill-before-recruitment",
+  "confidenceIntervalRule": "case_and_rater_clustered_intervals",
+  "multiplicityRule": "three_ordinal_axes_and_time_reported_separately",
+  "ittRule": "all assigned rows remain assigned; operational failure and unavailable semantic output are reported separately and never repaired by hand",
+  "missingnessRule": "NotScorable and partial rows are excluded from score/time aggregates but counted by arm and reason",
+  "stoppingRule": "fill-before-recruitment",
+  "referenceLabels": {
+    "independentExpertsRequired": 2,
+    "adjudicatorRequired": true,
+    "humanLabelsAreNotModelInput": true
+  },
+  "reviewerEligibility": {
+    "independenceAttestationRequired": true,
+    "conflictAttestationRequired": true,
+    "raterIdentityMappingPrivate": true
+  },
+  "claimsProhibitedBeforeCompletion": ["semantic correctness", "generalization", "product-default readiness", "merge safety"]
+}

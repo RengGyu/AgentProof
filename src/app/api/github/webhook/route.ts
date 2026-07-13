@@ -1,4 +1,4 @@
-import { buildGitHubPullRequestInput } from "@/lib/github";
+import { buildGitHubPullRequestInput, fetchGitHubPullRequestHead } from "@/lib/github";
 import {
   AnalysisJobQueueError,
   enqueueAnalysisJob,
@@ -751,7 +751,9 @@ async function handlePullRequestAutomation(
 
   try {
     const token = await createGitHubInstallationAccessToken(automation.installationId);
-    const input = await buildGitHubPullRequestInput(automation.pullRequestUrl, token, "");
+    const input = await buildGitHubPullRequestInput(automation.pullRequestUrl, token, "", undefined, {
+      expectedHeadSha: automation.headSha
+    });
 
     if (!input) {
       throw new Error("GitHub App PR analysis could not build a pull request input.");
@@ -762,6 +764,11 @@ async function handlePullRequestAutomation(
 
     if (!validation.valid) {
       throw new Error(`Generated report failed runtime validation: ${validation.errors.join("; ")}`);
+    }
+
+    const finalHeadSha = await fetchGitHubPullRequestHead(automation.pullRequestUrl, token);
+    if (!finalHeadSha || finalHeadSha !== automation.headSha || finalHeadSha !== input.sourceProvenance?.headSha) {
+      throw new Error("GitHub pull request head changed during evidence collection; AgentProof did not save or publish a report.");
     }
 
     const canSaveReport = plannedSideEffects.saveReport;

@@ -20,6 +20,8 @@ export default defineConfig({
       "scripts/p0-beta-readiness.test.mjs",
       "scripts/llm-proof-planner-eval-metadata.test.mjs",
       "scripts/llm-proof-planner-human-ab-core.test.mjs",
+      "scripts/llm-proof-planner-human-ab-v2-core.test.mjs",
+      "scripts/llm-proof-planner-human-ab-prerecruit-core.test.mjs",
       "scripts/llm-proof-planner-dev10-workflow.test.mjs"
     ]
   },

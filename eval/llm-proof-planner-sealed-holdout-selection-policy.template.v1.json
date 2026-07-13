@@ -1,0 +1,13 @@
+{
+  "policyVersion": "agentproof-sealed-holdout-selection-policy.v1",
+  "policyId": "replace-before-discovery",
+  "experimentId": "replace-after-clean-freeze",
+  "sourceCommit": "replace-with-clean-40-char-commit",
+  "discoveryCutoff": "replace-with-ISO-8601-cutoff",
+  "samplingUnit": "pull_request_head",
+  "strata": [
+    { "stratumId": "replace-stratum-1", "quota": 1 }
+  ],
+  "requiredExclusionSets": ["dev10", "prompt-tuning", "manual-pilot"],
+  "replacementRule": "pre_output_unavailable_only"
+}

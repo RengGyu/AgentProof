@@ -30,6 +30,7 @@ export async function GET(request: Request, context: RouteContext) {
     createdAt: saved.createdAt,
     expiresAt: saved.expiresAt,
     privacy: "summary-only",
+    authenticity: saved.report.authenticity?.trust ?? "legacy_unverified",
     durability: status.durability,
     durabilityWarning: status.durabilityWarning
   });

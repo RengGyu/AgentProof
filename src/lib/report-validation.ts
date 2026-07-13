@@ -83,6 +83,7 @@ export interface ReportValidationResult {
 export interface ReportValidationOptions {
   mode?: "default" | "full" | "summary";
   requireFullProvenance?: boolean;
+  requireSourceProvenance?: boolean;
 }
 
 type RecordValue = Record<string, unknown>;
@@ -113,7 +114,8 @@ export function validateVerificationReport(report: unknown, options: ReportValid
       "limitations"
     ],
     "report",
-    errors
+    errors,
+    ["authenticity"]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -122,7 +124,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   const evidenceIds = validateEvidenceIndex(report.evidenceIndex, errors);
   const evidenceById = collectEvidenceById(report.evidenceIndex);
   const requirementIds = collectRequirementIds(report.requirements);
-  validateSource(report.source, errors);
+  validateSource(report.source, errors, options.requireSourceProvenance === true);
   validateSummary(report.summary, errors);
   validateRequirements(report.requirements, evidenceIds, errors);
   validateClaims(report.claims, evidenceIds, errors);
@@ -132,6 +134,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateProofGraph(report.proofGraph, evidenceIds, evidenceById, requirementIds, mode, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
+  validateAuthenticity(report.authenticity, errors);
   if (mode === "summary") {
     validateSummaryOnlyReport(report, errors);
   }
@@ -143,18 +146,77 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   return { valid: errors.length === 0, errors };
 }
 
-function validateSource(value: unknown, errors: string[]) {
+function validateAuthenticity(value: unknown, errors: string[]) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push("authenticity must be an object.");
+    return;
+  }
+
+  requireKeys(value, ["version", "trust", "generator"], "authenticity", errors, ["canonicalDigest", "signingKeyId", "signature"]);
+  if (value.version !== 1) errors.push("authenticity.version must be 1.");
+  const trust = value.trust;
+  if (trust !== "verified_agentproof" && trust !== "imported_unverified" && trust !== "legacy_unverified" && trust !== "portable_unverified") {
+    errors.push("authenticity.trust is invalid.");
+  }
+  if (!isRecord(value.generator)) {
+    errors.push("authenticity.generator must be an object.");
+  } else {
+    requireKeys(value.generator, ["reportSchemaVersion", "deterministicEngineVersion"], "authenticity.generator", errors);
+    if (value.generator.reportSchemaVersion !== "verification-report.v1") {
+      errors.push("authenticity.generator.reportSchemaVersion is invalid.");
+    }
+    validateString(value.generator.deterministicEngineVersion, "authenticity.generator.deterministicEngineVersion", LIMITS.shortText, errors);
+  }
+
+  const hasSignatureFields = value.canonicalDigest !== undefined || value.signingKeyId !== undefined || value.signature !== undefined;
+  if (trust === "verified_agentproof") {
+    if (typeof value.canonicalDigest !== "string" || !/^[a-f0-9]{64}$/.test(value.canonicalDigest)) errors.push("authenticity.canonicalDigest must be a lowercase SHA-256 digest for verified reports.");
+    validateString(value.signingKeyId, "authenticity.signingKeyId", LIMITS.shortText, errors);
+    if (typeof value.signature !== "string" || !/^[a-f0-9]{64}$/.test(value.signature)) errors.push("authenticity.signature must be a lowercase HMAC digest for verified reports.");
+  } else if (hasSignatureFields) {
+    errors.push("unverified report authenticity must not include a canonical signature.");
+  }
+}
+
+function validateSource(value: unknown, errors: string[], requireSourceProvenance = false) {
   if (!isRecord(value)) {
     errors.push("source must be an object.");
     return;
   }
 
-  requireKeys(value, ["title"], "source", errors, ["url", "author", "baseBranch", "headBranch"]);
+  requireKeys(value, ["title"], "source", errors, ["url", "author", "baseBranch", "headBranch", "provenance"]);
   validateString(value.title, "source.title", LIMITS.sourceTitle, errors);
   validateOptionalString(value.url, "source.url", LIMITS.sourceUrl, errors);
   validateOptionalString(value.author, "source.author", LIMITS.sourceField, errors);
   validateOptionalString(value.baseBranch, "source.baseBranch", LIMITS.sourceField, errors);
   validateOptionalString(value.headBranch, "source.headBranch", LIMITS.sourceField, errors);
+  if (value.provenance === undefined) {
+    if (requireSourceProvenance) errors.push("source.provenance is required for this report.");
+    return;
+  }
+  validateSourceProvenance(value.provenance, errors, requireSourceProvenance);
+}
+
+function validateSourceProvenance(value: unknown, errors: string[], requireFullHeadSha: boolean) {
+  if (!isRecord(value)) { errors.push("source.provenance must be an object."); return; }
+  requireKeys(value, ["version", "origin", "evidenceCapturedAt", "inputFingerprint"], "source.provenance", errors, ["headSha"]);
+  if (value.version !== 1) errors.push("source.provenance.version must be 1.");
+  const origin = value.origin;
+  if (origin !== "github_snapshot" && origin !== "pasted_evidence" && origin !== "demo") errors.push("source.provenance.origin is invalid.");
+  validateString(value.evidenceCapturedAt, "source.provenance.evidenceCapturedAt", LIMITS.createdAt, errors);
+  if (typeof value.evidenceCapturedAt === "string" && Number.isNaN(Date.parse(value.evidenceCapturedAt))) errors.push("source.provenance.evidenceCapturedAt must be an ISO timestamp.");
+  if (origin === "github_snapshot") {
+    const headShaPattern = requireFullHeadSha ? /^[a-f0-9]{40,64}$/ : /^[a-f0-9]{6,64}$/;
+    if (typeof value.headSha !== "string" || !headShaPattern.test(value.headSha)) errors.push(requireFullHeadSha ? "source.provenance.headSha must be a full lowercase Git commit SHA for github_snapshot." : "source.provenance.headSha must be a lowercase Git commit SHA for github_snapshot.");
+  } else if (value.headSha !== undefined) errors.push("source.provenance.headSha is allowed only for github_snapshot.");
+  if (!isRecord(value.inputFingerprint)) { errors.push("source.provenance.inputFingerprint must be an object."); return; }
+  requireKeys(value.inputFingerprint, ["version", "algorithm", "value", "coverage"], "source.provenance.inputFingerprint", errors);
+  if (value.inputFingerprint.version !== 1) errors.push("source.provenance.inputFingerprint.version must be 1.");
+  if (value.inputFingerprint.algorithm !== "sha256") errors.push("source.provenance.inputFingerprint.algorithm must be sha256.");
+  if (typeof value.inputFingerprint.value !== "string" || !/^[a-f0-9]{64}$/.test(value.inputFingerprint.value)) errors.push("source.provenance.inputFingerprint.value must be a lowercase SHA-256 digest.");
+  const expectedCoverage = origin === "github_snapshot" ? "github_metadata" : origin === "pasted_evidence" ? "pasted_metadata" : "demo_fixture";
+  if (value.inputFingerprint.coverage !== expectedCoverage) errors.push("source.provenance.inputFingerprint.coverage does not match source.provenance.origin.");
 }
 
 function validateSummary(value: unknown, errors: string[]) {

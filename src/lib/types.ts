@@ -75,6 +75,41 @@ export interface PullRequestInput {
   logs: LogSnippet[];
   taskText: string;
   limitations?: string[];
+  sourceProvenance?: SourceProvenance;
+}
+
+/**
+ * Metadata-only capture information for an evidence input. It deliberately
+ * excludes task text, PR bodies, patches, check summaries, and log text.
+ */
+export interface SourceProvenance {
+  version: 1;
+  origin: "github_snapshot" | "pasted_evidence" | "demo";
+  headSha?: string;
+  evidenceCapturedAt: string;
+  inputFingerprint: {
+    version: 1;
+    algorithm: "sha256";
+    value: string;
+    coverage: "github_metadata" | "pasted_metadata" | "demo_fixture";
+  };
+}
+
+/**
+ * A trust label for a report artifact. This is deliberately separate from the
+ * deterministic findings themselves: it says who produced the stored summary,
+ * not whether a requirement was satisfied.
+ */
+export interface ReportAuthenticity {
+  version: 1;
+  trust: "verified_agentproof" | "imported_unverified" | "legacy_unverified" | "portable_unverified";
+  generator: {
+    reportSchemaVersion: "verification-report.v1";
+    deterministicEngineVersion: string;
+  };
+  canonicalDigest?: string;
+  signingKeyId?: string;
+  signature?: string;
 }
 
 export interface ChangedFile {
@@ -232,6 +267,7 @@ export interface VerificationReport {
     author?: string;
     baseBranch?: string;
     headBranch?: string;
+    provenance?: SourceProvenance;
   };
   summary: {
     oneLine: string;
@@ -257,4 +293,5 @@ export interface VerificationReport {
   };
   evidenceIndex: EvidenceItem[];
   limitations: string[];
+  authenticity?: ReportAuthenticity;
 }

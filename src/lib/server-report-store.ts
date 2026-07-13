@@ -1,4 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import {
+  createUnverifiedAuthenticity,
+  createVerifiedAuthenticity,
+  requireReportSigningSecret,
+  verifyVerifiedAuthenticity
+} from "./report-authenticity";
 import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
@@ -137,11 +143,27 @@ export async function createSavedReport(
   const config = getSupabaseReportStoreConfig();
   const options = normalizeCreateOptions(optionsOrTtlMs);
 
-  if (config) {
-    return createSupabaseSavedReport(config, report, options);
-  }
+  if (config) return createSupabaseSavedReport(config, report, options, "imported_unverified");
 
-  return createMemorySavedReport(report, options);
+  return createMemorySavedReport(report, options, "imported_unverified");
+}
+
+/**
+ * Reserved for server-side evidence collection after it has generated and
+ * validated the deterministic report. Browser/API supplied reports must use
+ * createSavedReport and are always labelled imported/unverified.
+ */
+export async function createVerifiedSavedReport(
+  report: VerificationReport,
+  optionsOrTtlMs: CreateSavedReportOptions | number = SERVER_REPORT_TTL_MS
+): Promise<StoredServerReport> {
+  const config = getSupabaseReportStoreConfig();
+  const options = normalizeCreateOptions(optionsOrTtlMs);
+  requireReportSigningSecret();
+
+  if (config) return createSupabaseSavedReport(config, report, options, "verified_agentproof");
+
+  return createMemorySavedReport(report, options, "verified_agentproof");
 }
 
 export async function getSavedReport(
@@ -355,7 +377,11 @@ export function clearSavedReportsForTests() {
   reportStore().clear();
 }
 
-function createMemorySavedReport(report: VerificationReport, options: NormalizedCreateSavedReportOptions): StoredServerReport {
+function createMemorySavedReport(
+  report: VerificationReport,
+  options: NormalizedCreateSavedReportOptions,
+  trust: "verified_agentproof" | "imported_unverified"
+): StoredServerReport {
   cleanupExpiredReports();
 
   const createdAtDate = new Date();
@@ -364,7 +390,7 @@ function createMemorySavedReport(report: VerificationReport, options: Normalized
     id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
     expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
-    report: sanitizeSummaryReport(report),
+    report: prepareSummaryReportForStorage(report, trust),
     ...access
   };
 
@@ -417,7 +443,8 @@ function purgeMemoryTenantSavedReports(tenantId: string): number {
 async function createSupabaseSavedReport(
   config: SupabaseReportStoreConfig,
   report: VerificationReport,
-  options: NormalizedCreateSavedReportOptions
+  options: NormalizedCreateSavedReportOptions,
+  trust: "verified_agentproof" | "imported_unverified"
 ): Promise<StoredServerReport> {
   const createdAtDate = new Date();
   const access = createTenantAccess(options.tenantId);
@@ -425,7 +452,7 @@ async function createSupabaseSavedReport(
     id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
     expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
-    report: sanitizeSummaryReport(report),
+    report: prepareSummaryReportForStorage(report, trust),
     ...access
   };
 
@@ -647,8 +674,33 @@ async function deleteSupabaseSavedReportRow(
   return true;
 }
 
+function prepareSummaryReportForStorage(
+  report: VerificationReport,
+  trust: "verified_agentproof" | "imported_unverified"
+): VerificationReport {
+  const safeReport = sanitizeReportForShare(report);
+  safeReport.authenticity = trust === "verified_agentproof"
+    ? createVerifiedAuthenticity(safeReport, requireReportSigningSecret())
+    : createUnverifiedAuthenticity("imported_unverified");
+  const validation = validateVerificationReport(safeReport, { mode: "summary" });
+
+  if (!validation.valid) {
+    throw new SavedReportStoreError(`Summary-only saved report failed validation: ${validation.errors.join("; ")}`);
+  }
+
+  return safeReport;
+}
+
 function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
   const safeReport = sanitizeReportForShare(report);
+  const authenticity = report.authenticity;
+  safeReport.authenticity = authenticity?.trust === "verified_agentproof"
+    ? authenticity
+    : authenticity?.trust === "legacy_unverified"
+      ? createUnverifiedAuthenticity("legacy_unverified")
+      : authenticity?.trust === "portable_unverified"
+        ? createUnverifiedAuthenticity("portable_unverified")
+        : createUnverifiedAuthenticity("imported_unverified");
   const validation = validateVerificationReport(safeReport, { mode: "summary" });
 
   if (!validation.valid) {
@@ -740,6 +792,11 @@ function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerRepo
 
 function sanitizeStoredReport(saved: StoredServerReport): StoredServerReport | null {
   try {
+    const authenticity = saved.report.authenticity;
+    if (authenticity?.trust === "verified_agentproof") {
+      const secret = requireReportSigningSecret();
+      if (!verifyVerifiedAuthenticity(saved.report, secret)) return null;
+    }
     return {
       ...saved,
       report: sanitizeSummaryReport(saved.report)

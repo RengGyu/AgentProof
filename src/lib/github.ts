@@ -1,4 +1,5 @@
-import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput } from "./types";
+import { createHash } from "crypto";
+import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput, SourceProvenance } from "./types";
 import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
 import {
   extractSupportedIssueReferences,
@@ -66,6 +67,22 @@ export class GitHubFetchError extends Error {
       ? `GitHub PR fetch failed: ${reason} (HTTP ${status}).`
       : `GitHub PR fetch failed: ${reason}`);
   }
+}
+
+export class GitHubPullRequestHeadChangedError extends Error {
+  constructor(
+    public readonly expectedHeadSha: string,
+    public readonly observedHeadSha: string,
+    public readonly phase: "initial" | "final"
+  ) {
+    super("GitHub pull request head changed while AgentProof was collecting evidence.");
+    this.name = "GitHubPullRequestHeadChangedError";
+  }
+}
+
+export interface GitHubPullRequestSnapshotOptions {
+  expectedHeadSha?: string;
+  now?: () => Date;
 }
 
 interface GitHubPullUrl {
@@ -217,9 +234,10 @@ export async function buildGitHubPullRequestInput(
   prUrl: string,
   token: string | undefined,
   taskText = "",
-  evidenceTiming?: GitHubEvidenceTimingSink
+  evidenceTiming?: GitHubEvidenceTimingSink,
+  snapshotOptions: GitHubPullRequestSnapshotOptions = {}
 ): Promise<PullRequestInput | null> {
-  return fetchGitHubPullRequest(prUrl, token, taskText, evidenceTiming);
+  return fetchGitHubPullRequest(prUrl, token, taskText, evidenceTiming, snapshotOptions);
 }
 
 function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: string[] = []): PullRequestInput {
@@ -234,7 +252,22 @@ function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: 
     changedFiles: parseChangedFiles(request.changedFiles ?? ""),
     checks: parseChecks(request.checks ?? ""),
     logs: parseLogs(request.logs ?? ""),
-    limitations: [...(request.inputLimitations ?? []), ...extraLimitations]
+    limitations: [...(request.inputLimitations ?? []), ...extraLimitations],
+    sourceProvenance: buildMetadataOnlyProvenance({
+      origin: "pasted_evidence",
+      input: {
+        url: safePrUrl,
+        title: safePrUrl ? `PR analysis for ${safePrUrl}` : "Pasted PR evidence",
+        description: redactSecrets(request.prDescription ?? ""),
+        taskSource: request.taskText?.trim() ? "task" : undefined,
+        taskText: redactSecrets(request.taskText ?? ""),
+        changedFiles: parseChangedFiles(request.changedFiles ?? ""),
+        checks: parseChecks(request.checks ?? ""),
+        logs: parseLogs(request.logs ?? ""),
+        limitations: [...(request.inputLimitations ?? []), ...extraLimitations]
+      },
+      capturedAt: new Date().toISOString()
+    })
   };
 }
 
@@ -242,7 +275,8 @@ async function fetchGitHubPullRequest(
   prUrl: string,
   token: string | undefined,
   taskText: string,
-  evidenceTiming?: GitHubEvidenceTimingSink
+  evidenceTiming?: GitHubEvidenceTimingSink,
+  snapshotOptions: GitHubPullRequestSnapshotOptions = {}
 ): Promise<PullRequestInput | null> {
   const parsed = parseGitHubPullUrl(prUrl);
 
@@ -288,6 +322,8 @@ async function fetchGitHubPullRequest(
   }
 
   const pr = await prResponse.json();
+  const initialHeadSha = requireGitHubHeadSha(pr, "initial");
+  assertExpectedHeadSha(snapshotOptions.expectedHeadSha, initialHeadSha, "initial");
   const limitations: string[] = [];
   const linkedIssueTask = await resolveLinkedIssueTaskText({
     prBody: String(pr.body ?? ""),
@@ -305,12 +341,12 @@ async function fetchGitHubPullRequest(
     measureGitHubEvidenceTiming(
       evidenceTiming,
       "github_checks",
-      () => fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/check-runs`, headers, limitations, hasToken)
+      () => fetchCheckRuns(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${initialHeadSha}/check-runs`, headers, limitations, hasToken)
     ),
     measureGitHubEvidenceTiming(
       evidenceTiming,
       "github_statuses",
-      () => fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${pr.head.sha}/status`, headers, limitations, hasToken)
+      () => fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${initialHeadSha}/status`, headers, limitations, hasToken)
     )
   ]);
   const annotationLimitations: string[] = [];
@@ -338,7 +374,7 @@ async function fetchGitHubPullRequest(
     );
   }
 
-  return {
+  const input: PullRequestInput = {
     url: safePrUrl,
     title: pr.title ?? `PR #${parsed.number}`,
     description: redactSecrets(pr.body ?? ""),
@@ -368,6 +404,65 @@ async function fetchGitHubPullRequest(
     logs: actionJobLogs,
     limitations: normalizeGitHubEvidenceLimitations(limitations)
   };
+  input.sourceProvenance = buildMetadataOnlyProvenance({
+    origin: "github_snapshot",
+    input,
+    headSha: initialHeadSha,
+    capturedAt: (snapshotOptions.now ?? (() => new Date()))().toISOString()
+  });
+  return input;
+}
+
+function requireGitHubHeadSha(pr: unknown, phase: "initial" | "final"): string {
+  const value = typeof pr === "object" && pr !== null
+    && "head" in pr && typeof pr.head === "object" && pr.head !== null
+    && "sha" in pr.head && typeof pr.head.sha === "string"
+    ? pr.head.sha.trim()
+    : "";
+  if (!value) throw new GitHubFetchError(0, "github_fetch_failed", `GitHub ${phase} pull request metadata did not include a head SHA.`);
+  return value;
+}
+
+function assertExpectedHeadSha(expectedHeadSha: string | undefined, observedHeadSha: string, phase: "initial" | "final") {
+  if (expectedHeadSha?.trim() && expectedHeadSha.trim() !== observedHeadSha) throw new GitHubPullRequestHeadChangedError(expectedHeadSha.trim(), observedHeadSha, phase);
+}
+
+export async function fetchGitHubPullRequestHead(prUrl: string, token: string | undefined, evidenceTiming?: GitHubEvidenceTimingSink): Promise<string | null> {
+  const parsed = parseGitHubPullUrl(prUrl);
+  if (!parsed) return null;
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  const hasToken = Boolean(token?.trim());
+  let response: Response;
+  try {
+    response = await measureGitHubEvidenceTiming(evidenceTiming, "github_pr", () => githubFetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`, headers));
+  } catch {
+    throw new GitHubFetchError(0, "github_fetch_failed", "GitHub final pull request metadata request timed out or network failed.", hasToken);
+  }
+  if (!response.ok) {
+    const failure = classifyGitHubFailure(response, hasToken);
+    throw new GitHubFetchError(response.status, failure.code, failure.reason, hasToken);
+  }
+  return requireGitHubHeadSha(await response.json(), "final");
+}
+
+function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha }: { origin: SourceProvenance["origin"]; input: PullRequestInput; capturedAt: string; headSha?: string }): SourceProvenance {
+  const coverage = origin === "github_snapshot" ? "github_metadata" : origin === "demo" ? "demo_fixture" : "pasted_metadata";
+  const canonical = JSON.stringify({
+    version: 1, origin, url: normalizeGitHubPullUrl(input.url ?? "") ?? undefined, headSha,
+    baseBranch: input.baseBranch ?? undefined, headBranch: input.headBranch ?? undefined, taskSource: input.taskSource ?? undefined,
+    textLengths: { task: input.taskText.length, description: input.description.length },
+    changedFiles: [...input.changedFiles].map((file) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, patchLength: file.patch?.length ?? 0 })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    checks: [...input.checks].map((check) => ({ name: check.name, status: check.status, summaryLength: check.summary?.length ?? 0, urlHost: safeUrlHost(check.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    logs: [...input.logs].map((log) => ({ source: log.source, status: log.status, textLength: log.text.length, urlHost: safeUrlHost(log.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    limitations: [...(input.limitations ?? [])].map((limitation) => limitation.length).sort((left, right) => left - right)
+  });
+  return { version: 1, origin, ...(headSha ? { headSha } : {}), evidenceCapturedAt: capturedAt, inputFingerprint: { version: 1, algorithm: "sha256", value: createHash("sha256").update(canonical).digest("hex"), coverage } };
+}
+
+function safeUrlHost(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try { return new URL(value).hostname.toLowerCase(); } catch { return undefined; }
 }
 
 function githubEvidenceSourceLimitations(

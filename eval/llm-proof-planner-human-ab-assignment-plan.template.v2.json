@@ -1,0 +1,10 @@
+{
+  "protocolVersion": "agentproof-human-ab.v2",
+  "preflightVersion": "agentproof-human-ab-preflight.v2",
+  "experimentId": "replace-after-holdout-seal",
+  "sealedHoldoutReceiptSha256": null,
+  "sealedCaseSetSha256": null,
+  "reviewerRosterSha256": null,
+  "minReviewersPerCaseArm": 2,
+  "assignments": []
+}

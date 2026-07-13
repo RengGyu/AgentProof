@@ -1,0 +1,13 @@
+{
+  "receiptVersion": "agentproof-sealed-holdout-receipt.v2",
+  "status": "template_not_sealed",
+  "holdoutId": null,
+  "experimentId": null,
+  "policyVersion": null,
+  "caseCount": null,
+  "sealedAt": null,
+  "privateManifestSha256": null,
+  "sealedCaseSetSha256": null,
+  "normalizerVersion": null,
+  "sourceCommit": null
+}
