@@ -1,4 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -114,15 +115,23 @@ describe("Human A/B pre-recruit holdout sealing", () => {
 
 describe("Human A/B pre-recruit local freeze evidence", () => {
   it("recomputes source cleanliness and exact named file hashes instead of trusting caller hashes", () => {
-    const cwd = process.cwd();
+    const cwd = mkdtempSync(join(tmpdir(), "agentproof-freeze-evidence-"));
+    temporary.push(cwd);
+    writeFileSync(join(cwd, "fixture.txt"), "committed source\n");
+    execFileSync("git", ["init"], { cwd });
+    execFileSync("git", ["config", "user.email", "test@example.test"], { cwd });
+    execFileSync("git", ["config", "user.name", "AgentProof test"], { cwd });
+    execFileSync("git", ["add", "fixture.txt"], { cwd });
+    execFileSync("git", ["commit", "-m", "fixture"], { cwd });
+    writeFileSync(join(cwd, "fixture.txt"), "uncommitted source\n");
     const bindings = {
-      protocolSha256: "docs/llm-proof-planner-human-ab-v2.md",
-      plannerSourceSha256: "src/lib/llm-proof-planner.ts",
-      promptSha256: "src/lib/llm-proof-planner.ts",
-      plannerSchemaSha256: "src/lib/llm-proof-planner.ts",
-      evaluationHarnessSha256: "scripts/llm-proof-planner-ab.mjs",
-      baselineSourceSha256: "eval/llm-proof-planner-semantic-integrity-results.json",
-      automaticTimerRunnerSha256: "scripts/llm-proof-planner-human-ab-v2-runner.mjs"
+      protocolSha256: "fixture.txt",
+      plannerSourceSha256: "fixture.txt",
+      promptSha256: "fixture.txt",
+      plannerSchemaSha256: "fixture.txt",
+      evaluationHarnessSha256: "fixture.txt",
+      baselineSourceSha256: "fixture.txt",
+      automaticTimerRunnerSha256: "fixture.txt"
     };
     const evidence = deriveLocalFreezeEvidence({ cwd, fileBindings: bindings });
     expect(evidence.source).toMatchObject({ commit: expect.stringMatching(/^[0-9a-f]{40}$/), workingTreeDirty: true, reproducibleFromCommit: false });
