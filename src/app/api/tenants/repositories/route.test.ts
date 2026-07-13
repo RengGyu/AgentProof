@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTenantRepositoryGrantsForTests,
   createTenantRepositoryGrant,
@@ -9,6 +9,8 @@ import { clearTenantAuthSessionsForTests, createTenantAuthSession } from "@/lib/
 import { GET, PATCH } from "./route";
 
 describe("/api/tenants/repositories", () => {
+  beforeEach(() => installSameOriginRequestDefault());
+
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -243,6 +245,21 @@ describe("/api/tenants/repositories", () => {
       slackNotificationsEnabled: false
     });
     expect(serialized).not.toContain("Patch excerpt");
+  });
+
+  it("rejects cross-origin repository setting mutations before changing a grant", async () => {
+    stubSettingsEnv();
+    await createTenantRepositoryGrant({ tenantId: "tenant_a", installationId: 321, repositoryId: 100, repositoryFullName: "RengGyu/AgentProof" });
+
+    const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { origin: "https://attacker.example", "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ tenantId: "tenant_a", installationId: 321, repositoryId: 100, settings: { analysisEnabled: false } })
+    }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "tenant_mutation_csrf_required" });
+    await expect(listTenantRepositoryGrants({ tenantId: "tenant_a" })).resolves.toMatchObject([{ analysisEnabled: true }]);
   });
 
   it("updates repository settings from a durable owner session without an invite header", async () => {
@@ -612,6 +629,17 @@ describe("/api/tenants/repositories", () => {
   });
 });
 
+function installSameOriginRequestDefault() {
+  const NativeRequest = globalThis.Request;
+  vi.stubGlobal("Request", class extends NativeRequest {
+    constructor(input: RequestInfo | URL, init: RequestInit = {}) {
+      const headers = new Headers(init.headers);
+      if (!headers.has("x-agentproof-csrf")) headers.set("x-agentproof-csrf", "same-origin");
+      super(input, { ...init, headers });
+    }
+  });
+}
+
 function stubSettingsEnv() {
   vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
   vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
@@ -631,6 +659,7 @@ function stubSettingsEnvWithoutRole() {
 }
 
 function stubInviteEnv(role: "owner" | "admin" | "member" | null = "owner") {
+  vi.stubEnv("AGENTPROOF_ALLOW_LEGACY_PRIVILEGED_BOOTSTRAP", "true");
   vi.stubEnv("AGENTPROOF_TENANT_SESSION_SECRET", "tenant-session-secret-value-with-enough-entropy");
   vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
     {

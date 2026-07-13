@@ -139,6 +139,7 @@ describe("POST /api/github/onboarding/start", () => {
       }
     ]));
     vi.stubEnv("AGENTPROOF_ONBOARDING_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_ALLOW_LEGACY_PRIVILEGED_BOOTSTRAP", "true");
 
     const wrongTenant = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
@@ -167,6 +168,7 @@ describe("POST /api/github/onboarding/start", () => {
     vi.stubEnv("AGENTPROOF_BETA_INVITES", JSON.stringify([
       { tenantId: "tenant_a", token: "tenant-a-invite-token", role: "owner" }
     ]));
+    vi.stubEnv("AGENTPROOF_ALLOW_LEGACY_PRIVILEGED_BOOTSTRAP", "true");
 
     const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
       method: "POST",
@@ -210,6 +212,7 @@ function sameOriginHeaders() {
 }
 
 function stubOnboardingEnv(role: "owner" | "admin" | "member" = "owner") {
+  vi.stubEnv("AGENTPROOF_ALLOW_LEGACY_PRIVILEGED_BOOTSTRAP", "true");
   vi.stubEnv("AGENTPROOF_GITHUB_APP_SLUG", "agentproof-test");
   vi.stubEnv("AGENTPROOF_ONBOARDING_STATE_SECRET", "state-secret-value-with-enough-entropy");
   vi.stubEnv("AGENTPROOF_TENANT_SESSION_SECRET", "tenant-session-secret-value-with-enough-entropy");

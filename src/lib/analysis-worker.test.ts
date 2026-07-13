@@ -502,7 +502,7 @@ describe("analysis worker preflight", () => {
         status: "completed",
         repository: "RengGyu/AgentProof",
         pullRequestNumber: 7,
-        headSha: "abc123",
+        headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         priority: expect.any(String),
         evidenceCoverage: expect.any(Number)
       },
@@ -520,7 +520,7 @@ describe("analysis worker preflight", () => {
         status: "completed",
         repository: "RengGyu/AgentProof",
         pullRequestNumber: 7,
-        headSha: "abc123"
+        headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.github.com/app/installations/321/access_tokens");
@@ -913,7 +913,7 @@ describe("analysis worker preflight", () => {
       comment: false,
       idempotencyKey: "first-batch-job",
       pullRequestNumber: 7,
-      headSha: "abc123"
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
     await enqueueAnalysisJob(jobInput({
       saveReport: false,
@@ -921,7 +921,7 @@ describe("analysis worker preflight", () => {
       idempotencyKey: "second-batch-job",
       deliveryId: "123e4567-e89b-12d3-a456-426614174301",
       pullRequestNumber: 7,
-      headSha: "abc123"
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
     await enqueueAnalysisJob(jobInput({
       saveReport: false,
@@ -929,7 +929,7 @@ describe("analysis worker preflight", () => {
       idempotencyKey: "third-batch-job",
       deliveryId: "123e4567-e89b-12d3-a456-426614174302",
       pullRequestNumber: 7,
-      headSha: "abc123"
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
 
     const result = await runAnalysisJobBatch({
@@ -973,7 +973,7 @@ describe("analysis worker preflight", () => {
       comment: false,
       idempotencyKey: "retryable-batch-job",
       pullRequestNumber: 7,
-      headSha: "abc123"
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
     await enqueueAnalysisJob(jobInput({
       saveReport: false,
@@ -981,7 +981,7 @@ describe("analysis worker preflight", () => {
       idempotencyKey: "untouched-batch-job",
       deliveryId: "123e4567-e89b-12d3-a456-426614174301",
       pullRequestNumber: 7,
-      headSha: "abc123"
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
 
     const result = await runAnalysisJobBatch({
@@ -997,7 +997,7 @@ describe("analysis worker preflight", () => {
       failedRetryable: 1,
       failedTerminal: 0,
       idle: false,
-      stoppedReason: "retryable_failure",
+      stoppedReason: "systemic_retryable_failure",
       items: [
         { status: "failed_retryable", reason: "github_fetch_failed" }
       ]
@@ -1006,6 +1006,25 @@ describe("analysis worker preflight", () => {
       "failed_retryable",
       "queued"
     ]);
+  });
+
+  it("continues a bounded batch after one job's optional Slack side effect is unavailable", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: true } });
+    vi.stubGlobal("fetch", mockWorkerFetch());
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: true, idempotencyKey: "slack-retryable-job" }));
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: false, idempotencyKey: "later-completes-job", deliveryId: "123e4567-e89b-12d3-a456-426614174302" }));
+
+    const result = await runAnalysisJobBatch({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run-batch?limit=2",
+      limit: 2,
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toMatchObject({ processed: 2, completed: 1, failedRetryable: 1, stoppedReason: "limit_reached" });
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: "failed_retryable", reason: "slack_summary_not_configured" }),
+      expect.objectContaining({ status: "completed" })
+    ]));
   });
 });
 
@@ -1023,6 +1042,7 @@ function stubReadyWorkerEnv(options: {
   vi.stubEnv("GITHUB_WEBHOOK_SECRET", "webhook-secret");
   vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
   vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+  vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
 
   if (options.grant !== null) {
     vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", JSON.stringify([
@@ -1078,7 +1098,7 @@ function jobInput(overrides: Partial<{
     repositoryFullName: "RengGyu/AgentProof",
     pullRequestNumber,
     pullRequestUrl: `https://github.com/RengGyu/AgentProof/pull/${pullRequestNumber}`,
-    headSha: overrides.headSha ?? "abc123",
+    headSha: overrides.headSha ?? "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     saveReport: overrides.saveReport ?? true,
     comment: overrides.comment ?? true,
     slackSummary: overrides.slackSummary ?? false,
@@ -1124,7 +1144,7 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
         url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
         user: { login: "agent-author" },
         base: { ref: "main" },
-        head: { ref: "feature/app-automation", sha: "abc123" }
+        head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }
 
@@ -1140,7 +1160,7 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
       ]);
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/check-runs?per_page=100&page=1") {
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1") {
       return Response.json({
         total_count: 1,
         check_runs: [
@@ -1157,7 +1177,7 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
       });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/status") {
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/status") {
       return Response.json({ statuses: [] });
     }
 

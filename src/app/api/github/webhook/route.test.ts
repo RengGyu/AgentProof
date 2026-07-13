@@ -1,5 +1,5 @@
 import { createHmac, generateKeyPairSync } from "crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAnalysisJobsForTests, getAnalysisJobsForTests } from "@/lib/analysis-jobs";
 import { clearAuditEventsForTests, getAuditEventsForTests } from "@/lib/audit-log";
 import { clearGitHubWebhookDeliveriesForTests } from "@/lib/github-app";
@@ -19,6 +19,10 @@ import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
 
 describe("POST /api/github/webhook", () => {
+  beforeEach(() => {
+    vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -2104,7 +2108,21 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
-    const fetchMock = mockAutomationFetch();
+    const baseFetch = mockAutomationFetch();
+    let pullMetadataRequests = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7" && ++pullMetadataRequests > 2) {
+        return jsonResponse({
+          title: "Updated head",
+          body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis.",
+          url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
+          user: { login: "agent-author" },
+          base: { ref: "main" },
+          head: { ref: "feature/app-automation", sha: "def456" }
+        });
+      }
+      return baseFetch(url, init);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const first = await POST(signedRequest(JSON.stringify(automationPayload({

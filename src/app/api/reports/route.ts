@@ -54,6 +54,8 @@ export async function POST(request: Request) {
     url: savedUrl.toString(),
     expiresAt: saved.expiresAt,
     privacy: "summary-only",
+    authenticity: saved.report.authenticity?.trust ?? "imported_unverified",
+    authenticityNotice: "Caller-supplied reports are saved as imported, unverified summaries. They are not server-verified AgentProof artifacts.",
     durability: status.durability,
     durabilityWarning: status.durabilityWarning
   });

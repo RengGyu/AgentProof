@@ -101,6 +101,46 @@ describe("report share", () => {
     expect(summaryOnlyLimitations).toHaveLength(1);
   });
 
+  it("preserves direct deterministic scope state and snapshot provenance even when top risks omit scope wording", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.scope = {
+      suspected: true,
+      outOfScopeFiles: ["src/unrelated.ts"],
+      reasons: ["Changed file is unrelated to the declared requirement."],
+      evidenceRefs: [report.evidenceIndex[0].id]
+    };
+    report.summary.topRisks = ["Risk one", "Risk two", "Risk three", "Risk four", "Risk five"];
+    report.source.provenance = {
+      version: 1,
+      origin: "github_snapshot",
+      headSha: "a".repeat(40),
+      evidenceCapturedAt: "2026-07-12T00:00:00.000Z",
+      inputFingerprint: {
+        version: 1,
+        algorithm: "sha256",
+        value: "b".repeat(64),
+        coverage: "github_metadata"
+      }
+    };
+
+    const shared = decodeSharedReport(encodeReportForShare(report));
+
+    expect(shared.scope).toEqual({
+      suspected: true,
+      outOfScopeFiles: ["src/unrelated.ts"],
+      reasons: ["Changed file is unrelated to the declared requirement."]
+    });
+    expect(shared.source.provenance).toEqual(report.source.provenance);
+    expect(shared.authenticity?.trust).toBe("portable_unverified");
+    expect(shared.limitations.join("\n")).toContain("unverified");
+  });
+
+  it("rejects malformed portable payloads before they can render as reports", () => {
+    const payload = Buffer.from(JSON.stringify({ version: 2 }), "utf8").toString("base64url");
+
+    expect(() => decodeSharedReport(payload)).toThrow("Shared report");
+  });
+
   it("does not retain raw linked issue body evidence in share summaries", () => {
     const rawIssueBody = "RAW_LINKED_ISSUE_BODY_SHOULD_NOT_SHARE";
     const report = generateVerificationReport({

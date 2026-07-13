@@ -201,6 +201,12 @@ describe("GET /api/tenants/deletion-preview", () => {
     stubSupabaseStores();
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url);
+      if (href.includes("agentproof_tenants")) {
+        return Response.json([{ tenant_id: "tenant_a", name: "Tenant A", status: "active", plan: "team" }]);
+      }
+      if (href.includes("agentproof_tenant_members")) {
+        return Response.json([]);
+      }
       const count = href.includes("saved_reports_test")
         ? 2
         : href.includes("tenant_grants_test")
@@ -251,8 +257,9 @@ describe("GET /api/tenants/deletion-preview", () => {
       policyReviewCategory("audit_events", 7),
       policyReviewCategory("usage_records", 8)
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(7);
-    for (const [, init] of fetchMock.mock.calls) {
+    const countCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === "HEAD");
+    expect(countCalls).toHaveLength(7);
+    for (const [, init] of countCalls) {
       expect(init?.method).toBe("HEAD");
       expect(new Headers(init?.headers).get("Prefer")).toBe("count=exact");
       expect(new Headers(init?.headers).get("Range")).toBe("0-0");

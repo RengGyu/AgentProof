@@ -33,6 +33,8 @@ Preferred AgentProof-specific names:
 AGENTPROOF_REPORTS_SUPABASE_URL=
 AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY=
 AGENTPROOF_REPORTS_TABLE=agentproof_saved_reports
+AGENTPROOF_REPORT_SIGNING_SECRET=
+AGENTPROOF_REPORT_SIGNING_KEY_ID=agentproof-report-hmac-v1
 ```
 
 Generic Supabase names are also accepted:

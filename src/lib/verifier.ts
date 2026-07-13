@@ -1,5 +1,5 @@
 import {
-  buildEvidenceIndex,
+  buildEvidenceIndexResult,
   extractClaims,
   extractRequirementEvidence,
   fileKeywords,
@@ -32,9 +32,10 @@ const MAX_MISSING_TEST_FINDINGS = 100;
 const MAX_FINDING_PROVENANCE_ITEMS = 5;
 const MAX_FINDING_PROVENANCE_TEXT = 240;
 const MAX_EVIDENCE_REFS_PER_FIELD = 50;
+const MAX_SCOPE_FINDINGS = 100;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
-  const evidenceIndex = buildEvidenceIndex(
+  const evidenceBuild = buildEvidenceIndexResult(
     input.taskText,
     input.description,
     input.changedFiles,
@@ -42,6 +43,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     input.logs,
     input.taskSource
   );
+  const evidenceIndex = evidenceBuild.items;
   const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
   const requirements = requirementEvidence.requirements;
   const ciStatus = aggregateStatus(input.checks, input.logs);
@@ -63,7 +65,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const priority = highestPriority(reviewPriority);
   const evidenceRefsCapped = cappedRequirements.capped || cappedScope.capped || hasRequirementEvidenceRefPressure(requirements, evidenceIndex);
   const hasExecutionEvidence = hasTestBuildExecutionEvidence(input);
-  const limitations = buildLimitations(input, requirementFindings, ciStatus, hasExecutionEvidence, evidenceRefsCapped);
+  const limitations = buildLimitations(input, requirementFindings, ciStatus, hasExecutionEvidence, evidenceRefsCapped, evidenceBuild.omittedByKind, requirementEvidence.omittedRequirementCount, scope.omittedCount);
   const evidenceCoverage = computeEvidenceCoverage(
     requirementFindings,
     input.changedFiles.length,
@@ -84,7 +86,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
       url: sanitizeSourceUrl(input.url),
       author: input.author ? redactSecrets(input.author) : undefined,
       baseBranch: input.baseBranch ? redactSecrets(input.baseBranch) : undefined,
-      headBranch: input.headBranch ? redactSecrets(input.headBranch) : undefined
+      headBranch: input.headBranch ? redactSecrets(input.headBranch) : undefined,
+      provenance: input.sourceProvenance
     },
     summary: {
       oneLine: summarize(priority, evidenceCoverage, topRisks),
@@ -915,11 +918,12 @@ function detectScopeCreep(
     return {
       outOfScopeFiles: [],
       evidenceRefs: [],
-      reasons: []
+      reasons: [],
+      omittedCount: 0
     };
   }
 
-  const outOfScopeFiles = files
+  const candidateOutOfScopeFiles = files
     .filter((file) => !isTestFile(file.path))
     .filter((file) => {
       const keywords = fileRelationKeywords(file);
@@ -934,6 +938,7 @@ function detectScopeCreep(
       return !directMatch && (isRiskFile(file.path) || files.length > 3);
     })
     .map((file) => file.path);
+  const outOfScopeFiles = candidateOutOfScopeFiles.slice(0, MAX_SCOPE_FINDINGS);
   const evidenceRefs = uniqueRefs(outOfScopeFiles.flatMap((path) => evidenceRefsForPath(evidenceIndex, path)));
 
   return {
@@ -944,7 +949,8 @@ function detectScopeCreep(
       isRiskFile(path)
         ? `${safeReportPath(path)} is risk-sensitive and does not clearly map to the stated criteria.`
         : `${safeReportPath(path)} does not clearly map to the stated criteria.`
-    )
+    ),
+    omittedCount: Math.max(0, candidateOutOfScopeFiles.length - outOfScopeFiles.length)
   };
 }
 
@@ -1814,7 +1820,10 @@ function buildLimitations(
   requirements: RequirementFinding[],
   ciStatus: CheckStatus,
   hasExecutionEvidence: boolean,
-  evidenceRefsCapped: boolean
+  evidenceRefsCapped: boolean,
+  omittedEvidenceByKind: Partial<Record<EvidenceItem["kind"], number>>,
+  omittedRequirementCount: number,
+  omittedScopeCount: number
 ): string[] {
   const limitations: string[] = [];
 
@@ -1836,6 +1845,10 @@ function buildLimitations(
   if (evidenceRefsCapped) {
     limitations.push(`Some evidence references were capped at ${MAX_EVIDENCE_REFS_PER_FIELD} per field to keep the report bounded.`);
   }
+  const omittedEvidence = Object.entries(omittedEvidenceByKind).filter(([, count]) => typeof count === "number" && count > 0);
+  if (omittedEvidence.length > 0) limitations.push(`Evidence index was bounded at 200 items; omitted ${omittedEvidence.map(([kind, count]) => `${kind}:${count}`).join(", ")}.`);
+  if (omittedRequirementCount > 0) limitations.push(`Requirement extraction was bounded at 8 requirements; ${omittedRequirementCount} additional candidate requirement(s) were omitted.`);
+  if (omittedScopeCount > 0) limitations.push(`Scope findings were bounded at ${MAX_SCOPE_FINDINGS} files; ${omittedScopeCount} additional candidate file(s) were omitted.`);
   if (requirements.some((finding) => finding.status === "unclear")) {
     limitations.push("At least one requirement needs human interpretation.");
   }

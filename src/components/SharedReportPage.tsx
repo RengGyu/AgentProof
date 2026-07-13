@@ -38,7 +38,12 @@ export function SharedReportPage() {
       </header>
       <div className="shared-layout">
         {report ? (
-          <ReportView report={report} mode="summary" />
+          <>
+            <div className="notice" role="status">
+              Imported / unverified portable summary. It is not a server-verified AgentProof artifact and omits raw evidence.
+            </div>
+            <ReportView report={report} mode="summary" />
+          </>
         ) : (
           <section className="panel empty-state">
             <div>

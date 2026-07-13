@@ -1,6 +1,6 @@
 import { reportToGitHubComment } from "./markdown";
 import { redactSecrets } from "./redact";
-import { createSavedReport, getSavedReportStoreStatus } from "./server-report-store";
+import { createVerifiedSavedReport, getSavedReportStoreStatus } from "./server-report-store";
 import type { VerificationReport } from "./types";
 
 const AGENTPROOF_APP_COMMENT_MARKER = "<!-- agentproof:github-app:evidence-check:v1 -->";
@@ -38,7 +38,7 @@ export async function createAutomationSavedReport(
   }
 
   const status = getSavedReportStoreStatus();
-  const saved = await createSavedReport(report, { tenantId: options.tenantId });
+  const saved = await createVerifiedSavedReport(report, { tenantId: options.tenantId });
   const url = new URL(`/reports/${saved.id}`, options.requestUrl);
   if (saved.accessToken) {
     url.searchParams.set("key", saved.accessToken);

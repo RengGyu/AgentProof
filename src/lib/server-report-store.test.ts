@@ -6,6 +6,7 @@ import {
   cleanupExpiredReports,
   cleanupExpiredSavedReports,
   createSavedReport,
+  createVerifiedSavedReport,
   deleteSavedReport,
   getSavedReport,
   getSavedReportStoreStatus,
@@ -80,6 +81,35 @@ describe("server report store", () => {
     expect(saved.report.limitations).toContain(
       "Shared report omits raw evidence, patch/log excerpts, claims, proof-graph evidence refs, and re-prompt text."
     );
+    expect(saved.report.authenticity?.trust).toBe("imported_unverified");
+  });
+
+  it("rejects a tampered server-verified summary instead of rendering it as verified", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean));
+    const store = globalThis as typeof globalThis & {
+      __agentproofReportStore?: Map<string, { report: typeof saved.report }>;
+    };
+    const stored = store.__agentproofReportStore?.get(saved.id);
+    if (!stored) throw new Error("Expected saved report in test store.");
+    stored.report.summary.priority = "blocker";
+
+    await expect(getSavedReport(saved.id)).resolves.toBeNull();
+  });
+
+  it("stores a server-generated deterministic summary with a canonical signature", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean));
+
+    expect(saved.report.authenticity).toMatchObject({
+      trust: "verified_agentproof",
+      canonicalDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      signature: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    await expect(getSavedReport(saved.id)).resolves.toMatchObject({
+      id: saved.id,
+      report: { authenticity: { trust: "verified_agentproof" } }
+    });
   });
 
   it("does not store raw linked issue body evidence in saved reports", async () => {

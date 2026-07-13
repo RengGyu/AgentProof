@@ -88,7 +88,7 @@ describe("POST /api/ops/analysis-jobs/run", () => {
       job: {
         id,
         pullRequestNumber: 7,
-        headShaPrefix: "abc123",
+        headShaPrefix: "aaaaaaaaaaaa",
         attempts: 1
       },
       result: {
@@ -206,6 +206,7 @@ function stubReadyWorkerEnv(grantOverrides: Partial<ReturnType<typeof grantRecor
   vi.stubEnv("GITHUB_WEBHOOK_SECRET", "webhook-secret-value");
   vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
   vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+  vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
   vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", JSON.stringify([
     grantRecord(grantOverrides)
   ]));
@@ -249,7 +250,7 @@ function jobInput(overrides: Partial<{
     repositoryFullName: "RengGyu/AgentProof",
     pullRequestNumber: 7,
     pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/7",
-    headSha: "abc123",
+    headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     saveReport: overrides.saveReport ?? false,
     comment: overrides.comment ?? false,
     now: new Date("2026-06-30T00:00:00Z")
@@ -277,7 +278,7 @@ function mockWorkerFetch() {
         url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
         user: { login: "agent-author" },
         base: { ref: "main" },
-        head: { ref: "feature/app-automation", sha: "abc123" }
+        head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }
 
@@ -293,14 +294,14 @@ function mockWorkerFetch() {
       ]);
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/check-runs?per_page=100&page=1") {
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1") {
       return Response.json({
         total_count: 0,
         check_runs: []
       });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/status") {
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/status") {
       return Response.json({ statuses: [] });
     }
 

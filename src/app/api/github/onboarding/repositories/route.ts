@@ -11,6 +11,7 @@ import { noStoreJson, parseJsonSafely } from "@/lib/http";
 import { createTenantRepositoryGrant, getTenantControlPlaneSettings, TenantControlPlaneStoreError } from "@/lib/tenant-control-plane";
 import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/lib/tenant-deletion-state";
 import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
+import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -90,6 +91,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const csrf = verifySameOriginMutationRequest(request);
+  if (!csrf.ok) return csrfFailureResponse();
+
   if (!getTenantControlPlaneSettings().enabled) {
     return noStoreJson({
       error: "Tenant control plane must be enabled before repository grants can be created.",

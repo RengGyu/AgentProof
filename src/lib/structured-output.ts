@@ -181,13 +181,35 @@ export const verificationReportSchema = {
       source: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "url", "author", "baseBranch", "headBranch"],
+        required: ["title", "url", "author", "baseBranch", "headBranch", "provenance"],
         properties: {
           title: { type: "string", maxLength: 600 },
           url: { type: ["string", "null"], maxLength: 500 },
           author: { type: ["string", "null"], maxLength: 120 },
           baseBranch: { type: ["string", "null"], maxLength: 120 },
-          headBranch: { type: ["string", "null"], maxLength: 120 }
+          headBranch: { type: ["string", "null"], maxLength: 120 },
+          provenance: {
+            type: ["object", "null"],
+            additionalProperties: false,
+            required: ["version", "origin", "headSha", "evidenceCapturedAt", "inputFingerprint"],
+            properties: {
+              version: { type: "number", enum: [1] },
+              origin: { type: "string", enum: ["github_snapshot", "pasted_evidence", "demo"] },
+              headSha: { type: ["string", "null"], maxLength: 64 },
+              evidenceCapturedAt: { type: "string", maxLength: 80 },
+              inputFingerprint: {
+                type: "object",
+                additionalProperties: false,
+                required: ["version", "algorithm", "value", "coverage"],
+                properties: {
+                  version: { type: "number", enum: [1] },
+                  algorithm: { type: "string", enum: ["sha256"] },
+                  value: { type: "string", minLength: 64, maxLength: 64 },
+                  coverage: { type: "string", enum: ["github_metadata", "pasted_metadata", "demo_fixture"] }
+                }
+              }
+            }
+          }
         }
       },
       summary: {

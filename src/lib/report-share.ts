@@ -1,4 +1,6 @@
-import type { VerificationReport } from "./types";
+import { createUnverifiedAuthenticity } from "./report-authenticity";
+import { validateVerificationReport } from "./report-validation";
+import type { SourceProvenance, VerificationReport } from "./types";
 import { redactSecrets } from "./redact";
 
 export const MAX_SHARE_PAYLOAD_LENGTH = 18_000;
@@ -6,7 +8,7 @@ export const SUMMARY_ONLY_LIMITATION =
   "Shared report omits raw evidence, patch/log excerpts, claims, proof-graph evidence refs, and re-prompt text.";
 const SUMMARY_PROOF_RAW_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
 
-interface ShareableReport {
+interface ShareableReportV1 {
   version: 1;
   createdAt: string;
   source: VerificationReport["source"];
@@ -18,12 +20,33 @@ interface ShareableReport {
   limitations: string[];
 }
 
+interface ShareableReportV2 extends Omit<ShareableReportV1, "version" | "source"> {
+  version: 2;
+  source: {
+    title: string;
+    url?: string;
+    author?: string;
+    baseBranch?: string;
+    headBranch?: string;
+    provenance?: SourceProvenance;
+  };
+  scope: Pick<VerificationReport["scope"], "suspected" | "outOfScopeFiles" | "reasons">;
+}
+
+type ShareableReport = ShareableReportV1 | ShareableReportV2;
+
 export function encodeReportForShare(report: VerificationReport): string {
   return encodeBase64Url(JSON.stringify(toShareableReport(report)));
 }
 
 export function decodeSharedReport(payload: string): VerificationReport {
-  return shareableToReport(JSON.parse(decodeBase64Url(payload)) as ShareableReport);
+  const shared = parseShareableReport(JSON.parse(decodeBase64Url(payload)) as unknown);
+  const report = shareableToReport(shared);
+  const validation = validateVerificationReport(report, { mode: "summary" });
+  if (!validation.valid) {
+    throw new Error("Shared report payload failed summary validation.");
+  }
+  return report;
 }
 
 export function sanitizeReportForShare(report: VerificationReport): VerificationReport {
@@ -42,14 +65,15 @@ export function buildShareUrl(report: VerificationReport, origin: string): strin
 
 function toShareableReport(report: VerificationReport): ShareableReport {
   return {
-    version: 1,
+    version: 2,
     createdAt: redactSecrets(report.createdAt),
     source: {
       title: redactSecrets(report.source.title),
       url: report.source.url ? redactSecrets(report.source.url) : undefined,
       author: report.source.author ? redactSecrets(report.source.author) : undefined,
       baseBranch: report.source.baseBranch ? redactSecrets(report.source.baseBranch) : undefined,
-      headBranch: report.source.headBranch ? redactSecrets(report.source.headBranch) : undefined
+      headBranch: report.source.headBranch ? redactSecrets(report.source.headBranch) : undefined,
+      provenance: sanitizeSourceProvenance(report.source.provenance)
     },
     summary: {
       oneLine: redactSecrets(report.summary.oneLine),
@@ -80,11 +104,25 @@ function toShareableReport(report: VerificationReport): ShareableReport {
       priority: item.priority
     })),
     proofGraph: sanitizeProofGraphForShare(report.proofGraph),
+    scope: {
+      suspected: report.scope.suspected,
+      outOfScopeFiles: report.scope.outOfScopeFiles.map(redactSecrets),
+      reasons: report.scope.reasons.map(redactSecrets)
+    },
     limitations: appendSummaryOnlyLimitation(report.limitations.map(redactSecrets))
   };
 }
 
 function shareableToReport(shared: ShareableReport): VerificationReport {
+  const scope = shared.version === 2
+    ? shared.scope
+    : {
+      // Version 1 links omitted the deterministic field. Keep only a clearly
+      // labelled legacy approximation; never present it as a verified report.
+      suspected: shared.summary.topRisks.some((risk) => /scope/i.test(risk)),
+      outOfScopeFiles: [],
+      reasons: shared.summary.topRisks.filter((risk) => /scope/i.test(risk))
+    };
   return {
     analysisId: `shared_${shared.createdAt}`,
     createdAt: shared.createdAt,
@@ -95,11 +133,7 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
       evidenceRefs: []
     })),
     claims: [],
-    scope: {
-      suspected: shared.summary.topRisks.some((risk) => /scope/i.test(risk)),
-      outOfScopeFiles: [],
-      reasons: shared.summary.topRisks.filter((risk) => /scope/i.test(risk))
-    },
+    scope,
     testing: {
       ...shared.testing,
       missingTests: shared.testing.missingTests.map((item) => ({
@@ -114,8 +148,37 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
       prompt: "Shared summary links omit re-prompt text. Open the original report owner session or copy the full report for re-prompt details."
     },
     evidenceIndex: [],
-    limitations: shared.limitations
+    limitations: appendPortableTrustLimitation(shared.limitations, shared.version),
+    authenticity: createUnverifiedAuthenticity(shared.version === 2 ? "portable_unverified" : "legacy_unverified")
   };
+}
+
+function parseShareableReport(value: unknown): ShareableReport {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Shared report payload is invalid.");
+  const version = (value as { version?: unknown }).version;
+  if (version !== 1 && version !== 2) throw new Error("Shared report version is not supported.");
+  if (version === 2 && !("scope" in value)) throw new Error("Shared report is missing deterministic scope state.");
+  return value as ShareableReport;
+}
+
+function sanitizeSourceProvenance(provenance: SourceProvenance | undefined): SourceProvenance | undefined {
+  if (!provenance) return undefined;
+  return {
+    ...provenance,
+    headSha: provenance.headSha ? redactSecrets(provenance.headSha) : undefined,
+    evidenceCapturedAt: redactSecrets(provenance.evidenceCapturedAt),
+    inputFingerprint: {
+      ...provenance.inputFingerprint,
+      value: redactSecrets(provenance.inputFingerprint.value)
+    }
+  };
+}
+
+function appendPortableTrustLimitation(limitations: string[], version: 1 | 2): string[] {
+  const limitation = version === 2
+    ? "Portable share links are imported, unverified summaries. Do not treat them as server-verified AgentProof artifacts."
+    : "Legacy portable share links are unverified summaries; deterministic scope state was not preserved by the legacy envelope.";
+  return limitations.includes(limitation) ? limitations : [...limitations, limitation];
 }
 
 function sanitizeProofGraphForShare(proofGraph: VerificationReport["proofGraph"] | undefined): VerificationReport["proofGraph"] {

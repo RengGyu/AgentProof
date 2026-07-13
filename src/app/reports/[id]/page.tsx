@@ -42,7 +42,9 @@ export default async function SavedReportPage({ params, searchParams }: SavedRep
   return (
     <main className="shared-layout">
       <div className="notice">
-        {status.durabilityWarning} Expires at {saved.expiresAt}.
+        {saved.report.authenticity?.trust === "verified_agentproof"
+          ? "Server-verified AgentProof summary."
+          : "Imported / unverified summary. Do not treat it as a server-verified AgentProof artifact."} {status.durabilityWarning} Expires at {saved.expiresAt}.
       </div>
       <ReportView report={saved.report} mode="summary" />
     </main>

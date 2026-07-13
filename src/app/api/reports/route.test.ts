@@ -44,6 +44,8 @@ describe("POST /api/reports", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(json.url).toMatch(/^http:\/\/localhost\/reports\//);
     expect(json.privacy).toBe("summary-only");
+    expect(json.authenticity).toBe("imported_unverified");
+    expect(json.authenticityNotice).toContain("unverified");
     expect(json.durability).toBe(SAVED_REPORT_DURABILITY);
     expect(json.durabilityWarning).toBe(SAVED_REPORT_DURABILITY_WARNING);
   });

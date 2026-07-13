@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { upsertTenantGitHubInstallation } from "./github-installations";
+import { consumeApprovedInstallationClaim, createPendingInstallationClaim } from "./github-installation-claims";
 import { redactSecrets } from "./redact";
 
 export const DEFAULT_ONBOARDING_STATES_TABLE = "agentproof_github_onboarding_states";
@@ -48,6 +49,12 @@ export interface GitHubInstallCallbackResult {
   installationId: number;
   expiresAt: string;
   activationCookie: string;
+}
+
+export interface GitHubInstallationClaimRequest {
+  operatorRequestCode: string;
+  expiresAt: string;
+  claimCookie: string;
 }
 
 export interface TenantAdminSession {
@@ -179,56 +186,41 @@ export async function createGitHubAppInstallSession(
   };
 }
 
-export async function completeGitHubAppInstallCallback(
-  input: {
-    state?: string | null;
-    nonceCookieHeader?: string | null;
-    installationId?: number | null;
-  },
+export async function requestGitHubInstallationClaim(
+  input: { state?: string | null; nonceCookieHeader?: string | null; installationId?: number | null },
   env = process.env,
   now = Date.now()
-): Promise<GitHubInstallCallbackResult> {
+): Promise<GitHubInstallationClaimRequest> {
   const secret = env.AGENTPROOF_ONBOARDING_STATE_SECRET?.trim();
   const nonce = readCookie(input.nonceCookieHeader, ONBOARDING_NONCE_COOKIE);
+  if (!secret || !input.state || !nonce || !input.installationId) throw new GitHubOnboardingError("GitHub App onboarding callback is invalid.");
+  const consumed = await consumeOnboardingSession({ kind: "install", tokenHash: hashOnboardingValue(input.state, secret), now, nonceHash: hashOnboardingValue(nonce, secret) }, env);
+  if (!consumed) throw new GitHubOnboardingError("GitHub App onboarding state is invalid or expired.");
+  return createPendingInstallationClaim({ tenantId: consumed.tenantId, installationId: input.installationId }, env, now);
+}
 
-  if (!secret || !input.state || !nonce || !input.installationId) {
-    throw new GitHubOnboardingError("GitHub App onboarding callback is invalid.");
-  }
-
-  const consumed = await consumeOnboardingSession({
-    kind: "install",
-    tokenHash: hashOnboardingValue(input.state, secret),
-    now,
-    nonceHash: hashOnboardingValue(nonce, secret)
-  }, env);
-
-  if (!consumed) {
-    throw new GitHubOnboardingError("GitHub App onboarding state is invalid or expired.");
-  }
-
+export async function activateApprovedGitHubInstallationClaim(
+  input: { claimCookieHeader?: string | null },
+  env = process.env,
+  now = Date.now()
+): Promise<GitHubInstallCallbackResult | null> {
+  const secret = env.AGENTPROOF_ONBOARDING_STATE_SECRET?.trim();
+  if (!secret) throw new GitHubOnboardingError("GitHub App onboarding callback is invalid.");
+  // A durable callback already requires this store. Resolve it before
+  // consuming the claim so an incomplete deployment cannot consume approval.
+  const onboardingStore = getOnboardingStoreConfig(env);
   const activationToken = randomToken();
   const expiresAt = new Date(now + STATE_TTL_MS).toISOString();
-  await upsertTenantGitHubInstallation({
-    tenantId: consumed.tenantId,
-    installationId: input.installationId,
-    status: "active"
-  }, env, now);
-  await storeOnboardingSession({
-    id: randomToken(),
-    kind: "activation",
-    tokenHash: hashOnboardingValue(activationToken, secret),
-    tenantId: consumed.tenantId,
-    installationId: input.installationId,
-    createdAt: new Date(now).toISOString(),
-    expiresAt
-  }, env);
-
-  return {
-    tenantId: consumed.tenantId,
-    installationId: input.installationId,
-    expiresAt,
-    activationCookie: buildCookie(ONBOARDING_ACTIVATION_COOKIE, activationToken, expiresAt, now)
-  };
+  const activationSession = { id: randomToken(), tokenHash: hashOnboardingValue(activationToken, secret), expiresAt, createdAt: new Date(now).toISOString() };
+  const claim = await consumeApprovedInstallationClaim({ cookieHeader: input.claimCookieHeader, activationSession }, env, now);
+  if (!claim) return null;
+  // Durable claim activation persists this session in the same Supabase
+  // transaction as ownership binding. Memory mode is fixture-only.
+  if (!onboardingStore) {
+    await upsertTenantGitHubInstallation({ tenantId: claim.tenantId, installationId: claim.installationId, status: "active" }, env, now);
+    await storeOnboardingSession({ ...activationSession, kind: "activation", tenantId: claim.tenantId, installationId: claim.installationId }, env);
+  }
+  return { tenantId: claim.tenantId, installationId: claim.installationId, expiresAt, activationCookie: buildCookie(ONBOARDING_ACTIVATION_COOKIE, activationToken, expiresAt, now) };
 }
 
 export async function verifyGitHubActivationSession(
@@ -467,6 +459,16 @@ function validateActivationSession(
     installationId: session.installationId,
     expiresAt: session.expiresAt
   };
+}
+
+function isPendingInstallSessionValid(session: OnboardingSessionRecord | undefined, nonceHash: string, now: number): boolean {
+  return Boolean(
+    session &&
+    session.kind === "install" &&
+    !session.usedAt &&
+    Date.parse(session.expiresAt) > now &&
+    session.nonceHash === nonceHash
+  );
 }
 
 async function storeOnboardingSession(record: OnboardingSessionRecord, env = process.env): Promise<void> {
