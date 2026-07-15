@@ -41,7 +41,7 @@ No private report is put in browser history or localStorage. The Concierge Repor
 
 ## Kill switches and lifecycle
 
-- Global: `AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH=true` blocks new manual analysis.
+- Global: the kill switch is engaged unless `AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH` is explicitly `false`/`0`/`no`/`off`; any missing or malformed value blocks new manual analysis.
 - Tenant: suspend/delete the durable tenant account; session revalidation blocks access.
 - Repository: set the durable grant `enabled=false`.
 - Installation: `suspended` or `deleted` status blocks access. Signed lifecycle events disable matching grants; unsuspend/re-add never auto-enables them.

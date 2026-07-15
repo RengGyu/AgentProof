@@ -28,8 +28,16 @@ describe("concierge private beta authorization", () => {
     expect(conciergeRuntimeDefaults(env)).toMatchObject({ llmEnabled: false, webhookAutomationEnabled: false, saveReportsEnabled: false, publicShareEnabled: false, githubCommentEnabled: false, slackEnabled: false, billingEnabled: false, fullHistoryEnabled: false });
   });
 
+  it("keeps the global kill switch engaged until explicitly released", () => {
+    expect(conciergeRuntimeDefaults(env).globalKillSwitch).toBe(true);
+    for (const release of ["0", "false", "no", "off"]) {
+      expect(conciergeRuntimeDefaults({ ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: release }).globalKillSwitch).toBe(false);
+    }
+    expect(conciergeRuntimeDefaults({ ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "unexpected" }).globalKillSwitch).toBe(true);
+  });
+
   it("authorizes durable manual grant while automated analysis remains off", async () => {
-    expect(await authorizeConciergeAccess(input, env, dependencies())).toMatchObject({ authorized: true, repositoryId: 202 });
+    expect(await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, dependencies())).toMatchObject({ authorized: true, repositoryId: 202 });
   });
 
   it.each([
@@ -40,21 +48,21 @@ describe("concierge private beta authorization", () => {
     ["grant missing", { authorizeGrant: vi.fn(async () => ({ enabled: true, required: true, reason: "grant-missing" })) }, "repository_grant_missing", 1, 1]
   ])("fails closed for %s before later authorization work", async (_name, override, reason, installationCalls, grantCalls) => {
     const deps = dependencies(override as Partial<ConciergeAccessDependencies>);
-    expect(await authorizeConciergeAccess(input, env, deps)).toEqual({ authorized: false, reason });
+    expect(await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, deps)).toEqual({ authorized: false, reason });
     expect(deps.listInstallationStatuses).toHaveBeenCalledTimes(installationCalls as number);
     expect(deps.authorizeGrant).toHaveBeenCalledTimes(grantCalls as number);
   });
 
   it("rejects memory/env authorization before any provider lookup", async () => {
     const deps = dependencies();
-    const memoryEnv = { ...env, AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "", AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "", AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "1", AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_ACCOUNTS: "[]" };
+    const memoryEnv = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "", AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "", AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "1", AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_ACCOUNTS: "[]" };
     expect(await authorizeConciergeAccess(input, memoryEnv, deps)).toEqual({ authorized: false, reason: "durable_store_required" });
     expect(deps.verifySession).not.toHaveBeenCalled();
   });
 
   it("rejects a Concierge project mismatch before any session or provider lookup", async () => {
     const deps = dependencies();
-    const mismatch = { ...env, AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://other-project.supabase.co" };
+    const mismatch = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://other-project.supabase.co" };
     expect(await authorizeConciergeAccess(input, mismatch, deps)).toEqual({ authorized: false, reason: "durable_store_mismatch" });
     expect(deps.verifySession).not.toHaveBeenCalled();
     expect(deps.listInstallationStatuses).not.toHaveBeenCalled();
@@ -69,7 +77,7 @@ describe("concierge private beta authorization", () => {
 
   it("rejects a granted repository ID paired with a different repository name", async () => {
     const deps = dependencies();
-    expect(await authorizeConciergeAccess({ ...input, repositoryFullName: "attacker/other" }, env, deps)).toEqual({ authorized: false, reason: "repository_identity_mismatch" });
+    expect(await authorizeConciergeAccess({ ...input, repositoryFullName: "attacker/other" }, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, deps)).toEqual({ authorized: false, reason: "repository_identity_mismatch" });
   });
 
   it("does not authorize a matching legacy environment grant when the durable lookup is empty", async () => {

@@ -48,7 +48,10 @@ const DEFAULT_DEPS: ConciergeAccessDependencies = {
 export function conciergeRuntimeDefaults(env = process.env) {
   return {
     manualAnalysisEnabled: truthy(env.AGENTPROOF_CONCIERGE_PRIVATE_BETA_ENABLED),
-    globalKillSwitch: truthy(env.AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH),
+    // Concierge is opt-in twice: the beta itself must be enabled and the
+    // emergency stop must be explicitly released. A missing/malformed switch
+    // never turns a manual private-repo path on accidentally.
+    globalKillSwitch: !explicitlyReleased(env.AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH),
     llmEnabled: false,
     webhookAutomationEnabled: false,
     saveReportsEnabled: false,
@@ -124,4 +127,8 @@ function validInput(input: ConciergeAccessInput): boolean {
 
 function truthy(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/i.test(value?.trim() ?? "");
+}
+
+function explicitlyReleased(value: string | undefined): boolean {
+  return /^(0|false|no|off)$/i.test(value?.trim() ?? "");
 }
