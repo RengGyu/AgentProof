@@ -82,6 +82,13 @@ export class TenantAccountStoreError extends Error {
   }
 }
 
+export function getTenantAccountStoreStatus(env = process.env): { configured: boolean; durable: boolean; mode: "supabase" | "seed" | "disabled" } {
+  const config = getTenantAccountStoreConfig(env);
+  if (config) return { configured: true, durable: true, mode: "supabase" };
+  if (env[TENANT_ACCOUNTS_ENV]?.trim()) return { configured: true, durable: false, mode: "seed" };
+  return { configured: false, durable: false, mode: "disabled" };
+}
+
 export type TenantAccountLifecycleErrorCode =
   | "account_not_active"
   | "invalid_member_update"

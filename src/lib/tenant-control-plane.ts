@@ -64,6 +64,11 @@ export interface TenantRepositoryGrantCount {
   configured: boolean;
 }
 
+export interface ConciergeManualGrantRegistration {
+  outcome: "created" | "existing";
+  grant: TenantRepositoryGrant;
+}
+
 interface TenantRepositoryGrantInput {
   tenantId?: unknown;
   installationId?: unknown;
@@ -108,6 +113,14 @@ export class TenantControlPlaneStoreError extends Error {
     super(message);
     this.name = "TenantControlPlaneStoreError";
   }
+}
+
+export function getTenantRepositoryGrantStoreStatus(env = process.env): { configured: boolean; durable: boolean; mode: "supabase" | "memory" | "env" | "disabled" } {
+  const config = getTenantGrantStoreConfig(env);
+  if (config) return { configured: true, durable: true, mode: "supabase" };
+  if (truthy(env.AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY)) return { configured: true, durable: false, mode: "memory" };
+  if (env[TENANT_CONTROL_PLANE_GRANTS_ENV]?.trim()) return { configured: true, durable: false, mode: "env" };
+  return { configured: false, durable: false, mode: "disabled" };
 }
 
 export function getTenantControlPlaneSettings(env = process.env): TenantControlPlaneSettings {
@@ -191,6 +204,28 @@ export async function authorizeTenantRepositoryGrantAsync(
   return decisionForGrant(storedGrant, env);
 }
 
+/**
+ * Concierge deliberately bypasses legacy environment and memory grants. A
+ * private repository may be authorized only by the durable Supabase store.
+ */
+export async function authorizeDurableTenantRepositoryGrantAsync(
+  input: { installationId: number; repositoryFullName: string; repositoryId?: number },
+  env = process.env
+): Promise<TenantRepositoryGrantDecision> {
+  const settings = getTenantControlPlaneSettings(env);
+  if (!settings.enabled) return { enabled: false, required: false, reason: "control-plane-disabled" };
+  const store = getTenantRepositoryGrantStoreStatus(env);
+  if (!store.configured || !store.durable) return { enabled: true, required: true, reason: "grant-missing" };
+  const config = getTenantGrantStoreConfig(env);
+  if (!config) return { enabled: true, required: true, reason: "grant-missing" };
+  const storedGrant = await findSupabaseTenantRepositoryGrant(config, input);
+  if (!storedGrant) return { enabled: true, required: true, reason: "grant-missing" };
+  if (await isTenantDeletionActiveAsync({ tenantId: storedGrant.tenantId }, env)) {
+    return { enabled: true, required: true, grant: storedGrant, reason: "tenant-deletion-active" };
+  }
+  return decisionForGrant(storedGrant, env);
+}
+
 export function readTenantRepositoryGrants(env = process.env): TenantRepositoryGrant[] | null {
   const raw = env[TENANT_CONTROL_PLANE_GRANTS_ENV];
 
@@ -252,6 +287,61 @@ export async function createTenantRepositoryGrant(
   }
 
   return grant;
+}
+
+/**
+ * Concierge is an operator-assisted manual path. Its repository grants are
+ * intentionally distinct from ordinary GitHub onboarding and can never turn
+ * on automation, saved reports, comments, or Slack notifications.
+ */
+export async function registerConciergeManualRepositoryGrant(
+  input: Pick<TenantRepositoryGrantInput, "tenantId" | "installationId" | "repositoryId" | "repositoryFullName">,
+  env = process.env
+): Promise<ConciergeManualGrantRegistration> {
+  const config = getTenantGrantStoreConfig(env);
+  if (!config) {
+    throw new TenantControlPlaneStoreError("Concierge manual grants require a durable tenant repository store.");
+  }
+  if (config.table !== DEFAULT_TENANT_REPOSITORY_GRANTS_TABLE) {
+    throw new TenantControlPlaneStoreError("Concierge manual grants require the canonical durable repository grant table.");
+  }
+  const grant = normalizeGrant(input);
+  if (!grant?.repositoryId) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant is invalid.");
+  }
+  await assertTenantDeletionNotActiveAsync({ tenantId: grant.tenantId }, env);
+
+  const response = await supabaseTenantGrantRpc(config, "agentproof_register_concierge_repository_grant", {
+    p_tenant_id: grant.tenantId,
+    p_installation_id: grant.installationId,
+    p_repository_id: grant.repositoryId,
+    p_repository_full_name: grant.repositoryFullName
+  });
+  if (!response.ok) {
+    throw new TenantControlPlaneStoreError(`Concierge manual repository grant store failed with HTTP ${response.status}.`);
+  }
+  const rows = await response.json().catch(() => null);
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response is invalid.");
+  }
+  const row = rows[0];
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response is invalid.");
+  }
+  const result = row as Record<string, unknown>;
+  const expected = ["analysis_enabled", "comment_enabled", "enabled", "installation_id", "outcome", "repository_full_name", "repository_id", "save_reports_enabled", "slack_notifications_enabled", "tenant_id"];
+  if (Object.keys(result).sort().join("\0") !== expected.slice().sort().join("\0") || (result.outcome !== "created" && result.outcome !== "existing")) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response is invalid.");
+  }
+  const stored = rowToTenantRepositoryGrant(result);
+  if (!stored
+    || stored.tenantId !== grant.tenantId
+    || stored.installationId !== grant.installationId
+    || stored.repositoryId !== grant.repositoryId
+    || stored.repositoryFullName.toLowerCase() !== grant.repositoryFullName.toLowerCase()) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response does not match the requested repository.");
+  }
+  return { outcome: result.outcome, grant: stored };
 }
 
 export function clearTenantRepositoryGrantsForTests() {
@@ -744,6 +834,20 @@ async function supabaseTenantGrantFetch(config: TenantGrantStoreConfig, query: s
       Authorization: `Bearer ${config.serviceRoleKey}`,
       ...(init.headers ?? {})
     }
+  });
+}
+
+async function supabaseTenantGrantRpc(config: TenantGrantStoreConfig, name: string, body: Record<string, unknown>) {
+  return fetch(`${config.url}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(5_000),
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
   });
 }
 

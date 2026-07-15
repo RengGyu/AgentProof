@@ -171,6 +171,7 @@ export const verificationReportSchema = {
       "testing",
       "reviewPriority",
       "proofGraph",
+      "decisionCard",
       "reprompt",
       "evidenceIndex",
       "limitations"
@@ -181,7 +182,7 @@ export const verificationReportSchema = {
       source: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "url", "author", "baseBranch", "headBranch", "provenance"],
+        required: ["title", "url", "author", "baseBranch", "headBranch", "provenance", "originalTask"],
         properties: {
           title: { type: "string", maxLength: 600 },
           url: { type: ["string", "null"], maxLength: 500 },
@@ -208,6 +209,18 @@ export const verificationReportSchema = {
                   coverage: { type: "string", enum: ["github_metadata", "pasted_metadata", "demo_fixture"] }
                 }
               }
+            }
+          },
+          originalTask: {
+            type: ["object", "null"],
+            additionalProperties: false,
+            required: ["version", "status", "sourceType", "sourceRef", "reason"],
+            properties: {
+              version: { type: "number", enum: [1] },
+              status: { type: "string", enum: ["available", "unavailable", "ambiguous"] },
+              sourceType: { type: "string", enum: ["explicit_task", "linked_issue", "none"] },
+              sourceRef: { type: ["string", "null"], maxLength: 200 },
+              reason: { type: "string", enum: ["none", "not_linked", "multiple_linked_issues", "linked_issue_inaccessible", "linked_issue_deleted_or_empty", "linked_reference_is_pull_request"] }
             }
           }
         }
@@ -310,6 +323,25 @@ export const verificationReportSchema = {
         }
       },
       proofGraph: proofGraphSchema,
+      decisionCard: {
+        type: ["object", "null"], additionalProperties: false,
+        required: ["version", "topGap", "testBuildStatus", "firstInspectionPoints", "reprompt"],
+        properties: {
+          version: { type: "number", enum: [1] },
+          topGap: {
+            type: ["object", "null"], additionalProperties: false,
+            required: ["gapKey", "requirementId", "kind", "severity", "summary", "evidenceRefs"],
+            properties: {
+              gapKey: { type: "string", maxLength: 600 }, requirementId: { type: ["string", "null"], maxLength: 600 },
+              kind: { type: "string", enum: ["missing_implementation", "missing_targeted_test", "missing_execution", "failed_execution", "ambiguous_requirement", "self_reported_test_gap", "evidence_unavailable", "visual_proof_missing"] },
+              severity: { type: "string", enum: ["low", "medium", "high", "blocker"] }, summary: { type: "string", maxLength: 600 }, evidenceRefs: evidenceRefArraySchema
+            }
+          },
+          testBuildStatus: { type: "string", enum: ["passed", "failed", "pending", "unknown"] },
+          firstInspectionPoints: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["kind", "label", "href", "evidenceRefs"], properties: { kind: { type: "string", enum: ["file", "check"] }, label: { type: "string", maxLength: 600 }, href: { type: "string", maxLength: 500 }, evidenceRefs: evidenceRefArraySchema } } },
+          reprompt: { type: ["object", "null"], additionalProperties: false, required: ["prompt", "gapKey", "basedOnGapKind", "evidenceRefs"], properties: { prompt: { type: "string", maxLength: 6000 }, gapKey: { type: "string", maxLength: 600 }, basedOnGapKind: { type: "string", enum: ["missing_implementation", "missing_targeted_test", "missing_execution", "failed_execution", "ambiguous_requirement", "self_reported_test_gap", "evidence_unavailable", "visual_proof_missing"] }, evidenceRefs: evidenceRefArraySchema } }
+        }
+      },
       reprompt: {
         type: "object",
         additionalProperties: false,

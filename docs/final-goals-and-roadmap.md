@@ -33,6 +33,8 @@ AgentProof reaches SaaS readiness when these outcomes are true:
 
 ## Target User And Launch Model
 
+The operator-assisted manual private-repository slice is documented in `docs/concierge-private-beta.md`. It keeps automation and all publishing/storage side effects off by default and is a pre-human technical path, not self-serve or Human A/B evidence.
+
 Default target:
 
 - Small-team CTO, tech lead, or senior reviewer who already receives agent-authored PRs and needs fast evidence-based handoff before merge.

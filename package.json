@@ -20,6 +20,10 @@
     "smoke:openai": "node scripts/smoke-openai-verifier.mjs",
     "ops:drill-gate": "node scripts/ops-drill-gate-readiness.mjs",
     "p0:beta-readiness": "node scripts/p0-beta-readiness.mjs",
+    "concierge:db:integration": "node scripts/concierge-db-integration.mjs",
+    "concierge:e2e": "playwright test --config playwright.concierge.config.ts",
+    "concierge:privacy:scan": "node scripts/concierge-private-beta-privacy-scan.mjs",
+    "concierge:smoke:nonprod": "node scripts/concierge-private-beta-nonprod-smoke.mjs",
     "reviewer:validation": "node scripts/reviewer-validation-fixture.mjs",
     "external-pr-pilot:labels": "node scripts/external-pr-pilot-labels.mjs",
     "eval:fetch:swebench": "node scripts/build-eval-pack.mjs",
@@ -44,6 +48,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

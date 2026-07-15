@@ -18,6 +18,8 @@ export default defineConfig({
       "scripts/external-pr-pilot-labels.test.mjs",
       "scripts/reviewer-validation-fixture.test.mjs",
       "scripts/p0-beta-readiness.test.mjs",
+      "scripts/concierge-private-beta-nonprod-smoke-contract.test.mjs",
+      "scripts/concierge-private-beta-nonprod-smoke-runner.test.ts",
       "scripts/llm-proof-planner-eval-metadata.test.mjs",
       "scripts/llm-proof-planner-human-ab-core.test.mjs",
       "scripts/llm-proof-planner-human-ab-v2-core.test.mjs",

@@ -86,6 +86,13 @@ export class TenantAuthStoreError extends Error {
   }
 }
 
+export function getTenantAuthSessionStoreStatus(env = process.env): { configured: boolean; durable: boolean; mode: "supabase" | "memory" | "disabled" } {
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) return { configured: true, durable: true, mode: "supabase" };
+  if (truthy(env.AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY)) return { configured: true, durable: false, mode: "memory" };
+  return { configured: false, durable: false, mode: "disabled" };
+}
+
 export async function createTenantAuthSession(
   input: { tenantId?: unknown; memberId?: unknown; bootstrapToken?: string | null },
   env = process.env,

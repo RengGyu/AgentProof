@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput, SourceProvenance } from "./types";
+import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, OriginalTaskBoundary, PullRequestInput, SourceProvenance } from "./types";
 import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
 import {
   extractSupportedIssueReferences,
@@ -249,6 +249,9 @@ function buildPastedPullRequestInput(request: AnalyzeRequest, extraLimitations: 
     description: redactSecrets(request.prDescription ?? ""),
     taskSource: request.taskText?.trim() ? "task" : undefined,
     taskText: redactSecrets(request.taskText ?? ""),
+    originalTask: request.taskText?.trim()
+      ? { version: 1, status: "available", sourceType: "explicit_task", reason: "none" }
+      : { version: 1, status: "unavailable", sourceType: "none", reason: "not_linked" },
     changedFiles: parseChangedFiles(request.changedFiles ?? ""),
     checks: parseChecks(request.checks ?? ""),
     logs: parseLogs(request.logs ?? ""),
@@ -325,13 +328,19 @@ async function fetchGitHubPullRequest(
   const initialHeadSha = requireGitHubHeadSha(pr, "initial");
   assertExpectedHeadSha(snapshotOptions.expectedHeadSha, initialHeadSha, "initial");
   const limitations: string[] = [];
-  const linkedIssueTask = await resolveLinkedIssueTaskText({
-    prBody: String(pr.body ?? ""),
-    repository: { owner: parsed.owner, repo: parsed.repo },
-    headers,
-    limitations,
-    hasToken
-  });
+  const explicitTask = taskText.trim();
+  const linkedIssue = explicitTask
+    ? null
+    : await resolveLinkedIssueTask({
+      prBody: String(pr.body ?? ""),
+      repository: { owner: parsed.owner, repo: parsed.repo },
+      headers,
+      limitations,
+      hasToken
+    });
+  const originalTask: OriginalTaskBoundary = explicitTask
+    ? { version: 1, status: "available", sourceType: "explicit_task", reason: "none" }
+    : linkedIssue?.boundary ?? { version: 1, status: "unavailable", sourceType: "none", reason: "not_linked" };
   const [files, checkRuns, statuses] = await Promise.all([
     measureGitHubEvidenceTiming(
       evidenceTiming,
@@ -381,8 +390,9 @@ async function fetchGitHubPullRequest(
     author: pr.user?.login,
     baseBranch: pr.base?.ref,
     headBranch: pr.head?.ref,
-    taskSource: taskText.trim() ? "task" : linkedIssueTask ? "issue" : undefined,
-    taskText: taskText.trim() ? redactSecrets(taskText) : linkedIssueTask ?? "",
+    taskSource: explicitTask ? "task" : linkedIssue?.taskText ? "issue" : undefined,
+    taskText: explicitTask ? redactSecrets(taskText) : linkedIssue?.taskText ?? "",
+    originalTask,
     changedFiles: files.map((file) => ({
       path: file.filename,
       additions: file.additions,
@@ -451,6 +461,7 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha }: { o
   const canonical = JSON.stringify({
     version: 1, origin, url: normalizeGitHubPullUrl(input.url ?? "") ?? undefined, headSha,
     baseBranch: input.baseBranch ?? undefined, headBranch: input.headBranch ?? undefined, taskSource: input.taskSource ?? undefined,
+    originalTask: input.originalTask ?? undefined,
     textLengths: { task: input.taskText.length, description: input.description.length },
     changedFiles: [...input.changedFiles].map((file) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, patchLength: file.patch?.length ?? 0 })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     checks: [...input.checks].map((check) => ({ name: check.name, status: check.status, summaryLength: check.summary?.length ?? 0, urlHost: safeUrlHost(check.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
@@ -644,10 +655,14 @@ function formatGitHubRateLimitReset(value: string | null): string | null {
 }
 
 function mergePastedOverrides(live: PullRequestInput, request: AnalyzeRequest): PullRequestInput {
+  const explicitTask = request.taskText?.trim();
   return {
     ...live,
-    taskText: request.taskText ? redactSecrets(request.taskText) : live.taskText,
-    taskSource: request.taskText ? "task" : live.taskSource,
+    taskText: explicitTask ? redactSecrets(request.taskText ?? "") : live.taskText,
+    taskSource: explicitTask ? "task" : live.taskSource,
+    originalTask: explicitTask
+      ? { version: 1, status: "available", sourceType: "explicit_task", reason: "none" }
+      : live.originalTask,
     description: request.prDescription?.trim() ? redactSecrets(request.prDescription) : live.description,
     changedFiles: request.changedFiles?.trim() ? parseChangedFiles(request.changedFiles) : live.changedFiles,
     checks: request.checks?.trim() ? parseChecks(request.checks) : live.checks,
@@ -671,17 +686,17 @@ function hasPastedEvidence(request: AnalyzeRequest): boolean {
   );
 }
 
-async function resolveLinkedIssueTaskText(input: {
+async function resolveLinkedIssueTask(input: {
   prBody: string;
   repository: Pick<GitHubPullUrl, "owner" | "repo">;
   headers: Record<string, string>;
   limitations: string[];
   hasToken: boolean;
-}): Promise<string | null> {
+}): Promise<{ taskText?: string; boundary: OriginalTaskBoundary } | null> {
   const extraction = extractSupportedIssueReferences(input.prBody, input.repository);
 
   if (extraction.totalSupportedReferences === 0) {
-    return null;
+    return { boundary: { version: 1, status: "unavailable", sourceType: "none", reason: "not_linked" } };
   }
 
   if (extraction.totalSupportedReferences > 1) {
@@ -689,29 +704,46 @@ async function resolveLinkedIssueTaskText(input: {
     input.limitations.push(
       `Multiple supported issue references found (${refs});${extraction.capped ? " capped at 3 and" : ""} did not choose a single issue as requirement source. Original request mapping is ambiguous.`
     );
-    return null;
+    return { boundary: { version: 1, status: "ambiguous", sourceType: "none", reason: "multiple_linked_issues" } };
   }
 
   const [reference] = extraction.references;
   if (!reference) {
-    return null;
+    return { boundary: { version: 1, status: "unavailable", sourceType: "none", reason: "not_linked" } };
   }
 
   const result = await fetchLinkedIssue(reference, input.headers, input.hasToken);
 
   if (result.status === "failed") {
     input.limitations.push(result.limitation);
-    return null;
+    return {
+      boundary: {
+        version: 1,
+        status: "unavailable",
+        sourceType: "linked_issue",
+        sourceRef: formatIssueReference(reference),
+        reason: result.reason
+      }
+    };
   }
 
-  return result.taskText;
+  return {
+    taskText: result.taskText,
+    boundary: {
+      version: 1,
+      status: "available",
+      sourceType: "linked_issue",
+      sourceRef: formatIssueReference(reference),
+      reason: "none"
+    }
+  };
 }
 
 async function fetchLinkedIssue(
   reference: SupportedIssueReference,
   headers: Record<string, string>,
   hasToken: boolean
-): Promise<{ status: "ok"; taskText: string } | { status: "failed"; limitation: string }> {
+): Promise<{ status: "ok"; taskText: string } | { status: "failed"; limitation: string; reason: OriginalTaskBoundary["reason"] }> {
   const ref = formatIssueReference(reference);
   let response: Response;
 
@@ -723,14 +755,16 @@ async function fetchLinkedIssue(
   } catch {
     return {
       status: "failed",
-      limitation: `Linked issue ${ref} could not be fetched: request timed out or network failed. Requirement source fell back to PR description.`
+      reason: "linked_issue_inaccessible",
+      limitation: `Linked issue ${ref} could not be fetched: request timed out or network failed. The PR description remains context-only; authoritative task evidence is unavailable.`
     };
   }
 
   if (!response.ok) {
     return {
       status: "failed",
-      limitation: `Linked issue ${ref} could not be fetched: ${githubLinkedIssueFailureReason(response, hasToken)} Requirement source fell back to PR description.`
+      reason: "linked_issue_inaccessible",
+      limitation: `Linked issue ${ref} could not be fetched: ${githubLinkedIssueFailureReason(response, hasToken)} The PR description remains context-only; authoritative task evidence is unavailable.`
     };
   }
 
@@ -739,7 +773,8 @@ async function fetchLinkedIssue(
   if (issue.pull_request) {
     return {
       status: "failed",
-      limitation: `Linked reference ${ref} points to a pull request, not an issue. Requirement source fell back to PR description.`
+      reason: "linked_reference_is_pull_request",
+      limitation: `Linked reference ${ref} points to a pull request, not an issue. The PR description remains context-only; authoritative task evidence is unavailable.`
     };
   }
 
@@ -750,7 +785,8 @@ async function fetchLinkedIssue(
   if (!taskText.trim()) {
     return {
       status: "failed",
-      limitation: `Linked issue ${ref} had no title or body text. Requirement source fell back to PR description.`
+      reason: "linked_issue_deleted_or_empty",
+      limitation: `Linked issue ${ref} had no title or body text. The PR description remains context-only; authoritative task evidence is unavailable.`
     };
   }
 

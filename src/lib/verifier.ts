@@ -12,6 +12,7 @@ import {
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import { redactSecrets } from "./redact";
+import { buildDecisionCard } from "./decision-card";
 import type {
   CheckStatus,
   EvidenceItem,
@@ -35,6 +36,9 @@ const MAX_EVIDENCE_REFS_PER_FIELD = 50;
 const MAX_SCOPE_FINDINGS = 100;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
+  const authoritativeRequirementContext = input.originalTask?.status === "available"
+    ? input.description
+    : "";
   const evidenceBuild = buildEvidenceIndexResult(
     input.taskText,
     input.description,
@@ -44,7 +48,14 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     input.taskSource
   );
   const evidenceIndex = evidenceBuild.items;
-  const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+  const authoritativeRequirementEvidence = extractRequirementEvidence(input.taskText, authoritativeRequirementContext, input.taskSource);
+  const contextualEvidence = input.originalTask?.status === "available"
+    ? authoritativeRequirementEvidence
+    : extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+  const requirementEvidence = {
+    ...authoritativeRequirementEvidence,
+    contexts: contextualEvidence.contexts
+  };
   const requirements = requirementEvidence.requirements;
   const ciStatus = aggregateStatus(input.checks, input.logs);
   const rawRequirementFindings = requirements.map((requirement) =>
@@ -78,7 +89,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks, proofGraph);
   const claims = extractClaims(input.description, evidenceIndex);
 
-  return {
+  const report: VerificationReport = {
     analysisId: `ap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     source: {
@@ -87,7 +98,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
       author: input.author ? redactSecrets(input.author) : undefined,
       baseBranch: input.baseBranch ? redactSecrets(input.baseBranch) : undefined,
       headBranch: input.headBranch ? redactSecrets(input.headBranch) : undefined,
-      provenance: input.sourceProvenance
+      provenance: input.sourceProvenance,
+      originalTask: input.originalTask
     },
     summary: {
       oneLine: summarize(priority, evidenceCoverage, topRisks),
@@ -120,6 +132,9 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     evidenceIndex,
     limitations
   };
+  const decisionCard = buildDecisionCard(report);
+  report.decisionCard = decisionCard;
+  return report;
 }
 
 function sanitizeSourceUrl(value: string | undefined): string | undefined {
@@ -144,6 +159,20 @@ function evaluateRequirement(
   evidenceIndex: EvidenceItem[],
   input: PullRequestInput
 ): RequirementFinding {
+  if (input.originalTask && input.originalTask.status !== "available") {
+    const refs = sourceEvidenceRefs(evidenceIndex);
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "unclear",
+      evidenceRefs: refs,
+      gaps: [input.originalTask.status === "ambiguous"
+        ? "The original task source is ambiguous, so requirement satisfaction cannot be verified."
+        : "The original task source is unavailable, so requirement satisfaction cannot be verified."],
+      reviewerNote: "Fetch or paste one authoritative original issue/task before treating this requirement as satisfied.",
+      confidence: 0.2
+    };
+  }
   if (isUntrustedPrDescriptionRequirementSource(requirement, input)) {
     const refs = sourceEvidenceRefs(evidenceIndex);
 

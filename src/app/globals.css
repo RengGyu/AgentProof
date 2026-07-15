@@ -1810,3 +1810,50 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+.concierge-layout {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.concierge-intake.collapsed {
+  padding-block: 12px;
+}
+
+.concierge-decision {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.concierge-status-row,
+.concierge-inspection,
+.concierge-reprompt {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.concierge-status-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.concierge-inspection ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.concierge-inspection a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .concierge-layout { padding: 12px; }
+  .concierge-layout.has-report .concierge-intake { order: 2; }
+  .concierge-layout.has-report > [aria-label="Concierge evidence report"] { order: 1; }
+}

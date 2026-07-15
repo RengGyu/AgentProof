@@ -29,10 +29,12 @@ import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport 
 interface ReportViewProps {
   report: VerificationReport;
   mode?: "full" | "summary";
+  surface?: "default" | "concierge";
 }
 
-export function ReportView({ report, mode = "full" }: ReportViewProps) {
+export function ReportView({ report, mode = "full", surface = "default" }: ReportViewProps) {
   const isSummaryMode = mode === "summary";
+  const isConcierge = surface === "concierge";
   const markdown = useMemo(() => reportToMarkdown(report), [report]);
   const githubComment = useMemo(() => reportToGitHubComment(report), [report]);
   const evidenceById = useMemo(
@@ -165,7 +167,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <div className="summary-title">
             <p className="eyebrow">Verification report</p>
             <h1>{report.source.title}</h1>
-            <p>{report.summary.oneLine}</p>
+            {!isConcierge ? <p>{report.summary.oneLine}</p> : null}
           </div>
           <PriorityChip priority={report.summary.priority} />
         </div>
@@ -179,7 +181,39 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           </div>
         ) : null}
 
-        <div className="decision-strip">
+        {isConcierge ? (
+          <div className="concierge-decision" aria-label="30-second decision card">
+            <div className="decision-copy">
+              <span><ShieldAlert size={15} /> 가장 먼저 확인할 증거 공백</span>
+              <strong>{report.decisionCard?.topGap?.summary ?? (report.proofGraph.summary.gapCount > 0
+                ? "증거 공백은 있지만 결속된 evidence reference가 없어 행동 지침을 만들 수 없습니다."
+                : "결정론적으로 확인된 증거 공백이 없습니다.")}</strong>
+              <p>증거 부족은 구현 실패를 의미하지 않습니다.</p>
+              <p>이 보고서는 merge 결정이나 correctness 인증이 아닙니다.</p>
+            </div>
+            <div className="concierge-status-row">
+              <span>Test/build</span><strong>{formatStatus(report.testing.ciStatus)}</strong>
+            </div>
+            <div className="concierge-inspection">
+              <span className="risk-strip-title">먼저 열기</span>
+              {report.decisionCard?.firstInspectionPoints.length ? (
+                <ul>{report.decisionCard.firstInspectionPoints.map((point) => (
+                  <li key={point.href}><a href={point.href} target="_blank" rel="noreferrer"><ExternalLink size={14} />{point.label}</a></li>
+                ))}</ul>
+              ) : <p className="muted small">유효한 GitHub file/check deep link를 만들 수 없습니다.</p>}
+            </div>
+            {report.decisionCard?.reprompt ? (
+              <div className="concierge-reprompt">
+                <div className="card-title-row"><strong>이 공백만 닫는 re-prompt</strong>
+                  <button className="button compact" onClick={() => copyText(report.decisionCard!.reprompt!.prompt, "reprompt")}>
+                    {copiedAction === "reprompt" ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}{copiedAction === "reprompt" ? "복사됨" : "복사"}
+                  </button>
+                </div>
+                <pre className="reprompt">{report.decisionCard.reprompt.prompt}</pre>
+              </div>
+            ) : null}
+          </div>
+        ) : <div className="decision-strip">
           <div className="decision-copy">
             <span>
               <ShieldAlert size={15} />
@@ -199,9 +233,9 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               ))}
             </ul>
           </div>
-        </div>
+        </div>}
 
-        <div className="metric-grid">
+        {!isConcierge ? <div className="metric-grid">
           <Metric
             label="Requirements"
             value={`${requirementStats.met}/${report.requirements.length}`}
@@ -215,9 +249,9 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             tone={statusClass(report.testing.ciStatus)}
           />
           <Metric label="Missing Tests" value={String(report.testing.missingTests.length)} icon={<TestTube2 size={17} />} />
-        </div>
+        </div> : null}
 
-        <div className="action-dock">
+        {!isConcierge ? <div className="action-dock">
           <div className="action-dock-copy">
             <span>
               <LockKeyhole size={14} />
@@ -249,14 +283,14 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               </button>
             ) : null}
           </div>
-        </div>
+        </div> : null}
         {actionMessage ? <p className={`action-feedback ${actionMessage.tone}`}>{actionMessage.text}</p> : null}
       </div>
 
       <div className="report-body">
         <div className="stack report-main">
-          <div className="card section-card">
-            <div className="section-heading">
+          <details className="card section-card" open={!isConcierge}>
+            <summary className="section-heading">
               <div>
                 <p className="eyebrow">Coverage</p>
                 <h2>Requirement Evidence</h2>
@@ -264,7 +298,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               <span className="muted small">
                 {requirementStats.partial + requirementStats.missing + requirementStats.unclear} need verification
               </span>
-            </div>
+            </summary>
             {report.requirements.map((requirement) => (
               <div className="requirement" key={requirement.requirementId}>
                 <div className="requirement-status">
@@ -289,7 +323,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                 </div>
               </div>
             ))}
-          </div>
+          </details>
 
           <div className="card section-card">
             <div className="section-heading">
@@ -459,7 +493,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             </details>
           ) : null}
 
-          {!isSummaryMode && report.source.url ? (
+          {!isConcierge && !isSummaryMode && report.source.url ? (
             <div className="card section-card">
               <div className="card-title-row">
                 <div>
@@ -494,7 +528,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             </div>
           ) : null}
 
-          {!isSummaryMode ? (
+          {!isConcierge && !isSummaryMode ? (
             <div className="card section-card">
               <div className="card-title-row">
                 <div>

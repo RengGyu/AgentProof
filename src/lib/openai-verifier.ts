@@ -107,6 +107,7 @@ function normalizeOpenAIReport(value: unknown): unknown {
       delete provenance.headSha;
       source.provenance = provenance;
     }
+    if (source.originalTask === null || source.originalTask === undefined) delete source.originalTask;
     report.source = source;
   }
 
@@ -185,6 +186,7 @@ function compareSource(
   compareValue(source.baseBranch, baselineSource.baseBranch, "source.baseBranch", errors);
   compareValue(source.headBranch, baselineSource.headBranch, "source.headBranch", errors);
   compareJson(source.provenance, baselineSource.provenance, "source.provenance", errors);
+  compareJson(source.originalTask, baselineSource.originalTask, "source.originalTask", errors);
 }
 
 function compareRequirementIdentity(
