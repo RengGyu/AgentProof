@@ -7,8 +7,8 @@ const endpoint = "https://beta.example.test/api/tenants/concierge/analyze";
 
 const cases = [
   { scenario: "single_linked_issue_passing", caseId: "case_1111111111111111", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 11, expectedHeadSha: "a".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "passed" },
-  { scenario: "task_unavailable_or_ambiguous", caseId: "case_2222222222222222", tenantId: "tenant-b", installationId: 2, repositoryId: 20, repositoryFullName: "opaque/repo-b", pullRequestNumber: 12, expectedHeadSha: "a".repeat(40), expectedOriginalTaskStatus: "ambiguous", expectedCiStatus: "passed" },
-  { scenario: "failed_or_unavailable_check", caseId: "case_3333333333333333", tenantId: "tenant-c", installationId: 3, repositoryId: 30, repositoryFullName: "opaque/repo-c", pullRequestNumber: 13, expectedHeadSha: "a".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "failed" }
+  { scenario: "task_unavailable_or_ambiguous", caseId: "case_2222222222222222", tenantId: "tenant-b", installationId: 2, repositoryId: 20, repositoryFullName: "opaque/repo-b", pullRequestNumber: 12, expectedHeadSha: "b".repeat(40), expectedOriginalTaskStatus: "ambiguous", expectedCiStatus: "passed" },
+  { scenario: "failed_or_unavailable_check", caseId: "case_3333333333333333", tenantId: "tenant-c", installationId: 3, repositoryId: 30, repositoryFullName: "opaque/repo-c", pullRequestNumber: 13, expectedHeadSha: "c".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "failed" }
 ] as const;
 
 describe("non-production Concierge smoke runner", () => {
@@ -86,7 +86,8 @@ describe("non-production Concierge smoke runner", () => {
       cases.map((item) => ({ ...item, expectedHeadSha: "a".repeat(39) })),
       cases.map((item) => ({ ...item, expectedHeadSha: 40 })),
       [...cases.slice(0, 2), { ...cases[2], caseId: cases[0].caseId }],
-      [...cases.slice(0, 2), { ...cases[2], tenantId: "other-tenant", repositoryId: cases[0].repositoryId, pullRequestNumber: cases[0].pullRequestNumber }]
+      [...cases.slice(0, 2), { ...cases[2], tenantId: "other-tenant", repositoryId: cases[0].repositoryId, pullRequestNumber: cases[0].pullRequestNumber }],
+      [...cases.slice(0, 2), { ...cases[2], repositoryId: 999, repositoryFullName: "OPAQUE/REPO-A", pullRequestNumber: cases[0].pullRequestNumber }]
     ]) {
       const result = await runConciergeNonProductionSmoke({
         baseUrl: "https://beta.example.test",

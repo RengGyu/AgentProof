@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { inspectSmokeResponse, validateApprovedSmokeOrigin, validateSmokeCases, validateSmokeHttpBoundary, validateSmokeTelemetrySet } from "./concierge-private-beta-nonprod-smoke-contract.mjs";
 
 const cases = [
-  { scenario: "single_linked_issue_passing", caseId: "case_1111111111111111", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 11, expectedHeadSha: "b".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "passed" },
+  { scenario: "single_linked_issue_passing", caseId: "case_1111111111111111", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 11, expectedHeadSha: "a".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "passed" },
   { scenario: "task_unavailable_or_ambiguous", caseId: "case_2222222222222222", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 12, expectedHeadSha: "b".repeat(40), expectedOriginalTaskStatus: "ambiguous", expectedCiStatus: "passed" },
-  { scenario: "failed_or_unavailable_check", caseId: "case_3333333333333333", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 13, expectedHeadSha: "b".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "failed" }
+  { scenario: "failed_or_unavailable_check", caseId: "case_3333333333333333", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 13, expectedHeadSha: "c".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "failed" }
 ];
 const report = {
   source: { url: "https://github.com/opaque/repo-a/pull/11", provenance: { headSha: "b".repeat(40) }, originalTask: { status: "available" } }, testing: { ciStatus: "passed" }, requirements: [{ status: "unclear" }],
@@ -26,6 +26,7 @@ describe("non-production Concierge smoke contract", () => {
     expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], pullRequestNumber: 11 }])).toBe(false);
     expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], caseId: cases[0].caseId }])).toBe(false);
     expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], tenantId: "other-tenant", repositoryId: cases[0].repositoryId, pullRequestNumber: 11 }])).toBe(false);
+    expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], repositoryId: 999, repositoryFullName: "OPAQUE/REPO-A", pullRequestNumber: 11 }])).toBe(false);
     expect(validateSmokeCases(cases.map(({ expectedHeadSha: _head, ...item }) => item))).toBe(false);
     expect(validateSmokeCases(cases.map((item) => ({ ...item, expectedHeadSha: "not-a-git-sha" })))).toBe(false);
     expect(validateSmokeCases(cases.map((item) => ({ ...item, expectedHeadSha: "a".repeat(39) })))).toBe(false);
@@ -42,7 +43,12 @@ describe("non-production Concierge smoke contract", () => {
     expect(validateApprovedSmokeOrigin("https://other.example.test", "https://beta.example.test")).toBeNull();
   });
   it("requires an evidence-bound Decision Card and limits unavailable task cases", () => {
-    expect(inspectSmokeResponse(cases[0], 200, envelope, true)).toMatchObject({ status: "passed", decisionCardValid: true });
+    const firstEnvelope = {
+      ...envelope,
+      report: { ...report, source: { ...report.source, provenance: { headSha: cases[0].expectedHeadSha } } },
+      sideEffectTelemetry: { ...envelope.sideEffectTelemetry, sourceHeadSha: cases[0].expectedHeadSha }
+    };
+    expect(inspectSmokeResponse(cases[0], 200, firstEnvelope, true)).toMatchObject({ status: "passed", decisionCardValid: true });
     expect(inspectSmokeResponse({ ...cases[0], expectedHeadSha: "c".repeat(40) }, 200, envelope, true).status).toBe("failed");
     expect(inspectSmokeResponse({ ...cases[0], expectedHeadSha: `${"b".repeat(39)}0` }, 200, envelope, true).status).toBe("failed");
     expect(inspectSmokeResponse({ ...cases[1], expectedOriginalTaskStatus: "available" }, 200, { ...envelope, report: { ...report, requirements: [{ status: "met" }], decisionCard: { ...report.decisionCard, reprompt: { ...report.decisionCard.reprompt, evidenceRefs: ["unknown"] } } } }, true)).toMatchObject({ status: "failed", decisionCardValid: false });

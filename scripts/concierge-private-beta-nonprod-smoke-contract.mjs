@@ -35,8 +35,12 @@ export function validateSmokeCases(value) {
   const scenarios = value.map((item) => item.scenario);
   if (new Set(scenarios).size !== 3 || scenarios.some((scenario) => !SCENARIOS.has(scenario))) return false;
   const caseIds = new Set(value.map((item) => item.caseId));
-  const sourceTargets = new Set(value.map((item) => `${item.repositoryId}:${item.pullRequestNumber}`));
-  return caseIds.size === 3 && sourceTargets.size === 3 && value.every(caseMatchesScenario);
+  const repositoryIdTargets = new Set(value.map((item) => `${item.repositoryId}:${item.pullRequestNumber}`));
+  const repositoryNameTargets = new Set(value.map((item) => `${item.repositoryFullName.toLowerCase()}:${item.pullRequestNumber}`));
+  return caseIds.size === 3
+    && repositoryIdTargets.size === 3
+    && repositoryNameTargets.size === 3
+    && value.every(caseMatchesScenario);
 }
 
 export function validateSmokeTelemetrySet(items) {
