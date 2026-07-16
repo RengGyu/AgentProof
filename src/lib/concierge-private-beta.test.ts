@@ -89,4 +89,51 @@ describe("concierge private beta authorization", () => {
     const decision = await authorizeDurableTenantRepositoryGrantAsync({ installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" }, seededEnv);
     expect(decision).toMatchObject({ required: true, reason: "grant-missing" });
   });
+
+  it.each([
+    ["absent", Response.json([{ active: false }]), "analysis-disabled"],
+    ["active", Response.json([{ active: true }]), "tenant-deletion-active"]
+  ])("uses the durable deletion state when it is %s", async (_label, deletionResponse, expectedReason) => {
+    const grant = {
+      tenant_id: "tenant_alpha", installation_id: 101, repository_id: 202, repository_full_name: "acme/private",
+      enabled: true, analysis_enabled: false, comment_enabled: false, save_reports_enabled: false, slack_notifications_enabled: false
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("agentproof_tenant_deletion_state_active")) {
+        expect(init?.method).toBe("POST");
+        return deletionResponse;
+      }
+      if (url.includes("agentproof_tenant_repository_grants")) return Response.json([grant]);
+      throw new Error("unexpected durable authorization request");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(authorizeDurableTenantRepositoryGrantAsync({ installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" }, env)).resolves.toMatchObject({ reason: expectedReason });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["database error", new Response(null, { status: 404 })],
+    ["malformed response", Response.json([{ active: false, extra: true }])]
+  ])("maps durable deletion state %s to authorization_unavailable before later work", async (_label, deletionResponse) => {
+    const grant = {
+      tenant_id: "tenant_alpha", installation_id: 101, repository_id: 202, repository_full_name: "acme/private",
+      enabled: true, analysis_enabled: false, comment_enabled: false, save_reports_enabled: false, slack_notifications_enabled: false
+    };
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("agentproof_tenant_deletion_state_active")) return deletionResponse;
+      if (url.includes("agentproof_tenant_repository_grants")) return Response.json([grant]);
+      throw new Error("unexpected durable authorization request");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const tokenProvider = vi.fn();
+    const result = await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, dependencies({
+      authorizeGrant: async (request, runtimeEnv) => authorizeDurableTenantRepositoryGrantAsync(request, runtimeEnv),
+      listInstallationStatuses: tokenProvider.mockResolvedValue([{ installationId: 101, status: "active" }])
+    }));
+
+    expect(result).toEqual({ authorized: false, reason: "authorization_unavailable" });
+    expect(tokenProvider).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

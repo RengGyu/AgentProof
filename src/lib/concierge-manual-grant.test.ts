@@ -13,6 +13,10 @@ function row(outcome: "created" | "existing", settings = { enabled: true, analys
   return { outcome, tenant_id: input.tenantId, installation_id: input.installationId, repository_id: input.repositoryId, repository_full_name: input.repositoryFullName, ...settings };
 }
 
+function deletionStateResponse(active = false) {
+  return Response.json([{ active }]);
+}
+
 const existingFlagCombinations = Array.from({ length: 32 }, (_, bits) => ({
   enabled: Boolean(bits & 1),
   analysis_enabled: Boolean(bits & 2),
@@ -26,7 +30,10 @@ describe("Concierge manual repository grant", () => {
 
   it("creates a new durable grant with manual-only defaults through the atomic RPC", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.includes("tenant_deletion_state")) return new Response("", { status: 200, headers: { "content-range": "0-0/0" } });
+      if (url.includes("agentproof_tenant_deletion_state_active")) {
+        expect(init?.method).toBe("POST");
+        return deletionStateResponse();
+      }
       return Response.json([row("created")]);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -38,8 +45,8 @@ describe("Concierge manual repository grant", () => {
   });
 
   it.each(existingFlagCombinations)("preserves every existing automation flag combination without merge or patch", async (settings) => {
-    const fetchMock = vi.fn(async (url: string) => url.includes("tenant_deletion_state")
-      ? new Response("", { status: 200, headers: { "content-range": "0-0/0" } })
+    const fetchMock = vi.fn(async (url: string) => url.includes("agentproof_tenant_deletion_state_active")
+      ? deletionStateResponse()
       : Response.json([row("existing", settings)]));
     vi.stubGlobal("fetch", fetchMock);
     const registration = await registerConciergeManualRepositoryGrant(input, env);
@@ -51,7 +58,7 @@ describe("Concierge manual repository grant", () => {
   it("is stable under concurrent registration: exactly one creation and no flag rewrite", async () => {
     let first = true;
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes("tenant_deletion_state")) return new Response("", { status: 200, headers: { "content-range": "0-0/0" } });
+      if (url.includes("agentproof_tenant_deletion_state_active")) return deletionStateResponse();
       const outcome = first ? "created" : "existing"; first = false;
       return Response.json([row(outcome)]);
     });
@@ -64,9 +71,24 @@ describe("Concierge manual repository grant", () => {
 
   it("fails closed instead of using a memory/env fallback or accepting malformed RPC rows", async () => {
     await expect(registerConciergeManualRepositoryGrant(input, { ...process.env, AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "1" })).rejects.toThrow("durable");
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("tenant_deletion_state")
-      ? new Response("", { status: 200, headers: { "content-range": "0-0/0" } })
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("agentproof_tenant_deletion_state_active")
+      ? deletionStateResponse()
       : Response.json([{ ...row("created"), raw_diff: "diff --git a/a b/a" }])));
     await expect(registerConciergeManualRepositoryGrant(input, env)).rejects.toThrow("response is invalid");
+  });
+
+  it.each([
+    ["active deletion", deletionStateResponse(true)],
+    ["missing deletion RPC", new Response(null, { status: 404 })],
+    ["malformed deletion RPC", Response.json([{ active: false, extra: true }])]
+  ])("does not register a grant when the durable deletion state is %s", async (_label, deletionResponse) => {
+    const grantRpc = vi.fn(async () => Response.json([row("created")]));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("agentproof_tenant_deletion_state_active")) return deletionResponse;
+      return grantRpc();
+    }));
+
+    await expect(registerConciergeManualRepositoryGrant(input, env)).rejects.toThrow();
+    expect(grantRpc).not.toHaveBeenCalled();
   });
 });

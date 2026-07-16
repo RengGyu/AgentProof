@@ -3,6 +3,7 @@ import {
   assertTenantDeletionNotActive,
   clearTenantDeletionStateForTests,
   isTenantDeletionActive,
+  isTenantDeletionActiveAsync,
   markTenantDeletionStartedIfConfigured,
   markTenantDeletionStartedIfConfiguredAsync
 } from "./tenant-deletion-state";
@@ -50,28 +51,21 @@ describe("tenant deletion state", () => {
     expect(serialized).not.toContain("configured");
   });
 
-  it("uses Supabase count-only checks and minimal upsert for durable deletion state", async () => {
+  it("uses exact bounded RPC contracts for durable deletion state", async () => {
     const env = {
       AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL: "https://agentproof-test.supabase.co",
-      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
-      AGENTPROOF_TENANT_DELETION_STATE_TABLE: "tenant_deletion_state_test"
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret"
     } as unknown as NodeJS.ProcessEnv;
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "HEAD") {
-        return new Response(null, {
-          status: 200,
-          headers: { "content-range": "0-0/0" }
-        });
-      }
-
-      return new Response(null, { status: 201 });
+      const url = String(_input);
+      if (url.endsWith("/agentproof_mark_tenant_deletion_active")) return Response.json([{ outcome: "created" }]);
+      throw new Error("unexpected durable deletion RPC");
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await markTenantDeletionStartedIfConfiguredAsync({ tenantId: "tenant_a" }, env);
     const serialized = JSON.stringify(result);
-    const [headUrl, headInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    const [postUrl, postInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    const [postUrl, postInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const postBody = JSON.parse(String(postInit.body));
 
     expect(result).toEqual({
@@ -79,22 +73,37 @@ describe("tenant deletion state", () => {
       active: true,
       created: true
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(headInit.method).toBe("HEAD");
-    expect(decodeURIComponent(headUrl)).toContain("select=tenant_id");
-    expect(decodeURIComponent(headUrl)).not.toContain("repository");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(postInit.method).toBe("POST");
-    expect(decodeURIComponent(postUrl)).toContain("on_conflict=tenant_id");
-    expect(postBody).toEqual({
-      tenant_id: "tenant_a",
-      status: "active",
-      started_at: expect.any(String),
-      updated_at: expect.any(String)
-    });
+    expect(postUrl).toBe("https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_mark_tenant_deletion_active");
+    expect(postBody).toEqual({ p_tenant_id: "tenant_a" });
     expect(serialized).not.toContain("tenant_a");
     expect(serialized).not.toContain("tenant_deletion_state_test");
     expect(serialized).not.toContain("supabase");
     expect(serialized).not.toContain("service-role-secret");
+  });
+
+  it.each([
+    ["active", Response.json([{ active: true }]), true],
+    ["absent", Response.json([{ active: false }]), false]
+  ])("reads an exact durable %s state", async (_label, response, expected) => {
+    vi.stubGlobal("fetch", vi.fn(async () => response));
+    await expect(isTenantDeletionActiveAsync({ tenantId: "tenant_a" }, {
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret"
+    } as unknown as NodeJS.ProcessEnv)).resolves.toBe(expected);
+  });
+
+  it.each([
+    ["database error", new Response(null, { status: 404 })],
+    ["malformed response", Response.json([{ active: false, extra: true }])],
+    ["missing response", Response.json([])]
+  ])("fails closed for durable deletion state %s", async (_label, response) => {
+    vi.stubGlobal("fetch", vi.fn(async () => response));
+    await expect(isTenantDeletionActiveAsync({ tenantId: "tenant_a" }, {
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret"
+    } as unknown as NodeJS.ProcessEnv)).rejects.toThrow("Tenant deletion state");
   });
 
   it("fails closed for malformed static tombstone configuration", () => {
@@ -103,6 +112,14 @@ describe("tenant deletion state", () => {
     }, {
       AGENTPROOF_TENANT_DELETION_TOMBSTONES: "{not-json"
     } as unknown as NodeJS.ProcessEnv)).toThrow("Tenant deletion tombstone config is invalid");
+  });
+
+  it("fails closed instead of silently accepting a legacy custom table override", async () => {
+    await expect(isTenantDeletionActiveAsync({ tenantId: "tenant_a" }, {
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
+      AGENTPROOF_TENANT_DELETION_STATE_TABLE: "legacy_custom_table"
+    } as unknown as NodeJS.ProcessEnv)).rejects.toThrow("table override is unsupported");
   });
 
   it("rejects invalid tenant ids before marking deletion state", () => {

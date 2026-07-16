@@ -3,6 +3,8 @@ import { redactSecrets } from "./redact";
 export const TENANT_DELETION_TOMBSTONES_ENV = "AGENTPROOF_TENANT_DELETION_TOMBSTONES";
 export const TENANT_DELETION_STATE_ALLOW_MEMORY_ENV = "AGENTPROOF_TENANT_DELETION_STATE_ALLOW_MEMORY";
 export const DEFAULT_TENANT_DELETION_STATE_TABLE = "agentproof_tenant_deletion_state";
+export const TENANT_DELETION_STATE_ACTIVE_RPC = "agentproof_tenant_deletion_state_active";
+export const MARK_TENANT_DELETION_ACTIVE_RPC = "agentproof_mark_tenant_deletion_active";
 
 export interface TenantDeletionStateResult {
   privacy: "tenant-deletion-state-metadata-only";
@@ -17,7 +19,6 @@ type GlobalWithTenantDeletionState = typeof globalThis & {
 interface TenantDeletionStateStoreConfig {
   url: string;
   serviceRoleKey: string;
-  table: string;
 }
 
 export class TenantDeletionStateError extends Error {
@@ -49,7 +50,7 @@ export async function isTenantDeletionActiveAsync(
   const config = getTenantDeletionStateStoreConfig(env);
   if (!config) return false;
 
-  return await countSupabaseActiveTenantDeletionState(config, tenantId) > 0;
+  return await readSupabaseTenantDeletionStateActive(config, tenantId);
 }
 
 export function assertTenantDeletionNotActive(
@@ -128,13 +129,12 @@ export async function markTenantDeletionStartedIfConfiguredAsync(
     return markTenantDeletionStartedIfConfigured({ tenantId }, env);
   }
 
-  const existingCount = await countSupabaseActiveTenantDeletionState(config, tenantId);
-  await upsertSupabaseTenantDeletionState(config, tenantId);
+  const outcome = await markSupabaseTenantDeletionStateActive(config, tenantId);
 
   return {
     privacy: "tenant-deletion-state-metadata-only",
     active: true,
-    created: existingCount === 0
+    created: outcome === "created"
   };
 }
 
@@ -142,65 +142,46 @@ export function clearTenantDeletionStateForTests() {
   tenantDeletionMemoryStore().clear();
 }
 
-async function countSupabaseActiveTenantDeletionState(
+async function readSupabaseTenantDeletionStateActive(
   config: TenantDeletionStateStoreConfig,
   tenantId: string
-): Promise<number> {
-  const params = new URLSearchParams({
-    tenant_id: `eq.${tenantId}`,
-    status: "eq.active",
-    select: "tenant_id"
-  });
-  const response = await supabaseTenantDeletionStateFetch(config, `?${params.toString()}`, {
-    method: "HEAD",
-    headers: {
-      Prefer: "count=exact",
-      Range: "0-0"
-    }
-  });
-
-  if (!response.ok) {
-    throw new TenantDeletionStateError(`Tenant deletion state count failed with HTTP ${response.status}.`);
-  }
-
-  const count = countFromContentRange(response.headers.get("content-range"));
-  if (count === null) {
-    throw new TenantDeletionStateError("Tenant deletion state count returned an invalid range.");
-  }
-
-  return count;
-}
-
-async function upsertSupabaseTenantDeletionState(
-  config: TenantDeletionStateStoreConfig,
-  tenantId: string
-) {
-  const now = new Date().toISOString();
-  const response = await supabaseTenantDeletionStateFetch(config, "?on_conflict=tenant_id", {
+): Promise<boolean> {
+  const response = await supabaseTenantDeletionStateRpcFetch(config, TENANT_DELETION_STATE_ACTIVE_RPC, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=minimal"
-    },
-    body: JSON.stringify({
-      tenant_id: tenantId,
-      status: "active",
-      started_at: now,
-      updated_at: now
-    })
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_tenant_id: tenantId })
   });
 
   if (!response.ok) {
-    throw new TenantDeletionStateError(`Tenant deletion state upsert failed with HTTP ${response.status}.`);
+    throw new TenantDeletionStateError(`Tenant deletion state lookup failed with HTTP ${response.status}.`);
   }
+
+  return parseBooleanRpcResult(await response.json().catch(() => null), "active");
 }
 
-async function supabaseTenantDeletionStateFetch(
+async function markSupabaseTenantDeletionStateActive(
   config: TenantDeletionStateStoreConfig,
-  query: string,
+  tenantId: string
+) : Promise<"created" | "existing"> {
+  const response = await supabaseTenantDeletionStateRpcFetch(config, MARK_TENANT_DELETION_ACTIVE_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_tenant_id: tenantId })
+  });
+
+  if (!response.ok) {
+    throw new TenantDeletionStateError(`Tenant deletion state mark failed with HTTP ${response.status}.`);
+  }
+
+  return parseMarkRpcResult(await response.json().catch(() => null));
+}
+
+async function supabaseTenantDeletionStateRpcFetch(
+  config: TenantDeletionStateStoreConfig,
+  rpcName: string,
   init: RequestInit
 ) {
-  return fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}${query}`, {
+  return fetch(`${config.url}/rest/v1/rpc/${encodeURIComponent(rpcName)}`, {
     ...init,
     cache: "no-store",
     headers: {
@@ -225,11 +206,42 @@ function getTenantDeletionStateStoreConfig(env: NodeJS.ProcessEnv): TenantDeleti
     throw new TenantDeletionStateError("Tenant deletion state Supabase env is incomplete.");
   }
 
+  // The durable table is intentionally accessed only through the two
+  // schema-owned RPCs. A legacy custom-table override cannot satisfy that
+  // contract, so do not silently fall back to a different storage boundary.
+  const configuredTable = env.AGENTPROOF_TENANT_DELETION_STATE_TABLE?.trim();
+  if (configuredTable && configuredTable !== DEFAULT_TENANT_DELETION_STATE_TABLE) {
+    throw new TenantDeletionStateError("Tenant deletion state table override is unsupported.");
+  }
+
   return {
     url: trimTrailingSlash(url),
-    serviceRoleKey,
-    table: env.AGENTPROOF_TENANT_DELETION_STATE_TABLE || DEFAULT_TENANT_DELETION_STATE_TABLE
+    serviceRoleKey
   };
+}
+
+function parseBooleanRpcResult(value: unknown, field: "active"): boolean {
+  if (!Array.isArray(value) || value.length !== 1 || !isExactRecord(value[0], [field]) || typeof value[0][field] !== "boolean") {
+    throw new TenantDeletionStateError("Tenant deletion state lookup returned an invalid response.");
+  }
+  return value[0][field] as boolean;
+}
+
+function parseMarkRpcResult(value: unknown): "created" | "existing" {
+  if (!Array.isArray(value) || value.length !== 1 || !isExactRecord(value[0], ["outcome"])) {
+    throw new TenantDeletionStateError("Tenant deletion state mark returned an invalid response.");
+  }
+  const outcome = value[0].outcome;
+  if (outcome !== "created" && outcome !== "existing") {
+    throw new TenantDeletionStateError("Tenant deletion state mark returned an invalid outcome.");
+  }
+  return outcome;
+}
+
+function isExactRecord(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value as Record<string, unknown>).length === keys.length
+    && keys.every((key) => Object.hasOwn(value as Record<string, unknown>, key));
 }
 
 function readStaticTenantDeletionTombstones(env: NodeJS.ProcessEnv): Set<string> {
@@ -280,14 +292,6 @@ function normalizeTenantId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = redactSecrets(value).trim();
   return /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,79}$/.test(normalized) ? normalized : null;
-}
-
-function countFromContentRange(value: string | null): number | null {
-  if (!value) return null;
-  const total = value.split("/").at(1);
-  if (!total || total === "*") return null;
-  const count = Number(total);
-  return Number.isInteger(count) && count >= 0 ? count : null;
 }
 
 function trimTrailingSlash(value: string): string {
