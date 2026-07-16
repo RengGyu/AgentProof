@@ -35,6 +35,20 @@ describe("concierge analyze route boundary", () => {
     expect(mocks.build).not.toHaveBeenCalled();
   });
 
+  it.each(["tenant-deletion-active", "authorization_unavailable"])("rejects durable deletion state %s before token issuance or report delivery", async (reason) => {
+    mocks.authorize.mockResolvedValue({ authorized: false, reason });
+    const response = await POST(request());
+    const payload = await response.json();
+    expect(response.status).toBe(403);
+    expect(payload).toEqual({ error: "Concierge analysis is not authorized.", code: reason });
+    expect(mocks.token).not.toHaveBeenCalled();
+    expect(mocks.head).not.toHaveBeenCalled();
+    expect(mocks.build).not.toHaveBeenCalled();
+    expect(mocks.reserve).not.toHaveBeenCalled();
+    expect(mocks.finish).not.toHaveBeenCalled();
+    expect(payload.report).toBeUndefined();
+  });
+
   it("returns a transient report with every optional side effect off", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
     mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });

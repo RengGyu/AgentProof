@@ -10,6 +10,7 @@ const name = `agentproof-concierge-${process.pid}`;
 const password = randomBytes(18).toString("hex");
 const installationMigration = await readFile(new URL("../supabase/migrations/202607120001_github_installation_single_tenant.sql", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/202607140001_concierge_private_beta.sql", import.meta.url), "utf8");
+const deletionStateMigration = await readFile(new URL("../supabase/migrations/202607160001_tenant_deletion_state.sql", import.meta.url), "utf8");
 let stage = "docker_prerequisite";
 
 async function docker(args, options = {}) { return exec("docker", args, { maxBuffer: 4_000_000, ...options }); }
@@ -65,7 +66,7 @@ try {
   stage = "create_roles";
   await psql("create role anon nologin; create role authenticated nologin; create role service_role nologin;");
   stage = "apply_migrations";
-  await psql(`${installationMigration}\n${migration}`);
+  await psql(`${installationMigration}\n${migration}\n${deletionStateMigration}`);
   stage = "seed_authorization";
   await psql(`
     insert into public.agentproof_tenants(tenant_id,name,status,plan) values ('tenant_alpha','Opaque tenant','active','invite');
@@ -86,6 +87,35 @@ try {
   if (registrationOutcomes.filter((value) => value === "created").length !== 1 || registrationOutcomes.filter((value) => value === "existing").length !== 19) throw new Error("Concurrent Concierge registration invariant failed.");
   const newGrant = scalar((await psql("select enabled || ':' || analysis_enabled || ':' || save_reports_enabled || ':' || comment_enabled || ':' || slack_notifications_enabled from public.agentproof_tenant_repository_grants where tenant_id='tenant_alpha' and installation_id=101 and repository_id=204;")).stdout);
   if (newGrant !== "true:false:false:false:false") throw new Error("New Concierge grant was not manual-only.");
+
+  stage = "deletion_state_schema_and_permissions";
+  const deletionColumns = scalar((await psql("select string_agg(column_name, ',' order by ordinal_position) from information_schema.columns where table_schema='public' and table_name='agentproof_tenant_deletion_state';")).stdout);
+  if (deletionColumns !== "tenant_id,status,started_at,updated_at") throw new Error("Tenant deletion state schema is not metadata-only.");
+  const deletionRls = scalar((await psql("select relrowsecurity from pg_class where oid='public.agentproof_tenant_deletion_state'::regclass;")).stdout);
+  if (deletionRls !== "t") throw new Error("Tenant deletion state RLS is not enabled.");
+  const absentDeletionState = scalar((await psql("select active from public.agentproof_tenant_deletion_state_active('tenant_alpha');", "service_role")).stdout);
+  if (absentDeletionState !== "f") throw new Error("Absent tenant deletion state did not allow normal authorization.");
+  const createdDeletionState = scalar((await psql("select outcome from public.agentproof_mark_tenant_deletion_active('tenant_alpha');", "service_role")).stdout);
+  const activeDeletionState = scalar((await psql("select active from public.agentproof_tenant_deletion_state_active('tenant_alpha');", "service_role")).stdout);
+  const duplicateDeletionState = scalar((await psql("select outcome from public.agentproof_mark_tenant_deletion_active('tenant_alpha');", "service_role")).stdout);
+  if (createdDeletionState !== "created" || activeDeletionState !== "t" || duplicateDeletionState !== "existing") throw new Error("Tenant deletion state lifecycle invariant failed.");
+  for (const role of ["anon", "authenticated", "service_role"]) {
+    let selectRejected = false;
+    let insertRejected = false;
+    try { await psql("select * from public.agentproof_tenant_deletion_state;", role); } catch { selectRejected = true; }
+    try { await psql("insert into public.agentproof_tenant_deletion_state(tenant_id,status) values ('tenant_bravo','active');", role); } catch { insertRejected = true; }
+    if (!selectRejected || !insertRejected) throw new Error(`${role} direct deletion-state access was not rejected.`);
+  }
+  for (const role of ["anon", "authenticated"]) {
+    let readRpcRejected = false;
+    let markRpcRejected = false;
+    try { await psql("select * from public.agentproof_tenant_deletion_state_active('tenant_alpha');", role); } catch { readRpcRejected = true; }
+    try { await psql("select * from public.agentproof_mark_tenant_deletion_active('tenant_bravo');", role); } catch { markRpcRejected = true; }
+    if (!readRpcRejected || !markRpcRejected) throw new Error(`${role} deletion-state RPC access was not rejected.`);
+  }
+  let invalidStatusRejected = false;
+  try { await psql("insert into public.agentproof_tenant_deletion_state(tenant_id,status) values ('tenant_bravo','released');"); } catch { invalidStatusRejected = true; }
+  if (!invalidStatusRejected) throw new Error("Invalid tenant deletion state transition was accepted.");
 
   const key = "a".repeat(64);
   const reserveSql = `select outcome from public.agentproof_reserve_concierge_analysis('${key}','tenant_alpha',101,202);`;
@@ -159,7 +189,7 @@ try {
   const failedDuplicate = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${failedKey}','tenant_alpha',101,202);`, "service_role")).stdout);
   if (failedReserve !== "reserved" || failedTerminal !== "t" || failedReverse !== "f" || failedDuplicate !== "duplicate") throw new Error("Failed terminal lifecycle invariant failed.");
 
-  console.log(JSON.stringify({ status: "passed", conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
+  console.log(JSON.stringify({ status: "passed", conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, deletionState: { metadataOnlySchema: true, rlsEnabled: true, absentAllowsAuthorization: true, activeBlocksAuthorization: true, duplicateStartIsIdempotent: true, directTableAccessRejected: ["anon", "authenticated", "service_role"], nonServiceRpcRejected: true, invalidTransitionRejected: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
 } catch (error) {
   throw new Error(`concierge DB integration failed at ${stage}: ${error instanceof Error ? error.message : "unknown"}`);
 } finally {

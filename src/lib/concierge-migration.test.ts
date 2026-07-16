@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync("supabase/migrations/202607140001_concierge_private_beta.sql", "utf8");
+const deletionStateSql = readFileSync("supabase/migrations/202607160001_tenant_deletion_state.sql", "utf8");
 describe("concierge durable migration contract", () => {
   it("uses RLS, RPC-only execution mutation, and automation-off grants", () => {
     expect(sql).toContain("analysis_enabled boolean not null default false");
@@ -18,5 +19,19 @@ describe("concierge durable migration contract", () => {
     expect(sql).toContain("on conflict on constraint agentproof_tenant_repository_grants_pkey do nothing");
     expect(sql).toContain("'created' else 'existing'");
     expect(sql).not.toMatch(/raw_(?:diff|log|prompt|report)|token\s+text/i);
+  });
+
+  it("makes tenant deletion state metadata-only and RPC-only", () => {
+    expect(deletionStateSql).toContain("agentproof_tenant_deletion_state");
+    expect(deletionStateSql).toContain("tenant_id text primary key references public.agentproof_tenants");
+    expect(deletionStateSql).toContain("check (status = 'active')");
+    expect(deletionStateSql).toContain("enable row level security");
+    expect(deletionStateSql).toContain("revoke all on table public.agentproof_tenant_deletion_state from public, anon, authenticated, service_role");
+    expect(deletionStateSql).toContain("agentproof_tenant_deletion_state_active");
+    expect(deletionStateSql).toContain("agentproof_mark_tenant_deletion_active");
+    expect(deletionStateSql).toContain("security definer");
+    expect(deletionStateSql).toContain("set search_path = ''");
+    expect(deletionStateSql).toContain("grant execute on function public.agentproof_tenant_deletion_state_active(text) to service_role");
+    expect(deletionStateSql).not.toMatch(/(?:raw_(?:diff|log|prompt|report)|token|reason|repository|pull_request|evidence)\s+(?:text|jsonb)/i);
   });
 });

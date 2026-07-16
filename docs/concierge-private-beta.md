@@ -54,8 +54,9 @@ The environment-level global switch may require a deployment configuration refre
 2. Suspend the tenant and disable all repository grants.
 3. Confirm new calls fail before installation-token creation.
 4. Using an audited database-owner maintenance session (there is intentionally no application delete/unlock RPC), delete metadata-only Concierge feedback first and analysis-run rows second for the tenant according to the approved retention request.
-5. Revoke/disconnect the GitHub installation through the existing operator workflow.
-6. Do not claim raw report deletion: this path does not durably store full reports or raw evidence.
+5. Keep the active deletion-state tombstone while grants and sessions are being disabled. For an approved non-production test cleanup only, remove that metadata-only row last through the same audited owner session and record a bounded completion check; application code cannot unlock it.
+6. Revoke/disconnect the GitHub installation through the existing operator workflow.
+7. Do not claim raw report deletion: this path does not durably store full reports or raw evidence.
 
 ## Local verification
 

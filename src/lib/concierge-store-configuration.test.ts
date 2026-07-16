@@ -16,6 +16,11 @@ describe("Concierge durable store configuration", () => {
       AGENTPROOF_TENANT_GRANTS_SUPABASE_URL: "https://different-project.supabase.co",
       AGENTPROOF_TENANT_GRANTS_SUPABASE_SERVICE_ROLE_KEY: "placeholder"
     })).toEqual({ configured: true, consistent: false });
+    expect(getConciergeStoreConfigurationStatus({
+      ...canonical,
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL: "https://different-project.supabase.co",
+      AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+    })).toEqual({ configured: true, consistent: false });
   });
 
   it("fails closed for missing or malformed canonical configuration", () => {

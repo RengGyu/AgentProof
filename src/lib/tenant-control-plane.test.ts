@@ -538,14 +538,8 @@ describe("tenant control plane helpers", () => {
   });
 
   it("writes Supabase repository grant rows with repository id and without service-role values in the body", async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "HEAD") {
-        return new Response(null, {
-          status: 200,
-          headers: { "content-range": "0-0/0" }
-        });
-      }
-
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("agentproof_tenant_deletion_state_active")) return Response.json([{ active: false }]);
       return new Response(null, { status: 201 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -568,8 +562,8 @@ describe("tenant control plane helpers", () => {
 
     expect(grant.repositoryId).toBe(100);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_deletion_state?tenant_id=eq.tenant_test&status=eq.active&select=tenant_id",
-      expect.objectContaining({ method: "HEAD" })
+      "https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_tenant_deletion_state_active",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ p_tenant_id: "tenant_test" }) })
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?on_conflict=tenant_id,installation_id,repository_id",
@@ -627,14 +621,8 @@ describe("tenant control plane helpers", () => {
   });
 
   it("patches Supabase repository grant settings by tenant, installation, and repository id only", async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "HEAD") {
-        return new Response(null, {
-          status: 200,
-          headers: { "content-range": "0-0/0" }
-        });
-      }
-
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("agentproof_tenant_deletion_state_active")) return Response.json([{ active: false }]);
       return Response.json([
         {
           tenant_id: "tenant_test",
@@ -676,8 +664,8 @@ describe("tenant control plane helpers", () => {
       saveReportsEnabled: false
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_deletion_state?tenant_id=eq.tenant_test&status=eq.active&select=tenant_id",
-      expect.objectContaining({ method: "HEAD" })
+      "https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_tenant_deletion_state_active",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ p_tenant_id: "tenant_test" }) })
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&installation_id=eq.321&repository_id=eq.100&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled",

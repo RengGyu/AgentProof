@@ -340,18 +340,13 @@ describe("analysis worker preflight", () => {
     vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
     vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY", "deletion-service-role-secret");
-    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_TABLE", "tenant_deletion_state_test");
     const githubFetch = mockWorkerFetch();
     let deletionStateChecks = 0;
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      if (String(url).startsWith("https://agentproof-test.supabase.co/rest/v1/tenant_deletion_state_test")) {
+      if (String(url) === "https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_tenant_deletion_state_active") {
+        expect(init?.method).toBe("POST");
         deletionStateChecks += 1;
-        return new Response(null, {
-          status: 200,
-          headers: {
-            "content-range": deletionStateChecks >= 7 ? "0-0/1" : "0-0/0"
-          }
-        });
+        return Response.json([{ active: deletionStateChecks >= 7 }]);
       }
 
       return githubFetch(url, init);
