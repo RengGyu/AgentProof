@@ -808,6 +808,9 @@ describe("generateVerificationReport", () => {
     expect(report.testing.missingTests.map((item) => item.path)).toContain("shell/browser/api/electron_api_menu.cc");
     expect(gapKinds).toContain("missing_targeted_test");
     expect(gapKinds).toContain("self_reported_test_gap");
+    expect(report.proofGraph.nodes
+      .filter((node) => node.gapSignals.some((gap) => gap.kind === "missing_targeted_test"))
+      .every((node) => node.gapSignals.every((gap) => gap.kind !== "evidence_unavailable"))).toBe(true);
     expect(report.summary.priority).toBe("high");
     expect(report.summary.topRisks).toContain("Requirement-level proof graph found missing targeted proof.");
     expect(report.reviewPriority.some((item) => item.path === "shell/browser/api/electron_api_menu.cc")).toBe(true);
@@ -969,7 +972,7 @@ describe("generateVerificationReport", () => {
     expect(gapKinds).toContain("evidence_unavailable");
     expect(gapKinds).not.toContain("missing_implementation");
     expect(report.requirements[0]?.status).toBe("unclear");
-    expect(report.summary.topRisks.join(" ")).toContain("implementation proof is unavailable");
+    expect(report.summary.topRisks).toContain("Some requirements have unavailable or inconclusive deterministic evidence.");
   });
 
   it("keeps normal bug proof gaps at medium when CI passes", () => {
@@ -992,6 +995,44 @@ describe("generateVerificationReport", () => {
     expect(report.testing.missingTests.map((item) => item.path)).toContain("packages/postcss/src/cache.ts");
     expect(report.summary.priority).toBe("medium");
     expect(report.summary.priority).not.toBe("high");
+  });
+
+  it("surfaces a grounded medium gap when partial evidence has no narrower proof signal", () => {
+    const report = generateVerificationReport({
+      title: "Render a saved display value",
+      description: "Updates the profile presentation.",
+      taskText: "The profile card should show the saved display name.",
+      changedFiles: [{
+        path: "src/profile-card.ts",
+        additions: 3,
+        deletions: 1,
+        status: "modified",
+        patch: "+ return renderValue(savedValue)"
+      }],
+      checks: [{ name: "Test", status: "passed", summary: "Generic test workflow passed." }],
+      logs: [],
+      sourceProvenance: { version: 1, origin: "github_snapshot", headSha: "d".repeat(40), evidenceCapturedAt: "2026-07-17T00:00:00.000Z", inputFingerprint: { version: 1, algorithm: "sha256", value: "e".repeat(64), coverage: "github_metadata" } }
+    } satisfies PullRequestInput);
+    const finding = report.requirements.find((item) => item.status === "partial");
+    const node = report.proofGraph.nodes.find((item) => item.requirementId === finding?.requirementId);
+    const fallback = node?.gapSignals.filter((gap) => gap.kind === "evidence_unavailable") ?? [];
+    const evidenceIds = new Set(report.evidenceIndex.map((item) => item.id));
+
+    expect(finding).toBeDefined();
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0]).toMatchObject({ severity: "medium" });
+    expect(new Set(fallback[0]?.evidenceRefs)).toEqual(new Set(finding?.evidenceRefs));
+    expect(fallback[0]?.evidenceRefs.every((ref) => evidenceIds.has(ref))).toBe(true);
+    expect(report.decisionCard?.topGap).toMatchObject({ kind: "evidence_unavailable", severity: "medium" });
+    expect(new Set(report.decisionCard?.topGap?.evidenceRefs)).toEqual(new Set(fallback[0]?.evidenceRefs));
+    expect(new Set(report.decisionCard?.reprompt?.evidenceRefs)).toEqual(new Set(fallback[0]?.evidenceRefs));
+    expect(report.testing.ciStatus).toBe("passed");
+    expect(report.requirements.find((item) => item.requirementId === finding?.requirementId)?.status).toBe("partial");
+    expect(report.summary.priority).not.toBe("blocker");
+    expect(report.summary.priority).not.toBe("high");
+    expect(report.summary.topRisks).toContain("Some requirements have unavailable or inconclusive deterministic evidence.");
+    expect(report.summary.topRisks.join(" ")).not.toContain("could not be collected");
+    expect(validateVerificationReport(report, { mode: "full", requireSourceProvenance: true })).toEqual({ valid: true, errors: [] });
   });
 
   it("caps requirement evidence refs before runtime validation", () => {

@@ -675,6 +675,15 @@ function buildProofGraph(
       });
     }
 
+    if (finding?.status === "partial" && gapSignals.length === 0 && finding.evidenceRefs.length > 0) {
+      gapSignals.push({
+        kind: "evidence_unavailable",
+        severity: "medium",
+        message: "The cited deterministic evidence only partially supports this requirement; no narrower proof gap was derived.",
+        evidenceRefs: uniqueRefs(finding.evidenceRefs).slice(0, 8)
+      });
+    }
+
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -751,7 +760,7 @@ function applyProofGraphToRequirements(
       reviewerNote: hasHardGap
         ? `${finding.reviewerNote} Review implementation, targeted test, and execution proof together before trusting this requirement.`
         : hasEvidenceUnavailable
-          ? `${finding.reviewerNote} Treat unavailable file or patch evidence as a collection gap, not proof that implementation is absent.`
+          ? `${finding.reviewerNote} Treat unavailable or inconclusive deterministic evidence as a proof gap, not proof that implementation is absent.`
         : finding.reviewerNote
     };
   });
@@ -1824,7 +1833,7 @@ function buildTopRisks(
   if (ciStatus === "failed") risks.push("Test/build execution failed, so the PR is not proven ready.");
   if (hasNonExecutionCheckFailures) risks.push("Static or merge-gate checks failed outside test/build proof.");
   if (unavailableProofGaps.length > 0) {
-    risks.push("Some implementation proof is unavailable because file or patch evidence could not be collected.");
+    risks.push("Some requirements have unavailable or inconclusive deterministic evidence.");
   }
   if (highProofGaps.some((gap) => gap.kind === "missing_targeted_test" || gap.kind === "self_reported_test_gap")) {
     risks.push("Requirement-level proof graph found missing targeted proof.");
