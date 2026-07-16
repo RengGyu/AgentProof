@@ -163,7 +163,7 @@ describe("non-production Concierge smoke runner", () => {
 });
 
 function validEnvelope(item: typeof cases[number], caseIdOrHash: string): Record<string, unknown> {
-  const headSha = "a".repeat(40);
+  const headSha = item.expectedHeadSha;
   const originalTask = item.expectedOriginalTaskStatus === "ambiguous"
     ? { version: 1 as const, status: "ambiguous" as const, sourceType: "none" as const, reason: "multiple_linked_issues" as const }
     : { version: 1 as const, status: "available" as const, sourceType: "linked_issue" as const, reason: "none" as const, sourceRef: "github_issue:42" };
