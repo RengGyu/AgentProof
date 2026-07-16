@@ -5,7 +5,7 @@ const SCENARIOS = new Set([
 ]);
 const TASK_STATUSES = new Set(["available", "unavailable", "ambiguous"]);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
-const CASE_KEYS = ["caseId", "expectedCiStatus", "expectedOriginalTaskStatus", "installationId", "pullRequestNumber", "repositoryFullName", "repositoryId", "scenario", "tenantId"];
+const CASE_KEYS = ["caseId", "expectedCiStatus", "expectedHeadSha", "expectedOriginalTaskStatus", "installationId", "pullRequestNumber", "repositoryFullName", "repositoryId", "scenario", "tenantId"];
 const RESPONSE_KEYS = ["capabilities", "caseIdOrHash", "privacy", "report", "sideEffectTelemetry", "sideEffects"];
 const CAPABILITY_KEYS = ["billingEnabled", "fullHistoryEnabled", "githubCommentEnabled", "globalKillSwitch", "llmEnabled", "manualAnalysisEnabled", "publicShareEnabled", "saveReportsEnabled", "slackEnabled", "webhookAutomationEnabled"];
 const EFFECT_KEYS = ["comment", "llm", "save", "share", "slack", "webhook"];
@@ -35,8 +35,8 @@ export function validateSmokeCases(value) {
   const scenarios = value.map((item) => item.scenario);
   if (new Set(scenarios).size !== 3 || scenarios.some((scenario) => !SCENARIOS.has(scenario))) return false;
   const caseIds = new Set(value.map((item) => item.caseId));
-  const targets = new Set(value.map((item) => `${item.tenantId}:${item.installationId}:${item.repositoryId}:${item.pullRequestNumber}`));
-  return caseIds.size === 3 && targets.size === 3 && value.every(caseMatchesScenario);
+  const sourceTargets = new Set(value.map((item) => `${item.repositoryId}:${item.pullRequestNumber}`));
+  return caseIds.size === 3 && sourceTargets.size === 3 && value.every(caseMatchesScenario);
 }
 
 export function validateSmokeTelemetrySet(items) {
@@ -101,6 +101,7 @@ function validCase(value) {
     && Number.isSafeInteger(value.repositoryId) && value.repositoryId > 0
     && typeof value.repositoryFullName === "string" && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value.repositoryFullName)
     && Number.isSafeInteger(value.pullRequestNumber) && value.pullRequestNumber > 0
+    && typeof value.expectedHeadSha === "string" && /^[a-f0-9]{40}$/.test(value.expectedHeadSha)
     && TASK_STATUSES.has(value.expectedOriginalTaskStatus)
     && CHECK_STATUSES.has(value.expectedCiStatus);
 }
@@ -162,6 +163,7 @@ function hasManifestBinding(item, report, body) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || !Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) return false;
   const expectedPull = `https://github.com/${repository}/pull/${pullRequestNumber}`.toLowerCase();
   if (String(report?.source?.url ?? "").replace(/\/$/, "").toLowerCase() !== expectedPull) return false;
+  if (report?.source?.provenance?.headSha !== item.expectedHeadSha) return false;
   const expectedRepositoryPrefix = `https://github.com/${repository}/`.toLowerCase();
   return report.decisionCard.firstInspectionPoints.every((point) => String(point.href).toLowerCase().startsWith(expectedRepositoryPrefix));
 }
