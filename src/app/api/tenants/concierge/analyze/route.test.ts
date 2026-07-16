@@ -60,6 +60,13 @@ describe("concierge analyze route boundary", () => {
     expect(json.sideEffectTelemetry).toEqual({ version: "concierge-side-effect-telemetry.v1", caseIdOrHash: "a".repeat(64), sourceHeadSha: "a".repeat(40), observation: "runtime_instrumented", counts: { llm: 0, comment: 0, slack: 0, share: 0, save: 0, webhook: 0 } });
     expect(mocks.token).toHaveBeenCalledTimes(1);
     expect(mocks.head).toHaveBeenCalledTimes(2);
+    expect(mocks.build).toHaveBeenCalledWith(
+      "https://github.com/acme/private/pull/17",
+      "transient-token",
+      "",
+      undefined,
+      { expectedHeadSha: "a".repeat(40) }
+    );
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
   });
 
