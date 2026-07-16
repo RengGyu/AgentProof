@@ -20,6 +20,7 @@ export default defineConfig({
       "scripts/p0-beta-readiness.test.mjs",
       "scripts/concierge-private-beta-nonprod-smoke-contract.test.mjs",
       "scripts/concierge-private-beta-nonprod-smoke-runner.test.ts",
+      "scripts/concierge-private-beta-nonprod-smoke-wrapper.test.ts",
       "scripts/llm-proof-planner-eval-metadata.test.mjs",
       "scripts/llm-proof-planner-human-ab-core.test.mjs",
       "scripts/llm-proof-planner-human-ab-v2-core.test.mjs",
