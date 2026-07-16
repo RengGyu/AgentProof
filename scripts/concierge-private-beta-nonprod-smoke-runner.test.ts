@@ -16,6 +16,7 @@ describe("non-production Concierge smoke runner", () => {
     const requests: RequestInit[] = [];
     const result = await runConciergeNonProductionSmoke({
       baseUrl: "https://beta.example.test",
+      approvedOrigin: "https://beta.example.test",
       sessionCookie: "test-session-not-printed",
       cases: [cases[2], cases[0], cases[1]],
       fetchImpl: async (_url, init) => {
@@ -32,11 +33,55 @@ describe("non-production Concierge smoke runner", () => {
     expect(requests).toHaveLength(3);
     expect(requests.every((request) => request.redirect === "error" && (request.headers as Record<string, string>).Origin === "https://beta.example.test")).toBe(true);
     expect(JSON.stringify(result.summary)).not.toContain("test-session-not-printed");
+    expect(requests.every((request) => !("x-vercel-protection-bypass" in (request.headers as Record<string, string>)))).toBe(true);
+  });
+
+  it("sends a bypass only to the approved origin and never echoes it in the bounded summary", async () => {
+    const requests: RequestInit[] = [];
+    const bypass = "test-bypass-not-printed";
+    const result = await runConciergeNonProductionSmoke({
+      baseUrl: "https://beta.example.test",
+      approvedOrigin: "https://beta.example.test",
+      sessionCookie: "bounded-session",
+      vercelProtectionBypass: bypass,
+      cases,
+      fetchImpl: async (_url, init) => {
+        requests.push(init ?? {});
+        const request = JSON.parse(String(init?.body)) as { repositoryFullName: string; pullRequestNumber: number };
+        const item = cases.find((candidate) => candidate.repositoryFullName === request.repositoryFullName && candidate.pullRequestNumber === request.pullRequestNumber);
+        if (!item) throw new Error("unexpected request");
+        return smokeResponse(validEnvelope(item, `${item.installationId}`.repeat(64)));
+      }
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(requests).toHaveLength(3);
+    expect(requests.every((request) => (request.headers as Record<string, string>)["x-vercel-protection-bypass"] === bypass)).toBe(true);
+    expect(JSON.stringify(result.summary)).not.toContain(bypass);
+  });
+
+  it("rejects a bypass before fetch for an unapproved origin", async () => {
+    let fetchCalls = 0;
+    const result = await runConciergeNonProductionSmoke({
+      baseUrl: "https://wrong.example.test",
+      approvedOrigin: "https://beta.example.test",
+      sessionCookie: "bounded-session",
+      vercelProtectionBypass: "test-bypass-not-printed",
+      cases,
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        throw new Error("must not fetch");
+      }
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(fetchCalls).toBe(0);
   });
 
   it("fails a 200 response with an invalid nested report instead of trusting the envelope", async () => {
     const result = await runConciergeNonProductionSmoke({
       baseUrl: "https://beta.example.test",
+      approvedOrigin: "https://beta.example.test",
       sessionCookie: "bounded-session",
       cases,
       fetchImpl: async (_url, init) => {
@@ -56,6 +101,7 @@ describe("non-production Concierge smoke runner", () => {
   it("uses exit 2 when individually valid reports reuse a telemetry case hash", async () => {
     const result = await runConciergeNonProductionSmoke({
       baseUrl: "https://beta.example.test",
+      approvedOrigin: "https://beta.example.test",
       sessionCookie: "bounded-session",
       cases,
       fetchImpl: async (_url, init) => {

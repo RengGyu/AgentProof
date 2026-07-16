@@ -76,6 +76,15 @@ This readiness work does not prove usefulness, accuracy, correctness, false-bloc
 
 Do not run this from a production deployment. After an operator approves one non-production GitHub App installation, one non-production durable tenant session, and three private test PRs, create a local case manifest outside the repository. It may contain only IDs, PR numbers, and expected bounded statuses — never task/PR bodies, diffs, logs, reports, or tokens.
 
+If Vercel Preview deployment protection is enabled, keep it enabled. Provide its
+short-lived bypass only in the local root `.env.local` as
+`AGENTPROOF_CONCIERGE_SMOKE_VERCEL_PROTECTION_BYPASS`. The wrapper requires
+exactly one non-empty value, forwards only approved smoke inputs to its child,
+and sends the value only in `x-vercel-protection-bypass` after the exact HTTPS
+approved-origin check. It exits before any request for a missing, duplicate,
+malformed, or unapproved value; it never writes the value to the manifest,
+bounded summary, durable storage, stdout, or stderr.
+
 The three cases are: (1) exactly one accessible linked issue with passing checks, (2) no linked issue or multiple linked issues, and (3) a failed or unavailable check. The second case must expect `unavailable` or `ambiguous` and zero `met` requirements. The script prints only case IDs and bounded status counts.
 
 ```bash

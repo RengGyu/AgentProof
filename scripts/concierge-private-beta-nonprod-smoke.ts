@@ -14,8 +14,12 @@ export interface ConciergeSmokeRunResult {
 
 export interface ConciergeSmokeRunOptions {
   baseUrl: string;
+  /** Exact approved HTTPS origin for a request carrying a protection bypass. */
+  approvedOrigin?: string;
   sessionCookie: string;
   cases: unknown;
+  /** Request-only Vercel Preview deployment-protection credential. */
+  vercelProtectionBypass?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -26,6 +30,10 @@ export interface ConciergeSmokeRunOptions {
  */
 export async function runConciergeNonProductionSmoke(options: ConciergeSmokeRunOptions): Promise<ConciergeSmokeRunResult> {
   if (!validateSmokeCases(options.cases)) return smokeResult(2, []);
+  const bypass = options.vercelProtectionBypass?.trim();
+  // This helper is exported for tests. Do not rely only on CLI validation
+  // before sending either a durable session or a deployment credential.
+  if (!validateApprovedSmokeOrigin(options.baseUrl, options.approvedOrigin ?? "")) return smokeResult(2, []);
   const endpoint = `${options.baseUrl}${endpointPath}`;
   const observed: Array<Record<string, unknown>> = [];
   const telemetryBindings: Array<{ caseIdOrHash: string }> = [];
@@ -39,7 +47,7 @@ export async function runConciergeNonProductionSmoke(options: ConciergeSmokeRunO
       const response = await fetchImpl(endpoint, {
         method: "POST",
         redirect: "error",
-        headers: { "Content-Type": "application/json", Origin: options.baseUrl, Cookie: options.sessionCookie, "x-agentproof-csrf": "same-origin" },
+        headers: smokeHeaders(options, bypass),
         body: JSON.stringify({ tenantId: item.tenantId, installationId: item.installationId, repositoryId: item.repositoryId, repositoryFullName: item.repositoryFullName, pullRequestNumber: item.pullRequestNumber, requestId: randomUUID() }),
         signal: controller.signal
       });
@@ -89,7 +97,24 @@ async function runFromEnvironment(): Promise<ConciergeSmokeRunResult> {
   if (!baseUrl || !sessionCookie || !casesPath) stop("SMOKE_CONFIGURATION_REQUIRED: approved HTTPS origin, base URL, session cookie, and case manifest path are required.");
   let cases: unknown;
   try { cases = JSON.parse(await readFile(casesPath, "utf8")); } catch { stop("SMOKE_CASE_MANIFEST_INVALID"); }
-  return runConciergeNonProductionSmoke({ baseUrl, sessionCookie, cases });
+  return runConciergeNonProductionSmoke({
+    baseUrl,
+    approvedOrigin: baseUrl,
+    sessionCookie,
+    cases,
+    vercelProtectionBypass: process.env.AGENTPROOF_CONCIERGE_SMOKE_VERCEL_PROTECTION_BYPASS
+  });
+}
+
+function smokeHeaders(options: ConciergeSmokeRunOptions, bypass?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Origin: options.baseUrl,
+    Cookie: options.sessionCookie,
+    "x-agentproof-csrf": "same-origin"
+  };
+  if (bypass) headers["x-vercel-protection-bypass"] = bypass;
+  return headers;
 }
 
 if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
