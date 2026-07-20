@@ -86,6 +86,13 @@ export class TenantAuthStoreError extends Error {
   }
 }
 
+export class TenantAuthSessionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TenantAuthSessionConflictError";
+  }
+}
+
 export function getTenantAuthSessionStoreStatus(env = process.env): { configured: boolean; durable: boolean; mode: "supabase" | "memory" | "disabled" } {
   const config = getTenantAuthSessionStoreConfig(env);
   if (config) return { configured: true, durable: true, mode: "supabase" };
@@ -259,14 +266,29 @@ function normalizeTenantAuthBootstrapRecord(input: TenantAuthBootstrapInput): Te
 async function storeTenantAuthSession(record: TenantAuthSessionRecord, env = process.env): Promise<void> {
   const config = getTenantAuthSessionStoreConfig(env);
   if (config) {
-    const response = await tenantAuthFetch(config, "", {
+    const response = await tenantAuthRpcFetch(config, "agentproof_create_tenant_auth_session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(toSupabaseTenantAuthSessionRow(record))
+      body: JSON.stringify({
+        p_id: record.id,
+        p_token_hash: record.tokenHash,
+        p_tenant_id: record.tenantId,
+        p_member_id: record.memberId,
+        p_created_at: record.createdAt,
+        p_expires_at: record.expiresAt
+      })
     });
     if (!response.ok) {
       throw new TenantAuthStoreError(`Tenant auth session insert failed with HTTP ${response.status}.`);
     }
+    const payload = await response.json().catch(() => null) as unknown;
+    if (!Array.isArray(payload) || payload.length !== 1 || !payload[0] || typeof payload[0] !== "object"
+      || Object.keys(payload[0]).length !== 1 || typeof (payload[0] as { outcome?: unknown }).outcome !== "string") {
+      throw new TenantAuthStoreError("Tenant auth session creation response is malformed.");
+    }
+    const outcome = (payload[0] as { outcome: string }).outcome;
+    if (outcome === "active_exists") throw new TenantAuthSessionConflictError("A durable tenant auth session is already active.");
+    if (outcome !== "created") throw new TenantAuthStoreError("Tenant auth session creation outcome is invalid.");
     return;
   }
 
@@ -274,7 +296,14 @@ async function storeTenantAuthSession(record: TenantAuthSessionRecord, env = pro
     throw new TenantAuthStoreError("Tenant auth session store is not configured.");
   }
 
-  tenantAuthSessionStore().set(record.tokenHash, record);
+  const store = tenantAuthSessionStore();
+  const now = Date.parse(record.createdAt);
+  for (const [hash, existing] of store) {
+    if (existing.tenantId !== record.tenantId || existing.memberId !== record.memberId || existing.revokedAt) continue;
+    if (Date.parse(existing.expiresAt) > now) throw new TenantAuthSessionConflictError("A durable tenant auth session is already active.");
+    store.set(hash, { ...existing, revokedAt: record.createdAt });
+  }
+  store.set(record.tokenHash, record);
 }
 
 async function findTenantAuthSession(
@@ -342,6 +371,18 @@ function tenantAuthFetch(config: TenantAuthSessionStoreConfig, query: string, in
   });
 }
 
+function tenantAuthRpcFetch(config: TenantAuthSessionStoreConfig, rpcName: string, init: RequestInit) {
+  return fetch(`${config.url}/rest/v1/rpc/${encodeURIComponent(rpcName)}`, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      ...(init.headers ?? {})
+    }
+  });
+}
+
 function getTenantAuthSessionStoreConfig(env = process.env): TenantAuthSessionStoreConfig | null {
   const url = env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
   const serviceRoleKey =
@@ -360,18 +401,6 @@ function getTenantAuthSessionStoreConfig(env = process.env): TenantAuthSessionSt
     url: trimTrailingSlash(url),
     serviceRoleKey,
     table: env.AGENTPROOF_TENANT_AUTH_SESSIONS_TABLE || DEFAULT_TENANT_AUTH_SESSIONS_TABLE
-  };
-}
-
-function toSupabaseTenantAuthSessionRow(record: TenantAuthSessionRecord) {
-  return {
-    id: record.id,
-    token_hash: record.tokenHash,
-    tenant_id: record.tenantId,
-    member_id: record.memberId,
-    created_at: record.createdAt,
-    expires_at: record.expiresAt,
-    revoked_at: record.revokedAt ?? null
   };
 }
 

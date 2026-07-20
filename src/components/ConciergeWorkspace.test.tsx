@@ -10,6 +10,17 @@ describe("concierge UI boundary", () => {
     expect(source).toContain('surface="concierge"');
     expect(reportView).toContain("!isConcierge && !isSummaryMode && report.source.url");
   });
+  it("starts only a durable same-origin session and clears the bootstrap input", () => {
+    expect(source).toContain('"/api/tenants/auth/session"');
+    expect(source).toContain('"x-agentproof-tenant-auth-token": bootstrapToken');
+    expect(source).toContain('credentials: "same-origin"');
+    expect(source).toContain('setBootstrapToken("")');
+    expect(source).toContain("isTenantSessionStartResponse");
+    expect(source).toContain("isTenantSessionDeleteResponse");
+    expect(source).toContain("sessionStartInFlight.current");
+    expect(source).toContain('revoke.ok ? "session_response_invalid" : revoke.code');
+    expect(source).not.toContain("sessionStorage");
+  });
   it("focuses the report and puts it first on mobile", () => {
     expect(source).toContain("scrollIntoView"); expect(source).toContain("reportRef.current?.focus()");
     expect(css).toContain('.concierge-layout.has-report > [aria-label="Concierge evidence report"] { order: 1; }');

@@ -12,6 +12,7 @@ const installationMigration = await readFile(new URL("../supabase/migrations/202
 const migration = await readFile(new URL("../supabase/migrations/202607140001_concierge_private_beta.sql", import.meta.url), "utf8");
 const deletionStateMigration = await readFile(new URL("../supabase/migrations/202607160001_tenant_deletion_state.sql", import.meta.url), "utf8");
 const humanBetaClarityMigration = await readFile(new URL("../supabase/migrations/202607200001_human_beta_feedback_clarity.sql", import.meta.url), "utf8");
+const tenantAuthSingleActiveMigration = await readFile(new URL("../supabase/migrations/202607200002_tenant_auth_session_single_active.sql", import.meta.url), "utf8");
 let stage = "docker_prerequisite";
 
 async function docker(args, options = {}) { return exec("docker", args, { maxBuffer: 4_000_000, ...options }); }
@@ -100,9 +101,25 @@ try {
 
   stage = "apply_human_beta_clarity_upgrade";
   await psql(humanBetaClarityMigration);
+  await psql(tenantAuthSingleActiveMigration);
   const legacyPreserved = scalar((await psql(`select schema_version || ':' || participant_cohort || ':' || privacy_notice_version || ':' || top_gap_outcome from public.agentproof_concierge_feedback where case_id_or_hash='${legacyKey}';`)).stdout);
   const legacyDecisionState = scalar((await psql(`select coalesce(decision_card_state,'null') from public.agentproof_concierge_analysis_runs where request_key='${legacyKey}';`)).stdout);
   if (legacyPreserved !== "concierge-feedback.v2:legacy_unclassified:legacy_unversioned:legacy_unclassified" || legacyDecisionState !== "null") throw new Error("Legacy rows were changed or falsely classified during clarity migration.");
+
+  stage = "tenant_auth_single_active_session";
+  const authCreateSql = (index) => `select outcome from public.agentproof_create_tenant_auth_session('session_${String(index).padStart(16, "0")}','${String(index).padStart(64, "a").slice(-64)}','tenant_alpha','member_alpha','2026-07-20T00:00:00.000Z','2026-07-20T12:00:00.000Z');`;
+  const authOutcomes = await Promise.all(Array.from({ length: 20 }, (_, index) => psql(authCreateSql(index + 1), "service_role").then(({ stdout }) => scalar(stdout))));
+  if (authOutcomes.filter((value) => value === "created").length !== 1 || authOutcomes.filter((value) => value === "active_exists").length !== 19) throw new Error("Concurrent tenant auth session invariant failed.");
+  const activeAuthRows = scalar((await psql("select count(*) from public.agentproof_tenant_auth_sessions where tenant_id='tenant_alpha' and member_id='member_alpha' and revoked_at is null and expires_at > '2026-07-20T00:00:00.000Z';")).stdout);
+  if (activeAuthRows !== "1") throw new Error("Concurrent tenant auth session created more than one active row.");
+  for (const role of ["anon", "authenticated"]) {
+    let authRpcRejected = false;
+    try { await psql(authCreateSql(99), role); } catch { authRpcRejected = true; }
+    if (!authRpcRejected) throw new Error(`${role} tenant auth session RPC access was not rejected.`);
+  }
+  let directAuthInsertRejected = false;
+  try { await psql("insert into public.agentproof_tenant_auth_sessions(id,token_hash,tenant_id,member_id,created_at,expires_at) values ('session_direct_insert_01','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','tenant_alpha','member_alpha',now(),now()+interval '1 hour');", "service_role"); } catch { directAuthInsertRejected = true; }
+  if (!directAuthInsertRejected) throw new Error("service_role direct tenant auth session insert was not rejected.");
 
   stage = "concierge_grant_preservation";
   const existingGrant = scalar((await psql("select outcome || ':' || enabled || ':' || analysis_enabled || ':' || save_reports_enabled || ':' || comment_enabled || ':' || slack_notifications_enabled from public.agentproof_register_concierge_repository_grant('tenant_alpha',101,202,'opaque/repository');", "service_role")).stdout);
@@ -225,7 +242,7 @@ try {
   const failedDuplicate = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${failedKey}','tenant_alpha',101,202);`, "service_role")).stdout);
   if (failedReserve !== "reserved" || failedTerminal !== "t" || failedReverse !== "f" || failedDuplicate !== "duplicate") throw new Error("Failed terminal lifecycle invariant failed.");
 
-  console.log(JSON.stringify({ status: "passed", legacyV2UpgradePreserved: true, conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, deletionState: { metadataOnlySchema: true, rlsEnabled: true, absentAllowsAuthorization: true, activeBlocksAuthorization: true, duplicateStartIsIdempotent: true, directTableAccessRejected: ["anon", "authenticated", "service_role"], nonServiceRpcRejected: true, invalidTransitionRejected: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, feedbackCohortAndZeroGapBounded: true, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
+  console.log(JSON.stringify({ status: "passed", legacyV2UpgradePreserved: true, tenantAuthSingleActive: { created: 1, activeExists: 19, activeRows: 1, nonServiceRpcRejected: true, serviceRoleDirectInsertRejected: true }, conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, deletionState: { metadataOnlySchema: true, rlsEnabled: true, absentAllowsAuthorization: true, activeBlocksAuthorization: true, duplicateStartIsIdempotent: true, directTableAccessRejected: ["anon", "authenticated", "service_role"], nonServiceRpcRejected: true, invalidTransitionRejected: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, feedbackCohortAndZeroGapBounded: true, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
 } catch (error) {
   throw new Error(`concierge DB integration failed at ${stage}: ${error instanceof Error ? error.message : "unknown"}`);
 } finally {

@@ -54,6 +54,56 @@ describe("/api/tenants/auth/session", () => {
     });
   });
 
+  it("rejects replacement while an existing browser session cookie is present", async () => {
+    stubTenantAuthRouteEnv();
+    const first = await POST(new Request("http://localhost/api/tenants/auth/session", {
+      method: "POST",
+      headers: {
+        ...sameOriginHeaders(),
+        "Content-Type": "application/json",
+        "x-agentproof-tenant-auth-token": "member-bootstrap-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a", memberId: "member_owner" })
+    }));
+    const firstCookie = first.headers.get("Set-Cookie") ?? "";
+
+    const replacements = await Promise.all(Array.from({ length: 20 }, () => POST(new Request("http://localhost/api/tenants/auth/session", {
+      method: "POST",
+      headers: {
+        ...sameOriginHeaders(),
+        "Content-Type": "application/json",
+        cookie: firstCookie,
+        "x-agentproof-tenant-auth-token": "member-bootstrap-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a", memberId: "member_owner" })
+    }))));
+    expect(replacements.map((response) => response.status)).toEqual(Array(20).fill(409));
+    expect(replacements.every((response) => response.headers.get("Set-Cookie") === null)).toBe(true);
+    await expect(replacements[0]?.json()).resolves.toEqual({
+      error: "End the existing durable browser session before starting another.",
+      code: "tenant_auth_session_already_present"
+    });
+    await expect(verifyTenantAuthAccess({ tenantId: "tenant_a", cookieHeader: firstCookie })).resolves.toMatchObject({ authorized: true, memberId: "member_owner" });
+  });
+
+  it("allows only one active session across concurrent cookie-free starts", async () => {
+    stubTenantAuthRouteEnv();
+    const responses = await Promise.all(Array.from({ length: 20 }, () => POST(new Request("http://localhost/api/tenants/auth/session", {
+      method: "POST",
+      headers: {
+        ...sameOriginHeaders(),
+        "Content-Type": "application/json",
+        "x-agentproof-tenant-auth-token": "member-bootstrap-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a", memberId: "member_owner" })
+    }))));
+
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 409)).toHaveLength(19);
+    const conflicts = await Promise.all(responses.filter((response) => response.status === 409).map((response) => response.json()));
+    expect(conflicts.every((value) => value.code === "tenant_auth_session_already_active")).toBe(true);
+  });
+
   it("ignores bootstrap tokens in the JSON body", async () => {
     stubTenantAuthRouteEnv();
 

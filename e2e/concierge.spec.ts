@@ -78,6 +78,55 @@ test("desktop success focuses the evidence report, copies the bound re-prompt, a
   expect(externalRequests).toEqual([]);
 });
 
+test("durable tester session sends the bootstrap only in a bounded header and clears the input", async ({ page }) => {
+  let sessionRequest: { body?: unknown; token?: string | null } = {};
+  await page.route("**/api/tenants/auth/session", async (route) => {
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, deleted: true, privacy: "tenant-auth-session-cookie-only" }) });
+      return;
+    }
+    sessionRequest = { body: route.request().postDataJSON(), token: route.request().headers()["x-agentproof-tenant-auth-token"] ?? null };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true,
+      tenantId: "tenant_alpha",
+      memberId: "member_owner",
+      role: "member",
+      expiresAt: "2099-07-20T12:00:00.000Z",
+      privacy: "tenant-auth-session-cookie-only",
+      next: "use_session_cookie"
+    }) });
+  });
+  await page.goto("/concierge");
+  await page.getByRole("textbox", { name: "tenantId" }).fill("tenant_alpha");
+  await page.getByRole("textbox", { name: "memberId" }).fill("member_owner");
+  await page.getByLabel("Bootstrap credential").fill("one-time-bootstrap");
+  await page.getByRole("button", { name: "테스트 세션 시작" }).click();
+  await expect(page.getByRole("button", { name: "세션 활성" })).toBeVisible();
+  await expect(page.getByLabel("Bootstrap credential")).toHaveValue("");
+  expect(sessionRequest).toEqual({ body: { tenantId: "tenant_alpha", memberId: "member_owner" }, token: "one-time-bootstrap" });
+  expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
+});
+
+test("durable tester session rejects malformed success payloads and still clears the bootstrap", async ({ page }) => {
+  let deleteCalls = 0;
+  await page.route("**/api/tenants/auth/session", (route) => {
+    if (route.request().method() === "DELETE") {
+      deleteCalls += 1;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, deleted: true, privacy: "tenant-auth-session-cookie-only" }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, tenantId: "tenant_other", privacy: "tenant-auth-session-cookie-only" }) });
+  });
+  await page.goto("/concierge");
+  await page.getByRole("textbox", { name: "tenantId" }).fill("tenant_alpha");
+  await page.getByRole("textbox", { name: "memberId" }).fill("member_owner");
+  await page.getByLabel("Bootstrap credential").fill("one-time-bootstrap");
+  await page.getByRole("button", { name: "테스트 세션 시작" }).click();
+  await expect(page.locator(".intake-error")).toHaveText("session_response_invalid");
+  await expect(page.getByRole("button", { name: "세션 활성" })).toHaveCount(0);
+  await expect(page.getByLabel("Bootstrap credential")).toHaveValue("");
+  expect(deleteCalls).toBe(2);
+});
+
 test("keyboard focus reaches intake, report evidence, feedback, reset, and session-end controls", async ({ page }) => {
   await interceptSuccess(page);
   await page.route("**/api/tenants/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }) }));
@@ -93,6 +142,10 @@ test("keyboard focus reaches intake, report evidence, feedback, reset, and sessi
     await page.keyboard.press("Tab");
     if (index + 1 < orderedValues.length) await expect(page.getByRole("textbox", { name: orderedValues[index + 1][0] })).toBeFocused();
   }
+  await expect(page.getByRole("textbox", { name: "memberId" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Bootstrap credential")).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("textbox", { name: "명시적 original task (선택, 없으면 linked issue 1개만 사용)" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "수동 분석 실행" })).toBeFocused();
@@ -112,6 +165,8 @@ test("keyboard focus reaches intake, report evidence, feedback, reset, and sessi
     const input = page.getByRole("textbox", { name });
     await expect(input).toBeFocused(); await page.keyboard.type(value); await page.keyboard.press("Tab");
   }
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Concierge evidence report")).toBeFocused();
