@@ -40,6 +40,7 @@ const PROOF_GAP_KINDS = new Set([
   "ambiguous_requirement",
   "self_reported_test_gap",
   "evidence_unavailable",
+  "evidence_insufficient",
   "visual_proof_missing"
 ]);
 const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
@@ -447,7 +448,7 @@ function validateProofGraph(
       validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
       validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
       validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
-      validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
+      validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, mode === "full", errors);
     }
     for (const requirementId of requirementIds) {
       if (!seenRequirementIds.has(requirementId)) {
@@ -482,7 +483,7 @@ function validateProofGraphContext(value: unknown, errors: string[]) {
   }
 }
 
-function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {
+function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<string>, requireProvenance: boolean, errors: string[]) {
   const gaps = validateArray(value, path, LIMITS.proofGraphGaps, errors);
   if (!gaps) return;
 
@@ -497,7 +498,8 @@ function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<
     validateEnum(item.kind, `${itemPath}.kind`, PROOF_GAP_KINDS, errors);
     validateEnum(item.severity, `${itemPath}.severity`, PRIORITIES, errors);
     validateString(item.message, `${itemPath}.message`, LIMITS.shortText, errors);
-    validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+    const refs = validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+    if (requireProvenance && refs.length === 0) errors.push(`${itemPath}.evidenceRefs must contain deterministic provenance.`);
   }
 }
 
@@ -689,6 +691,16 @@ function validateDecisionCard(value: unknown, evidenceIds: Set<string>, report: 
       if (!gapKey || value.reprompt.gapKey !== gapKey || value.reprompt.basedOnGapKind !== gapKind || JSON.stringify(refs) !== JSON.stringify(gapRefs)) errors.push("decisionCard.reprompt must be bound exactly to decisionCard.topGap.");
     }
   } else if (topGap !== null) errors.push("decisionCard.reprompt is required when topGap exists.");
+
+  const gapCount = isRecord(report.proofGraph) && isRecord(report.proofGraph.summary)
+    ? report.proofGraph.summary.gapCount
+    : null;
+  if (gapCount === 0 && (topGap !== null || value.reprompt !== null)) {
+    errors.push("decisionCard must use the explicit zero-gap state when proofGraph.summary.gapCount is 0.");
+  }
+  if (typeof gapCount === "number" && gapCount > 0 && topGap === null) {
+    errors.push("decisionCard.topGap is required when deterministic proof gaps exist.");
+  }
 }
 
 function validateEvidenceIndex(value: unknown, errors: string[]): Set<string> {

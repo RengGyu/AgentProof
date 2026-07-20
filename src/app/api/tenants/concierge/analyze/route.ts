@@ -85,7 +85,10 @@ export async function POST(request: Request) {
       }
       return json({ error: "Concierge side-effect telemetry rejected delivery.", code: "side_effect_telemetry_invalid" }, 503);
     }
-    if (!await finishConciergeAnalysis({ requestKey, outcome: "completed", reason: "manual_report_validated" })) {
+    const decisionCardState = report.proofGraph.summary.gapCount === 0 && report.decisionCard?.topGap === null && report.decisionCard?.reprompt === null
+      ? "zero_gap"
+      : "has_top_gap";
+    if (!await finishConciergeAnalysis({ requestKey, outcome: "completed", reason: "manual_report_validated", decisionCardState })) {
       if (!await recordFailureOrBlockDelivery(requestKey, "completion_record_unavailable")) {
         return json({ error: "Analysis terminal state could not be recorded.", code: "terminal_record_unavailable" }, 503);
       }
@@ -128,7 +131,7 @@ function boundedFailure(error: unknown): string {
 }
 
 async function recordFailureOrBlockDelivery(requestKey: string, reason: string): Promise<boolean> {
-  return finishConciergeAnalysis({ requestKey, outcome: "failed", reason });
+  return finishConciergeAnalysis({ requestKey, outcome: "failed", reason, decisionCardState: "not_recorded" });
 }
 
 function json(payload: unknown, status = 200) {

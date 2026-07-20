@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  csrf: vi.fn(), runtime: vi.fn(), authStatus: vi.fn(), accountStatus: vi.fn(), verifySession: vi.fn(), validate: vi.fn(), store: vi.fn()
+  csrf: vi.fn(), runtime: vi.fn(), authStatus: vi.fn(), accountStatus: vi.fn(), verifySession: vi.fn(), resolveCohort: vi.fn(), validate: vi.fn(), store: vi.fn()
 }));
 
 vi.mock("@/lib/csrf", () => ({ verifySameOriginMutationRequest: mocks.csrf }));
 vi.mock("@/lib/concierge-private-beta", () => ({ conciergeRuntimeDefaults: mocks.runtime }));
 vi.mock("@/lib/tenant-auth", () => ({ getTenantAuthSessionStoreStatus: mocks.authStatus, verifyTenantAuthAccess: mocks.verifySession }));
 vi.mock("@/lib/tenant-accounts", () => ({ getTenantAccountStoreStatus: mocks.accountStatus }));
-vi.mock("@/lib/concierge-feedback", () => ({ validateConciergeFeedback: mocks.validate, storeConciergeFeedback: mocks.store }));
+vi.mock("@/lib/concierge-feedback", () => ({ resolveConciergeParticipantCohort: mocks.resolveCohort, validateConciergeFeedback: mocks.validate, storeConciergeFeedback: mocks.store }));
 
 import { POST } from "./route";
 
-const feedback = { schemaVersion: "concierge-feedback.v2" };
+const feedback = { schemaVersion: "concierge-feedback.v3" };
 const durable = { configured: true, durable: true };
 
 describe("Concierge feedback route", () => {
@@ -22,6 +22,7 @@ describe("Concierge feedback route", () => {
     mocks.runtime.mockReturnValue({ manualAnalysisEnabled: true, globalKillSwitch: false });
     mocks.authStatus.mockReturnValue(durable); mocks.accountStatus.mockReturnValue(durable);
     mocks.verifySession.mockResolvedValue({ authorized: true, method: "durable-session" });
+    mocks.resolveCohort.mockReturnValue("self_internal");
     mocks.validate.mockReturnValue({ valid: true, value: feedback });
   });
 
@@ -37,6 +38,17 @@ describe("Concierge feedback route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ stored: false, duplicate: true, privacy: "bounded-metadata-only" });
     expect(mocks.store).toHaveBeenCalledTimes(1);
+    expect(mocks.validate).toHaveBeenCalledWith(expect.objectContaining({ participantCohort: "self_internal" }));
+  });
+
+  it("rejects browser-declared cohorts and invalid operator cohort configuration", async () => {
+    const spoofed = new Request("https://beta.example.test/api/tenants/concierge/feedback", {
+      method: "POST", body: JSON.stringify({ tenantId: "tenant_alpha", feedback: { ...feedback, participantCohort: "external_reviewer" } })
+    });
+    expect((await POST(spoofed)).status).toBe(400);
+    mocks.resolveCohort.mockReturnValue(null);
+    expect((await POST(request())).status).toBe(503);
+    expect(mocks.store).not.toHaveBeenCalled();
   });
 
   it.each([

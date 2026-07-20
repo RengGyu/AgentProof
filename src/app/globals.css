@@ -1821,6 +1821,13 @@ code {
   padding-block: 12px;
 }
 
+.concierge-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .concierge-decision {
   display: grid;
   gap: 14px;

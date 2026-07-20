@@ -27,15 +27,21 @@ Existing GitHub onboarding keeps its established automation setting. Concierge r
 
 All Concierge tables share foreign-key boundaries with durable tenant/session/installation/grant rows. `AGENTPROOF_CONCIERGE_SUPABASE_URL` must therefore resolve to the same Supabase project origin as the effective tenant-control-plane store URLs. A missing or cross-project configuration fails closed before session verification, installation-token issuance, feedback storage, or analysis reservation.
 
+`AGENTPROOF_CONCIERGE_EXTERNAL_REVIEWER_TENANTS` is an operator-controlled JSON array of isolated external-reviewer tenant IDs. Missing means every session is internal self-test evidence; malformed or duplicate entries fail feedback storage closed. The browser cannot choose or override this cohort. Each listed tenant must have exactly one enabled repository grant.
+
 ## Original-task boundary
 
 An explicit task wins without fetching a linked issue. Otherwise, exactly one supported and accessible linked issue is authoritative. No issue, an inaccessible/empty issue, a PR reference, or multiple candidates produces `unavailable` or `ambiguous`. The PR description remains context only. Full runtime validation rejects `met` when the original task is unavailable or ambiguous.
 
 `source.originalTask` is metadata-only: status, source type, bounded reason, and an optional linked-issue reference. Feedback, audit, idempotency, and durable analysis state never persist the issue/task body.
 
+The owner-first and external-reviewer procedure is defined in `docs/human-beta-first-tester.md`. Owner sessions use `self_internal` and are internal, biased usability checks—not external human evidence. External reviewers use isolated single-grant tenants and `external_reviewer`.
+
 ## Privacy and storage
 
 The manual response is `Cache-Control: private, no-store`. Bounded evidence excerpts, the evidence index, report, and re-prompt cross the authorized response boundary and exist transiently in browser memory so the reviewer can inspect them. They are not written to AgentProof durable storage, browser history, or `localStorage`. Provider tokens and unbounded raw diffs/logs are never returned. The durable analysis row contains only tenant/install/repository identifiers, a request hash, bounded state/reason, and timestamps. Feedback has an exact metadata allowlist with no free-text field, is atomically bound to a completed run for the same active tenant/install/grant, and stores one immutable event per tenant, operator-issued opaque partner ID, session ordinal, and case hash. A retry gets bounded `duplicate`, not a second row.
+
+Feedback v3 separates `self_internal` from `external_reviewer`, distinguishes evidence collection failure from collected-but-insufficient proof, and represents zero-gap as `not_applicable_zero_gap`. The cohort is assigned from an operator-controlled isolated-tenant list, not by the browser. The completed analysis row stores only `has_top_gap` or `zero_gap` so the RPC rejects contradictory feedback. `human-beta-privacy.v1` has a 30-day beta retention target, but cleanup is operator-managed and not automatic; the operator may purge it earlier.
 
 No private report is put in browser history or localStorage. The Concierge ReportView hides share, export, and comment controls. Each successful manual response carries an exact, response-only side-effect telemetry record bound to its request hash and PR head SHA. It contains only six counters (`llm`, `comment`, `slack`, `share`, `save`, `webhook`) and must be all zero; a missing, duplicate, mismatched, or nonzero record causes the non-production smoke gate to exit `2`. This is runtime instrumentation, not independent proof of provider/platform logs; external log inspection remains required.
 
@@ -45,6 +51,8 @@ No private report is put in browser history or localStorage. The Concierge Repor
 - Tenant: suspend/delete the durable tenant account; session revalidation blocks access.
 - Repository: set the durable grant `enabled=false`.
 - Installation: `suspended` or `deleted` status blocks access. Signed lifecycle events disable matching grants; unsuspend/re-add never auto-enables them.
+
+The in-product **세션 종료** action clears the browser cookie and requests durable revocation. It reports `tenant_auth_session_revoke_unconfirmed` instead of claiming deletion when the durable store cannot confirm the update.
 
 The environment-level global switch may require a deployment configuration refresh; its operational propagation time is `unclear` until the deployment platform is tested. Tenant and repository controls are durable database state.
 

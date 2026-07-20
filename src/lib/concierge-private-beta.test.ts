@@ -16,6 +16,7 @@ const input = { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202
 function dependencies(overrides: Partial<ConciergeAccessDependencies> = {}): ConciergeAccessDependencies {
   return {
     verifySession: vi.fn(async () => ({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", role: "member", method: "durable-session", sessionState: "active" })),
+    listGrants: vi.fn(async () => [{ tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false }]),
     listInstallationStatuses: vi.fn(async () => [{ installationId: 101, status: "active" }]),
     authorizeGrant: vi.fn(async () => ({ enabled: true, required: true, reason: "analysis-disabled", grant: { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false } })),
     ...overrides
@@ -38,6 +39,22 @@ describe("concierge private beta authorization", () => {
 
   it("authorizes durable manual grant while automated analysis remains off", async () => {
     expect(await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, dependencies())).toMatchObject({ authorized: true, repositoryId: 202 });
+  });
+
+  it("requires exactly one enabled repository grant for the human-beta tenant", async () => {
+    const multiGrant = dependencies({ listGrants: vi.fn(async () => [
+      { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false },
+      { tenantId: "tenant_alpha", installationId: 101, repositoryId: 203, repositoryFullName: "acme/other-private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false }
+    ]) });
+    expect(await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, multiGrant)).toEqual({ authorized: false, reason: "tenant_grant_scope_invalid" });
+    expect(multiGrant.listInstallationStatuses).not.toHaveBeenCalled();
+    expect(multiGrant.authorizeGrant).not.toHaveBeenCalled();
+
+    const disabledExtra = dependencies({ listGrants: vi.fn(async () => [
+      { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false },
+      { tenantId: "tenant_alpha", installationId: 101, repositoryId: 203, repositoryFullName: "acme/disabled", enabled: false, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false }
+    ]) });
+    expect(await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, disabledExtra)).toMatchObject({ authorized: true, repositoryId: 202 });
   });
 
   it.each([

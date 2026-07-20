@@ -239,6 +239,7 @@ export type ProofGapKind =
   | "ambiguous_requirement"
   | "self_reported_test_gap"
   | "evidence_unavailable"
+  | "evidence_insufficient"
   | "visual_proof_missing";
 
 export interface ProofGapSignal {

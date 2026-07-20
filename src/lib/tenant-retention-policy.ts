@@ -14,6 +14,8 @@ export type TenantDataRetentionCategoryKey =
   | "onboarding_states"
   | "webhook_deliveries"
   | "analysis_jobs"
+  | "concierge_analysis_runs"
+  | "concierge_feedback"
   | "audit_events"
   | "usage_records"
   | "account_member_records"
@@ -61,7 +63,7 @@ export interface TenantRetentionPolicyCoverage {
 }
 
 export const TENANT_DATA_RETENTION_POLICY = {
-  version: "2026-06-30-concrete-windows-draft",
+  version: "2026-07-20-human-beta-clarity-draft",
   status: "draft" as const,
   note: "Review the documented retention policy before destructive deletion.",
   categories: [
@@ -171,6 +173,36 @@ export const TENANT_DATA_RETENTION_POLICY = {
         "Active queued, processing, or retryable jobs must drain or be manually cancelled before the guarded purge can complete."
       ],
       previewCounting: "counted"
+    },
+    {
+      key: "concierge_analysis_runs",
+      label: "Concierge analysis runs",
+      storedFields: "Tenant/install/repository numeric identifiers, request hash, bounded state/reason, bounded Decision Card state, and timestamps.",
+      prohibitedFields: "Repository names, PR numbers, task or issue text, reports, evidence, diffs, logs, re-prompts, or tokens.",
+      retention: "30-day target after terminal state during the invite-only beta; operator-managed and not automatically enforced.",
+      deletionBehavior: "Disable new work and grants, delete dependent feedback first, then delete tenant-owned run metadata through an audited database-owner session.",
+      backupBehavior: "Metadata-only backup subject to the beta retention review.",
+      retentionWindowDays: 30,
+      retentionWindowTrigger: "Run terminal completed_at timestamp.",
+      deletionMode: "manual-review",
+      deletionReadiness: "manual-review-required",
+      deletionBlockers: ["Automated tenant-scoped cleanup is not implemented for Concierge beta metadata."],
+      previewCounting: "not-counted"
+    },
+    {
+      key: "concierge_feedback",
+      label: "Concierge feedback",
+      storedFields: "Opaque participant/case ids, participant cohort, privacy notice version, and bounded category, timing, action, and rating metadata.",
+      prohibitedFields: "Names, contact or organization details, repository names, PR numbers, task/code/report/diff/log/re-prompt text, secrets, or free text.",
+      retention: "30-day target after collection during the invite-only beta; operator-managed and not automatically enforced.",
+      deletionBehavior: "Delete tenant-owned feedback through an audited database-owner session before deleting referenced analysis runs.",
+      backupBehavior: "Metadata-only backup subject to the beta retention review.",
+      retentionWindowDays: 30,
+      retentionWindowTrigger: "Feedback created_at timestamp.",
+      deletionMode: "manual-review",
+      deletionReadiness: "manual-review-required",
+      deletionBlockers: ["Automated tenant-scoped cleanup is not implemented for Concierge beta metadata."],
+      previewCounting: "not-counted"
     },
     {
       key: "audit_events",

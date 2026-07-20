@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { demoScenarios } from "./sample-data";
 import { extractOpenAIResponseText, verifyReportWithOpenAI } from "./openai-verifier";
 import { generateVerificationReport } from "./verifier";
+import { buildDecisionCard } from "./decision-card";
 
 describe("openai verifier adapter", () => {
   it("extracts text from Responses API shapes", () => {
@@ -220,10 +221,11 @@ describe("openai verifier adapter", () => {
       kind: "missing_execution",
       severity: "medium",
       message: "Fabricated proof gap.",
-      evidenceRefs: []
+      evidenceRefs: [report.evidenceIndex[0].id]
     });
-    invalid.proofGraph.summary.gapCount += 1;
-    invalid.proofGraph.summary.requirementsWithGaps += 1;
+    invalid.proofGraph.summary.gapCount = invalid.proofGraph.nodes.reduce((count, node) => count + node.gapSignals.length, 0);
+    invalid.proofGraph.summary.requirementsWithGaps = invalid.proofGraph.nodes.filter((node) => node.gapSignals.length > 0).length;
+    invalid.decisionCard = buildDecisionCard(invalid);
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
         status: 200,

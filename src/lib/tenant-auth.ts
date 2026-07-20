@@ -304,14 +304,20 @@ async function findTenantAuthSession(
 async function revokeTenantAuthSessionByHash(tokenHash: string, revokedAt: string, env = process.env): Promise<void> {
   const config = getTenantAuthSessionStoreConfig(env);
   if (config) {
-    const params = new URLSearchParams({ token_hash: `eq.${tokenHash}` });
+    const params = new URLSearchParams({ token_hash: `eq.${tokenHash}`, select: "id,revoked_at" });
     const response = await tenantAuthFetch(config, `?${params.toString()}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify({ revoked_at: revokedAt })
     });
     if (!response.ok) {
       throw new TenantAuthStoreError(`Tenant auth session revoke failed with HTTP ${response.status}.`);
+    }
+    const rows = await response.json().catch(() => null) as unknown;
+    if (!Array.isArray(rows) || rows.length !== 1 || !rows[0] || typeof rows[0] !== "object"
+      || normalizeId((rows[0] as SupabaseTenantAuthSessionRow).id) === null
+      || normalizeIsoDate((rows[0] as SupabaseTenantAuthSessionRow).revoked_at) !== revokedAt) {
+      throw new TenantAuthStoreError("Tenant auth session revoke was not durably confirmed.");
     }
     return;
   }

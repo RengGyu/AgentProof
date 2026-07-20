@@ -61,6 +61,7 @@ const proofGapSignalSchema = {
           "ambiguous_requirement",
           "self_reported_test_gap",
           "evidence_unavailable",
+          "evidence_insufficient",
           "visual_proof_missing"
         ]
       },
@@ -333,13 +334,13 @@ export const verificationReportSchema = {
             required: ["gapKey", "requirementId", "kind", "severity", "summary", "evidenceRefs"],
             properties: {
               gapKey: { type: "string", maxLength: 600 }, requirementId: { type: ["string", "null"], maxLength: 600 },
-              kind: { type: "string", enum: ["missing_implementation", "missing_targeted_test", "missing_execution", "failed_execution", "ambiguous_requirement", "self_reported_test_gap", "evidence_unavailable", "visual_proof_missing"] },
+              kind: { type: "string", enum: ["missing_implementation", "missing_targeted_test", "missing_execution", "failed_execution", "ambiguous_requirement", "self_reported_test_gap", "evidence_unavailable", "evidence_insufficient", "visual_proof_missing"] },
               severity: { type: "string", enum: ["low", "medium", "high", "blocker"] }, summary: { type: "string", maxLength: 600 }, evidenceRefs: evidenceRefArraySchema
             }
           },
           testBuildStatus: { type: "string", enum: ["passed", "failed", "pending", "unknown"] },
           firstInspectionPoints: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["kind", "label", "href", "evidenceRefs"], properties: { kind: { type: "string", enum: ["file", "check"] }, label: { type: "string", maxLength: 600 }, href: { type: "string", maxLength: 500 }, evidenceRefs: evidenceRefArraySchema } } },
-          reprompt: { type: ["object", "null"], additionalProperties: false, required: ["prompt", "gapKey", "basedOnGapKind", "evidenceRefs"], properties: { prompt: { type: "string", maxLength: 6000 }, gapKey: { type: "string", maxLength: 600 }, basedOnGapKind: { type: "string", enum: ["missing_implementation", "missing_targeted_test", "missing_execution", "failed_execution", "ambiguous_requirement", "self_reported_test_gap", "evidence_unavailable", "visual_proof_missing"] }, evidenceRefs: evidenceRefArraySchema } }
+          reprompt: { type: ["object", "null"], additionalProperties: false, required: ["prompt", "gapKey", "basedOnGapKind", "evidenceRefs"], properties: { prompt: { type: "string", maxLength: 6000 }, gapKey: { type: "string", maxLength: 600 }, basedOnGapKind: { type: "string", enum: ["missing_implementation", "missing_targeted_test", "missing_execution", "failed_execution", "ambiguous_requirement", "self_reported_test_gap", "evidence_unavailable", "evidence_insufficient", "visual_proof_missing"] }, evidenceRefs: evidenceRefArraySchema } }
         }
       },
       reprompt: {

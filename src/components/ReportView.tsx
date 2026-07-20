@@ -184,10 +184,10 @@ export function ReportView({ report, mode = "full", surface = "default" }: Repor
         {isConcierge ? (
           <div className="concierge-decision" aria-label="30-second decision card">
             <div className="decision-copy">
-              <span><ShieldAlert size={15} /> 가장 먼저 확인할 증거 공백</span>
+              <span><ShieldAlert size={15} /> {report.decisionCard?.topGap ? "가장 먼저 확인할 증거 공백" : "현재 증거 요약"}</span>
               <strong>{report.decisionCard?.topGap?.summary ?? (report.proofGraph.summary.gapCount > 0
                 ? "증거 공백은 있지만 결속된 evidence reference가 없어 행동 지침을 만들 수 없습니다."
-                : "결정론적으로 확인된 증거 공백이 없습니다.")}</strong>
+                : "수집된 증거 범위에서는 우선 검토할 증거 공백을 찾지 못했습니다.")}</strong>
               <p>증거 부족은 구현 실패를 의미하지 않습니다.</p>
               <p>이 보고서는 merge 결정이나 correctness 인증이 아닙니다.</p>
             </div>
@@ -195,7 +195,7 @@ export function ReportView({ report, mode = "full", surface = "default" }: Repor
               <span>Test/build</span><strong>{formatStatus(report.testing.ciStatus)}</strong>
             </div>
             <div className="concierge-inspection">
-              <span className="risk-strip-title">먼저 열기</span>
+              <span className="risk-strip-title">{report.decisionCard?.topGap ? "먼저 열기" : "참고 증거"}</span>
               {report.decisionCard?.firstInspectionPoints.length ? (
                 <ul>{report.decisionCard.firstInspectionPoints.map((point) => (
                   <li key={point.href}><a href={point.href} target="_blank" rel="noreferrer"><ExternalLink size={14} />{point.label}</a></li>

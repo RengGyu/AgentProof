@@ -11,6 +11,7 @@ import {
 describe("tenant durable auth sessions", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     clearTenantAuthSessionsForTests();
   });
 
@@ -98,6 +99,30 @@ describe("tenant durable auth sessions", () => {
     ]));
 
     expect(readTenantAuthBootstrapRecords()).toBeNull();
+  });
+
+  it("requires an exact durable revoke representation instead of trusting HTTP success", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      expect((init?.headers as Record<string, string>).Prefer).toBe("return=representation");
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    const env = {
+      NODE_ENV: "test" as const,
+      AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL: "https://example.supabase.co",
+      AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+    };
+    await expect(revokeTenantAuthSession({ cookieHeader: `${TENANT_AUTH_SESSION_COOKIE}=opaque-session-token` }, env, Date.parse("2026-07-20T00:00:00.000Z"))).rejects.toThrow("not durably confirmed");
+  });
+
+  it("accepts a durable revoke only when exactly one matching timestamp is returned", async () => {
+    const revokedAt = "2026-07-20T00:00:00.000Z";
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json([{ id: "session-record-id-123456", revoked_at: revokedAt }])));
+    const env = {
+      NODE_ENV: "test" as const,
+      AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL: "https://example.supabase.co",
+      AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+    };
+    await expect(revokeTenantAuthSession({ cookieHeader: `${TENANT_AUTH_SESSION_COOKIE}=opaque-session-token` }, env, Date.parse(revokedAt))).resolves.toBeUndefined();
   });
 });
 

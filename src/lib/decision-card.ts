@@ -8,8 +8,9 @@ const KIND_RANK: Record<ProofGapKind, number> = {
   missing_implementation: 3,
   ambiguous_requirement: 4,
   evidence_unavailable: 5,
-  visual_proof_missing: 6,
-  self_reported_test_gap: 7
+  evidence_insufficient: 6,
+  visual_proof_missing: 7,
+  self_reported_test_gap: 8
 };
 
 interface RankedGap {
@@ -140,6 +141,8 @@ function buildGapReprompt(gap: RankedGap, points: DecisionCard["firstInspectionP
         ? "Clarify one authoritative acceptance criterion before changing code."
         : gap.kind === "evidence_unavailable" || gap.kind === "visual_proof_missing"
           ? "Collect the specifically cited missing evidence without claiming the behavior passed."
+          : gap.kind === "evidence_insufficient"
+            ? "Collect the smallest additional proof tied to this requirement; do not claim correctness."
           : "Make the smallest implementation change tied only to this requirement, then add targeted proof.";
   return [
     gap.requirementId

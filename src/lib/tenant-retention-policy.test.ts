@@ -22,6 +22,8 @@ describe("tenant data retention policy", () => {
       "onboarding_states",
       "webhook_deliveries",
       "analysis_jobs",
+      "concierge_analysis_runs",
+      "concierge_feedback",
       "audit_events",
       "usage_records",
       "account_member_records",
@@ -31,7 +33,7 @@ describe("tenant data retention policy", () => {
     ] satisfies TenantDataRetentionCategoryKey[];
 
     expect(TENANT_DATA_RETENTION_POLICY.status).toBe("draft");
-    expect(TENANT_DATA_RETENTION_POLICY.version).toBe("2026-06-30-concrete-windows-draft");
+    expect(TENANT_DATA_RETENTION_POLICY.version).toBe("2026-07-20-human-beta-clarity-draft");
     expect(keys).toEqual(expectedKeys);
     expect(new Set(keys).size).toBe(expectedKeys.length);
   });
@@ -53,6 +55,8 @@ describe("tenant data retention policy", () => {
     expect(coverage.uncountedCategories).toEqual([
       { key: "transient_pr_evidence", reason: "not-stored" },
       { key: "onboarding_states", reason: "not-yet-counted" },
+      { key: "concierge_analysis_runs", reason: "not-yet-counted" },
+      { key: "concierge_feedback", reason: "not-yet-counted" },
       { key: "account_member_records", reason: "not-yet-counted" },
       { key: "billing_account_records", reason: "not-yet-counted" },
       { key: "backups", reason: "not-yet-counted" },
@@ -94,6 +98,8 @@ describe("tenant data retention policy", () => {
     expect(byKey.transient_pr_evidence.retentionWindowDays).toBe(0);
     expect(byKey.onboarding_states.retentionWindowDays).toBe(1);
     expect(byKey.analysis_jobs.deletionReadiness).toBe("manual-review-required");
+    expect(byKey.concierge_analysis_runs.retentionWindowDays).toBe(30);
+    expect(byKey.concierge_feedback.retentionWindowDays).toBe(30);
     expect(byKey.account_member_records.deletionReadiness).toBe("manual-review-required");
     expect(byKey.backups.deletionReadiness).toBe("blocked");
     expect(byKey.tenant_tombstones.deletionReadiness).toBe("blocked");
