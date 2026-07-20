@@ -368,6 +368,8 @@ function expectedRetentionPolicy() {
       uncountedCategories: [
         { key: "transient_pr_evidence", reason: "not-stored" },
         { key: "onboarding_states", reason: "not-yet-counted" },
+        { key: "concierge_analysis_runs", reason: "not-yet-counted" },
+        { key: "concierge_feedback", reason: "not-yet-counted" },
         { key: "account_member_records", reason: "not-yet-counted" },
         { key: "billing_account_records", reason: "not-yet-counted" },
         { key: "backups", reason: "not-yet-counted" },

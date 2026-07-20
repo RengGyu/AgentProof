@@ -32,12 +32,31 @@ async function fillAndRun(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "수동 분석 실행" }).click();
 }
 
-async function interceptSuccess(page: import("@playwright/test").Page, report = fixture()) {
+async function interceptSuccess(page: import("@playwright/test").Page, report: Record<string, unknown> = fixture()) {
   await page.route("**/api/tenants/concierge/analyze", async (route) => {
     const body = route.request().postDataJSON();
     expect(body.repositoryFullName).toBe("acme/private");
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ report, caseIdOrHash: "c".repeat(64), privacy: "synthetic" }) });
   });
+}
+
+async function tabUntil(page: import("@playwright/test").Page, locator: import("@playwright/test").Locator, limit = 100) {
+  for (let step = 0; step < limit; step += 1) {
+    await page.keyboard.press("Tab");
+    if (await locator.evaluate((element) => element === document.activeElement)) return;
+  }
+  throw new Error(`Keyboard Tab path did not reach ${await locator.getAttribute("aria-label") ?? await locator.textContent() ?? "target"}.`);
+}
+
+function zeroGapFixture() {
+  const report = fixture();
+  return {
+    ...report,
+    summary: { ...report.summary, priority: "low", topRisks: ["No major evidence gap found from available evidence."] },
+    requirements: report.requirements.map((requirement) => ({ ...requirement, status: "met", gaps: [] })),
+    proofGraph: { ...report.proofGraph, nodes: report.proofGraph.nodes.map((node) => ({ ...node, status: "met", gapSignals: [] })), summary: { ...report.proofGraph.summary, requirementsWithGaps: 0, gapCount: 0 } },
+    decisionCard: { ...report.decisionCard, topGap: null, reprompt: null }
+  };
 }
 
 test("desktop success focuses the evidence report, copies the bound re-prompt, and leaves no browser storage", async ({ page, context }) => {
@@ -59,13 +78,46 @@ test("desktop success focuses the evidence report, copies the bound re-prompt, a
   expect(externalRequests).toEqual([]);
 });
 
-test("keyboard focus reaches the intake fields in order before an analysis response", async ({ page }) => {
+test("keyboard focus reaches intake, report evidence, feedback, reset, and session-end controls", async ({ page }) => {
+  await interceptSuccess(page);
+  await page.route("**/api/tenants/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }) }));
   await page.goto("/concierge");
-  await page.getByRole("textbox", { name: "tenantId" }).focus();
+  await expect(page.getByText("Privacy notice — human-beta-privacy.v1")).toBeVisible();
+  await expect(page.getByText(/삭제는 현재 운영자 수동 절차이며 자동화되지 않았습니다/)).toBeVisible();
+  const orderedValues: Array<[string, string]> = [["tenantId", "tenant_alpha"], ["installationId", "101"], ["repositoryId", "202"], ["repositoryFullName", "acme/private"], ["pullRequestNumber", "17"]];
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("textbox", { name: "installationId" })).toBeFocused();
+  for (const [index, [name, value]] of orderedValues.entries()) {
+    const input = page.getByRole("textbox", { name });
+    await expect(input).toBeFocused();
+    await page.keyboard.type(value);
+    await page.keyboard.press("Tab");
+    if (index + 1 < orderedValues.length) await expect(page.getByRole("textbox", { name: orderedValues[index + 1][0] })).toBeFocused();
+  }
+  await expect(page.getByRole("textbox", { name: "명시적 original task (선택, 없으면 linked issue 1개만 사용)" })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("textbox", { name: "repositoryId" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "수동 분석 실행" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Concierge evidence report")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "src/feature.ts" })).toBeFocused();
+  await tabUntil(page, page.getByLabel("Operator-issued opaque partner ID"));
+  await page.keyboard.type("partner_a1b2c3d4");
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Session ordinal")).toBeFocused();
+  await tabUntil(page, page.getByRole("button", { name: "새 테스트 시작" }));
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Concierge evidence report")).toHaveCount(0);
+  await tabUntil(page, page.getByRole("textbox", { name: "tenantId" }));
+  for (const [name, value] of orderedValues) {
+    const input = page.getByRole("textbox", { name });
+    await expect(input).toBeFocused(); await page.keyboard.type(value); await page.keyboard.press("Tab");
+  }
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Concierge evidence report")).toBeFocused();
+  await tabUntil(page, page.getByRole("button", { name: "세션 종료" }));
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Concierge evidence report")).toHaveCount(0);
 });
 
 test("mobile places the completed report before collapsed intake", async ({ browser }) => {
@@ -76,6 +128,80 @@ test("mobile places the completed report before collapsed intake", async ({ brow
   expect(await page.getByLabel("Concierge evidence report").evaluate((element) => getComputedStyle(element).order)).toBe("1");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();
+});
+
+test("320px mobile keeps zero-gap feedback and reset controls operable without horizontal overflow", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 320, height: 720 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await interceptSuccess(page, zeroGapFixture());
+  await page.route("**/api/tenants/concierge/feedback", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ stored: true, duplicate: false, privacy: "bounded-metadata-only" }) }));
+  await page.route("**/api/tenants/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }) }));
+  await page.goto("/concierge"); await fillAndRun(page);
+  await expect(page.getByLabel("Top-gap outcome")).toHaveValue("not_applicable_zero_gap");
+  await expect(page.getByRole("button", { name: "Save bounded feedback" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "새 테스트 시작" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const box = await page.getByRole("button", { name: "새 테스트 시작" }).boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await page.getByLabel("Operator-issued opaque partner ID").fill("partner_a1b2c3d4");
+  await page.getByRole("button", { name: "Save bounded feedback" }).tap();
+  await expect(page.getByText("metadata_saved")).toBeVisible();
+  await page.getByRole("button", { name: "새 테스트 시작" }).tap();
+  await expect(page.getByLabel("Concierge evidence report")).toHaveCount(0);
+  await fillAndRun(page);
+  await page.getByRole("button", { name: "세션 종료" }).tap();
+  await expect(page.getByLabel("Concierge evidence report")).toHaveCount(0);
+  await context.close();
+});
+
+test("zero-gap report shows bounded evidence language without fabricating a re-prompt", async ({ page }) => {
+  await interceptSuccess(page, zeroGapFixture());
+  await page.goto("/concierge"); await fillAndRun(page);
+  await expect(page.getByText("현재 증거 요약")).toBeVisible();
+  await expect(page.getByText("수집된 증거 범위에서는 우선 검토할 증거 공백을 찾지 못했습니다.")).toBeVisible();
+  await expect(page.getByText("참고 증거")).toBeVisible();
+  await expect(page.getByText("이 보고서는 merge 결정이나 correctness 인증이 아닙니다.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "복사" })).toHaveCount(0);
+  await expect(page.locator(".concierge-reprompt")).toHaveCount(0);
+});
+
+test("bounded feedback leaves cohort assignment to the server without sending report or repository content", async ({ page }) => {
+  let feedbackBody: any = null;
+  await interceptSuccess(page);
+  await page.route("**/api/tenants/concierge/feedback", async (route) => {
+    feedbackBody = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ stored: true, duplicate: false, privacy: "bounded-metadata-only" }) });
+  });
+  await page.goto("/concierge"); await fillAndRun(page);
+  await page.getByLabel("Operator-issued opaque partner ID").fill("partner_a1b2c3d4");
+  await page.getByLabel("Top-gap outcome").selectOption("found_within_30s");
+  await page.getByLabel("Observed seconds (blank if unavailable)").fill("12");
+  await page.getByRole("button", { name: "Save bounded feedback" }).click();
+  await expect(page.getByText("metadata_saved")).toBeVisible();
+  expect(Object.keys(feedbackBody ?? {}).sort()).toEqual(["feedback", "tenantId"]);
+  const feedback = (feedbackBody?.feedback ?? {}) as Record<string, unknown>;
+  expect(feedback).toMatchObject({ schemaVersion: "concierge-feedback.v3", privacyNoticeVersion: "human-beta-privacy.v1", topGapOutcome: "found_within_30s", foundTopGapWithin30s: true, timeToTopGapSeconds: 12 });
+  expect(feedback).not.toHaveProperty("participantCohort");
+  const serialized = JSON.stringify(feedbackBody);
+  expect(serialized).not.toContain("acme/private");
+  expect(serialized).not.toContain("Synthetic private PR");
+  expect(serialized).not.toContain("Inspect the cited deterministic evidence only.");
+  expect(serialized).not.toContain("diff --git");
+});
+
+test("new-test and end-session controls clear private report state", async ({ page }) => {
+  await interceptSuccess(page);
+  await page.goto("/concierge"); await fillAndRun(page);
+  await page.getByRole("button", { name: "새 테스트 시작" }).click();
+  await expect(page.getByLabel("Concierge evidence report")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "tenantId" })).toHaveValue("");
+
+  await fillAndRun(page);
+  await page.route("**/api/tenants/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, deleted: true, privacy: "tenant-auth-session-cookie-only" }) }));
+  await page.getByRole("button", { name: "세션 종료" }).click();
+  await expect(page.getByLabel("Concierge evidence report")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "tenantId" })).toHaveValue("");
+  expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
 });
 
 test("unavailable, ambiguous, and failed-check fixtures never display met and retain bounded deterministic navigation", async ({ browser }) => {

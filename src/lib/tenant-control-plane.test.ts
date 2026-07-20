@@ -7,6 +7,7 @@ import {
   disableTenantRepositoryGrantsForInstallation,
   disableTenantRepositoryGrantsForRepositories,
   disableTenantRepositoryGrantsForTenantDeletion,
+  listTenantEnabledRepositoryGrantScope,
   listTenantRepositoryGrants,
   readTenantRepositoryGrants,
   TenantControlPlaneStoreError,
@@ -618,6 +619,26 @@ describe("tenant control plane helpers", () => {
       "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled&order=repository_full_name.asc&limit=500",
       expect.objectContaining({ method: "GET" })
     );
+  });
+
+  it("uses an enabled-only limit-two query and rejects malformed human-beta isolation rows", async () => {
+    const row = {
+      tenant_id: "tenant_test", installation_id: 321, repository_id: 100, repository_full_name: "RengGyu/AgentProof",
+      enabled: true, analysis_enabled: false, comment_enabled: false, save_reports_enabled: false, slack_notifications_enabled: false
+    };
+    const fetchMock = vi.fn(async () => Response.json([row]));
+    vi.stubGlobal("fetch", fetchMock);
+    const env = {
+      AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
+      AGENTPROOF_TENANT_REPOSITORY_GRANTS_TABLE: "tenant_repository_grants_test"
+    } as unknown as NodeJS.ProcessEnv;
+    await expect(listTenantEnabledRepositoryGrantScope({ tenantId: "tenant_test" }, env)).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("enabled=eq.true&select="), expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("limit=2"), expect.anything());
+
+    fetchMock.mockResolvedValueOnce(Response.json([{ ...row, enabled: "yes" }]));
+    await expect(listTenantEnabledRepositoryGrantScope({ tenantId: "tenant_test" }, env)).rejects.toThrow("malformed");
   });
 
   it("patches Supabase repository grant settings by tenant, installation, and repository id only", async () => {

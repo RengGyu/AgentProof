@@ -4,7 +4,8 @@ import { getTenantAuthSessionStoreStatus, verifyTenantAuthAccess } from "./tenan
 import {
   authorizeDurableTenantRepositoryGrantAsync,
   getTenantControlPlaneSettings,
-  getTenantRepositoryGrantStoreStatus
+  getTenantRepositoryGrantStoreStatus,
+  listTenantEnabledRepositoryGrantScope
 } from "./tenant-control-plane";
 import { getConciergeStoreConfigurationStatus } from "./concierge-store-configuration";
 
@@ -18,6 +19,7 @@ export type ConciergeBlockReason =
   | "repository_grant_missing"
   | "repository_grant_disabled"
   | "repository_identity_mismatch"
+  | "tenant_grant_scope_invalid"
   | "tenant_mismatch"
   | "authorization_unavailable";
 
@@ -37,12 +39,14 @@ export interface ConciergeAccessDependencies {
   verifySession: typeof verifyTenantAuthAccess;
   listInstallationStatuses: typeof listTenantGitHubInstallationStatuses;
   authorizeGrant: typeof authorizeDurableTenantRepositoryGrantAsync;
+  listGrants: typeof listTenantEnabledRepositoryGrantScope;
 }
 
 const DEFAULT_DEPS: ConciergeAccessDependencies = {
   verifySession: verifyTenantAuthAccess,
   listInstallationStatuses: listTenantGitHubInstallationStatuses,
-  authorizeGrant: authorizeDurableTenantRepositoryGrantAsync
+  authorizeGrant: authorizeDurableTenantRepositoryGrantAsync,
+  listGrants: listTenantEnabledRepositoryGrantScope
 };
 
 export function conciergeRuntimeDefaults(env = process.env) {
@@ -87,6 +91,16 @@ export async function authorizeConciergeAccess(
 
     const session = await deps.verifySession({ tenantId: input.tenantId, cookieHeader: input.cookieHeader }, env);
     if (!session.authorized || session.method !== "durable-session" || !session.memberId) return { authorized: false, reason: "session_invalid" };
+
+    const enabledGrants = (await deps.listGrants({ tenantId: input.tenantId }, env)).filter((grant) => grant.enabled);
+    if (enabledGrants.length !== 1
+      || enabledGrants[0]?.installationId !== input.installationId
+      || enabledGrants[0]?.repositoryId !== input.repositoryId) {
+      return { authorized: false, reason: "tenant_grant_scope_invalid" };
+    }
+    if (enabledGrants[0].repositoryFullName.toLowerCase() !== input.repositoryFullName.toLowerCase()) {
+      return { authorized: false, reason: "repository_identity_mismatch" };
+    }
 
     const statuses = await deps.listInstallationStatuses({ tenantId: input.tenantId, installationIds: [input.installationId] }, env);
     if (statuses.length !== 1 || statuses[0]?.installationId !== input.installationId || statuses[0].status !== "active") {

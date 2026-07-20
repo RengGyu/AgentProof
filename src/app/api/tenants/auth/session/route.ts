@@ -103,6 +103,15 @@ export async function DELETE(request: Request) {
     await revokeTenantAuthSession({ cookieHeader: request.headers.get("cookie") });
   } catch (error) {
     if (!(error instanceof TenantAuthStoreError)) throw error;
+    await recordTenantAuthFailure({ statusCode: 503, code: "session_revoke_unconfirmed" });
+    return noStoreJson({
+      error: "The browser cookie was cleared, but durable session revocation could not be confirmed.",
+      code: "tenant_auth_session_revoke_unconfirmed",
+      deleted: false
+    }, {
+      status: 503,
+      headers: { "Set-Cookie": clearTenantAuthSessionCookie() }
+    });
   }
 
   return noStoreJson({

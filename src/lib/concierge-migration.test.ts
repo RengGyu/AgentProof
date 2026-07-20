@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const sql = readFileSync("supabase/migrations/202607140001_concierge_private_beta.sql", "utf8");
 const deletionStateSql = readFileSync("supabase/migrations/202607160001_tenant_deletion_state.sql", "utf8");
+const humanBetaClaritySql = readFileSync("supabase/migrations/202607200001_human_beta_feedback_clarity.sql", "utf8");
 describe("concierge durable migration contract", () => {
   it("uses RLS, RPC-only execution mutation, and automation-off grants", () => {
     expect(sql).toContain("analysis_enabled boolean not null default false");
@@ -33,5 +34,18 @@ describe("concierge durable migration contract", () => {
     expect(deletionStateSql).toContain("set search_path = ''");
     expect(deletionStateSql).toContain("grant execute on function public.agentproof_tenant_deletion_state_active(text) to service_role");
     expect(deletionStateSql).not.toMatch(/(?:raw_(?:diff|log|prompt|report)|token|reason|repository|pull_request|evidence)\s+(?:text|jsonb)/i);
+  });
+
+  it("separates internal and external feedback and represents zero-gap without free text", () => {
+    expect(humanBetaClaritySql).toContain("concierge-feedback.v3");
+    expect(humanBetaClaritySql).toContain("participant_cohort");
+    expect(humanBetaClaritySql).toContain("self_internal");
+    expect(humanBetaClaritySql).toContain("external_reviewer");
+    expect(humanBetaClaritySql).toContain("evidence_insufficient");
+    expect(humanBetaClaritySql).toContain("not_applicable_zero_gap");
+    expect(humanBetaClaritySql).toContain("field_count <> 21");
+    expect(humanBetaClaritySql).toContain("security definer");
+    expect(humanBetaClaritySql).toContain("set search_path = ''");
+    expect(humanBetaClaritySql).not.toMatch(/raw_(?:diff|log|prompt|report)|token\s+text/i);
   });
 });

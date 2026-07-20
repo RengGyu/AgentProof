@@ -7,6 +7,7 @@ describe("/api/tenants/auth/session", () => {
   afterEach(() => {
     clearAuditEventsForTests();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     clearTenantAuthSessionsForTests();
   });
 
@@ -159,6 +160,28 @@ describe("/api/tenants/auth/session", () => {
       tenantId: "tenant_a",
       cookieHeader: startCookie
     })).resolves.toEqual({ authorized: false });
+  });
+
+  it("clears the browser cookie but fails closed when durable revocation is unconfirmed", async () => {
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY", "placeholder");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 503 })));
+
+    const response = await DELETE(new Request("http://localhost/api/tenants/auth/session", {
+      method: "DELETE",
+      headers: { ...sameOriginHeaders(), cookie: `${TENANT_AUTH_SESSION_COOKIE}=opaque-session-token` }
+    }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Set-Cookie")).toContain(`${TENANT_AUTH_SESSION_COOKIE}=deleted`);
+    await expect(response.json()).resolves.toEqual({
+      error: "The browser cookie was cleared, but durable session revocation could not be confirmed.",
+      code: "tenant_auth_session_revoke_unconfirmed",
+      deleted: false
+    });
+    expect(getAuditEventsForTests()).toEqual([
+      expect.objectContaining({ action: "tenant_auth_session_failed", result: "failed", status_code: 503, metadata: { code: "session_revoke_unconfirmed" } })
+    ]);
   });
 
   it("rejects cross-site durable auth session creation without issuing a cookie", async () => {

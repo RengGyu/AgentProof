@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifySameOriginMutationRequest } from "@/lib/csrf";
-import { storeConciergeFeedback, validateConciergeFeedback } from "@/lib/concierge-feedback";
+import { resolveConciergeParticipantCohort, storeConciergeFeedback, validateConciergeFeedback } from "@/lib/concierge-feedback";
 import { getTenantAccountStoreStatus } from "@/lib/tenant-accounts";
 import { getTenantAuthSessionStoreStatus, verifyTenantAuthAccess } from "@/lib/tenant-auth";
 import { conciergeRuntimeDefaults } from "@/lib/concierge-private-beta";
@@ -19,7 +19,10 @@ export async function POST(request: Request) {
   if (!getTenantAuthSessionStoreStatus().durable || !getTenantAccountStoreStatus().durable) return json({ code: "durable_store_required" }, 503);
   const access = await verifyTenantAuthAccess({ tenantId, cookieHeader: request.headers.get("cookie") });
   if (!access.authorized) return json({ code: "session_invalid" }, 403);
-  const validation = validateConciergeFeedback(feedback);
+  if (!feedback || typeof feedback !== "object" || Array.isArray(feedback) || "participantCohort" in feedback) return json({ code: "feedback_fields_invalid" }, 400);
+  const participantCohort = resolveConciergeParticipantCohort(tenantId);
+  if (!participantCohort) return json({ code: "feedback_cohort_configuration_invalid" }, 503);
+  const validation = validateConciergeFeedback({ ...(feedback as Record<string, unknown>), participantCohort });
   if (!validation.valid) return json({ code: validation.code }, 400);
   const result = await storeConciergeFeedback(tenantId, validation.value);
   if (result === "unavailable") return json({ code: "feedback_store_unavailable" }, 503);

@@ -11,6 +11,7 @@ const password = randomBytes(18).toString("hex");
 const installationMigration = await readFile(new URL("../supabase/migrations/202607120001_github_installation_single_tenant.sql", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/202607140001_concierge_private_beta.sql", import.meta.url), "utf8");
 const deletionStateMigration = await readFile(new URL("../supabase/migrations/202607160001_tenant_deletion_state.sql", import.meta.url), "utf8");
+const humanBetaClarityMigration = await readFile(new URL("../supabase/migrations/202607200001_human_beta_feedback_clarity.sql", import.meta.url), "utf8");
 let stage = "docker_prerequisite";
 
 async function docker(args, options = {}) { return exec("docker", args, { maxBuffer: 4_000_000, ...options }); }
@@ -27,12 +28,23 @@ async function psql(sql, role) {
 function scalar(stdout) { return stdout.trim().split(/\r?\n/).at(-1) ?? ""; }
 function feedbackPayload(caseKey, overrides = {}) {
   return JSON.stringify({
-    schema_version: "concierge-feedback.v2", partner_id: "partner_a1b2c3d4", session_ordinal: 1, case_id_or_hash: caseKey,
+    schema_version: "concierge-feedback.v3", participant_cohort: "self_internal", privacy_notice_version: "human-beta-privacy.v1", partner_id: "partner_a1b2c3d4", session_ordinal: 1, case_id_or_hash: caseKey,
     task_source_quality: "linked_issue", pr_size_bucket: "small", pre_report_gap_category: "execution",
+    top_gap_outcome: "found_within_30s",
     found_top_gap_within_30s: true, time_to_top_gap_seconds: 18, top_gap_agreement: "agree",
     first_inspection_action: "check", reprompt_action: "copied", false_blocker: false, usefulness: 4,
     operator_assisted: true, operator_minutes_bucket: "1_5", actual_repeat_use_ordinal: 1,
     bounded_reason_category: "useful_gap", ...overrides
+  }).replaceAll("'", "''");
+}
+function feedbackPayloadV2(caseKey) {
+  return JSON.stringify({
+    schema_version: "concierge-feedback.v2", partner_id: "partner_1a2b3c4d", session_ordinal: 1, case_id_or_hash: caseKey,
+    task_source_quality: "linked_issue", pr_size_bucket: "small", pre_report_gap_category: "execution",
+    found_top_gap_within_30s: true, time_to_top_gap_seconds: 12, top_gap_agreement: "agree",
+    first_inspection_action: "check", reprompt_action: "copied", false_blocker: false, usefulness: 4,
+    operator_assisted: true, operator_minutes_bucket: "1_5", actual_repeat_use_ordinal: 1,
+    bounded_reason_category: "useful_gap"
   }).replaceAll("'", "''");
 }
 
@@ -78,6 +90,19 @@ try {
     insert into public.agentproof_github_installations(tenant_id,installation_id,status,created_at,updated_at) values ('tenant_bravo',102,'active',now(),now());
     insert into public.agentproof_tenant_repository_grants(tenant_id,installation_id,repository_id,repository_full_name,enabled) values ('tenant_bravo',102,203,'opaque/repository-2',true);
   `);
+
+  stage = "seed_legacy_feedback_before_upgrade";
+  const legacyKey = "6".repeat(64);
+  const legacyReserve = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${legacyKey}','tenant_alpha',101,202);`, "service_role")).stdout);
+  const legacyComplete = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${legacyKey}','completed','manual_report_validated');`, "service_role")).stdout);
+  const legacyFeedback = scalar((await psql(`select public.agentproof_record_concierge_feedback('tenant_alpha','${feedbackPayloadV2(legacyKey)}'::jsonb);`, "service_role")).stdout);
+  if (legacyReserve !== "reserved" || legacyComplete !== "t" || legacyFeedback !== "stored") throw new Error("Legacy v2 setup failed before clarity migration.");
+
+  stage = "apply_human_beta_clarity_upgrade";
+  await psql(humanBetaClarityMigration);
+  const legacyPreserved = scalar((await psql(`select schema_version || ':' || participant_cohort || ':' || privacy_notice_version || ':' || top_gap_outcome from public.agentproof_concierge_feedback where case_id_or_hash='${legacyKey}';`)).stdout);
+  const legacyDecisionState = scalar((await psql(`select coalesce(decision_card_state,'null') from public.agentproof_concierge_analysis_runs where request_key='${legacyKey}';`)).stdout);
+  if (legacyPreserved !== "concierge-feedback.v2:legacy_unclassified:legacy_unversioned:legacy_unclassified" || legacyDecisionState !== "null") throw new Error("Legacy rows were changed or falsely classified during clarity migration.");
 
   stage = "concierge_grant_preservation";
   const existingGrant = scalar((await psql("select outcome || ':' || enabled || ':' || analysis_enabled || ':' || save_reports_enabled || ':' || comment_enabled || ':' || slack_notifications_enabled from public.agentproof_register_concierge_repository_grant('tenant_alpha',101,202,'opaque/repository');", "service_role")).stdout);
@@ -150,8 +175,8 @@ try {
   if (!authenticatedGrantRegistrationRpcRejected) throw new Error("authenticated Concierge registration RPC access was not rejected.");
 
   stage = "terminal_transition";
-  const completed = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${key}','completed','manual_report_validated');`, "service_role")).stdout);
-  const reversed = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${key}','failed','provider_unavailable');`, "service_role")).stdout);
+  const completed = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${key}','completed','manual_report_validated','has_top_gap');`, "service_role")).stdout);
+  const reversed = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${key}','failed','provider_unavailable','not_recorded');`, "service_role")).stdout);
   if (completed !== "t" || reversed !== "f") throw new Error("Terminal transition invariant failed.");
 
   stage = "feedback_binding";
@@ -159,6 +184,17 @@ try {
   if (feedbackOutcomes.filter((value) => value === "stored").length !== 1 || feedbackOutcomes.filter((value) => value === "duplicate").length !== 19) throw new Error("Concurrent feedback idempotency invariant failed.");
   const feedbackRows = scalar((await psql(`select count(*) from public.agentproof_concierge_feedback where tenant_id = 'tenant_alpha' and partner_id = 'partner_a1b2c3d4' and session_ordinal = 1 and case_id_or_hash = '${key}';`)).stdout);
   if (feedbackRows !== "1") throw new Error("Feedback unique identity invariant failed.");
+
+  const externalZeroGapKey = "7".repeat(64);
+  const externalZeroGapReserve = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${externalZeroGapKey}','tenant_alpha',101,202);`, "service_role")).stdout);
+  const externalZeroGapComplete = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${externalZeroGapKey}','completed','manual_report_validated','zero_gap');`, "service_role")).stdout);
+  const externalZeroGapFeedback = scalar((await psql(`select public.agentproof_record_concierge_feedback('tenant_alpha','${feedbackPayload(externalZeroGapKey, { participant_cohort: "external_reviewer", pre_report_gap_category: "evidence_insufficient", top_gap_outcome: "not_applicable_zero_gap", found_top_gap_within_30s: false, time_to_top_gap_seconds: null, reprompt_action: "not_used" })}'::jsonb);`, "service_role")).stdout);
+  const externalZeroGapStored = scalar((await psql(`select participant_cohort || ':' || pre_report_gap_category || ':' || top_gap_outcome from public.agentproof_concierge_feedback where case_id_or_hash='${externalZeroGapKey}';`)).stdout);
+  if (externalZeroGapReserve !== "reserved" || externalZeroGapComplete !== "t" || externalZeroGapFeedback !== "stored" || externalZeroGapStored !== "external_reviewer:evidence_insufficient:not_applicable_zero_gap") throw new Error("Feedback cohort or zero-gap classification invariant failed.");
+  const inconsistentTiming = scalar((await psql(`select public.agentproof_record_concierge_feedback('tenant_alpha','${feedbackPayload(externalZeroGapKey, { participant_cohort: "external_reviewer", top_gap_outcome: "not_applicable_zero_gap", found_top_gap_within_30s: true, time_to_top_gap_seconds: 4 })}'::jsonb);`, "service_role")).stdout);
+  if (inconsistentTiming !== "rejected") throw new Error("Inconsistent zero-gap timing metadata was accepted.");
+  const inconsistentZeroGapAction = scalar((await psql(`select public.agentproof_record_concierge_feedback('tenant_alpha','${feedbackPayload(externalZeroGapKey, { participant_cohort: "external_reviewer", top_gap_outcome: "not_applicable_zero_gap", found_top_gap_within_30s: false, time_to_top_gap_seconds: null, reprompt_action: "sent" })}'::jsonb);`, "service_role")).stdout);
+  if (inconsistentZeroGapAction !== "rejected") throw new Error("A zero-gap report accepted a re-prompt action.");
 
   const reservedFeedbackKey = "e".repeat(64);
   const reservedFeedbackReserve = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${reservedFeedbackKey}','tenant_alpha',101,202);`, "service_role")).stdout);
@@ -168,7 +204,7 @@ try {
 
   const tenantBravoKey = "9".repeat(64);
   const bravoReserve = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${tenantBravoKey}','tenant_bravo',102,203);`, "service_role")).stdout);
-  const bravoComplete = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${tenantBravoKey}','completed','manual_report_validated');`, "service_role")).stdout);
+  const bravoComplete = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${tenantBravoKey}','completed','manual_report_validated','has_top_gap');`, "service_role")).stdout);
   const crossTenantFeedback = scalar((await psql(`select public.agentproof_record_concierge_feedback('tenant_alpha','${feedbackPayload(tenantBravoKey)}'::jsonb);`, "service_role")).stdout);
   if (bravoReserve !== "reserved" || bravoComplete !== "t" || crossTenantFeedback !== "rejected") throw new Error("Cross-tenant feedback isolation invariant failed.");
 
@@ -184,12 +220,12 @@ try {
 
   const failedKey = "d".repeat(64);
   const failedReserve = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${failedKey}','tenant_alpha',101,202);`, "service_role")).stdout);
-  const failedTerminal = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${failedKey}','failed','provider_unavailable');`, "service_role")).stdout);
-  const failedReverse = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${failedKey}','completed','manual_report_validated');`, "service_role")).stdout);
+  const failedTerminal = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${failedKey}','failed','provider_unavailable','not_recorded');`, "service_role")).stdout);
+  const failedReverse = scalar((await psql(`select public.agentproof_finish_concierge_analysis('${failedKey}','completed','manual_report_validated','has_top_gap');`, "service_role")).stdout);
   const failedDuplicate = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${failedKey}','tenant_alpha',101,202);`, "service_role")).stdout);
   if (failedReserve !== "reserved" || failedTerminal !== "t" || failedReverse !== "f" || failedDuplicate !== "duplicate") throw new Error("Failed terminal lifecycle invariant failed.");
 
-  console.log(JSON.stringify({ status: "passed", conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, deletionState: { metadataOnlySchema: true, rlsEnabled: true, absentAllowsAuthorization: true, activeBlocksAuthorization: true, duplicateStartIsIdempotent: true, directTableAccessRejected: ["anon", "authenticated", "service_role"], nonServiceRpcRejected: true, invalidTransitionRejected: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
+  console.log(JSON.stringify({ status: "passed", legacyV2UpgradePreserved: true, conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, deletionState: { metadataOnlySchema: true, rlsEnabled: true, absentAllowsAuthorization: true, activeBlocksAuthorization: true, duplicateStartIsIdempotent: true, directTableAccessRejected: ["anon", "authenticated", "service_role"], nonServiceRpcRejected: true, invalidTransitionRejected: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, feedbackCohortAndZeroGapBounded: true, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
 } catch (error) {
   throw new Error(`concierge DB integration failed at ${stage}: ${error instanceof Error ? error.message : "unknown"}`);
 } finally {

@@ -16,8 +16,16 @@ describe("concierge durable analysis store", () => {
     expect((await reserveConciergeAnalysis({ requestKey: "a".repeat(64), tenantId: "tenant_alpha", installationId: 1, repositoryId: 2 }, env)).outcome).toBe("unavailable");
   });
   it("requires an exact true terminal transition response", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("false", { status: 200 })));
-    expect(await finishConciergeAnalysis({ requestKey: "a".repeat(64), outcome: "completed", reason: "manual_report_validated" }, env)).toBe(false);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("false", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await finishConciergeAnalysis({ requestKey: "a".repeat(64), outcome: "completed", reason: "manual_report_validated", decisionCardState: "has_top_gap" }, env)).toBe(false);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({ p_decision_card_state: "has_top_gap" });
+  });
+  it("rejects an outcome/Decision Card state mismatch before the RPC", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await finishConciergeAnalysis({ requestKey: "a".repeat(64), outcome: "failed", reason: "provider_unavailable", decisionCardState: "zero_gap" }, env)).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
   it("fails closed when the run store and tenant stores resolve to different projects", async () => {
     const fetchMock = vi.fn();

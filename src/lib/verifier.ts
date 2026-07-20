@@ -677,9 +677,9 @@ function buildProofGraph(
 
     if (finding?.status === "partial" && gapSignals.length === 0 && finding.evidenceRefs.length > 0) {
       gapSignals.push({
-        kind: "evidence_unavailable",
+        kind: "evidence_insufficient",
         severity: "medium",
-        message: "The cited deterministic evidence only partially supports this requirement; no narrower proof gap was derived.",
+        message: "Collected deterministic evidence only partially supports this requirement; no narrower proof gap was derived.",
         evidenceRefs: uniqueRefs(finding.evidenceRefs).slice(0, 8)
       });
     }
@@ -738,6 +738,7 @@ function applyProofGraphToRequirements(
     const gapMessages = node.gapSignals.map((gap) => gap.message);
     const hasHardGap = node.gapSignals.some((gap) => gap.severity === "blocker" || gap.severity === "high");
     const hasEvidenceUnavailable = node.gapSignals.some((gap) => gap.kind === "evidence_unavailable");
+    const hasEvidenceInsufficient = node.gapSignals.some((gap) => gap.kind === "evidence_insufficient");
     const status = finding.status === "met" && hasHardGap
       ? "partial"
       : finding.status === "missing" && hasEvidenceUnavailable
@@ -760,8 +761,10 @@ function applyProofGraphToRequirements(
       reviewerNote: hasHardGap
         ? `${finding.reviewerNote} Review implementation, targeted test, and execution proof together before trusting this requirement.`
         : hasEvidenceUnavailable
-          ? `${finding.reviewerNote} Treat unavailable or inconclusive deterministic evidence as a proof gap, not proof that implementation is absent.`
-        : finding.reviewerNote
+          ? `${finding.reviewerNote} Treat unavailable deterministic evidence as a collection gap, not proof that implementation is absent.`
+          : hasEvidenceInsufficient
+            ? `${finding.reviewerNote} Treat partial deterministic support as insufficient proof, not proof of correctness or failure.`
+          : finding.reviewerNote
     };
   });
 }
@@ -1466,6 +1469,7 @@ function buildReviewPriority(
       gap.kind === "missing_targeted_test" ||
       gap.kind === "self_reported_test_gap" ||
       gap.kind === "evidence_unavailable" ||
+      gap.kind === "evidence_insufficient" ||
       gap.kind === "failed_execution"
     )
     .slice(0, 6);
@@ -1829,11 +1833,15 @@ function buildTopRisks(
   const risks: string[] = [];
   const highProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.severity === "high" || gap.severity === "blocker");
   const unavailableProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.kind === "evidence_unavailable");
+  const insufficientProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.kind === "evidence_insufficient");
 
   if (ciStatus === "failed") risks.push("Test/build execution failed, so the PR is not proven ready.");
   if (hasNonExecutionCheckFailures) risks.push("Static or merge-gate checks failed outside test/build proof.");
   if (unavailableProofGaps.length > 0) {
-    risks.push("Some requirements have unavailable or inconclusive deterministic evidence.");
+    risks.push("Some required evidence could not be collected.");
+  }
+  if (insufficientProofGaps.length > 0) {
+    risks.push("Some requirements have collected evidence that is not yet sufficient proof.");
   }
   if (highProofGaps.some((gap) => gap.kind === "missing_targeted_test" || gap.kind === "self_reported_test_gap")) {
     risks.push("Requirement-level proof graph found missing targeted proof.");

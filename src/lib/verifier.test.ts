@@ -6,6 +6,29 @@ import { generateVerificationReport } from "./verifier";
 import type { PullRequestInput, VerificationReport } from "./types";
 
 describe("generateVerificationReport", () => {
+  it("naturally produces explicit zero-gap Decision Cards for varied fully evidenced inputs", () => {
+    const inputs: PullRequestInput[] = [{
+      title: "Validate export evidence report", description: "Implemented export evidence report validation.",
+      taskText: "Acceptance criteria: validate export evidence report.", url: "https://github.com/opaque/reports/pull/8",
+      changedFiles: [{ path: "src/reports/exportEvidenceReport.ts", additions: 8, deletions: 1, status: "modified", patch: "+ validateExportEvidenceReport(exportEvidenceReport)" }],
+      checks: [{ name: "CI test/build evidence verification", status: "passed", summary: "validate export evidence report tests passed" }], logs: [],
+      sourceProvenance: { version: 1, origin: "github_snapshot", headSha: "e".repeat(40), evidenceCapturedAt: "2026-07-20T00:00:00.000Z", inputFingerprint: { version: 1, algorithm: "sha256", value: "0".repeat(64), coverage: "github_metadata" } }
+    }, {
+      title: "Improve mobile report layout", description: "Adjusted ReportView spacing and browser QA.",
+      taskText: "Acceptance criteria: improve mobile layout without overlapping text/buttons.", url: "https://github.com/opaque/reports/pull/9",
+      changedFiles: [{ path: "src/components/ReportView.tsx", additions: 18, deletions: 6, status: "modified", patch: "+ <section className=\"report compact-mobile-layout\">" }],
+      checks: [{ name: "browser QA", status: "passed", summary: "Playwright mobile viewport confirmed no overlapping text or buttons" }], logs: [],
+      sourceProvenance: { version: 1, origin: "github_snapshot", headSha: "f".repeat(40), evidenceCapturedAt: "2026-07-20T00:00:00.000Z", inputFingerprint: { version: 1, algorithm: "sha256", value: "1".repeat(64), coverage: "github_metadata" } }
+    }];
+
+    for (const input of inputs) {
+      const report = generateVerificationReport(input);
+      expect(report.proofGraph.nodes.flatMap((node) => node.gapSignals), input.title).toEqual([]);
+      expect(report.decisionCard?.topGap).toBeNull();
+      expect(report.decisionCard?.reprompt).toBeNull();
+      expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    }
+  });
   it("redacts source metadata and strips URL query data before report surfaces", () => {
     const report = generateVerificationReport({
       title: "Fix auth token=super-secret-value",
@@ -972,7 +995,7 @@ describe("generateVerificationReport", () => {
     expect(gapKinds).toContain("evidence_unavailable");
     expect(gapKinds).not.toContain("missing_implementation");
     expect(report.requirements[0]?.status).toBe("unclear");
-    expect(report.summary.topRisks).toContain("Some requirements have unavailable or inconclusive deterministic evidence.");
+    expect(report.summary.topRisks).toContain("Some required evidence could not be collected.");
   });
 
   it("keeps normal bug proof gaps at medium when CI passes", () => {
@@ -1015,7 +1038,7 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
     const finding = report.requirements.find((item) => item.status === "partial");
     const node = report.proofGraph.nodes.find((item) => item.requirementId === finding?.requirementId);
-    const fallback = node?.gapSignals.filter((gap) => gap.kind === "evidence_unavailable") ?? [];
+    const fallback = node?.gapSignals.filter((gap) => gap.kind === "evidence_insufficient") ?? [];
     const evidenceIds = new Set(report.evidenceIndex.map((item) => item.id));
 
     expect(finding).toBeDefined();
@@ -1023,14 +1046,14 @@ describe("generateVerificationReport", () => {
     expect(fallback[0]).toMatchObject({ severity: "medium" });
     expect(new Set(fallback[0]?.evidenceRefs)).toEqual(new Set(finding?.evidenceRefs));
     expect(fallback[0]?.evidenceRefs.every((ref) => evidenceIds.has(ref))).toBe(true);
-    expect(report.decisionCard?.topGap).toMatchObject({ kind: "evidence_unavailable", severity: "medium" });
+    expect(report.decisionCard?.topGap).toMatchObject({ kind: "evidence_insufficient", severity: "medium" });
     expect(new Set(report.decisionCard?.topGap?.evidenceRefs)).toEqual(new Set(fallback[0]?.evidenceRefs));
     expect(new Set(report.decisionCard?.reprompt?.evidenceRefs)).toEqual(new Set(fallback[0]?.evidenceRefs));
     expect(report.testing.ciStatus).toBe("passed");
     expect(report.requirements.find((item) => item.requirementId === finding?.requirementId)?.status).toBe("partial");
     expect(report.summary.priority).not.toBe("blocker");
     expect(report.summary.priority).not.toBe("high");
-    expect(report.summary.topRisks).toContain("Some requirements have unavailable or inconclusive deterministic evidence.");
+    expect(report.summary.topRisks).toContain("Some requirements have collected evidence that is not yet sufficient proof.");
     expect(report.summary.topRisks.join(" ")).not.toContain("could not be collected");
     expect(validateVerificationReport(report, { mode: "full", requireSourceProvenance: true })).toEqual({ valid: true, errors: [] });
   });

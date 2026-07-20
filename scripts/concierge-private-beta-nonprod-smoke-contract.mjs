@@ -119,14 +119,21 @@ function caseMatchesScenario(item) {
 function hasBoundDecisionCard(report) {
   const card = report?.decisionCard;
   const evidence = Array.isArray(report?.evidenceIndex) ? new Set(report.evidenceIndex.map((item) => item?.id)) : null;
-  if (!card || !evidence || !card.topGap || !card.reprompt || !Array.isArray(card.firstInspectionPoints)) return false;
+  if (!card || !evidence || !Array.isArray(card.firstInspectionPoints)) return false;
+  if (card.firstInspectionPoints.length > 2) return false;
+  const inspectionPointsValid = card.firstInspectionPoints.every((point) => Array.isArray(point?.evidenceRefs) && point.evidenceRefs.length > 0 && point.evidenceRefs.every((ref) => evidence.has(ref)) && typeof point.href === "string" && /^https:\/\/github\.com\//.test(point.href));
+  if (!inspectionPointsValid) return false;
+  if (card.topGap === null || card.reprompt === null) {
+    return card.topGap === null
+      && card.reprompt === null
+      && report?.proofGraph?.summary?.gapCount === 0;
+  }
   if (!Array.isArray(card.topGap.evidenceRefs) || card.topGap.evidenceRefs.length === 0) return false;
   if (card.firstInspectionPoints.length < 1 || card.firstInspectionPoints.length > 2) return false;
   const exactRefs = JSON.stringify(card.topGap.evidenceRefs);
   if (card.reprompt.gapKey !== card.topGap.gapKey || card.reprompt.basedOnGapKind !== card.topGap.kind || JSON.stringify(card.reprompt.evidenceRefs) !== exactRefs) return false;
   if (typeof card.reprompt.prompt !== "string" || card.reprompt.prompt.length === 0) return false;
-  return card.topGap.evidenceRefs.every((ref) => evidence.has(ref))
-    && card.firstInspectionPoints.every((point) => Array.isArray(point?.evidenceRefs) && point.evidenceRefs.length > 0 && point.evidenceRefs.every((ref) => evidence.has(ref)) && typeof point.href === "string" && /^https:\/\/github\.com\//.test(point.href));
+  return card.topGap.evidenceRefs.every((ref) => evidence.has(ref));
 }
 
 function hasRuntimeDefaults(body) {

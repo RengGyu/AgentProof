@@ -17,6 +17,8 @@ vi.mock("@/lib/concierge-side-effect-telemetry", () => ({ createConciergeSideEff
 import { POST } from "./route";
 
 const body = { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", pullRequestNumber: 17, requestId: "12345678-1234-1234-1234-123456789abc" };
+const zeroGapReport = { analysisId: "opaque", proofGraph: { summary: { gapCount: 0 } }, decisionCard: { topGap: null, reprompt: null } };
+const topGapReport = { analysisId: "opaque", proofGraph: { summary: { gapCount: 1 } }, decisionCard: { topGap: { kind: "missing_execution" }, reprompt: { prompt: "bounded" } } };
 function request() { return new Request("https://agentproof.test/api/tenants/concierge/analyze", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://agentproof.test", cookie: "session=x" }, body: JSON.stringify(body) }); }
 
 describe("concierge analyze route boundary", () => {
@@ -51,7 +53,7 @@ describe("concierge analyze route boundary", () => {
 
   it("returns a transient report with every optional side effect off", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(zeroGapReport);
     const response = await POST(request());
     const json = await response.json();
     expect(response.status).toBe(200);
@@ -68,6 +70,15 @@ describe("concierge analyze route boundary", () => {
       { expectedHeadSha: "a".repeat(40) }
     );
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
+    expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ decisionCardState: "zero_gap" }));
+  });
+
+  it("records only the bounded presence of a top gap", async () => {
+    mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(topGapReport);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed", decisionCardState: "has_top_gap" }));
   });
 
   it("does not fetch full evidence for a duplicate same-head request", async () => {
@@ -119,7 +130,7 @@ describe("concierge analyze route boundary", () => {
 
   it("records a failed terminal state when completion cannot be recorded", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(zeroGapReport);
     mocks.finish.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const response = await POST(request());
     expect(response.status).toBe(503);

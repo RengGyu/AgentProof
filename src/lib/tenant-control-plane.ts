@@ -372,6 +372,55 @@ export async function listTenantRepositoryGrants(
     .slice(0, 500);
 }
 
+/**
+ * Human-beta isolation query. It asks the durable store for at most two
+ * enabled rows: one row proves the single-grant scope, while two rows prove
+ * that the tenant is not isolated. Malformed/truncated-normalization results
+ * throw instead of being silently dropped.
+ */
+export async function listTenantEnabledRepositoryGrantScope(
+  input: { tenantId?: unknown },
+  env = process.env
+): Promise<TenantRepositoryGrant[]> {
+  const tenantId = normalizeId(input.tenantId);
+  if (!tenantId) throw new TenantControlPlaneStoreError("Tenant id is invalid.");
+  const config = getTenantGrantStoreConfig(env);
+  if (config) {
+    const response = await supabaseTenantGrantFetch(config, [
+      `?tenant_id=eq.${encodeURIComponent(tenantId)}`,
+      "enabled=eq.true",
+      TENANT_REPOSITORY_GRANT_SELECT,
+      "order=repository_full_name.asc",
+      "limit=2"
+    ].join("&"), { method: "GET" });
+    if (!response.ok) throw new TenantControlPlaneStoreError(`Tenant enabled-grant scope failed with HTTP ${response.status}.`);
+    const rows = await response.json().catch(() => null) as unknown;
+    if (!Array.isArray(rows) || rows.length > 2) throw new TenantControlPlaneStoreError("Tenant enabled-grant scope response is invalid.");
+    if (rows.some((row) => !isExactTenantGrantScopeRow(row))) throw new TenantControlPlaneStoreError("Tenant enabled-grant scope response is malformed.");
+    const grants = rows.map((row) => rowToTenantRepositoryGrant(row));
+    if (grants.some((grant) => !grant || !grant.enabled)) throw new TenantControlPlaneStoreError("Tenant enabled-grant scope response is malformed.");
+    return grants as TenantRepositoryGrant[];
+  }
+  if (!truthy(env.AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY)) throw new TenantControlPlaneStoreError("Tenant repository grant store is not configured.");
+  return Array.from(tenantGrantMemoryStore().values()).filter((grant) => grant.tenantId === tenantId && grant.enabled).sort(compareTenantRepositoryGrants).slice(0, 2);
+}
+
+function isExactTenantGrantScopeRow(row: unknown): row is TenantRepositoryGrantRow {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+  const value = row as Record<string, unknown>;
+  const keys = ["analysis_enabled", "comment_enabled", "enabled", "installation_id", "repository_full_name", "repository_id", "save_reports_enabled", "slack_notifications_enabled", "tenant_id"];
+  return Object.keys(value).sort().join("\0") === keys.sort().join("\0")
+    && typeof value.tenant_id === "string"
+    && typeof value.installation_id === "number"
+    && typeof value.repository_id === "number"
+    && typeof value.repository_full_name === "string"
+    && value.enabled === true
+    && typeof value.analysis_enabled === "boolean"
+    && typeof value.comment_enabled === "boolean"
+    && typeof value.save_reports_enabled === "boolean"
+    && typeof value.slack_notifications_enabled === "boolean";
+}
+
 export async function countTenantRepositoryGrants(
   input: { tenantId?: unknown },
   env = process.env

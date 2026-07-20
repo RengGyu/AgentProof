@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { inspectSmokeResponse, validateApprovedSmokeOrigin, validateSmokeCases, validateSmokeHttpBoundary, validateSmokeTelemetrySet } from "./concierge-private-beta-nonprod-smoke-contract.mjs";
+import { generateVerificationReport } from "../src/lib/verifier.ts";
+import { validateVerificationReport } from "../src/lib/report-validation.ts";
 
 const cases = [
   { scenario: "single_linked_issue_passing", caseId: "case_1111111111111111", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 11, expectedHeadSha: "a".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "passed" },
@@ -9,7 +11,8 @@ const cases = [
 const report = {
   source: { url: "https://github.com/opaque/repo-a/pull/11", provenance: { headSha: "b".repeat(40) }, originalTask: { status: "available" } }, testing: { ciStatus: "passed" }, requirements: [{ status: "unclear" }],
   evidenceIndex: [{ id: "opaque-ref" }],
-  decisionCard: { topGap: { gapKey: "opaque-gap", kind: "missing_execution", evidenceRefs: ["opaque-ref"] }, firstInspectionPoints: [{ href: "https://github.com/opaque/repo-a/blob/abc/file.ts", evidenceRefs: ["opaque-ref"] }], reprompt: { gapKey: "opaque-gap", basedOnGapKind: "missing_execution", evidenceRefs: ["opaque-ref"], prompt: "Run the cited target." } }
+  proofGraph: { version: 1, nodes: [{ gapSignals: [{ kind: "missing_execution", evidenceRefs: ["opaque-ref"] }] }], context: [], summary: { requirementCount: 1, requirementsWithImplementation: 1, requirementsWithTargetedTests: 0, requirementsWithExecution: 0, requirementsWithGaps: 1, gapCount: 1 } },
+  decisionCard: { version: 1, topGap: { gapKey: "opaque-gap", kind: "missing_execution", evidenceRefs: ["opaque-ref"] }, testBuildStatus: "passed", firstInspectionPoints: [{ href: "https://github.com/opaque/repo-a/blob/abc/file.ts", evidenceRefs: ["opaque-ref"] }], reprompt: { gapKey: "opaque-gap", basedOnGapKind: "missing_execution", evidenceRefs: ["opaque-ref"], prompt: "Run the cited target." } }
 };
 const envelope = {
   report, caseIdOrHash: "a".repeat(64),
@@ -53,6 +56,42 @@ describe("non-production Concierge smoke contract", () => {
     expect(inspectSmokeResponse({ ...cases[0], expectedHeadSha: `${"b".repeat(39)}0` }, 200, envelope, true).status).toBe("failed");
     expect(inspectSmokeResponse({ ...cases[1], expectedOriginalTaskStatus: "available" }, 200, { ...envelope, report: { ...report, requirements: [{ status: "met" }], decisionCard: { ...report.decisionCard, reprompt: { ...report.decisionCard.reprompt, evidenceRefs: ["unknown"] } } } }, true)).toMatchObject({ status: "failed", decisionCardValid: false });
     expect(inspectSmokeResponse(cases[0], 200, { ...envelope, report: { ...report, source: { ...report.source, url: "https://github.com/other/repo/pull/11" } } }, true).status).toBe("failed");
+  });
+  it("accepts an honest zero-gap card and rejects inconsistent null states", () => {
+    const zeroGapReport = {
+      ...report,
+      source: { ...report.source, provenance: { headSha: cases[0].expectedHeadSha } },
+      proofGraph: { ...report.proofGraph, nodes: report.proofGraph.nodes.map((node) => ({ ...node, gapSignals: [] })), summary: { ...report.proofGraph.summary, requirementsWithGaps: 0, gapCount: 0 } },
+      decisionCard: { ...report.decisionCard, topGap: null, reprompt: null }
+    };
+    const zeroGapEnvelope = {
+      ...envelope,
+      report: zeroGapReport,
+      sideEffectTelemetry: { ...envelope.sideEffectTelemetry, sourceHeadSha: cases[0].expectedHeadSha }
+    };
+    expect(inspectSmokeResponse(cases[0], 200, zeroGapEnvelope, true)).toMatchObject({ status: "passed", decisionCardValid: true });
+    expect(inspectSmokeResponse(cases[0], 200, { ...zeroGapEnvelope, report: { ...zeroGapReport, proofGraph: { summary: { gapCount: 1 } } } }, true)).toMatchObject({ status: "failed", decisionCardValid: false });
+    expect(inspectSmokeResponse(cases[0], 200, { ...zeroGapEnvelope, report: { ...zeroGapReport, decisionCard: { ...zeroGapReport.decisionCard, reprompt: report.decisionCard.reprompt } } }, true)).toMatchObject({ status: "failed", decisionCardValid: false });
+    expect(inspectSmokeResponse(cases[0], 200, { ...zeroGapEnvelope, report: { ...zeroGapReport, decisionCard: { ...zeroGapReport.decisionCard, topGap: report.decisionCard.topGap } } }, true)).toMatchObject({ status: "failed", decisionCardValid: false });
+  });
+  it("accepts a naturally generated zero-gap report through full validation and the smoke envelope", () => {
+    const item = { ...cases[0], expectedHeadSha: "e".repeat(40) };
+    const generated = generateVerificationReport({
+      title: "Validate export evidence report", description: "Implemented export evidence report validation.",
+      taskText: "Acceptance criteria: validate export evidence report.", url: "https://github.com/opaque/repo-a/pull/11",
+      originalTask: { version: 1, status: "available", sourceType: "explicit_task", reason: "none" },
+      changedFiles: [{ path: "src/reports/exportEvidenceReport.ts", additions: 8, deletions: 1, status: "modified", patch: "+ validateExportEvidenceReport(exportEvidenceReport)" }],
+      checks: [{ name: "CI test/build evidence verification", status: "passed", summary: "validate export evidence report tests passed" }], logs: [],
+      sourceProvenance: { version: 1, origin: "github_snapshot", headSha: item.expectedHeadSha, evidenceCapturedAt: "2026-07-20T00:00:00.000Z", inputFingerprint: { version: 1, algorithm: "sha256", value: "0".repeat(64), coverage: "github_metadata" } }
+    });
+    const validation = validateVerificationReport(generated, { mode: "full", requireSourceProvenance: true });
+    expect(generated.proofGraph.summary.gapCount).toBe(0);
+    expect(validation).toEqual({ valid: true, errors: [] });
+    const generatedEnvelope = {
+      ...envelope, report: generated,
+      sideEffectTelemetry: { ...envelope.sideEffectTelemetry, sourceHeadSha: item.expectedHeadSha }
+    };
+    expect(inspectSmokeResponse(item, 200, generatedEnvelope, validation.valid)).toMatchObject({ status: "passed", decisionCardValid: true });
   });
   it("rejects unknown response fields, telemetry drift, duplicate case hashes, and nonzero calls", () => {
     expect(inspectSmokeResponse(cases[0], 200, { ...envelope, accuracyVerified: true }, true).status).toBe("failed");

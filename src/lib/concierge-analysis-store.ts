@@ -68,14 +68,19 @@ export async function finishConciergeAnalysis(input: {
   requestKey: string;
   outcome: "completed" | "failed";
   reason: string;
+  decisionCardState: "has_top_gap" | "zero_gap" | "not_recorded";
 }, env = process.env): Promise<boolean> {
   const config = readConfig(env);
-  if (!config || !isConciergeStoreConfigurationUsable(env) || !/^[a-z0-9_]{1,64}$/.test(input.reason)) return false;
+  const stateValid = input.outcome === "completed"
+    ? input.decisionCardState === "has_top_gap" || input.decisionCardState === "zero_gap"
+    : input.decisionCardState === "not_recorded";
+  if (!config || !isConciergeStoreConfigurationUsable(env) || !/^[a-z0-9_]{1,64}$/.test(input.reason) || !stateValid) return false;
   try {
     const response = await rpc(config, FINISH_RPC, {
       p_key: input.requestKey,
       p_outcome: input.outcome,
-      p_reason: input.reason
+      p_reason: input.reason,
+      p_decision_card_state: input.decisionCardState
     });
     if (!response.ok) return false;
     return (await response.json().catch(() => null)) === true;
