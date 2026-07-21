@@ -81,5 +81,5 @@ export function ConciergeFeedbackForm({ tenantId, caseIdOrHash, report, preRepor
 }
 
 function preReportLabel(value: string): string {
-  return ({ none: "특별한 증거 공백 없음", implementation: "구현 증거 없음", targeted_test: "대상 테스트 없음", execution: "CI 실행 결과 없음", requirement: "요구사항 확인 불가", evidence_unavailable: "증거 수집 불가", evidence_insufficient: "수집된 증거 불충분" } as Record<string, string>)[value] ?? "기록되지 않음";
+  return ({ none: "특별한 증거 공백 없음", implementation: "구현 증거 없음", targeted_test: "요구사항 대상 테스트 증거 없음", execution: "테스트·빌드 실행 증거 없음", requirement: "요구사항 확인 불가", evidence_unavailable: "증거 수집 불가", evidence_insufficient: "수집된 증거 불충분" } as Record<string, string>)[value] ?? "기록되지 않음";
 }

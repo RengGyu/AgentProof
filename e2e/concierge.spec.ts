@@ -27,6 +27,8 @@ function fixture(taskState: TaskState = "available", ciStatus: "passed" | "faile
 }
 
 async function fillSetup(page: import("@playwright/test").Page) {
+  const start = page.getByRole("button", { name: "PR 검토 시작" });
+  if (await start.isVisible()) await start.click();
   await page.getByLabel("저장소", { exact: true }).fill("acme/private");
   await page.getByLabel("PR 번호").fill("17");
   await page.getByLabel("보고서 전 예상").selectOption("targeted_test");
@@ -68,6 +70,20 @@ function zeroGapFixture() {
   };
 }
 
+test("welcome page keeps the guide character visible and separates setup from the landing page", async ({ page }) => {
+  await page.goto("/concierge");
+  await expect(page.getByRole("heading", { name: /PR을 읽기 전에/ })).toBeVisible();
+  await expect(page.locator(".welcome-scene .proof-buddy.hero")).toBeVisible();
+  await expect(page.getByText("병합 여부나 구현의 정확성을 판정하지 않습니다.")).toBeVisible();
+  await expect(page.getByLabel("저장소", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
+  await expect(page.getByRole("heading", { name: "검토할 PR을 선택하세요" })).toBeVisible();
+  await expect(page.getByLabel("저장소", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "← 소개로 돌아가기" }).click();
+  await expect(page.getByRole("button", { name: "PR 검토 시작" })).toBeVisible();
+  expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
+});
+
 test("desktop summary focuses the top gap, supports detail navigation, and leaves no browser storage", async ({ page, context }) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => { if (!request.url().startsWith("http://127.0.0.1:3108/")) externalRequests.push(request.url()); });
@@ -79,17 +95,20 @@ test("desktop summary focuses the top gap, supports detail navigation, and leave
   const report = page.getByLabel("PR 증거 보고서");
   await expect(report).toBeVisible();
   await expect(report).toBeFocused();
-  await expect(page.getByRole("heading", { name: "대상 테스트 없음" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "요구사항 대상 테스트 증거 없음" })).toBeVisible();
   await expect(page.getByText("요구사항 GitHub Issue #42")).toBeVisible();
   await page.getByRole("button", { name: "후속 요청 복사" }).click();
   await expect(page.getByRole("status")).toHaveText("후속 요청을 클립보드에 복사했습니다.");
-  await page.getByRole("button", { name: "요구사항" }).click();
+  await page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }).click();
   await expect(page.locator("#concierge-panel-requirements")).toBeFocused();
+  await expect(page.getByRole("button", { name: "검토 요약으로" })).toBeVisible();
   await page.getByRole("button", { name: "테스트·CI" }).click();
   await expect(page.getByRole("heading", { name: "테스트와 CI" })).toBeVisible();
   await expect(page.getByLabel("CI 실행 상태: passed")).toBeVisible();
   await page.getByRole("button", { name: "증거 출처·제한사항" }).click();
   await expect(page.getByRole("heading", { name: "증거 출처·제한사항" })).toBeVisible();
+  await page.getByRole("button", { name: "검토 요약으로" }).click();
+  await expect(page.locator("#concierge-panel-summary")).toBeFocused();
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
   expect(await page.evaluate(async () => ({ caches: await caches.keys(), indexed: await indexedDB.databases().then((items) => items.map((item) => item.name)) }))).toEqual({ caches: [], indexed: [] });
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("Inspect the cited deterministic evidence only.");
@@ -115,6 +134,7 @@ test("durable tester session sends the bootstrap only in a bounded header and cl
     }) });
   });
   await page.goto("/concierge");
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await page.getByText("운영자 설정", { exact: true }).click();
   await page.getByRole("textbox", { name: "테스트 공간 ID (tenantId)" }).fill("tenant_alpha");
   await page.getByRole("textbox", { name: "테스터 계정 ID (memberId)" }).fill("member_owner");
@@ -136,6 +156,7 @@ test("durable tester session rejects malformed success payloads and still clears
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, tenantId: "tenant_other", privacy: "tenant-auth-session-cookie-only" }) });
   });
   await page.goto("/concierge");
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await page.getByText("운영자 설정", { exact: true }).click();
   await page.getByRole("textbox", { name: "테스트 공간 ID (tenantId)" }).fill("tenant_alpha");
   await page.getByRole("textbox", { name: "테스터 계정 ID (memberId)" }).fill("member_owner");
@@ -147,14 +168,12 @@ test("durable tester session rejects malformed success payloads and still clears
   expect(deleteCalls).toBe(2);
 });
 
-test("keyboard focus reaches report tabs and each selected detail panel", async ({ page }) => {
+test("keyboard focus reaches the detail gateway and selected detail panels", async ({ page }) => {
   await interceptSuccess(page);
   await page.goto("/concierge");
   await fillAndRun(page);
   await expect(page.getByLabel("PR 증거 보고서")).toBeFocused();
-  await tabUntil(page, page.getByRole("button", { name: "검토 요약" }));
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "요구사항" })).toBeFocused();
+  await tabUntil(page, page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }));
   await page.keyboard.press("Enter");
   await expect(page.locator("#concierge-panel-requirements")).toBeFocused();
   await tabUntil(page, page.getByRole("button", { name: "테스트·CI" }));
@@ -166,8 +185,11 @@ test("mobile shows the review brief first without horizontal overflow", async ({
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await interceptSuccess(page);
-  await page.goto("/concierge"); await fillAndRun(page);
-  await expect(page.getByRole("heading", { name: "대상 테스트 없음" })).toBeVisible();
+  await page.goto("/concierge");
+  await expect(page.locator(".welcome-scene .proof-buddy.hero")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await fillAndRun(page);
+  await expect(page.getByRole("heading", { name: "요구사항 대상 테스트 증거 없음" })).toBeVisible();
   const briefBox = await page.locator(".friendly-brief").boundingBox();
   expect(briefBox?.y ?? 9999).toBeLessThan(844);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -243,10 +265,10 @@ test("new PR control clears private report state", async ({ page }) => {
 
 test("unavailable, ambiguous, and failed-check fixtures never display met and retain bounded deterministic navigation", async ({ browser }) => {
   const cases = [
-    { report: fixture("unavailable"), task: "요구사항 확인 불가: 증거 수집 불가", gap: "증거 수집 불가" },
+    { report: fixture("unavailable"), task: "요구사항 확인 불가: 연결된 GitHub Issue 없음", gap: "증거 수집 불가" },
     { report: fixture("ambiguous"), task: "요구사항 확인 불가: 연결된 GitHub Issue가 여러 개", gap: "증거 수집 불가" },
     { report: fixture("available", "passed", "evidence_insufficient"), task: "요구사항 GitHub Issue #42", gap: "수집된 증거 불충분" },
-    { report: fixture("available", "failed"), task: "요구사항 GitHub Issue #42", gap: "CI 실행: 실패" }
+    { report: fixture("available", "failed"), task: "요구사항 GitHub Issue #42", gap: "테스트·빌드 실행 실패" }
   ];
   for (const { report, task, gap } of cases) {
     const context = await browser.newContext();
@@ -256,8 +278,27 @@ test("unavailable, ambiguous, and failed-check fixtures never display met and re
     await expect(page.getByText(task)).toBeVisible();
     await expect(page.getByRole("heading", { name: gap })).toBeVisible();
     await expect(page.getByRole("link").first()).toHaveAttribute("href", /github\.com\/acme\/private/);
-    await page.getByRole("button", { name: "요구사항" }).click();
+    await page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }).click();
     await expect(page.getByText("구현 증거 있음", { exact: true })).toHaveCount(0);
+    await context.close();
+  }
+});
+
+test("original-task failure reasons remain distinct instead of becoming one generic collection error", async ({ browser }) => {
+  const cases = [
+    ["linked_issue_inaccessible", "요구사항 확인 불가: 연결된 GitHub Issue 접근 불가"],
+    ["linked_issue_deleted_or_empty", "요구사항 확인 불가: 연결된 GitHub Issue 내용 없음"],
+    ["linked_reference_is_pull_request", "요구사항 확인 불가: 연결 참조가 Issue가 아닌 PR"]
+  ] as const;
+  for (const [reason, expected] of cases) {
+    const report: any = fixture("unavailable");
+    report.source.originalTask = { version: 1, status: "unavailable", sourceType: "linked_issue", sourceRef: "github_issue:42", reason };
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await interceptSuccess(page, report);
+    await page.goto("/concierge");
+    await fillAndRun(page);
+    await expect(page.getByText(expected, { exact: true })).toBeVisible();
     await context.close();
   }
 });

@@ -7,6 +7,21 @@ const conciergeReport = readFileSync("src/components/ConciergeReportView.tsx", "
 const feedback = readFileSync("src/components/ConciergeFeedbackForm.tsx", "utf8");
 const css = readFileSync("src/app/globals.css", "utf8");
 describe("concierge UI boundary", () => {
+  it("separates the welcome, setup, summary, and detail journey without browser persistence", () => {
+    expect(source).toContain("PR 검토 시작");
+    expect(source).toContain("검토할 PR을 선택하세요");
+    expect(conciergeReport).toContain("검토 요약 · 2단계");
+    expect(conciergeReport).toContain("상세 근거 · 3단계");
+    expect(conciergeReport).toContain("검토 요약으로");
+    expect(source).not.toContain("localStorage");
+    expect(source).not.toContain("sessionStorage");
+  });
+  it("keeps original-task reasons distinct in developer-facing copy", () => {
+    expect(conciergeReport).toContain('not_linked: "연결된 GitHub Issue 없음"');
+    expect(conciergeReport).toContain('linked_issue_inaccessible: "연결된 GitHub Issue 접근 불가"');
+    expect(conciergeReport).toContain('linked_issue_deleted_or_empty: "연결된 GitHub Issue 내용 없음"');
+    expect(conciergeReport).toContain('linked_reference_is_pull_request: "연결 참조가 Issue가 아닌 PR"');
+  });
   it("does not persist reports or expose generic share/comment actions", () => {
     expect(source).not.toContain("localStorage"); expect(source).not.toContain("saveReportToHistory");
     expect(source).toContain("<ConciergeReportView report={report}");

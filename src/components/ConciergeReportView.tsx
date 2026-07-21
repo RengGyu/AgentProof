@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   CheckCircle2,
   ChevronRight,
   Clipboard,
@@ -10,8 +11,7 @@ import {
   FlaskConical,
   Info,
   ListChecks,
-  ShieldCheck,
-  Sparkles
+  Search
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { getExecutionEvidenceItems } from "@/lib/execution-evidence";
@@ -62,36 +62,40 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
         </div>
       </header>
 
-      <nav className="concierge-view-tabs" aria-label="보고서 화면">
-        {([
-          ["summary", "검토 요약", ShieldCheck],
-          ["requirements", "요구사항", ListChecks],
-          ["checks", "테스트·CI", FlaskConical],
-          ["evidence", "증거 출처·제한사항", FileSearch]
-        ] as const).map(([value, label, Icon]) => (
-          <button
-            key={value}
-            type="button"
-            className={view === value ? "active" : ""}
-            aria-current={view === value ? "page" : undefined}
-            onClick={() => selectView(value)}
-          >
-            <Icon size={16} />{label}
-          </button>
-        ))}
-      </nav>
+      {view === "summary" ? <div className="report-step-strip"><span>검토 요약 · 2단계</span><p>가장 중요한 항목만 먼저 확인합니다.</p></div> : <div className="detail-page-navigation">
+        <button className="detail-back" type="button" onClick={() => selectView("summary")}><ArrowLeft size={17} />검토 요약으로</button>
+        <div className="detail-page-title"><p className="eyebrow">상세 근거 · 3단계</p><strong>필요한 증거를 항목별로 확인하세요.</strong></div>
+        <span className="detail-truth-label"><Info size={14} />근거 보고서 · 병합/정확성 판정 아님</span>
+        <nav className="concierge-view-tabs detail-tabs" aria-label="상세 보고서 항목">
+          {([
+            ["requirements", "요구사항", ListChecks],
+            ["checks", "테스트·CI", FlaskConical],
+            ["evidence", "증거 출처·제한사항", FileSearch]
+          ] as const).map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              className={view === value ? "active" : ""}
+              aria-current={view === value ? "page" : undefined}
+              onClick={() => selectView(value)}
+            >
+              <Icon size={16} />{label}
+            </button>
+          ))}
+        </nav>
+      </div>}
 
       {view === "summary" ? (
-        <div id="concierge-panel-summary" className="concierge-view-panel" tabIndex={-1}>
+        <div id="concierge-panel-summary" className="concierge-view-panel" tabIndex={-1} role="region" aria-label="검토 요약">
           <div className={`friendly-brief gap-${gap.tone}`}>
-            <div className="friendly-brief-kicker"><Sparkles size={16} aria-hidden="true" />우선 검토 항목</div>
+            <div className="friendly-brief-kicker"><Search size={16} aria-hidden="true" />우선 검토 항목</div>
             <h2>{topGap ? gap.headline : "우선 확인할 증거 공백을 찾지 못했습니다"}</h2>
             <p className="friendly-brief-summary">
               {topGap ? gap.help : "수집된 증거 범위에서 우선 검토할 공백을 찾지 못했습니다. 이것이 구현의 정확성이나 완전성을 증명하지는 않습니다."}
             </p>
             {topGap?.summary ? <details className="friendly-evidence-disclosure"><summary>세부 판정 원문</summary><p className="source-text">{topGap.summary}</p></details> : null}
             {topGap?.evidenceRefs.length ? (
-              <span className="evidence-count"><FileSearch size={14} />증거 출처 {topGap.evidenceRefs.length}개</span>
+              <button type="button" className="evidence-count" onClick={() => selectView("evidence")}><FileSearch size={14} />증거 출처 {topGap.evidenceRefs.length}개 보기</button>
             ) : null}
           </div>
 
@@ -139,14 +143,19 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
             <div><strong>사람의 검토를 돕는 보고서입니다.</strong><p>증거 부족은 구현 실패를 뜻하지 않습니다. 이 보고서는 병합 여부를 결정하거나 구현이 맞다고 보증하지 않습니다.</p></div>
           </div>
 
-          <button className="button primary friendly-detail-button" type="button" onClick={() => selectView("requirements")}>
-            상세 근거 보기 <ChevronRight size={17} />
-          </button>
+          <section className="detail-gateway" aria-labelledby="detail-gateway-title">
+            <div className="detail-gateway-heading"><p className="eyebrow">더 확인하려면</p><h2 id="detail-gateway-title">상세 근거를 항목별로 열어보세요</h2></div>
+            <div className="detail-gateway-grid">
+              <button type="button" onClick={() => selectView("requirements")}><ListChecks size={20} /><span><strong>요구사항</strong><small>{report.requirements.length}개 항목의 구현 근거</small></span><ChevronRight size={18} /></button>
+              <button type="button" onClick={() => selectView("checks")}><FlaskConical size={20} /><span><strong>테스트·CI</strong><small>실행 결과와 누락 테스트</small></span><ChevronRight size={18} /></button>
+              <button type="button" onClick={() => selectView("evidence")}><FileSearch size={20} /><span><strong>증거 출처·제한사항</strong><small>참조한 근거와 확인 범위</small></span><ChevronRight size={18} /></button>
+            </div>
+          </section>
         </div>
       ) : null}
 
       {view === "requirements" ? (
-        <div id="concierge-panel-requirements" className="concierge-view-panel detail-panel" tabIndex={-1}>
+        <div id="concierge-panel-requirements" className="concierge-view-panel detail-panel" tabIndex={-1} role="region" aria-label="요구사항 상세 근거">
           <div className="detail-heading"><div><p className="eyebrow">요구사항</p><h2>요구사항별 확인 근거</h2></div><span>{report.requirements.length}개</span></div>
           <div className="friendly-requirements">
             {report.requirements.map((requirement) => (
@@ -165,7 +174,7 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
       ) : null}
 
       {view === "checks" ? (
-        <div id="concierge-panel-checks" className="concierge-view-panel detail-panel" tabIndex={-1}>
+        <div id="concierge-panel-checks" className="concierge-view-panel detail-panel" tabIndex={-1} role="region" aria-label="테스트와 CI 상세 근거">
           <div className="detail-heading"><div><p className="eyebrow">실행 결과</p><h2>테스트와 CI</h2></div></div>
           <div className="check-summary-grid">
             <StatusBox label="CI 실행" value={report.testing.ciStatus} />
@@ -184,7 +193,7 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
       ) : null}
 
       {view === "evidence" ? (
-        <div id="concierge-panel-evidence" className="concierge-view-panel detail-panel" tabIndex={-1}>
+        <div id="concierge-panel-evidence" className="concierge-view-panel detail-panel" tabIndex={-1} role="region" aria-label="증거 출처와 제한사항 상세 근거">
           <div className="detail-heading"><div><p className="eyebrow">출처와 경계</p><h2>증거 출처·제한사항</h2></div><span>증거 출처 {report.evidenceIndex.length}개</span></div>
           <section className="friendly-detail-section">
             <h3>보고서가 참조한 근거</h3>
@@ -218,8 +227,18 @@ function StatusBox({ label, value }: { label: string; value: CheckStatus }) {
 
 function describeTaskSource(report: VerificationReport): { label: string; tone: "known" | "unclear" } {
   const task = report.source.originalTask;
-  if (!task || task.status === "unavailable") return { label: "요구사항 확인 불가: 증거 수집 불가", tone: "unclear" };
-  if (task.status === "ambiguous") return { label: "요구사항 확인 불가: 연결된 GitHub Issue가 여러 개", tone: "unclear" };
+  if (!task) return { label: "요구사항 확인 불가: 출처 정보 없음", tone: "unclear" };
+  if (task.status !== "available") {
+    const reasonLabels = {
+      not_linked: "연결된 GitHub Issue 없음",
+      multiple_linked_issues: "연결된 GitHub Issue가 여러 개",
+      linked_issue_inaccessible: "연결된 GitHub Issue 접근 불가",
+      linked_issue_deleted_or_empty: "연결된 GitHub Issue 내용 없음",
+      linked_reference_is_pull_request: "연결 참조가 Issue가 아닌 PR",
+      none: "출처 상태 확인 불가"
+    } as const;
+    return { label: `요구사항 확인 불가: ${reasonLabels[task.reason]}`, tone: "unclear" };
+  }
   if (task.sourceType === "explicit_task") return { label: "직접 입력한 요구사항", tone: "known" };
   const issue = task.sourceRef?.match(/(?:github_issue:|#)(\d+)/)?.[1];
   return { label: issue ? `요구사항 GitHub Issue #${issue}` : "연결된 GitHub Issue 사용", tone: "known" };
@@ -228,11 +247,11 @@ function describeTaskSource(report: VerificationReport): { label: string; tone: 
 function describeGap(kind?: ProofGapKind): { headline: string; help: string; tone: string } {
   const labels: Record<ProofGapKind, { headline: string; help: string; tone: string }> = {
     missing_implementation: { headline: "구현 증거 없음", help: "요구사항을 구현한 파일 또는 변경 흔적을 확인해 주세요.", tone: "warning" },
-    missing_targeted_test: { headline: "대상 테스트 없음", help: "요구사항을 직접 검증하는 테스트와 CI 실행 결과를 확인해 주세요.", tone: "warning" },
-    missing_execution: { headline: "CI 실행 결과 없음", help: "실행 대상과 관찰 가능한 CI 실행 결과를 확인해 주세요.", tone: "unclear" },
-    failed_execution: { headline: "CI 실행: 실패", help: "실패한 CI check와 파일 위치를 확인해 원인을 검토해 주세요.", tone: "danger" },
+    missing_targeted_test: { headline: "요구사항 대상 테스트 증거 없음", help: "이 요구사항에 연결된 테스트 파일 증거와 실행 결과를 확인해 주세요.", tone: "warning" },
+    missing_execution: { headline: "테스트·빌드 실행 증거 없음", help: "실행 대상과 관찰 가능한 테스트·빌드 결과를 확인해 주세요.", tone: "unclear" },
+    failed_execution: { headline: "테스트·빌드 실행 실패", help: "실패한 check와 파일 위치를 확인해 원인을 검토해 주세요.", tone: "danger" },
     ambiguous_requirement: { headline: "요구사항 확인 불가", help: "구현 판단 전에 원래 요청 또는 승인 조건을 확인해 주세요.", tone: "unclear" },
-    self_reported_test_gap: { headline: "PR 설명에 대상 테스트 없음", help: "PR 설명과 실제 테스트 증거가 일치하는지 확인해 주세요.", tone: "warning" },
+    self_reported_test_gap: { headline: "PR 설명에서 테스트 공백 언급", help: "PR 설명의 테스트 관련 한계와 실제 테스트 증거가 일치하는지 확인해 주세요.", tone: "warning" },
     evidence_unavailable: { headline: "증거 수집 불가", help: "GitHub 권한, 연결된 GitHub Issue, CI check 제공 여부를 확인해 주세요.", tone: "unclear" },
     evidence_insufficient: { headline: "수집된 증거 불충분", help: "수집한 증거 범위와 추가로 필요한 확인 항목을 검토해 주세요.", tone: "unclear" },
     visual_proof_missing: { headline: "화면 검증 증거 없음", help: "스크린샷 또는 재현 가능한 시각 검증 결과를 확인해 주세요.", tone: "warning" }
