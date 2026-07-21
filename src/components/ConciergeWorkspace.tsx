@@ -6,10 +6,12 @@ import { ConciergeReportView } from "./ConciergeReportView";
 import { ConciergeFeedbackForm } from "./ConciergeFeedbackForm";
 import type { VerificationReport } from "@/lib/types";
 
+const DEFAULT_BETA_TENANT_ID = "tenant_alpha";
+
 export function ConciergeWorkspace() {
   const [started, setStarted] = useState(false);
   const [form, setForm] = useState({ repositoryFullName: "", pullRequestNumber: "" });
-  const [tenantId, setTenantId] = useState("");
+  const [tenantId, setTenantId] = useState(DEFAULT_BETA_TENANT_ID);
   const [sessionMemberId, setSessionMemberId] = useState("");
   const [bootstrapToken, setBootstrapToken] = useState("");
   const [sessionActive, setSessionActive] = useState(false);
@@ -69,9 +71,9 @@ export function ConciergeWorkspace() {
   async function endSession() {
     try {
       const revoke = await revokeBrowserSession();
-      setSessionActive(false); setTenantId(""); setSessionMemberId(""); setBootstrapToken(""); resetWorkspace(revoke.ok ? null : revoke.code, true);
+      setSessionActive(false); setTenantId(DEFAULT_BETA_TENANT_ID); setSessionMemberId(""); setBootstrapToken(""); resetWorkspace(revoke.ok ? null : revoke.code, true);
     } catch {
-      setSessionActive(false); setTenantId(""); setSessionMemberId(""); setBootstrapToken(""); resetWorkspace("session_revoke_unconfirmed", true);
+      setSessionActive(false); setTenantId(DEFAULT_BETA_TENANT_ID); setSessionMemberId(""); setBootstrapToken(""); resetWorkspace("session_revoke_unconfirmed", true);
     }
   }
 
@@ -151,7 +153,7 @@ export function ConciergeWorkspace() {
           <p>처음 한 번만 베타 세션을 시작합니다. GitHub App 설치 ID와 저장소 ID는 서버가 확인하므로 입력하지 않습니다.</p>
           <section className="friendly-session" aria-labelledby="concierge-session-title">
             <strong id="concierge-session-title">베타 로그인</strong><p>세션 시작 코드는 브라우저 메모리에서만 사용하며 성공·실패 후 즉시 지웁니다.</p>
-            <div className="grid-two"><label className="field"><span>베타 공간 ID</span><input className="input" aria-label="베타 공간 ID" value={tenantId} onChange={(event) => setTenantId(event.target.value)} autoComplete="off" /></label><label className="field"><span>테스터 계정 ID</span><input className="input" aria-label="테스터 계정 ID" value={sessionMemberId} onChange={(event) => setSessionMemberId(event.target.value)} autoComplete="off" /></label><label className="field"><span>일회용 세션 시작 코드</span><input className="input" aria-label="일회용 세션 시작 코드" type="password" value={bootstrapToken} onChange={(event) => setBootstrapToken(event.target.value)} autoComplete="off" /></label></div>
+            <div className="grid-two"><label className="field"><span>베타 공간 ID</span><input className="input" aria-label="베타 공간 ID" value={tenantId} onChange={(event) => setTenantId(event.target.value)} autoComplete="off" /><small>현재 owner 베타 기본값이 미리 입력되어 있습니다.</small></label><label className="field"><span>테스터 계정 ID</span><input className="input" aria-label="테스터 계정 ID" value={sessionMemberId} onChange={(event) => setSessionMemberId(event.target.value)} autoComplete="off" /></label><label className="field"><span>일회용 세션 시작 코드</span><input className="input" aria-label="일회용 세션 시작 코드" type="password" value={bootstrapToken} onChange={(event) => setBootstrapToken(event.target.value)} autoComplete="off" /></label></div>
             <div className="concierge-session-actions"><button className="button compact" disabled={sessionLoading || sessionActive || !tenantId.trim() || !sessionMemberId.trim() || !bootstrapToken.trim()} onClick={startSession}>{sessionLoading ? "로그인 확인 중" : sessionActive ? "베타 로그인됨" : "베타 로그인"}</button>{sessionActive ? <button className="button compact" onClick={endSession}>세션 종료</button> : null}</div>
           </section>
         </details>

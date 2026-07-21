@@ -30,6 +30,8 @@ describe("concierge UI boundary", () => {
     expect(conciergeReport).not.toContain("postGitHubComment");
   });
   it("starts only a durable same-origin session and clears the bootstrap input", () => {
+    expect(source).toContain('const DEFAULT_BETA_TENANT_ID = "tenant_alpha"');
+    expect(source).toContain("useState(DEFAULT_BETA_TENANT_ID)");
     expect(source).toContain('"/api/tenants/auth/session"');
     expect(source).toContain('"x-agentproof-tenant-auth-token": bootstrapToken');
     expect(source).toContain('credentials: "same-origin"');
