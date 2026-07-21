@@ -305,6 +305,8 @@ describe("buildPullRequestInput", () => {
 
     expect(input.taskSource).toBe("task");
     expect(input.taskText).toBe("Acceptance criteria: preserve the pasted task.");
+    expect(input.originalTask).toEqual({ version: 1, status: "available", sourceType: "explicit_task", reason: "none" });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/42"))).toBe(false);
     expect(JSON.stringify(input)).not.toContain("Issue title should not override pasted task");
   });
 
@@ -379,7 +381,8 @@ describe("buildPullRequestInput", () => {
     expect(input.taskText).toBe("");
     expect(input.taskSource).toBeUndefined();
     expect(input.limitations?.join(" ")).toContain("Linked issue acme/repo#42 could not be fetched");
-    expect(input.limitations?.join(" ")).toContain("fell back to PR description");
+    expect(input.limitations?.join(" ")).toContain("PR description remains context-only");
+    expect(input.originalTask).toMatchObject({ status: "unavailable", sourceType: "linked_issue", reason: "linked_issue_inaccessible" });
     expect(serialized).not.toContain("github_pat_secret_should_not_leak");
     expect(serialized).not.toContain("not found with");
   });

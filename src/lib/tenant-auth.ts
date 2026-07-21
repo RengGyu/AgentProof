@@ -86,6 +86,20 @@ export class TenantAuthStoreError extends Error {
   }
 }
 
+export class TenantAuthSessionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TenantAuthSessionConflictError";
+  }
+}
+
+export function getTenantAuthSessionStoreStatus(env = process.env): { configured: boolean; durable: boolean; mode: "supabase" | "memory" | "disabled" } {
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) return { configured: true, durable: true, mode: "supabase" };
+  if (truthy(env.AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY)) return { configured: true, durable: false, mode: "memory" };
+  return { configured: false, durable: false, mode: "disabled" };
+}
+
 export async function createTenantAuthSession(
   input: { tenantId?: unknown; memberId?: unknown; bootstrapToken?: string | null },
   env = process.env,
@@ -135,21 +149,34 @@ export async function verifyTenantAuthAccess(
   now = Date.now()
 ): Promise<TenantAuthAccessResult> {
   const tenantId = normalizeTenantId(input.tenantId);
+  if (!tenantId) return { authorized: false };
+  const access = await resolveTenantAuthAccess({ cookieHeader: input.cookieHeader }, env, now);
+  return access.authorized && access.tenantId === tenantId ? access : { authorized: false };
+}
+
+/**
+ * Resolves the tenant from the opaque, HttpOnly durable-session cookie.
+ * Browser-provided tenant identifiers must not be used as authorization facts.
+ */
+export async function resolveTenantAuthAccess(
+  input: { cookieHeader?: string | null },
+  env = process.env,
+  now = Date.now()
+): Promise<TenantAuthAccessResult> {
   const sessionToken = readCookie(input.cookieHeader, TENANT_AUTH_SESSION_COOKIE);
-  if (!tenantId || !sessionToken) return { authorized: false };
+  if (!sessionToken) return { authorized: false };
 
   const record = await findTenantAuthSession({ tokenHash: hashToken(sessionToken) }, env);
   if (!record) return { authorized: false };
-  if (record.tenantId !== tenantId) return { authorized: false };
   if (Date.parse(record.expiresAt) <= now) return { authorized: false };
   if (record.revokedAt) return { authorized: false };
 
-  const member = await readActiveTenantMember({ tenantId, memberId: record.memberId }, env);
+  const member = await readActiveTenantMember({ tenantId: record.tenantId, memberId: record.memberId }, env);
   if (!member) return { authorized: false };
 
   return {
     authorized: true,
-    tenantId,
+    tenantId: record.tenantId,
     memberId: record.memberId,
     role: member.role,
     method: "durable-session",
@@ -252,14 +279,29 @@ function normalizeTenantAuthBootstrapRecord(input: TenantAuthBootstrapInput): Te
 async function storeTenantAuthSession(record: TenantAuthSessionRecord, env = process.env): Promise<void> {
   const config = getTenantAuthSessionStoreConfig(env);
   if (config) {
-    const response = await tenantAuthFetch(config, "", {
+    const response = await tenantAuthRpcFetch(config, "agentproof_create_tenant_auth_session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(toSupabaseTenantAuthSessionRow(record))
+      body: JSON.stringify({
+        p_id: record.id,
+        p_token_hash: record.tokenHash,
+        p_tenant_id: record.tenantId,
+        p_member_id: record.memberId,
+        p_created_at: record.createdAt,
+        p_expires_at: record.expiresAt
+      })
     });
     if (!response.ok) {
       throw new TenantAuthStoreError(`Tenant auth session insert failed with HTTP ${response.status}.`);
     }
+    const payload = await response.json().catch(() => null) as unknown;
+    if (!Array.isArray(payload) || payload.length !== 1 || !payload[0] || typeof payload[0] !== "object"
+      || Object.keys(payload[0]).length !== 1 || typeof (payload[0] as { outcome?: unknown }).outcome !== "string") {
+      throw new TenantAuthStoreError("Tenant auth session creation response is malformed.");
+    }
+    const outcome = (payload[0] as { outcome: string }).outcome;
+    if (outcome === "active_exists") throw new TenantAuthSessionConflictError("A durable tenant auth session is already active.");
+    if (outcome !== "created") throw new TenantAuthStoreError("Tenant auth session creation outcome is invalid.");
     return;
   }
 
@@ -267,7 +309,14 @@ async function storeTenantAuthSession(record: TenantAuthSessionRecord, env = pro
     throw new TenantAuthStoreError("Tenant auth session store is not configured.");
   }
 
-  tenantAuthSessionStore().set(record.tokenHash, record);
+  const store = tenantAuthSessionStore();
+  const now = Date.parse(record.createdAt);
+  for (const [hash, existing] of store) {
+    if (existing.tenantId !== record.tenantId || existing.memberId !== record.memberId || existing.revokedAt) continue;
+    if (Date.parse(existing.expiresAt) > now) throw new TenantAuthSessionConflictError("A durable tenant auth session is already active.");
+    store.set(hash, { ...existing, revokedAt: record.createdAt });
+  }
+  store.set(record.tokenHash, record);
 }
 
 async function findTenantAuthSession(
@@ -297,14 +346,20 @@ async function findTenantAuthSession(
 async function revokeTenantAuthSessionByHash(tokenHash: string, revokedAt: string, env = process.env): Promise<void> {
   const config = getTenantAuthSessionStoreConfig(env);
   if (config) {
-    const params = new URLSearchParams({ token_hash: `eq.${tokenHash}` });
+    const params = new URLSearchParams({ token_hash: `eq.${tokenHash}`, select: "id,revoked_at" });
     const response = await tenantAuthFetch(config, `?${params.toString()}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify({ revoked_at: revokedAt })
     });
     if (!response.ok) {
       throw new TenantAuthStoreError(`Tenant auth session revoke failed with HTTP ${response.status}.`);
+    }
+    const rows = await response.json().catch(() => null) as unknown;
+    if (!Array.isArray(rows) || rows.length !== 1 || !rows[0] || typeof rows[0] !== "object"
+      || normalizeId((rows[0] as SupabaseTenantAuthSessionRow).id) === null
+      || normalizeIsoDate((rows[0] as SupabaseTenantAuthSessionRow).revoked_at) !== revokedAt) {
+      throw new TenantAuthStoreError("Tenant auth session revoke was not durably confirmed.");
     }
     return;
   }
@@ -329,6 +384,18 @@ function tenantAuthFetch(config: TenantAuthSessionStoreConfig, query: string, in
   });
 }
 
+function tenantAuthRpcFetch(config: TenantAuthSessionStoreConfig, rpcName: string, init: RequestInit) {
+  return fetch(`${config.url}/rest/v1/rpc/${encodeURIComponent(rpcName)}`, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      ...(init.headers ?? {})
+    }
+  });
+}
+
 function getTenantAuthSessionStoreConfig(env = process.env): TenantAuthSessionStoreConfig | null {
   const url = env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
   const serviceRoleKey =
@@ -347,18 +414,6 @@ function getTenantAuthSessionStoreConfig(env = process.env): TenantAuthSessionSt
     url: trimTrailingSlash(url),
     serviceRoleKey,
     table: env.AGENTPROOF_TENANT_AUTH_SESSIONS_TABLE || DEFAULT_TENANT_AUTH_SESSIONS_TABLE
-  };
-}
-
-function toSupabaseTenantAuthSessionRow(record: TenantAuthSessionRecord) {
-  return {
-    id: record.id,
-    token_hash: record.tokenHash,
-    tenant_id: record.tenantId,
-    member_id: record.memberId,
-    created_at: record.createdAt,
-    expires_at: record.expiresAt,
-    revoked_at: record.revokedAt ?? null
   };
 }
 

@@ -12,6 +12,7 @@ import {
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import { redactSecrets } from "./redact";
+import { buildDecisionCard } from "./decision-card";
 import type {
   CheckStatus,
   EvidenceItem,
@@ -35,6 +36,9 @@ const MAX_EVIDENCE_REFS_PER_FIELD = 50;
 const MAX_SCOPE_FINDINGS = 100;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
+  const authoritativeRequirementContext = input.originalTask?.status === "available"
+    ? input.description
+    : "";
   const evidenceBuild = buildEvidenceIndexResult(
     input.taskText,
     input.description,
@@ -44,7 +48,14 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     input.taskSource
   );
   const evidenceIndex = evidenceBuild.items;
-  const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+  const authoritativeRequirementEvidence = extractRequirementEvidence(input.taskText, authoritativeRequirementContext, input.taskSource);
+  const contextualEvidence = input.originalTask?.status === "available"
+    ? authoritativeRequirementEvidence
+    : extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+  const requirementEvidence = {
+    ...authoritativeRequirementEvidence,
+    contexts: contextualEvidence.contexts
+  };
   const requirements = requirementEvidence.requirements;
   const ciStatus = aggregateStatus(input.checks, input.logs);
   const rawRequirementFindings = requirements.map((requirement) =>
@@ -78,7 +89,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks, proofGraph);
   const claims = extractClaims(input.description, evidenceIndex);
 
-  return {
+  const report: VerificationReport = {
     analysisId: `ap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     source: {
@@ -87,7 +98,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
       author: input.author ? redactSecrets(input.author) : undefined,
       baseBranch: input.baseBranch ? redactSecrets(input.baseBranch) : undefined,
       headBranch: input.headBranch ? redactSecrets(input.headBranch) : undefined,
-      provenance: input.sourceProvenance
+      provenance: input.sourceProvenance,
+      originalTask: input.originalTask
     },
     summary: {
       oneLine: summarize(priority, evidenceCoverage, topRisks),
@@ -120,6 +132,9 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     evidenceIndex,
     limitations
   };
+  const decisionCard = buildDecisionCard(report);
+  report.decisionCard = decisionCard;
+  return report;
 }
 
 function sanitizeSourceUrl(value: string | undefined): string | undefined {
@@ -144,6 +159,20 @@ function evaluateRequirement(
   evidenceIndex: EvidenceItem[],
   input: PullRequestInput
 ): RequirementFinding {
+  if (input.originalTask && input.originalTask.status !== "available") {
+    const refs = sourceEvidenceRefs(evidenceIndex);
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "unclear",
+      evidenceRefs: refs,
+      gaps: [input.originalTask.status === "ambiguous"
+        ? "The original task source is ambiguous, so requirement satisfaction cannot be verified."
+        : "The original task source is unavailable, so requirement satisfaction cannot be verified."],
+      reviewerNote: "Fetch or paste one authoritative original issue/task before treating this requirement as satisfied.",
+      confidence: 0.2
+    };
+  }
   if (isUntrustedPrDescriptionRequirementSource(requirement, input)) {
     const refs = sourceEvidenceRefs(evidenceIndex);
 
@@ -646,6 +675,15 @@ function buildProofGraph(
       });
     }
 
+    if (finding?.status === "partial" && gapSignals.length === 0 && finding.evidenceRefs.length > 0) {
+      gapSignals.push({
+        kind: "evidence_insufficient",
+        severity: "medium",
+        message: "Collected deterministic evidence only partially supports this requirement; no narrower proof gap was derived.",
+        evidenceRefs: uniqueRefs(finding.evidenceRefs).slice(0, 8)
+      });
+    }
+
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -700,6 +738,7 @@ function applyProofGraphToRequirements(
     const gapMessages = node.gapSignals.map((gap) => gap.message);
     const hasHardGap = node.gapSignals.some((gap) => gap.severity === "blocker" || gap.severity === "high");
     const hasEvidenceUnavailable = node.gapSignals.some((gap) => gap.kind === "evidence_unavailable");
+    const hasEvidenceInsufficient = node.gapSignals.some((gap) => gap.kind === "evidence_insufficient");
     const status = finding.status === "met" && hasHardGap
       ? "partial"
       : finding.status === "missing" && hasEvidenceUnavailable
@@ -722,8 +761,10 @@ function applyProofGraphToRequirements(
       reviewerNote: hasHardGap
         ? `${finding.reviewerNote} Review implementation, targeted test, and execution proof together before trusting this requirement.`
         : hasEvidenceUnavailable
-          ? `${finding.reviewerNote} Treat unavailable file or patch evidence as a collection gap, not proof that implementation is absent.`
-        : finding.reviewerNote
+          ? `${finding.reviewerNote} Treat unavailable deterministic evidence as a collection gap, not proof that implementation is absent.`
+          : hasEvidenceInsufficient
+            ? `${finding.reviewerNote} Treat partial deterministic support as insufficient proof, not proof of correctness or failure.`
+          : finding.reviewerNote
     };
   });
 }
@@ -1428,6 +1469,7 @@ function buildReviewPriority(
       gap.kind === "missing_targeted_test" ||
       gap.kind === "self_reported_test_gap" ||
       gap.kind === "evidence_unavailable" ||
+      gap.kind === "evidence_insufficient" ||
       gap.kind === "failed_execution"
     )
     .slice(0, 6);
@@ -1791,11 +1833,15 @@ function buildTopRisks(
   const risks: string[] = [];
   const highProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.severity === "high" || gap.severity === "blocker");
   const unavailableProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.kind === "evidence_unavailable");
+  const insufficientProofGaps = proofGraph.nodes.flatMap((node) => node.gapSignals).filter((gap) => gap.kind === "evidence_insufficient");
 
   if (ciStatus === "failed") risks.push("Test/build execution failed, so the PR is not proven ready.");
   if (hasNonExecutionCheckFailures) risks.push("Static or merge-gate checks failed outside test/build proof.");
   if (unavailableProofGaps.length > 0) {
-    risks.push("Some implementation proof is unavailable because file or patch evidence could not be collected.");
+    risks.push("Some required evidence could not be collected.");
+  }
+  if (insufficientProofGaps.length > 0) {
+    risks.push("Some requirements have collected evidence that is not yet sufficient proof.");
   }
   if (highProofGaps.some((gap) => gap.kind === "missing_targeted_test" || gap.kind === "self_reported_test_gap")) {
     risks.push("Requirement-level proof graph found missing targeted proof.");

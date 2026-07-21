@@ -2,7 +2,9 @@ import {
   clearTenantAuthSessionCookie,
   createTenantAuthSession,
   revokeTenantAuthSession,
+  TENANT_AUTH_SESSION_COOKIE,
   TenantAuthError,
+  TenantAuthSessionConflictError,
   TenantAuthStoreError
 } from "@/lib/tenant-auth";
 import { recordAuditEvent } from "@/lib/audit-log";
@@ -42,6 +44,16 @@ export async function POST(request: Request) {
   }
 
   const bootstrapToken = request.headers.get("x-agentproof-tenant-auth-token");
+  const cookieHeader = request.headers.get("cookie");
+  const hadExistingSessionCookie = hasNamedCookie(cookieHeader, TENANT_AUTH_SESSION_COOKIE);
+
+  if (hadExistingSessionCookie) {
+    await recordTenantAuthFailure({ tenantId: body.tenantId, statusCode: 409, code: "session_cookie_already_present" });
+    return noStoreJson({
+      error: "End the existing durable browser session before starting another.",
+      code: "tenant_auth_session_already_present"
+    }, { status: 409 });
+  }
 
   try {
     const session = await createTenantAuthSession({
@@ -64,6 +76,14 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
+    if (error instanceof TenantAuthSessionConflictError) {
+      await recordTenantAuthFailure({ tenantId: body.tenantId, statusCode: 409, code: "active_session_exists" });
+      return noStoreJson({
+        error: "A durable tester session is already active for this member.",
+        code: "tenant_auth_session_already_active"
+      }, { status: 409 });
+    }
+
     if (error instanceof TenantAuthStoreError) {
       await recordTenantAuthFailure({
         tenantId: body.tenantId,
@@ -92,6 +112,11 @@ export async function POST(request: Request) {
   }
 }
 
+function hasNamedCookie(cookieHeader: string | null, name: string): boolean {
+  if (!cookieHeader) return false;
+  return cookieHeader.split(";").some((part) => part.trim().startsWith(`${name}=`));
+}
+
 export async function DELETE(request: Request) {
   const csrf = verifySameOriginMutationRequest(request);
   if (!csrf.ok) {
@@ -103,6 +128,15 @@ export async function DELETE(request: Request) {
     await revokeTenantAuthSession({ cookieHeader: request.headers.get("cookie") });
   } catch (error) {
     if (!(error instanceof TenantAuthStoreError)) throw error;
+    await recordTenantAuthFailure({ statusCode: 503, code: "session_revoke_unconfirmed" });
+    return noStoreJson({
+      error: "The browser cookie was cleared, but durable session revocation could not be confirmed.",
+      code: "tenant_auth_session_revoke_unconfirmed",
+      deleted: false
+    }, {
+      status: 503,
+      headers: { "Set-Cookie": clearTenantAuthSessionCookie() }
+    });
   }
 
   return noStoreJson({

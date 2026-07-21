@@ -256,6 +256,20 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("proofGraph.summary.gapCount must match proofGraph.nodes");
   });
 
+  it("fails closed when a deterministic gap lacks provenance or is mislabeled as zero-gap", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    const gap = report.proofGraph.nodes.flatMap((node) => node.gapSignals)[0];
+    expect(gap).toBeDefined();
+    if (!gap) return;
+    gap.evidenceRefs = [];
+    report.decisionCard = { ...report.decisionCard!, topGap: null, reprompt: null };
+
+    const result = validateVerificationReport(report, { mode: "full" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("must contain deterministic provenance");
+    expect(result.errors.join("\n")).toContain("decisionCard.topGap is required when deterministic proof gaps exist");
+  });
+
   it("rejects proofGraph nodes that do not map to report requirements", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     report.proofGraph.nodes[0].requirementId = "req_missing";

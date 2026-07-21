@@ -762,6 +762,8 @@ function proofPlanTextForGap(kind: string): string {
       return "Ask a human to identify the exact source-of-truth sentence for this requirement.";
     case "evidence_unavailable":
       return "Record which evidence source was unavailable before interpreting the proof gap.";
+    case "evidence_insufficient":
+      return "Ask for the smallest additional deterministic proof tied to this requirement.";
     case "visual_proof_missing":
       return "Ask for bounded visual proof that demonstrates the changed behavior.";
     default:
@@ -783,6 +785,8 @@ function missingProofText(kind: string): string {
       return "Requirement wording or source of truth is ambiguous.";
     case "evidence_unavailable":
       return "Required evidence could not be fetched and should not be treated as missing implementation.";
+    case "evidence_insufficient":
+      return "Collected evidence only partially supports this requirement and is not sufficient proof.";
     case "visual_proof_missing":
       return "Visual proof or screenshot evidence is missing.";
     default:

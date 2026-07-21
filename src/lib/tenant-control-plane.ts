@@ -64,6 +64,11 @@ export interface TenantRepositoryGrantCount {
   configured: boolean;
 }
 
+export interface ConciergeManualGrantRegistration {
+  outcome: "created" | "existing";
+  grant: TenantRepositoryGrant;
+}
+
 interface TenantRepositoryGrantInput {
   tenantId?: unknown;
   installationId?: unknown;
@@ -108,6 +113,14 @@ export class TenantControlPlaneStoreError extends Error {
     super(message);
     this.name = "TenantControlPlaneStoreError";
   }
+}
+
+export function getTenantRepositoryGrantStoreStatus(env = process.env): { configured: boolean; durable: boolean; mode: "supabase" | "memory" | "env" | "disabled" } {
+  const config = getTenantGrantStoreConfig(env);
+  if (config) return { configured: true, durable: true, mode: "supabase" };
+  if (truthy(env.AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY)) return { configured: true, durable: false, mode: "memory" };
+  if (env[TENANT_CONTROL_PLANE_GRANTS_ENV]?.trim()) return { configured: true, durable: false, mode: "env" };
+  return { configured: false, durable: false, mode: "disabled" };
 }
 
 export function getTenantControlPlaneSettings(env = process.env): TenantControlPlaneSettings {
@@ -191,6 +204,29 @@ export async function authorizeTenantRepositoryGrantAsync(
   return decisionForGrant(storedGrant, env);
 }
 
+/**
+ * Concierge deliberately bypasses legacy environment and memory grants. A
+ * private repository may be authorized only by the durable Supabase store.
+ */
+export async function authorizeDurableTenantRepositoryGrantAsync(
+  input: { installationId: number; repositoryFullName: string; repositoryId?: number },
+  env = process.env
+): Promise<TenantRepositoryGrantDecision> {
+  // Concierge activation is gated separately by Preview, the fail-closed kill
+  // switch, and complete same-project durable stores. This adapter deliberately
+  // ignores the legacy branch-scoped control-plane enable flag.
+  const store = getTenantRepositoryGrantStoreStatus(env);
+  if (!store.configured || !store.durable) return { enabled: true, required: true, reason: "grant-missing" };
+  const config = getTenantGrantStoreConfig(env);
+  if (!config) return { enabled: true, required: true, reason: "grant-missing" };
+  const storedGrant = await findSupabaseTenantRepositoryGrant(config, input);
+  if (!storedGrant) return { enabled: true, required: true, reason: "grant-missing" };
+  if (await isTenantDeletionActiveAsync({ tenantId: storedGrant.tenantId }, env)) {
+    return { enabled: true, required: true, grant: storedGrant, reason: "tenant-deletion-active" };
+  }
+  return decisionForGrant(storedGrant, env);
+}
+
 export function readTenantRepositoryGrants(env = process.env): TenantRepositoryGrant[] | null {
   const raw = env[TENANT_CONTROL_PLANE_GRANTS_ENV];
 
@@ -254,6 +290,61 @@ export async function createTenantRepositoryGrant(
   return grant;
 }
 
+/**
+ * Concierge is an operator-assisted manual path. Its repository grants are
+ * intentionally distinct from ordinary GitHub onboarding and can never turn
+ * on automation, saved reports, comments, or Slack notifications.
+ */
+export async function registerConciergeManualRepositoryGrant(
+  input: Pick<TenantRepositoryGrantInput, "tenantId" | "installationId" | "repositoryId" | "repositoryFullName">,
+  env = process.env
+): Promise<ConciergeManualGrantRegistration> {
+  const config = getTenantGrantStoreConfig(env);
+  if (!config) {
+    throw new TenantControlPlaneStoreError("Concierge manual grants require a durable tenant repository store.");
+  }
+  if (config.table !== DEFAULT_TENANT_REPOSITORY_GRANTS_TABLE) {
+    throw new TenantControlPlaneStoreError("Concierge manual grants require the canonical durable repository grant table.");
+  }
+  const grant = normalizeGrant(input);
+  if (!grant?.repositoryId) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant is invalid.");
+  }
+  await assertTenantDeletionNotActiveAsync({ tenantId: grant.tenantId }, env);
+
+  const response = await supabaseTenantGrantRpc(config, "agentproof_register_concierge_repository_grant", {
+    p_tenant_id: grant.tenantId,
+    p_installation_id: grant.installationId,
+    p_repository_id: grant.repositoryId,
+    p_repository_full_name: grant.repositoryFullName
+  });
+  if (!response.ok) {
+    throw new TenantControlPlaneStoreError(`Concierge manual repository grant store failed with HTTP ${response.status}.`);
+  }
+  const rows = await response.json().catch(() => null);
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response is invalid.");
+  }
+  const row = rows[0];
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response is invalid.");
+  }
+  const result = row as Record<string, unknown>;
+  const expected = ["analysis_enabled", "comment_enabled", "enabled", "installation_id", "outcome", "repository_full_name", "repository_id", "save_reports_enabled", "slack_notifications_enabled", "tenant_id"];
+  if (Object.keys(result).sort().join("\0") !== expected.slice().sort().join("\0") || (result.outcome !== "created" && result.outcome !== "existing")) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response is invalid.");
+  }
+  const stored = rowToTenantRepositoryGrant(result);
+  if (!stored
+    || stored.tenantId !== grant.tenantId
+    || stored.installationId !== grant.installationId
+    || stored.repositoryId !== grant.repositoryId
+    || stored.repositoryFullName.toLowerCase() !== grant.repositoryFullName.toLowerCase()) {
+    throw new TenantControlPlaneStoreError("Concierge manual repository grant response does not match the requested repository.");
+  }
+  return { outcome: result.outcome, grant: stored };
+}
+
 export function clearTenantRepositoryGrantsForTests() {
   tenantGrantMemoryStore().clear();
 }
@@ -280,6 +371,55 @@ export async function listTenantRepositoryGrants(
     .filter((grant) => grant.tenantId === tenantId)
     .sort(compareTenantRepositoryGrants)
     .slice(0, 500);
+}
+
+/**
+ * Human-beta isolation query. It asks the durable store for at most two
+ * enabled rows: one row proves the single-grant scope, while two rows prove
+ * that the tenant is not isolated. Malformed/truncated-normalization results
+ * throw instead of being silently dropped.
+ */
+export async function listTenantEnabledRepositoryGrantScope(
+  input: { tenantId?: unknown },
+  env = process.env
+): Promise<TenantRepositoryGrant[]> {
+  const tenantId = normalizeId(input.tenantId);
+  if (!tenantId) throw new TenantControlPlaneStoreError("Tenant id is invalid.");
+  const config = getTenantGrantStoreConfig(env);
+  if (config) {
+    const response = await supabaseTenantGrantFetch(config, [
+      `?tenant_id=eq.${encodeURIComponent(tenantId)}`,
+      "enabled=eq.true",
+      TENANT_REPOSITORY_GRANT_SELECT,
+      "order=repository_full_name.asc",
+      "limit=2"
+    ].join("&"), { method: "GET" });
+    if (!response.ok) throw new TenantControlPlaneStoreError(`Tenant enabled-grant scope failed with HTTP ${response.status}.`);
+    const rows = await response.json().catch(() => null) as unknown;
+    if (!Array.isArray(rows) || rows.length > 2) throw new TenantControlPlaneStoreError("Tenant enabled-grant scope response is invalid.");
+    if (rows.some((row) => !isExactTenantGrantScopeRow(row))) throw new TenantControlPlaneStoreError("Tenant enabled-grant scope response is malformed.");
+    const grants = rows.map((row) => rowToTenantRepositoryGrant(row));
+    if (grants.some((grant) => !grant || !grant.enabled)) throw new TenantControlPlaneStoreError("Tenant enabled-grant scope response is malformed.");
+    return grants as TenantRepositoryGrant[];
+  }
+  if (!truthy(env.AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY)) throw new TenantControlPlaneStoreError("Tenant repository grant store is not configured.");
+  return Array.from(tenantGrantMemoryStore().values()).filter((grant) => grant.tenantId === tenantId && grant.enabled).sort(compareTenantRepositoryGrants).slice(0, 2);
+}
+
+function isExactTenantGrantScopeRow(row: unknown): row is TenantRepositoryGrantRow {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+  const value = row as Record<string, unknown>;
+  const keys = ["analysis_enabled", "comment_enabled", "enabled", "installation_id", "repository_full_name", "repository_id", "save_reports_enabled", "slack_notifications_enabled", "tenant_id"];
+  return Object.keys(value).sort().join("\0") === keys.sort().join("\0")
+    && typeof value.tenant_id === "string"
+    && typeof value.installation_id === "number"
+    && typeof value.repository_id === "number"
+    && typeof value.repository_full_name === "string"
+    && value.enabled === true
+    && typeof value.analysis_enabled === "boolean"
+    && typeof value.comment_enabled === "boolean"
+    && typeof value.save_reports_enabled === "boolean"
+    && typeof value.slack_notifications_enabled === "boolean";
 }
 
 export async function countTenantRepositoryGrants(
@@ -744,6 +884,20 @@ async function supabaseTenantGrantFetch(config: TenantGrantStoreConfig, query: s
       Authorization: `Bearer ${config.serviceRoleKey}`,
       ...(init.headers ?? {})
     }
+  });
+}
+
+async function supabaseTenantGrantRpc(config: TenantGrantStoreConfig, name: string, body: Record<string, unknown>) {
+  return fetch(`${config.url}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(5_000),
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
   });
 }
 

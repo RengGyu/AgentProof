@@ -128,6 +128,25 @@ describe("/api/github/onboarding/repositories", () => {
     });
   });
 
+  it("preserves ordinary onboarding automation while optional save/comment settings default off", async () => {
+    stubOnboardingEnv();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubGlobal("fetch", mockRepositoryFetch());
+    const activationCookie = await createActivationCookie();
+    const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
+      method: "POST",
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ installationId: 321, repositoryId: 100, repositoryFullName: "RengGyu/AgentProof" })
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      settings: { analysisEnabled: true, saveReportsEnabled: false, commentEnabled: false },
+      next: "webhook_analysis_enabled_for_repository"
+    });
+  });
+
   it("rejects cross-origin grant creation before consuming activation or fetching GitHub", async () => {
     stubOnboardingEnv();
     vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");

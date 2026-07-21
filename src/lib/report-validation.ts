@@ -1,4 +1,5 @@
 import type { VerificationReport } from "./types";
+import { buildDecisionCard } from "./decision-card";
 import {
   hasPassingEvidenceStatusPrefix,
   isExecutionEvidenceSignal,
@@ -39,6 +40,7 @@ const PROOF_GAP_KINDS = new Set([
   "ambiguous_requirement",
   "self_reported_test_gap",
   "evidence_unavailable",
+  "evidence_insufficient",
   "visual_proof_missing"
 ]);
 const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
@@ -115,7 +117,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["authenticity"]
+    ["authenticity", "decisionCard"]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -133,6 +135,15 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateReviewPriority(report.reviewPriority, evidenceIds, errors);
   validateProofGraph(report.proofGraph, evidenceIds, evidenceById, requirementIds, mode, errors);
   validateReprompt(report.reprompt, errors);
+  validateDecisionCard(report.decisionCard, evidenceIds, report, errors);
+  if (report.decisionCard !== undefined) {
+    try {
+      const expected = buildDecisionCard(report as unknown as VerificationReport);
+      if (JSON.stringify(report.decisionCard) !== JSON.stringify(expected)) errors.push("decisionCard must match the deterministic Decision Card builder output.");
+    } catch {
+      errors.push("decisionCard could not be recomputed from the report.");
+    }
+  }
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
   validateAuthenticity(report.authenticity, errors);
   if (mode === "summary") {
@@ -185,17 +196,38 @@ function validateSource(value: unknown, errors: string[], requireSourceProvenanc
     return;
   }
 
-  requireKeys(value, ["title"], "source", errors, ["url", "author", "baseBranch", "headBranch", "provenance"]);
+  requireKeys(value, ["title"], "source", errors, ["url", "author", "baseBranch", "headBranch", "provenance", "originalTask"]);
   validateString(value.title, "source.title", LIMITS.sourceTitle, errors);
   validateOptionalString(value.url, "source.url", LIMITS.sourceUrl, errors);
   validateOptionalString(value.author, "source.author", LIMITS.sourceField, errors);
   validateOptionalString(value.baseBranch, "source.baseBranch", LIMITS.sourceField, errors);
   validateOptionalString(value.headBranch, "source.headBranch", LIMITS.sourceField, errors);
+  validateOriginalTask(value.originalTask, errors);
   if (value.provenance === undefined) {
     if (requireSourceProvenance) errors.push("source.provenance is required for this report.");
     return;
   }
   validateSourceProvenance(value.provenance, errors, requireSourceProvenance);
+}
+
+function validateOriginalTask(value: unknown, errors: string[]) {
+  if (value === undefined) return;
+  if (!isRecord(value)) { errors.push("source.originalTask must be an object."); return; }
+  requireKeys(value, ["version", "status", "sourceType", "reason"], "source.originalTask", errors, ["sourceRef"]);
+  if (value.version !== 1) errors.push("source.originalTask.version must be 1.");
+  if (value.status !== "available" && value.status !== "unavailable" && value.status !== "ambiguous") errors.push("source.originalTask.status is invalid.");
+  if (value.sourceType !== "explicit_task" && value.sourceType !== "linked_issue" && value.sourceType !== "none") errors.push("source.originalTask.sourceType is invalid.");
+  const reasons = new Set(["none", "not_linked", "multiple_linked_issues", "linked_issue_inaccessible", "linked_issue_deleted_or_empty", "linked_reference_is_pull_request"]);
+  if (!reasons.has(String(value.reason))) errors.push("source.originalTask.reason is invalid.");
+  validateOptionalString(value.sourceRef, "source.originalTask.sourceRef", 200, errors);
+  if (value.status === "available" && value.reason !== "none") errors.push("source.originalTask available status requires reason none.");
+  if (value.status === "available" && value.sourceType === "none") errors.push("source.originalTask available status requires an authoritative sourceType.");
+  if (value.status !== "available" && value.reason === "none") errors.push("source.originalTask unavailable or ambiguous status requires a bounded reason.");
+  if (value.status === "ambiguous" && (value.sourceType !== "none" || value.reason !== "multiple_linked_issues" || value.sourceRef !== undefined)) errors.push("source.originalTask ambiguous status must represent multiple linked issues without selecting a source.");
+  if (value.sourceType === "linked_issue" && typeof value.sourceRef !== "string") errors.push("source.originalTask linked_issue requires sourceRef.");
+  if (value.sourceType !== "linked_issue" && value.sourceRef !== undefined) errors.push("source.originalTask sourceRef is allowed only for linked_issue.");
+  if (value.sourceType === "none" && value.status === "unavailable" && value.reason !== "not_linked") errors.push("source.originalTask unavailable none source must use not_linked.");
+  if (value.sourceType === "linked_issue" && value.status === "unavailable" && !new Set(["linked_issue_inaccessible", "linked_issue_deleted_or_empty", "linked_reference_is_pull_request"]).has(String(value.reason))) errors.push("source.originalTask unavailable linked_issue reason is invalid.");
 }
 
 function validateSourceProvenance(value: unknown, errors: string[], requireFullHeadSha: boolean) {
@@ -416,7 +448,7 @@ function validateProofGraph(
       validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
       validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
       validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
-      validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
+      validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, mode === "full", errors);
     }
     for (const requirementId of requirementIds) {
       if (!seenRequirementIds.has(requirementId)) {
@@ -451,7 +483,7 @@ function validateProofGraphContext(value: unknown, errors: string[]) {
   }
 }
 
-function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {
+function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<string>, requireProvenance: boolean, errors: string[]) {
   const gaps = validateArray(value, path, LIMITS.proofGraphGaps, errors);
   if (!gaps) return;
 
@@ -466,7 +498,8 @@ function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<
     validateEnum(item.kind, `${itemPath}.kind`, PROOF_GAP_KINDS, errors);
     validateEnum(item.severity, `${itemPath}.severity`, PRIORITIES, errors);
     validateString(item.message, `${itemPath}.message`, LIMITS.shortText, errors);
-    validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+    const refs = validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+    if (requireProvenance && refs.length === 0) errors.push(`${itemPath}.evidenceRefs must contain deterministic provenance.`);
   }
 }
 
@@ -601,9 +634,73 @@ function validateReprompt(value: unknown, errors: string[]) {
     return;
   }
 
-  requireKeys(value, ["targetAgent", "prompt"], "reprompt", errors);
+  requireKeys(value, ["targetAgent", "prompt"], "reprompt", errors, ["evidenceRefs", "basedOnGapKind"]);
   validateEnum(value.targetAgent, "reprompt.targetAgent", TARGET_AGENTS, errors);
   validateString(value.prompt, "reprompt.prompt", LIMITS.reprompt, errors);
+  if (value.evidenceRefs !== undefined) validateStringArray(value.evidenceRefs, "reprompt.evidenceRefs", LIMITS.evidenceRefs, LIMITS.shortText, errors);
+  if (value.basedOnGapKind !== undefined && !PROOF_GAP_KINDS.has(String(value.basedOnGapKind))) errors.push("reprompt.basedOnGapKind is invalid.");
+}
+
+function validateDecisionCard(value: unknown, evidenceIds: Set<string>, report: RecordValue, errors: string[]) {
+  if (value === undefined) return;
+  if (!isRecord(value)) { errors.push("decisionCard must be an object."); return; }
+  requireKeys(value, ["version", "topGap", "testBuildStatus", "firstInspectionPoints", "reprompt"], "decisionCard", errors);
+  if (value.version !== 1) errors.push("decisionCard.version must be 1.");
+  validateEnum(value.testBuildStatus, "decisionCard.testBuildStatus", CHECK_STATUSES, errors);
+  if (isRecord(report.testing) && value.testBuildStatus !== report.testing.ciStatus) errors.push("decisionCard.testBuildStatus must match testing.ciStatus.");
+
+  const topGap = value.topGap;
+  let gapKey: string | null = null;
+  let gapKind: string | null = null;
+  let gapRefs: string[] = [];
+  if (topGap !== null) {
+    if (!isRecord(topGap)) errors.push("decisionCard.topGap must be null or an object.");
+    else {
+      requireKeys(topGap, ["gapKey", "requirementId", "kind", "severity", "summary", "evidenceRefs"], "decisionCard.topGap", errors);
+      validateString(topGap.gapKey, "decisionCard.topGap.gapKey", LIMITS.shortText, errors);
+      if (topGap.requirementId !== null) validateString(topGap.requirementId, "decisionCard.topGap.requirementId", LIMITS.shortText, errors);
+      if (!PROOF_GAP_KINDS.has(String(topGap.kind))) errors.push("decisionCard.topGap.kind is invalid.");
+      validateEnum(topGap.severity, "decisionCard.topGap.severity", PRIORITIES, errors);
+      validateString(topGap.summary, "decisionCard.topGap.summary", LIMITS.shortText, errors);
+      gapRefs = validateEvidenceRefs(topGap.evidenceRefs, "decisionCard.topGap.evidenceRefs", evidenceIds, errors);
+      if (gapRefs.length === 0) errors.push("decisionCard.topGap.evidenceRefs must contain deterministic provenance.");
+      gapKey = typeof topGap.gapKey === "string" ? topGap.gapKey : null;
+      gapKind = typeof topGap.kind === "string" ? topGap.kind : null;
+    }
+  }
+
+  const points = validateArray(value.firstInspectionPoints, "decisionCard.firstInspectionPoints", 2, errors) ?? [];
+  for (const [index, point] of points.entries()) {
+    const path = `decisionCard.firstInspectionPoints[${index}]`;
+    if (!isRecord(point)) { errors.push(`${path} must be an object.`); continue; }
+    requireKeys(point, ["kind", "label", "href", "evidenceRefs"], path, errors);
+    if (point.kind !== "file" && point.kind !== "check") errors.push(`${path}.kind is invalid.`);
+    validateString(point.label, `${path}.label`, LIMITS.evidenceLabel, errors);
+    validateString(point.href, `${path}.href`, LIMITS.sourceUrl, errors);
+    if (typeof point.href === "string" && !/^https:\/\/github\.com\//i.test(point.href)) errors.push(`${path}.href must be a GitHub HTTPS deep link.`);
+    const refs = validateEvidenceRefs(point.evidenceRefs, `${path}.evidenceRefs`, evidenceIds, errors);
+    if (refs.length === 0) errors.push(`${path}.evidenceRefs must contain deterministic provenance.`);
+  }
+
+  if (value.reprompt !== null) {
+    if (!isRecord(value.reprompt)) errors.push("decisionCard.reprompt must be null or an object.");
+    else {
+      requireKeys(value.reprompt, ["prompt", "gapKey", "basedOnGapKind", "evidenceRefs"], "decisionCard.reprompt", errors);
+      validateString(value.reprompt.prompt, "decisionCard.reprompt.prompt", LIMITS.reprompt, errors);
+      const refs = validateEvidenceRefs(value.reprompt.evidenceRefs, "decisionCard.reprompt.evidenceRefs", evidenceIds, errors);
+      if (!gapKey || value.reprompt.gapKey !== gapKey || value.reprompt.basedOnGapKind !== gapKind || JSON.stringify(refs) !== JSON.stringify(gapRefs)) errors.push("decisionCard.reprompt must be bound exactly to decisionCard.topGap.");
+    }
+  } else if (topGap !== null) errors.push("decisionCard.reprompt is required when topGap exists.");
+
+  const gapCount = isRecord(report.proofGraph) && isRecord(report.proofGraph.summary)
+    ? report.proofGraph.summary.gapCount
+    : null;
+  if (gapCount === 0 && (topGap !== null || value.reprompt !== null)) {
+    errors.push("decisionCard must use the explicit zero-gap state when proofGraph.summary.gapCount is 0.");
+  }
+  if (typeof gapCount === "number" && gapCount > 0 && topGap === null) {
+    errors.push("decisionCard.topGap is required when deterministic proof gaps exist.");
+  }
 }
 
 function validateEvidenceIndex(value: unknown, errors: string[]): Set<string> {
@@ -637,15 +734,16 @@ function validateEvidenceIndex(value: unknown, errors: string[]): Set<string> {
   return evidenceIds;
 }
 
-function validateEvidenceRefs(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {
+function validateEvidenceRefs(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]): string[] {
   const refs = validateStringArray(value, path, LIMITS.evidenceRefs, LIMITS.shortText, errors);
-  if (!refs) return;
+  if (!refs) return [];
 
   for (const ref of refs) {
     if (!evidenceIds.has(ref)) {
       errors.push(`${path} cites missing evidence ${ref}.`);
     }
   }
+  return refs;
 }
 
 function validateFindingProvenance(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {
@@ -777,6 +875,12 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
   const testing = isRecord(report.testing) ? report.testing : null;
   const scope = isRecord(report.scope) ? report.scope : null;
   const evidenceById = new Map<string, RecordValue>();
+  const originalTask = isRecord(report.source) && isRecord(report.source.originalTask) ? report.source.originalTask : null;
+  if (originalTask && originalTask.status !== "available" && Array.isArray(report.requirements)) {
+    report.requirements.forEach((requirement, index) => {
+      if (isRecord(requirement) && requirement.status === "met") errors.push(`requirements[${index}] cannot be met when the authoritative original task is unavailable or ambiguous.`);
+    });
+  }
 
   if (Array.isArray(report.evidenceIndex)) {
     for (const item of report.evidenceIndex) {

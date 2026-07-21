@@ -74,8 +74,28 @@ export interface PullRequestInput {
   checks: CheckRun[];
   logs: LogSnippet[];
   taskText: string;
+  originalTask?: OriginalTaskBoundary;
   limitations?: string[];
   sourceProvenance?: SourceProvenance;
+}
+
+export type OriginalTaskStatus = "available" | "unavailable" | "ambiguous";
+export type OriginalTaskSourceType = "explicit_task" | "linked_issue" | "none";
+export type OriginalTaskUnavailableReason =
+  | "none"
+  | "not_linked"
+  | "multiple_linked_issues"
+  | "linked_issue_inaccessible"
+  | "linked_issue_deleted_or_empty"
+  | "linked_reference_is_pull_request";
+
+/** Metadata-only authority boundary. It never contains task or PR body text. */
+export interface OriginalTaskBoundary {
+  version: 1;
+  status: OriginalTaskStatus;
+  sourceType: OriginalTaskSourceType;
+  sourceRef?: string;
+  reason: OriginalTaskUnavailableReason;
 }
 
 /**
@@ -219,6 +239,7 @@ export type ProofGapKind =
   | "ambiguous_requirement"
   | "self_reported_test_gap"
   | "evidence_unavailable"
+  | "evidence_insufficient"
   | "visual_proof_missing";
 
 export interface ProofGapSignal {
@@ -268,6 +289,7 @@ export interface VerificationReport {
     baseBranch?: string;
     headBranch?: string;
     provenance?: SourceProvenance;
+    originalTask?: OriginalTaskBoundary;
   };
   summary: {
     oneLine: string;
@@ -290,8 +312,36 @@ export interface VerificationReport {
   reprompt: {
     targetAgent: "codex" | "claude_code" | "cursor" | "copilot";
     prompt: string;
+    evidenceRefs?: string[];
+    basedOnGapKind?: ProofGapKind;
   };
+  decisionCard?: DecisionCard;
   evidenceIndex: EvidenceItem[];
   limitations: string[];
   authenticity?: ReportAuthenticity;
+}
+
+export interface DecisionCard {
+  version: 1;
+  topGap: {
+    gapKey: string;
+    requirementId: string | null;
+    kind: ProofGapKind;
+    severity: PriorityLevel;
+    summary: string;
+    evidenceRefs: string[];
+  } | null;
+  testBuildStatus: CheckStatus;
+  firstInspectionPoints: Array<{
+    kind: "file" | "check";
+    label: string;
+    href: string;
+    evidenceRefs: string[];
+  }>;
+  reprompt: {
+    prompt: string;
+    gapKey: string;
+    basedOnGapKind: ProofGapKind;
+    evidenceRefs: string[];
+  } | null;
 }

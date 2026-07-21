@@ -1246,6 +1246,7 @@ function proofPlanTextForGap(kind) {
     failed_execution: "Inspect the failed deterministic test/build signal before reviewing semantic coverage.",
     ambiguous_requirement: "Ask a human to identify the exact source-of-truth sentence for this requirement.",
     evidence_unavailable: "Record which evidence source was unavailable before interpreting the proof gap.",
+    evidence_insufficient: "Ask for the smallest additional deterministic proof tied to this requirement.",
     visual_proof_missing: "Ask for bounded visual proof that demonstrates the changed behavior."
   };
   return map[kind] || `Review the deterministic ${kind} gap before accepting the requirement mapping.`;
@@ -1295,6 +1296,7 @@ function missingProofText(kind) {
     failed_execution: "Relevant test/build execution failed and must stay visible.",
     ambiguous_requirement: "Requirement wording or source of truth is ambiguous.",
     evidence_unavailable: "Required evidence could not be fetched and should not be treated as missing implementation.",
+    evidence_insufficient: "Collected evidence only partially supports this requirement and is not sufficient proof.",
     visual_proof_missing: "Visual proof or screenshot evidence is missing."
   };
   return map[kind] || `Deterministic gap remains: ${kind}.`;

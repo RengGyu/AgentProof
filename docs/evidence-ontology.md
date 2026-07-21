@@ -112,6 +112,8 @@ If no execution evidence is found, confidence must reflect that the report is ba
 
 File or patch collection failures must be reported as evidence unavailable, not as proof that implementation is missing. For example, if changed-file fetch fails, requirement gaps should be `unclear` or `evidence_unavailable` rather than confidently `missing`.
 
+`evidence_unavailable` is reserved for a source that could not be collected. When evidence was collected but only partially supports a requirement and no narrower gap can be derived, use `evidence_insufficient`. That distinction must not change deterministic status, priority, CI, test/build, correctness, or merge decisions; the generated insufficient-evidence fallback stays medium and non-blocking.
+
 ## Priority Calibration
 
 Summary priority should combine risk type, source quality, execution status, and targeted proof gaps.

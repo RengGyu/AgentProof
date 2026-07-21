@@ -7,6 +7,7 @@ describe("/api/tenants/auth/session", () => {
   afterEach(() => {
     clearAuditEventsForTests();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     clearTenantAuthSessionsForTests();
   });
 
@@ -51,6 +52,56 @@ describe("/api/tenants/auth/session", () => {
       method: "durable-session",
       role: "owner"
     });
+  });
+
+  it("rejects replacement while an existing browser session cookie is present", async () => {
+    stubTenantAuthRouteEnv();
+    const first = await POST(new Request("http://localhost/api/tenants/auth/session", {
+      method: "POST",
+      headers: {
+        ...sameOriginHeaders(),
+        "Content-Type": "application/json",
+        "x-agentproof-tenant-auth-token": "member-bootstrap-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a", memberId: "member_owner" })
+    }));
+    const firstCookie = first.headers.get("Set-Cookie") ?? "";
+
+    const replacements = await Promise.all(Array.from({ length: 20 }, () => POST(new Request("http://localhost/api/tenants/auth/session", {
+      method: "POST",
+      headers: {
+        ...sameOriginHeaders(),
+        "Content-Type": "application/json",
+        cookie: firstCookie,
+        "x-agentproof-tenant-auth-token": "member-bootstrap-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a", memberId: "member_owner" })
+    }))));
+    expect(replacements.map((response) => response.status)).toEqual(Array(20).fill(409));
+    expect(replacements.every((response) => response.headers.get("Set-Cookie") === null)).toBe(true);
+    await expect(replacements[0]?.json()).resolves.toEqual({
+      error: "End the existing durable browser session before starting another.",
+      code: "tenant_auth_session_already_present"
+    });
+    await expect(verifyTenantAuthAccess({ tenantId: "tenant_a", cookieHeader: firstCookie })).resolves.toMatchObject({ authorized: true, memberId: "member_owner" });
+  });
+
+  it("allows only one active session across concurrent cookie-free starts", async () => {
+    stubTenantAuthRouteEnv();
+    const responses = await Promise.all(Array.from({ length: 20 }, () => POST(new Request("http://localhost/api/tenants/auth/session", {
+      method: "POST",
+      headers: {
+        ...sameOriginHeaders(),
+        "Content-Type": "application/json",
+        "x-agentproof-tenant-auth-token": "member-bootstrap-token"
+      },
+      body: JSON.stringify({ tenantId: "tenant_a", memberId: "member_owner" })
+    }))));
+
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 409)).toHaveLength(19);
+    const conflicts = await Promise.all(responses.filter((response) => response.status === 409).map((response) => response.json()));
+    expect(conflicts.every((value) => value.code === "tenant_auth_session_already_active")).toBe(true);
   });
 
   it("ignores bootstrap tokens in the JSON body", async () => {
@@ -159,6 +210,28 @@ describe("/api/tenants/auth/session", () => {
       tenantId: "tenant_a",
       cookieHeader: startCookie
     })).resolves.toEqual({ authorized: false });
+  });
+
+  it("clears the browser cookie but fails closed when durable revocation is unconfirmed", async () => {
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY", "placeholder");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 503 })));
+
+    const response = await DELETE(new Request("http://localhost/api/tenants/auth/session", {
+      method: "DELETE",
+      headers: { ...sameOriginHeaders(), cookie: `${TENANT_AUTH_SESSION_COOKIE}=opaque-session-token` }
+    }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Set-Cookie")).toContain(`${TENANT_AUTH_SESSION_COOKIE}=deleted`);
+    await expect(response.json()).resolves.toEqual({
+      error: "The browser cookie was cleared, but durable session revocation could not be confirmed.",
+      code: "tenant_auth_session_revoke_unconfirmed",
+      deleted: false
+    });
+    expect(getAuditEventsForTests()).toEqual([
+      expect.objectContaining({ action: "tenant_auth_session_failed", result: "failed", status_code: 503, metadata: { code: "session_revoke_unconfirmed" } })
+    ]);
   });
 
   it("rejects cross-site durable auth session creation without issuing a cookie", async () => {
