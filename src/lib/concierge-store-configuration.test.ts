@@ -23,8 +23,19 @@ describe("Concierge durable store configuration", () => {
     })).toEqual({ configured: true, consistent: false });
   });
 
+  it("reuses the existing control-plane or shared Supabase project when no Concierge-only pair exists", () => {
+    expect(getConciergeStoreConfigurationStatus({
+      AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "https://one-project.supabase.co",
+      AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+    } as unknown as NodeJS.ProcessEnv)).toEqual({ configured: true, consistent: true });
+    expect(getConciergeStoreConfigurationStatus({
+      SUPABASE_URL: "https://one-project.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+    } as unknown as NodeJS.ProcessEnv)).toEqual({ configured: true, consistent: true });
+  });
+
   it("fails closed for missing or malformed canonical configuration", () => {
-    expect(getConciergeStoreConfigurationStatus({ ...canonical, AGENTPROOF_CONCIERGE_SUPABASE_URL: "" })).toEqual({ configured: false, consistent: false });
+    expect(getConciergeStoreConfigurationStatus({} as unknown as NodeJS.ProcessEnv)).toEqual({ configured: false, consistent: false });
     expect(getConciergeStoreConfigurationStatus({ ...canonical, AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://one-project.supabase.co/path" })).toEqual({ configured: false, consistent: false });
   });
 });

@@ -45,7 +45,7 @@ describe("concierge private beta authorization", () => {
   it("uses existing complete same-project durable stores without the legacy control-plane enable flag", () => {
     const released = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: undefined };
     expect(conciergeRuntimeDefaults(released).manualAnalysisEnabled).toBe(true);
-    expect(conciergeRuntimeDefaults({ ...released, AGENTPROOF_CONCIERGE_SUPABASE_URL: "" }).manualAnalysisEnabled).toBe(false);
+    expect(conciergeRuntimeDefaults({ ...released, AGENTPROOF_CONCIERGE_SUPABASE_URL: "", AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "", AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "", SUPABASE_URL: "", SUPABASE_SERVICE_ROLE_KEY: "" }).manualAnalysisEnabled).toBe(false);
     expect(conciergeRuntimeDefaults({ ...released, AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://other.supabase.co" }).manualAnalysisEnabled).toBe(false);
   });
 

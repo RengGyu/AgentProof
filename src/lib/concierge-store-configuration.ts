@@ -35,8 +35,8 @@ const STORE_ENVIRONMENT_SOURCES = [
 export function getConciergeStoreConfigurationStatus(env = process.env): ConciergeStoreConfigurationStatus {
   const concierge = readConfiguredProject(
     env,
-    ["AGENTPROOF_CONCIERGE_SUPABASE_URL"],
-    ["AGENTPROOF_CONCIERGE_SUPABASE_SERVICE_ROLE_KEY"]
+    ["AGENTPROOF_CONCIERGE_SUPABASE_URL", "AGENTPROOF_CONTROL_PLANE_SUPABASE_URL", "SUPABASE_URL"],
+    ["AGENTPROOF_CONCIERGE_SUPABASE_SERVICE_ROLE_KEY", "AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"]
   );
   if (!concierge) return { configured: false, consistent: false };
 
