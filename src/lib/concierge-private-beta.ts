@@ -1,6 +1,6 @@
 import { getGitHubInstallationMetadataStoreStatus, listTenantGitHubInstallationStatuses } from "./github-installations";
 import { getTenantAccountStoreStatus } from "./tenant-accounts";
-import { getTenantAuthSessionStoreStatus, verifyTenantAuthAccess } from "./tenant-auth";
+import { getTenantAuthSessionStoreStatus, resolveTenantAuthAccess } from "./tenant-auth";
 import {
   authorizeDurableTenantRepositoryGrantAsync,
   getTenantControlPlaneSettings,
@@ -24,9 +24,6 @@ export type ConciergeBlockReason =
   | "authorization_unavailable";
 
 export interface ConciergeAccessInput {
-  tenantId: string;
-  installationId: number;
-  repositoryId: number;
   repositoryFullName: string;
   cookieHeader?: string | null;
 }
@@ -36,14 +33,14 @@ export type ConciergeAccessDecision =
   | { authorized: false; reason: ConciergeBlockReason };
 
 export interface ConciergeAccessDependencies {
-  verifySession: typeof verifyTenantAuthAccess;
+  resolveSession: typeof resolveTenantAuthAccess;
   listInstallationStatuses: typeof listTenantGitHubInstallationStatuses;
   authorizeGrant: typeof authorizeDurableTenantRepositoryGrantAsync;
   listGrants: typeof listTenantEnabledRepositoryGrantScope;
 }
 
 const DEFAULT_DEPS: ConciergeAccessDependencies = {
-  verifySession: verifyTenantAuthAccess,
+  resolveSession: resolveTenantAuthAccess,
   listInstallationStatuses: listTenantGitHubInstallationStatuses,
   authorizeGrant: authorizeDurableTenantRepositoryGrantAsync,
   listGrants: listTenantEnabledRepositoryGrantScope
@@ -89,31 +86,37 @@ export async function authorizeConciergeAccess(
     ];
     if (stores.some((store) => !store.configured || !store.durable)) return { authorized: false, reason: "durable_store_required" };
 
-    const session = await deps.verifySession({ tenantId: input.tenantId, cookieHeader: input.cookieHeader }, env);
-    if (!session.authorized || session.method !== "durable-session" || !session.memberId) return { authorized: false, reason: "session_invalid" };
+    const session = await deps.resolveSession({ cookieHeader: input.cookieHeader }, env);
+    if (!session.authorized || session.method !== "durable-session" || !session.memberId || !session.tenantId) return { authorized: false, reason: "session_invalid" };
 
-    const enabledGrants = (await deps.listGrants({ tenantId: input.tenantId }, env)).filter((grant) => grant.enabled);
-    if (enabledGrants.length !== 1
-      || enabledGrants[0]?.installationId !== input.installationId
-      || enabledGrants[0]?.repositoryId !== input.repositoryId) {
+    const enabledGrants = (await deps.listGrants({ tenantId: session.tenantId }, env)).filter((grant) => grant.enabled);
+    if (enabledGrants.length !== 1) {
       return { authorized: false, reason: "tenant_grant_scope_invalid" };
     }
-    if (enabledGrants[0].repositoryFullName.toLowerCase() !== input.repositoryFullName.toLowerCase()) {
+    const scopedGrant = enabledGrants[0];
+    if (!scopedGrant || !Number.isSafeInteger(scopedGrant.repositoryId) || !scopedGrant.repositoryId) {
+      return { authorized: false, reason: "tenant_grant_scope_invalid" };
+    }
+    if (scopedGrant.repositoryFullName.toLowerCase() !== input.repositoryFullName.toLowerCase()) {
       return { authorized: false, reason: "repository_identity_mismatch" };
     }
+    const repositoryId = scopedGrant.repositoryId;
 
-    const statuses = await deps.listInstallationStatuses({ tenantId: input.tenantId, installationIds: [input.installationId] }, env);
-    if (statuses.length !== 1 || statuses[0]?.installationId !== input.installationId || statuses[0].status !== "active") {
+    const statuses = await deps.listInstallationStatuses({ tenantId: session.tenantId, installationIds: [scopedGrant.installationId] }, env);
+    if (statuses.length !== 1 || statuses[0]?.installationId !== scopedGrant.installationId || statuses[0].status !== "active") {
       return { authorized: false, reason: "installation_not_active" };
     }
 
     const grant = await deps.authorizeGrant({
-      installationId: input.installationId,
-      repositoryId: input.repositoryId,
+      installationId: scopedGrant.installationId,
+      repositoryId,
       repositoryFullName: input.repositoryFullName
     }, env);
     if (!grant.grant) return { authorized: false, reason: "repository_grant_missing" };
-    if (grant.grant.tenantId !== input.tenantId) return { authorized: false, reason: "tenant_mismatch" };
+    if (grant.grant.tenantId !== session.tenantId) return { authorized: false, reason: "tenant_mismatch" };
+    if (grant.grant.installationId !== scopedGrant.installationId || grant.grant.repositoryId !== repositoryId) {
+      return { authorized: false, reason: "repository_identity_mismatch" };
+    }
     if (grant.grant.repositoryFullName.toLowerCase() !== input.repositoryFullName.toLowerCase()) {
       return { authorized: false, reason: "repository_identity_mismatch" };
     }
@@ -121,10 +124,10 @@ export async function authorizeConciergeAccess(
 
     return {
       authorized: true,
-      tenantId: input.tenantId,
+      tenantId: session.tenantId,
       memberId: session.memberId,
-      installationId: input.installationId,
-      repositoryId: input.repositoryId,
+      installationId: scopedGrant.installationId,
+      repositoryId,
       repositoryFullName: grant.grant.repositoryFullName
     };
   } catch {
@@ -133,10 +136,7 @@ export async function authorizeConciergeAccess(
 }
 
 function validInput(input: ConciergeAccessInput): boolean {
-  return /^[a-z0-9][a-z0-9_-]{1,79}$/i.test(input.tenantId)
-    && Number.isSafeInteger(input.installationId) && input.installationId > 0
-    && Number.isSafeInteger(input.repositoryId) && input.repositoryId > 0
-    && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repositoryFullName);
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repositoryFullName);
 }
 
 function truthy(value: string | undefined): boolean {

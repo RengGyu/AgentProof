@@ -11,11 +11,11 @@ const env: NodeJS.ProcessEnv = {
   AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://example.supabase.co",
   AGENTPROOF_CONCIERGE_SUPABASE_SERVICE_ROLE_KEY: "test-placeholder"
 };
-const input = { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", cookieHeader: "session=x" };
+const input = { repositoryFullName: "acme/private", cookieHeader: "session=x" };
 
 function dependencies(overrides: Partial<ConciergeAccessDependencies> = {}): ConciergeAccessDependencies {
   return {
-    verifySession: vi.fn(async () => ({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", role: "member", method: "durable-session", sessionState: "active" })),
+    resolveSession: vi.fn(async () => ({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", role: "member", method: "durable-session", sessionState: "active" })),
     listGrants: vi.fn(async () => [{ tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false }]),
     listInstallationStatuses: vi.fn(async () => [{ installationId: 101, status: "active" }]),
     authorizeGrant: vi.fn(async () => ({ enabled: true, required: true, reason: "analysis-disabled", grant: { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false } })),
@@ -41,6 +41,31 @@ describe("concierge private beta authorization", () => {
     expect(await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, dependencies())).toMatchObject({ authorized: true, repositoryId: 202 });
   });
 
+  it.each([
+    ["installation", { installationId: 999, repositoryId: 202 }],
+    ["repository", { installationId: 101, repositoryId: 999 }]
+  ])("rejects a grant adapter response with a mismatched %s id", async (_label, ids) => {
+    const deps = dependencies({
+      authorizeGrant: vi.fn(async () => ({
+        enabled: true,
+        required: true,
+        reason: "analysis-disabled" as const,
+        grant: {
+          tenantId: "tenant_alpha",
+          ...ids,
+          repositoryFullName: "acme/private",
+          enabled: true,
+          analysisEnabled: false,
+          commentEnabled: false,
+          saveReportsEnabled: false,
+          slackNotificationsEnabled: false
+        }
+      }))
+    });
+    await expect(authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, deps))
+      .resolves.toEqual({ authorized: false, reason: "repository_identity_mismatch" });
+  });
+
   it("requires exactly one enabled repository grant for the human-beta tenant", async () => {
     const multiGrant = dependencies({ listGrants: vi.fn(async () => [
       { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false },
@@ -58,7 +83,7 @@ describe("concierge private beta authorization", () => {
   });
 
   it.each([
-    ["session", { verifySession: vi.fn(async () => ({ authorized: false })) }, "session_invalid", 0, 0],
+    ["session", { resolveSession: vi.fn(async () => ({ authorized: false })) }, "session_invalid", 0, 0],
     ["installation missing", { listInstallationStatuses: vi.fn(async () => []) }, "installation_not_active", 1, 0],
     ["installation suspended", { listInstallationStatuses: vi.fn(async () => [{ installationId: 101, status: "suspended" }]) }, "installation_not_active", 1, 0],
     ["installation deleted", { listInstallationStatuses: vi.fn(async () => [{ installationId: 101, status: "deleted" }]) }, "installation_not_active", 1, 0],
@@ -74,14 +99,14 @@ describe("concierge private beta authorization", () => {
     const deps = dependencies();
     const memoryEnv = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "", AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "", AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "1", AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_ACCOUNTS: "[]" };
     expect(await authorizeConciergeAccess(input, memoryEnv, deps)).toEqual({ authorized: false, reason: "durable_store_required" });
-    expect(deps.verifySession).not.toHaveBeenCalled();
+    expect(deps.resolveSession).not.toHaveBeenCalled();
   });
 
   it("rejects a Concierge project mismatch before any session or provider lookup", async () => {
     const deps = dependencies();
     const mismatch = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://other-project.supabase.co" };
     expect(await authorizeConciergeAccess(input, mismatch, deps)).toEqual({ authorized: false, reason: "durable_store_mismatch" });
-    expect(deps.verifySession).not.toHaveBeenCalled();
+    expect(deps.resolveSession).not.toHaveBeenCalled();
     expect(deps.listInstallationStatuses).not.toHaveBeenCalled();
     expect(deps.authorizeGrant).not.toHaveBeenCalled();
   });
@@ -89,10 +114,10 @@ describe("concierge private beta authorization", () => {
   it("rejects global kill switch before authorization", async () => {
     const deps = dependencies();
     expect(await authorizeConciergeAccess(input, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "1" }, deps)).toEqual({ authorized: false, reason: "global_kill_switch" });
-    expect(deps.verifySession).not.toHaveBeenCalled();
+    expect(deps.resolveSession).not.toHaveBeenCalled();
   });
 
-  it("rejects a granted repository ID paired with a different repository name", async () => {
+  it("rejects a browser repository name outside the single server-resolved grant", async () => {
     const deps = dependencies();
     expect(await authorizeConciergeAccess({ ...input, repositoryFullName: "attacker/other" }, { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" }, deps)).toEqual({ authorized: false, reason: "repository_identity_mismatch" });
   });

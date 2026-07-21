@@ -3,6 +3,7 @@ import {
   clearTenantAuthSessionsForTests,
   createTenantAuthSession,
   readTenantAuthBootstrapRecords,
+  resolveTenantAuthAccess,
   TENANT_AUTH_SESSION_COOKIE,
   verifyTenantAuthAccess,
   revokeTenantAuthSession
@@ -27,6 +28,7 @@ describe("tenant durable auth sessions", () => {
       tenantId: "tenant_a",
       cookieHeader: session.sessionCookie
     });
+    const resolvedAccess = await resolveTenantAuthAccess({ cookieHeader: session.sessionCookie });
     const serialized = JSON.stringify(session);
 
     expect(session).toMatchObject({
@@ -47,6 +49,7 @@ describe("tenant durable auth sessions", () => {
       method: "durable-session",
       sessionState: "active"
     });
+    expect(resolvedAccess).toEqual(access);
     expect(serialized).not.toContain("member-bootstrap-token");
     expect(serialized).not.toContain("tokenHash");
   });

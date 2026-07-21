@@ -2321,6 +2321,39 @@ code {
   background: #fffaf0;
 }
 
+.minimal-input-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 0;
+  padding: 11px 13px;
+  border: 1px solid #d7e3f1;
+  border-radius: 12px;
+  background: #f5f9ff;
+  color: #49647f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.minimal-input-note svg { flex: 0 0 auto; }
+
+.evaluation-settings {
+  border: 1px dashed var(--friendly-line);
+  border-radius: 13px;
+  background: #fffdf8;
+}
+
+.evaluation-settings > summary {
+  min-height: 44px;
+  padding: 12px 15px;
+  cursor: pointer;
+  color: var(--friendly-muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.evaluation-settings .pre-report-field { margin: 0 14px 14px; }
+
 .pre-report-field small {
   color: #75682d;
   line-height: 1.5;

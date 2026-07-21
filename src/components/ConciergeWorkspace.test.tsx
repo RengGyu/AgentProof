@@ -40,6 +40,15 @@ describe("concierge UI boundary", () => {
     expect(source).toContain('revoke.ok ? "session_response_invalid" : revoke.code');
     expect(source).not.toContain("sessionStorage");
   });
+  it("submits only the GitHub repository and PR while keeping internal ids server-side", () => {
+    expect(source).toContain("GitHub 저장소 주소");
+    expect(source).toContain("pullRequestNumber: Number(form.pullRequestNumber)");
+    const analyzeBody = source.slice(source.indexOf('body: JSON.stringify({\n          repositoryFullName'), source.indexOf('const json = await response.json()'));
+    expect(analyzeBody).not.toContain("tenantId");
+    expect(analyzeBody).not.toContain("installationId");
+    expect(analyzeBody).not.toContain("repositoryId");
+    expect(analyzeBody).not.toContain("explicitTask");
+  });
   it("focuses the report and puts it first on mobile", () => {
     expect(source).toContain("reportRef.current?.focus({ preventScroll: true })");
     expect(source).toContain("document.documentElement.scrollTop = 0");
@@ -49,11 +58,18 @@ describe("concierge UI boundary", () => {
     expect(conciergeReport).toContain("증거 부족은 구현 실패를 뜻하지 않습니다.");
     expect(conciergeReport).toContain("이 보고서는 병합 여부를 결정하거나 구현이 맞다고 보증하지 않습니다.");
   });
-  it("locks the pre-report judgment before rendering the report", () => {
+  it("keeps pre-report judgment optional and isolated to evaluation feedback", () => {
     expect(source).toContain("lockedPreReportGapCategory");
     expect(source).toContain("setLockedPreReportGapCategory(frozenPreReportGapCategory)");
-    expect(source).toContain("preReportGapCategory={lockedPreReportGapCategory}");
+    expect(source).toContain("tenantId && lockedPreReportGapCategory");
+    expect(source).toContain("평가 진행 시에만 사용");
+    expect(source).toContain('<option value="">기록하지 않음</option>');
     expect(feedback).not.toContain("setPreReportGapCategory");
+  });
+  it("renders errors with a real icon and body instead of placing text in the 18px icon column", () => {
+    expect(source).toContain('<CircleAlert size={18} aria-hidden="true" />');
+    expect(source).toContain('className="intake-error-body"');
+    expect(source).not.toContain('<p className="intake-error"');
   });
   it("keeps internal confidence and evidence identifiers off the summary screen", () => {
     const summaryStart = conciergeReport.indexOf('view === "summary"');

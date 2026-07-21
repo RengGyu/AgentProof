@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { reserveConciergeAnalysis, buildConciergeRequestKey, finishConciergeAnalysis, getConciergeAnalysisStoreStatus } from "@/lib/concierge-analysis-store";
 import { authorizeConciergeAccess, conciergeRuntimeDefaults } from "@/lib/concierge-private-beta";
@@ -22,9 +21,6 @@ export async function POST(request: Request) {
   if (!body) return json({ error: "Concierge analysis request is invalid.", code: "invalid_request" }, 400);
 
   const access = await authorizeConciergeAccess({
-    tenantId: body.tenantId,
-    installationId: body.installationId,
-    repositoryId: body.repositoryId,
     repositoryFullName: body.repositoryFullName,
     cookieHeader: request.headers.get("cookie")
   });
@@ -36,29 +32,28 @@ export async function POST(request: Request) {
 
   let requestKey = "";
   try {
-    const token = await createGitHubInstallationAccessToken(body.installationId);
+    const token = await createGitHubInstallationAccessToken(access.installationId);
     const prUrl = `https://github.com/${access.repositoryFullName}/pull/${body.pullRequestNumber}`;
     const initialHeadSha = await fetchGitHubPullRequestHead(prUrl, token);
     if (!initialHeadSha) throw new Error("head_unavailable");
     requestKey = buildConciergeRequestKey({
-      tenantId: body.tenantId,
-      installationId: body.installationId,
-      repositoryId: body.repositoryId,
+      tenantId: access.tenantId,
+      installationId: access.installationId,
+      repositoryId: access.repositoryId,
       pullRequestNumber: body.pullRequestNumber,
-      headSha: initialHeadSha,
-      explicitTaskHash: body.explicitTask ? createHash("sha256").update(body.explicitTask).digest("hex") : undefined
+      headSha: initialHeadSha
     });
     const reservation = await reserveConciergeAnalysis({
       requestKey,
-      tenantId: body.tenantId,
-      installationId: body.installationId,
-      repositoryId: body.repositoryId
+      tenantId: access.tenantId,
+      installationId: access.installationId,
+      repositoryId: access.repositoryId
     });
     if (reservation.outcome === "duplicate") return json({ error: "This manual request was already accepted.", code: "duplicate_request" }, 409);
     if (reservation.outcome !== "reserved") return json({ error: "Manual analysis reservation is unavailable.", code: "idempotency_unavailable" }, 503);
     const telemetry = createConciergeSideEffectTelemetry({ caseIdOrHash: requestKey, sourceHeadSha: initialHeadSha });
 
-    const input = await buildGitHubPullRequestInput(prUrl, token, body.explicitTask ?? "", undefined, { expectedHeadSha: initialHeadSha });
+    const input = await buildGitHubPullRequestInput(prUrl, token, "", undefined, { expectedHeadSha: initialHeadSha });
     if (!input) throw new Error("evidence_unavailable");
     const report = generateVerificationReport(input);
     const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
@@ -66,9 +61,6 @@ export async function POST(request: Request) {
     const finalHeadSha = await fetchGitHubPullRequestHead(prUrl, token);
     if (finalHeadSha !== initialHeadSha) throw new Error("head_changed");
     const finalAccess = await authorizeConciergeAccess({
-      tenantId: body.tenantId,
-      installationId: body.installationId,
-      repositoryId: body.repositoryId,
       repositoryFullName: body.repositoryFullName,
       cookieHeader: request.headers.get("cookie")
     });
@@ -77,6 +69,13 @@ export async function POST(request: Request) {
         return json({ error: "Analysis terminal state could not be recorded.", code: "terminal_record_unavailable" }, 503);
       }
       return json({ error: "Concierge analysis was stopped before delivery.", code: finalAccess.reason }, 403);
+    }
+    if (!sameAccessScope(access, finalAccess)) {
+      const reason = "repository_grant_changed";
+      if (!await recordFailureOrBlockDelivery(requestKey, reason)) {
+        return json({ error: "Analysis terminal state could not be recorded.", code: "terminal_record_unavailable" }, 503);
+      }
+      return json({ error: "Concierge analysis was stopped before delivery.", code: reason }, 403);
     }
     const sideEffectTelemetry = telemetry.snapshot();
     if (!validateZeroConciergeSideEffectTelemetry(sideEffectTelemetry, { caseIdOrHash: requestKey, sourceHeadSha: initialHeadSha })) {
@@ -110,16 +109,26 @@ export async function POST(request: Request) {
   }
 }
 
-interface Body { tenantId: string; installationId: number; repositoryId: number; repositoryFullName: string; pullRequestNumber: number; requestId: string; explicitTask?: string }
+function sameAccessScope(
+  initial: Extract<Awaited<ReturnType<typeof authorizeConciergeAccess>>, { authorized: true }>,
+  final: Extract<Awaited<ReturnType<typeof authorizeConciergeAccess>>, { authorized: true }>
+): boolean {
+  return initial.tenantId === final.tenantId
+    && initial.memberId === final.memberId
+    && initial.installationId === final.installationId
+    && initial.repositoryId === final.repositoryId
+    && initial.repositoryFullName.toLowerCase() === final.repositoryFullName.toLowerCase();
+}
+
+interface Body { repositoryFullName: string; pullRequestNumber: number; requestId: string }
 function parseBody(text: string): Body | null {
   try {
     const value = JSON.parse(text) as Record<string, unknown>;
     const keys = Object.keys(value).sort().join(",");
-    if (keys !== "explicitTask,installationId,pullRequestNumber,repositoryFullName,repositoryId,requestId,tenantId" && keys !== "installationId,pullRequestNumber,repositoryFullName,repositoryId,requestId,tenantId") return null;
-    if (typeof value.tenantId !== "string" || typeof value.repositoryFullName !== "string" || typeof value.requestId !== "string") return null;
-    if (!Number.isSafeInteger(value.installationId) || !Number.isSafeInteger(value.repositoryId) || !Number.isSafeInteger(value.pullRequestNumber)) return null;
+    if (keys !== "pullRequestNumber,repositoryFullName,requestId") return null;
+    if (typeof value.repositoryFullName !== "string" || typeof value.requestId !== "string") return null;
+    if (!Number.isSafeInteger(value.pullRequestNumber) || Number(value.pullRequestNumber) <= 0) return null;
     if (!/^[a-f0-9-]{16,64}$/i.test(value.requestId) || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value.repositoryFullName)) return null;
-    if (value.explicitTask !== undefined && (typeof value.explicitTask !== "string" || !value.explicitTask.trim() || value.explicitTask.length > 6000)) return null;
     return value as unknown as Body;
   } catch { return null; }
 }

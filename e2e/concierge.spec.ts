@@ -26,16 +26,17 @@ function fixture(taskState: TaskState = "available", ciStatus: "passed" | "faile
   };
 }
 
-async function fillSetup(page: import("@playwright/test").Page) {
+async function fillSetup(page: import("@playwright/test").Page, options: { evaluation?: boolean } = {}) {
   const start = page.getByRole("button", { name: "PR 검토 시작" });
   if (await start.isVisible()) await start.click();
-  await page.getByLabel("저장소", { exact: true }).fill("acme/private");
+  await page.getByLabel("GitHub 저장소 주소").fill("https://github.com/acme/private");
   await page.getByLabel("PR 번호").fill("17");
-  await page.getByLabel("보고서 전 예상").selectOption("targeted_test");
-  await page.getByText("운영자 설정", { exact: true }).click();
-  await page.getByLabel("테스트 공간 ID (tenantId)").fill("tenant_alpha");
-  await page.getByLabel("GitHub App 설치 ID (installationId)").fill("101");
-  await page.getByLabel("저장소 ID (repositoryId)").fill("202");
+  if (options.evaluation) {
+    await page.getByText("베타 접속 설정", { exact: true }).click();
+    await page.getByLabel("베타 공간 ID").fill("tenant_alpha");
+    await page.getByText("평가 진행 시에만 사용", { exact: true }).click();
+    await page.getByLabel("보고서 전 예상").selectOption("targeted_test");
+  }
 }
 
 async function fillAndRun(page: import("@playwright/test").Page) {
@@ -47,6 +48,7 @@ async function interceptSuccess(page: import("@playwright/test").Page, report: R
   await page.route("**/api/tenants/concierge/analyze", async (route) => {
     const body = route.request().postDataJSON();
     expect(body.repositoryFullName).toBe("acme/private");
+    expect(Object.keys(body).sort()).toEqual(["pullRequestNumber", "repositoryFullName", "requestId"]);
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ report, caseIdOrHash: "c".repeat(64), privacy: "synthetic" }) });
   });
 }
@@ -75,10 +77,10 @@ test("welcome page keeps the guide character visible and separates setup from th
   await expect(page.getByRole("heading", { name: /PR을 읽기 전에/ })).toBeVisible();
   await expect(page.locator(".welcome-scene .proof-buddy.hero")).toBeVisible();
   await expect(page.getByText("병합 여부나 구현의 정확성을 판정하지 않습니다.")).toBeVisible();
-  await expect(page.getByLabel("저장소", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("GitHub 저장소 주소")).toHaveCount(0);
   await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByRole("heading", { name: "검토할 PR을 선택하세요" })).toBeVisible();
-  await expect(page.getByLabel("저장소", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("GitHub 저장소 주소")).toBeVisible();
   await page.getByRole("button", { name: "← 소개로 돌아가기" }).click();
   await expect(page.getByRole("button", { name: "PR 검토 시작" })).toBeVisible();
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
@@ -97,6 +99,7 @@ test("desktop summary focuses the top gap, supports detail navigation, and leave
   await expect(report).toBeFocused();
   await expect(page.getByRole("heading", { name: "요구사항 대상 테스트 증거 없음" })).toBeVisible();
   await expect(page.getByText("요구사항 GitHub Issue #42")).toBeVisible();
+  await expect(page.getByText("간단한 사용성 피드백", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "후속 요청 복사" }).click();
   await expect(page.getByRole("status")).toHaveText("후속 요청을 클립보드에 복사했습니다.");
   await page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }).click();
@@ -135,12 +138,12 @@ test("durable tester session sends the bootstrap only in a bounded header and cl
   });
   await page.goto("/concierge");
   await page.getByRole("button", { name: "PR 검토 시작" }).click();
-  await page.getByText("운영자 설정", { exact: true }).click();
-  await page.getByRole("textbox", { name: "테스트 공간 ID (tenantId)" }).fill("tenant_alpha");
-  await page.getByRole("textbox", { name: "테스터 계정 ID (memberId)" }).fill("member_owner");
+  await page.getByText("베타 접속 설정", { exact: true }).click();
+  await page.getByRole("textbox", { name: "베타 공간 ID" }).fill("tenant_alpha");
+  await page.getByRole("textbox", { name: "테스터 계정 ID" }).fill("member_owner");
   await page.getByLabel("일회용 세션 시작 코드").fill("one-time-bootstrap");
-  await page.getByRole("button", { name: "테스트 로그인" }).click();
-  await expect(page.getByRole("button", { name: "테스트 로그인됨" })).toBeVisible();
+  await page.getByRole("button", { name: "베타 로그인" }).click();
+  await expect(page.getByRole("button", { name: "베타 로그인됨" })).toBeVisible();
   await expect(page.getByLabel("일회용 세션 시작 코드")).toHaveValue("");
   expect(sessionRequest).toEqual({ body: { tenantId: "tenant_alpha", memberId: "member_owner" }, token: "one-time-bootstrap" });
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
@@ -157,13 +160,13 @@ test("durable tester session rejects malformed success payloads and still clears
   });
   await page.goto("/concierge");
   await page.getByRole("button", { name: "PR 검토 시작" }).click();
-  await page.getByText("운영자 설정", { exact: true }).click();
-  await page.getByRole("textbox", { name: "테스트 공간 ID (tenantId)" }).fill("tenant_alpha");
-  await page.getByRole("textbox", { name: "테스터 계정 ID (memberId)" }).fill("member_owner");
+  await page.getByText("베타 접속 설정", { exact: true }).click();
+  await page.getByRole("textbox", { name: "베타 공간 ID" }).fill("tenant_alpha");
+  await page.getByRole("textbox", { name: "테스터 계정 ID" }).fill("member_owner");
   await page.getByLabel("일회용 세션 시작 코드").fill("one-time-bootstrap");
-  await page.getByRole("button", { name: "테스트 로그인" }).click();
-  await expect(page.locator(".intake-error")).toHaveText("테스트 로그인 응답을 확인하지 못했습니다. 운영자에게 알려 주세요.");
-  await expect(page.getByRole("button", { name: "테스트 로그인됨" })).toHaveCount(0);
+  await page.getByRole("button", { name: "베타 로그인" }).click();
+  await expect(page.locator(".intake-error")).toContainText("베타 로그인 응답을 확인하지 못했습니다.");
+  await expect(page.getByRole("button", { name: "베타 로그인됨" })).toHaveCount(0);
   await expect(page.getByLabel("일회용 세션 시작 코드")).toHaveValue("");
   expect(deleteCalls).toBe(2);
 });
@@ -202,7 +205,7 @@ test("320px mobile keeps zero-gap feedback and reset controls operable without h
   await interceptSuccess(page, zeroGapFixture());
   await page.route("**/api/tenants/concierge/feedback", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ stored: true, duplicate: false, privacy: "bounded-metadata-only" }) }));
   await page.route("**/api/tenants/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }) }));
-  await page.goto("/concierge"); await fillAndRun(page);
+  await page.goto("/concierge"); await fillSetup(page, { evaluation: true }); await page.getByRole("button", { name: "PR 근거 확인하기" }).click();
   await page.getByText("간단한 사용성 피드백", { exact: true }).click();
   await expect(page.getByLabel("우선 검토 항목을 찾았나요?")).toHaveValue("not_applicable_zero_gap");
   await page.getByText("운영자용 세부 기록", { exact: true }).click();
@@ -235,7 +238,7 @@ test("bounded feedback leaves cohort assignment to the server without sending re
     feedbackBody = route.request().postDataJSON();
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ stored: true, duplicate: false, privacy: "bounded-metadata-only" }) });
   });
-  await page.goto("/concierge"); await fillAndRun(page);
+  await page.goto("/concierge"); await fillSetup(page, { evaluation: true }); await page.getByRole("button", { name: "PR 근거 확인하기" }).click();
   await page.getByText("간단한 사용성 피드백", { exact: true }).click();
   await page.getByText("운영자용 세부 기록", { exact: true }).click();
   await page.getByLabel("익명 테스터 ID").fill("partner_a1b2c3d4");
@@ -259,7 +262,7 @@ test("new PR control clears private report state", async ({ page }) => {
   await page.goto("/concierge"); await fillAndRun(page);
   await page.getByRole("button", { name: "새 PR 확인하기" }).click();
   await expect(page.getByLabel("PR 증거 보고서")).toHaveCount(0);
-  await expect(page.getByLabel("저장소", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("GitHub 저장소 주소")).toHaveValue("");
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
 });
 
@@ -307,7 +310,7 @@ test("GitHub-equivalent bounded failures show an error and do not create report 
   for (const code of ["401", "403", "404", "429", "500", "timeout"]) {
     await page.route("**/api/tenants/concierge/analyze", (route) => route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ code }) }));
     await page.goto("/concierge"); await fillAndRun(page);
-    await expect(page.locator(".intake-error")).toHaveText("요청을 완료하지 못했습니다. 운영자에게 기술 정보와 함께 알려 주세요.");
+    await expect(page.locator(".intake-error")).toContainText("PR 근거 확인을 완료하지 못했습니다.");
     await expect(page.getByLabel("PR 증거 보고서")).toHaveCount(0);
     expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
     await page.unroute("**/api/tenants/concierge/analyze");
@@ -323,8 +326,22 @@ test("an error envelope cannot surface an injected report or persist it in brows
     body: JSON.stringify({ code: "github_evidence_unavailable", report: { rawPrivateText } })
   }));
   await page.goto("/concierge"); await fillAndRun(page);
-  await expect(page.locator(".intake-error")).toHaveText("요청을 완료하지 못했습니다. 운영자에게 기술 정보와 함께 알려 주세요.");
+  await expect(page.locator(".intake-error")).toContainText("GitHub에서 PR 증거를 가져오지 못했습니다.");
   await expect(page.getByLabel("PR 증거 보고서")).toHaveCount(0);
   await expect(page.getByText(rawPrivateText)).toHaveCount(0);
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage), cache: performance.getEntriesByType("resource").map((entry) => entry.name) }))).toMatchObject({ local: [], session: [] });
+});
+
+test("320px error copy stays horizontal and gives a bounded next action", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 320, height: 720 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await page.route("**/api/tenants/concierge/analyze", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ code: "session_invalid" }) }));
+  await page.goto("/concierge");
+  await fillAndRun(page);
+  const body = page.locator(".intake-error-body");
+  await expect(body).toContainText("베타 로그인이 필요합니다.");
+  await expect(body).toContainText("베타 접속 설정");
+  expect((await body.boundingBox())?.width ?? 0).toBeGreaterThan(180);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await context.close();
 });

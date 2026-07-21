@@ -149,21 +149,34 @@ export async function verifyTenantAuthAccess(
   now = Date.now()
 ): Promise<TenantAuthAccessResult> {
   const tenantId = normalizeTenantId(input.tenantId);
+  if (!tenantId) return { authorized: false };
+  const access = await resolveTenantAuthAccess({ cookieHeader: input.cookieHeader }, env, now);
+  return access.authorized && access.tenantId === tenantId ? access : { authorized: false };
+}
+
+/**
+ * Resolves the tenant from the opaque, HttpOnly durable-session cookie.
+ * Browser-provided tenant identifiers must not be used as authorization facts.
+ */
+export async function resolveTenantAuthAccess(
+  input: { cookieHeader?: string | null },
+  env = process.env,
+  now = Date.now()
+): Promise<TenantAuthAccessResult> {
   const sessionToken = readCookie(input.cookieHeader, TENANT_AUTH_SESSION_COOKIE);
-  if (!tenantId || !sessionToken) return { authorized: false };
+  if (!sessionToken) return { authorized: false };
 
   const record = await findTenantAuthSession({ tokenHash: hashToken(sessionToken) }, env);
   if (!record) return { authorized: false };
-  if (record.tenantId !== tenantId) return { authorized: false };
   if (Date.parse(record.expiresAt) <= now) return { authorized: false };
   if (record.revokedAt) return { authorized: false };
 
-  const member = await readActiveTenantMember({ tenantId, memberId: record.memberId }, env);
+  const member = await readActiveTenantMember({ tenantId: record.tenantId, memberId: record.memberId }, env);
   if (!member) return { authorized: false };
 
   return {
     authorized: true,
-    tenantId,
+    tenantId: record.tenantId,
     memberId: record.memberId,
     role: member.role,
     method: "durable-session",
