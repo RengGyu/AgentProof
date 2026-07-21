@@ -4,8 +4,8 @@ import { authorizeDurableTenantRepositoryGrantAsync } from "./tenant-control-pla
 
 const env: NodeJS.ProcessEnv = {
   ...process.env,
-  AGENTPROOF_CONCIERGE_PRIVATE_BETA_ENABLED: "1",
   AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "1",
+  VERCEL_ENV: "preview",
   AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "https://example.supabase.co",
   AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "test-placeholder",
   AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://example.supabase.co",
@@ -30,11 +30,18 @@ describe("concierge private beta authorization", () => {
   });
 
   it("keeps the global kill switch engaged until explicitly released", () => {
-    expect(conciergeRuntimeDefaults(env).globalKillSwitch).toBe(true);
+    expect(conciergeRuntimeDefaults(env)).toMatchObject({ manualAnalysisEnabled: false, globalKillSwitch: true });
     for (const release of ["0", "false", "no", "off"]) {
-      expect(conciergeRuntimeDefaults({ ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: release }).globalKillSwitch).toBe(false);
+      expect(conciergeRuntimeDefaults({ ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: release })).toMatchObject({ manualAnalysisEnabled: true, globalKillSwitch: false });
     }
-    expect(conciergeRuntimeDefaults({ ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "unexpected" }).globalKillSwitch).toBe(true);
+    expect(conciergeRuntimeDefaults({ ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "unexpected" })).toMatchObject({ manualAnalysisEnabled: false, globalKillSwitch: true });
+  });
+
+  it("never enables Concierge outside Vercel Preview", () => {
+    const released = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" };
+    expect(conciergeRuntimeDefaults({ ...released, VERCEL_ENV: "production" }).manualAnalysisEnabled).toBe(false);
+    expect(conciergeRuntimeDefaults({ ...released, VERCEL_ENV: undefined }).manualAnalysisEnabled).toBe(false);
+    expect(conciergeRuntimeDefaults({ ...released, AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "false" }).manualAnalysisEnabled).toBe(false);
   });
 
   it("authorizes durable manual grant while automated analysis remains off", async () => {

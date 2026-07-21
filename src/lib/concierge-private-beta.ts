@@ -47,12 +47,14 @@ const DEFAULT_DEPS: ConciergeAccessDependencies = {
 };
 
 export function conciergeRuntimeDefaults(env = process.env) {
+  const previewOnly = env.VERCEL_ENV === "preview";
+  const tenantControlPlaneEnabled = getTenantControlPlaneSettings(env).enabled;
+  const conciergeExplicitlyReleased = explicitlyReleased(env.AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH);
   return {
-    manualAnalysisEnabled: truthy(env.AGENTPROOF_CONCIERGE_PRIVATE_BETA_ENABLED),
-    // Concierge is opt-in twice: the beta itself must be enabled and the
-    // emergency stop must be explicitly released. A missing/malformed switch
-    // never turns a manual private-repo path on accidentally.
-    globalKillSwitch: !explicitlyReleased(env.AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH),
+    // Reuse existing platform/control-plane settings. Production stays off
+    // even if the control plane and kill-switch settings are present.
+    manualAnalysisEnabled: previewOnly && tenantControlPlaneEnabled && conciergeExplicitlyReleased,
+    globalKillSwitch: !conciergeExplicitlyReleased,
     llmEnabled: false,
     webhookAutomationEnabled: false,
     saveReportsEnabled: false,
@@ -70,8 +72,8 @@ export async function authorizeConciergeAccess(
   deps: ConciergeAccessDependencies = DEFAULT_DEPS
 ): Promise<ConciergeAccessDecision> {
   const runtime = conciergeRuntimeDefaults(env);
-  if (!runtime.manualAnalysisEnabled || !getTenantControlPlaneSettings(env).enabled) return { authorized: false, reason: "concierge_disabled" };
   if (runtime.globalKillSwitch) return { authorized: false, reason: "global_kill_switch" };
+  if (!runtime.manualAnalysisEnabled || !getTenantControlPlaneSettings(env).enabled) return { authorized: false, reason: "concierge_disabled" };
   if (!validInput(input)) return { authorized: false, reason: "authorization_unavailable" };
 
   try {
@@ -137,10 +139,6 @@ export async function authorizeConciergeAccess(
 
 function validInput(input: ConciergeAccessInput): boolean {
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repositoryFullName);
-}
-
-function truthy(value: string | undefined): boolean {
-  return /^(1|true|yes|on)$/i.test(value?.trim() ?? "");
 }
 
 function explicitlyReleased(value: string | undefined): boolean {
