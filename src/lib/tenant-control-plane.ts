@@ -212,8 +212,9 @@ export async function authorizeDurableTenantRepositoryGrantAsync(
   input: { installationId: number; repositoryFullName: string; repositoryId?: number },
   env = process.env
 ): Promise<TenantRepositoryGrantDecision> {
-  const settings = getTenantControlPlaneSettings(env);
-  if (!settings.enabled) return { enabled: false, required: false, reason: "control-plane-disabled" };
+  // Concierge activation is gated separately by Preview, the fail-closed kill
+  // switch, and complete same-project durable stores. This adapter deliberately
+  // ignores the legacy branch-scoped control-plane enable flag.
   const store = getTenantRepositoryGrantStoreStatus(env);
   if (!store.configured || !store.durable) return { enabled: true, required: true, reason: "grant-missing" };
   const config = getTenantGrantStoreConfig(env);

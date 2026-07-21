@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  csrf: vi.fn(), runtime: vi.fn(), controlPlane: vi.fn(), configuration: vi.fn(), authStatus: vi.fn(), accountStatus: vi.fn(), installationStore: vi.fn(), grantStore: vi.fn(),
+  csrf: vi.fn(), runtime: vi.fn(), configuration: vi.fn(), authStatus: vi.fn(), accountStatus: vi.fn(), installationStore: vi.fn(), grantStore: vi.fn(),
   verifySession: vi.fn(), listInstallations: vi.fn(), createToken: vi.fn(), registerGrant: vi.fn()
 }));
 
@@ -12,7 +12,7 @@ vi.mock("@/lib/tenant-auth", () => ({ getTenantAuthSessionStoreStatus: mocks.aut
 vi.mock("@/lib/tenant-accounts", () => ({ getTenantAccountStoreStatus: mocks.accountStatus }));
 vi.mock("@/lib/github-installations", () => ({ getGitHubInstallationMetadataStoreStatus: mocks.installationStore, listTenantGitHubInstallationStatuses: mocks.listInstallations }));
 vi.mock("@/lib/github-app", () => ({ createGitHubInstallationAccessToken: mocks.createToken }));
-vi.mock("@/lib/tenant-control-plane", () => ({ registerConciergeManualRepositoryGrant: mocks.registerGrant, getTenantControlPlaneSettings: mocks.controlPlane, getTenantRepositoryGrantStoreStatus: mocks.grantStore }));
+vi.mock("@/lib/tenant-control-plane", () => ({ registerConciergeManualRepositoryGrant: mocks.registerGrant, getTenantRepositoryGrantStoreStatus: mocks.grantStore }));
 
 import { POST } from "./route";
 
@@ -24,7 +24,6 @@ describe("Concierge manual repository grant route", () => {
     vi.clearAllMocks();
     mocks.csrf.mockReturnValue({ ok: true });
     mocks.runtime.mockReturnValue({ manualAnalysisEnabled: true, globalKillSwitch: false });
-    mocks.controlPlane.mockReturnValue({ enabled: true });
     mocks.configuration.mockReturnValue({ configured: true, consistent: true });
     mocks.authStatus.mockReturnValue(durable); mocks.accountStatus.mockReturnValue(durable); mocks.installationStore.mockReturnValue(durable); mocks.grantStore.mockReturnValue(durable);
     mocks.verifySession.mockResolvedValue({ authorized: true, method: "durable-session", role: "owner" });

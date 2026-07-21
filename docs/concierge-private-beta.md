@@ -27,6 +27,8 @@ Existing GitHub onboarding keeps its established automation setting. Concierge r
 
 All Concierge tables share foreign-key boundaries with durable tenant/session/installation/grant rows. `AGENTPROOF_CONCIERGE_SUPABASE_URL` must therefore resolve to the same Supabase project origin as the effective tenant-control-plane store URLs. A missing or cross-project configuration fails closed before session verification, installation-token issuance, feedback storage, or analysis reservation.
 
+Concierge activation does not require a branch-scoped beta enable variable. It is available only on Vercel Preview when the existing durable tenant/account/session/installation/grant stores are completely configured in that same Supabase project and the existing global Concierge kill switch is explicitly released. Production, local/unknown deployment modes, missing stores, memory/env fallbacks, and cross-project configurations remain fail-closed.
+
 `AGENTPROOF_CONCIERGE_EXTERNAL_REVIEWER_TENANTS` is an operator-controlled JSON array of isolated external-reviewer tenant IDs. Missing means every session is internal self-test evidence; malformed or duplicate entries fail feedback storage closed. The browser cannot choose or override this cohort. Each listed tenant must have exactly one enabled repository grant.
 
 ## Original-task boundary

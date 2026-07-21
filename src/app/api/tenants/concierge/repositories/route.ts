@@ -5,7 +5,7 @@ import { getGitHubInstallationMetadataStoreStatus, listTenantGitHubInstallationS
 import { conciergeRuntimeDefaults } from "@/lib/concierge-private-beta";
 import { getTenantAccountStoreStatus } from "@/lib/tenant-accounts";
 import { getTenantAuthSessionStoreStatus, verifyTenantAuthAccess } from "@/lib/tenant-auth";
-import { getTenantControlPlaneSettings, getTenantRepositoryGrantStoreStatus, registerConciergeManualRepositoryGrant } from "@/lib/tenant-control-plane";
+import { getTenantRepositoryGrantStoreStatus, registerConciergeManualRepositoryGrant } from "@/lib/tenant-control-plane";
 import { getConciergeStoreConfigurationStatus } from "@/lib/concierge-store-configuration";
 
 const MAX_BODY_BYTES = 2_000;
@@ -13,7 +13,7 @@ const MAX_BODY_BYTES = 2_000;
 export async function POST(request: Request) {
   if (!verifySameOriginMutationRequest(request).ok) return json({ code: "csrf_rejected" }, 403);
   const runtime = conciergeRuntimeDefaults();
-  if (!runtime.manualAnalysisEnabled || runtime.globalKillSwitch || !getTenantControlPlaneSettings().enabled) return json({ code: runtime.globalKillSwitch ? "global_kill_switch" : "concierge_disabled" }, 503);
+  if (!runtime.manualAnalysisEnabled || runtime.globalKillSwitch) return json({ code: runtime.globalKillSwitch ? "global_kill_switch" : "concierge_disabled" }, 503);
   const body = await parseBody(request);
   if (!body) return json({ code: "invalid_request" }, 400);
 

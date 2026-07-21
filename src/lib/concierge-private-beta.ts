@@ -3,7 +3,6 @@ import { getTenantAccountStoreStatus } from "./tenant-accounts";
 import { getTenantAuthSessionStoreStatus, resolveTenantAuthAccess } from "./tenant-auth";
 import {
   authorizeDurableTenantRepositoryGrantAsync,
-  getTenantControlPlaneSettings,
   getTenantRepositoryGrantStoreStatus,
   listTenantEnabledRepositoryGrantScope
 } from "./tenant-control-plane";
@@ -48,12 +47,20 @@ const DEFAULT_DEPS: ConciergeAccessDependencies = {
 
 export function conciergeRuntimeDefaults(env = process.env) {
   const previewOnly = env.VERCEL_ENV === "preview";
-  const tenantControlPlaneEnabled = getTenantControlPlaneSettings(env).enabled;
   const conciergeExplicitlyReleased = explicitlyReleased(env.AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH);
+  const configuration = getConciergeStoreConfigurationStatus(env);
+  const durableStoresReady = configuration.configured
+    && configuration.consistent
+    && [
+      getTenantAuthSessionStoreStatus(env),
+      getTenantAccountStoreStatus(env),
+      getGitHubInstallationMetadataStoreStatus(env),
+      getTenantRepositoryGrantStoreStatus(env)
+    ].every((store) => store.configured && store.durable);
   return {
-    // Reuse existing platform/control-plane settings. Production stays off
-    // even if the control plane and kill-switch settings are present.
-    manualAnalysisEnabled: previewOnly && tenantControlPlaneEnabled && conciergeExplicitlyReleased,
+    // Reuse the existing durable Supabase configuration instead of requiring
+    // a branch-scoped enable flag. Production and incomplete stores stay off.
+    manualAnalysisEnabled: previewOnly && durableStoresReady && conciergeExplicitlyReleased,
     globalKillSwitch: !conciergeExplicitlyReleased,
     llmEnabled: false,
     webhookAutomationEnabled: false,
@@ -73,7 +80,7 @@ export async function authorizeConciergeAccess(
 ): Promise<ConciergeAccessDecision> {
   const runtime = conciergeRuntimeDefaults(env);
   if (runtime.globalKillSwitch) return { authorized: false, reason: "global_kill_switch" };
-  if (!runtime.manualAnalysisEnabled || !getTenantControlPlaneSettings(env).enabled) return { authorized: false, reason: "concierge_disabled" };
+  if (!runtime.manualAnalysisEnabled) return { authorized: false, reason: "concierge_disabled" };
   if (!validInput(input)) return { authorized: false, reason: "authorization_unavailable" };
 
   try {

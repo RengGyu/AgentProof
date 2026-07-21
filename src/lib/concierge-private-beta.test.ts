@@ -4,7 +4,6 @@ import { authorizeDurableTenantRepositoryGrantAsync } from "./tenant-control-pla
 
 const env: NodeJS.ProcessEnv = {
   ...process.env,
-  AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "1",
   VERCEL_ENV: "preview",
   AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "https://example.supabase.co",
   AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "test-placeholder",
@@ -41,7 +40,13 @@ describe("concierge private beta authorization", () => {
     const released = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false" };
     expect(conciergeRuntimeDefaults({ ...released, VERCEL_ENV: "production" }).manualAnalysisEnabled).toBe(false);
     expect(conciergeRuntimeDefaults({ ...released, VERCEL_ENV: undefined }).manualAnalysisEnabled).toBe(false);
-    expect(conciergeRuntimeDefaults({ ...released, AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "false" }).manualAnalysisEnabled).toBe(false);
+  });
+
+  it("uses existing complete same-project durable stores without the legacy control-plane enable flag", () => {
+    const released = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: undefined };
+    expect(conciergeRuntimeDefaults(released).manualAnalysisEnabled).toBe(true);
+    expect(conciergeRuntimeDefaults({ ...released, AGENTPROOF_CONCIERGE_SUPABASE_URL: "" }).manualAnalysisEnabled).toBe(false);
+    expect(conciergeRuntimeDefaults({ ...released, AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://other.supabase.co" }).manualAnalysisEnabled).toBe(false);
   });
 
   it("authorizes durable manual grant while automated analysis remains off", async () => {
@@ -102,17 +107,17 @@ describe("concierge private beta authorization", () => {
     expect(deps.authorizeGrant).toHaveBeenCalledTimes(grantCalls as number);
   });
 
-  it("rejects memory/env authorization before any provider lookup", async () => {
+  it("keeps activation disabled for memory/env authorization before any provider lookup", async () => {
     const deps = dependencies();
     const memoryEnv = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "", AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "", AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "1", AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY: "1", AGENTPROOF_TENANT_ACCOUNTS: "[]" };
-    expect(await authorizeConciergeAccess(input, memoryEnv, deps)).toEqual({ authorized: false, reason: "durable_store_required" });
+    expect(await authorizeConciergeAccess(input, memoryEnv, deps)).toEqual({ authorized: false, reason: "concierge_disabled" });
     expect(deps.resolveSession).not.toHaveBeenCalled();
   });
 
-  it("rejects a Concierge project mismatch before any session or provider lookup", async () => {
+  it("keeps activation disabled for a Concierge project mismatch before any session or provider lookup", async () => {
     const deps = dependencies();
     const mismatch = { ...env, AGENTPROOF_CONCIERGE_GLOBAL_KILL_SWITCH: "false", AGENTPROOF_CONCIERGE_SUPABASE_URL: "https://other-project.supabase.co" };
-    expect(await authorizeConciergeAccess(input, mismatch, deps)).toEqual({ authorized: false, reason: "durable_store_mismatch" });
+    expect(await authorizeConciergeAccess(input, mismatch, deps)).toEqual({ authorized: false, reason: "concierge_disabled" });
     expect(deps.resolveSession).not.toHaveBeenCalled();
     expect(deps.listInstallationStatuses).not.toHaveBeenCalled();
     expect(deps.authorizeGrant).not.toHaveBeenCalled();
