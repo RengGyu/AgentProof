@@ -4,7 +4,12 @@ import { startConciergeGitHubOAuth, conciergeGitHubAuthErrorResponse, type Conci
 export async function GET(request: Request) {
   try {
     const start = await startConciergeGitHubOAuth(process.env, undefined, request.headers.get("cookie"));
-    return NextResponse.redirect(start.redirectUrl, { status: 303, headers: { "Set-Cookie": start.cookie, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
+    const response = NextResponse.redirect(start.redirectUrl, { status: 303, headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
+    // Keep the pending OAuth cookie on the same explicit append path used by
+    // callback/session cookies.  This avoids deployment adapters treating a
+    // redirect's generic ResponseInit headers differently from Set-Cookie.
+    response.headers.append("Set-Cookie", start.cookie);
+    return response;
   } catch (error) {
     const code = reason(error);
     return conciergeGitHubAuthErrorResponse(code, code === "session_already_active" ? 409 : 503);
