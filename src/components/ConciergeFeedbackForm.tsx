@@ -49,8 +49,8 @@ export function ConciergeFeedbackForm({ caseIdOrHash, report, preReportGapCatego
     }
   }
 
-  return <details className="panel concierge-feedback friendly-feedback">
-    <summary><span><strong>간단한 사용성 피드백</strong><small>보고서·코드 원문 없이 선택한 답변만 저장합니다.</small></span></summary>
+  return <details className="panel concierge-feedback friendly-feedback" aria-label="사용성 평가">
+    <summary><span><span className="evaluation-only-badge">평가 기능</span><strong>간단한 사용성 피드백</strong><small>핵심 보고서와 분리되어 있으며, 보고서·코드 원문 없이 선택한 답변만 저장합니다.</small></span></summary>
     <div className="feedback-body" aria-labelledby="concierge-feedback-title">
       <h2 id="concierge-feedback-title">이 보고서가 실제 검토에 도움이 되었나요?</h2>
       <p className="locked-pre-report">보고서 전 예상: <strong>{preReportLabel(preReportGapCategory)}</strong> <span>· 분석 시작 시 잠김</span></p>

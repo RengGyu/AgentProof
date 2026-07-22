@@ -29,12 +29,12 @@ function fixture(taskState: TaskState = "available", ciStatus: "passed" | "faile
 async function fillSetup(page: import("@playwright/test").Page, options: { evaluation?: boolean } = {}) {
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
   await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "ready", repositories: [{ fullName: "acme/private" }] }) }));
-  const start = page.getByRole("button", { name: "PR 검토 시작" });
-  if (await start.isVisible()) await start.click();
+  await page.goto("/concierge");
+  await page.getByRole("button", { name: "PR 선택하기" }).click();
   await page.getByLabel("허용된 개인 저장소").selectOption("acme/private");
   await page.getByLabel("PR 번호").fill("17");
   if (options.evaluation) {
-    await page.getByText("평가 진행 시에만 사용", { exact: true }).click();
+    await page.getByText("평가 도구", { exact: true }).click();
     await page.getByLabel("보고서 전 예상").selectOption("targeted_test");
   }
 }
@@ -73,16 +73,13 @@ function zeroGapFixture() {
 }
 
 test("welcome page keeps the guide character visible and separates setup from the landing page", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: false }) }));
   await page.goto("/concierge");
   await expect(page.getByRole("heading", { name: /PR을 읽기 전에/ })).toBeVisible();
   await expect(page.locator(".welcome-scene .proof-buddy.hero")).toBeVisible();
   await expect(page.getByText("병합 여부나 구현의 정확성을 판정하지 않습니다.")).toBeVisible();
   await expect(page.getByLabel("허용된 개인 저장소")).toHaveCount(0);
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
-  await expect(page.getByRole("heading", { name: "검토할 PR을 선택하세요" })).toBeVisible();
   await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
-  await page.getByRole("button", { name: "← 소개로 돌아가기" }).click();
-  await expect(page.getByRole("button", { name: "PR 검토 시작" })).toBeVisible();
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
 });
 
@@ -98,8 +95,10 @@ test("desktop summary focuses the top gap, supports detail navigation, and leave
   await expect(report).toBeVisible();
   await expect(report).toBeFocused();
   await expect(page.getByRole("heading", { name: "요구사항 대상 테스트 증거 없음" })).toBeVisible();
-  await expect(page.getByText("요구사항 GitHub Issue #42")).toBeVisible();
+  await expect(page.getByText("요구사항 GitHub Issue #42", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "PR 원문 열기" })).toHaveAttribute("href", "https://github.com/acme/private/pull/17");
   await expect(page.getByText("간단한 사용성 피드백", { exact: true })).toHaveCount(0);
+  if (process.env.AGENTPROOF_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.AGENTPROOF_SCREENSHOT_DIR}/concierge-v2-desktop.png`, fullPage: true });
   await page.getByRole("button", { name: "후속 요청 복사" }).click();
   await expect(page.getByRole("status")).toHaveText("후속 요청을 클립보드에 복사했습니다.");
   await page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }).click();
@@ -107,9 +106,10 @@ test("desktop summary focuses the top gap, supports detail navigation, and leave
   await expect(page.getByRole("button", { name: "검토 요약으로" })).toBeVisible();
   await page.getByRole("button", { name: "테스트·CI" }).click();
   await expect(page.getByRole("heading", { name: "테스트와 CI" })).toBeVisible();
-  await expect(page.getByLabel("CI 실행 상태: passed")).toBeVisible();
+  await expect(page.getByLabel("CI 실행: 통과")).toBeVisible();
   await page.getByRole("button", { name: "증거 출처·제한사항" }).click();
   await expect(page.getByRole("heading", { name: "증거 출처·제한사항" })).toBeVisible();
+  await expect(page.locator("#concierge-panel-evidence").getByText("요구사항 GitHub Issue #42", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "검토 요약으로" }).click();
   await expect(page.locator("#concierge-panel-summary")).toBeFocused();
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
@@ -118,10 +118,24 @@ test("desktop summary focuses the top gap, supports detail navigation, and leave
   expect(externalRequests).toEqual([]);
 });
 
+test("UI rejects non-GitHub PR links and does not present unbound proofGraph fields as requirement evidence", async ({ page }) => {
+  const drifted: any = fixture();
+  drifted.source.url = "https://token@github.com/acme/private/pull/17";
+  drifted.proofGraph.nodes[0].status = "met";
+  drifted.proofGraph.nodes[0].firstFiles = ["src/uncited.ts"];
+  await interceptSuccess(page, drifted);
+  await page.goto("/concierge");
+  await fillAndRun(page);
+  await expect(page.getByRole("link", { name: "PR 원문 열기" })).toHaveCount(0);
+  await page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }).click();
+  await expect(page.getByText("요구사항 증거 일부 있음", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("구현 증거 있음", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("src/uncited.ts", { exact: true })).toHaveCount(0);
+});
+
 test("signed-out users see only the GitHub continuation without beta IDs", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: false }) }));
   await page.goto("/concierge");
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
   await expect(page.getByLabel("베타 공간 ID")).toHaveCount(0);
   await expect(page.getByLabel("테스터 계정 ID")).toHaveCount(0);
@@ -132,15 +146,14 @@ test("a repository session 401 is shown as signed out, while public-only OAuth g
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
   await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ code: "session_invalid" }) }));
   await page.goto("/concierge");
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
   await expect(page.getByText("GitHub 접근 권한이 변경되었습니다.")).toHaveCount(0);
   await page.unroute("**/api/auth/github/repositories");
   await page.unroute("**/api/auth/me");
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: false }) }));
   await page.goto("/concierge?auth=private_repository_required");
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByText("비공개 저장소가 필요합니다.")).toBeVisible();
+  await expect(page.locator(".proof-buddy")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
@@ -150,8 +163,8 @@ test("an actual authentication network timeout is not presented as a logout", as
   await page.setViewportSize({ width: 320, height: 700 });
   await page.route("**/api/auth/me", (route) => route.abort("timedout"));
   await page.goto("/concierge");
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByText("GitHub 연결 상태를 지금 확인할 수 없습니다.")).toBeVisible();
+  await expect(page.locator(".proof-buddy")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
@@ -181,8 +194,8 @@ test("organization-only access is explained without exposing identifiers", async
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: false }) }));
   await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "app_missing", repositories: [] }) }));
   await page.goto("/concierge");
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByText("조직 저장소는 첫 베타에서 지원하지 않습니다.")).toBeVisible();
+  await expect(page.locator(".proof-buddy")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
   await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toBeVisible();
 });
@@ -191,7 +204,6 @@ test("a personal App installation without a manual grant has distinct recovery g
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
   await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "no_granted_personal_repository", repositories: [] }) }));
   await page.goto("/concierge");
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByText("아직 허용된 개인 저장소가 없습니다.")).toBeVisible();
   await expect(page.getByText("조직 저장소는 첫 베타에서 지원하지 않습니다.")).toHaveCount(0);
 });
@@ -211,7 +223,6 @@ test("revoked access gives bounded recovery controls", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
   await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ code: "installation_not_active" }) }));
   await page.goto("/concierge");
-  await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByText("GitHub 접근 권한이 변경되었습니다.")).toBeVisible();
   await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
   await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toBeVisible();
@@ -230,19 +241,52 @@ test("keyboard focus reaches the detail gateway and selected detail panels", asy
   await expect(page.locator("#concierge-panel-checks")).toBeFocused();
 });
 
-test("mobile shows the review brief first without horizontal overflow", async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+test("320px mobile shows the review brief first, orders evidence inspection before the follow-up, and has no horizontal overflow", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 320, height: 720 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
-  await interceptSuccess(page);
+  const mobileReport = fixture();
+  mobileReport.source.title = "Synthetic private PR with a deliberately long GitHub source title for mobile review";
+  await interceptSuccess(page, mobileReport);
   await page.goto("/concierge");
-  await expect(page.locator(".welcome-scene .proof-buddy.hero")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await fillAndRun(page);
   await expect(page.getByRole("heading", { name: "요구사항 대상 테스트 증거 없음" })).toBeVisible();
   const briefBox = await page.locator(".friendly-brief").boundingBox();
-  expect(briefBox?.y ?? 9999).toBeLessThan(844);
+  expect(briefBox?.y ?? 9999).toBeLessThan(720);
+  const repromptBox = await page.locator(".reprompt-card").boundingBox();
+  const inspectBox = await page.locator(".inspect-card").boundingBox();
+  expect(inspectBox?.y ?? 9999).toBeLessThan(repromptBox?.y ?? 0);
+  if (process.env.AGENTPROOF_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.AGENTPROOF_SCREENSHOT_DIR}/concierge-v2-mobile-320.png`, fullPage: true });
+  await page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }).tap();
+  await expect(page.locator("#concierge-panel-requirements")).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();
+});
+
+test("tablet welcome layout avoids squeezing the heading into an orphaned final syllable", async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 900 });
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: false }) }));
+  await page.goto("/concierge");
+  const heading = page.getByRole("heading", { name: /PR을 읽기 전에/ });
+  await expect(heading).toBeVisible();
+  const metrics = await heading.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const textNode = Array.from(element.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes("찾아보세요"));
+    const lastLineCharacters = textNode?.textContent ? Array.from(textNode.textContent).reduce<Array<{ character: string; bottom: number }>>((characters, character, index) => {
+      const range = document.createRange();
+      range.setStart(textNode, index);
+      range.setEnd(textNode, index + 1);
+      const rect = range.getBoundingClientRect();
+      characters.push({ character, bottom: Math.round(rect.bottom) });
+      return characters;
+    }, []) : [];
+    const finalBottom = Math.max(...lastLineCharacters.map(({ bottom }) => bottom));
+    const finalLineText = lastLineCharacters.filter(({ bottom }) => bottom === finalBottom).map(({ character }) => character).join("").trim();
+    return { height: element.getBoundingClientRect().height, lineHeight: Number.parseFloat(style.lineHeight), finalLineText };
+  });
+  expect(metrics.height).toBeLessThanOrEqual(metrics.lineHeight * 2.2);
+  expect(metrics.finalLineText.length).toBeGreaterThanOrEqual(5);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("320px mobile keeps zero-gap feedback and reset controls operable without horizontal overflow", async ({ browser }) => {
@@ -321,9 +365,12 @@ test("unavailable, ambiguous, and failed-check fixtures never display met and re
     const page = await context.newPage();
     await interceptSuccess(page, report); await page.goto("/concierge"); await fillAndRun(page);
     await expect(page.getByLabel("PR 증거 보고서")).toBeVisible();
-    await expect(page.getByText(task)).toBeVisible();
     await expect(page.getByRole("heading", { name: gap })).toBeVisible();
-    await expect(page.getByRole("link").first()).toHaveAttribute("href", /github\.com\/acme\/private/);
+    await expect(page.getByText(task, { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "PR 원문 열기" })).toHaveAttribute("href", "https://github.com/acme/private/pull/17");
+    await page.getByRole("button", { name: /증거 출처·제한사항.*참조한 근거와 확인 범위/ }).click();
+    await expect(page.getByText(task, { exact: true })).toHaveCount(2);
+    await page.getByRole("button", { name: "검토 요약으로" }).click();
     await page.getByRole("button", { name: /요구사항.*1개 항목의 구현 근거/ }).click();
     await expect(page.getByText("구현 증거 있음", { exact: true })).toHaveCount(0);
     await context.close();
@@ -344,7 +391,8 @@ test("original-task failure reasons remain distinct instead of becoming one gene
     await interceptSuccess(page, report);
     await page.goto("/concierge");
     await fillAndRun(page);
-    await expect(page.getByText(expected, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /증거 출처·제한사항.*참조한 근거와 확인 범위/ }).click();
+    await expect(page.locator("#concierge-panel-evidence").getByText(expected, { exact: true })).toBeVisible();
     await context.close();
   }
 });

@@ -6,10 +6,12 @@ import { ConciergeReportView } from "./ConciergeReportView";
 import { ConciergeFeedbackForm } from "./ConciergeFeedbackForm";
 import type { VerificationReport } from "@/lib/types";
 
+type AuthState = "checking" | "signed_out" | "ready" | "app_missing" | "no_granted_personal_repository" | "private_repository_required" | "access_changed" | "auth_unavailable";
+
 export function ConciergeWorkspace() {
   const [started, setStarted] = useState(false);
   const [form, setForm] = useState({ repositoryFullName: "", pullRequestNumber: "" });
-  const [authState, setAuthState] = useState<"checking" | "signed_out" | "ready" | "app_missing" | "no_granted_personal_repository" | "private_repository_required" | "access_changed" | "auth_unavailable">("checking");
+  const [authState, setAuthState] = useState<AuthState>("checking");
   const [repositories, setRepositories] = useState<Array<{ fullName: string }>>([]);
   const [report, setReport] = useState<VerificationReport | null>(null);
   const [caseIdOrHash, setCaseIdOrHash] = useState("");
@@ -116,50 +118,51 @@ export function ConciergeWorkspace() {
     finally { setLoading(false); }
   }
 
+  const showWelcomeCharacter = authState === "checking" || authState === "signed_out" || authState === "ready";
+
   return <main className="app-shell concierge-shell">
     <header className="topbar concierge-topbar">
       <div className="brand-copy"><span>AgentProof</span><small>비공개 PR 근거 확인</small></div>
       <div className="concierge-header-meta"><span className="page-indicator">{report ? "검토 결과" : started ? "PR 설정" : "시작"}</span><span className="beta-pill">비공개 베타</span></div>
     </header>
     <div className={report ? "concierge-layout has-report" : started ? "concierge-layout is-setup" : "concierge-layout is-welcome"}>
-      {!started && !report ? <section className="concierge-welcome" aria-labelledby="concierge-welcome-title">
+      {!started && !report ? <section className={`concierge-welcome ${showWelcomeCharacter ? "has-character" : "has-auth-error"}`} aria-labelledby="concierge-welcome-title">
         <div className="welcome-copy">
-          <span className="welcome-badge"><Sparkles size={15} />AI agent PR 검토 안내</span>
-          <h1 id="concierge-welcome-title">PR을 읽기 전에, <em>확인할 증거</em>부터 찾아보세요.</h1>
-          <p>AgentProof는 원래 요구사항과 변경·테스트 증거를 연결해 개발자가 먼저 확인할 위치를 정리합니다.</p>
+          <span className="welcome-badge"><Sparkles size={15} />AI agent PR 증거 확인</span>
+          <h1 id="concierge-welcome-title">PR을 읽기 전에, <br className="tablet-heading-break" aria-hidden="true" /><em>확인할 증거</em>부터 찾아보세요.</h1>
+          <p>AgentProof는 AI agent가 작성한 PR의 원 요구사항과 변경·테스트·CI 증거를 연결해 개발자가 먼저 확인할 위치를 정리합니다.</p>
           <div className="welcome-actions">
-            <button className="button primary welcome-start" type="button" onClick={() => setStarted(true)}>PR 검토 시작 <ArrowRight size={18} /></button>
+            {authState === "checking" ? <span className="welcome-auth-status" role="status" aria-live="polite">GitHub 로그인 상태를 확인하고 있습니다.</span> : null}
+            {authState === "signed_out" ? <a className="button primary welcome-start" href="/api/auth/github/start">GitHub로 계속하기 <Github size={18} /></a> : null}
+            {authState === "ready" ? <button className="button primary welcome-start" type="button" onClick={() => setStarted(true)}>PR 선택하기 <ArrowRight size={18} /></button> : null}
             <span>LLM 없이 결정론적 증거만 사용</span>
           </div>
+          {!showWelcomeCharacter ? <AuthStateNotice state={authState} /> : null}
+          {hasDurableSession && !showWelcomeCharacter ? <div className="concierge-auth-actions welcome-auth-actions"><button className="button" type="button" onClick={endSession}>로그아웃</button><button className="button" type="button" onClick={switchGitHubAccount}>다른 GitHub 계정으로 로그인</button></div> : null}
+          {!hasDurableSession && !showWelcomeCharacter ? <div className="concierge-auth-actions welcome-auth-actions"><a className="button" href="/api/auth/github/start">GitHub로 계속하기 <Github size={18} /></a></div> : null}
         </div>
-        <div className="welcome-scene" aria-hidden="true">
+        {showWelcomeCharacter ? <div className="welcome-scene" aria-hidden="true">
           <span className="buddy-speech">어디부터 볼까요?</span>
           <div className="proof-buddy hero"><span className="proof-buddy-eye left" /><span className="proof-buddy-eye right" /><span className="proof-buddy-glass"><FileSearch size={28} /></span></div>
           <span className="orbit-card orbit-task"><ListChecks size={18} />요구사항</span>
           <span className="orbit-card orbit-code"><Github size={18} />변경 파일</span>
           <span className="orbit-card orbit-check"><FileCheck2 size={18} />CI 결과</span>
-        </div>
+        </div> : null}
         <div className="welcome-guide" aria-label="AgentProof가 정리하는 세 가지">
-          <article><span>01</span><div><strong>요구사항 확인</strong><p>PR이 충족해야 할 기준을 먼저 찾습니다.</p></div></article>
-          <article><span>02</span><div><strong>증거 공백 분류</strong><p>구현·테스트·CI 중 빠진 근거를 구분합니다.</p></div></article>
-          <article><span>03</span><div><strong>첫 확인 위치</strong><p>파일 또는 CI check 링크를 바로 제시합니다.</p></div></article>
+          <article><span>01</span><div><strong>가장 중요한 증거 공백</strong><p>구현·테스트·CI 중 먼저 확인할 한 가지를 보여줍니다.</p></div></article>
+          <article><span>02</span><div><strong>GitHub 근거로 바로 이동</strong><p>파일 경로와 CI check 이름을 원문 그대로 구분해 표시합니다.</p></div></article>
+          <article><span>03</span><div><strong>후속 작업 정리</strong><p>확인된 공백에 근거한 agent 요청만 제공합니다.</p></div></article>
         </div>
         <p className="welcome-boundary">병합 여부나 구현의 정확성을 판정하지 않습니다. 사람의 검토 순서를 돕는 근거 보고서입니다.</p>
       </section> : null}
 
       {started && !report ? <section className="panel concierge-intake friendly-intake">
         <button className="text-back-button" type="button" onClick={() => setStarted(false)}>← 소개로 돌아가기</button>
-        <div className="friendly-intro"><div className="proof-buddy mini" aria-hidden="true"><span className="proof-buddy-eye left" /><span className="proof-buddy-eye right" /></div><div><p className="eyebrow">PR 설정 · 1단계</p><h1>검토할 PR을 선택하세요</h1><p>요구사항과 변경 증거를 연결해 우선 검토 위치를 정리합니다.</p></div></div>
-
-        <div className="friendly-privacy"><strong>보고서 전문은 저장하지 않습니다.</strong><span>선택형 사용 기록은 최대 30일 보존 목표이며, 현재 삭제는 운영자가 처리합니다.</span><details><summary>개인정보 처리 자세히 보기</summary><p>분석 실행에는 GitHub 연결·저장소를 구분하는 번호, 요청 해시, 제한된 상태와 시간이 남습니다. 피드백에는 서버가 만든 익명 식별자와 선택형 응답만 추가됩니다. 이름·연락처·저장소명·PR 번호·작업·코드·보고서·로그·후속 요청 원문·비밀값은 피드백으로 받지 않습니다.</p></details></div>
+        <div className="friendly-intro"><div><p className="eyebrow">PR 선택 · 1단계</p><h1>검토할 PR을 선택하세요</h1><p>허용된 비공개 저장소와 PR 번호만 입력하면 원 요구사항·변경 파일·테스트·CI 증거를 확인합니다.</p></div></div>
 
         {authState === "checking" ? <p role="status" aria-live="polite">GitHub 로그인 상태를 확인하고 있습니다.</p> : null}
         {authState === "signed_out" ? <section className="friendly-session" aria-label="GitHub 로그인"><strong>GitHub 계정으로 계속하기</strong><p>개인 계정에 설치된 AgentProof 저장소만 첫 베타에서 선택할 수 있습니다.</p><a className="button primary" href="/api/auth/github/start">GitHub로 계속하기 <Github size={18} /></a></section> : null}
-        {authState === "app_missing" ? <div className="intake-error" role="alert"><CircleAlert size={18} /><div className="intake-error-body"><strong>개인 GitHub App 설치가 필요합니다.</strong><span>개인 계정에 AgentProof GitHub App을 설치한 뒤 다시 로그인해 주세요. 조직 저장소는 첫 베타에서 지원하지 않습니다.</span></div></div> : null}
-        {authState === "no_granted_personal_repository" ? <div className="intake-error" role="alert"><CircleAlert size={18} /><div className="intake-error-body"><strong>아직 허용된 개인 저장소가 없습니다.</strong><span>App 설치는 확인됐지만, 운영자가 수동 분석용 저장소를 아직 허용하지 않았습니다.</span></div></div> : null}
-        {authState === "private_repository_required" ? <div className="intake-error" role="alert"><CircleAlert size={18} /><div className="intake-error-body"><strong>비공개 저장소가 필요합니다.</strong><span>첫 베타는 개인 계정의 비공개 저장소만 지원합니다. GitHub App에 비공개 저장소를 선택한 뒤 다시 로그인해 주세요.</span></div></div> : null}
-        {authState === "access_changed" ? <div className="intake-error" role="alert"><CircleAlert size={18} /><div className="intake-error-body"><strong>GitHub 접근 권한이 변경되었습니다.</strong><span>App 설치 및 저장소 접근 상태를 확인한 뒤 다시 로그인해 주세요.</span></div></div> : null}
-        {authState === "auth_unavailable" ? <div className="intake-error" role="alert"><CircleAlert size={18} /><div className="intake-error-body"><strong>GitHub 연결 상태를 지금 확인할 수 없습니다.</strong><span>로그아웃 상태로 판단하지 않았습니다. 잠시 후 다시 시도하거나, 연결이 복구된 뒤 다른 계정으로 로그인해 주세요.</span></div></div> : null}
+        {authState !== "checking" && authState !== "signed_out" && authState !== "ready" ? <AuthStateNotice state={authState} /> : null}
         {authState === "ready" ? <><div className="grid-two friendly-primary-fields">
           <label className="field"><span>허용된 개인 저장소</span><select className="select" aria-label="허용된 개인 저장소" value={form.repositoryFullName} onChange={(event) => setForm((current) => ({ ...current, repositoryFullName: event.target.value }))}>{repositories.map((repository) => <option key={repository.fullName} value={repository.fullName}>{repository.fullName}</option>)}</select></label>
           <label className="field"><span>PR 번호</span><input className="input" aria-label="PR 번호" inputMode="numeric" placeholder="예: 17" value={form.pullRequestNumber} onChange={(event) => setForm((current) => ({ ...current, pullRequestNumber: event.target.value }))} /></label>
@@ -168,20 +171,34 @@ export function ConciergeWorkspace() {
         {hasDurableSession ? <div className="concierge-auth-actions"><button className="button" type="button" onClick={endSession}>로그아웃</button><button className="button" type="button" onClick={switchGitHubAccount}>다른 GitHub 계정으로 로그인</button></div> : null}
         {!hasDurableSession && authState !== "checking" && authState !== "signed_out" && authState !== "ready" ? <div className="concierge-auth-actions"><a className="button" href="/api/auth/github/start">GitHub로 계속하기 <Github size={18} /></a></div> : null}
 
+        <div className="friendly-privacy"><strong>보고서 전문은 저장하지 않습니다.</strong><span>선택형 사용 기록은 최대 30일 보존 목표이며, 현재 삭제는 운영자가 처리합니다.</span><details><summary>개인정보 처리 자세히 보기</summary><p>분석 실행에는 GitHub 연결·저장소를 구분하는 번호, 요청 해시, 제한된 상태와 시간이 남습니다. 피드백에는 서버가 만든 익명 식별자와 선택형 응답만 추가됩니다. 이름·연락처·저장소명·PR 번호·작업·코드·보고서·로그·후속 요청 원문·비밀값은 피드백으로 받지 않습니다.</p></details></div>
+
         <details className="evaluation-settings">
-          <summary>평가 진행 시에만 사용</summary>
+          <summary><span>평가 도구</span><small>사용성 평가 진행 시에만 열어보세요.</small></summary>
           <label className="field pre-report-field"><span>보고서를 보기 전 예상한 증거 공백</span><select className="select" aria-label="보고서 전 예상" value={preReportGapCategory} onChange={(event) => setPreReportGapCategory(event.target.value)}><option value="">기록하지 않음</option><option value="none">특별한 증거 공백 없음</option><option value="implementation">구현 증거 없음</option><option value="targeted_test">요구사항 대상 테스트 증거 없음</option><option value="execution">테스트·빌드 실행 증거 없음</option><option value="requirement">요구사항 확인 불가</option><option value="evidence_unavailable">증거 수집 불가</option><option value="evidence_insufficient">수집된 증거 불충분</option></select><small>제품 분석에는 사용하지 않으며, 선택한 경우에만 사용성 피드백을 표시합니다.</small></label>
         </details>
 
         {authState === "ready" ? <button className="button primary friendly-analyze" disabled={loading || !form.repositoryFullName || !validPullRequestNumber(form.pullRequestNumber)} onClick={analyze}>{loading ? "근거를 확인하는 중" : "PR 근거 확인하기"}</button> : null}
         {loading ? <div className="concierge-loading" role="status" aria-live="polite"><span className="loading-orbit" aria-hidden="true"><FileSearch size={18} /></span><div><strong>GitHub 증거를 수집하고 있습니다.</strong><p>수집한 증거로 보고서 구조를 검증한 뒤 결과를 표시합니다.</p></div></div> : null}
         {error ? <ErrorNotice code={error} /> : null}
-        <p className="quiet-boundary">이 베타에서는 LLM·자동 분석·저장·공유·댓글·Slack을 사용하지 않습니다.</p>
+        <p className="quiet-boundary">이 베타에서는 LLM·자동 분석·보고서 저장·공유·댓글·Slack을 사용하지 않습니다.</p>
       </section> : null}
 
-      {report ? <div ref={reportRef} className="concierge-report-wrap" tabIndex={-1} aria-label="PR 증거 보고서"><ConciergeReportView report={report} />{error ? <ErrorNotice code={error} /> : null}{caseIdOrHash && lockedPreReportGapCategory ? <ConciergeFeedbackForm key={caseIdOrHash} caseIdOrHash={caseIdOrHash} report={report} preReportGapCategory={lockedPreReportGapCategory} /> : null}<div className="concierge-completion-actions"><button className="button" onClick={() => resetWorkspace()}>새 PR 확인하기</button><button className="button" onClick={endSession}>로그아웃</button></div></div> : null}
+      {report ? <div ref={reportRef} className="concierge-report-wrap" tabIndex={-1} role="region" aria-label="PR 증거 보고서"><ConciergeReportView report={report} />{error ? <ErrorNotice code={error} /> : null}{caseIdOrHash && lockedPreReportGapCategory ? <ConciergeFeedbackForm key={caseIdOrHash} caseIdOrHash={caseIdOrHash} report={report} preReportGapCategory={lockedPreReportGapCategory} /> : null}<div className="concierge-completion-actions"><button className="button" onClick={() => resetWorkspace()}>새 PR 확인하기</button><button className="button" onClick={endSession}>로그아웃</button></div></div> : null}
     </div>
   </main>;
+}
+
+function AuthStateNotice({ state }: { state: Exclude<AuthState, "checking" | "signed_out" | "ready"> }) {
+  const messages: Record<typeof state, { title: string; help: string }> = {
+    app_missing: { title: "개인 GitHub App 설치가 필요합니다.", help: "개인 계정에 AgentProof GitHub App을 설치한 뒤 다시 로그인해 주세요. 조직 저장소는 첫 베타에서 지원하지 않습니다." },
+    no_granted_personal_repository: { title: "아직 허용된 개인 저장소가 없습니다.", help: "App 설치는 확인됐지만, 운영자가 수동 분석용 저장소를 아직 허용하지 않았습니다." },
+    private_repository_required: { title: "비공개 저장소가 필요합니다.", help: "첫 베타는 개인 계정의 비공개 저장소만 지원합니다. GitHub App에 비공개 저장소를 선택한 뒤 다시 로그인해 주세요." },
+    access_changed: { title: "GitHub 접근 권한이 변경되었습니다.", help: "App 설치 및 저장소 접근 상태를 확인한 뒤 다시 로그인해 주세요." },
+    auth_unavailable: { title: "GitHub 연결 상태를 지금 확인할 수 없습니다.", help: "로그아웃 상태로 판단하지 않았습니다. 잠시 후 다시 시도하거나, 연결이 복구된 뒤 다른 계정으로 로그인해 주세요." }
+  };
+  const message = messages[state];
+  return <div className="intake-error" role="alert"><CircleAlert size={18} aria-hidden="true" /><div className="intake-error-body"><strong>{message.title}</strong><span>{message.help}</span></div></div>;
 }
 
 function ErrorNotice({ code }: { code: string }) {

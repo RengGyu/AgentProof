@@ -8,10 +8,13 @@ const feedback = readFileSync("src/components/ConciergeFeedbackForm.tsx", "utf8"
 const css = readFileSync("src/app/globals.css", "utf8");
 describe("concierge UI boundary", () => {
   it("separates the welcome, setup, summary, and detail journey without browser persistence", () => {
-    expect(source).toContain("PR 검토 시작");
+    expect(source).toContain("GitHub로 계속하기");
+    expect(source).toContain("PR 선택하기");
     expect(source).toContain("검토할 PR을 선택하세요");
-    expect(conciergeReport).toContain("검토 요약 · 2단계");
-    expect(conciergeReport).toContain("상세 근거 · 3단계");
+    expect(conciergeReport).toContain("검토 요약");
+    expect(conciergeReport).toContain("상세 근거");
+    expect(conciergeReport).not.toContain("검토 요약 · 2단계");
+    expect(conciergeReport).not.toContain("상세 근거 · 3단계");
     expect(conciergeReport).toContain("검토 요약으로");
     expect(source).not.toContain("localStorage");
     expect(source).not.toContain("sessionStorage");
@@ -62,7 +65,7 @@ describe("concierge UI boundary", () => {
     expect(source).toContain("lockedPreReportGapCategory");
     expect(source).toContain("setLockedPreReportGapCategory(frozenPreReportGapCategory)");
     expect(source).toContain("caseIdOrHash && lockedPreReportGapCategory");
-    expect(source).toContain("평가 진행 시에만 사용");
+    expect(source).toContain("사용성 평가 진행 시에만 열어보세요.");
     expect(source).toContain('<option value="">기록하지 않음</option>');
     expect(feedback).not.toContain("setPreReportGapCategory");
   });
@@ -78,5 +81,34 @@ describe("concierge UI boundary", () => {
     expect(summary).not.toContain("confidence");
     expect(summary).not.toContain("evidence.id");
     expect(summary).not.toContain("evidenceCoverage");
+  });
+  it("renders only cross-bound report fields for source boundaries and the requirement evidence trail", () => {
+    expect(conciergeReport).toContain("report.source.provenance?.headSha");
+    expect(conciergeReport).toContain("safeGitHubPullRequestUrl(report.source.url)");
+    expect(conciergeReport).toContain("url.username || url.password || url.port");
+    expect(conciergeReport).toContain("PR 원문 열기");
+    expect(conciergeReport).toContain("task-${task.tone}");
+    expect(conciergeReport).toContain("report.decisionCard?.topGap");
+    expect(conciergeReport).toContain("node.implementationEvidenceRefs.filter((ref) => requirementEvidence.has(ref))");
+    expect(conciergeReport).toContain("node.targetedTestEvidenceRefs.filter((ref) => requirementEvidence.has(ref))");
+    expect(conciergeReport).toContain("node.executionEvidenceRefs.filter((ref) => requirementEvidence.has(ref))");
+    expect(conciergeReport).not.toContain("values={node.firstFiles}");
+    expect(conciergeReport).not.toContain("requirementStatusLabel(node.status)");
+    expect(conciergeReport).not.toContain("calculateRisk");
+    expect(conciergeReport).not.toContain("fixture");
+  });
+  it("limits the document character to welcome and loading states", () => {
+    expect(source).toContain("showWelcomeCharacter");
+    expect(source).toContain('className="loading-orbit"');
+    expect(conciergeReport).not.toContain("proof-buddy");
+    expect(source).toContain('!showWelcomeCharacter ? <AuthStateNotice');
+  });
+  it("uses semantic status colors and keeps evidence inspection before the follow-up action on mobile", () => {
+    expect(css).toContain(".requirement-missing { background: #fff5df;");
+    expect(css).toContain(".requirement-partial { background: #edf3ff;");
+    expect(css).toContain(".check-failed { border-color: #efbec4;");
+    expect(css).toContain('grid-template-areas: "inspect" "reprompt";');
+    expect(css).toContain("@media (max-width: 900px)");
+    expect(css).toContain(".concierge-view-panel:focus-visible");
   });
 });
