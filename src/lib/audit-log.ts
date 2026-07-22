@@ -129,6 +129,10 @@ type GlobalWithAuditLog = typeof globalThis & {
 
 const FORBIDDEN_AUDIT_KEYS = [
   "access_token",
+  "refresh_token",
+  "oauth_code",
+  "code_verifier",
+  "code_challenge",
   "agent_claims",
   "authorization",
   "body",

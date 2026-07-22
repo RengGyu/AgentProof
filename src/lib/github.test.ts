@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPullRequestInput,
+  buildGitHubPullRequestInput,
   GITHUB_EVIDENCE_TIMING_PHASES,
   normalizeGitHubPullUrl,
   parseGitHubPullUrl,
@@ -264,6 +265,20 @@ describe("buildPullRequestInput", () => {
     expect(input.description).toBe("Fixes #42");
     expect(input.limitations?.join(" ") ?? "").not.toContain("No original task text");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/42"))).toBe(true);
+  });
+
+  it("does not fetch a qualified linked issue outside the Concierge selected repository", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({ title: "Scoped task", body: "Fixes other/private#42", url: "https://api.github.com/repos/acme/repo/pulls/12", head: { sha: "a".repeat(40) } }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const input = await buildGitHubPullRequestInput("https://github.com/acme/repo/pull/12", "test-token", "", undefined, { expectedHeadSha: "a".repeat(40), linkedIssuePolicy: "same_repository_only" });
+    expect(input?.originalTask).toMatchObject({ status: "unavailable", reason: "linked_issue_outside_selected_repository" });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("other/private/issues/42"))).toBe(false);
   });
 
   it("keeps pasted task text ahead of linked issue text", async () => {

@@ -58,8 +58,9 @@ import {
   type UsageQuotaReservation
 } from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
+import { revokeConciergeGitHubSessionsForUser } from "@/lib/concierge-github-auth";
 
-const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
+const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories", "github_app_authorization"]);
 const MAX_WEBHOOK_BODY_BYTES = 400_000;
 
 export async function POST(request: Request) {
@@ -111,6 +112,13 @@ export async function POST(request: Request) {
   const action = safeWebhookString(typeof payload?.action === "string" ? payload.action : undefined);
   const smokeControls = getGitHubAppSmokeControls(payload);
 
+  // This security-only lifecycle action never enables analysis or any other
+  // webhook automation. Repeated deliveries are harmless because the durable
+  // transition revokes only currently-active Concierge sessions.
+  if (meta.event === "github_app_authorization") {
+    return handleGitHubAuthorizationRevocation(payload, { delivery: meta.delivery, action });
+  }
+
   if (isInstallationLifecycleEvent(meta.event)) {
     return handleInstallationLifecycle(payload, {
       delivery: meta.delivery,
@@ -144,6 +152,24 @@ export async function POST(request: Request) {
     saveReportsEnabled: settings.saveReportsEnabled && !smokeControls.suppressSavedReport,
     legacyRepoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
   });
+}
+
+async function handleGitHubAuthorizationRevocation(
+  payload: Record<string, unknown>,
+  context: { delivery: string; action: string | undefined }
+) {
+  const sender = getNestedRecord(payload, "sender");
+  const githubUserId = getNumber(sender, "id");
+  const senderType = getString(sender, "type");
+  if (context.action !== "revoked" || !githubUserId || senderType !== "User") {
+    return noStoreJson({ error: "GitHub authorization revocation payload is invalid.", code: "github_authorization_revocation_invalid", willAnalyze: false, willComment: false }, { status: 422 });
+  }
+  try {
+    const revokedCount = await revokeConciergeGitHubSessionsForUser(githubUserId);
+    return noStoreJson({ ok: true, accepted: true, dryRun: false, event: "github_app_authorization", action: "revoked", delivery: safeWebhookString(context.delivery), revokedSessionCount: revokedCount, automationEnabled: false, willAnalyze: false, willComment: false, privacy: "numeric-user-revocation-only" });
+  } catch {
+    return noStoreJson({ error: "Concierge authorization revocation could not be recorded.", code: "github_authorization_revocation_unavailable", willAnalyze: false, willComment: false }, { status: 503 });
+  }
 }
 
 async function handleInstallationLifecycle(

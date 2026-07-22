@@ -98,7 +98,7 @@ describe("concierge analyze route boundary", () => {
       "transient-token",
       "",
       undefined,
-      { expectedHeadSha: "a".repeat(40) }
+      { expectedHeadSha: "a".repeat(40), linkedIssuePolicy: "same_repository_only" }
     );
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ decisionCardState: "zero_gap" }));

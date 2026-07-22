@@ -375,6 +375,7 @@ function tenantAuthFetch(config: TenantAuthSessionStoreConfig, query: string, in
   return fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}${query}`, {
     ...init,
     cache: "no-store",
+    signal: init.signal ?? AbortSignal.timeout(5_000),
     headers: {
       apikey: config.serviceRoleKey,
       Authorization: `Bearer ${config.serviceRoleKey}`,
@@ -388,6 +389,7 @@ function tenantAuthRpcFetch(config: TenantAuthSessionStoreConfig, rpcName: strin
   return fetch(`${config.url}/rest/v1/rpc/${encodeURIComponent(rpcName)}`, {
     ...init,
     cache: "no-store",
+    signal: init.signal ?? AbortSignal.timeout(5_000),
     headers: {
       apikey: config.serviceRoleKey,
       Authorization: `Bearer ${config.serviceRoleKey}`,

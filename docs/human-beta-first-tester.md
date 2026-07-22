@@ -10,7 +10,7 @@ This is a usability check of an operator-assisted deterministic evidence report.
 2. Apply migrations through `202607200001_human_beta_feedback_clarity.sql` and run the local DB, browser, privacy, sentinel, strict-fixture, typecheck, build, and full-test gates.
 3. Keep LLM, webhook automation, save, share, GitHub comment, Slack, billing, and full history off. Confirm the global kill switch before and after the session.
 4. Use a fresh browser profile. Do not paste names, contact details, repository names, PR numbers, task/code/report/log/re-prompt text, or secrets into feedback.
-5. Issue an opaque participant ID such as `partner_` plus random hexadecimal characters. Do not put the self-test tenant in `AGENTPROOF_CONCIERGE_EXTERNAL_REVIEWER_TENANTS`; the server assigns it to `self_internal`.
+5. Do not issue or enter a participant ID. The server derives a pseudonymous partner ID from the authenticated GitHub session. Do not put the self-test tenant in `AGENTPROOF_CONCIERGE_EXTERNAL_REVIEWER_TENANTS`; the server assigns it to `self_internal`.
 
 ## Ten-minute self-test
 
@@ -27,7 +27,7 @@ Show the `human-beta-privacy.v1` notice before analysis. Save only the bounded f
 
 ## End the session
 
-1. Use **세션 종료**. A `503 tenant_auth_session_revoke_unconfirmed` means the browser cookie was cleared but durable revocation was not proven; stop and verify `revoked_at` before reusing the environment.
+1. Use **세션 종료**. A `503 auth_unavailable` means durable OAuth-session revocation was not proven and the browser cookie is retained for a same-session retry; stop and verify `revoked_at` before reusing the environment.
 2. Close the browser profile and confirm local/session storage, Cache Storage, and IndexedDB are empty.
 3. Inspect approved deployment logs for tokens, task/code/diff/log/report/re-prompt content.
 4. Disable the temporary member or bootstrap credential. Disable the single repository grant when the session series is over.
@@ -44,4 +44,4 @@ Proceed only when the owner completes at least two cases—one real top-gap case
 - session revocation confirmed; and
 - no forbidden browser, database, or inspected platform-log retention.
 
-For every external reviewer, create a fresh opaque ID and an isolated tenant with one repository grant, then add only that tenant ID to `AGENTPROOF_CONCIERGE_EXTERNAL_REVIEWER_TENANTS`. A task-unavailable case is useful extra coverage but does not replace the zero-gap case. Show the privacy notice before analysis. Do not use the legacy reviewer tracker free-text field for private-repository sessions. Expand from one external reviewer to the next only after cleanup and session revocation are confirmed.
+For every external reviewer, create an isolated tenant with one repository grant, provision that person's exact active `github-user-<numeric-id>` member, then add only that tenant ID to `AGENTPROOF_CONCIERGE_EXTERNAL_REVIEWER_TENANTS`. A task-unavailable case is useful extra coverage but does not replace the zero-gap case. Show the privacy notice before analysis. Do not use the legacy reviewer tracker free-text field for private-repository sessions. Expand from one external reviewer to the next only after cleanup and session revocation are confirmed.

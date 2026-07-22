@@ -29,21 +29,19 @@ describe("concierge UI boundary", () => {
     expect(conciergeReport).not.toContain("buildShareUrl");
     expect(conciergeReport).not.toContain("postGitHubComment");
   });
-  it("starts only a durable same-origin session and clears the bootstrap input", () => {
-    expect(source).toContain('const DEFAULT_BETA_TENANT_ID = "tenant_alpha"');
-    expect(source).toContain("useState(DEFAULT_BETA_TENANT_ID)");
-    expect(source).toContain('"/api/tenants/auth/session"');
-    expect(source).toContain('"x-agentproof-tenant-auth-token": bootstrapToken');
+  it("uses the GitHub OAuth session without browser-entered beta identities", () => {
+    expect(source).toContain('"/api/auth/github/start"');
+    expect(source).toContain('"/api/auth/me"');
+    expect(source).toContain('"/api/auth/github/repositories"');
+    expect(source).toContain('"/api/auth/github/session"');
     expect(source).toContain('credentials: "same-origin"');
-    expect(source).toContain('setBootstrapToken("")');
-    expect(source).toContain("isTenantSessionStartResponse");
-    expect(source).toContain("isTenantSessionDeleteResponse");
-    expect(source).toContain("sessionStartInFlight.current");
-    expect(source).toContain('revoke.ok ? "session_response_invalid" : revoke.code');
+    expect(source).not.toContain("tenant_alpha");
+    expect(source).not.toContain("일회용 세션 시작 코드");
+    expect(source).not.toContain("베타 공간 ID");
     expect(source).not.toContain("sessionStorage");
   });
   it("submits only the GitHub repository and PR while keeping internal ids server-side", () => {
-    expect(source).toContain("GitHub 저장소 주소");
+    expect(source).toContain("허용된 개인 저장소");
     expect(source).toContain("pullRequestNumber: Number(form.pullRequestNumber)");
     const analyzeBody = source.slice(source.indexOf('body: JSON.stringify({\n          repositoryFullName'), source.indexOf('const json = await response.json()'));
     expect(analyzeBody).not.toContain("tenantId");
@@ -63,7 +61,7 @@ describe("concierge UI boundary", () => {
   it("keeps pre-report judgment optional and isolated to evaluation feedback", () => {
     expect(source).toContain("lockedPreReportGapCategory");
     expect(source).toContain("setLockedPreReportGapCategory(frozenPreReportGapCategory)");
-    expect(source).toContain("tenantId && lockedPreReportGapCategory");
+    expect(source).toContain("caseIdOrHash && lockedPreReportGapCategory");
     expect(source).toContain("평가 진행 시에만 사용");
     expect(source).toContain('<option value="">기록하지 않음</option>');
     expect(feedback).not.toContain("setPreReportGapCategory");

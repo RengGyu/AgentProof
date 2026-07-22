@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  csrf: vi.fn(), runtime: vi.fn(), authStatus: vi.fn(), accountStatus: vi.fn(), verifySession: vi.fn(), resolveCohort: vi.fn(), validate: vi.fn(), store: vi.fn()
+  csrf: vi.fn(), runtime: vi.fn(), authStatus: vi.fn(), accountStatus: vi.fn(), githubSession: vi.fn(), pseudonym: vi.fn(), resolveCohort: vi.fn(), validate: vi.fn(), store: vi.fn()
 }));
 
 vi.mock("@/lib/csrf", () => ({ verifySameOriginMutationRequest: mocks.csrf }));
 vi.mock("@/lib/concierge-private-beta", () => ({ conciergeRuntimeDefaults: mocks.runtime }));
-vi.mock("@/lib/tenant-auth", () => ({ getTenantAuthSessionStoreStatus: mocks.authStatus, verifyTenantAuthAccess: mocks.verifySession }));
+vi.mock("@/lib/tenant-auth", () => ({ getTenantAuthSessionStoreStatus: mocks.authStatus }));
+vi.mock("@/lib/concierge-github-auth", () => ({ readConciergeGitHubSession: mocks.githubSession, pseudonymousConciergePartnerId: mocks.pseudonym }));
 vi.mock("@/lib/tenant-accounts", () => ({ getTenantAccountStoreStatus: mocks.accountStatus }));
 vi.mock("@/lib/concierge-feedback", () => ({ resolveConciergeParticipantCohort: mocks.resolveCohort, validateConciergeFeedback: mocks.validate, storeConciergeFeedback: mocks.store }));
 
@@ -21,14 +22,15 @@ describe("Concierge feedback route", () => {
     mocks.csrf.mockReturnValue({ ok: true });
     mocks.runtime.mockReturnValue({ manualAnalysisEnabled: true, globalKillSwitch: false });
     mocks.authStatus.mockReturnValue(durable); mocks.accountStatus.mockReturnValue(durable);
-    mocks.verifySession.mockResolvedValue({ authorized: true, method: "durable-session" });
+    mocks.githubSession.mockResolvedValue({ tenantId: "tenant_alpha", memberId: "github-user-404", githubUserId: 404, installationId: 101, repositoryIds: [202], expiresAt: "session-bound" });
+    mocks.pseudonym.mockReturnValue("partner_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     mocks.resolveCohort.mockReturnValue("self_internal");
     mocks.validate.mockReturnValue({ valid: true, value: feedback });
   });
 
   function request() {
     return new Request("https://beta.example.test/api/tenants/concierge/feedback", {
-      method: "POST", body: JSON.stringify({ tenantId: "tenant_alpha", feedback })
+      method: "POST", body: JSON.stringify({ feedback })
     });
   }
 
@@ -43,7 +45,7 @@ describe("Concierge feedback route", () => {
 
   it("rejects browser-declared cohorts and invalid operator cohort configuration", async () => {
     const spoofed = new Request("https://beta.example.test/api/tenants/concierge/feedback", {
-      method: "POST", body: JSON.stringify({ tenantId: "tenant_alpha", feedback: { ...feedback, participantCohort: "external_reviewer" } })
+      method: "POST", body: JSON.stringify({ feedback: { ...feedback, participantCohort: "external_reviewer" } })
     });
     expect((await POST(spoofed)).status).toBe(400);
     mocks.resolveCohort.mockReturnValue(null);
@@ -62,7 +64,7 @@ describe("Concierge feedback route", () => {
   });
 
   it("rejects invalid sessions before feedback validation or storage", async () => {
-    mocks.verifySession.mockResolvedValue({ authorized: false, method: "none" });
+    mocks.githubSession.mockResolvedValue(null);
     const response = await POST(request());
     expect(response.status).toBe(403);
     expect(mocks.validate).not.toHaveBeenCalled();

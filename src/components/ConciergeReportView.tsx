@@ -233,6 +233,7 @@ function describeTaskSource(report: VerificationReport): { label: string; tone: 
       not_linked: "연결된 GitHub Issue 없음",
       multiple_linked_issues: "연결된 GitHub Issue가 여러 개",
       linked_issue_inaccessible: "연결된 GitHub Issue 접근 불가",
+      linked_issue_outside_selected_repository: "선택한 저장소 밖의 GitHub Issue는 사용하지 않음",
       linked_issue_deleted_or_empty: "연결된 GitHub Issue 내용 없음",
       linked_reference_is_pull_request: "연결 참조가 Issue가 아닌 PR",
       none: "출처 상태 확인 불가"

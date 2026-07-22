@@ -27,13 +27,13 @@ function fixture(taskState: TaskState = "available", ciStatus: "passed" | "faile
 }
 
 async function fillSetup(page: import("@playwright/test").Page, options: { evaluation?: boolean } = {}) {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
+  await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "ready", repositories: [{ fullName: "acme/private" }] }) }));
   const start = page.getByRole("button", { name: "PR 검토 시작" });
   if (await start.isVisible()) await start.click();
-  await page.getByLabel("GitHub 저장소 주소").fill("https://github.com/acme/private");
+  await page.getByLabel("허용된 개인 저장소").selectOption("acme/private");
   await page.getByLabel("PR 번호").fill("17");
   if (options.evaluation) {
-    await page.getByText("베타 접속 설정", { exact: true }).click();
-    await page.getByLabel("베타 공간 ID").fill("tenant_alpha");
     await page.getByText("평가 진행 시에만 사용", { exact: true }).click();
     await page.getByLabel("보고서 전 예상").selectOption("targeted_test");
   }
@@ -77,10 +77,10 @@ test("welcome page keeps the guide character visible and separates setup from th
   await expect(page.getByRole("heading", { name: /PR을 읽기 전에/ })).toBeVisible();
   await expect(page.locator(".welcome-scene .proof-buddy.hero")).toBeVisible();
   await expect(page.getByText("병합 여부나 구현의 정확성을 판정하지 않습니다.")).toBeVisible();
-  await expect(page.getByLabel("GitHub 저장소 주소")).toHaveCount(0);
+  await expect(page.getByLabel("허용된 개인 저장소")).toHaveCount(0);
   await page.getByRole("button", { name: "PR 검토 시작" }).click();
   await expect(page.getByRole("heading", { name: "검토할 PR을 선택하세요" })).toBeVisible();
-  await expect(page.getByLabel("GitHub 저장소 주소")).toBeVisible();
+  await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
   await page.getByRole("button", { name: "← 소개로 돌아가기" }).click();
   await expect(page.getByRole("button", { name: "PR 검토 시작" })).toBeVisible();
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
@@ -118,57 +118,103 @@ test("desktop summary focuses the top gap, supports detail navigation, and leave
   expect(externalRequests).toEqual([]);
 });
 
-test("durable tester session sends the bootstrap only in a bounded header and clears the input", async ({ page }) => {
-  let sessionRequest: { body?: unknown; token?: string | null } = {};
-  await page.route("**/api/tenants/auth/session", async (route) => {
-    if (route.request().method() === "DELETE") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, deleted: true, privacy: "tenant-auth-session-cookie-only" }) });
-      return;
-    }
-    sessionRequest = { body: route.request().postDataJSON(), token: route.request().headers()["x-agentproof-tenant-auth-token"] ?? null };
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
-      ok: true,
-      tenantId: "tenant_alpha",
-      memberId: "member_owner",
-      role: "member",
-      expiresAt: "2099-07-20T12:00:00.000Z",
-      privacy: "tenant-auth-session-cookie-only",
-      next: "use_session_cookie"
-    }) });
-  });
+test("signed-out users see only the GitHub continuation without beta IDs", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: false }) }));
   await page.goto("/concierge");
   await page.getByRole("button", { name: "PR 검토 시작" }).click();
-  await page.getByText("베타 접속 설정", { exact: true }).click();
-  await page.getByRole("textbox", { name: "베타 공간 ID" }).fill("tenant_alpha");
-  await page.getByRole("textbox", { name: "테스터 계정 ID" }).fill("member_owner");
-  await page.getByLabel("일회용 세션 시작 코드").fill("one-time-bootstrap");
-  await page.getByRole("button", { name: "베타 로그인" }).click();
-  await expect(page.getByRole("button", { name: "베타 로그인됨" })).toBeVisible();
-  await expect(page.getByLabel("일회용 세션 시작 코드")).toHaveValue("");
-  expect(sessionRequest).toEqual({ body: { tenantId: "tenant_alpha", memberId: "member_owner" }, token: "one-time-bootstrap" });
+  await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
+  await expect(page.getByLabel("베타 공간 ID")).toHaveCount(0);
+  await expect(page.getByLabel("테스터 계정 ID")).toHaveCount(0);
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
 });
 
-test("durable tester session rejects malformed success payloads and still clears the bootstrap", async ({ page }) => {
-  let deleteCalls = 0;
-  await page.route("**/api/tenants/auth/session", (route) => {
-    if (route.request().method() === "DELETE") {
-      deleteCalls += 1;
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, deleted: true, privacy: "tenant-auth-session-cookie-only" }) });
-    }
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, tenantId: "tenant_other", privacy: "tenant-auth-session-cookie-only" }) });
-  });
+test("a repository session 401 is shown as signed out, while public-only OAuth gets its own recovery message", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
+  await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ code: "session_invalid" }) }));
   await page.goto("/concierge");
   await page.getByRole("button", { name: "PR 검토 시작" }).click();
-  await page.getByText("베타 접속 설정", { exact: true }).click();
-  await page.getByRole("textbox", { name: "베타 공간 ID" }).fill("tenant_alpha");
-  await page.getByRole("textbox", { name: "테스터 계정 ID" }).fill("member_owner");
-  await page.getByLabel("일회용 세션 시작 코드").fill("one-time-bootstrap");
-  await page.getByRole("button", { name: "베타 로그인" }).click();
-  await expect(page.locator(".intake-error")).toContainText("베타 로그인 응답을 확인하지 못했습니다.");
-  await expect(page.getByRole("button", { name: "베타 로그인됨" })).toHaveCount(0);
-  await expect(page.getByLabel("일회용 세션 시작 코드")).toHaveValue("");
-  expect(deleteCalls).toBe(2);
+  await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
+  await expect(page.getByText("GitHub 접근 권한이 변경되었습니다.")).toHaveCount(0);
+  await page.unroute("**/api/auth/github/repositories");
+  await page.unroute("**/api/auth/me");
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: false }) }));
+  await page.goto("/concierge?auth=private_repository_required");
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
+  await expect(page.getByText("비공개 저장소가 필요합니다.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
+});
+
+test("an actual authentication network timeout is not presented as a logout", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.route("**/api/auth/me", (route) => route.abort("timedout"));
+  await page.goto("/concierge");
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
+  await expect(page.getByText("GitHub 연결 상태를 지금 확인할 수 없습니다.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /GitHub로 계속하기/ })).toBeVisible();
+});
+
+test("a report keeps its evidence visible when durable logout fails and allows the same-session retry", async ({ page }) => {
+  let deleteCalls = 0;
+  await interceptSuccess(page);
+  await page.route("**/api/auth/github/session", async (route) => {
+    deleteCalls += 1;
+    await route.fulfill(deleteCalls === 1
+      ? { status: 503, contentType: "application/json", body: JSON.stringify({ deleted: false, code: "auth_unavailable" }) }
+      : { status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }), headers: { "set-cookie": "__Host-agentproof-concierge-github-session=deleted; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax" } });
+  });
+  await page.goto("/concierge");
+  await fillAndRun(page);
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  await expect(page.getByLabel("PR 증거 보고서")).toBeVisible();
+  await expect(page.getByLabel("PR 증거 보고서").getByRole("alert")).toContainText("로그아웃을 확인하지 못했습니다.");
+  await expect(page.getByText("보고서는 그대로 유지했습니다. 같은 계정으로 다시 시도해 주세요.")).toBeVisible();
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  await expect.poll(() => deleteCalls).toBe(2);
+  await expect(page.getByLabel("PR 증거 보고서")).toHaveCount(0);
+});
+
+test("organization-only access is explained without exposing identifiers", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: false }) }));
+  await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "app_missing", repositories: [] }) }));
+  await page.goto("/concierge");
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
+  await expect(page.getByText("조직 저장소는 첫 베타에서 지원하지 않습니다.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toBeVisible();
+});
+
+test("a personal App installation without a manual grant has distinct recovery guidance", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
+  await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "no_granted_personal_repository", repositories: [] }) }));
+  await page.goto("/concierge");
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
+  await expect(page.getByText("아직 허용된 개인 저장소가 없습니다.")).toBeVisible();
+  await expect(page.getByText("조직 저장소는 첫 베타에서 지원하지 않습니다.")).toHaveCount(0);
+});
+
+test("ready personal-repository selection exposes logout and account switching without IDs", async ({ page }) => {
+  await page.goto("/concierge");
+  await fillSetup(page);
+  await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toBeVisible();
+  await page.getByRole("button", { name: "로그아웃" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toBeFocused();
+  await expect(page.getByLabel("베타 공간 ID")).toHaveCount(0);
+});
+
+test("revoked access gives bounded recovery controls", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authenticated: true, authMethod: "github", repositoriesAvailable: true }) }));
+  await page.route("**/api/auth/github/repositories", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ code: "installation_not_active" }) }));
+  await page.goto("/concierge");
+  await page.getByRole("button", { name: "PR 검토 시작" }).click();
+  await expect(page.getByText("GitHub 접근 권한이 변경되었습니다.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "다른 GitHub 계정으로 로그인" })).toBeVisible();
 });
 
 test("keyboard focus reaches the detail gateway and selected detail panels", async ({ page }) => {
@@ -204,7 +250,6 @@ test("320px mobile keeps zero-gap feedback and reset controls operable without h
   const page = await context.newPage();
   await interceptSuccess(page, zeroGapFixture());
   await page.route("**/api/tenants/concierge/feedback", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ stored: true, duplicate: false, privacy: "bounded-metadata-only" }) }));
-  await page.route("**/api/tenants/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }) }));
   await page.goto("/concierge"); await fillSetup(page, { evaluation: true }); await page.getByRole("button", { name: "PR 근거 확인하기" }).click();
   await page.getByText("간단한 사용성 피드백", { exact: true }).click();
   await expect(page.getByLabel("우선 검토 항목을 찾았나요?")).toHaveValue("not_applicable_zero_gap");
@@ -214,7 +259,6 @@ test("320px mobile keeps zero-gap feedback and reset controls operable without h
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const box = await page.getByRole("button", { name: "새 PR 확인하기" }).boundingBox();
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
-  await page.getByLabel("익명 테스터 ID").fill("partner_a1b2c3d4");
   await page.getByRole("button", { name: "피드백 저장" }).tap();
   await expect(page.getByText("피드백을 저장했습니다.")).toBeVisible();
   await page.getByRole("button", { name: "새 PR 확인하기" }).tap();
@@ -241,12 +285,11 @@ test("bounded feedback leaves cohort assignment to the server without sending re
   await page.goto("/concierge"); await fillSetup(page, { evaluation: true }); await page.getByRole("button", { name: "PR 근거 확인하기" }).click();
   await page.getByText("간단한 사용성 피드백", { exact: true }).click();
   await page.getByText("운영자용 세부 기록", { exact: true }).click();
-  await page.getByLabel("익명 테스터 ID").fill("partner_a1b2c3d4");
   await page.getByLabel("우선 검토 항목을 찾았나요?").selectOption("found_within_30s");
   await page.getByLabel("찾는 데 걸린 시간(초)").fill("12");
   await page.getByRole("button", { name: "피드백 저장" }).click();
   await expect(page.getByText("피드백을 저장했습니다.")).toBeVisible();
-  expect(Object.keys(feedbackBody ?? {}).sort()).toEqual(["feedback", "tenantId"]);
+  expect(Object.keys(feedbackBody ?? {}).sort()).toEqual(["feedback"]);
   const feedback = (feedbackBody?.feedback ?? {}) as Record<string, unknown>;
   expect(feedback).toMatchObject({ schemaVersion: "concierge-feedback.v3", privacyNoticeVersion: "human-beta-privacy.v1", topGapOutcome: "found_within_30s", foundTopGapWithin30s: true, timeToTopGapSeconds: 12 });
   expect(feedback).not.toHaveProperty("participantCohort");
@@ -262,7 +305,7 @@ test("new PR control clears private report state", async ({ page }) => {
   await page.goto("/concierge"); await fillAndRun(page);
   await page.getByRole("button", { name: "새 PR 확인하기" }).click();
   await expect(page.getByLabel("PR 증거 보고서")).toHaveCount(0);
-  await expect(page.getByLabel("GitHub 저장소 주소")).toHaveValue("");
+  await expect(page.getByLabel("허용된 개인 저장소")).toHaveValue("acme/private");
   expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
 });
 
@@ -339,8 +382,8 @@ test("320px error copy stays horizontal and gives a bounded next action", async 
   await page.goto("/concierge");
   await fillAndRun(page);
   const body = page.locator(".intake-error-body");
-  await expect(body).toContainText("베타 로그인이 필요합니다.");
-  await expect(body).toContainText("베타 접속 설정");
+  await expect(body).toContainText("GitHub 로그인이 필요합니다.");
+  await expect(body).toContainText("GitHub로 다시 로그인");
   expect((await body.boundingBox())?.width ?? 0).toBeGreaterThan(180);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();

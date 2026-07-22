@@ -83,6 +83,8 @@ export class GitHubPullRequestHeadChangedError extends Error {
 export interface GitHubPullRequestSnapshotOptions {
   expectedHeadSha?: string;
   now?: () => Date;
+  /** Concierge never fetches a linked issue from another repository. */
+  linkedIssuePolicy?: "any_supported" | "same_repository_only";
 }
 
 interface GitHubPullUrl {
@@ -336,7 +338,8 @@ async function fetchGitHubPullRequest(
       repository: { owner: parsed.owner, repo: parsed.repo },
       headers,
       limitations,
-      hasToken
+      hasToken,
+      policy: snapshotOptions.linkedIssuePolicy ?? "any_supported"
     });
   const originalTask: OriginalTaskBoundary = explicitTask
     ? { version: 1, status: "available", sourceType: "explicit_task", reason: "none" }
@@ -692,6 +695,7 @@ async function resolveLinkedIssueTask(input: {
   headers: Record<string, string>;
   limitations: string[];
   hasToken: boolean;
+  policy: "any_supported" | "same_repository_only";
 }): Promise<{ taskText?: string; boundary: OriginalTaskBoundary } | null> {
   const extraction = extractSupportedIssueReferences(input.prBody, input.repository);
 
@@ -710,6 +714,11 @@ async function resolveLinkedIssueTask(input: {
   const [reference] = extraction.references;
   if (!reference) {
     return { boundary: { version: 1, status: "unavailable", sourceType: "none", reason: "not_linked" } };
+  }
+
+  if (input.policy === "same_repository_only" && (reference.owner.toLowerCase() !== input.repository.owner.toLowerCase() || reference.repo.toLowerCase() !== input.repository.repo.toLowerCase())) {
+    input.limitations.push("Linked issue is outside the selected repository and was not fetched. The PR description remains context-only; authoritative task evidence is unavailable.");
+    return { boundary: { version: 1, status: "unavailable", sourceType: "linked_issue", sourceRef: formatIssueReference(reference), reason: "linked_issue_outside_selected_repository" } };
   }
 
   const result = await fetchLinkedIssue(reference, input.headers, input.hasToken);
