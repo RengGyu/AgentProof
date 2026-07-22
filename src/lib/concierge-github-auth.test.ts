@@ -66,8 +66,24 @@ describe("Concierge GitHub OAuth contract", () => {
 
   it("rejects malformed callback input before provider calls", async () => {
     const request = vi.fn();
-    await expect(completeConciergeGitHubOAuth({ state: "not-valid", code: "short", cookieHeader: null }, env, { fetch: request as typeof fetch, now: () => 1_700_000_000_000, random: () => "x".repeat(43) })).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "query_invalid" });
+    await expect(completeConciergeGitHubOAuth({ state: "not-valid", code: "short", cookieHeader: null }, env, { fetch: request as typeof fetch, now: () => 1_700_000_000_000, random: () => "x".repeat(43) })).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "state_invalid_shape" });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("accepts an opaque short provider code without weakening the state contract", async () => {
+    const request = vi.fn(async (url: string) => {
+      if (url.includes("agentproof_reserve")) return Response.json(true);
+      if (url.includes("agentproof_consume")) return Response.json(false);
+      throw new Error(`unexpected ${url}`);
+    });
+    const deps = { fetch: request as typeof fetch, now: () => 1_700_000_000_000, random: (bytes: number) => bytes === 32 ? "s".repeat(43) : "v".repeat(64) };
+    const started = await startConciergeGitHubOAuth(env, deps);
+    const state = new URL(started.redirectUrl).searchParams.get("state");
+    await expect(completeConciergeGitHubOAuth({ state, code: "opaque-short-code", cookieHeader: started.cookie.split(";")[0] }, env, deps)).rejects.toMatchObject({ reason: "oauth_state_replayed" });
+    await expect(completeConciergeGitHubOAuth({ state: "short", code: "opaque-short-code", cookieHeader: started.cookie.split(";")[0] }, env, deps)).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "state_invalid_shape" });
+    for (const invalidCode of ["bad\ncode", "bad\u0000code", "x".repeat(1025), "한글"]) {
+      await expect(completeConciergeGitHubOAuth({ state, code: invalidCode, cookieHeader: started.cookie.split(";")[0] }, env, deps)).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "code_invalid_shape" });
+    }
   });
 
   it("keeps bounded OAuth state failure stages without retaining callback values", async () => {

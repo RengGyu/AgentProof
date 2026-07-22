@@ -80,6 +80,21 @@ describe("Concierge GitHub OAuth routes", () => {
     }
   });
 
+  it("maps provider callback errors to a bounded Preview stage without reflecting details", async () => {
+    const previous = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = "preview";
+    mocks.complete.mockRejectedValue(Object.assign(new Error("query"), { reason: "oauth_state_invalid", oauthStateStage: "query_invalid" }));
+    try {
+      const response = await callback(new Request("https://preview.example.test/api/auth/github/callback?error=redirect_uri_mismatch&error_description=secret-detail"));
+      const location = new URL(response.headers.get("location")!);
+      expect(location.searchParams.get("oauth_stage")).toBe("provider_redirect_uri_mismatch");
+      expect(location.toString()).not.toContain("secret-detail");
+    } finally {
+      if (previous === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = previous;
+    }
+  });
+
   it("keeps a bounded installation-inventory failure instead of collapsing it into an OAuth-state error", async () => {
     mocks.complete.mockRejectedValue(Object.assign(new Error("inventory"), { reason: "installation_inventory_too_large" }));
     const response = await callback(new Request("https://preview.example.test/api/auth/github/callback?state=opaque&code=provider-code"));

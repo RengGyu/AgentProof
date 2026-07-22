@@ -37,6 +37,13 @@ export type ConciergeGitHubAuthReason =
 
 export type ConciergeGitHubOAuthStateStage =
   | "query_invalid"
+  | "state_missing"
+  | "state_invalid_shape"
+  | "code_missing"
+  | "code_invalid_shape"
+  | "provider_redirect_uri_mismatch"
+  | "provider_access_denied"
+  | "provider_error"
   | "cookie_missing"
   | "cookie_invalid"
   | "state_mismatch";
@@ -117,9 +124,12 @@ export async function completeConciergeGitHubOAuth(
   deps = DEFAULT_DEPS
 ): Promise<{ sessionCookie: string; expiresAt: string }> {
   const config = requireConfig(env);
-  const state = typeof input.state === "string" && boundedOAuthValue(input.state) ? input.state : null;
-  const code = typeof input.code === "string" && boundedOAuthValue(input.code) ? input.code : null;
-  if (!state || !code) throw oauthStateError("query_invalid");
+  if (input.state === null || input.state === undefined || input.state === "") throw oauthStateError("state_missing");
+  if (!boundedOAuthState(input.state)) throw oauthStateError("state_invalid_shape");
+  if (input.code === null || input.code === undefined || input.code === "") throw oauthStateError("code_missing");
+  if (!boundedOAuthCode(input.code)) throw oauthStateError("code_invalid_shape");
+  const state = input.state;
+  const code = input.code;
   const cookie = readCookie(input.cookieHeader, CONCIERGE_GITHUB_OAUTH_COOKIE);
   if (!cookie) throw oauthStateError("cookie_missing");
   const pending = parseOAuthCookie(cookie, config.stateSecret, deps.now());
@@ -306,7 +316,7 @@ async function oauthRpc<T>(name: string, body: Record<string, unknown>, env: Nod
   return result.json as T;
 }
 function oauthCookie(value: OAuthCookiePayload, secret: string, expiresAt: string, now: number): string { const encoded = Buffer.from(JSON.stringify(value)).toString("base64url"); const signature = createHmac("sha256", secret).update(encoded).digest("base64url"); return secureCookie(CONCIERGE_GITHUB_OAUTH_COOKIE, `${encoded}.${signature}`, expiresAt, now); }
-function parseOAuthCookie(value: string | null, secret: string, now: number): OAuthCookiePayload | null { if (!value) return null; const [encoded, signature, extra] = value.split("."); if (!encoded || !signature || extra) return null; const expected = createHmac("sha256", secret).update(encoded).digest("base64url"); if (!safeEqual(signature, expected)) return null; try { const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OAuthCookiePayload; return boundedOAuthValue(parsed.state) && boundedOAuthValue(parsed.verifier) && typeof parsed.expiresAt === "string" && Date.parse(parsed.expiresAt) > now ? parsed : null; } catch { return null; } }
+function parseOAuthCookie(value: string | null, secret: string, now: number): OAuthCookiePayload | null { if (!value) return null; const [encoded, signature, extra] = value.split("."); if (!encoded || !signature || extra) return null; const expected = createHmac("sha256", secret).update(encoded).digest("base64url"); if (!safeEqual(signature, expected)) return null; try { const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OAuthCookiePayload; return boundedOAuthState(parsed.state) && boundedPkceVerifier(parsed.verifier) && typeof parsed.expiresAt === "string" && Date.parse(parsed.expiresAt) > now ? parsed : null; } catch { return null; } }
 function secureCookie(name: string, value: string, expiresAt: string, now: number): string { const seconds = Math.max(0, Math.floor((Date.parse(expiresAt) - now) / 1000)); return [`${name}=${value}`, "Path=/", "HttpOnly", "Secure", "SameSite=Lax", `Max-Age=${seconds}`, `Expires=${new Date(Date.parse(expiresAt)).toUTCString()}`].join("; "); }
 function normalizeUser(value: unknown): GitHubUserIdentity | null { if (!value || typeof value !== "object" || Array.isArray(value)) return null; const row = value as { id?: unknown; type?: unknown }; const id = positiveInt(row.id); return id && typeof row.type === "string" ? { id, type: row.type } : null; }
 function normalizeInstallationPage(json: unknown): GitHubUserInstallation[] | null {
@@ -377,7 +387,11 @@ async function boundedAwait<T>(operation: Promise<T>, budget: { deadline: number
 function readCookie(header: string | null | undefined, name: string): string | null { return header?.split(";").map((part) => part.trim()).map((part) => part.split("=", 2)).find(([key]) => key === name)?.[1] ?? null; }
 function sha256(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function positiveInt(value: unknown): number | null { const number = typeof value === "string" ? Number(value) : value; return typeof number === "number" && Number.isSafeInteger(number) && number > 0 ? number : null; }
-function boundedOAuthValue(value: unknown): value is string { return typeof value === "string" && /^[A-Za-z0-9_-]{32,200}$/.test(value); }
+function boundedOAuthState(value: unknown): value is string { return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value); }
+function boundedPkceVerifier(value: unknown): value is string { return typeof value === "string" && /^[A-Za-z0-9_-]{64}$/.test(value); }
+// GitHub documents the authorization code as an opaque temporary string.
+// Bound size and control bytes, but do not invent a provider format contract.
+function boundedOAuthCode(value: unknown): value is string { return typeof value === "string" && /^[\x20-\x7e]{1,1024}$/.test(value); }
 function validIndependentSecrets(stateSecret: string | undefined, feedbackSecret: string | undefined): boolean {
   const state = stateSecret?.trim();
   const feedback = feedbackSecret?.trim();
