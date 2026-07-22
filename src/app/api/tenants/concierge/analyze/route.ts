@@ -58,6 +58,7 @@ export async function POST(request: Request) {
     const report = generateVerificationReport(input);
     const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
     if (!validation.valid) throw new Error("report_validation_failed");
+    if (report.source.provenance?.headSha !== initialHeadSha) throw new Error("report_provenance_head_mismatch");
     const finalHeadSha = await fetchGitHubPullRequestHead(prUrl, token);
     if (finalHeadSha !== initialHeadSha) throw new Error("head_changed");
     const finalAccess = await authorizeConciergeAccess({
@@ -135,7 +136,7 @@ function parseBody(text: string): Body | null {
 
 function boundedFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : "provider_unavailable";
-  if (["head_unavailable", "evidence_unavailable", "report_validation_failed", "head_changed"].includes(message)) return message;
+  if (["head_unavailable", "evidence_unavailable", "report_validation_failed", "report_provenance_head_mismatch", "head_changed"].includes(message)) return message;
   return "github_evidence_unavailable";
 }
 

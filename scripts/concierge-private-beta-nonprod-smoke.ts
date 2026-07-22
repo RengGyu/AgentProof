@@ -48,7 +48,9 @@ export async function runConciergeNonProductionSmoke(options: ConciergeSmokeRunO
         method: "POST",
         redirect: "error",
         headers: smokeHeaders(options, bypass),
-        body: JSON.stringify({ tenantId: item.tenantId, installationId: item.installationId, repositoryId: item.repositoryId, repositoryFullName: item.repositoryFullName, pullRequestNumber: item.pullRequestNumber, requestId: randomUUID() }),
+        // Manifest IDs are preflight metadata only. The Concierge route derives
+        // authority from the durable session and rejects browser-supplied IDs.
+        body: JSON.stringify({ repositoryFullName: item.repositoryFullName, pullRequestNumber: item.pullRequestNumber, requestId: randomUUID() }),
         signal: controller.signal
       });
       const body = await readBoundedJson(response);

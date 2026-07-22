@@ -32,6 +32,11 @@ describe("non-production Concierge smoke runner", () => {
     expect(result.summary).toMatchObject({ caseCount: 3, passedCount: 3 });
     expect(requests).toHaveLength(3);
     expect(requests.every((request) => request.redirect === "error" && (request.headers as Record<string, string>).Origin === "https://beta.example.test")).toBe(true);
+    expect(requests.every((request) => {
+      const body = JSON.parse(String(request.body)) as Record<string, unknown>;
+      return Object.keys(body).sort().join(",") === "pullRequestNumber,repositoryFullName,requestId"
+        && !("tenantId" in body) && !("installationId" in body) && !("repositoryId" in body);
+    })).toBe(true);
     expect(JSON.stringify(result.summary)).not.toContain("test-session-not-printed");
     expect(requests.every((request) => !("x-vercel-protection-bypass" in (request.headers as Record<string, string>)))).toBe(true);
   });

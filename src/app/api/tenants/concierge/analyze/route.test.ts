@@ -17,8 +17,9 @@ vi.mock("@/lib/concierge-side-effect-telemetry", () => ({ createConciergeSideEff
 import { POST } from "./route";
 
 const body = { repositoryFullName: "acme/private", pullRequestNumber: 17, requestId: "12345678-1234-1234-1234-123456789abc" };
-const zeroGapReport = { analysisId: "opaque", proofGraph: { summary: { gapCount: 0 } }, decisionCard: { topGap: null, reprompt: null } };
-const topGapReport = { analysisId: "opaque", proofGraph: { summary: { gapCount: 1 } }, decisionCard: { topGap: { kind: "missing_execution" }, reprompt: { prompt: "bounded" } } };
+const zeroGapReport = { analysisId: "opaque", source: { provenance: { headSha: "a".repeat(40) } }, proofGraph: { summary: { gapCount: 0 } }, decisionCard: { topGap: null, reprompt: null } };
+const topGapReport = { analysisId: "opaque", source: { provenance: { headSha: "a".repeat(40) } }, proofGraph: { summary: { gapCount: 1 } }, decisionCard: { topGap: { kind: "missing_execution" }, reprompt: { prompt: "bounded" } } };
+function boundReport() { return structuredClone(zeroGapReport); }
 function request() { return new Request("https://agentproof.test/api/tenants/concierge/analyze", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://agentproof.test", cookie: "session=x" }, body: JSON.stringify(body) }); }
 
 describe("concierge analyze route boundary", () => {
@@ -122,7 +123,7 @@ describe("concierge analyze route boundary", () => {
 
   it("does not return a report when the PR head changes", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     mocks.head.mockResolvedValueOnce("a".repeat(40)).mockResolvedValueOnce("b".repeat(40));
     const response = await POST(request());
     expect(response.status).toBe(502);
@@ -134,11 +135,24 @@ describe("concierge analyze route boundary", () => {
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed", reason: "head_changed" }));
   });
 
+  it("does not return a report when validated provenance is bound to another head", async () => {
+    mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({});
+    mocks.generate.mockReturnValue({ ...boundReport(), source: { provenance: { headSha: "b".repeat(40) } } });
+    const response = await POST(request());
+    const payload = await response.json();
+    expect(response.status).toBe(502);
+    expect(payload).toMatchObject({ code: "report_provenance_head_mismatch" });
+    expect(payload.report).toBeUndefined();
+    expect(mocks.head).toHaveBeenCalledTimes(1);
+    expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed", reason: "report_provenance_head_mismatch" }));
+  });
+
   it("stops delivery when the grant is removed during evidence collection", async () => {
     mocks.authorize
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" })
       .mockResolvedValueOnce({ authorized: false, reason: "repository_grant_disabled" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     const response = await POST(request());
     expect(response.status).toBe(403);
     const payload = await response.json();
@@ -153,7 +167,7 @@ describe("concierge analyze route boundary", () => {
     mocks.authorize
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" })
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 102, repositoryId: 303, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     const response = await POST(request());
     expect(response.status).toBe(403);
     const payload = await response.json();
@@ -167,7 +181,7 @@ describe("concierge analyze route boundary", () => {
     mocks.authorize
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" })
       .mockResolvedValueOnce({ authorized: false, reason: "repository_grant_disabled" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" }); mocks.finish.mockResolvedValue(false);
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport()); mocks.finish.mockResolvedValue(false);
     const response = await POST(request());
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ code: "terminal_record_unavailable" });
@@ -185,7 +199,7 @@ describe("concierge analyze route boundary", () => {
 
   it("blocks report delivery and records failed when request telemetry is nonzero or malformed", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     mocks.validateTelemetry.mockReturnValue(false);
     const response = await POST(request());
     const payload = await response.json();
@@ -198,7 +212,7 @@ describe("concierge analyze route boundary", () => {
 
   it("blocks error delivery when a head-drift failure cannot be recorded", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     mocks.head.mockResolvedValueOnce("a".repeat(40)).mockResolvedValueOnce("b".repeat(40)); mocks.finish.mockResolvedValue(false);
     const response = await POST(request());
     expect(response.status).toBe(503);
