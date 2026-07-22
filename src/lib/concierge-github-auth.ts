@@ -35,6 +35,12 @@ export type ConciergeGitHubAuthReason =
   | "durable_store_mismatch"
   | "session_invalid";
 
+export type ConciergeGitHubOAuthStateStage =
+  | "query_invalid"
+  | "cookie_missing"
+  | "cookie_invalid"
+  | "state_mismatch";
+
 export interface GitHubUserIdentity { id: number; type: "User" | "Organization" | string }
 export interface GitHubUserInstallation {
   id: number;
@@ -113,8 +119,12 @@ export async function completeConciergeGitHubOAuth(
   const config = requireConfig(env);
   const state = typeof input.state === "string" && boundedOAuthValue(input.state) ? input.state : null;
   const code = typeof input.code === "string" && boundedOAuthValue(input.code) ? input.code : null;
-  const pending = parseOAuthCookie(readCookie(input.cookieHeader, CONCIERGE_GITHUB_OAUTH_COOKIE), config.stateSecret, deps.now());
-  if (!state || !code || !pending || !safeEqual(state, pending.state)) throw authError("oauth_state_invalid");
+  if (!state || !code) throw oauthStateError("query_invalid");
+  const cookie = readCookie(input.cookieHeader, CONCIERGE_GITHUB_OAUTH_COOKIE);
+  if (!cookie) throw oauthStateError("cookie_missing");
+  const pending = parseOAuthCookie(cookie, config.stateSecret, deps.now());
+  if (!pending) throw oauthStateError("cookie_invalid");
+  if (!safeEqual(state, pending.state)) throw oauthStateError("state_mismatch");
   const timeoutMs = timeoutFor(deps);
   const consumed = await oauthRpc<boolean>("agentproof_consume_concierge_github_oauth_state", { p_state_hash: sha256(state), p_used_at: new Date(deps.now()).toISOString() }, env, deps.fetch, timeoutMs);
   if (consumed !== true) throw authError("oauth_state_replayed");
@@ -376,3 +386,6 @@ function validIndependentSecrets(stateSecret: string | undefined, feedbackSecret
 function normalizeCallbackUrl(value: string | undefined): string | null { if (!value) return null; try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && url.pathname === "/api/auth/github/callback" ? url.toString() : null; } catch { return null; } }
 function safeEqual(left: string, right: string): boolean { const a = Buffer.from(left), b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); }
 function authError(reason: ConciergeGitHubAuthReason): Error & { reason: ConciergeGitHubAuthReason } { return Object.assign(new Error(reason), { reason }); }
+function oauthStateError(stage: ConciergeGitHubOAuthStateStage): Error & { reason: "oauth_state_invalid"; oauthStateStage: ConciergeGitHubOAuthStateStage } {
+  return Object.assign(new Error("oauth_state_invalid"), { reason: "oauth_state_invalid" as const, oauthStateStage: stage });
+}

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { clearConciergeGitHubOAuthCookie, completeConciergeGitHubOAuth, conciergeGitHubAuthErrorResponse, conciergeGitHubLandingUrl } from "@/lib/concierge-github-auth";
+import { clearConciergeGitHubOAuthCookie, completeConciergeGitHubOAuth, conciergeGitHubAuthErrorResponse, conciergeGitHubLandingUrl, type ConciergeGitHubOAuthStateStage } from "@/lib/concierge-github-auth";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -19,6 +19,8 @@ export async function GET(request: Request) {
     if (!landingUrl) return conciergeGitHubAuthErrorResponse("oauth_not_configured", 503);
     const redirect = new URL(landingUrl);
     redirect.searchParams.set("auth", reason(error));
+    const stateStage = process.env.VERCEL_ENV === "preview" ? oauthStateStage(error) : null;
+    if (stateStage) redirect.searchParams.set("oauth_stage", stateStage);
     const response = NextResponse.redirect(redirect, { status: 303, headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
     response.headers.append("Set-Cookie", clearConciergeGitHubOAuthCookie());
     return response;
@@ -29,3 +31,9 @@ function reason(error: unknown) {
   return candidate && CALLBACK_REASONS.has(candidate) ? candidate : "oauth_state_invalid";
 }
 const CALLBACK_REASONS = new Set(["oauth_not_configured", "oauth_state_invalid", "oauth_state_replayed", "oauth_provider_unavailable", "oauth_identity_unavailable", "personal_installation_required", "organization_installation_unsupported", "repository_access_unavailable", "private_repository_required", "installation_inventory_too_large", "repository_inventory_too_large", "durable_store_mismatch"]);
+const OAUTH_STATE_STAGES = new Set<ConciergeGitHubOAuthStateStage>(["query_invalid", "cookie_missing", "cookie_invalid", "state_mismatch"]);
+function oauthStateStage(error: unknown): ConciergeGitHubOAuthStateStage | null {
+  if (!error || typeof error !== "object" || !("oauthStateStage" in error)) return null;
+  const value = (error as { oauthStateStage?: unknown }).oauthStateStage;
+  return typeof value === "string" && OAUTH_STATE_STAGES.has(value as ConciergeGitHubOAuthStateStage) ? value as ConciergeGitHubOAuthStateStage : null;
+}

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { completeConciergeGitHubOAuth, getConciergeGitHubAuthConfigStatus, pkceChallenge, readConciergeGitHubSession, revokeConciergeGitHubSession, revokeConciergeGitHubSessionsForUser, selectPersonalInstallation, startConciergeGitHubOAuth } from "./concierge-github-auth";
 
+const CONCIERGE_COOKIE = "__Host-agentproof-concierge-github-oauth";
+
 const env = {
   AGENTPROOF_GITHUB_OAUTH_CLIENT_ID: "Iv1.test-client",
   AGENTPROOF_GITHUB_OAUTH_CLIENT_SECRET: "test-client-secret",
@@ -64,7 +66,17 @@ describe("Concierge GitHub OAuth contract", () => {
 
   it("rejects malformed callback input before provider calls", async () => {
     const request = vi.fn();
-    await expect(completeConciergeGitHubOAuth({ state: "not-valid", code: "short", cookieHeader: null }, env, { fetch: request as typeof fetch, now: () => 1_700_000_000_000, random: () => "x".repeat(43) })).rejects.toMatchObject({ reason: "oauth_state_invalid" });
+    await expect(completeConciergeGitHubOAuth({ state: "not-valid", code: "short", cookieHeader: null }, env, { fetch: request as typeof fetch, now: () => 1_700_000_000_000, random: () => "x".repeat(43) })).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "query_invalid" });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("keeps bounded OAuth state failure stages without retaining callback values", async () => {
+    const request = vi.fn();
+    const deps = { fetch: request as typeof fetch, now: () => 1_700_000_000_000, random: () => "x".repeat(43) };
+    await expect(completeConciergeGitHubOAuth({ state: "s".repeat(43), code: "c".repeat(43), cookieHeader: null }, env, deps)).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "cookie_missing" });
+    await expect(completeConciergeGitHubOAuth({ state: "s".repeat(43), code: "c".repeat(43), cookieHeader: `${CONCIERGE_COOKIE}=malformed` }, env, deps)).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "cookie_invalid" });
+    const started = await startConciergeGitHubOAuth(env, { ...deps, fetch: vi.fn(async () => Response.json(true)) as typeof fetch, random: (bytes) => bytes === 32 ? "s".repeat(43) : "v".repeat(64) });
+    await expect(completeConciergeGitHubOAuth({ state: "z".repeat(43), code: "c".repeat(43), cookieHeader: started.cookie.split(";")[0] }, env, deps)).rejects.toMatchObject({ reason: "oauth_state_invalid", oauthStateStage: "state_mismatch" });
     expect(request).not.toHaveBeenCalled();
   });
 
