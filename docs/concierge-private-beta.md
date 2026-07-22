@@ -94,7 +94,7 @@ This readiness work does not prove usefulness, accuracy, correctness, false-bloc
 
 ## Approved non-production GitHub smoke runbook
 
-Do not run this from a production deployment. After an operator approves one non-production GitHub App installation, one non-production durable tenant session, and three private test PRs, create a local case manifest outside the repository. It may contain only IDs, PR numbers, and expected bounded statuses — never task/PR bodies, diffs, logs, reports, or tokens.
+Do not run this from a production deployment. After an operator approves one non-production GitHub App installation, one non-production durable tenant session, and three private test PRs, create a local case manifest outside the repository. It may contain only opaque case IDs, repository full names, PR numbers, expected head SHAs, and bounded statuses — never tenant, installation, or repository numeric IDs; task/PR bodies; diffs; logs; reports; or tokens.
 
 If Vercel Preview deployment protection is enabled, keep it enabled. Provide its
 short-lived bypass only in the local root `.env.local` as
@@ -104,6 +104,8 @@ and sends the value only in `x-vercel-protection-bypass` after the exact HTTPS
 approved-origin check. It exits before any request for a missing, duplicate,
 malformed, or unapproved value; it never writes the value to the manifest,
 bounded summary, durable storage, stdout, or stderr.
+Run the wrapper from the clean checkout being verified: its default bypass path
+is that checkout's `.env.local`, not another worktree's environment file.
 
 The three cases are: (1) exactly one accessible linked issue with passing checks, (2) no linked issue or multiple linked issues, and (3) a failed or unavailable check. The second case must expect `unavailable` or `ambiguous` and zero `met` requirements. The script prints only case IDs and bounded status counts.
 
@@ -118,7 +120,7 @@ pnpm concierge:smoke:nonprod
 
 Without the explicit execution flag the command exits `2` before any network request. A missing approval, credential, test repository, or deployed migration is `EXTERNALLY_BLOCKED`; do not replace it with mock success.
 
-The case manifest has exactly three opaque rows, one for each scenario: `single_linked_issue_passing`, `task_unavailable_or_ambiguous`, and `failed_or_unavailable_check`. `caseId` must be an operator-generated `case_` plus 16–64 lowercase hex characters, never a repository or PR label. Each row must include an `expectedHeadSha`: the exact 40-character lowercase Git commit SHA captured by the separate installation-token preflight for that PR. Both external source identities—`(repositoryId, PR)` and case-insensitive `(repositoryFullName, PR)`—must be unique. Unknown row fields, missing or malformed head SHAs, and a report provenance head that differs from the manifest are rejected. The runner accepts only the explicitly approved HTTPS origin, rejects redirects, requires JSON plus `Cache-Control: private, no-store` and `Referrer-Policy: no-referrer`, bounds the in-memory response size, requires an exact response/capability/side-effect/telemetry allowlist, and invokes the full runtime report validator before emitting bounded status output. Positive cases alone are not a readiness decision: negative-smoke evidence and external log inspection remain required.
+The case manifest has exactly three opaque rows, one for each scenario: `single_linked_issue_passing`, `task_unavailable_or_ambiguous`, and `failed_or_unavailable_check`. `caseId` must be an operator-generated `case_` plus 16–64 lowercase hex characters, never a repository or PR label. Each row must include an `expectedHeadSha`: the exact 40-character lowercase Git commit SHA captured by the separate installation-token preflight for that PR. Case-insensitive `(repositoryFullName, PR)` targets must be unique. Unknown row fields, missing or malformed head SHAs, and a report provenance head that differs from the manifest are rejected. Numeric repository identity is intentionally not in the manifest: the Concierge route fetches GitHub's PR base repository ID with the initial and final head snapshots and compares it to the durable session/grant before reservation and delivery. The runner accepts only the explicitly approved HTTPS origin, rejects redirects, requires JSON plus `Cache-Control: private, no-store` and `Referrer-Policy: no-referrer`, bounds the in-memory response size, requires an exact response/capability/side-effect/telemetry allowlist, and invokes the full runtime report validator before emitting bounded status output. Positive cases alone are not a readiness decision: negative-smoke evidence and external log inspection remain required.
 
 ## External negative-smoke and rollback runbook
 

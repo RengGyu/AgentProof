@@ -5,7 +5,7 @@ const SCENARIOS = new Set([
 ]);
 const TASK_STATUSES = new Set(["available", "unavailable", "ambiguous"]);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
-const CASE_KEYS = ["caseId", "expectedCiStatus", "expectedHeadSha", "expectedOriginalTaskStatus", "installationId", "pullRequestNumber", "repositoryFullName", "repositoryId", "scenario", "tenantId"];
+const CASE_KEYS = ["caseId", "expectedCiStatus", "expectedHeadSha", "expectedOriginalTaskStatus", "pullRequestNumber", "repositoryFullName", "scenario"];
 const RESPONSE_KEYS = ["capabilities", "caseIdOrHash", "privacy", "report", "sideEffectTelemetry", "sideEffects"];
 const CAPABILITY_KEYS = ["billingEnabled", "fullHistoryEnabled", "githubCommentEnabled", "globalKillSwitch", "llmEnabled", "manualAnalysisEnabled", "publicShareEnabled", "saveReportsEnabled", "slackEnabled", "webhookAutomationEnabled"];
 const EFFECT_KEYS = ["comment", "llm", "save", "share", "slack", "webhook"];
@@ -35,10 +35,8 @@ export function validateSmokeCases(value) {
   const scenarios = value.map((item) => item.scenario);
   if (new Set(scenarios).size !== 3 || scenarios.some((scenario) => !SCENARIOS.has(scenario))) return false;
   const caseIds = new Set(value.map((item) => item.caseId));
-  const repositoryIdTargets = new Set(value.map((item) => `${item.repositoryId}:${item.pullRequestNumber}`));
   const repositoryNameTargets = new Set(value.map((item) => `${item.repositoryFullName.toLowerCase()}:${item.pullRequestNumber}`));
   return caseIds.size === 3
-    && repositoryIdTargets.size === 3
     && repositoryNameTargets.size === 3
     && value.every(caseMatchesScenario);
 }
@@ -100,9 +98,6 @@ function validCase(value) {
   return isExactRecord(value, CASE_KEYS)
     && typeof value.scenario === "string"
     && typeof value.caseId === "string" && /^case_[a-f0-9]{16,64}$/.test(value.caseId)
-    && typeof value.tenantId === "string" && /^[a-z0-9_-]{2,80}$/i.test(value.tenantId)
-    && Number.isSafeInteger(value.installationId) && value.installationId > 0
-    && Number.isSafeInteger(value.repositoryId) && value.repositoryId > 0
     && typeof value.repositoryFullName === "string" && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value.repositoryFullName)
     && Number.isSafeInteger(value.pullRequestNumber) && value.pullRequestNumber > 0
     && typeof value.expectedHeadSha === "string" && /^[a-f0-9]{40}$/.test(value.expectedHeadSha)

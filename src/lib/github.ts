@@ -82,9 +82,20 @@ export class GitHubPullRequestHeadChangedError extends Error {
 
 export interface GitHubPullRequestSnapshotOptions {
   expectedHeadSha?: string;
+  /** Concierge binds a durable numeric repository grant to GitHub's PR base repository. */
+  expectedRepositoryId?: number;
+  /** A renamed repository must be re-granted instead of silently following its old name. */
+  expectedRepositoryFullName?: string;
   now?: () => Date;
   /** Concierge never fetches a linked issue from another repository. */
   linkedIssuePolicy?: "any_supported" | "same_repository_only";
+}
+
+export interface GitHubPullRequestIdentity {
+  headSha: string;
+  /** Numeric identity of the base repository, never a fork's head repository. */
+  repositoryId: number;
+  repositoryFullName: string;
 }
 
 interface GitHubPullUrl {
@@ -328,6 +339,7 @@ async function fetchGitHubPullRequest(
 
   const pr = await prResponse.json();
   const initialHeadSha = requireGitHubHeadSha(pr, "initial");
+  assertExpectedRepositoryIdentity(snapshotOptions, pr, "initial");
   assertExpectedHeadSha(snapshotOptions.expectedHeadSha, initialHeadSha, "initial");
   const limitations: string[] = [];
   const explicitTask = taskText.trim();
@@ -457,6 +469,66 @@ export async function fetchGitHubPullRequestHead(prUrl: string, token: string | 
     throw new GitHubFetchError(response.status, failure.code, failure.reason, hasToken);
   }
   return requireGitHubHeadSha(await response.json(), "final");
+}
+
+/**
+ * Retrieves the PR head and its base-repository identity from one GitHub PR
+ * response. Concierge uses this before reserving work and again before report
+ * delivery so a deleted/recreated or renamed repository cannot borrow a grant.
+ */
+export async function fetchGitHubPullRequestIdentity(
+  prUrl: string,
+  token: string | undefined,
+  evidenceTiming?: GitHubEvidenceTimingSink,
+  phase: "initial" | "final" = "final"
+): Promise<GitHubPullRequestIdentity | null> {
+  const parsed = parseGitHubPullUrl(prUrl);
+  if (!parsed) return null;
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  const hasToken = Boolean(token?.trim());
+  let response: Response;
+  try {
+    response = await measureGitHubEvidenceTiming(evidenceTiming, "github_pr", () => githubFetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`, headers));
+  } catch {
+    throw new GitHubFetchError(0, "github_fetch_failed", "GitHub pull request metadata request timed out or network failed.", hasToken);
+  }
+  if (!response.ok) {
+    const failure = classifyGitHubFailure(response, hasToken);
+    throw new GitHubFetchError(response.status, failure.code, failure.reason, hasToken);
+  }
+  return requireGitHubPullRequestIdentity(await response.json(), phase);
+}
+
+function assertExpectedRepositoryIdentity(options: GitHubPullRequestSnapshotOptions, pr: unknown, phase: "initial" | "final") {
+  if (options.expectedRepositoryId === undefined && options.expectedRepositoryFullName === undefined) return;
+  const identity = requireGitHubPullRequestIdentity(pr, phase);
+  const expectedName = options.expectedRepositoryFullName?.trim().toLowerCase();
+  const expectedId = options.expectedRepositoryId;
+  if ((expectedId !== undefined && (!Number.isSafeInteger(expectedId) || expectedId <= 0))
+    || (expectedName !== undefined && !isGitHubRepositoryFullName(expectedName))
+    || (expectedId !== undefined && identity.repositoryId !== expectedId)
+    || (expectedName !== undefined && identity.repositoryFullName.toLowerCase() !== expectedName)) {
+    throw new GitHubFetchError(0, "github_fetch_failed", "GitHub pull request repository identity did not match the authorized repository.");
+  }
+}
+
+function requireGitHubPullRequestIdentity(pr: unknown, phase: "initial" | "final"): GitHubPullRequestIdentity {
+  const headSha = requireGitHubHeadSha(pr, phase);
+  const base = typeof pr === "object" && pr !== null && "base" in pr && typeof pr.base === "object" && pr.base !== null ? pr.base as Record<string, unknown> : null;
+  const repository = base && typeof base.repo === "object" && base.repo !== null ? base.repo as Record<string, unknown> : null;
+  const repositoryId = repository?.id;
+  const repositoryFullName = repository?.full_name;
+  if (!/^[a-f0-9]{40}$/i.test(headSha)
+    || typeof repositoryId !== "number" || !Number.isSafeInteger(repositoryId) || repositoryId <= 0
+    || typeof repositoryFullName !== "string" || !isGitHubRepositoryFullName(repositoryFullName)) {
+    throw new GitHubFetchError(0, "github_fetch_failed", `GitHub ${phase} pull request metadata did not include a valid base repository identity.`);
+  }
+  return { headSha, repositoryId: Number(repositoryId), repositoryFullName };
+}
+
+function isGitHubRepositoryFullName(value: string): boolean {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value);
 }
 
 function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha }: { origin: SourceProvenance["origin"]; input: PullRequestInput; capturedAt: string; headSha?: string }): SourceProvenance {

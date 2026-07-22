@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { createReadStream } from "node:fs";
+import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 
 export const VERCEL_BYPASS_ENV_NAME = "AGENTPROOF_CONCIERGE_SMOKE_VERCEL_PROTECTION_BYPASS";
-export const ROOT_SMOKE_ENV_PATH = "/Users/jeonggyuju/Project_folder/AgentProof/.env.local";
 const SMOKE_CHILD_ENV_NAMES = [
   "AGENTPROOF_CONCIERGE_SMOKE_EXECUTE",
   "AGENTPROOF_CONCIERGE_SMOKE_APPROVED_ORIGIN",
@@ -14,7 +14,11 @@ const SMOKE_CHILD_ENV_NAMES = [
 ];
 
 /** Reads exactly one bypass entry without parsing or forwarding unrelated dotenv values. */
-export async function readLocalVercelBypass(envPath = ROOT_SMOKE_ENV_PATH) {
+export function defaultSmokeEnvPath(cwd = process.cwd()) {
+  return resolve(cwd, ".env.local");
+}
+
+export async function readLocalVercelBypass(envPath = defaultSmokeEnvPath()) {
   let value;
   let matched = false;
   try {
@@ -51,7 +55,7 @@ export function buildSmokeChildEnvironment(env, bypass) {
   return childEnv;
 }
 
-export async function runSmokeWrapper({ env = process.env, envPath = ROOT_SMOKE_ENV_PATH, spawn = spawnSync } = {}) {
+export async function runSmokeWrapper({ env = process.env, envPath = defaultSmokeEnvPath(), spawn = spawnSync } = {}) {
   const bypass = await readLocalVercelBypass(envPath);
   if (!bypass?.trim()) return 2;
   const result = spawn(process.execPath, [
