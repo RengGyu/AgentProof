@@ -16,10 +16,14 @@ import {
 } from "@/lib/tenant-control-plane";
 import { clearUsageQuotaForTests } from "@/lib/usage-quota";
 import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
+
+const conciergeAuthMocks = vi.hoisted(() => ({ revokeByUser: vi.fn() }));
+vi.mock("@/lib/concierge-github-auth", () => ({ revokeConciergeGitHubSessionsForUser: conciergeAuthMocks.revokeByUser }));
 import { POST } from "./route";
 
 describe("POST /api/github/webhook", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
   });
 
@@ -94,6 +98,35 @@ describe("POST /api/github/webhook", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("revokes only numeric Concierge sessions for a signed GitHub authorization revoke", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    conciergeAuthMocks.revokeByUser.mockResolvedValue(2);
+    const body = JSON.stringify({ action: "revoked", sender: { id: 900001, type: "User", login: "must-not-echo" }, token: "must-not-echo" });
+    const response = await POST(signedRequest(body, { event: "github_app_authorization", delivery: "delivery-revoke", secret: "secret" }));
+    const json = await response.json();
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ ok: true, accepted: true, dryRun: false, event: "github_app_authorization", action: "revoked", delivery: "delivery-revoke", revokedSessionCount: 2, automationEnabled: false, willAnalyze: false, willComment: false, privacy: "numeric-user-revocation-only" });
+    expect(conciergeAuthMocks.revokeByUser).toHaveBeenCalledWith(900001);
+    expect(JSON.stringify(json)).not.toContain("must-not-echo");
+  });
+
+  it("rejects an unsigned or malformed GitHub authorization revocation without changing sessions", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    const body = JSON.stringify({ action: "revoked", sender: { id: "not-numeric", type: "User" } });
+    const response = await POST(signedRequest(body, { event: "github_app_authorization", delivery: "delivery-revoke-invalid", secret: "secret" }));
+    expect(response.status).toBe(422);
+    expect(conciergeAuthMocks.revokeByUser).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the bounded user-wide revocation RPC response is malformed", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    conciergeAuthMocks.revokeByUser.mockRejectedValue(Object.assign(new Error("malformed rpc response"), { reason: "oauth_provider_unavailable" }));
+    const body = JSON.stringify({ action: "revoked", sender: { id: 900001, type: "User" } });
+    const response = await POST(signedRequest(body, { event: "github_app_authorization", delivery: "delivery-revoke-malformed", secret: "secret" }));
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "Concierge authorization revocation could not be recorded.", code: "github_authorization_revocation_unavailable", willAnalyze: false, willComment: false });
   });
 
   it("accepts valid pull_request events as dry-run metadata only", async () => {

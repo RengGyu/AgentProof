@@ -6,7 +6,7 @@ This is an operator-assisted private repository path, not self-serve SaaS and no
 
 ```text
 operator invite
-  -> durable HttpOnly tenant session
+  -> GitHub user-to-server OAuth (`state` + PKCE) and durable HttpOnly session
   -> active tenant-owned GitHub App installation
   -> explicit enabled repository grant
   -> manual request + durable idempotency reservation
@@ -26,6 +26,16 @@ The repository grant fields have deliberately separate meanings:
 Existing GitHub onboarding keeps its established automation setting. Concierge registration is atomic: if no grant exists, it creates a manual-only grant with `analysisEnabled=false`, `saveReportsEnabled=false`, `commentEnabled=false`, and `slackNotificationsEnabled=false`; if an ordinary grant already exists, it returns that row without merging, patching, enabling, or disabling any setting. LLM, webhook automation, saved reports, public share, GitHub comments, Slack, billing, and full history stay off in the Concierge runtime regardless of the existing grant's automation settings.
 
 All Concierge tables share foreign-key boundaries with durable tenant/session/installation/grant rows. The effective Concierge project uses `AGENTPROOF_CONCIERGE_SUPABASE_*` when explicitly provided, otherwise the existing `AGENTPROOF_CONTROL_PLANE_SUPABASE_*` or shared `SUPABASE_*` pair. That effective project must resolve to the same origin as every tenant store. A missing or cross-project configuration fails closed before session verification, installation-token issuance, feedback storage, or analysis reservation.
+
+### Personal GitHub login boundary
+
+The friendly Concierge UI no longer accepts a beta-space ID, tester ID, or session-start code. It starts the existing GitHub App's user-to-server OAuth web flow with a random one-time state and PKCE `S256` verifier. The callback is a fixed configured HTTPS URL; it does not accept a browser-provided return URL. Both cookies are `__Host-`, `HttpOnly`, `Secure`, and `SameSite=Lax`. Every callback outcome clears only the pending OAuth state cookie; a failed callback deliberately preserves an already valid Concierge session. A successful callback atomically revokes that user's former durable Concierge session before activating its replacement.
+
+The first beta is personal-account and private-repository only. The authenticated GitHub numeric user ID must exactly equal the selected installation's numeric `account.id` and `target_id`; both types must be `User`, the App ID must match the configured App, and the durable installation row must be active with the same numeric account ID. Organization and collaborator installations are blocked. `/user/installations` and `/user/installations/{id}/repositories` each retain at most five pages of 100 rows; their sixth bounded sentinel page detects a 501st row and fails closed rather than silently omitting it. At most 500 private repository rows may enter a session; public-only access gets a separate private-repository recovery message. Login names and URLs are display metadata only, never authorization facts. An operator must pre-provision the exact `github-user-<numeric-id>` tenant member as active with the Concierge `member` role, one active personal installation, and exactly one enabled manual repository grant; OAuth never creates, enables, or changes that member. OAuth codes, access tokens, refresh tokens, and provider responses remain callback-local and are not put in the database, logs, browser storage, responses, or audit events. The durable rows contain only hashes, positive numeric IDs, bounded version/status, and timestamps.
+
+The selected repository is re-authorized with the active tenant, pre-provisioned member, installation, manual-only grant, deletion tombstone, and expected PR head before and after analysis. The Concierge OAuth session is the sole session authority; it expires within one hour and is also revoked by a signed `github_app_authorization` revocation event. A linked issue outside that selected repository is never fetched on the Concierge path; it becomes bounded unavailable task evidence. Feedback derives both tenant and pseudonymous partner ID from the authenticated server session, not browser input. Store or network verification failure is reported as `auth_unavailable` (connection unavailable), never as a signed-out user or a verified access change.
+
+Required external setup before this path can be used is: apply `202607210001_concierge_github_user_auth.sql` to the approved non-production Supabase project, pre-provision the exact active Concierge member, configure GitHub App Client ID/Client Secret, register the exact callback URL, provide two independent server-only state and feedback-pseudonym secrets of at least 32 bytes each, enable and verify signed `github_app_authorization` deliveries, and verify platform request logs do not retain callback query strings. Until those platform checks, callback-code log absence and webhook delivery are `unclear` rather than proven.
 
 Concierge activation does not require a branch-scoped beta enable variable. It is available only on Vercel Preview when the existing durable tenant/account/session/installation/grant stores are completely configured in that same Supabase project and the existing global Concierge kill switch is explicitly released. Production, local/unknown deployment modes, missing stores, memory/env fallbacks, and cross-project configurations remain fail-closed.
 
@@ -54,7 +64,7 @@ No private report is put in browser history or localStorage. The Concierge Repor
 - Repository: set the durable grant `enabled=false`.
 - Installation: `suspended` or `deleted` status blocks access. Signed lifecycle events disable matching grants; unsuspend/re-add never auto-enables them.
 
-The in-product **세션 종료** action clears the browser cookie and requests durable revocation. It reports `tenant_auth_session_revoke_unconfirmed` instead of claiming deletion when the durable store cannot confirm the update.
+The in-product **세션 종료** action clears the durable session cookie only after the revoke RPC confirms `revoked`, `already_revoked`, or `not_found`. Timeout, malformed, and 5xx replies retain that cookie so the same token hash can be retried; they appear as `auth_unavailable` and never begin a different-account login automatically.
 
 The environment-level global switch may require a deployment configuration refresh; its operational propagation time is `unclear` until the deployment platform is tested. Tenant and repository controls are durable database state.
 

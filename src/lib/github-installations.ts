@@ -391,6 +391,7 @@ async function githubInstallationFetch(config: GitHubInstallationStoreConfig, qu
   return fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}${query}`, {
     ...init,
     cache: "no-store",
+    signal: init.signal ?? AbortSignal.timeout(5_000),
     headers: {
       apikey: config.serviceRoleKey,
       Authorization: `Bearer ${config.serviceRoleKey}`,

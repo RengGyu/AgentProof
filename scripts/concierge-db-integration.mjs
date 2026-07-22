@@ -13,6 +13,7 @@ const migration = await readFile(new URL("../supabase/migrations/202607140001_co
 const deletionStateMigration = await readFile(new URL("../supabase/migrations/202607160001_tenant_deletion_state.sql", import.meta.url), "utf8");
 const humanBetaClarityMigration = await readFile(new URL("../supabase/migrations/202607200001_human_beta_feedback_clarity.sql", import.meta.url), "utf8");
 const tenantAuthSingleActiveMigration = await readFile(new URL("../supabase/migrations/202607200002_tenant_auth_session_single_active.sql", import.meta.url), "utf8");
+const githubUserAuthMigration = await readFile(new URL("../supabase/migrations/202607210001_concierge_github_user_auth.sql", import.meta.url), "utf8");
 let stage = "docker_prerequisite";
 
 async function docker(args, options = {}) { return exec("docker", args, { maxBuffer: 4_000_000, ...options }); }
@@ -83,13 +84,17 @@ try {
   stage = "seed_authorization";
   await psql(`
     insert into public.agentproof_tenants(tenant_id,name,status,plan) values ('tenant_alpha','Opaque tenant','active','invite');
-    insert into public.agentproof_tenant_members(tenant_id,member_id,role,status) values ('tenant_alpha','member_alpha','owner','active');
-    insert into public.agentproof_github_installations(tenant_id,installation_id,status,created_at,updated_at) values ('tenant_alpha',101,'active',now(),now());
+    insert into public.agentproof_tenant_members(tenant_id,member_id,role,status) values ('tenant_alpha','member_alpha','owner','active'), ('tenant_alpha','github-user-900001','member','active');
+    insert into public.agentproof_github_installations(tenant_id,installation_id,account_id,account_type,status,created_at,updated_at) values ('tenant_alpha',101,900001,'User','active',now(),now());
     insert into public.agentproof_tenant_repository_grants(tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,save_reports_enabled,comment_enabled,slack_notifications_enabled) values ('tenant_alpha',101,202,'opaque/repository',true,true,true,true,true);
     insert into public.agentproof_tenants(tenant_id,name,status,plan) values ('tenant_bravo','Opaque tenant 2','active','invite');
     insert into public.agentproof_tenant_members(tenant_id,member_id,role,status) values ('tenant_bravo','member_bravo','owner','active');
     insert into public.agentproof_github_installations(tenant_id,installation_id,status,created_at,updated_at) values ('tenant_bravo',102,'active',now(),now());
     insert into public.agentproof_tenant_repository_grants(tenant_id,installation_id,repository_id,repository_full_name,enabled) values ('tenant_bravo',102,203,'opaque/repository-2',true);
+    insert into public.agentproof_tenants(tenant_id,name,status,plan) values ('tenant_state','Opaque tenant state','active','invite');
+    insert into public.agentproof_tenant_members(tenant_id,member_id,role,status) values ('tenant_state','github-user-900101','member','active');
+    insert into public.agentproof_github_installations(tenant_id,installation_id,account_id,account_type,status,created_at,updated_at) values ('tenant_state',103,900101,'User','active',now(),now());
+    insert into public.agentproof_tenant_repository_grants(tenant_id,installation_id,repository_id,repository_full_name,enabled) values ('tenant_state',103,203,'opaque/state-repository',true);
   `);
 
   stage = "seed_legacy_feedback_before_upgrade";
@@ -102,6 +107,7 @@ try {
   stage = "apply_human_beta_clarity_upgrade";
   await psql(humanBetaClarityMigration);
   await psql(tenantAuthSingleActiveMigration);
+  await psql(githubUserAuthMigration);
   const legacyPreserved = scalar((await psql(`select schema_version || ':' || participant_cohort || ':' || privacy_notice_version || ':' || top_gap_outcome from public.agentproof_concierge_feedback where case_id_or_hash='${legacyKey}';`)).stdout);
   const legacyDecisionState = scalar((await psql(`select coalesce(decision_card_state,'null') from public.agentproof_concierge_analysis_runs where request_key='${legacyKey}';`)).stdout);
   if (legacyPreserved !== "concierge-feedback.v2:legacy_unclassified:legacy_unversioned:legacy_unclassified" || legacyDecisionState !== "null") throw new Error("Legacy rows were changed or falsely classified during clarity migration.");
@@ -120,6 +126,106 @@ try {
   let directAuthInsertRejected = false;
   try { await psql("insert into public.agentproof_tenant_auth_sessions(id,token_hash,tenant_id,member_id,created_at,expires_at) values ('session_direct_insert_01','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','tenant_alpha','member_alpha',now(),now()+interval '1 hour');", "service_role"); } catch { directAuthInsertRejected = true; }
   if (!directAuthInsertRejected) throw new Error("service_role direct tenant auth session insert was not rejected.");
+
+  stage = "github_oauth_hash_only_session";
+  const oauthStateHash = "e".repeat(64);
+  const oauthReserve = scalar((await psql(`select public.agentproof_reserve_concierge_github_oauth_state('${oauthStateHash}','2026-07-20T00:00:00.000Z','2026-07-20T00:15:00.000Z');`, "service_role")).stdout);
+  const oauthConsumes = await Promise.all(Array.from({ length: 20 }, () => psql(`select public.agentproof_consume_concierge_github_oauth_state('${oauthStateHash}','2026-07-20T00:01:00.000Z');`, "service_role").then(({ stdout }) => scalar(stdout))));
+  if (oauthReserve !== "t" || oauthConsumes.filter((value) => value === "t").length !== 1 || oauthConsumes.filter((value) => value === "f").length !== 19) throw new Error("OAuth state replay invariant failed.");
+  const oauthTokenHash = "f".repeat(64);
+  const oauthCreate = scalar((await psql(`select public.agentproof_create_concierge_github_session('${oauthTokenHash}','tenant_alpha',900001,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  const oauthDuplicate = scalar((await psql(`select public.agentproof_create_concierge_github_session('${oauthTokenHash}','tenant_alpha',900001,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  const oauthRead = scalar((await psql(`select tenant_id || ':' || member_id || ':' || github_user_id || ':' || installation_id || ':' || repository_id from public.agentproof_read_concierge_github_session('${oauthTokenHash}','2026-07-20T00:01:00.000Z');`, "service_role")).stdout);
+  const oauthRevoke = scalar((await psql(`select public.agentproof_revoke_concierge_github_session('${oauthTokenHash}','2026-07-20T00:02:00.000Z');`, "service_role")).stdout);
+  const oauthAfterRevoke = scalar((await psql(`select count(*) from public.agentproof_read_concierge_github_session('${oauthTokenHash}','2026-07-20T00:03:00.000Z');`, "service_role")).stdout);
+  if (oauthCreate !== "created" || oauthDuplicate !== "duplicate" || oauthRead !== "tenant_alpha:github-user-900001:900001:101:202" || oauthRevoke !== "revoked" || oauthAfterRevoke !== "0") throw new Error("OAuth session lifecycle invariant failed.");
+  const oauthTables = [
+    { name: "agentproof_concierge_github_oauth_states", insert: `insert into public.agentproof_concierge_github_oauth_states(state_hash,created_at,expires_at) values ('${"1".repeat(64)}',now(),now()+interval '5 minutes')`, update: "update public.agentproof_concierge_github_oauth_states set used_at=now() where false" },
+    { name: "agentproof_concierge_github_sessions", insert: `insert into public.agentproof_concierge_github_sessions(token_hash,tenant_id,member_id,github_user_id,installation_id,auth_version,created_at,expires_at) values ('${"2".repeat(64)}','tenant_alpha','github-user-900001',900001,101,'github-user-oauth.v1',now(),now()+interval '5 minutes')`, update: "update public.agentproof_concierge_github_sessions set revoked_at=now() where false" },
+    { name: "agentproof_concierge_github_session_repositories", insert: `insert into public.agentproof_concierge_github_session_repositories(token_hash,repository_id) values ('${"2".repeat(64)}',202)`, update: "update public.agentproof_concierge_github_session_repositories set repository_id=repository_id where false" }
+  ];
+  const oauthRoles = ["anon", "authenticated", "service_role"];
+  for (const table of oauthTables) {
+    for (const role of oauthRoles) {
+      for (const operation of [`select * from public.${table.name}`, table.insert, table.update, `delete from public.${table.name} where false`]) {
+        let rejected = false;
+        try { await psql(operation, role); } catch { rejected = true; }
+        if (!rejected) throw new Error(`${role} direct OAuth ${table.name} access was not rejected.`);
+      }
+    }
+  }
+  const oauthRpcMatrix = [
+    `select public.agentproof_reserve_concierge_github_oauth_state('${"3".repeat(64)}','2026-07-20T00:00:00.000Z','2026-07-20T00:15:00.000Z')`,
+    `select public.agentproof_consume_concierge_github_oauth_state('${"3".repeat(64)}','2026-07-20T00:01:00.000Z')`,
+    `select public.agentproof_create_concierge_github_session('${"4".repeat(64)}','tenant_alpha',900001,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z')`,
+    "select * from public.agentproof_resolve_concierge_github_installation(101,900001)",
+    `select * from public.agentproof_read_concierge_github_session('${"4".repeat(64)}','2026-07-20T00:01:00.000Z')`,
+    `select public.agentproof_revoke_concierge_github_session('${"4".repeat(64)}','2026-07-20T00:02:00.000Z')`,
+    "select public.agentproof_revoke_concierge_github_sessions_for_user(900001,'2026-07-20T00:03:00.000Z')",
+    "select * from public.agentproof_cleanup_concierge_github_auth('2026-07-20T00:04:00.000Z')"
+  ];
+  for (const role of ["anon", "authenticated"]) {
+    for (const operation of oauthRpcMatrix) {
+      let rejected = false;
+      try { await psql(operation, role); } catch { rejected = true; }
+      if (!rejected) throw new Error(`${role} OAuth RPC access was not rejected.`);
+    }
+  }
+  for (const operation of oauthRpcMatrix) await psql(operation, "service_role");
+  // Session reads intentionally re-check enabled grants. Seed a complete
+  // synthetic scope so the 500-row boundary tests the OAuth contract rather
+  // than failing for an unrelated missing-grant condition.
+  await psql("insert into public.agentproof_tenant_repository_grants(tenant_id,installation_id,repository_id,repository_full_name,enabled) select 'tenant_alpha',101,repository_id,'opaque/boundary-' || repository_id::text,true from generate_series(1000,1499) repository_id on conflict do nothing");
+  const ids500 = JSON.stringify(Array.from({ length: 500 }, (_, index) => index + 1000));
+  const ids501 = JSON.stringify(Array.from({ length: 501 }, (_, index) => index + 1000));
+  const oauth500Create = scalar((await psql(`select public.agentproof_create_concierge_github_session('${"5".repeat(64)}','tenant_alpha',900001,101,'${ids500}'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z')`, "service_role")).stdout);
+  const oauth500Read = scalar((await psql(`select count(*) from public.agentproof_read_concierge_github_session('${"5".repeat(64)}','2026-07-20T00:01:00.000Z')`, "service_role")).stdout);
+  const oauth501Create = scalar((await psql(`select public.agentproof_create_concierge_github_session('${"6".repeat(64)}','tenant_alpha',900001,101,'${ids501}'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z')`, "service_role")).stdout);
+  if (oauth500Create !== "created" || oauth500Read !== "500" || oauth501Create !== "rejected") throw new Error("OAuth 500/501 repository boundary invariant failed.");
+  await psql("update public.agentproof_github_installations set account_type='Organization' where tenant_id='tenant_alpha' and installation_id=101;");
+  const organizationAccount = scalar((await psql(`select public.agentproof_create_concierge_github_session('${"3".repeat(64)}','tenant_alpha',900001,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  await psql("update public.agentproof_github_installations set account_type='User' where tenant_id='tenant_alpha' and installation_id=101;");
+  if (organizationAccount !== "identity_mismatch") throw new Error("Organization OAuth installation was accepted.");
+  // Concurrent callback completion must leave one readable active session for
+  // this tenant/user pair. Each callback receives its own opaque token hash;
+  // the SECURITY DEFINER RPC serializes the revoke-and-create transition.
+  const concurrentTokenHashes = Array.from({ length: 20 }, (_, index) => (index + 10).toString(16).padStart(64, "c"));
+  const concurrentCreates = await Promise.all(concurrentTokenHashes.map((tokenHash) => psql(`select public.agentproof_create_concierge_github_session('${tokenHash}','tenant_alpha',900001,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role").then(({ stdout }) => scalar(stdout))));
+  const concurrentActiveRows = scalar((await psql("select count(*) from public.agentproof_concierge_github_sessions where tenant_id='tenant_alpha' and github_user_id=900001 and revoked_at is null;")).stdout);
+  if (concurrentCreates.filter((value) => value === "created").length !== 20 || concurrentActiveRows !== "1") throw new Error("Concurrent OAuth callback did not leave exactly one active session.");
+  const userWideOne = "a".repeat(64);
+  const userWideTwo = "b".repeat(64);
+  const userWideCreateOne = scalar((await psql(`select public.agentproof_create_concierge_github_session('${userWideOne}','tenant_alpha',900001,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  const userWideCreateTwo = scalar((await psql(`select public.agentproof_create_concierge_github_session('${userWideTwo}','tenant_alpha',900001,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  const userWideRevoked = scalar((await psql("select public.agentproof_revoke_concierge_github_sessions_for_user(900001,'2026-07-20T00:02:00.000Z');", "service_role")).stdout);
+  const userWideVisible = scalar((await psql(`select count(*) from public.agentproof_read_concierge_github_session('${userWideOne}','2026-07-20T00:03:00.000Z');`, "service_role")).stdout);
+  if (userWideCreateOne !== "created" || userWideCreateTwo !== "created" || userWideRevoked !== "1" || userWideVisible !== "0") throw new Error("OAuth user-wide revocation invariant failed.");
+  const cleanup = scalar((await psql("select expired_state_count || ':' || expired_session_count from public.agentproof_cleanup_concierge_github_auth('2026-07-29T00:00:00.000Z');", "service_role")).stdout);
+  if (!/^[1-9][0-9]*:[1-9][0-9]*$/.test(cleanup)) throw new Error("OAuth retention cleanup did not remove expired metadata.");
+
+  stage = "github_oauth_revalidation_states";
+  const stateHash = "9".repeat(64);
+  const createStateSession = () => psql(`select public.agentproof_create_concierge_github_session('${stateHash}','tenant_state',900101,103,'[203]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role");
+  if (scalar((await createStateSession()).stdout) !== "created") throw new Error("OAuth state tenant setup failed.");
+  const visibleStateSession = async () => scalar((await psql(`select count(*) from public.agentproof_read_concierge_github_session('${stateHash}','2026-07-20T00:01:00.000Z');`, "service_role")).stdout);
+  if (await visibleStateSession() !== "1") throw new Error("Active OAuth state session was not readable.");
+  await psql("update public.agentproof_tenant_members set status='disabled' where tenant_id='tenant_state' and member_id='github-user-900101';");
+  if (await visibleStateSession() !== "0") throw new Error("Disabled OAuth member was not blocked.");
+  const disabledCreate = scalar((await psql(`select public.agentproof_create_concierge_github_session('${"8".repeat(64)}','tenant_state',900101,103,'[203]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  if (disabledCreate !== "member_unavailable") throw new Error("Disabled member was reactivated by OAuth session creation.");
+  await psql("update public.agentproof_tenant_members set status='active', role='owner' where tenant_id='tenant_state' and member_id='github-user-900101';");
+  const wrongRoleCreate = scalar((await psql(`select public.agentproof_create_concierge_github_session('${"7".repeat(64)}','tenant_state',900101,103,'[203]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  if (wrongRoleCreate !== "member_unavailable") throw new Error("Wrong OAuth member role was accepted.");
+  await psql("update public.agentproof_tenant_members set role='member' where tenant_id='tenant_state' and member_id='github-user-900101'; update public.agentproof_tenants set status='suspended' where tenant_id='tenant_state';");
+  if (await visibleStateSession() !== "0") throw new Error("Suspended tenant OAuth session was not blocked.");
+  await psql("update public.agentproof_tenants set status='active' where tenant_id='tenant_state'; update public.agentproof_github_installations set status='suspended' where tenant_id='tenant_state' and installation_id=103;");
+  if (await visibleStateSession() !== "0") throw new Error("Suspended installation OAuth session was not blocked.");
+  await psql("update public.agentproof_github_installations set status='active' where tenant_id='tenant_state' and installation_id=103; update public.agentproof_tenant_repository_grants set enabled=false where tenant_id='tenant_state' and installation_id=103 and repository_id=203;");
+  if (await visibleStateSession() !== "0") throw new Error("Revoked OAuth repository grant was not blocked.");
+  await psql("update public.agentproof_tenant_repository_grants set enabled=true where tenant_id='tenant_state' and installation_id=103 and repository_id=203; select public.agentproof_mark_tenant_deletion_active('tenant_state');");
+  if (await visibleStateSession() !== "0") throw new Error("Active deletion state OAuth session was not blocked.");
+  const accountMismatch = scalar((await psql(`select public.agentproof_create_concierge_github_session('${"6".repeat(64)}','tenant_alpha',900002,101,'[202]'::jsonb,'2026-07-20T00:00:00.000Z','2026-07-20T00:55:00.000Z');`, "service_role")).stdout);
+  if (accountMismatch !== "identity_mismatch") throw new Error("OAuth account identity mismatch was accepted.");
 
   stage = "concierge_grant_preservation";
   const existingGrant = scalar((await psql("select outcome || ':' || enabled || ':' || analysis_enabled || ':' || save_reports_enabled || ':' || comment_enabled || ':' || slack_notifications_enabled from public.agentproof_register_concierge_repository_grant('tenant_alpha',101,202,'opaque/repository');", "service_role")).stdout);
@@ -242,7 +348,7 @@ try {
   const failedDuplicate = scalar((await psql(`select outcome from public.agentproof_reserve_concierge_analysis('${failedKey}','tenant_alpha',101,202);`, "service_role")).stdout);
   if (failedReserve !== "reserved" || failedTerminal !== "t" || failedReverse !== "f" || failedDuplicate !== "duplicate") throw new Error("Failed terminal lifecycle invariant failed.");
 
-  console.log(JSON.stringify({ status: "passed", legacyV2UpgradePreserved: true, tenantAuthSingleActive: { created: 1, activeExists: 19, activeRows: 1, nonServiceRpcRejected: true, serviceRoleDirectInsertRejected: true }, conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, deletionState: { metadataOnlySchema: true, rlsEnabled: true, absentAllowsAuthorization: true, activeBlocksAuthorization: true, duplicateStartIsIdempotent: true, directTableAccessRejected: ["anon", "authenticated", "service_role"], nonServiceRpcRejected: true, invalidTransitionRejected: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, feedbackCohortAndZeroGapBounded: true, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
+  console.log(JSON.stringify({ status: "passed", legacyV2UpgradePreserved: true, tenantAuthSingleActive: { created: 1, activeExists: 19, activeRows: 1, nonServiceRpcRejected: true, serviceRoleDirectInsertRejected: true }, oauth: { stateReplay: { consumed: 1, rejected: 19 }, duplicateSessionRejected: true, concurrentCallbacks: { created: 20, activeRows: 1 }, allThreeTablesDirectDmlRejected: true, allOAuthRpcAnonAuthenticatedRejected: true, allOAuthRpcServiceRoleAllowed: true, organizationAccountRejected: true, repositoryBoundary: { accepted: 500, rejected: 501 }, userWideRevokeCount: 1, retentionCleanup: cleanup }, conciergeGrantPreservation: { existingUnchanged: true, concurrentCreated: 1, concurrentExisting: 19, newManualOnly: true }, deletionState: { metadataOnlySchema: true, rlsEnabled: true, absentAllowsAuthorization: true, activeBlocksAuthorization: true, duplicateStartIsIdempotent: true, directTableAccessRejected: ["anon", "authenticated", "service_role"], nonServiceRpcRejected: true, invalidTransitionRejected: true }, concurrentReserve: { reserved: 1, duplicate: 19 }, directDmlRejected: ["anon", "authenticated", "service_role"], anonRpcRejected: true, authenticatedRpcRejected: true, anonFeedbackRpcRejected: true, authenticatedFeedbackRpcRejected: true, anonGrantRegistrationRpcRejected: true, authenticatedGrantRegistrationRpcRejected: true, terminalReversalRejected: true, failedTerminalLifecycleRejected: true, feedbackConcurrentIdempotency: { stored: 1, duplicate: 19, rowCount: 1 }, feedbackCohortAndZeroGapBounded: true, preCompletionAndUnknownFeedbackRejected: true, crossTenantFeedbackRejected: true, feedbackRawFieldRejected: true, optionalReasonColumnAbsent: true }));
 } catch (error) {
   throw new Error(`concierge DB integration failed at ${stage}: ${error instanceof Error ? error.message : "unknown"}`);
 } finally {

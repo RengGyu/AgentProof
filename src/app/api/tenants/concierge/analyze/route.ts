@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     if (reservation.outcome !== "reserved") return json({ error: "Manual analysis reservation is unavailable.", code: "idempotency_unavailable" }, 503);
     const telemetry = createConciergeSideEffectTelemetry({ caseIdOrHash: requestKey, sourceHeadSha: initialHeadSha });
 
-    const input = await buildGitHubPullRequestInput(prUrl, token, "", undefined, { expectedHeadSha: initialHeadSha });
+    const input = await buildGitHubPullRequestInput(prUrl, token, "", undefined, { expectedHeadSha: initialHeadSha, linkedIssuePolicy: "same_repository_only" });
     if (!input) throw new Error("evidence_unavailable");
     const report = generateVerificationReport(input);
     const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
