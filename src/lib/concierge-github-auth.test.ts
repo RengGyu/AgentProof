@@ -51,6 +51,19 @@ describe("Concierge GitHub OAuth contract", () => {
     expect(selectPersonalInstallation(user, [{ ...personal, appId: 717172 }], 717171)).toEqual({ kind: "blocked", reason: "personal_installation_required" });
   });
 
+  it("keeps installation diagnostics bounded without exposing numeric identities", async () => {
+    const request = vi.fn(async (url: string) => {
+      if (url.includes("agentproof_consume")) return Response.json(true);
+      if (url.endsWith("/login/oauth/access_token")) return Response.json({ access_token: "opaque-token" });
+      if (url.endsWith("/user")) return Response.json({ id: 900001, type: "User" });
+      if (url.includes("/user/installations?")) return Response.json({ installations: url.includes("page=1") ? [{ id: 101, app_id: 717172, target_id: 900001, target_type: "User", account: { id: 900001, type: "User" }, suspended_at: null }] : [] });
+      throw new Error(`unexpected ${url}`);
+    });
+    const cookiePayload = Buffer.from(JSON.stringify({ state: "s".repeat(43), verifier: "v".repeat(64), expiresAt: new Date(1_700_000_900_000).toISOString() })).toString("base64url");
+    const signature = (await import("crypto")).createHmac("sha256", env.AGENTPROOF_CONCIERGE_OAUTH_STATE_SECRET!).update(cookiePayload).digest("base64url");
+    await expect(completeConciergeGitHubOAuth({ state: "s".repeat(43), code: "opaque-code", cookieHeader: `${CONCIERGE_COOKIE}=${cookiePayload}.${signature}` }, env, { fetch: request as typeof fetch, now: () => 1_700_000_000_000, random: () => "x".repeat(43) })).rejects.toMatchObject({ reason: "personal_installation_required", oauthStateStage: "installation_app_missing" });
+  });
+
   it("consumes state before exchanging code, so replay never reaches GitHub", async () => {
     const calls: string[] = [];
     const request = vi.fn(async (url: string) => {

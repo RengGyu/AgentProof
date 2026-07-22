@@ -44,6 +44,9 @@ export type ConciergeGitHubOAuthStateStage =
   | "provider_redirect_uri_mismatch"
   | "provider_access_denied"
   | "provider_error"
+  | "installation_app_missing"
+  | "installation_identity_mismatch"
+  | "installation_multiple"
   | "cookie_missing"
   | "cookie_invalid"
   | "state_mismatch";
@@ -145,7 +148,7 @@ export async function completeConciergeGitHubOAuth(
   const user = await githubUser(accessToken, deps.fetch, timeoutMs);
   const installations = await githubInstallations(accessToken, deps.fetch, timeoutMs);
   const choice = selectPersonalInstallation(user, installations, config.appId);
-  if (choice.kind !== "selected") throw authError(choice.reason);
+  if (choice.kind !== "selected") throw authDiagnosticError(choice.reason, installationDiagnosticStage(user, installations, config.appId));
   const repositories = await githubInstallationRepositories(accessToken, choice.installation.id, deps.fetch, timeoutMs);
   const personalRepositories = repositories.filter((repository) => repository.ownerId === user.id && repository.ownerType === "User" && repository.private);
   if (personalRepositories.length === 0) {
@@ -400,6 +403,13 @@ function validIndependentSecrets(stateSecret: string | undefined, feedbackSecret
 function normalizeCallbackUrl(value: string | undefined): string | null { if (!value) return null; try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && url.pathname === "/api/auth/github/callback" ? url.toString() : null; } catch { return null; } }
 function safeEqual(left: string, right: string): boolean { const a = Buffer.from(left), b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); }
 function authError(reason: ConciergeGitHubAuthReason): Error & { reason: ConciergeGitHubAuthReason } { return Object.assign(new Error(reason), { reason }); }
+function authDiagnosticError(reason: ConciergeGitHubAuthReason, stage: ConciergeGitHubOAuthStateStage): Error & { reason: ConciergeGitHubAuthReason; oauthStateStage: ConciergeGitHubOAuthStateStage } { return Object.assign(new Error(reason), { reason, oauthStateStage: stage }); }
+function installationDiagnosticStage(user: GitHubUserIdentity, installations: GitHubUserInstallation[], expectedAppId: number): ConciergeGitHubOAuthStateStage {
+  const matchingApp = installations.filter((installation) => installation.appId === expectedAppId);
+  if (matchingApp.length === 0) return "installation_app_missing";
+  const matchingIdentity = matchingApp.filter((installation) => installation.account.type === "User" && installation.targetType === "User" && installation.account.id === user.id && installation.targetId === user.id && !installation.suspendedAt);
+  return matchingIdentity.length > 1 ? "installation_multiple" : "installation_identity_mismatch";
+}
 function oauthStateError(stage: ConciergeGitHubOAuthStateStage): Error & { reason: "oauth_state_invalid"; oauthStateStage: ConciergeGitHubOAuthStateStage } {
   return Object.assign(new Error("oauth_state_invalid"), { reason: "oauth_state_invalid" as const, oauthStateStage: stage });
 }
