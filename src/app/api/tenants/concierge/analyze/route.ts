@@ -3,7 +3,7 @@ import { reserveConciergeAnalysis, buildConciergeRequestKey, finishConciergeAnal
 import { authorizeConciergeAccess, conciergeRuntimeDefaults } from "@/lib/concierge-private-beta";
 import { verifySameOriginMutationRequest } from "@/lib/csrf";
 import { createGitHubInstallationAccessToken } from "@/lib/github-app";
-import { buildGitHubPullRequestInput, fetchGitHubPullRequestHead } from "@/lib/github";
+import { buildGitHubPullRequestInput, fetchGitHubPullRequestIdentity } from "@/lib/github";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { createConciergeSideEffectTelemetry, validateZeroConciergeSideEffectTelemetry } from "@/lib/concierge-side-effect-telemetry";
 import { generateVerificationReport } from "@/lib/verifier";
@@ -34,8 +34,11 @@ export async function POST(request: Request) {
   try {
     const token = await createGitHubInstallationAccessToken(access.installationId);
     const prUrl = `https://github.com/${access.repositoryFullName}/pull/${body.pullRequestNumber}`;
-    const initialHeadSha = await fetchGitHubPullRequestHead(prUrl, token);
-    if (!initialHeadSha) throw new Error("head_unavailable");
+    const initialSnapshot = await fetchGitHubPullRequestIdentity(prUrl, token, undefined, "initial");
+    if (!initialSnapshot || !matchesRepositorySnapshot(access, initialSnapshot)) {
+      return json({ error: "Concierge analysis is not authorized.", code: "repository_identity_mismatch" }, 403);
+    }
+    const initialHeadSha = initialSnapshot.headSha;
     requestKey = buildConciergeRequestKey({
       tenantId: access.tenantId,
       installationId: access.installationId,
@@ -53,13 +56,25 @@ export async function POST(request: Request) {
     if (reservation.outcome !== "reserved") return json({ error: "Manual analysis reservation is unavailable.", code: "idempotency_unavailable" }, 503);
     const telemetry = createConciergeSideEffectTelemetry({ caseIdOrHash: requestKey, sourceHeadSha: initialHeadSha });
 
-    const input = await buildGitHubPullRequestInput(prUrl, token, "", undefined, { expectedHeadSha: initialHeadSha });
+    const input = await buildGitHubPullRequestInput(prUrl, token, "", undefined, {
+      expectedHeadSha: initialHeadSha,
+      expectedRepositoryId: access.repositoryId,
+      expectedRepositoryFullName: access.repositoryFullName,
+      linkedIssuePolicy: "same_repository_only"
+    });
     if (!input) throw new Error("evidence_unavailable");
     const report = generateVerificationReport(input);
     const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
     if (!validation.valid) throw new Error("report_validation_failed");
-    const finalHeadSha = await fetchGitHubPullRequestHead(prUrl, token);
-    if (finalHeadSha !== initialHeadSha) throw new Error("head_changed");
+    if (report.source.provenance?.headSha !== initialHeadSha) throw new Error("report_provenance_head_mismatch");
+    const finalSnapshot = await fetchGitHubPullRequestIdentity(prUrl, token, undefined, "final");
+    if (!finalSnapshot || !matchesRepositorySnapshot(access, finalSnapshot)) {
+      if (!await recordFailureOrBlockDelivery(requestKey, "repository_identity_mismatch")) {
+        return json({ error: "Analysis terminal state could not be recorded.", code: "terminal_record_unavailable" }, 503);
+      }
+      return json({ error: "Concierge analysis was stopped before delivery.", code: "repository_identity_mismatch" }, 403);
+    }
+    if (finalSnapshot.headSha !== initialHeadSha) throw new Error("head_changed");
     const finalAccess = await authorizeConciergeAccess({
       repositoryFullName: body.repositoryFullName,
       cookieHeader: request.headers.get("cookie")
@@ -120,6 +135,14 @@ function sameAccessScope(
     && initial.repositoryFullName.toLowerCase() === final.repositoryFullName.toLowerCase();
 }
 
+function matchesRepositorySnapshot(
+  access: Extract<Awaited<ReturnType<typeof authorizeConciergeAccess>>, { authorized: true }>,
+  snapshot: { repositoryId: number; repositoryFullName: string }
+): boolean {
+  return snapshot.repositoryId === access.repositoryId
+    && snapshot.repositoryFullName.toLowerCase() === access.repositoryFullName.toLowerCase();
+}
+
 interface Body { repositoryFullName: string; pullRequestNumber: number; requestId: string }
 function parseBody(text: string): Body | null {
   try {
@@ -135,7 +158,7 @@ function parseBody(text: string): Body | null {
 
 function boundedFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : "provider_unavailable";
-  if (["head_unavailable", "evidence_unavailable", "report_validation_failed", "head_changed"].includes(message)) return message;
+  if (["head_unavailable", "evidence_unavailable", "report_validation_failed", "report_provenance_head_mismatch", "head_changed"].includes(message)) return message;
   return "github_evidence_unavailable";
 }
 

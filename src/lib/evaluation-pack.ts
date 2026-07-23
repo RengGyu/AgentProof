@@ -1,5 +1,5 @@
 import { validateVerificationReport } from "./report-validation";
-import { isExecutionEvidenceSignal, hasPassingEvidenceStatusPrefix } from "./evidence-status";
+import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceItemSignal, statusFromExecutionEvidenceSummary } from "./evidence-status";
 import { containsSecretPattern, redactSecrets } from "./redact";
 import type {
   ChangedFile,
@@ -746,7 +746,7 @@ function hasFailed(metrics: EvaluationMetric[], id: string): boolean {
 function hasAnyExecutionEvidence(report: VerificationReport): boolean {
   return report.evidenceIndex.some((item) =>
     (item.kind === "check" || item.kind === "log") &&
-    isExecutionEvidenceSignal(item.label, item.summary, item.locator)
+    isExecutionEvidenceItemSignal(item.label, statusFromExecutionEvidenceSummary(item.summary), item.locator, item.summary)
   );
 }
 
@@ -758,7 +758,7 @@ function requirementHasPassingExecutionRef(report: VerificationReport, evidenceR
 
     return Boolean(item) &&
       (item?.kind === "check" || item?.kind === "log") &&
-      isExecutionEvidenceSignal(item.label, item.summary, item.locator) &&
+      isExecutionEvidenceItemSignal(item.label, statusFromExecutionEvidenceSummary(item.summary), item.locator, item.summary) &&
       hasPassingEvidenceStatusPrefix(item.summary);
   });
 }

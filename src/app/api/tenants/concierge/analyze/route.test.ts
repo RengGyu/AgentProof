@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  authorize: vi.fn(), token: vi.fn(), head: vi.fn(), build: vi.fn(), reserve: vi.fn(), finish: vi.fn(), generate: vi.fn(), validate: vi.fn(), createTelemetry: vi.fn(), validateTelemetry: vi.fn()
+  authorize: vi.fn(), token: vi.fn(), snapshot: vi.fn(), build: vi.fn(), reserve: vi.fn(), finish: vi.fn(), generate: vi.fn(), validate: vi.fn(), createTelemetry: vi.fn(), validateTelemetry: vi.fn()
 }));
 vi.mock("@/lib/concierge-private-beta", () => ({
   conciergeRuntimeDefaults: () => ({ manualAnalysisEnabled: true, globalKillSwitch: false, llmEnabled: false, webhookAutomationEnabled: false, saveReportsEnabled: false, publicShareEnabled: false, githubCommentEnabled: false, slackEnabled: false, billingEnabled: false, fullHistoryEnabled: false }),
   authorizeConciergeAccess: mocks.authorize
 }));
 vi.mock("@/lib/github-app", () => ({ createGitHubInstallationAccessToken: mocks.token }));
-vi.mock("@/lib/github", () => ({ buildGitHubPullRequestInput: mocks.build, fetchGitHubPullRequestHead: mocks.head }));
+vi.mock("@/lib/github", () => ({ buildGitHubPullRequestInput: mocks.build, fetchGitHubPullRequestIdentity: mocks.snapshot }));
 vi.mock("@/lib/concierge-analysis-store", () => ({ getConciergeAnalysisStoreStatus: () => ({ configured: true, durable: true }), buildConciergeRequestKey: () => "a".repeat(64), reserveConciergeAnalysis: mocks.reserve, finishConciergeAnalysis: mocks.finish }));
 vi.mock("@/lib/verifier", () => ({ generateVerificationReport: mocks.generate }));
 vi.mock("@/lib/report-validation", () => ({ validateVerificationReport: mocks.validate }));
@@ -17,13 +17,14 @@ vi.mock("@/lib/concierge-side-effect-telemetry", () => ({ createConciergeSideEff
 import { POST } from "./route";
 
 const body = { repositoryFullName: "acme/private", pullRequestNumber: 17, requestId: "12345678-1234-1234-1234-123456789abc" };
-const zeroGapReport = { analysisId: "opaque", proofGraph: { summary: { gapCount: 0 } }, decisionCard: { topGap: null, reprompt: null } };
-const topGapReport = { analysisId: "opaque", proofGraph: { summary: { gapCount: 1 } }, decisionCard: { topGap: { kind: "missing_execution" }, reprompt: { prompt: "bounded" } } };
+const zeroGapReport = { analysisId: "opaque", source: { provenance: { headSha: "a".repeat(40) } }, proofGraph: { summary: { gapCount: 0 } }, decisionCard: { topGap: null, reprompt: null } };
+const topGapReport = { analysisId: "opaque", source: { provenance: { headSha: "a".repeat(40) } }, proofGraph: { summary: { gapCount: 1 } }, decisionCard: { topGap: { kind: "missing_execution" }, reprompt: { prompt: "bounded" } } };
+function boundReport() { return structuredClone(zeroGapReport); }
 function request() { return new Request("https://agentproof.test/api/tenants/concierge/analyze", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://agentproof.test", cookie: "session=x" }, body: JSON.stringify(body) }); }
 
 describe("concierge analyze route boundary", () => {
   beforeEach(() => {
-    vi.clearAllMocks(); mocks.head.mockResolvedValue("a".repeat(40)); mocks.reserve.mockResolvedValue({ outcome: "reserved" }); mocks.finish.mockResolvedValue(true); mocks.validate.mockReturnValue({ valid: true, errors: [] });
+    vi.clearAllMocks(); mocks.snapshot.mockResolvedValue({ headSha: "a".repeat(40), repositoryId: 202, repositoryFullName: "acme/private" }); mocks.reserve.mockResolvedValue({ outcome: "reserved" }); mocks.finish.mockResolvedValue(true); mocks.validate.mockReturnValue({ valid: true, errors: [] });
     mocks.createTelemetry.mockReturnValue({ snapshot: () => ({ version: "concierge-side-effect-telemetry.v1", caseIdOrHash: "a".repeat(64), sourceHeadSha: "a".repeat(40), observation: "runtime_instrumented", counts: { llm: 0, comment: 0, slack: 0, share: 0, save: 0, webhook: 0 } }) });
     mocks.validateTelemetry.mockReturnValue(true);
   });
@@ -33,7 +34,7 @@ describe("concierge analyze route boundary", () => {
     const response = await POST(request());
     expect(response.status).toBe(403);
     expect(mocks.token).not.toHaveBeenCalled();
-    expect(mocks.head).not.toHaveBeenCalled();
+    expect(mocks.snapshot).not.toHaveBeenCalled();
     expect(mocks.build).not.toHaveBeenCalled();
   });
 
@@ -74,7 +75,7 @@ describe("concierge analyze route boundary", () => {
     expect(response.status).toBe(403);
     expect(payload).toEqual({ error: "Concierge analysis is not authorized.", code: reason });
     expect(mocks.token).not.toHaveBeenCalled();
-    expect(mocks.head).not.toHaveBeenCalled();
+    expect(mocks.snapshot).not.toHaveBeenCalled();
     expect(mocks.build).not.toHaveBeenCalled();
     expect(mocks.reserve).not.toHaveBeenCalled();
     expect(mocks.finish).not.toHaveBeenCalled();
@@ -92,13 +93,15 @@ describe("concierge analyze route boundary", () => {
     expect(json.sideEffectTelemetry).toEqual({ version: "concierge-side-effect-telemetry.v1", caseIdOrHash: "a".repeat(64), sourceHeadSha: "a".repeat(40), observation: "runtime_instrumented", counts: { llm: 0, comment: 0, slack: 0, share: 0, save: 0, webhook: 0 } });
     expect(mocks.token).toHaveBeenCalledTimes(1);
     expect(mocks.token).toHaveBeenCalledWith(101);
-    expect(mocks.head).toHaveBeenCalledTimes(2);
+    expect(mocks.snapshot).toHaveBeenCalledTimes(2);
+    expect(mocks.snapshot).toHaveBeenNthCalledWith(1, "https://github.com/acme/private/pull/17", "transient-token", undefined, "initial");
+    expect(mocks.snapshot).toHaveBeenNthCalledWith(2, "https://github.com/acme/private/pull/17", "transient-token", undefined, "final");
     expect(mocks.build).toHaveBeenCalledWith(
       "https://github.com/acme/private/pull/17",
       "transient-token",
       "",
       undefined,
-      { expectedHeadSha: "a".repeat(40) }
+      { expectedHeadSha: "a".repeat(40), expectedRepositoryId: 202, expectedRepositoryFullName: "acme/private", linkedIssuePolicy: "same_repository_only" }
     );
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ decisionCardState: "zero_gap" }));
@@ -120,10 +123,25 @@ describe("concierge analyze route boundary", () => {
     expect(mocks.build).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { repositoryId: 303, repositoryFullName: "acme/private" },
+    { repositoryId: 202, repositoryFullName: "acme/renamed" }
+  ])("rejects a GitHub repository identity mismatch before reservation or evidence collection", async (snapshot) => {
+    mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
+    mocks.token.mockResolvedValue("transient-token");
+    mocks.snapshot.mockResolvedValue({ headSha: "a".repeat(40), ...snapshot });
+    const response = await POST(request());
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Concierge analysis is not authorized.", code: "repository_identity_mismatch" });
+    expect(mocks.reserve).not.toHaveBeenCalled();
+    expect(mocks.build).not.toHaveBeenCalled();
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+
   it("does not return a report when the PR head changes", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
-    mocks.head.mockResolvedValueOnce("a".repeat(40)).mockResolvedValueOnce("b".repeat(40));
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
+    mocks.snapshot.mockResolvedValueOnce({ headSha: "a".repeat(40), repositoryId: 202, repositoryFullName: "acme/private" }).mockResolvedValueOnce({ headSha: "b".repeat(40), repositoryId: 202, repositoryFullName: "acme/private" });
     const response = await POST(request());
     expect(response.status).toBe(502);
     const payload = await response.json();
@@ -134,11 +152,34 @@ describe("concierge analyze route boundary", () => {
     expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed", reason: "head_changed" }));
   });
 
+  it("stops delivery when GitHub resolves the same repository name to another numeric identity", async () => {
+    mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
+    mocks.snapshot.mockResolvedValueOnce({ headSha: "a".repeat(40), repositoryId: 202, repositoryFullName: "acme/private" }).mockResolvedValueOnce({ headSha: "a".repeat(40), repositoryId: 303, repositoryFullName: "acme/private" });
+    const response = await POST(request());
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Concierge analysis was stopped before delivery.", code: "repository_identity_mismatch" });
+    expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed", reason: "repository_identity_mismatch" }));
+  });
+
+  it("does not return a report when validated provenance is bound to another head", async () => {
+    mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({});
+    mocks.generate.mockReturnValue({ ...boundReport(), source: { provenance: { headSha: "b".repeat(40) } } });
+    const response = await POST(request());
+    const payload = await response.json();
+    expect(response.status).toBe(502);
+    expect(payload).toMatchObject({ code: "report_provenance_head_mismatch" });
+    expect(payload.report).toBeUndefined();
+    expect(mocks.snapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed", reason: "report_provenance_head_mismatch" }));
+  });
+
   it("stops delivery when the grant is removed during evidence collection", async () => {
     mocks.authorize
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" })
       .mockResolvedValueOnce({ authorized: false, reason: "repository_grant_disabled" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     const response = await POST(request());
     expect(response.status).toBe(403);
     const payload = await response.json();
@@ -153,7 +194,7 @@ describe("concierge analyze route boundary", () => {
     mocks.authorize
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" })
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 102, repositoryId: 303, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     const response = await POST(request());
     expect(response.status).toBe(403);
     const payload = await response.json();
@@ -167,7 +208,7 @@ describe("concierge analyze route boundary", () => {
     mocks.authorize
       .mockResolvedValueOnce({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" })
       .mockResolvedValueOnce({ authorized: false, reason: "repository_grant_disabled" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" }); mocks.finish.mockResolvedValue(false);
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport()); mocks.finish.mockResolvedValue(false);
     const response = await POST(request());
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ code: "terminal_record_unavailable" });
@@ -185,7 +226,7 @@ describe("concierge analyze route boundary", () => {
 
   it("blocks report delivery and records failed when request telemetry is nonzero or malformed", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
     mocks.validateTelemetry.mockReturnValue(false);
     const response = await POST(request());
     const payload = await response.json();
@@ -198,8 +239,8 @@ describe("concierge analyze route boundary", () => {
 
   it("blocks error delivery when a head-drift failure cannot be recorded", async () => {
     mocks.authorize.mockResolvedValue({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private" });
-    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue({ analysisId: "opaque" });
-    mocks.head.mockResolvedValueOnce("a".repeat(40)).mockResolvedValueOnce("b".repeat(40)); mocks.finish.mockResolvedValue(false);
+    mocks.token.mockResolvedValue("transient-token"); mocks.build.mockResolvedValue({}); mocks.generate.mockReturnValue(boundReport());
+    mocks.snapshot.mockResolvedValueOnce({ headSha: "a".repeat(40), repositoryId: 202, repositoryFullName: "acme/private" }).mockResolvedValueOnce({ headSha: "b".repeat(40), repositoryId: 202, repositoryFullName: "acme/private" }); mocks.finish.mockResolvedValue(false);
     const response = await POST(request());
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ code: "terminal_record_unavailable" });

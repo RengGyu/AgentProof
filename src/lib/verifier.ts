@@ -8,8 +8,8 @@ import {
 } from "./extractors";
 import {
   hasPassingEvidenceStatusPrefix,
-  isExecutionEvidenceSignal,
-  isFailedAmbiguousActionsExecutionSignal
+  isExecutionEvidenceItemSignal,
+  statusFromExecutionEvidenceSummary
 } from "./evidence-status";
 import { redactSecrets } from "./redact";
 import { buildDecisionCard } from "./decision-card";
@@ -528,9 +528,7 @@ function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
 }
 
 function evidenceStatusFromSummary(summary: string): CheckStatus {
-  const match = summary.trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
-
-  return match ? match[1].toLowerCase() as CheckStatus : "unknown";
+  return statusFromExecutionEvidenceSummary(summary) as CheckStatus;
 }
 
 function isVisualRequirement(text: string): boolean {
@@ -1704,17 +1702,15 @@ function aggregateStatus(checks: PullRequestInput["checks"], logs: PullRequestIn
 }
 
 function isCheckExecutionSignal(check: PullRequestInput["checks"][number]): boolean {
-  return isExecutionEvidenceSignal(check.name, check.summary ?? "", check.url) ||
-    isFailedAmbiguousActionsExecutionSignal(check.name, check.status, check.url, check.summary ?? "");
+  return isExecutionEvidenceItemSignal(check.name, check.status, check.url, check.summary ?? "");
 }
 
 function isLogExecutionSignal(log: PullRequestInput["logs"][number]): boolean {
-  return isExecutionEvidenceSignal(log.source, log.text);
+  return isExecutionEvidenceItemSignal(log.source, log.status, log.url, log.text);
 }
 
 function isEvidenceExecutionSignal(item: EvidenceItem): boolean {
-  return isExecutionEvidenceSignal(item.label, item.summary, item.locator) ||
-    isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
+  return isExecutionEvidenceItemSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
 }
 
 function hasFailingExecutionEvidence(input: PullRequestInput): boolean {

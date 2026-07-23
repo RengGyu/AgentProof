@@ -4,9 +4,9 @@ import { generateVerificationReport } from "../src/lib/verifier.ts";
 import { validateVerificationReport } from "../src/lib/report-validation.ts";
 
 const cases = [
-  { scenario: "single_linked_issue_passing", caseId: "case_1111111111111111", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 11, expectedHeadSha: "a".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "passed" },
-  { scenario: "task_unavailable_or_ambiguous", caseId: "case_2222222222222222", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 12, expectedHeadSha: "b".repeat(40), expectedOriginalTaskStatus: "ambiguous", expectedCiStatus: "passed" },
-  { scenario: "failed_or_unavailable_check", caseId: "case_3333333333333333", tenantId: "tenant-a", installationId: 1, repositoryId: 10, repositoryFullName: "opaque/repo-a", pullRequestNumber: 13, expectedHeadSha: "c".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "failed" }
+  { scenario: "single_linked_issue_passing", caseId: "case_1111111111111111", repositoryFullName: "opaque/repo-a", pullRequestNumber: 11, expectedHeadSha: "a".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "passed" },
+  { scenario: "task_unavailable_or_ambiguous", caseId: "case_2222222222222222", repositoryFullName: "opaque/repo-a", pullRequestNumber: 12, expectedHeadSha: "b".repeat(40), expectedOriginalTaskStatus: "ambiguous", expectedCiStatus: "passed" },
+  { scenario: "failed_or_unavailable_check", caseId: "case_3333333333333333", repositoryFullName: "opaque/repo-a", pullRequestNumber: 13, expectedHeadSha: "c".repeat(40), expectedOriginalTaskStatus: "available", expectedCiStatus: "failed" }
 ];
 const report = {
   source: { url: "https://github.com/opaque/repo-a/pull/11", provenance: { headSha: "b".repeat(40) }, originalTask: { status: "available" } }, testing: { ciStatus: "passed" }, requirements: [{ status: "unclear" }],
@@ -28,8 +28,8 @@ describe("non-production Concierge smoke contract", () => {
     expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], scenario: "single_linked_issue_passing" }])).toBe(false);
     expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], pullRequestNumber: 11 }])).toBe(false);
     expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], caseId: cases[0].caseId }])).toBe(false);
-    expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], tenantId: "other-tenant", repositoryId: cases[0].repositoryId, pullRequestNumber: 11 }])).toBe(false);
-    expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], repositoryId: 999, repositoryFullName: "OPAQUE/REPO-A", pullRequestNumber: 11 }])).toBe(false);
+    expect(validateSmokeCases([...cases.slice(0, 2), { ...cases[2], repositoryFullName: "OPAQUE/REPO-A", pullRequestNumber: 11 }])).toBe(false);
+    expect(validateSmokeCases(cases.map((item) => ({ ...item, repositoryId: 999 })))).toBe(false);
     expect(validateSmokeCases(cases.map(({ expectedHeadSha: _head, ...item }) => item))).toBe(false);
     expect(validateSmokeCases(cases.map((item) => ({ ...item, expectedHeadSha: "not-a-git-sha" })))).toBe(false);
     expect(validateSmokeCases(cases.map((item) => ({ ...item, expectedHeadSha: "a".repeat(39) })))).toBe(false);
@@ -38,7 +38,7 @@ describe("non-production Concierge smoke contract", () => {
     expect(validateSmokeCases(cases.map((item) => ({ ...item, expectedHeadSha: 40 })))).toBe(false);
     expect(validateSmokeCases(cases.map((item) => ({ ...item, rawEvidence: "diff --git a/a b/a" })))).toBe(false);
     expect(validateSmokeCases([cases[2], cases[0], cases[1]])).toBe(true);
-    expect(validateSmokeCases(cases.map((item, index) => ({ ...item, caseId: `case_${String(index + 21).repeat(16)}`, tenantId: `tenant-z${index}`, repositoryId: 200 + index, repositoryFullName: `owner-z${index}/repo-z${index}`, pullRequestNumber: 80 + index })))).toBe(true);
+    expect(validateSmokeCases(cases.map((item, index) => ({ ...item, caseId: `case_${String(index + 21).repeat(16)}`, repositoryFullName: `owner-z${index}/repo-z${index}`, pullRequestNumber: 80 + index })))).toBe(true);
   });
   it("requires an explicitly approved HTTPS origin", () => {
     expect(validateApprovedSmokeOrigin("https://beta.example.test/", "https://beta.example.test")).toBe("https://beta.example.test");

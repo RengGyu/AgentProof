@@ -408,6 +408,23 @@ describe("real-dataset evaluation pack", () => {
     expect(result.metrics.find((item) => item.id === "execution_uncertainty")?.status).toBe("fail");
   });
 
+  it("uses the runtime status-aware classifier for opaque Actions matrix evidence without promoting non-observed prose", () => {
+    const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
+    const actionsJobUrl = "https://github.com/acme/project/actions/runs/100/job/200";
+    const matrixReport = generateVerificationReport({
+      ...testCase.input,
+      checks: [{ name: "MATRIX_VALUE=1", status: "failed", url: actionsJobUrl, summary: "Matrix job failed." }]
+    });
+    const nonObservedReport = generateVerificationReport({
+      ...testCase.input,
+      checks: [{ name: "Unit Test", status: "passed", summary: "Tests were not run." }]
+    });
+
+    expect(matrixReport.testing.ciStatus).toBe("failed");
+    expect(evaluateReportAgainstCase(matrixReport, testCase).metrics.find((item) => item.id === "execution_uncertainty")?.status).toBe("pass");
+    expect(nonObservedReport.testing.ciStatus).toBe("unknown");
+  });
+
   it("uses the broad app secret patterns for evaluation privacy checks", () => {
     const testCase = sweBenchRowToEvaluationCase(SWE_BENCH_ROW);
     const report = generateVerificationReport(testCase.input);

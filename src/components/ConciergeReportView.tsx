@@ -3,19 +3,24 @@
 import {
   ArrowLeft,
   CheckCircle2,
+  CircleAlert,
+  CircleHelp,
   ChevronRight,
   Clipboard,
+  Clock3,
   ExternalLink,
   FileCode2,
   FileSearch,
   FlaskConical,
+  GitCommitHorizontal,
+  GitPullRequest,
   Info,
   ListChecks,
   Search
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { getExecutionEvidenceItems } from "@/lib/execution-evidence";
-import type { CheckStatus, ProofGapKind, RequirementStatus, VerificationReport } from "@/lib/types";
+import type { CheckStatus, ProofGapKind, RequirementProofNode, RequirementStatus, VerificationReport } from "@/lib/types";
 
 type ConciergeView = "summary" | "requirements" | "checks" | "evidence";
 
@@ -30,6 +35,8 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
   const topGap = report.decisionCard?.topGap ?? null;
   const task = describeTaskSource(report);
   const gap = describeGap(topGap?.kind);
+  const headSha = report.source.provenance?.headSha;
+  const pullRequestUrl = safeGitHubPullRequestUrl(report.source.url);
 
   async function copyReprompt() {
     const prompt = report.decisionCard?.reprompt?.prompt;
@@ -45,26 +52,22 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
   }
 
   return (
-    <section className="concierge-report" aria-labelledby="concierge-report-title">
+    <section className="concierge-report">
       <header className="concierge-report-header">
-        <div className="proof-buddy" aria-hidden="true">
-          <span className="proof-buddy-eye left" />
-          <span className="proof-buddy-eye right" />
-          <span className="proof-buddy-glass"><FileSearch size={22} /></span>
-        </div>
         <div className="concierge-report-heading">
-          <p className="eyebrow">PR 근거 확인</p>
-          <h1 id="concierge-report-title">{report.source.title}</h1>
-          <div className="concierge-source-line">
-            <span className={`friendly-chip task-${task.tone}`}><FileCode2 size={14} />{task.label}</span>
-            <span className={`friendly-chip check-${report.testing.ciStatus}`}><FlaskConical size={14} />CI 실행: {statusLabel(report.testing.ciStatus)}</span>
+          <p className="eyebrow">분석 대상</p>
+          <div className="github-pr-heading"><GitPullRequest size={20} aria-hidden="true" /><h1 id="concierge-report-title">{report.source.title}</h1></div>
+          <div className="report-source-boundaries">
+            <span className={`friendly-chip task-${task.tone}`}><FileCode2 size={14} aria-hidden="true" />{task.label}</span>
+            {headSha ? <span className="head-boundary"><GitCommitHorizontal size={14} aria-hidden="true" /><span>분석 커밋</span><code aria-label={`분석 커밋 전체 SHA ${headSha}`}>{headSha.slice(0, 12)}</code><span>기준</span></span> : null}
+            {pullRequestUrl ? <a className="source-pr-link" href={pullRequestUrl} target="_blank" rel="noreferrer">PR 원문 열기 <ExternalLink size={14} aria-hidden="true" /></a> : null}
           </div>
         </div>
       </header>
 
-      {view === "summary" ? <div className="report-step-strip"><span>검토 요약 · 2단계</span><p>가장 중요한 항목만 먼저 확인합니다.</p></div> : <div className="detail-page-navigation">
+      {view === "summary" ? <div className="report-step-strip"><span>검토 요약</span><p>가장 중요한 항목만 먼저 확인합니다.</p></div> : <div className="detail-page-navigation">
         <button className="detail-back" type="button" onClick={() => selectView("summary")}><ArrowLeft size={17} />검토 요약으로</button>
-        <div className="detail-page-title"><p className="eyebrow">상세 근거 · 3단계</p><strong>필요한 증거를 항목별로 확인하세요.</strong></div>
+        <div className="detail-page-title"><p className="eyebrow">상세 근거</p><strong>필요한 증거를 항목별로 확인하세요.</strong></div>
         <span className="detail-truth-label"><Info size={14} />근거 보고서 · 병합/정확성 판정 아님</span>
         <nav className="concierge-view-tabs detail-tabs" aria-label="상세 보고서 항목">
           {([
@@ -90,17 +93,23 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
           <div className={`friendly-brief gap-${gap.tone}`}>
             <div className="friendly-brief-kicker"><Search size={16} aria-hidden="true" />우선 검토 항목</div>
             <h2>{topGap ? gap.headline : "우선 확인할 증거 공백을 찾지 못했습니다"}</h2>
+            {topGap ? <p className="friendly-brief-source-label">보고서 근거 설명 · 원문</p> : null}
             <p className="friendly-brief-summary">
-              {topGap ? gap.help : "수집된 증거 범위에서 우선 검토할 공백을 찾지 못했습니다. 이것이 구현의 정확성이나 완전성을 증명하지는 않습니다."}
+              {topGap?.summary ?? "수집된 증거 범위에서 우선 검토할 공백을 찾지 못했습니다. 이것이 구현의 정확성이나 완전성을 증명하지는 않습니다."}
             </p>
-            {topGap?.summary ? <details className="friendly-evidence-disclosure"><summary>세부 판정 원문</summary><p className="source-text">{topGap.summary}</p></details> : null}
+            {topGap ? <p className="friendly-brief-help">{gap.help}</p> : null}
             {topGap?.evidenceRefs.length ? (
-              <button type="button" className="evidence-count" onClick={() => selectView("evidence")}><FileSearch size={14} />증거 출처 {topGap.evidenceRefs.length}개 보기</button>
+              <button type="button" className="evidence-count" onClick={() => selectView("evidence")}><FileSearch size={14} />증거 출처 화면 열기 · {topGap.evidenceRefs.length}개 연결</button>
             ) : null}
           </div>
 
+          <div className="summary-status-row" aria-label="테스트와 CI 요약">
+            <StatusBox label="CI 결과" value={report.testing.ciStatus} />
+            <p><strong>상태는 수집된 실행 증거를 그대로 표시합니다.</strong><span>확인 불가와 진행 중은 통과로 해석하지 않습니다.</span></p>
+          </div>
+
           <div className="friendly-action-grid">
-            <section className="friendly-action-card">
+            <section className="friendly-action-card inspect-card">
               <p className="eyebrow">첫 확인 위치</p>
               {report.decisionCard?.firstInspectionPoints.length ? (
                 <ul className="friendly-link-list">
@@ -158,17 +167,20 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
         <div id="concierge-panel-requirements" className="concierge-view-panel detail-panel" tabIndex={-1} role="region" aria-label="요구사항 상세 근거">
           <div className="detail-heading"><div><p className="eyebrow">요구사항</p><h2>요구사항별 확인 근거</h2></div><span>{report.requirements.length}개</span></div>
           <div className="friendly-requirements">
-            {report.requirements.map((requirement) => (
-              <article key={requirement.requirementId}>
-                <span className={`friendly-chip requirement-${requirement.status}`}>{requirementStatusLabel(requirement.status)}</span>
-                <h3>요구사항 원문</h3>
-                <p className="source-text">{requirement.requirementText}</p>
-                <p className="source-label">검토 메모 원문</p>
-                <p className="source-text">{requirement.reviewerNote}</p>
+            {report.requirements.map((requirement) => {
+              const node = report.proofGraph.nodes.find((candidate) => candidate.requirementId === requirement.requirementId);
+              const headingId = `concierge-requirement-${requirement.requirementId}`;
+              return <article key={requirement.requirementId} aria-labelledby={headingId}>
+                <div className="requirement-card-head"><code>{requirement.requirementId}</code><span className={`friendly-chip requirement-${requirement.status}`}>{requirementStatusLabel(requirement.status)}</span></div>
+                <p className="source-label">원 요구사항</p>
+                <h3 id={headingId} className="source-title">{requirement.requirementText}</h3>
+                {node ? <EvidenceTrail status={requirement.status} requirementEvidenceRefs={requirement.evidenceRefs} node={node} evidenceById={evidenceById} /> : null}
+                <p className="source-label">보고서 근거 설명</p>
+                <p className="report-evidence-copy">{requirement.reviewerNote}</p>
                 {requirement.gaps.length ? <><h4>확인 필요 항목 원문</h4><ul className="source-text">{requirement.gaps.map((item) => <li key={item}>{item}</li>)}</ul></> : null}
                 <EvidenceDisclosure refs={requirement.evidenceRefs} evidenceById={evidenceById} />
-              </article>
-            ))}
+              </article>;
+            })}
           </div>
         </div>
       ) : null}
@@ -187,7 +199,7 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
           </section>
           <section className="friendly-detail-section">
             <h3>실행 근거</h3>
-            {executionEvidence.length ? <ul className="github-evidence-list">{executionEvidence.map((item) => <li key={item.id}><span className={`check-text-${item.status}`}>{statusLabel(item.status)}</span><code className="status-token" aria-label={`CI 상태: ${item.status}`}>{item.status}</code><code>{item.locator ?? item.label}</code><p>{item.displaySummary}</p></li>)}</ul> : <p className="bounded-empty">수집한 CI 실행 결과가 없습니다.</p>}
+            {executionEvidence.length ? <ul className="github-evidence-list">{executionEvidence.map((item) => <li key={item.id}><span className={`check-text-${item.status}`}>{statusLabel(item.status)}</span><code className="status-token" aria-hidden="true">{item.status}</code><code className="github-locator">{item.locator ?? item.label}</code><p>{item.displaySummary}</p></li>)}</ul> : <p className="bounded-empty">수집한 CI 실행 결과가 없습니다.</p>}
           </section>
         </div>
       ) : null}
@@ -195,6 +207,10 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
       {view === "evidence" ? (
         <div id="concierge-panel-evidence" className="concierge-view-panel detail-panel" tabIndex={-1} role="region" aria-label="증거 출처와 제한사항 상세 근거">
           <div className="detail-heading"><div><p className="eyebrow">출처와 경계</p><h2>증거 출처·제한사항</h2></div><span>증거 출처 {report.evidenceIndex.length}개</span></div>
+          <section className="friendly-detail-section">
+            <h3>요구사항 출처</h3>
+            <p><span className={`friendly-chip task-${task.tone}`}><FileCode2 size={14} aria-hidden="true" />{task.label}</span></p>
+          </section>
           <section className="friendly-detail-section">
             <h3>보고서가 참조한 근거</h3>
             <ul className="github-evidence-list">
@@ -215,14 +231,33 @@ export function ConciergeReportView({ report }: { report: VerificationReport }) 
 
 function EvidenceDisclosure({ refs, evidenceById }: { refs: string[]; evidenceById: Map<string, VerificationReport["evidenceIndex"][number]> }) {
   if (!refs.length) return <p className="bounded-empty">연결된 근거 항목이 없습니다.</p>;
-  return <details className="friendly-evidence-disclosure"><summary>이 판단에 사용한 근거 {refs.length}개</summary><ul className="github-evidence-list">{refs.map((ref) => {
+  return <details className="friendly-evidence-disclosure"><summary>이 항목에 연결된 근거 {refs.length}개</summary><ul className="github-evidence-list">{refs.map((ref) => {
     const item = evidenceById.get(ref);
     return <li key={ref}><span>{item ? evidenceKindLabel(item.kind) : "근거"}</span><code>{item?.locator ?? item?.label ?? "위치 불명"}</code><p>{item?.summary ?? "보고서에서 이 근거 항목을 찾지 못했습니다."}</p></li>;
   })}</ul></details>;
 }
 
 function StatusBox({ label, value }: { label: string; value: CheckStatus }) {
-  return <div className={`friendly-status-box check-${value}`}><span>{label}</span><strong>{statusLabel(value)}</strong><code className="status-token" aria-label={`${label} 상태: ${value}`}>{value}</code></div>;
+  const Icon = value === "passed" ? CheckCircle2 : value === "failed" ? CircleAlert : value === "pending" ? Clock3 : CircleHelp;
+  return <div className={`friendly-status-box check-${value}`} aria-label={`${label}: ${statusLabel(value)}`}><span>{label}</span><strong><Icon size={17} aria-hidden="true" />{statusLabel(value)}</strong><code className="status-token" aria-hidden="true">{value}</code></div>;
+}
+
+function EvidenceTrail({ status, requirementEvidenceRefs, node, evidenceById }: { status: RequirementStatus; requirementEvidenceRefs: string[]; node: RequirementProofNode; evidenceById: Map<string, VerificationReport["evidenceIndex"][number]> }) {
+  const requirementEvidence = new Set(requirementEvidenceRefs);
+  const implementationRefs = node.implementationEvidenceRefs.filter((ref) => requirementEvidence.has(ref));
+  const targetedTestRefs = node.targetedTestEvidenceRefs.filter((ref) => requirementEvidence.has(ref));
+  const executionRefs = node.executionEvidenceRefs.filter((ref) => requirementEvidence.has(ref));
+  return <div className="evidence-trail" aria-label="요구사항에서 실행 근거까지의 연결">
+    <EvidenceTrailStep label="요구사항" value={requirementStatusLabel(status)} />
+    <EvidenceTrailStep label="변경 파일" refs={implementationRefs} evidenceById={evidenceById} />
+    <EvidenceTrailStep label="대상 테스트" refs={targetedTestRefs} evidenceById={evidenceById} />
+    <EvidenceTrailStep label="실행·CI" refs={executionRefs} evidenceById={evidenceById} />
+  </div>;
+}
+
+function EvidenceTrailStep({ label, value, refs, evidenceById }: { label: string; value?: string; refs?: string[]; evidenceById?: Map<string, VerificationReport["evidenceIndex"][number]> }) {
+  const labels = refs?.map((ref) => evidenceById?.get(ref)?.locator ?? evidenceById?.get(ref)?.label ?? "위치 불명") ?? [];
+  return <div className="evidence-trail-step"><span>{label}</span>{value ? <strong>{value}</strong> : labels.length ? <>{labels.slice(0, 2).map((item) => <code key={item}>{item}</code>)}{labels.length > 2 ? <small>외 {labels.length - 2}개</small> : null}</> : <strong className="trail-empty">연결된 근거 없음</strong>}</div>;
 }
 
 function describeTaskSource(report: VerificationReport): { label: string; tone: "known" | "unclear" } {
@@ -233,6 +268,7 @@ function describeTaskSource(report: VerificationReport): { label: string; tone: 
       not_linked: "연결된 GitHub Issue 없음",
       multiple_linked_issues: "연결된 GitHub Issue가 여러 개",
       linked_issue_inaccessible: "연결된 GitHub Issue 접근 불가",
+      linked_issue_outside_selected_repository: "선택한 저장소 밖의 GitHub Issue는 사용하지 않음",
       linked_issue_deleted_or_empty: "연결된 GitHub Issue 내용 없음",
       linked_reference_is_pull_request: "연결 참조가 Issue가 아닌 PR",
       none: "출처 상태 확인 불가"
@@ -269,4 +305,18 @@ function requirementStatusLabel(status: RequirementStatus): string {
 
 function evidenceKindLabel(kind: VerificationReport["evidenceIndex"][number]["kind"]): string {
   return ({ task: "원 요구사항", pr_description: "PR 설명", diff: "변경 내용", changed_file: "변경 파일", check: "CI 검사", log: "실행 로그", test: "테스트", inference: "추론 신호" } as const)[kind];
+}
+
+function safeGitHubPullRequestUrl(value?: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const path = url.pathname.split("/").filter(Boolean);
+    if (url.protocol !== "https:" || url.hostname !== "github.com" || url.username || url.password || url.port || path.length !== 4 || path[2] !== "pull" || !/^[1-9]\d*$/.test(path[3])) return null;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
 }

@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, OriginalTaskBoundary, PullRequestInput, SourceProvenance } from "./types";
-import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
+import { isExecutionEvidenceItemSignal } from "./evidence-status";
 import {
   extractSupportedIssueReferences,
   formatIssueReference,
@@ -82,7 +82,20 @@ export class GitHubPullRequestHeadChangedError extends Error {
 
 export interface GitHubPullRequestSnapshotOptions {
   expectedHeadSha?: string;
+  /** Concierge binds a durable numeric repository grant to GitHub's PR base repository. */
+  expectedRepositoryId?: number;
+  /** A renamed repository must be re-granted instead of silently following its old name. */
+  expectedRepositoryFullName?: string;
   now?: () => Date;
+  /** Concierge never fetches a linked issue from another repository. */
+  linkedIssuePolicy?: "any_supported" | "same_repository_only";
+}
+
+export interface GitHubPullRequestIdentity {
+  headSha: string;
+  /** Numeric identity of the base repository, never a fork's head repository. */
+  repositoryId: number;
+  repositoryFullName: string;
 }
 
 interface GitHubPullUrl {
@@ -326,6 +339,7 @@ async function fetchGitHubPullRequest(
 
   const pr = await prResponse.json();
   const initialHeadSha = requireGitHubHeadSha(pr, "initial");
+  assertExpectedRepositoryIdentity(snapshotOptions, pr, "initial");
   assertExpectedHeadSha(snapshotOptions.expectedHeadSha, initialHeadSha, "initial");
   const limitations: string[] = [];
   const explicitTask = taskText.trim();
@@ -336,7 +350,8 @@ async function fetchGitHubPullRequest(
       repository: { owner: parsed.owner, repo: parsed.repo },
       headers,
       limitations,
-      hasToken
+      hasToken,
+      policy: snapshotOptions.linkedIssuePolicy ?? "any_supported"
     });
   const originalTask: OriginalTaskBoundary = explicitTask
     ? { version: 1, status: "available", sourceType: "explicit_task", reason: "none" }
@@ -456,6 +471,66 @@ export async function fetchGitHubPullRequestHead(prUrl: string, token: string | 
   return requireGitHubHeadSha(await response.json(), "final");
 }
 
+/**
+ * Retrieves the PR head and its base-repository identity from one GitHub PR
+ * response. Concierge uses this before reserving work and again before report
+ * delivery so a deleted/recreated or renamed repository cannot borrow a grant.
+ */
+export async function fetchGitHubPullRequestIdentity(
+  prUrl: string,
+  token: string | undefined,
+  evidenceTiming?: GitHubEvidenceTimingSink,
+  phase: "initial" | "final" = "final"
+): Promise<GitHubPullRequestIdentity | null> {
+  const parsed = parseGitHubPullUrl(prUrl);
+  if (!parsed) return null;
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  const hasToken = Boolean(token?.trim());
+  let response: Response;
+  try {
+    response = await measureGitHubEvidenceTiming(evidenceTiming, "github_pr", () => githubFetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`, headers));
+  } catch {
+    throw new GitHubFetchError(0, "github_fetch_failed", "GitHub pull request metadata request timed out or network failed.", hasToken);
+  }
+  if (!response.ok) {
+    const failure = classifyGitHubFailure(response, hasToken);
+    throw new GitHubFetchError(response.status, failure.code, failure.reason, hasToken);
+  }
+  return requireGitHubPullRequestIdentity(await response.json(), phase);
+}
+
+function assertExpectedRepositoryIdentity(options: GitHubPullRequestSnapshotOptions, pr: unknown, phase: "initial" | "final") {
+  if (options.expectedRepositoryId === undefined && options.expectedRepositoryFullName === undefined) return;
+  const identity = requireGitHubPullRequestIdentity(pr, phase);
+  const expectedName = options.expectedRepositoryFullName?.trim().toLowerCase();
+  const expectedId = options.expectedRepositoryId;
+  if ((expectedId !== undefined && (!Number.isSafeInteger(expectedId) || expectedId <= 0))
+    || (expectedName !== undefined && !isGitHubRepositoryFullName(expectedName))
+    || (expectedId !== undefined && identity.repositoryId !== expectedId)
+    || (expectedName !== undefined && identity.repositoryFullName.toLowerCase() !== expectedName)) {
+    throw new GitHubFetchError(0, "github_fetch_failed", "GitHub pull request repository identity did not match the authorized repository.");
+  }
+}
+
+function requireGitHubPullRequestIdentity(pr: unknown, phase: "initial" | "final"): GitHubPullRequestIdentity {
+  const headSha = requireGitHubHeadSha(pr, phase);
+  const base = typeof pr === "object" && pr !== null && "base" in pr && typeof pr.base === "object" && pr.base !== null ? pr.base as Record<string, unknown> : null;
+  const repository = base && typeof base.repo === "object" && base.repo !== null ? base.repo as Record<string, unknown> : null;
+  const repositoryId = repository?.id;
+  const repositoryFullName = repository?.full_name;
+  if (!/^[a-f0-9]{40}$/i.test(headSha)
+    || typeof repositoryId !== "number" || !Number.isSafeInteger(repositoryId) || repositoryId <= 0
+    || typeof repositoryFullName !== "string" || !isGitHubRepositoryFullName(repositoryFullName)) {
+    throw new GitHubFetchError(0, "github_fetch_failed", `GitHub ${phase} pull request metadata did not include a valid base repository identity.`);
+  }
+  return { headSha, repositoryId: Number(repositoryId), repositoryFullName };
+}
+
+function isGitHubRepositoryFullName(value: string): boolean {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value);
+}
+
 function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha }: { origin: SourceProvenance["origin"]; input: PullRequestInput; capturedAt: string; headSha?: string }): SourceProvenance {
   const coverage = origin === "github_snapshot" ? "github_metadata" : origin === "demo" ? "demo_fixture" : "pasted_metadata";
   const canonical = JSON.stringify({
@@ -484,19 +559,19 @@ function githubEvidenceSourceLimitations(
   const limitations: string[] = [];
   const hasExecutionCheckRun = checkRuns.some(isExecutionCheckRun);
   const hasExecutionStatus = statuses.some((status) =>
-    isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url)
+    isExecutionEvidenceItemSignal(status.context, mapGitHubCommitStatus(status.state), status.target_url, status.description ?? "")
   );
-  const hasExecutionJobMetadata = actionJobLogs.some((log) => isExecutionEvidenceSignal(log.source, log.text, log.url));
+  const hasExecutionJobMetadata = actionJobLogs.some((log) => isExecutionEvidenceItemSignal(log.source, log.status, log.url, log.text));
   const hasExecutionEvidence = hasExecutionCheckRun || hasExecutionStatus || hasExecutionJobMetadata;
   const executionStatuses = [
     ...checkRuns
       .filter(isExecutionCheckRun)
       .map((check) => mapGitHubCheckStatus(check.status, check.conclusion)),
     ...statuses
-      .filter((status) => isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url))
+      .filter((status) => isExecutionEvidenceItemSignal(status.context, mapGitHubCommitStatus(status.state), status.target_url, status.description ?? ""))
       .map((status) => mapGitHubCommitStatus(status.state)),
     ...actionJobLogs
-      .filter((log) => isExecutionEvidenceSignal(log.source, log.text, log.url))
+      .filter((log) => isExecutionEvidenceItemSignal(log.source, log.status, log.url, log.text))
       .map((log) => log.status ?? "unknown")
   ];
   const hasAnyPublicCheckMetadata = checkRuns.length > 0 || statuses.length > 0;
@@ -692,6 +767,7 @@ async function resolveLinkedIssueTask(input: {
   headers: Record<string, string>;
   limitations: string[];
   hasToken: boolean;
+  policy: "any_supported" | "same_repository_only";
 }): Promise<{ taskText?: string; boundary: OriginalTaskBoundary } | null> {
   const extraction = extractSupportedIssueReferences(input.prBody, input.repository);
 
@@ -710,6 +786,11 @@ async function resolveLinkedIssueTask(input: {
   const [reference] = extraction.references;
   if (!reference) {
     return { boundary: { version: 1, status: "unavailable", sourceType: "none", reason: "not_linked" } };
+  }
+
+  if (input.policy === "same_repository_only" && (reference.owner.toLowerCase() !== input.repository.owner.toLowerCase() || reference.repo.toLowerCase() !== input.repository.repo.toLowerCase())) {
+    input.limitations.push("Linked issue is outside the selected repository and was not fetched. The PR description remains context-only; authoritative task evidence is unavailable.");
+    return { boundary: { version: 1, status: "unavailable", sourceType: "linked_issue", sourceRef: formatIssueReference(reference), reason: "linked_issue_outside_selected_repository" } };
   }
 
   const result = await fetchLinkedIssue(reference, input.headers, input.hasToken);
@@ -1211,8 +1292,7 @@ function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
   const text = `${check.output?.title ?? ""} ${check.output?.summary ?? ""}`;
   const locator = check.details_url ?? check.html_url;
 
-  return isExecutionEvidenceSignal(check.name, text, locator) ||
-    isFailedAmbiguousActionsExecutionSignal(check.name, status, locator, text);
+  return isExecutionEvidenceItemSignal(check.name, status, locator, text);
 }
 
 function shouldFetchActionJobMetadata(check: GitHubCheckRunResponse, owner: string, repo: string): boolean {
@@ -1257,7 +1337,12 @@ function isExecutionActionJob(job: GitHubActionJobResponse): boolean {
     return false;
   }
 
-  return isExecutionEvidenceSignal(job.name, stepText, job.html_url);
+  return isExecutionEvidenceItemSignal(
+    job.name,
+    mapGitHubCheckStatus(job.status, job.conclusion),
+    job.html_url,
+    stepText
+  );
 }
 
 function actionExecutionSteps(job: GitHubActionJobResponse): GitHubActionStepResponse[] {
@@ -1269,7 +1354,12 @@ function isExecutionActionStep(step: GitHubActionStepResponse): boolean {
     return false;
   }
 
-  return isExecutionEvidenceSignal(step.name);
+  return isExecutionEvidenceItemSignal(
+    step.name,
+    mapGitHubCheckStatus(step.status, step.conclusion),
+    undefined,
+    step.name
+  );
 }
 
 function actionRunIdFromCheckRun(check: GitHubCheckRunResponse, owner: string, repo: string): string | null {

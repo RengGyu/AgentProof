@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPullRequestInput,
+  buildGitHubPullRequestInput,
+  fetchGitHubPullRequestIdentity,
   GITHUB_EVIDENCE_TIMING_PHASES,
   normalizeGitHubPullUrl,
   parseGitHubPullUrl,
@@ -40,6 +42,39 @@ describe("parseGitHubPullUrl", () => {
     expect(
       normalizeGitHubPullUrl("https://user:ghp_secret_should_not_leak@github.com/acme/repo/pull/12?token=sk-secret#files")
     ).toBe("https://github.com/acme/repo/pull/12");
+  });
+});
+
+describe("GitHub pull request repository identity", () => {
+  it("uses the base repository numeric identity rather than a fork head repository", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      head: { sha: "a".repeat(40), repo: { id: 999, full_name: "fork/private" } },
+      base: { repo: { id: 202, full_name: "acme/private" } }
+    })));
+
+    await expect(fetchGitHubPullRequestIdentity("https://github.com/acme/private/pull/17", "transient-token"))
+      .resolves.toEqual({ headSha: "a".repeat(40), repositoryId: 202, repositoryFullName: "acme/private" });
+  });
+
+  it.each([
+    { base: { repo: { id: 0, full_name: "acme/private" } } },
+    { base: { repo: { id: 202, full_name: "not a repository" } } },
+    { base: { repo: { id: 202, full_name: "acme/private" } }, headSha: "not-a-sha" }
+  ])("fails closed when GitHub PR metadata omits a valid base identity or exact head SHA", async ({ base, headSha = "a".repeat(40) }) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ head: { sha: headSha }, base })));
+    await expect(fetchGitHubPullRequestIdentity("https://github.com/acme/private/pull/17", "transient-token")).rejects.toThrow("metadata did not include");
+  });
+
+  it("does not collect files or checks after an expected durable repository identity mismatch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      head: { sha: "a".repeat(40) },
+      base: { repo: { id: 303, full_name: "acme/private" } }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(buildGitHubPullRequestInput("https://github.com/acme/private/pull/17", "transient-token", "", undefined, {
+      expectedHeadSha: "a".repeat(40), expectedRepositoryId: 202, expectedRepositoryFullName: "acme/private"
+    })).rejects.toThrow("repository identity did not match");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -264,6 +299,20 @@ describe("buildPullRequestInput", () => {
     expect(input.description).toBe("Fixes #42");
     expect(input.limitations?.join(" ") ?? "").not.toContain("No original task text");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/42"))).toBe(true);
+  });
+
+  it("does not fetch a qualified linked issue outside the Concierge selected repository", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({ title: "Scoped task", body: "Fixes other/private#42", url: "https://api.github.com/repos/acme/repo/pulls/12", head: { sha: "a".repeat(40) } }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const input = await buildGitHubPullRequestInput("https://github.com/acme/repo/pull/12", "test-token", "", undefined, { expectedHeadSha: "a".repeat(40), linkedIssuePolicy: "same_repository_only" });
+    expect(input?.originalTask).toMatchObject({ status: "unavailable", reason: "linked_issue_outside_selected_repository" });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("other/private/issues/42"))).toBe(false);
   });
 
   it("keeps pasted task text ahead of linked issue text", async () => {

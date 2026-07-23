@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error The executable wrapper is deliberately plain ESM.
-import { VERCEL_BYPASS_ENV_NAME, readLocalVercelBypass, runSmokeWrapper } from "./concierge-private-beta-nonprod-smoke.mjs";
+import { VERCEL_BYPASS_ENV_NAME, defaultSmokeEnvPath, readLocalVercelBypass, runSmokeWrapper } from "./concierge-private-beta-nonprod-smoke.mjs";
 
 async function writeBypassEnv(contents: string) {
   const directory = await mkdtemp(join(tmpdir(), "agentproof-smoke-wrapper-"));
@@ -13,6 +13,11 @@ async function writeBypassEnv(contents: string) {
 }
 
 describe("non-production Concierge Vercel protection wrapper", () => {
+  it("derives the default bypass path from the active clean worktree", () => {
+    expect(defaultSmokeEnvPath("/private/tmp/clean-agentproof")).toBe("/private/tmp/clean-agentproof/.env.local");
+    expect(defaultSmokeEnvPath("/Users/other/AgentProof")).not.toContain("jeonggyuju/Project_folder");
+  });
+
   it("forwards only approved smoke inputs and the exact local bypass", async () => {
     const bypass = "synthetic-bypass-value";
     const envPath = await writeBypassEnv([

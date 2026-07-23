@@ -1,6 +1,7 @@
 import { getGitHubInstallationMetadataStoreStatus, listTenantGitHubInstallationStatuses } from "./github-installations";
 import { getTenantAccountStoreStatus } from "./tenant-accounts";
-import { getTenantAuthSessionStoreStatus, resolveTenantAuthAccess } from "./tenant-auth";
+import { getTenantAuthSessionStoreStatus } from "./tenant-auth";
+import { readConciergeGitHubSession } from "./concierge-github-auth";
 import {
   authorizeDurableTenantRepositoryGrantAsync,
   getTenantRepositoryGrantStoreStatus,
@@ -32,14 +33,14 @@ export type ConciergeAccessDecision =
   | { authorized: false; reason: ConciergeBlockReason };
 
 export interface ConciergeAccessDependencies {
-  resolveSession: typeof resolveTenantAuthAccess;
+  resolveSession: typeof readConciergeGitHubSession;
   listInstallationStatuses: typeof listTenantGitHubInstallationStatuses;
   authorizeGrant: typeof authorizeDurableTenantRepositoryGrantAsync;
   listGrants: typeof listTenantEnabledRepositoryGrantScope;
 }
 
 const DEFAULT_DEPS: ConciergeAccessDependencies = {
-  resolveSession: resolveTenantAuthAccess,
+  resolveSession: readConciergeGitHubSession,
   listInstallationStatuses: listTenantGitHubInstallationStatuses,
   authorizeGrant: authorizeDurableTenantRepositoryGrantAsync,
   listGrants: listTenantEnabledRepositoryGrantScope
@@ -95,8 +96,8 @@ export async function authorizeConciergeAccess(
     ];
     if (stores.some((store) => !store.configured || !store.durable)) return { authorized: false, reason: "durable_store_required" };
 
-    const session = await deps.resolveSession({ cookieHeader: input.cookieHeader }, env);
-    if (!session.authorized || session.method !== "durable-session" || !session.memberId || !session.tenantId) return { authorized: false, reason: "session_invalid" };
+    const session = await deps.resolveSession(input.cookieHeader, env);
+    if (!session) return { authorized: false, reason: "session_invalid" };
 
     const enabledGrants = (await deps.listGrants({ tenantId: session.tenantId }, env)).filter((grant) => grant.enabled);
     if (enabledGrants.length !== 1) {
@@ -110,6 +111,9 @@ export async function authorizeConciergeAccess(
       return { authorized: false, reason: "repository_identity_mismatch" };
     }
     const repositoryId = scopedGrant.repositoryId;
+    if (scopedGrant.installationId !== session.installationId || !session.repositoryIds.includes(repositoryId)) {
+      return { authorized: false, reason: "repository_identity_mismatch" };
+    }
 
     const statuses = await deps.listInstallationStatuses({ tenantId: session.tenantId, installationIds: [scopedGrant.installationId] }, env);
     if (statuses.length !== 1 || statuses[0]?.installationId !== scopedGrant.installationId || statuses[0].status !== "active") {

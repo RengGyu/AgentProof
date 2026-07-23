@@ -1,7 +1,6 @@
 import {
-  hasPassingEvidenceStatusPrefix,
-  isExecutionEvidenceSignal,
-  isFailedAmbiguousActionsExecutionSignal
+  isExecutionEvidenceItemSignal,
+  statusFromExecutionEvidenceSummary
 } from "./evidence-status";
 import type { CheckStatus, EvidenceItem } from "./types";
 
@@ -95,20 +94,11 @@ function displaySummaryWithoutAnnotations(summary: string): string {
 
 export function isExecutionEvidenceItem(item: EvidenceItem): boolean {
   return (item.kind === "check" || item.kind === "log") &&
-    (
-      isExecutionEvidenceSignal(item.label, item.summary, item.locator) ||
-      isFailedAmbiguousActionsExecutionSignal(item.label, statusFromEvidenceSummary(item.summary), item.locator, item.summary)
-    );
+    isExecutionEvidenceItemSignal(item.label, statusFromEvidenceSummary(item.summary), item.locator, item.summary);
 }
 
 export function statusFromEvidenceSummary(summary: string): CheckStatus {
-  if (hasPassingEvidenceStatusPrefix(summary)) {
-    return "passed";
-  }
-
-  const match = summary.trim().match(/^Status:\s*(failed|pending|unknown)\b/i);
-
-  return match ? match[1].toLowerCase() as CheckStatus : "unknown";
+  return statusFromExecutionEvidenceSummary(summary) as CheckStatus;
 }
 
 function annotationLocationsFromSummary(summary: string): FailedCheckLocation[] {

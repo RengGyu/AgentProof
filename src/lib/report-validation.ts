@@ -2,8 +2,8 @@ import type { VerificationReport } from "./types";
 import { buildDecisionCard } from "./decision-card";
 import {
   hasPassingEvidenceStatusPrefix,
-  isExecutionEvidenceSignal,
-  isFailedAmbiguousActionsExecutionSignal
+  isExecutionEvidenceItemSignal,
+  statusFromExecutionEvidenceSummary
 } from "./evidence-status";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
@@ -217,7 +217,7 @@ function validateOriginalTask(value: unknown, errors: string[]) {
   if (value.version !== 1) errors.push("source.originalTask.version must be 1.");
   if (value.status !== "available" && value.status !== "unavailable" && value.status !== "ambiguous") errors.push("source.originalTask.status is invalid.");
   if (value.sourceType !== "explicit_task" && value.sourceType !== "linked_issue" && value.sourceType !== "none") errors.push("source.originalTask.sourceType is invalid.");
-  const reasons = new Set(["none", "not_linked", "multiple_linked_issues", "linked_issue_inaccessible", "linked_issue_deleted_or_empty", "linked_reference_is_pull_request"]);
+  const reasons = new Set(["none", "not_linked", "multiple_linked_issues", "linked_issue_inaccessible", "linked_issue_outside_selected_repository", "linked_issue_deleted_or_empty", "linked_reference_is_pull_request"]);
   if (!reasons.has(String(value.reason))) errors.push("source.originalTask.reason is invalid.");
   validateOptionalString(value.sourceRef, "source.originalTask.sourceRef", 200, errors);
   if (value.status === "available" && value.reason !== "none") errors.push("source.originalTask available status requires reason none.");
@@ -227,7 +227,7 @@ function validateOriginalTask(value: unknown, errors: string[]) {
   if (value.sourceType === "linked_issue" && typeof value.sourceRef !== "string") errors.push("source.originalTask linked_issue requires sourceRef.");
   if (value.sourceType !== "linked_issue" && value.sourceRef !== undefined) errors.push("source.originalTask sourceRef is allowed only for linked_issue.");
   if (value.sourceType === "none" && value.status === "unavailable" && value.reason !== "not_linked") errors.push("source.originalTask unavailable none source must use not_linked.");
-  if (value.sourceType === "linked_issue" && value.status === "unavailable" && !new Set(["linked_issue_inaccessible", "linked_issue_deleted_or_empty", "linked_reference_is_pull_request"]).has(String(value.reason))) errors.push("source.originalTask unavailable linked_issue reason is invalid.");
+  if (value.sourceType === "linked_issue" && value.status === "unavailable" && !new Set(["linked_issue_inaccessible", "linked_issue_outside_selected_repository", "linked_issue_deleted_or_empty", "linked_reference_is_pull_request"]).has(String(value.reason))) errors.push("source.originalTask unavailable linked_issue reason is invalid.");
 }
 
 function validateSourceProvenance(value: unknown, errors: string[], requireFullHeadSha: boolean) {
@@ -616,16 +616,11 @@ function isExecutionProofEvidence(evidence: RecordValue): boolean {
   const locator = typeof evidence.locator === "string" ? evidence.locator : "";
 
   return (kind === "check" || kind === "log") &&
-    (
-      isExecutionEvidenceSignal(label, summary, locator) ||
-      isFailedAmbiguousActionsExecutionSignal(label, evidenceStatusFromSummary(summary), locator, summary)
-    );
+    isExecutionEvidenceItemSignal(label, evidenceStatusFromSummary(summary), locator, summary);
 }
 
 function evidenceStatusFromSummary(summary: string): string {
-  const match = summary.trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
-
-  return match ? match[1].toLowerCase() : "unknown";
+  return statusFromExecutionEvidenceSummary(summary);
 }
 
 function validateReprompt(value: unknown, errors: string[]) {
@@ -987,7 +982,7 @@ function isPassingTestExecutionEvidence(item: RecordValue): boolean {
   const locator = typeof item.locator === "string" ? item.locator : "";
 
   return (kind === "check" || kind === "log") &&
-    isExecutionEvidenceSignal(label, summary, locator) &&
+    isExecutionEvidenceItemSignal(label, evidenceStatusFromSummary(summary), locator, summary) &&
     hasPassingEvidenceStatusPrefix(summary);
 }
 

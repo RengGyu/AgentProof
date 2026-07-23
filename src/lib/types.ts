@@ -86,6 +86,7 @@ export type OriginalTaskUnavailableReason =
   | "not_linked"
   | "multiple_linked_issues"
   | "linked_issue_inaccessible"
+  | "linked_issue_outside_selected_repository"
   | "linked_issue_deleted_or_empty"
   | "linked_reference_is_pull_request";
 

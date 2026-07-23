@@ -3,9 +3,8 @@
 import { useState } from "react";
 import type { VerificationReport } from "@/lib/types";
 
-export function ConciergeFeedbackForm({ tenantId, caseIdOrHash, report, preReportGapCategory }: { tenantId: string; caseIdOrHash: string; report: VerificationReport; preReportGapCategory: string }) {
+export function ConciergeFeedbackForm({ caseIdOrHash, report, preReportGapCategory }: { caseIdOrHash: string; report: VerificationReport; preReportGapCategory: string }) {
   const hasTopGap = Boolean(report.decisionCard?.topGap);
-  const [partnerId, setPartnerId] = useState("");
   const [sessionOrdinal, setSessionOrdinal] = useState(1);
   const [repeatOrdinal, setRepeatOrdinal] = useState(1);
   const [agreement, setAgreement] = useState("unclear");
@@ -29,8 +28,8 @@ export function ConciergeFeedbackForm({ tenantId, caseIdOrHash, report, preRepor
       const response = await fetch("/api/tenants/concierge/feedback", {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json", "x-agentproof-csrf": "same-origin" },
-      body: JSON.stringify({ tenantId, feedback: {
-        schemaVersion: "concierge-feedback.v3", privacyNoticeVersion: "human-beta-privacy.v1", pseudonymousPartnerId: partnerId,
+      body: JSON.stringify({ feedback: {
+        schemaVersion: "concierge-feedback.v3", privacyNoticeVersion: "human-beta-privacy.v1",
         sessionOrdinal, caseIdOrHash,
         taskSourceQuality: report.source.originalTask?.status === "available" ? report.source.originalTask.sourceType : report.source.originalTask?.status ?? "unavailable",
         prSizeBucket, preReportGapCategory, topGapOutcome,
@@ -50,8 +49,8 @@ export function ConciergeFeedbackForm({ tenantId, caseIdOrHash, report, preRepor
     }
   }
 
-  return <details className="panel concierge-feedback friendly-feedback">
-    <summary><span><strong>간단한 사용성 피드백</strong><small>보고서·코드 원문 없이 선택한 답변만 저장합니다.</small></span></summary>
+  return <details className="panel concierge-feedback friendly-feedback" aria-label="사용성 평가">
+    <summary><span><span className="evaluation-only-badge">평가 기능</span><strong>간단한 사용성 피드백</strong><small>핵심 보고서와 분리되어 있으며, 보고서·코드 원문 없이 선택한 답변만 저장합니다.</small></span></summary>
     <div className="feedback-body" aria-labelledby="concierge-feedback-title">
       <h2 id="concierge-feedback-title">이 보고서가 실제 검토에 도움이 되었나요?</h2>
       <p className="locked-pre-report">보고서 전 예상: <strong>{preReportLabel(preReportGapCategory)}</strong> <span>· 분석 시작 시 잠김</span></p>
@@ -66,7 +65,6 @@ export function ConciergeFeedbackForm({ tenantId, caseIdOrHash, report, preRepor
       </div>
 
       <details className="operator-feedback-details"><summary>운영자용 세부 기록</summary><div className="grid-two">
-        <label className="field"><span>익명 테스터 ID</span><input className="input" aria-label="익명 테스터 ID" placeholder="partner_..." value={partnerId} onChange={(event) => setPartnerId(event.target.value)} /></label>
         <label className="field"><span>이번 테스트 세션 번호</span><input className="input" aria-label="이번 테스트 세션 번호" type="number" min={1} value={sessionOrdinal} onChange={(event) => setSessionOrdinal(Number(event.target.value))} /></label>
         <label className="field"><span>실제 사용 횟수</span><input className="input" aria-label="실제 사용 횟수" type="number" min={1} value={repeatOrdinal} onChange={(event) => setRepeatOrdinal(Number(event.target.value))} /></label>
         <label className="field"><span>PR 변경 규모</span><select className="select" value={prSizeBucket} onChange={(event) => setPrSizeBucket(event.target.value)}><option value="small">작음</option><option value="medium">보통</option><option value="large">큼</option></select></label>
@@ -74,7 +72,7 @@ export function ConciergeFeedbackForm({ tenantId, caseIdOrHash, report, preRepor
         <label className="field"><span>도움받은 시간</span><select className="select" value={operatorMinutesBucket} onChange={(event) => setOperatorMinutesBucket(event.target.value)}><option value="0">없음</option><option value="1_5">1–5분</option><option value="6_15">6–15분</option><option value="16_plus">16분 이상</option></select></label>
         <label className="field"><span>평가 이유</span><select className="select" value={reasonCategory} onChange={(event) => setReasonCategory(event.target.value)}><option value="useful_gap">유용한 지적</option><option value="wrong_gap">잘못된 우선순위</option><option value="missing_context">맥락 부족</option><option value="navigation">탐색 어려움</option><option value="reprompt">후속 요청</option><option value="other">기타</option></select></label>
       </div></details>
-      <button className="button primary feedback-submit" onClick={submit} disabled={submitting || !partnerId || (["found_within_30s", "found_after_30s"].includes(topGapOutcome) && timeToGap === "")}>{submitting ? "저장 중" : "피드백 저장"}</button>
+      <button className="button primary feedback-submit" onClick={submit} disabled={submitting || (["found_within_30s", "found_after_30s"].includes(topGapOutcome) && timeToGap === "")}>{submitting ? "저장 중" : "피드백 저장"}</button>
       {status ? <p aria-live="polite">{status === "saved" ? "피드백을 저장했습니다." : status === "duplicate" ? "이미 저장된 응답입니다." : "피드백을 저장하지 못했습니다. 다시 시도하거나 운영자에게 알려 주세요."}</p> : null}
     </div>
   </details>;

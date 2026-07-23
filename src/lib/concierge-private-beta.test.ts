@@ -14,7 +14,7 @@ const input = { repositoryFullName: "acme/private", cookieHeader: "session=x" };
 
 function dependencies(overrides: Partial<ConciergeAccessDependencies> = {}): ConciergeAccessDependencies {
   return {
-    resolveSession: vi.fn(async () => ({ authorized: true, tenantId: "tenant_alpha", memberId: "member_x", role: "member", method: "durable-session", sessionState: "active" })),
+    resolveSession: vi.fn(async () => ({ tenantId: "tenant_alpha", memberId: "github-user-404", githubUserId: 404, installationId: 101, repositoryIds: [202], expiresAt: "session-bound" })),
     listGrants: vi.fn(async () => [{ tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false }]),
     listInstallationStatuses: vi.fn(async () => [{ installationId: 101, status: "active" }]),
     authorizeGrant: vi.fn(async () => ({ enabled: true, required: true, reason: "analysis-disabled", grant: { tenantId: "tenant_alpha", installationId: 101, repositoryId: 202, repositoryFullName: "acme/private", enabled: true, analysisEnabled: false, commentEnabled: false, saveReportsEnabled: false, slackNotificationsEnabled: false } })),
@@ -95,7 +95,7 @@ describe("concierge private beta authorization", () => {
   });
 
   it.each([
-    ["session", { resolveSession: vi.fn(async () => ({ authorized: false })) }, "session_invalid", 0, 0],
+    ["session", { resolveSession: vi.fn(async () => null) }, "session_invalid", 0, 0],
     ["installation missing", { listInstallationStatuses: vi.fn(async () => []) }, "installation_not_active", 1, 0],
     ["installation suspended", { listInstallationStatuses: vi.fn(async () => [{ installationId: 101, status: "suspended" }]) }, "installation_not_active", 1, 0],
     ["installation deleted", { listInstallationStatuses: vi.fn(async () => [{ installationId: 101, status: "deleted" }]) }, "installation_not_active", 1, 0],
