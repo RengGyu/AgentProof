@@ -3,7 +3,7 @@ import { buildDecisionCard } from "./decision-card";
 import {
   hasPassingEvidenceStatusPrefix,
   isExecutionEvidenceSignal,
-  isFailedAmbiguousActionsExecutionSignal
+  isExecutionEvidenceItemSignal
 } from "./evidence-status";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
@@ -616,10 +616,7 @@ function isExecutionProofEvidence(evidence: RecordValue): boolean {
   const locator = typeof evidence.locator === "string" ? evidence.locator : "";
 
   return (kind === "check" || kind === "log") &&
-    (
-      isExecutionEvidenceSignal(label, summary, locator) ||
-      isFailedAmbiguousActionsExecutionSignal(label, evidenceStatusFromSummary(summary), locator, summary)
-    );
+    isExecutionEvidenceItemSignal(label, evidenceStatusFromSummary(summary), locator, summary);
 }
 
 function evidenceStatusFromSummary(summary: string): string {

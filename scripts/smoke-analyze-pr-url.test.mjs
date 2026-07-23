@@ -10,6 +10,9 @@ import {
   parseAnalyzeTimingHeader,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
+import { isExecutionEvidenceSignal } from "../src/lib/evidence-status";
+import { generateVerificationReport } from "../src/lib/verifier";
+import { validateVerificationReport } from "../src/lib/report-validation";
 
 describe("smoke-analyze-pr-url", () => {
   it("verifies analyze metadata and summary-only saved report privacy", async () => {
@@ -418,6 +421,79 @@ describe("smoke-analyze-pr-url", () => {
     ];
 
     expect(passingExecutionEvidence(report).map((item) => item.id)).toEqual(["ev_actual_step", "ev_unit"]);
+  });
+
+  it("uses the same generic contract-test and non-execution boundary in smoke assertions", () => {
+    const report = reportFixture();
+    report.evidenceIndex = [
+      { id: "ev_label_contract", kind: "check", label: "State Label Contract Test", summary: "Status: passed. Contract test completed.", confidence: 0.9 },
+      { id: "ev_policy_contract", kind: "check", label: "Policy Guard Contract Test", summary: "Status: passed. pnpm test completed.", confidence: 0.9 },
+      { id: "ev_label_automation", kind: "check", label: "Label Automation Test", summary: "Status: passed. pnpm test completed.", confidence: 0.9 },
+      { id: "ev_preview", kind: "check", label: "Preview Contract Test", summary: "Status: passed. pnpm test completed.", confidence: 0.9 },
+      { id: "ev_static", kind: "check", label: "Static Test Report", summary: "Status: passed. pnpm test completed.", confidence: 0.9 },
+      { id: "ev_deployment_test", kind: "check", label: "Deployment Unit Test", summary: "Status: passed. pnpm test completed. Coverage report uploaded.", confidence: 0.9 },
+      { id: "ev_security_test", kind: "check", label: "Security Integration Test", summary: "Status: passed. integration test completed for security behavior.", confidence: 0.9 },
+      { id: "ev_policy_intent", kind: "check", label: "Policy", summary: "Status: passed. Policy requires pnpm test.", confidence: 0.9 }
+    ];
+
+    expect(passingExecutionEvidence(report).map((item) => item.id)).toEqual([
+      "ev_label_contract",
+      "ev_policy_contract",
+      "ev_preview",
+      "ev_deployment_test",
+      "ev_security_test"
+    ]);
+  });
+
+  it("keeps smoke and runtime execution classification aligned for generic label/policy boundaries", () => {
+    const vectors = [
+      ["State Label Contract Test", "Status: passed. Contract test completed."],
+      ["Policy Guard Contract Test", "Status: passed. pnpm test completed."],
+      ["Policy Gate Contract Test", "Status: passed. test completed."],
+      ["Label Automation Test", "Status: passed. pnpm test completed."],
+      ["Preview Contract Test", "Status: passed. pnpm test completed."],
+      ["Static Test Report", "Status: passed. pnpm test completed."],
+      ["State Label Contract Test", "Status: passed. preview deployment published."],
+      ["Deployment Unit Test", "Status: passed. pnpm test completed. Coverage report uploaded."],
+      ["Security Integration Test", "Status: passed. integration test completed for security behavior."],
+      ["Policy", "Status: passed. Policy requires pnpm test."]
+    ];
+    const report = reportFixture();
+    report.evidenceIndex = vectors.map(([label, summary], index) => ({
+      id: `ev_${index}`,
+      kind: "check",
+      label,
+      summary,
+      confidence: 0.9
+    }));
+
+    const smokeIds = new Set(passingExecutionEvidence(report).map((item) => item.id));
+    for (const [index, [label, summary]] of vectors.entries()) {
+      expect(smokeIds.has(`ev_${index}`)).toBe(isExecutionEvidenceSignal(label, summary));
+    }
+  });
+
+  it.each([
+    ["passed", "Status: failed. Stale provider text.", 1],
+    ["failed", "Status: passed. Stale provider text.", 0],
+    ["pending", "Status: passed. Stale provider text.", 0],
+    ["unknown", "Malformed state text.", 0]
+  ])("normalizes conflicting provider and rendered check states before validation and smoke: %s", (status, providerText, expectedPassingEvidenceCount) => {
+    const report = generateVerificationReport({
+      title: "Synthetic CI state normalization",
+      taskSource: "issue",
+      taskText: "Preserve deterministic CI execution state.",
+      description: "Synthetic regression input.",
+      changedFiles: [],
+      checks: [{ name: "Opaque Contract Test", status, summary: providerText }],
+      logs: [],
+      limitations: []
+    });
+
+    expect(report.testing.ciStatus).toBe(status);
+    expect(report.evidenceIndex.some((item) => item.summary.startsWith(`Status: ${status}`))).toBe(true);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(passingExecutionEvidence(report)).toHaveLength(expectedPassingEvidenceCount);
   });
 
   it("keeps visual requirements unverified without browser or screenshot evidence", () => {

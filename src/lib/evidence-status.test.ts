@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 import { isTestFile } from "./extractors";
-import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
+import {
+  isExecutionEvidenceItemSignal,
+  isExecutionEvidenceSignal,
+  isFailedAmbiguousActionsExecutionSignal
+} from "./evidence-status";
 import { generateVerificationReport } from "./verifier";
 import type { CheckStatus, PriorityLevel, PullRequestInput } from "./types";
 
@@ -136,7 +140,152 @@ describe("execution status classifier guardrails", () => {
     expect(isExecutionEvidenceSignal("buildkite/rails", "Rails test suite failed.")).toBe(true);
     expect(isFailedAmbiguousActionsExecutionSignal("PANDAS_FUTURE_INFER_STRING=0", "failed", jobUrl, "Matrix job failed.")).toBe(true);
   });
+
+  it.each([
+    ["State Label Contract Test", "Status: passed. Contract test completed.", "passed"],
+    ["contract test / state label", "Status: passed. pnpm test completed.", "passed"],
+    ["Policy Guard Contract Test", "Status: failed. Contract test failed.", "failed"],
+    ["Policy Gate Contract Test", "Status: failed. Contract test failed.", "failed"],
+    ["Policy Gate", "Status: failed. pnpm test failed.", "failed"],
+    ["CONTRACT TEST: guard policy", "Status: failed. vitest failed.", "failed"],
+    ["Deployment Unit Test", "Status: passed. pnpm test completed. Coverage report uploaded.", "passed"],
+    ["Security Contract Test", "Status: failed. Integration test failed for security behavior.", "failed"],
+    ["Documentation Integration Test", "Status: passed. Integration test passed for docs rendering.", "passed"],
+    ["Coverage Regression Test", "Status: failed. pnpm test failed before coverage report upload.", "failed"],
+    ["Unit Test", "Status: passed. Security review test passed.", "passed"],
+    ["Preview E2E Test", "Status: failed. E2E test failed for preview behavior.", "failed"],
+    ["Dependency Integration Test", "Status: passed. integration test passed for dependency behavior.", "passed"],
+    ["Optional Unit Test", "Status: pending. unit test still running.", "pending"]
+  ])("recognizes real contract execution regardless of label/policy word order or casing: %s", (name, summary, expected) => {
+    expect(isExecutionEvidenceSignal(name, summary)).toBe(true);
+    expect(generateVerificationReport(inputForChecks([{ name, status: expected as CheckStatus, summary }])).testing.ciStatus).toBe(expected);
+  });
+
+  it.each([
+    ["Label Automation Test", "passed", "Status: passed. pnpm test completed."],
+    ["automated labels / contract test", "failed", "Status: failed. vitest failed."],
+    ["Static Test Report", "passed", "Status: passed. pnpm test completed."],
+    ["Label Test Results", "failed", "Status: failed. pnpm test failed."],
+    ["CI", "passed", "Status: passed. Policy note quotes: pnpm test completed."],
+    ["CI", "failed", "Status: failed. security report annotation: pnpm test completed."]
+  ])("does not promote automation or static narratives: %s", (name, status, summary) => {
+    expect(isExecutionEvidenceSignal(name, summary)).toBe(false);
+    expect(generateVerificationReport(inputForChecks([{ name, status: status as CheckStatus, summary }])).testing.ciStatus).toBe("unknown");
+  });
+
+  it.each([
+    ["State Label Contract Test", "Status: passed. Preview deployment published."],
+    ["Policy Guard Contract Test", "Status: passed. Static report published."],
+    ["Unit Test", "Status: passed. label automation completed."]
+  ])("lets an explicit non-execution summary veto an otherwise test-like check title: %s", (name, summary) => {
+    expect(isExecutionEvidenceSignal(name, summary)).toBe(false);
+    expect(generateVerificationReport(inputForChecks([{ name, status: "passed", summary }])).testing.ciStatus).toBe("unknown");
+  });
+
+  it.each([
+    ["  STATE LABEL CONTRACT TEST  ", "Status: passed. Unit test completed."],
+    ["state / label / contract / test", "Status: passed. pnpm test completed."],
+    ["POLICY-GUARD CONTRACT TEST", "Status: passed. test completed."]
+  ])("keeps strong execution classification stable under generic text transforms: %s", (name, summary) => {
+    expect(isExecutionEvidenceSignal(name, summary)).toBe(true);
+  });
+
+  it.each([
+    ["CI policy", "Status: passed. Policy requires pnpm test."],
+    ["CI policy", "Status: failed. Tests must run before merge."],
+    ["CI policy", "Status: passed. Configured to run pnpm test."],
+    ["CI policy", "Status: pending. Expected pnpm test after deployment."],
+    ["CI policy", "Status: passed. The workflow will run unit tests."],
+    ["CI policy", "Status: passed. Tests must be run before merge."],
+    ["CI policy", "Status: passed. Unit tests should be run before deployment."],
+    ["CI policy", "Status: failed. Integration tests are required to run."],
+    ["CI policy", "Status: pending. E2E tests are expected to be run."],
+    ["CI policy", "Status: passed. Tests must be run before merge: passed."],
+    ["CI policy", "Status: passed. Policy requires pnpm test. pnpm test passed."],
+    ["CI policy", "Status: passed. pnpm test is required before merge."],
+    ["CI policy", "Status: pending. pnpm test is planned after approval."],
+    ["CI policy", "Status: passed. Please run pnpm test locally."],
+    ["CI policy", "Status: passed. Command example: pnpm test."],
+    ["CI policy", "Status: passed. Documentation: pnpm test."],
+    ["policy/check", "Status: failed. POLICY_REQUIRES_PNPM_TEST"]
+  ])("does not treat policy, configuration, or planned execution language as execution evidence: %s", (name, summary) => {
+    expect(isExecutionEvidenceSignal(name, summary)).toBe(false);
+  });
+
+  it.each([
+    ["Test", "Status: passed.", "passed"],
+    ["Test", "Status: failed.", "failed"],
+    ["Test", "Status: pending.", "pending"],
+    ["Test", "Status: unknown.", "unknown"]
+  ])("uses the provider conclusion rather than inventing an execution outcome: %s", (name, summary, status) => {
+    expect(isExecutionEvidenceSignal(name, summary)).toBe(true);
+    expect(generateVerificationReport(inputForChecks([{ name, status: status as CheckStatus, summary }])).testing.ciStatus).toBe(status);
+  });
+
+  it("keeps mixed execution aggregation invariant under non-execution insertion and order changes", () => {
+    const execution = { name: "Arbitrary Integration Test", status: "failed" as CheckStatus, summary: "Status: failed. integration test failed." };
+    const nonExecution = { name: "Preview deployment", status: "passed" as CheckStatus, summary: "Status: passed. Preview deployed." };
+    const policy = { name: "Policy", status: "failed" as CheckStatus, summary: "Status: failed. Policy requires pnpm test." };
+
+    expect(generateVerificationReport(inputForChecks([execution, nonExecution, policy])).testing.ciStatus).toBe("failed");
+    expect(generateVerificationReport(inputForChecks([policy, nonExecution, execution, nonExecution])).testing.ciStatus).toBe("failed");
+  });
+
+  it.each([
+    ["MATRIX_VALUE=1", "failed", jobUrl, "Matrix job failed.", true],
+    ["MATRIX_VALUE=1", "pending", jobUrl, "Matrix job pending.", true],
+    ["MATRIX_VALUE=1", "passed", jobUrl, "Matrix job passed.", false],
+    ["MATRIX_VALUE=1", "unknown", jobUrl, "Matrix job unknown.", false],
+    ["MATRIX_VALUE=1", "failed", "https://github.com/acme/project/actions/runs/100", "Matrix job failed.", false],
+    ["MATRIX_VALUE=1", "failed", "https://example.test/job/200", "Matrix job failed.", false]
+  ])("keeps Actions matrix fallback bounded by state and exact job URL", (name, status, locator, summary, expected) => {
+    expect(isFailedAmbiguousActionsExecutionSignal(name, status, locator, summary)).toBe(expected);
+  });
+
+  it.each([
+    ["Opaque Unit Test", "passed", "Status: passed. unit test passed.", "", true],
+    ["Opaque Dependency Integration Test", "failed", "Status: failed. integration test failed.", "", true],
+    ["PREVIEW_E2E=1", "pending", "Status: pending. Matrix job pending.", jobUrl, true],
+    ["Policy", "failed", "Status: failed. pnpm test is required.", jobUrl, false]
+  ])("uses the same shared classifier for check and log evidence: %s", (label, status, text, locator, expected) => {
+    expect(isExecutionEvidenceItemSignal(label, status, locator, text)).toBe(expected);
+    const checkReport = generateVerificationReport(inputForChecks([{ name: label, status: status as CheckStatus, summary: text, url: locator || undefined }]));
+    const logReport = generateVerificationReport({
+      ...inputForChecks([]),
+      logs: [{ source: label, status: status as CheckStatus, text, url: locator || undefined }]
+    });
+
+    expect(checkReport.testing.ciStatus).toBe(logReport.testing.ciStatus);
+  });
+
+  it("does not depend on a known check name when explicit execution syntax is present", () => {
+    for (const opaqueName of ["spruce-17", "delta_900", "quartz-x4"]) {
+      expect(isExecutionEvidenceSignal(`${opaqueName} contract test`, "Status: passed. pnpm test completed.")).toBe(true);
+      expect(isExecutionEvidenceSignal(`contract test / ${opaqueName}`, "Status: passed. vitest completed.")).toBe(true);
+    }
+  });
+
+  it.each([
+    ["LABEL_AUTOMATION=1", "failed", "Matrix job failed."],
+    ["POLICY=1", "failed", "Matrix job failed."],
+    ["PREVIEW=1", "pending", "Matrix job pending."]
+  ])("keeps non-execution Actions matrix metadata excluded: %s", (name, status, summary) => {
+    expect(isFailedAmbiguousActionsExecutionSignal(name, status, jobUrl, summary)).toBe(false);
+  });
 });
+
+function inputForChecks(checks: PullRequestInput["checks"]): PullRequestInput {
+  return {
+    title: "Synthetic execution classification",
+    taskSource: "issue",
+    taskText: "Preserve deterministic execution evidence classification.",
+    description: "Synthetic regression input.",
+    changedFiles: [],
+    checks,
+    logs: [],
+    limitations: []
+  };
+}
 
 function inputForCase(testCase: MatrixCase): PullRequestInput {
   return {

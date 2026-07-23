@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, OriginalTaskBoundary, PullRequestInput, SourceProvenance } from "./types";
-import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
+import { isExecutionEvidenceItemSignal } from "./evidence-status";
 import {
   extractSupportedIssueReferences,
   formatIssueReference,
@@ -559,19 +559,19 @@ function githubEvidenceSourceLimitations(
   const limitations: string[] = [];
   const hasExecutionCheckRun = checkRuns.some(isExecutionCheckRun);
   const hasExecutionStatus = statuses.some((status) =>
-    isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url)
+    isExecutionEvidenceItemSignal(status.context, mapGitHubCommitStatus(status.state), status.target_url, status.description ?? "")
   );
-  const hasExecutionJobMetadata = actionJobLogs.some((log) => isExecutionEvidenceSignal(log.source, log.text, log.url));
+  const hasExecutionJobMetadata = actionJobLogs.some((log) => isExecutionEvidenceItemSignal(log.source, log.status, log.url, log.text));
   const hasExecutionEvidence = hasExecutionCheckRun || hasExecutionStatus || hasExecutionJobMetadata;
   const executionStatuses = [
     ...checkRuns
       .filter(isExecutionCheckRun)
       .map((check) => mapGitHubCheckStatus(check.status, check.conclusion)),
     ...statuses
-      .filter((status) => isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url))
+      .filter((status) => isExecutionEvidenceItemSignal(status.context, mapGitHubCommitStatus(status.state), status.target_url, status.description ?? ""))
       .map((status) => mapGitHubCommitStatus(status.state)),
     ...actionJobLogs
-      .filter((log) => isExecutionEvidenceSignal(log.source, log.text, log.url))
+      .filter((log) => isExecutionEvidenceItemSignal(log.source, log.status, log.url, log.text))
       .map((log) => log.status ?? "unknown")
   ];
   const hasAnyPublicCheckMetadata = checkRuns.length > 0 || statuses.length > 0;
@@ -1292,8 +1292,7 @@ function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
   const text = `${check.output?.title ?? ""} ${check.output?.summary ?? ""}`;
   const locator = check.details_url ?? check.html_url;
 
-  return isExecutionEvidenceSignal(check.name, text, locator) ||
-    isFailedAmbiguousActionsExecutionSignal(check.name, status, locator, text);
+  return isExecutionEvidenceItemSignal(check.name, status, locator, text);
 }
 
 function shouldFetchActionJobMetadata(check: GitHubCheckRunResponse, owner: string, repo: string): boolean {
@@ -1338,7 +1337,12 @@ function isExecutionActionJob(job: GitHubActionJobResponse): boolean {
     return false;
   }
 
-  return isExecutionEvidenceSignal(job.name, stepText, job.html_url);
+  return isExecutionEvidenceItemSignal(
+    job.name,
+    mapGitHubCheckStatus(job.status, job.conclusion),
+    job.html_url,
+    stepText
+  );
 }
 
 function actionExecutionSteps(job: GitHubActionJobResponse): GitHubActionStepResponse[] {
@@ -1350,7 +1354,12 @@ function isExecutionActionStep(step: GitHubActionStepResponse): boolean {
     return false;
   }
 
-  return isExecutionEvidenceSignal(step.name);
+  return isExecutionEvidenceItemSignal(
+    step.name,
+    mapGitHubCheckStatus(step.status, step.conclusion),
+    undefined,
+    step.name
+  );
 }
 
 function actionRunIdFromCheckRun(check: GitHubCheckRunResponse, owner: string, repo: string): string | null {
