@@ -882,6 +882,37 @@
           "Raw CI logs were not fetched or stored."
         ]
       }
+    },
+    {
+      "id": "non-observed-test-prose",
+      "description": "A passed provider check that explicitly says tests did not run must remain unknown.",
+      "input": {
+        "taskText": "Fix compatibility behavior and verify the targeted tests.",
+        "description": "The check result alone is insufficient when its bounded summary says execution was unavailable.",
+        "changedFiles": [
+          { "path": "src/compat.py", "patch": "bounded implementation summary" }
+        ],
+        "checks": [
+          {
+            "name": "Opaque Unit Test",
+            "status": "passed",
+            "summary": "Tests have not run."
+          }
+        ],
+        "logs": [],
+        "limitations": [
+          "Public check/status metadata was available, but no test/build execution evidence was found."
+        ]
+      },
+      "expected": {
+        "testBuildStatus": "unknown",
+        "executionEvidenceFound": false,
+        "nonExecutionStatusesExcluded": true,
+        "limitationIncludes": [
+          "Public check/status metadata was available, but no test/build execution evidence was found.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+        ]
+      }
     }
   ]
 }

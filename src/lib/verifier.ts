@@ -8,8 +8,8 @@ import {
 } from "./extractors";
 import {
   hasPassingEvidenceStatusPrefix,
-  isExecutionEvidenceSignal,
-  isExecutionEvidenceItemSignal
+  isExecutionEvidenceItemSignal,
+  statusFromExecutionEvidenceSummary
 } from "./evidence-status";
 import { redactSecrets } from "./redact";
 import { buildDecisionCard } from "./decision-card";
@@ -528,9 +528,7 @@ function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
 }
 
 function evidenceStatusFromSummary(summary: string): CheckStatus {
-  const match = summary.trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
-
-  return match ? match[1].toLowerCase() as CheckStatus : "unknown";
+  return statusFromExecutionEvidenceSummary(summary) as CheckStatus;
 }
 
 function isVisualRequirement(text: string): boolean {

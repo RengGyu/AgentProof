@@ -6,6 +6,7 @@ export {
   STRONG_EXECUTION_EVIDENCE_PATTERN,
   WEAK_EXECUTION_EVIDENCE_PATTERN,
   hasPassingEvidenceStatusPrefix,
+  statusFromExecutionEvidenceSummary,
   isExecutionEvidenceSignal,
   isExecutionEvidenceItemSignal,
   isExecutionSignalText,

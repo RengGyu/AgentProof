@@ -1,6 +1,7 @@
 import {
   hasPassingEvidenceStatusPrefix,
-  isExecutionEvidenceItemSignal
+  isExecutionEvidenceItemSignal,
+  statusFromExecutionEvidenceSummary
 } from "../src/lib/execution-evidence-classifier.mjs";
 
 const baseUrl = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -209,7 +210,7 @@ export function passingExecutionEvidence(report) {
   return Array.isArray(report.evidenceIndex)
     ? report.evidenceIndex.filter((item) =>
       (item.kind === "check" || item.kind === "log") &&
-        isExecutionEvidenceItemSignal(item.label, "passed", item.locator, item.summary) &&
+        isExecutionEvidenceItemSignal(item.label, statusFromExecutionEvidenceSummary(item.summary), item.locator, item.summary) &&
         hasPassingEvidenceStatusPrefix(item.summary)
     )
     : [];
@@ -445,7 +446,7 @@ function requirementHasPassingExecutionRef(report, evidenceRefs) {
 
     return Boolean(item) &&
       (item.kind === "check" || item.kind === "log") &&
-      isExecutionEvidenceItemSignal(item.label, "passed", item.locator, item.summary) &&
+      isExecutionEvidenceItemSignal(item.label, statusFromExecutionEvidenceSummary(item.summary), item.locator, item.summary) &&
       hasPassingEvidenceStatusPrefix(item.summary);
   });
 }

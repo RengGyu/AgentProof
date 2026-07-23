@@ -19,25 +19,28 @@ const POLICY_OR_INTENT_PATTERN =
   /\b(?:policy|policies|require|requires|required|must|should|expected|expect|configured|configure|configuration|planned|plan|will|would|scheduled|schedule)\b(?:\s+\w+){0,5}\s+\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b|\b(?:tests?|unit\s+tests?|integration\s+tests?|e2e\s+tests?)\b(?:\s+\w+){0,4}\s+\b(?:must|should|will|would)(?:\s+be)?\s+run\b|\b(?:tests?|unit\s+tests?|integration\s+tests?|e2e\s+tests?)\b(?:\s+\w+){0,4}\s+\b(?:need(?:s)?\s+to|expected\s+to|configured\s+to|plan(?:ned)?\s+to|scheduled\s+to|(?:are\s+)?required\s+to)(?:\s+be)?\s+run\b|\b(?:must|should|will|would)(?:\s+be)?\s+run\b(?:\s+\w+){0,4}\s+\b(?:tests?|unit\s+tests?|integration\s+tests?|e2e\s+tests?)\b|\b(?:need(?:s)?\s+to|expected\s+to|configured\s+to|plan(?:ned)?\s+to|scheduled\s+to|(?:are\s+)?required\s+to)(?:\s+be)?\s+run\b(?:\s+\w+){0,4}\s+\b(?:tests?|unit\s+tests?|integration\s+tests?|e2e\s+tests?)\b/i;
 const COMMAND_INTENT_PATTERN =
   /\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b(?:\s+\w+){0,4}\s+\b(?:is|are)?\s*(?:required|planned|expected|configured|scheduled)\b|\bplease\s+run\s+\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b/i;
+const NON_OBSERVED_EXECUTION_PATTERN =
+  /\b(?:tests?|test\s+suite|test\s+execution|unit\s+tests?|integration\s+tests?|e2e\s+tests?)\s+(?:(?:were|was|did|have|has|had|are)\s+)?(?:not|never|cannot|can't|could\s+not|failed\s+to)\s+(?:run|ran|running|execute(?:d)?|occur(?:red|red\s+at\s+all)?)\b|\b(?:tests?|test\s+suite|test\s+execution)\s+(?:haven|aren|weren|couldn|won)['’]t\s+(?:run|ran|running|executed)\b|\bno\s+(?:tests?|test\s+suite|test\s+execution)\s+(?:(?:were|was|have|has)\s+)?(?:run|ran|executed|occur(?:red|red\s+at\s+all)?)\b|\b(?:tests?|test\s+suite)\s+(?:were\s+)?skipped\b|\b(?:no\s+)?test\s+(?:execution|result)\s+(?:is|was)?\s*(?:unavailable|not\s+available)\b|\bno\s+test\s+(?:execution|result)\s+(?:is|was)?\s*available\b|\btest\s+result\s+(?:is|was)?\s*hypothetical\b|\b(?:tests?|test\s+suite|test\s+execution)\s+failed\s+before\s+(?:starting|execution)\b|\b(?:the\s+)?test\s+was\s+never\s+started\b|\b(?:tests?|test\s+suite|test\s+execution)\s+(?:would|could|might|may)\b[^\n]{0,80}\bif\s+(?:[^\n]{0,40}\s+)?run\b|\b(?:dry[- ]?run|plan[- ]?only)\b[^\n]{0,80}\b(?:tests?|pnpm|npm|yarn|bun)\b|\b(?:example|examples?|sample|samples?|documentation|docs?|instructions?|usage|hypothetical)\b(?:\s+\w+){0,4}\s+(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b|\bif\s+(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b[^\n]*(?:passed|failed|failure|succeeded|success|timed\s+out|cancelled|canceled)\b/i;
 const DIRECT_EXECUTION_COMMAND_PATTERN =
   /\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b|\buv\s+run\s+tox\b|\bcoverage\s+run\s+-m\s+pytest\b|\b(?:vitest|jest|pytest|tox|go\s+test|cargo\s+test|dotnet\s+test|mvn\s+test|gradle\s+test|next\s+build)\b/i;
 const EXECUTION_RESULT_PATTERN =
-  /\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b(?:\s+\S+){0,8}\s+\b(?:completed|complete|passed|failed|failure|succeeded|success|timed\s+out|cancelled|canceled)\b|\b(?:test|tests|spec|unit(?:\s+test)?|integration(?:\s+test)?|e2e|vitest|jest|playwright|cypress|pytest|tox)\b(?:\s+\S+){0,8}\s+\b(?:completed|complete|passed|failed|failure|succeeded|success|timed\s+out|cancelled|canceled)\b|\b(?:completed|complete|passed|failed|failure|succeeded|success|timed\s+out|cancelled|canceled)\b(?:\s+\S+){0,8}\s+\b(?:test|tests|spec|unit(?:\s+test)?|integration(?:\s+test)?|e2e|vitest|jest|playwright|cypress|pytest|tox)\b/i;
+  /\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b(?:\s+\S+){0,8}\s+\b(?:completed|complete|passed|failed|failure|succeeded|success|running|timeout|timed\s+out|cancelled|canceled)\b|\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?(?:test|vitest|jest|playwright|cypress|build)\b(?:\s+\S+){0,8}\s+\b(?:exited?|exit)\s+(?:with\s+)?(?:code\s+)?[0-9]{1,5}\b|\b(?:test|tests|spec|unit(?:\s+test)?|integration(?:\s+test)?|e2e|vitest|jest|playwright|cypress|pytest|tox)\b(?:\s+\S+){0,8}\s+\b(?:completed|complete|passed|failed|failure|succeeded|success|running|timeout|timed\s+out|cancelled|canceled)\b|\b(?:test|tests|spec|unit(?:\s+test)?|integration(?:\s+test)?|e2e|vitest|jest|playwright|cypress|pytest|tox)\b(?:\s+\S+){0,8}\s+\b(?:exited?|exit)\s+(?:with\s+)?(?:code\s+)?[0-9]{1,5}\b|\b(?:completed|complete|passed|failed|failure|succeeded|success|running|timeout|timed\s+out|cancelled|canceled)\b(?:\s+\S+){0,8}\s+\b(?:test|tests|spec|unit(?:\s+test)?|integration(?:\s+test)?|e2e|vitest|jest|playwright|cypress|pytest|tox)\b/i;
 const DOMAIN_CONTEXT_PATTERN = /\b(?:preview|dependency|dependencies|optional)\b/i;
 const SPECIFIC_EXECUTION_KIND_PATTERN = /\b(?:unit|integration|e2e|vitest|jest|playwright|cypress|pytest|tox)\b/i;
 const STATIC_ONLY_CHECK_PATTERN = /\b(?:eslint|lint|typecheck|type-check|type check|tsc|static analysis|static check)\b/i;
 const GITHUB_ACTIONS_JOB_URL_PATTERN = /github\.com\/[^/\s]+\/[^/\s]+\/actions\/runs\/\d+\/job\/\d+/i;
 const GENERIC_ACTIONS_HOUSEKEEPING_PATTERN =
   /\b(checkout|setup|cache|install dependencies|upload|download|artifact|publish|preview|deploy|deployment|report|notify|label added|docs-only|changelog|change log|release notes?|towncrier|codecov|coverage (?:gate|policy|report|threshold|upload)|optional|non[- ]?blocking)\b/i;
-const CANCELLED_OR_OPTIONAL_PATTERN =
-  /\b(cancelled|canceled|skipped|optional|non[- ]?blocking|allowed failure|allow failure|neutral|not required|action required)\b/i;
+const OPTIONAL_OR_NON_EXECUTION_PATTERN =
+  /\b(skipped|optional|non[- ]?blocking|allowed failure|allow failure|neutral|not required|action required)\b/i;
+const CANCELLATION_PATTERN = /\b(cancelled|canceled)\b/i;
 const AMBIGUOUS_PROVIDER_PATTERN = /\b(buildkite|circleci|azure pipelines?|jenkins|travis|appveyor)\b|buildkite\//i;
 const MATRIX_EXECUTION_JOB_PATTERN =
   /(?:^[A-Z][A-Z0-9_]{2,}=)|\b(?:ubuntu|linux|windows|macos|darwin|python|py\d|node|ruby|go|java|jdk|x86|x64|arm64|sqlite|postgres|mysql|mariadb|oracle|matrix)\b/i;
 
 export function isExecutionSignalText(text) {
   const normalized = normalizeClassificationText(text);
-  if (isUnambiguousNonExecutionArtifact(normalized) || isPolicyOrIntentOnly(normalized)) return false;
+  if (isUnambiguousNonExecutionArtifact(normalized) || isPolicyOrIntentOnly(normalized) || isNonObservedExecutionNarrative(normalized)) return false;
   if (hasStrongExecutionSignal(normalized)) return true;
   if (hasContextualNonExecutionTerm(normalized) || isStaticOnlyCheck(normalized)) return false;
   return WEAK_EXECUTION_EVIDENCE_PATTERN.test(normalized);
@@ -49,7 +52,7 @@ export function isExecutionEvidenceSignal(label, text = "", _locator = "") {
   const supportingText = normalizeClassificationText(String(text ?? "").trim());
   const combined = `${labelText} ${supportingText}`.trim();
 
-  if (isUnambiguousNonExecutionArtifact(labelText) || isAlwaysNonExecutionSupportingText(supportingText) || isPolicyOrIntentOnly(combined)) return false;
+  if (isUnambiguousNonExecutionArtifact(labelText) || isAlwaysNonExecutionSupportingText(supportingText) || isPolicyOrIntentOnly(combined) || isNonObservedExecutionNarrative(combined)) return false;
   const labelHasStrongSignal = hasStrongExecutionSignal(labelText);
   const textHasStrongSignal = hasStrongExecutionSignal(supportingText);
 
@@ -79,9 +82,13 @@ export function isFailedAmbiguousActionsExecutionSignal(label, status, locator =
 
   if ((status !== "failed" && status !== "pending") || !GITHUB_ACTIONS_JOB_URL_PATTERN.test(locator)) return false;
   if (!labelText || GENERIC_ACTIONS_HOUSEKEEPING_PATTERN.test(labelText)) return false;
-  if (isUnambiguousNonExecutionArtifact(combined) || isPolicyOrIntentOnly(combined)) return false;
+  if (isUnambiguousNonExecutionArtifact(combined) || isPolicyOrIntentOnly(combined) || isNonObservedExecutionNarrative(combined)) return false;
   if (hasContextualNonExecutionTerm(combined) && !hasStrongExecutionSignal(combined)) return false;
-  if (isStaticOnlyCheck(combined) || CANCELLED_OR_OPTIONAL_PATTERN.test(combined)) return false;
+  if (isStaticOnlyCheck(combined) || OPTIONAL_OR_NON_EXECUTION_PATTERN.test(combined)) return false;
+  // Opaque matrix metadata alone does not establish what executed. A named
+  // test cancellation remains evidence identity, but an unlabelled matrix
+  // cancellation must not be promoted by the Actions fallback.
+  if (CANCELLATION_PATTERN.test(combined) && !hasExplicitExecutionResult(combined)) return false;
 
   return isExecutionSignalText(combined) || DIRECT_EXECUTION_COMMAND_PATTERN.test(labelText) || MATRIX_EXECUTION_JOB_PATTERN.test(rawLabel);
 }
@@ -92,7 +99,17 @@ export function isExecutionEvidenceItemSignal(label, status, locator = "", text 
 }
 
 export function hasPassingEvidenceStatusPrefix(summary) {
-  return /^Status:\s*passed\b/i.test(String(summary ?? "").trim());
+  return statusFromExecutionEvidenceSummary(summary) === "passed";
+}
+
+/**
+ * Bounded parser for an AgentProof-generated evidence summary. This derives
+ * display/report status only; it never overrides a provider's structured
+ * check status during ingestion.
+ */
+export function statusFromExecutionEvidenceSummary(summary) {
+  const match = String(summary ?? "").trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
+  return match ? match[1].toLowerCase() : "unknown";
 }
 
 function hasStrongExecutionSignal(text) {
@@ -120,6 +137,10 @@ function isPolicyOrIntentOnly(text) {
   // word. Without a distinct execution record, that is still not evidence
   // that the command ran for this check.
   return POLICY_OR_INTENT_PATTERN.test(text) || COMMAND_INTENT_PATTERN.test(text);
+}
+
+function isNonObservedExecutionNarrative(text) {
+  return NON_OBSERVED_EXECUTION_PATTERN.test(text);
 }
 
 function isUnambiguousNonExecutionArtifact(text) {

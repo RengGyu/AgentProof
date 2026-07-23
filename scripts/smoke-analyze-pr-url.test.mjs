@@ -10,7 +10,7 @@ import {
   parseAnalyzeTimingHeader,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
-import { isExecutionEvidenceSignal } from "../src/lib/evidence-status";
+import { isExecutionEvidenceItemSignal, statusFromExecutionEvidenceSummary } from "../src/lib/evidence-status";
 import { generateVerificationReport } from "../src/lib/verifier";
 import { validateVerificationReport } from "../src/lib/report-validation";
 
@@ -456,6 +456,9 @@ describe("smoke-analyze-pr-url", () => {
       ["State Label Contract Test", "Status: passed. preview deployment published."],
       ["Deployment Unit Test", "Status: passed. pnpm test completed. Coverage report uploaded."],
       ["Security Integration Test", "Status: passed. integration test completed for security behavior."],
+      ["CI", "Status: passed. pnpm test exited with code 0."],
+      ["Unit Test", "Status: passed. Tests were not run."],
+      ["CI", "Status: passed. Example: pnpm test passed."],
       ["Policy", "Status: passed. Policy requires pnpm test."]
     ];
     const report = reportFixture();
@@ -469,8 +472,32 @@ describe("smoke-analyze-pr-url", () => {
 
     const smokeIds = new Set(passingExecutionEvidence(report).map((item) => item.id));
     for (const [index, [label, summary]] of vectors.entries()) {
-      expect(smokeIds.has(`ev_${index}`)).toBe(isExecutionEvidenceSignal(label, summary));
+      expect(smokeIds.has(`ev_${index}`)).toBe(
+        isExecutionEvidenceItemSignal(label, statusFromExecutionEvidenceSummary(summary), "", summary)
+      );
     }
+  });
+
+  it("keeps smoke log evidence aligned with the shared status-aware execution contract", () => {
+    const report = reportFixture();
+    report.evidenceIndex = [
+      {
+        id: "ev_log_observed",
+        kind: "log",
+        label: "CI",
+        summary: "Status: passed. pnpm test exited with code 0.",
+        confidence: 0.9
+      },
+      {
+        id: "ev_log_non_observed",
+        kind: "log",
+        label: "Unit Test",
+        summary: "Status: passed. Tests have not run.",
+        confidence: 0.9
+      }
+    ];
+
+    expect(passingExecutionEvidence(report).map((item) => item.id)).toEqual(["ev_log_observed"]);
   });
 
   it.each([

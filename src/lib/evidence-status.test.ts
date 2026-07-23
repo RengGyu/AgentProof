@@ -65,7 +65,8 @@ const requiredCaseIds = [
   "provider-tests-failure-summary",
   "metadata-timeout-plus-known-failure",
   "python-tox-workflow-failure",
-  "metadata-timeout-with-no-known-execution"
+  "metadata-timeout-with-no-known-execution",
+  "non-observed-test-prose"
 ];
 
 describe("evidence status ontology matrix", () => {
@@ -213,6 +214,58 @@ describe("execution status classifier guardrails", () => {
   });
 
   it.each([
+    ["CI", "Status: passed. Tests were not run."],
+    ["Unit Test", "Status: passed. Test did not run."],
+    ["Any Opaque Test", "Status: passed. No tests executed."],
+    ["Integration Test", "Status: passed. Tests skipped."],
+    ["CI", "Status: passed. Example: pnpm test passed."],
+    ["Unit Test", "Status: passed. Documentation: pnpm test passed."],
+    ["CI", "Status: failed. If pnpm test failed, inspect the command output."],
+    ["Any Contract Test", "Status: passed. Hypothetical: pnpm test passed."],
+    ["CI", "Status: passed. Tests would pass if run."],
+    ["Unit Test", "Status: passed. No test execution occurred."],
+    ["CI", "Status: passed. Tests cannot run in this environment."],
+    ["Unit Test", "Status: passed. Tests failed to run."],
+    ["Any Contract Test", "Status: passed. Test execution unavailable."],
+    ["CI", "Status: passed. Tests may pass if run."],
+    ["Unit Test", "Status: passed. This is a sample pnpm test passed output."],
+    ["Unit Test", "Status: passed. Tests have not run."],
+    ["Unit Test", "Status: passed. Test result is hypothetical: passed."],
+    ["CI", "Status: passed. Tests could not run."],
+    ["Unit Test", "Status: passed. Tests cannot execute."],
+    ["Unit Test", "Status: passed. Tests did not execute."],
+    ["Unit Test", "Status: passed. Tests are not running."],
+    ["Unit Test", "Status: passed. Tests haven’t run."],
+    ["CI", "Status: passed. This sample output: pnpm test passed."],
+    ["CI", "Status: passed. Example output shows pnpm test passed."],
+    ["Unit Test", "Status: passed. Tests aren’t running."],
+    ["Unit Test", "Status: passed. Tests weren’t run."],
+    ["Unit Test", "Status: passed. Test couldn’t run."],
+    ["Unit Test", "Status: passed. Tests won’t run."],
+    ["Unit Test", "Status: passed. No tests have run."],
+    ["Unit Test", "Status: passed. No test result is available."],
+    ["Unit Test", "Status: passed. Tests failed before starting."],
+    ["Unit Test", "Status: passed. The test was never started."]
+  ])("rejects negated, example, documentation, and hypothetical execution prose regardless of a test-like title: %s", (name, summary) => {
+    expect(isExecutionEvidenceSignal(name, summary)).toBe(false);
+    expect(generateVerificationReport(inputForChecks([{ name, status: "passed", summary }])).testing.ciStatus).toBe("unknown");
+  });
+
+  it.each([
+    ["CI", "passed", "Status: passed. pnpm test exited with code 0.", "passed"],
+    ["CI", "failed", "Status: failed. pnpm test exited with code 1.", "failed"],
+    ["CI", "failed", "Status: failed. pnpm test exit code 2.", "failed"],
+    ["CI", "failed", "Status: failed. pnpm test exited with code 256.", "failed"],
+    ["Opaque Test", "pending", "Status: pending. pnpm test is running.", "pending"],
+    ["Preview E2E Test", "pending", "Status: pending. E2E test timed out.", "pending"],
+    ["CI", "failed", "Status: failed. pnpm test timeout after 30 seconds.", "failed"],
+    ["Optional Unit Test", "pending", "Status: pending. Unit test run cancelled.", "pending"]
+  ])("recognizes observed execution result grammar while provider state remains the final truth: %s", (name, providerStatus, summary, expectedStatus) => {
+    expect(isExecutionEvidenceItemSignal(name, providerStatus, "", summary)).toBe(true);
+    expect(generateVerificationReport(inputForChecks([{ name, status: providerStatus as CheckStatus, summary }])).testing.ciStatus).toBe(expectedStatus);
+  });
+
+  it.each([
     ["Test", "Status: passed.", "passed"],
     ["Test", "Status: failed.", "failed"],
     ["Test", "Status: pending.", "pending"],
@@ -236,6 +289,9 @@ describe("execution status classifier guardrails", () => {
     ["MATRIX_VALUE=1", "pending", jobUrl, "Matrix job pending.", true],
     ["MATRIX_VALUE=1", "passed", jobUrl, "Matrix job passed.", false],
     ["MATRIX_VALUE=1", "unknown", jobUrl, "Matrix job unknown.", false],
+    ["MATRIX_VALUE=1", "failed", jobUrl, "Matrix job cancelled.", false],
+    ["MATRIX_VALUE=1", "pending", jobUrl, "Matrix job canceled.", false],
+    ["MATRIX_VALUE=1", "failed", jobUrl, "Unit test run cancelled.", true],
     ["MATRIX_VALUE=1", "failed", "https://github.com/acme/project/actions/runs/100", "Matrix job failed.", false],
     ["MATRIX_VALUE=1", "failed", "https://example.test/job/200", "Matrix job failed.", false]
   ])("keeps Actions matrix fallback bounded by state and exact job URL", (name, status, locator, summary, expected) => {
@@ -246,8 +302,13 @@ describe("execution status classifier guardrails", () => {
     ["Opaque Unit Test", "passed", "Status: passed. unit test passed.", "", true],
     ["Opaque Dependency Integration Test", "failed", "Status: failed. integration test failed.", "", true],
     ["PREVIEW_E2E=1", "pending", "Status: pending. Matrix job pending.", jobUrl, true],
+    ["CI", "passed", "Status: passed. pnpm test exited with code 0.", "", true],
+    ["CI", "failed", "Status: failed. pnpm test exited with code 1.", "", true],
+    ["CI", "pending", "Status: pending. pnpm test is running.", "", true],
+    ["Unit Test", "passed", "Status: passed. Tests were not run.", "", false],
+    ["CI", "failed", "Status: failed. If pnpm test failed, inspect output.", jobUrl, false],
     ["Policy", "failed", "Status: failed. pnpm test is required.", jobUrl, false]
-  ])("uses the same shared classifier for check and log evidence: %s", (label, status, text, locator, expected) => {
+  ])("uses the same status-aware shared classifier for check and log evidence: %s", (label, status, text, locator, expected) => {
     expect(isExecutionEvidenceItemSignal(label, status, locator, text)).toBe(expected);
     const checkReport = generateVerificationReport(inputForChecks([{ name: label, status: status as CheckStatus, summary: text, url: locator || undefined }]));
     const logReport = generateVerificationReport({

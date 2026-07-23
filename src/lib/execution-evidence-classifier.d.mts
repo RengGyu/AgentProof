@@ -5,3 +5,4 @@ export declare function isExecutionEvidenceSignal(label: string, text?: string, 
 export declare function isFailedAmbiguousActionsExecutionSignal(label: string, status: string | undefined, locator?: string, text?: string): boolean;
 export declare function isExecutionEvidenceItemSignal(label: string, status: string | undefined, locator?: string, text?: string): boolean;
 export declare function hasPassingEvidenceStatusPrefix(summary: string): boolean;
+export declare function statusFromExecutionEvidenceSummary(summary: string): "passed" | "failed" | "pending" | "unknown";

@@ -2,8 +2,8 @@ import type { VerificationReport } from "./types";
 import { buildDecisionCard } from "./decision-card";
 import {
   hasPassingEvidenceStatusPrefix,
-  isExecutionEvidenceSignal,
-  isExecutionEvidenceItemSignal
+  isExecutionEvidenceItemSignal,
+  statusFromExecutionEvidenceSummary
 } from "./evidence-status";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
@@ -620,9 +620,7 @@ function isExecutionProofEvidence(evidence: RecordValue): boolean {
 }
 
 function evidenceStatusFromSummary(summary: string): string {
-  const match = summary.trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
-
-  return match ? match[1].toLowerCase() : "unknown";
+  return statusFromExecutionEvidenceSummary(summary);
 }
 
 function validateReprompt(value: unknown, errors: string[]) {
@@ -984,7 +982,7 @@ function isPassingTestExecutionEvidence(item: RecordValue): boolean {
   const locator = typeof item.locator === "string" ? item.locator : "";
 
   return (kind === "check" || kind === "log") &&
-    isExecutionEvidenceSignal(label, summary, locator) &&
+    isExecutionEvidenceItemSignal(label, evidenceStatusFromSummary(summary), locator, summary) &&
     hasPassingEvidenceStatusPrefix(summary);
 }
 

@@ -10,7 +10,7 @@ import type {
   RequirementSourceQuality,
   RequirementSourceRole
 } from "./types";
-import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
+import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceItemSignal, statusFromExecutionEvidenceSummary } from "./evidence-status";
 import { compactText } from "./redact";
 import { redactSecrets } from "./redact";
 
@@ -585,7 +585,7 @@ function isClaimSupportEvidence(item: EvidenceItem): boolean {
 
 function isPassingExecutionClaimEvidence(item: EvidenceItem): boolean {
   return (item.kind === "check" || item.kind === "log") &&
-    isExecutionEvidenceSignal(item.label, item.summary, item.locator) &&
+    isExecutionEvidenceItemSignal(item.label, statusFromExecutionEvidenceSummary(item.summary), item.locator, item.summary) &&
     hasPassingEvidenceStatusPrefix(item.summary);
 }
 
