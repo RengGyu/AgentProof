@@ -532,6 +532,52 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("key=");
   });
 
+  it("fails closed when the PR base changes after collection and before publication", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    const githubFetch = mockWorkerFetch();
+    let pullMetadataRequests = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (
+        String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7"
+        && ++pullMetadataRequests === 3
+      ) {
+        return Response.json({
+          title: "Fetched PR title",
+          body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis.",
+          url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
+          user: { login: "agent-author" },
+          base: { ref: "main", sha: "cccccccccccccccccccccccccccccccccccccccc" },
+          head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+        });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toMatchObject({
+      status: "failed_terminal",
+      job: expect.objectContaining({ id }),
+      reason: "github_app_pr_head_changed",
+      sideEffects: {
+        saveReport: false,
+        comment: false
+      }
+    });
+    expect(pullMetadataRequests).toBe(3);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id,
+      status: "failed_terminal",
+      error_code: "github_app_pr_head_changed"
+    });
+  });
+
   it("sends a summary-only Slack report only when the repository grant opts in", async () => {
     stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: true } });
     vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
@@ -1143,7 +1189,7 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
           ?? "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
         url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
         user: { login: "agent-author" },
-        base: { ref: "main" },
+        base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
         head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }

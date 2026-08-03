@@ -9,7 +9,7 @@ import {
 import { getAuditLogStoreStatus, recordAuditEvent, AuditLogError } from "./audit-log";
 import {
   buildGitHubPullRequestInput,
-  fetchGitHubPullRequestHead,
+  fetchGitHubPullRequestAnchor,
   GitHubFetchError,
   GitHubPullRequestHeadChangedError
 } from "./github";
@@ -371,15 +371,23 @@ export async function runNextAnalysisJob(
       );
     }
 
-    const finalHeadSha = await fetchGitHubPullRequestHead(job.pull_request_url, token);
-    if (!finalHeadSha) {
+    const finalAnchor = await fetchGitHubPullRequestAnchor(job.pull_request_url, token);
+    if (!finalAnchor) {
       throw new AnalysisWorkerRetryableError(
         "github_app_pr_snapshot_unavailable",
-        "GitHub App worker could not recheck the pull request head before publishing evidence."
+        "GitHub App worker could not recheck the pull request anchors before publishing evidence."
       );
     }
-    if (finalHeadSha !== job.head_sha || finalHeadSha !== input.sourceProvenance?.headSha) {
-      throw new GitHubPullRequestHeadChangedError(job.head_sha, finalHeadSha, "final");
+    if (finalAnchor.headSha !== job.head_sha || finalAnchor.headSha !== input.sourceProvenance?.headSha) {
+      throw new GitHubPullRequestHeadChangedError(job.head_sha, finalAnchor.headSha, "final");
+    }
+    if (finalAnchor.baseSha !== input.sourceProvenance?.baseSha) {
+      throw new GitHubPullRequestHeadChangedError(
+        input.sourceProvenance?.baseSha ?? "missing",
+        finalAnchor.baseSha,
+        "final",
+        "base"
+      );
     }
 
     const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, sideEffects, env);
@@ -739,7 +747,7 @@ function classifyWorkerFailure(error: unknown): { retryable: boolean; code: stri
     return {
       retryable: false,
       code: "github_app_pr_head_changed",
-      summary: "GitHub pull request head changed during evidence collection; AgentProof did not save or publish a report."
+      summary: "GitHub pull request head or base changed during evidence collection; AgentProof did not save or publish a report."
     };
   }
 

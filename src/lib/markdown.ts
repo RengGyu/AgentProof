@@ -1,4 +1,5 @@
 import { getExecutionEvidenceItems, statusFromEvidenceSummary } from "./execution-evidence";
+import { redactSecrets } from "./redact";
 import type { VerificationReport } from "./types";
 
 export const AGENTPROOF_COMMENT_MARKER = "<!-- agentproof:evidence-check:v1 -->";
@@ -10,34 +11,56 @@ export function reportToMarkdown(report: VerificationReport): string {
   const lines = [
     `# AgentProof Evidence Report`,
     "",
-    `**PR:** ${report.source.title}`,
-    report.source.url ? `**URL:** ${report.source.url}` : undefined,
+    `**PR:** ${safeInlineText(report.source.title)}`,
+    report.source.url ? `**URL:** ${safeInlineText(report.source.url)}` : undefined,
     `**Priority:** ${report.summary.priority.toUpperCase()}`,
     `**Evidence coverage:** ${report.summary.evidenceCoverage}%`,
     `**Confidence:** ${Math.round(report.summary.confidence * 100)}%`,
     "",
     `## Summary`,
     "",
-    report.summary.oneLine,
+    safeInlineText(report.summary.oneLine),
     "",
     `## Requirement Coverage`,
     "",
     ...report.requirements.flatMap((requirement) => [
-      `- **${requirement.status.toUpperCase()}** ${requirement.requirementText}`,
-      requirement.reviewerNote ? `  - Evidence note: ${requirement.reviewerNote}` : undefined,
-      requirement.gaps.length > 0 ? `  - Gaps: ${requirement.gaps.join("; ")}` : undefined,
+      `- **${requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}`,
+      requirement.reviewerNote ? `  - Evidence note: ${safeInlineText(requirement.reviewerNote)}` : undefined,
+      requirement.gaps.length > 0 ? `  - Gaps: ${requirement.gaps.map(safeInlineText).join("; ")}` : undefined,
       ...evidenceLines(requirement.evidenceRefs, evidenceById, "  ")
+    ]),
+    "",
+    `## Requirement Proof Graph`,
+    "",
+    `- Requirements with implementation evidence: ${report.proofGraph.summary.requirementsWithImplementation}/${report.proofGraph.summary.requirementCount}`,
+    `- Requirements with targeted test evidence: ${report.proofGraph.summary.requirementsWithTargetedTests}/${report.proofGraph.summary.requirementCount}`,
+    `- Requirements with execution evidence: ${report.proofGraph.summary.requirementsWithExecution}/${report.proofGraph.summary.requirementCount}`,
+    `- Requirement proof gaps: ${report.proofGraph.summary.gapCount}`,
+    "",
+    ...report.proofGraph.nodes.flatMap((node) => [
+      `- **${node.status.toUpperCase()}** ${safeInlineText(node.requirementText)}`,
+      node.firstFiles.length > 0 ? `  - First files: ${node.firstFiles.map(safeInlineCode).join(", ")}` : undefined,
+      `  - Evidence classes: implementation ${node.implementationEvidenceRefs.length}; targeted tests ${node.targetedTestEvidenceRefs.length}; execution ${node.executionEvidenceRefs.length}`,
+      node.gapSignals.length > 0
+        ? `  - Gap signals: ${node.gapSignals.map((gap) => `${gap.severity}/${gap.kind}: ${safeInlineText(gap.message)}`).join("; ")}`
+        : undefined,
+      ...evidenceLines(uniqueRefs([
+        ...node.implementationEvidenceRefs,
+        ...node.targetedTestEvidenceRefs,
+        ...node.executionEvidenceRefs,
+        ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
+      ]), evidenceById, "  ")
     ]),
     "",
     `## Top Risks`,
     "",
-    ...report.summary.topRisks.map((risk) => `- ${risk}`),
+    ...report.summary.topRisks.map((risk) => `- ${safeInlineText(risk)}`),
     "",
     `## Scope`,
     "",
     report.scope.suspected
       ? [
-          ...report.scope.reasons.map((reason) => `- ${reason}`),
+          ...report.scope.reasons.map((reason) => `- ${safeInlineText(reason)}`),
           ...provenanceLines(report.scope.provenance),
           ...evidenceLines(report.scope.evidenceRefs ?? [], evidenceById)
         ].join("\n")
@@ -49,7 +72,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     `- Lint: ${report.testing.lintStatus}`,
     `- Typecheck: ${report.testing.typecheckStatus}`,
     ...report.testing.missingTests.flatMap((item) => [
-      `- Missing test evidence for \`${item.path}\`: ${item.why}`,
+      `- Missing test evidence for ${safeInlineCode(item.path)}: ${safeInlineText(item.why)}`,
       ...provenanceLines(item.provenance, "  "),
       ...evidenceLines(item.evidenceRefs, evidenceById, "  ")
     ]),
@@ -63,26 +86,26 @@ export function reportToMarkdown(report: VerificationReport): string {
     `## Verification Priority`,
     "",
     ...report.reviewPriority.flatMap((item) => [
-      `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}`,
+      `- **${item.priority.toUpperCase()}** ${safeInlineCode(item.path)}: ${safeInlineText(item.reason)}`,
       ...evidenceLines(item.evidenceRefs ?? [], evidenceById, "  ")
     ]),
     "",
     `## Re-prompt`,
     "",
     "```text",
-    report.reprompt.prompt,
+    safeFencedText(report.reprompt.prompt),
     "```",
     "",
     `## Evidence Index`,
     "",
     ...report.evidenceIndex.map(
       (item) =>
-        `- \`${item.id}\` source=${item.kind}; locator=${item.locator ?? item.label}; confidence=${Math.round(item.confidence * 100)}%; text=${item.summary}`
+        `- ${safeInlineCode(item.id)} source=${item.kind}; locator=${safeInlineText(item.locator ?? item.label)}; confidence=${Math.round(item.confidence * 100)}%; text=${safeInlineText(item.summary)}`
     ),
     "",
     `## Limitations`,
     "",
-    ...(report.limitations.length > 0 ? report.limitations.map((item) => `- ${item}`) : ["- No major data limitations detected."])
+    ...(report.limitations.length > 0 ? report.limitations.map((item) => `- ${safeInlineText(item)}`) : ["- No major data limitations detected."])
   ];
 
   return lines.filter((line): line is string => typeof line === "string").join("\n");
@@ -98,22 +121,30 @@ export function reportToGitHubComment(
     const evidence = requirement.evidenceRefs.length > 0
       ? ` Evidence: ${formatEvidenceRefs(requirement.evidenceRefs, evidenceById)}`
       : "";
-    const gaps = requirement.gaps.length > 0 ? ` Gap: ${requirement.gaps.join("; ")}` : "";
+    const gaps = requirement.gaps.length > 0 ? ` Gap: ${requirement.gaps.map(safeInlineText).join("; ")}` : "";
 
-    return `- **${requirement.status.toUpperCase()}** ${requirement.requirementText}${evidence}${gaps}`;
+    return `- **${requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}${evidence}${gaps}`;
   });
-  const riskLines = report.summary.topRisks.slice(0, 5).map((risk) => `- ${risk}`);
+  const riskLines = report.summary.topRisks.slice(0, 5).map((risk) => `- ${safeInlineText(risk)}`);
+  const proofGapLines = report.proofGraph.nodes
+    .flatMap((node) => node.gapSignals.map((gap) => ({ node, gap })))
+    .filter(({ gap }) => gap.severity === "blocker" || gap.severity === "high" || gap.kind === "missing_execution")
+    .slice(0, 5)
+    .map(({ node, gap }) => {
+      const files = node.firstFiles.length > 0 ? ` First files: ${node.firstFiles.map(safeInlineCode).join(", ")}.` : "";
+      return `- **${gap.severity.toUpperCase()}** ${safeInlineText(node.requirementText)}: ${safeInlineText(gap.message)}${files}`;
+    });
   const priorityLines = report.reviewPriority.slice(0, 5).map(
     (item) =>
-      `- **${item.priority.toUpperCase()}** \`${item.path}\`: ${item.reason}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
+      `- **${item.priority.toUpperCase()}** ${safeInlineCode(item.path)}: ${safeInlineText(item.reason)}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
   );
   const missingTestLines = report.testing.missingTests.slice(0, 5).map(
-    (item) => `- \`${item.path}\`: ${item.why}${formatOptionalProvenance(item.provenance)}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
+    (item) => `- ${safeInlineCode(item.path)}: ${safeInlineText(item.why)}${formatOptionalProvenance(item.provenance)}${formatOptionalEvidence(item.evidenceRefs, evidenceById)}`
   );
-  const limitationLines = report.limitations.slice(0, 4).map((limitation) => `- ${limitation}`);
+  const limitationLines = report.limitations.slice(0, 4).map((limitation) => `- ${safeInlineText(limitation)}`);
   const scopeLines = report.scope.suspected
     ? [
-        ...report.scope.reasons.slice(0, 5).map((reason) => `- ${reason}`),
+        ...report.scope.reasons.slice(0, 5).map((reason) => `- ${safeInlineText(reason)}`),
         ...provenanceLines(report.scope.provenance, "", { concise: true, limit: 3 }),
         ...(report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0
           ? [`- Evidence: ${formatEvidenceRefs(report.scope.evidenceRefs, evidenceById)}`]
@@ -127,7 +158,7 @@ export function reportToGitHubComment(
     "",
     `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **Test/Build:** ${report.testing.ciStatus}`,
     "",
-    report.summary.oneLine,
+    safeInlineText(report.summary.oneLine),
     "",
     "### Requirement Coverage",
     "",
@@ -136,6 +167,10 @@ export function reportToGitHubComment(
     "### Top Risks",
     "",
     ...(riskLines.length > 0 ? riskLines : ["- No major risks detected from available evidence."]),
+    "",
+    "### Requirement Proof Gaps",
+    "",
+    ...(proofGapLines.length > 0 ? proofGapLines : ["- No high-priority requirement proof gaps found from available evidence."]),
     "",
     "### Scope",
     "",
@@ -171,7 +206,7 @@ export function reportToGitHubComment(
           "<summary>Agent re-prompt</summary>",
           "",
           "```text",
-          report.reprompt.prompt,
+          safeFencedText(report.reprompt.prompt),
           "```",
           "",
           "</details>"
@@ -188,7 +223,7 @@ function formatExecutionEvidenceLine(
 ): string {
   const locator = item.locator ?? item.label;
   const confidence = `${Math.round(item.confidence * 100)}%`;
-  const baseLine = `- **${item.status.toUpperCase()}** \`${item.id}\` ${item.kind} \`${locator}\` (${confidence}): ${item.displaySummary}`;
+  const baseLine = `- **${item.status.toUpperCase()}** ${safeInlineCode(item.id)} ${item.kind} ${safeInlineCode(locator)} (${confidence}): ${safeInlineText(item.displaySummary)}`;
   const locations = formatFailureLocations(item.failureLocations, options.locationLimit ?? 5, options.compactLocations);
 
   return locations ? `${baseLine}\n  - Failure locations: ${locations}` : baseLine;
@@ -216,10 +251,10 @@ function provenanceLines(
     const confidence = `${Math.round(item.confidence * 100)}%`;
 
     if (options.concise) {
-      return `${indent}- Provenance: ${item.sourceType} \`${locator}\` ${confidence}`;
+      return `${indent}- Provenance: ${item.sourceType} ${safeInlineCode(locator)} ${confidence}`;
     }
 
-    return `${indent}- Provenance: ${item.evidenceRef} source=${item.sourceType}; locator=${locator}; confidence=${confidence}; text=${item.evidenceText}`;
+    return `${indent}- Provenance: ${safeInlineText(item.evidenceRef)} source=${item.sourceType}; locator=${safeInlineText(locator)}; confidence=${confidence}; text=${safeInlineText(item.evidenceText)}`;
   });
 }
 
@@ -230,7 +265,7 @@ function formatOptionalProvenance(
 
   const shown = provenance.slice(0, 2).map((item) => {
     const locator = item.locator ?? "unknown locator";
-    return `${item.sourceType} ${locator} ${Math.round(item.confidence * 100)}%`;
+    return `${item.sourceType} ${safeInlineText(locator)} ${Math.round(item.confidence * 100)}%`;
   });
 
   return ` Provenance: ${shown.join("; ")}`;
@@ -250,6 +285,10 @@ function formatEvidenceRefs(
   return refs.map((ref) => formatEvidenceRef(ref, evidenceById, { concise: true })).join("; ");
 }
 
+function uniqueRefs(refs: string[]): string[] {
+  return Array.from(new Set(refs));
+}
+
 function formatEvidenceRef(
   ref: string,
   evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>,
@@ -258,7 +297,7 @@ function formatEvidenceRef(
   const evidence = evidenceById.get(ref);
 
   if (!evidence) {
-    return `${ref} (missing evidence item)`;
+    return `${safeInlineText(ref)} (missing evidence item)`;
   }
 
   const locator = evidence.locator ?? evidence.label;
@@ -268,10 +307,10 @@ function formatEvidenceRef(
     : "";
 
   if (options.concise) {
-    return `${ref} ${evidence.kind}${executionStatus} ${locator} ${confidence}`;
+    return `${safeInlineText(ref)} ${evidence.kind}${executionStatus} ${safeInlineText(locator)} ${confidence}`;
   }
 
-  return `${ref} source=${evidence.kind}; locator=${locator}; confidence=${confidence}; text=${evidence.summary}`;
+  return `${safeInlineText(ref)} source=${evidence.kind}; locator=${safeInlineText(locator)}; confidence=${confidence}; text=${safeInlineText(evidence.summary)}`;
 }
 
 function formatFailureLocations(
@@ -285,7 +324,7 @@ function formatFailureLocations(
 
   const shown = locations.slice(0, limit).map((location) => {
     const locator = location.line ? `${location.path}:${location.line}` : location.path;
-    return compact ? `\`${locator}\`` : `\`${location.level} at ${locator}\``;
+    return compact ? safeInlineCode(locator) : safeInlineCode(`${location.level} at ${locator}`);
   });
   const hiddenCount = Math.max(0, locations.length - shown.length);
 
@@ -294,6 +333,33 @@ function formatFailureLocations(
 
 export function neutralizeGitHubMentions(value: string): string {
   return value.replace(/@(?=[a-z0-9][a-z0-9-]{0,38}\b)/gi, "@\u200B");
+}
+
+function safeInlineText(value: string): string {
+  return safeMarkdownBlock(value).replace(/\s*\n+\s*/g, " / ");
+}
+
+function safeInlineCode(value: string): string {
+  return `\`${safeInlineText(value).replace(/`/g, "'")}\``;
+}
+
+function safeFencedText(value: string): string {
+  return safeMarkdownBlock(value);
+}
+
+function safeMarkdownBlock(value: string): string {
+  return neutralizeGitHubMentions(redactSecrets(value))
+    .replace(/\r\n/g, "\n")
+    .replace(/```/g, "`\u200B``")
+    .replace(/<!--/g, "&lt;!--")
+    .replace(/-->/g, "--&gt;")
+    .replace(/<\/?details[^>]*>/gi, escapeHtmlTag)
+    .replace(/<\/?script[^>]*>/gi, escapeHtmlTag)
+    .replace(/\]\s*\(/g, "]\u200B(");
+}
+
+function escapeHtmlTag(value: string): string {
+  return value.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function truncateComment(value: string): string {

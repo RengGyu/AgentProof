@@ -134,13 +134,17 @@ describe("buildPullRequestInput", () => {
           body: "Adds validation.",
           url: "https://api.github.com/repos/acme/repo/pulls/12",
           user: { login: "ai-agent" },
-          base: { ref: "main" },
+          base: { ref: "main", sha: "def456" },
           head: { ref: "agent/validation", sha: "abc123" }
         })
       )
       .mockResolvedValueOnce(Response.json([]))
       .mockResolvedValueOnce(Response.json({ total_count: 0, check_runs: [] }))
-      .mockResolvedValueOnce(Response.json({ statuses: [] }));
+      .mockResolvedValueOnce(Response.json({ statuses: [] }))
+      .mockResolvedValue(Response.json({
+        base: { sha: "def456" },
+        head: { sha: "abc123" }
+      }));
     vi.stubGlobal("fetch", fetchMock);
 
     const input = await buildPullRequestInput({
@@ -153,6 +157,39 @@ describe("buildPullRequestInput", () => {
     expect(firstFetchOptions?.headers?.Authorization).toBeUndefined();
   });
 
+  it.each([
+    { anchor: "head" as const, finalHeadSha: "changed123", finalBaseSha: "def456" },
+    { anchor: "base" as const, finalHeadSha: "abc123", finalBaseSha: "changed456" }
+  ])("fails closed when the PR $anchor anchor drifts during collection", async ({
+    anchor,
+    finalHeadSha,
+    finalBaseSha
+  }) => {
+    let pullReads = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        pullReads += 1;
+        return Promise.resolve(Response.json({
+          title: "Drifting PR",
+          body: "Implemented validation.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: pullReads === 1 ? "def456" : finalBaseSha },
+          head: { ref: "agent/validation", sha: pullReads === 1 ? "abc123" : finalHeadSha }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      changedFiles: "src/fallback-should-not-be-used.ts"
+    })).rejects.toThrow(`GitHub pull request ${anchor} changed`);
+  });
+
   it("redacts token-looking values from GitHub check and status summaries", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
@@ -162,7 +199,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -225,7 +262,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #42",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/reset", sha: "abc123" }
           })
         );
@@ -275,7 +312,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #42",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/reset", sha: "abc123" }
           })
         );
@@ -317,7 +354,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #1. Closes #2. Resolves owner/other#3. docs/site#4.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/ambiguous", sha: "abc123" }
           })
         );
@@ -352,7 +389,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #42",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/reset", sha: "abc123" }
           })
         );
@@ -379,7 +416,8 @@ describe("buildPullRequestInput", () => {
     expect(input.taskText).toBe("");
     expect(input.taskSource).toBeUndefined();
     expect(input.limitations?.join(" ")).toContain("Linked issue acme/repo#42 could not be fetched");
-    expect(input.limitations?.join(" ")).toContain("fell back to PR description");
+    expect(input.limitations?.join(" ")).toContain("Original requirement remains unavailable");
+    expect(input.limitations?.join(" ")).toContain("PR description is author context only");
     expect(serialized).not.toContain("github_pat_secret_should_not_leak");
     expect(serialized).not.toContain("not found with");
   });
@@ -393,13 +431,17 @@ describe("buildPullRequestInput", () => {
           body: "Adds validation.",
           url: "https://api.github.com/repos/acme/repo/pulls/12",
           user: { login: "ai-agent" },
-          base: { ref: "main" },
+          base: { ref: "main", sha: "def456" },
           head: { ref: "agent/validation", sha: "abc123" }
         })
       )
       .mockResolvedValueOnce(Response.json([]))
       .mockResolvedValueOnce(Response.json({ total_count: 0, check_runs: [] }))
-      .mockResolvedValueOnce(Response.json({ statuses: [] }));
+      .mockResolvedValueOnce(Response.json({ statuses: [] }))
+      .mockResolvedValue(Response.json({
+        base: { sha: "def456" },
+        head: { sha: "abc123" }
+      }));
     const records: Array<{ phase: GitHubEvidenceTimingPhase; durationMs: number }> = [];
     vi.stubGlobal("fetch", fetchMock);
 
@@ -434,13 +476,17 @@ describe("buildPullRequestInput", () => {
           body: "Adds validation.",
           url: "https://api.github.com/repos/acme/repo/pulls/12",
           user: { login: "ai-agent" },
-          base: { ref: "main" },
+          base: { ref: "main", sha: "def456" },
           head: { ref: "agent/validation", sha: "abc123" }
         })
       )
       .mockResolvedValueOnce(Response.json([]))
       .mockResolvedValueOnce(Response.json({ total_count: 0, check_runs: [] }))
-      .mockResolvedValueOnce(Response.json({ statuses: [] }));
+      .mockResolvedValueOnce(Response.json({ statuses: [] }))
+      .mockResolvedValue(Response.json({
+        base: { sha: "def456" },
+        head: { sha: "abc123" }
+      }));
     const throwingSink = {
       record() {
         throw new Error("timing sink exploded");
@@ -473,7 +519,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -535,7 +581,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -600,7 +646,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -661,7 +707,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -709,7 +755,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -761,7 +807,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds generated files.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/generated", sha: "abc123" }
           })
         );
@@ -814,7 +860,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -860,7 +906,7 @@ describe("buildPullRequestInput", () => {
     });
 
     expect(input.checks).toEqual([
-      expect.objectContaining({ name: "unit tests", status: "passed" }),
+      expect.objectContaining({ name: "unit tests", status: "unknown" }),
       expect.objectContaining({ name: "legacy e2e tests", status: "failed" })
     ]);
     expect(input.limitations?.join(" ")).not.toContain("legacy commit-status evidence was skipped");
@@ -876,7 +922,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -937,7 +983,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -973,7 +1019,7 @@ describe("buildPullRequestInput", () => {
     });
 
     expect(input.checks).toEqual([
-      expect.objectContaining({ name: "legacy unit tests", status: "passed" })
+      expect.objectContaining({ name: "legacy unit tests", status: "unknown" })
     ]);
     expect(input.limitations?.join(" ")).not.toContain("legacy commit-status evidence was skipped");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
@@ -1012,7 +1058,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1075,11 +1121,11 @@ describe("buildPullRequestInput", () => {
     expect(input.logs).toEqual([
       expect.objectContaining({
         source: "GitHub Actions job: unit tests",
-        status: "passed",
-        text: expect.stringContaining("pnpm test: passed")
+        status: "unknown",
+        text: expect.stringContaining("pnpm test: unknown")
       })
     ]);
-    expect(input.logs[0]?.text).toContain("pnpm build: passed");
+    expect(input.logs[0]?.text).toContain("pnpm build: unknown");
     expect(input.logs[0]?.text).not.toContain("checkout");
     expect(input.logs[0]?.url).toBeUndefined();
     expect(input.logs[0]?.text).not.toContain("docs preview");
@@ -1098,7 +1144,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1187,7 +1233,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1285,7 +1331,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1351,7 +1397,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1407,12 +1453,12 @@ describe("buildPullRequestInput", () => {
     expect(input.logs).toEqual([
       expect.objectContaining({
         source: "GitHub Actions job: CI",
-        status: "passed",
+        status: "unknown",
         url: "https://github.com/acme/repo/actions/runs/123456/job/999",
-        text: expect.stringContaining("pnpm test src/app/api/analyze/route.test.ts: passed")
+        text: expect.stringContaining("pnpm test src/app/api/analyze/route.test.ts: unknown")
       })
     ]);
-    expect(input.logs[0]?.text).toContain("pnpm build: passed");
+    expect(input.logs[0]?.text).toContain("pnpm build: unknown");
     expect(input.logs[0]?.text).not.toContain("Checkout");
     expect(input.logs[0]?.text).not.toContain("Upload test report");
     expect(JSON.stringify(input)).not.toContain("ghp_secret");
@@ -1427,7 +1473,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes CSS preload handling.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/css-preload", sha: "abc123" }
           })
         );
@@ -1482,12 +1528,12 @@ describe("buildPullRequestInput", () => {
     expect(input.logs).toEqual([
       expect.objectContaining({
         source: "GitHub Actions job: Build&Test: node-24, ubuntu-latest",
-        status: "passed",
-        text: expect.stringContaining("Test unit: passed")
+        status: "unknown",
+        text: expect.stringContaining("Test unit: unknown")
       })
     ]);
-    expect(input.logs[0]?.text).toContain("pnpm build: passed");
-    expect(input.limitations?.join(" ")).toContain("Public GitHub Actions metadata showed passing build/test jobs");
+    expect(input.logs[0]?.text).toContain("pnpm build: unknown");
+    expect(input.limitations?.join(" ")).toContain("success remains unverified");
   });
 
   it("collects Build&Test job metadata from generic workflow and checks check-runs", async () => {
@@ -1499,7 +1545,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #42.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/build-test", sha: "abc123" }
           })
         );
@@ -1573,8 +1619,8 @@ describe("buildPullRequestInput", () => {
       "GitHub Actions job: Build&Test",
       "GitHub Actions job: checks"
     ]);
-    expect(input.logs.map((log) => log.status)).toEqual(["passed", "passed"]);
-    expect(input.limitations?.join(" ")).toContain("Public GitHub Actions metadata showed passing build/test jobs");
+    expect(input.logs.map((log) => log.status)).toEqual(["unknown", "unknown"]);
+    expect(input.limitations?.join(" ")).toContain("success remains unverified");
   });
 
   it("keeps failed execution check-runs when check-run evidence is capped", async () => {
@@ -1586,7 +1632,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #42.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/capped-checks", sha: "abc123" }
           })
         );
@@ -1643,7 +1689,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #42.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/python-tests", sha: "abc123" }
           })
         );
@@ -1714,7 +1760,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1829,7 +1875,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1907,7 +1953,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -1958,7 +2004,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -2014,7 +2060,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -2074,7 +2120,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -2136,7 +2182,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -2183,7 +2229,7 @@ describe("buildPullRequestInput", () => {
             body: "Fixes #42.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/changelog", sha: "abc123" }
           })
         );
@@ -2240,7 +2286,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -2300,7 +2346,7 @@ describe("buildPullRequestInput", () => {
             body: "Touches many files.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/large", sha: "abc123" }
           })
         );
@@ -2339,7 +2385,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );
@@ -2385,7 +2431,7 @@ describe("buildPullRequestInput", () => {
             body: "Adds validation.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/validation", sha: "abc123" }
           })
         );

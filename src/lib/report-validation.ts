@@ -200,16 +200,24 @@ function validateSource(value: unknown, errors: string[], requireSourceProvenanc
 
 function validateSourceProvenance(value: unknown, errors: string[], requireFullHeadSha: boolean) {
   if (!isRecord(value)) { errors.push("source.provenance must be an object."); return; }
-  requireKeys(value, ["version", "origin", "evidenceCapturedAt", "inputFingerprint"], "source.provenance", errors, ["headSha"]);
+  requireKeys(value, ["version", "origin", "evidenceCapturedAt", "inputFingerprint"], "source.provenance", errors, ["headSha", "baseSha"]);
   if (value.version !== 1) errors.push("source.provenance.version must be 1.");
   const origin = value.origin;
   if (origin !== "github_snapshot" && origin !== "pasted_evidence" && origin !== "demo") errors.push("source.provenance.origin is invalid.");
   validateString(value.evidenceCapturedAt, "source.provenance.evidenceCapturedAt", LIMITS.createdAt, errors);
   if (typeof value.evidenceCapturedAt === "string" && Number.isNaN(Date.parse(value.evidenceCapturedAt))) errors.push("source.provenance.evidenceCapturedAt must be an ISO timestamp.");
   if (origin === "github_snapshot") {
-    const headShaPattern = requireFullHeadSha ? /^[a-f0-9]{40,64}$/ : /^[a-f0-9]{6,64}$/;
-    if (typeof value.headSha !== "string" || !headShaPattern.test(value.headSha)) errors.push(requireFullHeadSha ? "source.provenance.headSha must be a full lowercase Git commit SHA for github_snapshot." : "source.provenance.headSha must be a lowercase Git commit SHA for github_snapshot.");
-  } else if (value.headSha !== undefined) errors.push("source.provenance.headSha is allowed only for github_snapshot.");
+    const shaPattern = requireFullHeadSha ? /^[a-f0-9]{40,64}$/ : /^[a-f0-9]{6,64}$/;
+    if (typeof value.headSha !== "string" || !shaPattern.test(value.headSha)) errors.push(requireFullHeadSha ? "source.provenance.headSha must be a full lowercase Git commit SHA for github_snapshot." : "source.provenance.headSha must be a lowercase Git commit SHA for github_snapshot.");
+    if (requireFullHeadSha && (typeof value.baseSha !== "string" || !shaPattern.test(value.baseSha))) {
+      errors.push("source.provenance.baseSha must be a full lowercase Git commit SHA for github_snapshot.");
+    } else if (value.baseSha !== undefined && (typeof value.baseSha !== "string" || !shaPattern.test(value.baseSha))) {
+      errors.push("source.provenance.baseSha must be a lowercase Git commit SHA for github_snapshot.");
+    }
+  } else {
+    if (value.headSha !== undefined) errors.push("source.provenance.headSha is allowed only for github_snapshot.");
+    if (value.baseSha !== undefined) errors.push("source.provenance.baseSha is allowed only for github_snapshot.");
+  }
   if (!isRecord(value.inputFingerprint)) { errors.push("source.provenance.inputFingerprint must be an object."); return; }
   requireKeys(value.inputFingerprint, ["version", "algorithm", "value", "coverage"], "source.provenance.inputFingerprint", errors);
   if (value.inputFingerprint.version !== 1) errors.push("source.provenance.inputFingerprint.version must be 1.");

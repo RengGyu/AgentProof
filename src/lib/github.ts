@@ -73,15 +73,17 @@ export class GitHubPullRequestHeadChangedError extends Error {
   constructor(
     public readonly expectedHeadSha: string,
     public readonly observedHeadSha: string,
-    public readonly phase: "initial" | "final"
+    public readonly phase: "initial" | "final",
+    public readonly anchor: "head" | "base" = "head"
   ) {
-    super("GitHub pull request head changed while AgentProof was collecting evidence.");
+    super(`GitHub pull request ${anchor} changed while AgentProof was collecting evidence.`);
     this.name = "GitHubPullRequestHeadChangedError";
   }
 }
 
 export interface GitHubPullRequestSnapshotOptions {
   expectedHeadSha?: string;
+  expectedBaseSha?: string;
   now?: () => Date;
 }
 
@@ -217,6 +219,10 @@ export async function buildPullRequestInput(
         return mergePastedOverrides(live, request);
       }
     } catch (error) {
+      if (error instanceof GitHubPullRequestHeadChangedError) {
+        throw error;
+      }
+
       if (!hasPastedEvidence(request)) {
         throw error;
       }
@@ -323,7 +329,9 @@ async function fetchGitHubPullRequest(
 
   const pr = await prResponse.json();
   const initialHeadSha = requireGitHubHeadSha(pr, "initial");
-  assertExpectedHeadSha(snapshotOptions.expectedHeadSha, initialHeadSha, "initial");
+  const initialBaseSha = requireGitHubBaseSha(pr, "initial");
+  assertExpectedAnchor(snapshotOptions.expectedHeadSha, initialHeadSha, "initial", "head");
+  assertExpectedAnchor(snapshotOptions.expectedBaseSha, initialBaseSha, "initial", "base");
   const limitations: string[] = [];
   const linkedIssueTask = await resolveLinkedIssueTaskText({
     prBody: String(pr.body ?? ""),
@@ -374,6 +382,14 @@ async function fetchGitHubPullRequest(
     );
   }
 
+  const finalAnchor = await fetchGitHubPullRequestAnchorFromApi(
+    `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
+    headers,
+    hasToken
+  );
+  assertExpectedAnchor(initialHeadSha, finalAnchor.headSha, "final", "head");
+  assertExpectedAnchor(initialBaseSha, finalAnchor.baseSha, "final", "base");
+
   const input: PullRequestInput = {
     url: safePrUrl,
     title: pr.title ?? `PR #${parsed.number}`,
@@ -392,12 +408,12 @@ async function fetchGitHubPullRequest(
     })),
     checks: annotatedCheckRuns.map((check) => ({
       name: check.name,
-      status: mapGitHubCheckStatus(check.status, check.conclusion),
+      status: mapGitHubObservationStatus(mapGitHubCheckStatus(check.status, check.conclusion)),
       summary: checkSummaryWithAnnotations(check),
       url: sanitizeGitHubEvidenceUrl(check.html_url)
     })).concat(statuses.map((status) => ({
       name: status.context,
-      status: mapGitHubCommitStatus(status.state),
+      status: mapGitHubObservationStatus(mapGitHubCommitStatus(status.state)),
       summary: status.description ? compactText(status.description, 240) : undefined,
       url: sanitizeGitHubEvidenceUrl(status.target_url)
     }))),
@@ -408,6 +424,7 @@ async function fetchGitHubPullRequest(
     origin: "github_snapshot",
     input,
     headSha: initialHeadSha,
+    baseSha: initialBaseSha,
     capturedAt: (snapshotOptions.now ?? (() => new Date()))().toISOString()
   });
   return input;
@@ -423,11 +440,63 @@ function requireGitHubHeadSha(pr: unknown, phase: "initial" | "final"): string {
   return value;
 }
 
-function assertExpectedHeadSha(expectedHeadSha: string | undefined, observedHeadSha: string, phase: "initial" | "final") {
-  if (expectedHeadSha?.trim() && expectedHeadSha.trim() !== observedHeadSha) throw new GitHubPullRequestHeadChangedError(expectedHeadSha.trim(), observedHeadSha, phase);
+function requireGitHubBaseSha(pr: unknown, phase: "initial" | "final"): string {
+  const value = typeof pr === "object" && pr !== null
+    && "base" in pr && typeof pr.base === "object" && pr.base !== null
+    && "sha" in pr.base && typeof pr.base.sha === "string"
+    ? pr.base.sha.trim()
+    : "";
+  if (!value) throw new GitHubFetchError(0, "github_fetch_failed", `GitHub ${phase} pull request metadata did not include a base SHA.`);
+  return value;
+}
+
+function assertExpectedAnchor(
+  expectedSha: string | undefined,
+  observedSha: string,
+  phase: "initial" | "final",
+  anchor: "head" | "base"
+) {
+  if (expectedSha?.trim() && expectedSha.trim() !== observedSha) {
+    throw new GitHubPullRequestHeadChangedError(expectedSha.trim(), observedSha, phase, anchor);
+  }
+}
+
+async function fetchGitHubPullRequestAnchorFromApi(
+  url: string,
+  headers: Record<string, string>,
+  hasToken: boolean
+): Promise<{ headSha: string; baseSha: string }> {
+  let response: Response;
+  try {
+    response = await githubFetch(url, headers);
+  } catch {
+    throw new GitHubFetchError(
+      0,
+      "github_fetch_failed",
+      "GitHub final pull request metadata request timed out or network failed.",
+      hasToken
+    );
+  }
+  if (!response.ok) {
+    const failure = classifyGitHubFailure(response, hasToken);
+    throw new GitHubFetchError(response.status, failure.code, failure.reason, hasToken);
+  }
+  const pr = await response.json();
+  return {
+    headSha: requireGitHubHeadSha(pr, "final"),
+    baseSha: requireGitHubBaseSha(pr, "final")
+  };
 }
 
 export async function fetchGitHubPullRequestHead(prUrl: string, token: string | undefined, evidenceTiming?: GitHubEvidenceTimingSink): Promise<string | null> {
+  return (await fetchGitHubPullRequestAnchor(prUrl, token, evidenceTiming))?.headSha ?? null;
+}
+
+export async function fetchGitHubPullRequestAnchor(
+  prUrl: string,
+  token: string | undefined,
+  evidenceTiming?: GitHubEvidenceTimingSink
+): Promise<{ headSha: string; baseSha: string } | null> {
   const parsed = parseGitHubPullUrl(prUrl);
   if (!parsed) return null;
   const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
@@ -443,13 +512,17 @@ export async function fetchGitHubPullRequestHead(prUrl: string, token: string | 
     const failure = classifyGitHubFailure(response, hasToken);
     throw new GitHubFetchError(response.status, failure.code, failure.reason, hasToken);
   }
-  return requireGitHubHeadSha(await response.json(), "final");
+  const pr = await response.json();
+  return {
+    headSha: requireGitHubHeadSha(pr, "final"),
+    baseSha: requireGitHubBaseSha(pr, "final")
+  };
 }
 
-function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha }: { origin: SourceProvenance["origin"]; input: PullRequestInput; capturedAt: string; headSha?: string }): SourceProvenance {
+function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseSha }: { origin: SourceProvenance["origin"]; input: PullRequestInput; capturedAt: string; headSha?: string; baseSha?: string }): SourceProvenance {
   const coverage = origin === "github_snapshot" ? "github_metadata" : origin === "demo" ? "demo_fixture" : "pasted_metadata";
   const canonical = JSON.stringify({
-    version: 1, origin, url: normalizeGitHubPullUrl(input.url ?? "") ?? undefined, headSha,
+    version: 1, origin, url: normalizeGitHubPullUrl(input.url ?? "") ?? undefined, headSha, baseSha,
     baseBranch: input.baseBranch ?? undefined, headBranch: input.headBranch ?? undefined, taskSource: input.taskSource ?? undefined,
     textLengths: { task: input.taskText.length, description: input.description.length },
     changedFiles: [...input.changedFiles].map((file) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, patchLength: file.patch?.length ?? 0 })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
@@ -457,7 +530,19 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha }: { o
     logs: [...input.logs].map((log) => ({ source: log.source, status: log.status, textLength: log.text.length, urlHost: safeUrlHost(log.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     limitations: [...(input.limitations ?? [])].map((limitation) => limitation.length).sort((left, right) => left - right)
   });
-  return { version: 1, origin, ...(headSha ? { headSha } : {}), evidenceCapturedAt: capturedAt, inputFingerprint: { version: 1, algorithm: "sha256", value: createHash("sha256").update(canonical).digest("hex"), coverage } };
+  return {
+    version: 1,
+    origin,
+    ...(headSha ? { headSha } : {}),
+    ...(baseSha ? { baseSha } : {}),
+    evidenceCapturedAt: capturedAt,
+    inputFingerprint: {
+      version: 1,
+      algorithm: "sha256",
+      value: createHash("sha256").update(canonical).digest("hex"),
+      coverage
+    }
+  };
 }
 
 function safeUrlHost(value: string | undefined): string | undefined {
@@ -480,15 +565,22 @@ function githubEvidenceSourceLimitations(
   const executionStatuses = [
     ...checkRuns
       .filter(isExecutionCheckRun)
-      .map((check) => mapGitHubCheckStatus(check.status, check.conclusion)),
+      .map((check) => mapGitHubObservationStatus(mapGitHubCheckStatus(check.status, check.conclusion))),
     ...statuses
       .filter((status) => isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url))
-      .map((status) => mapGitHubCommitStatus(status.state)),
+      .map((status) => mapGitHubObservationStatus(mapGitHubCommitStatus(status.state))),
     ...actionJobLogs
       .filter((log) => isExecutionEvidenceSignal(log.source, log.text, log.url))
       .map((log) => log.status ?? "unknown")
   ];
   const hasAnyPublicCheckMetadata = checkRuns.length > 0 || statuses.length > 0;
+  const hasReportedSuccessfulExecutionMetadata =
+    checkRuns.some((check) => isExecutionCheckRun(check) && mapGitHubCheckStatus(check.status, check.conclusion) === "passed") ||
+    statuses.some((status) =>
+      isExecutionEvidenceSignal(status.context, status.description ?? "", status.target_url) &&
+      mapGitHubCommitStatus(status.state) === "passed"
+    ) ||
+    actionJobLogs.some((log) => /\breported conclusion: success\b/i.test(log.text));
   const hasOnlyNonExecutionCommitStatuses = statuses.length > 0 && !hasExecutionStatus && !hasExecutionEvidence;
 
   if (hasExecutionEvidence) {
@@ -499,9 +591,13 @@ function githubEvidenceSourceLimitations(
       limitations.push(`${source} showed failing build/test jobs; raw log archives were not fetched or stored.`);
     } else if (executionStatuses.some((status) => status === "pending")) {
       limitations.push(`${source} showed pending build/test jobs; raw log archives were not fetched or stored.`);
-    } else if (executionStatuses.some((status) => status === "passed")) {
-      limitations.push(`${source} showed passing build/test jobs; raw log archives were not fetched or stored.`);
     }
+  }
+
+  if (hasReportedSuccessfulExecutionMetadata) {
+    limitations.push(
+      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation."
+    );
   }
 
   if (hasOnlyNonExecutionCommitStatuses) {
@@ -511,7 +607,7 @@ function githubEvidenceSourceLimitations(
   if (!hasExecutionEvidence) {
     limitations.push(
       hasAnyPublicCheckMetadata
-        ? "No public test/build workflow run, check, or raw CI log was available from the collected metadata."
+        ? "No public test/build workflow run, check, or raw CI log was available from the collected metadata. No verified execution evidence was established."
         : "No public test/build workflow run, check, or raw CI log was available."
     );
   }
@@ -723,14 +819,14 @@ async function fetchLinkedIssue(
   } catch {
     return {
       status: "failed",
-      limitation: `Linked issue ${ref} could not be fetched: request timed out or network failed. Requirement source fell back to PR description.`
+      limitation: `Linked issue ${ref} could not be fetched: request timed out or network failed. Original requirement remains unavailable; the PR description is author context only.`
     };
   }
 
   if (!response.ok) {
     return {
       status: "failed",
-      limitation: `Linked issue ${ref} could not be fetched: ${githubLinkedIssueFailureReason(response, hasToken)} Requirement source fell back to PR description.`
+      limitation: `Linked issue ${ref} could not be fetched: ${githubLinkedIssueFailureReason(response, hasToken)} Original requirement remains unavailable; the PR description is author context only.`
     };
   }
 
@@ -739,7 +835,7 @@ async function fetchLinkedIssue(
   if (issue.pull_request) {
     return {
       status: "failed",
-      limitation: `Linked reference ${ref} points to a pull request, not an issue. Requirement source fell back to PR description.`
+      limitation: `Linked reference ${ref} points to a pull request, not an issue. Original requirement remains unavailable; the PR description is author context only.`
     };
   }
 
@@ -750,7 +846,7 @@ async function fetchLinkedIssue(
   if (!taskText.trim()) {
     return {
       status: "failed",
-      limitation: `Linked issue ${ref} had no title or body text. Requirement source fell back to PR description.`
+      limitation: `Linked issue ${ref} had no title or body text. Original requirement remains unavailable; the PR description is author context only.`
     };
   }
 
@@ -1145,19 +1241,21 @@ async function fetchActionJobsForRun(
       .filter(isExecutionActionJob)
       .slice(0, GITHUB_MAX_ACTION_JOB_SUMMARIES)
       .map((job) => {
-        const status = mapGitHubCheckStatus(job.status, job.conclusion);
         const safeJobName = redactSecrets(compactText(job.name, 160));
         const steps = actionExecutionSteps(job)
           .filter((step) => step.name)
           .slice(0, GITHUB_MAX_ACTION_STEPS_PER_JOB)
-          .map((step) => `${redactSecrets(compactText(step.name, 160))}: ${mapGitHubCheckStatus(step.status, step.conclusion)}`)
+          .map((step) => `${redactSecrets(compactText(step.name, 160))}: ${mapGitHubObservationStatus(mapGitHubCheckStatus(step.status, step.conclusion))}`)
           .join("; ");
+        const rawStatus = mapGitHubCheckStatus(job.status, job.conclusion);
+        const status = mapGitHubObservationStatus(rawStatus);
+        const reportedConclusion = rawStatus === "passed" ? " Reported conclusion: success; execution output not collected." : "";
 
         return {
           source: `GitHub Actions job: ${safeJobName}`,
           status,
           url: sanitizeGitHubEvidenceUrl(job.html_url),
-          text: redactSecrets(compactText(`GitHub Actions job ${safeJobName}: ${status}${steps ? `. Steps: ${steps}` : ""}`, 900))
+          text: redactSecrets(compactText(`GitHub Actions job ${safeJobName}: ${status}.${reportedConclusion}${steps ? ` Steps: ${steps}` : ""}`, 900))
         };
       });
 
@@ -1202,8 +1300,8 @@ function githubActionsMetadataLimitation(logs: LogSnippet[]): string {
     return "Public GitHub Actions metadata showed pending build/test jobs; raw log archives were not fetched or stored.";
   }
 
-  if (statuses.some((status) => status === "passed")) {
-    return "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored.";
+  if (logs.some((log) => /\breported conclusion: success\b/i.test(log.text))) {
+    return "Public GitHub Actions metadata reported successful build/test jobs, but success remains unverified because execution output and raw log archives were not fetched or stored.";
   }
 
   return "Public GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.";
@@ -1351,4 +1449,8 @@ function mapGitHubCommitStatus(state: string): CheckRun["status"] {
   if (state === "failure" || state === "error") return "failed";
   if (state === "pending") return "pending";
   return "unknown";
+}
+
+function mapGitHubObservationStatus(status: CheckRun["status"]): CheckRun["status"] {
+  return status === "passed" ? "unknown" : status;
 }

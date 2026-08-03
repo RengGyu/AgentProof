@@ -1828,7 +1828,9 @@ function buildLimitations(
   const limitations: string[] = [];
 
   limitations.push(...(input.limitations ?? []));
-  if (!input.taskText.trim()) limitations.push("No original task text was provided; criteria were inferred from PR description.");
+  if (!input.taskText.trim()) {
+    limitations.push("No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context.");
+  }
   if (!hasExecutionEvidence) {
     if (!hasSourceConditionLimitation(limitations)) {
       limitations.push(
@@ -1857,8 +1859,8 @@ function buildLimitations(
 }
 
 function hasTestBuildExecutionEvidence(input: PullRequestInput): boolean {
-  return input.checks.some((check) => isCheckExecutionSignal(check)) ||
-    input.logs.some((log) => isLogExecutionSignal(log));
+  return input.checks.some((check) => check.status !== "unknown" && isCheckExecutionSignal(check)) ||
+    input.logs.some((log) => log.status !== "unknown" && isLogExecutionSignal(log));
 }
 
 function hasAnyCheckOrLogMetadata(input: PullRequestInput): boolean {
@@ -1867,7 +1869,7 @@ function hasAnyCheckOrLogMetadata(input: PullRequestInput): boolean {
 
 function hasSourceConditionLimitation(limitations: string[]): boolean {
   return limitations.some((limitation) =>
-    /Public GitHub Actions metadata showed|Public commit status metadata (?:was available|showed)|No public test\/build workflow run/i.test(limitation)
+    /Public GitHub (?:Actions )?metadata (?:showed|reported)|Public commit status metadata (?:was available|showed)|No (?:verified )?public test\/build/i.test(limitation)
   );
 }
 
