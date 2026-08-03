@@ -39,6 +39,10 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     () => new Map(report.evidenceIndex.map((item) => [item.id, item])),
     [report.evidenceIndex]
   );
+  const proofNodeByRequirement = useMemo(
+    () => new Map(report.proofGraph.nodes.map((node) => [node.requirementId, node])),
+    [report.proofGraph.nodes]
+  );
   const executionEvidence = useMemo(() => getExecutionEvidenceItems(report.evidenceIndex), [report.evidenceIndex]);
   const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | "share" | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -70,6 +74,15 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
         .slice(0, 3),
     [report.reviewPriority]
   );
+  const missingProofSummary = useMemo(
+    () => getMissingProofSummary(report, requirementStats),
+    [report, requirementStats]
+  );
+  const repromptLead = useMemo(
+    () => getRepromptLead(report.reprompt.prompt, isSummaryMode),
+    [isSummaryMode, report.reprompt.prompt]
+  );
+  const uncertaintyLine = useMemo(() => getUncertaintyLine(report, isSummaryMode), [isSummaryMode, report]);
 
   async function copyText(text: string, action: "report" | "comment" | "reprompt" | "share") {
     try {
@@ -120,6 +133,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
   async function postGitHubComment() {
     if (!report.source.url || !commentToken.trim()) {
       setActionMessage({ tone: "error", text: "PR URL and write token are required." });
+      setCommentToken("");
       return;
     }
 
@@ -143,7 +157,6 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
       }
 
       setPostedCommentUrl(json.url);
-      setCommentToken("");
       setActionMessage({
         tone: "success",
         text: json.warning ? `GitHub comment ${json.action}. ${json.warning}` : `GitHub comment ${json.action}.`
@@ -154,6 +167,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
         text: error instanceof Error ? error.message : "GitHub comment post failed."
       });
     } finally {
+      setCommentToken("");
       setPostingComment(false);
     }
   }
@@ -201,6 +215,48 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           </div>
         </div>
 
+        <div className="reviewer-brief" aria-label="30-second reviewer card">
+          <div className="reviewer-brief-item">
+            <span>Top risk</span>
+            <strong>{report.summary.topRisks[0] ?? verificationAnswer.title}</strong>
+          </div>
+          <div className="reviewer-brief-item">
+            <span>Missing proof</span>
+            <strong>{missingProofSummary}</strong>
+          </div>
+          <div className="reviewer-brief-item">
+            <span>First files</span>
+            {firstPriorityFiles.length > 0 ? (
+              <ul>
+                {firstPriorityFiles.map((item) => (
+                  <li key={`${item.path}-${item.reason}`}>{item.path}</li>
+                ))}
+              </ul>
+            ) : (
+              <strong>No concrete file path flagged.</strong>
+            )}
+          </div>
+          <div className="reviewer-brief-item">
+            <span>Test/build</span>
+            <strong className={statusClass(report.testing.ciStatus)}>{formatStatus(report.testing.ciStatus)}</strong>
+          </div>
+          <div className="reviewer-brief-item">
+            <span>Ask agent next</span>
+            <strong>{repromptLead}</strong>
+            {!isSummaryMode ? (
+              <button className="button compact brief-copy" onClick={() => copyText(report.reprompt.prompt, "reprompt")}>
+                {copiedAction === "reprompt" ? <CheckCircle2 size={15} /> : <Bot size={15} />}
+                {copiedAction === "reprompt" ? "Copied" : "Copy"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="uncertainty-line">
+          <AlertCircle size={14} />
+          <span>{uncertaintyLine}</span>
+        </div>
+
         <div className="metric-grid">
           <Metric
             label="Requirements"
@@ -215,6 +271,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             tone={statusClass(report.testing.ciStatus)}
           />
           <Metric label="Missing Tests" value={String(report.testing.missingTests.length)} icon={<TestTube2 size={17} />} />
+          <Metric label="Proof Gaps" value={String(report.proofGraph.summary.gapCount)} icon={<ShieldAlert size={17} />} />
         </div>
 
         <div className="action-dock">
@@ -286,6 +343,11 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                   {!isSummaryMode && requirement.evidenceRefs.length > 0 ? (
                     <EvidenceRefDetails refs={requirement.evidenceRefs} evidenceById={evidenceById} />
                   ) : null}
+                  <ProofNodeDetails
+                    node={proofNodeByRequirement.get(requirement.requirementId)}
+                    evidenceById={evidenceById}
+                    isSummaryMode={isSummaryMode}
+                  />
                 </div>
               </div>
             ))}
@@ -303,7 +365,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                 report.reviewPriority.map((item) => (
                   <li key={`${item.path}-${item.reason}`}>
                     <span className={`evidence-label priority-${item.priority}`}>
-                      {formatPriorityLabel(item.priority)} - {item.path}
+                      {formatPriorityLabel(item.priority)} - {formatReviewPriorityPath(item.path)}
                     </span>
                     {item.reason}
                     {!isSummaryMode ? <EvidenceRefDetails refs={item.evidenceRefs} evidenceById={evidenceById} /> : null}
@@ -644,6 +706,56 @@ function EvidenceRefs({
   );
 }
 
+function ProofNodeDetails({
+  node,
+  evidenceById,
+  isSummaryMode
+}: {
+  node?: VerificationReport["proofGraph"]["nodes"][number];
+  evidenceById: Map<string, VerificationReport["evidenceIndex"][number]>;
+  isSummaryMode: boolean;
+}) {
+  if (!node) return null;
+
+  const citedRefs = Array.from(new Set([
+    ...node.implementationEvidenceRefs,
+    ...node.targetedTestEvidenceRefs,
+    ...node.executionEvidenceRefs,
+    ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
+  ]));
+
+  return (
+    <details className="evidence-details">
+      <summary>
+        Proof graph: implementation {node.implementationEvidenceRefs.length}, tests {node.targetedTestEvidenceRefs.length},
+        execution {node.executionEvidenceRefs.length}, gaps {node.gapSignals.length}
+      </summary>
+      {node.firstFiles.length > 0 ? (
+        <p className="muted small requirement-note">
+          <span>First files:</span> {node.firstFiles.join(", ")}
+        </p>
+      ) : null}
+      {node.gapSignals.length > 0 ? (
+        <ul className="plain-list">
+          {node.gapSignals.map((gap) => (
+            <li key={`${node.requirementId}-${gap.kind}-${gap.message}`}>
+              <span className={`evidence-label priority-${gap.severity}`}>
+                {formatPriorityLabel(gap.severity)} - {gap.kind.replaceAll("_", " ")}
+              </span>
+              {gap.message}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted small">No requirement-level proof gap detected from available evidence.</p>
+      )}
+      {!isSummaryMode && citedRefs.length > 0 ? (
+        <EvidenceRefs refs={citedRefs} evidenceById={evidenceById} compact />
+      ) : null}
+    </details>
+  );
+}
+
 function FailureLocationLine({
   locations
 }: {
@@ -683,6 +795,72 @@ function formatStatus(status: CheckStatus): string {
 function formatPriorityLabel(priority: PriorityLevel): string {
   if (priority === "blocker") return "Critical evidence gap";
   return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
+function getMissingProofSummary(
+  report: VerificationReport,
+  requirementStats: Record<RequirementStatus, number>
+): string {
+  const weakRequirements = requirementStats.partial + requirementStats.missing + requirementStats.unclear;
+  const missingTests = report.testing.missingTests.length;
+  const proofGaps = report.proofGraph.summary.gapCount;
+  const parts: string[] = [];
+
+  if (report.testing.ciStatus !== "passed") {
+    parts.push(`test/build ${formatStatus(report.testing.ciStatus).toLowerCase()}`);
+  }
+
+  if (missingTests > 0) {
+    parts.push(`${missingTests} missing test lead${missingTests === 1 ? "" : "s"}`);
+  }
+
+  if (proofGaps > 0) {
+    parts.push(`${proofGaps} proof gap${proofGaps === 1 ? "" : "s"}`);
+  }
+
+  if (weakRequirements > 0) {
+    parts.push(`${weakRequirements} requirement${weakRequirements === 1 ? "" : "s"} need proof`);
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : "No obvious missing proof in the first pass.";
+}
+
+function getRepromptLead(prompt: string, isSummaryMode: boolean): string {
+  if (isSummaryMode) {
+    return "Hidden in summary-only share.";
+  }
+
+  const lead = prompt
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !/^agentproof/i.test(line));
+  const normalized = lead?.replace(/^[-*\d.)\s]+/, "").trim() || "Use the generated re-prompt below.";
+
+  return normalized.length > 130 ? `${normalized.slice(0, 127).trim()}...` : normalized;
+}
+
+function getUncertaintyLine(report: VerificationReport, isSummaryMode: boolean): string {
+  const firstLimitation = report.limitations.find((limitation) =>
+    !/shared report omits raw evidence/i.test(limitation)
+  );
+
+  if (firstLimitation) {
+    return `Limit: ${firstLimitation}`;
+  }
+
+  if (isSummaryMode) {
+    return "Summary-only view omits raw evidence and re-prompt text; use it as a handoff, not validation.";
+  }
+
+  return "This is human decision support; it does not prove correctness, security, or merge readiness.";
+}
+
+function formatReviewPriorityPath(path: string): string {
+  if (path === "Requirement evidence") return "Requirement-level gap (no concrete file cited)";
+  if (path === "Changed files") return "Changed-file spot check";
+  if (path === "Test/build checks") return "Test/build check";
+  if (path === "Static or merge-gate checks") return "Static or merge-gate check";
+  return path;
 }
 
 function getVerificationAnswer(priority: PriorityLevel, evidenceCoverage: number, ciStatus: CheckStatus) {

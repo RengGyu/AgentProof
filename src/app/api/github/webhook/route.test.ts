@@ -776,6 +776,68 @@ describe("POST /api/github/webhook", () => {
     });
   });
 
+  it("fails closed when the PR base changes after collection and before publication", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: false,
+      commentEnabled: false
+    });
+    const githubFetch = mockAutomationFetch();
+    let pullMetadataRequests = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (
+        String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7"
+        && ++pullMetadataRequests === 3
+      ) {
+        return jsonResponse({
+          title: "Fetched PR title",
+          body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis.",
+          url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
+          user: { login: "agent-author" },
+          base: { ref: "main", sha: "1234567" },
+          head: { ref: "feature/app-automation", sha: "abc123" }
+        });
+      }
+
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      signedRequest(JSON.stringify(automationPayload()), {
+        event: "pull_request",
+        delivery: "delivery-base-drift",
+        secret: "secret"
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(json).toMatchObject({
+      code: "github_app_automation_failed"
+    });
+    expect(json.error).toContain("head or base changed");
+    expect(pullMetadataRequests).toBe(3);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/issues/7/comments"))).toBe(false);
+    expect(getAuditEventsForTests()[0]).toMatchObject({
+      action: "github_app_analysis_failed",
+      result: "failed",
+      tenant_id: "tenant_test",
+      metadata: {
+        code: "github_app_automation_failed"
+      }
+    });
+  });
+
   it("queues tenant-granted automation before fetching a GitHub installation token", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -2111,13 +2173,13 @@ describe("POST /api/github/webhook", () => {
     const baseFetch = mockAutomationFetch();
     let pullMetadataRequests = 0;
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      if (String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7" && ++pullMetadataRequests > 2) {
+      if (String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7" && ++pullMetadataRequests > 3) {
         return jsonResponse({
           title: "Updated head",
           body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis.",
           url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
           user: { login: "agent-author" },
-          base: { ref: "main" },
+          base: { ref: "main", sha: "def456" },
           head: { ref: "feature/app-automation", sha: "def456" }
         });
       }
@@ -2584,7 +2646,7 @@ function mockAutomationFetch() {
         body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
         url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
         user: { login: "agent-author" },
-        base: { ref: "main" },
+        base: { ref: "main", sha: "def456" },
         head: { ref: "feature/app-automation", sha: "abc123" }
       });
     }

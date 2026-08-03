@@ -276,6 +276,32 @@ describe("POST /api/github/comment", () => {
     expect(postedBody).toContain("[redacted]");
   });
 
+  it("does not echo write tokens from GitHub API failure responses", async () => {
+    const token = "github_pat_abcdefghijklmnopqrstuvwxyz123456";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ message: `Bad credentials for ${token}` }, 401));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          prUrl: "https://github.com/org/repo/pull/1",
+          githubToken: token,
+          report: reportFor("https://github.com/org/repo/pull/1")
+        })
+      })
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(401);
+    expect(body).toContain("token is invalid");
+    expect(body).not.toContain(token);
+    expect(body).not.toContain("github_pat_");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not patch marker comments owned by a different GitHub user", async () => {
     const report = reportFor("https://github.com/org/repo/pull/1");
     const fetchMock = vi

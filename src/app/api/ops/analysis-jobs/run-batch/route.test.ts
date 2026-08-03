@@ -307,7 +307,7 @@ function mockWorkerFetch() {
         body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
         url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
         user: { login: "agent-author" },
-        base: { ref: "main" },
+        base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
         head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }

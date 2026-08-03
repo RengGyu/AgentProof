@@ -277,7 +277,7 @@ describe("POST /api/analyze", () => {
             body: "Implemented validation for expired reset links.",
             url: "https://api.github.com/repos/acme/app/pulls/42",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/reset-validation", sha: "abc123" }
           })
         );
@@ -374,7 +374,7 @@ describe("POST /api/analyze", () => {
             body: "Handled malformed Origin headers and added regression coverage.",
             url: "https://api.github.com/repos/vercel/next.js/pulls/76",
             user: { login: "coding-agent" },
-            base: { ref: "canary" },
+            base: { ref: "canary", sha: "def456" },
             head: { ref: "agent/malformed-origin", sha: "abc123" }
           })
         );
@@ -465,7 +465,7 @@ describe("POST /api/analyze", () => {
             body: "Fixes #77",
             url: "https://api.github.com/repos/acme/app/pulls/142",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/reset-expiry", sha: "abc123" }
           })
         );
@@ -541,7 +541,7 @@ describe("POST /api/analyze", () => {
             body: "Added regression coverage.",
             url: "https://api.github.com/repos/acme/app/pulls/88",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/check-runs", sha: "abc123" }
           })
         );
@@ -631,7 +631,7 @@ describe("POST /api/analyze", () => {
             body: "Added regression coverage.",
             url: "https://api.github.com/repos/acme/app/pulls/89",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/check-runs-timeout", sha: "abc123" }
           })
         );
@@ -693,13 +693,13 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(200);
     expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
-    expect(json.report.testing.ciStatus).toBe("passed");
+    expect(json.report.testing.ciStatus).toBe("unknown");
     expect(json.report.summary.confidence).toBeLessThanOrEqual(0.85);
     expect(json.report.limitations.join(" ")).toContain("GitHub check-run evidence unavailable: request timed out after 5000 ms or network failed.");
     expect(json.report.evidenceIndex.some((item) =>
       item.kind === "check" &&
       item.label === "legacy unit tests" &&
-      item.summary.includes("Status: passed")
+      item.summary.includes("Status: unknown")
     )).toBe(true);
     expect(githubEvidenceTiming).toMatch(/^ap_github_(pr|files|checks|statuses|annotations|jobs);dur=\d+/);
     expect(serialized).not.toContain("github_pat_secret_should_not_leak");
@@ -761,7 +761,7 @@ describe("POST /api/analyze", () => {
             body: "Updated generated files.",
             url: "https://api.github.com/repos/acme/app/pulls/77",
             user: { login: "coding-agent" },
-            base: { ref: "main" },
+            base: { ref: "main", sha: "def456" },
             head: { ref: "agent/generated", sha: "abc123" }
           })
         );

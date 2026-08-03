@@ -159,6 +159,55 @@ describe("reportToGitHubComment", () => {
     expect(commentExecution).not.toContain("Raw annotation messages");
     expect(commentExecution).not.toContain("raw_details");
   });
+
+  it("redacts and neutralizes malicious markdown before export or PR comment output", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    const malicious = [
+      "Fix ```",
+      "</details><script>alert(1)</script>",
+      "@team [click](javascript:alert(1))",
+      "token=github_pat_abcdefghijklmnopqrstuvwxyz123456",
+      "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    ].join("\n");
+
+    report.source.title = malicious;
+    report.summary.oneLine = malicious;
+    report.summary.topRisks = [malicious];
+    report.requirements[0].requirementText = malicious;
+    report.requirements[0].gaps = [malicious];
+    report.evidenceIndex[0].summary = malicious;
+    report.reprompt.prompt = [
+      "Please fix the issue.",
+      "```",
+      "</details>",
+      "@everyone",
+      'password: "super-secret-password"'
+    ].join("\n");
+    report.limitations = [malicious, "namespace.secret=prod-secret-value"];
+
+    const markdown = reportToMarkdown(report);
+    const comment = reportToGitHubComment(report, { includeReprompt: true });
+
+    for (const output of [markdown, comment]) {
+      expect(output).toContain("[redacted]");
+      expect(output).toContain("@\u200Bteam");
+      expect(output).toContain("@\u200Beveryone");
+      expect(output).toContain("]\u200B(javascript");
+      expect(output).not.toContain("@team");
+      expect(output).not.toContain("@everyone");
+      expect(output).not.toContain("](javascript");
+      expect(output).not.toContain("github_pat_");
+      expect(output).not.toContain("wJalrXUtnFEMI");
+      expect(output).not.toContain("super-secret-password");
+      expect(output).not.toContain("prod-secret-value");
+      expect(output).not.toContain("<script>");
+      expect(output).toContain("&lt;/details&gt;");
+      expect(output.match(/```/g) ?? []).toHaveLength(2);
+    }
+
+    expect(markdown).not.toContain("</details>");
+    expect(comment.match(/<\/details>/g) ?? []).toHaveLength(1);
+  });
 });
 
 function sectionBetween(value: string, start: string, end: string): string {

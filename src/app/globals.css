@@ -202,6 +202,24 @@ summary:focus-visible {
   font-size: 13px;
 }
 
+.beta-note {
+  cursor: default;
+}
+
+.first-run-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 10px 12px 10px 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .eyebrow {
   margin: 0 0 5px;
   color: var(--blue);
@@ -283,6 +301,11 @@ summary:focus-visible {
 
 .credential-note {
   margin: -2px 0 0;
+  line-height: 1.35;
+}
+
+.input-privacy-note {
+  margin: -4px 0 0;
   line-height: 1.35;
 }
 
@@ -433,6 +456,15 @@ summary:focus-visible {
   display: grid;
   gap: 16px;
   min-width: 0;
+}
+
+.report-focus-target {
+  min-width: 0;
+  scroll-margin-top: 82px;
+}
+
+.report-focus-target:focus {
+  outline: none;
 }
 
 .summary-card {
@@ -613,6 +645,76 @@ summary:focus-visible {
   color: var(--ink);
   font-size: 13px;
   line-height: 1.35;
+}
+
+.reviewer-brief {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reviewer-brief-item {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.reviewer-brief-item span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.reviewer-brief-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.reviewer-brief-item ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reviewer-brief-item li {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.brief-copy {
+  margin-top: 10px;
+}
+
+.uncertainty-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #f3d7ad;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.uncertainty-line svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 .action-dock {
@@ -1661,6 +1763,10 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .reviewer-brief {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1730,6 +1836,14 @@ code {
   .report-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .reviewer-brief {
+    grid-template-columns: 1fr;
+  }
+
+  .first-run-steps {
+    padding-right: 10px;
   }
 
   .requirement {

@@ -5,9 +5,9 @@ import {
   ClipboardCheck,
   CreditCard,
   Database,
-  GitBranch,
   GitPullRequest,
   History,
+  KeyRound,
   LifeBuoy,
   Plug,
   Play,
@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Trash2
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ReportView } from "@/components/ReportView";
 import { clearReportHistory, readReportHistory, saveReportToHistory, type StoredReport } from "@/lib/report-history";
 import type { AnalyzeRequest, DemoScenarioId, VerificationReport } from "@/lib/types";
@@ -53,8 +53,8 @@ const scenarioOptions: { id: DemoScenarioId; label: string; summary: string; exp
   }
 ];
 
-export function AnalyzeWorkspace({ initialReport }: { initialReport: VerificationReport }) {
-  const [mode, setMode] = useState<"demo" | "manual">("demo");
+export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: VerificationReport | null }) {
+  const [mode, setMode] = useState<"demo" | "manual">("manual");
   const [demoScenario, setDemoScenario] = useState<DemoScenarioId>("scope-creep");
   const [form, setForm] = useState<AnalyzeRequest>({
     prUrl: "",
@@ -69,6 +69,8 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
   const [history, setHistory] = useState<StoredReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ message: string; hint?: string; guidance?: string[] } | null>(null);
+  const [focusReportAfterLoad, setFocusReportAfterLoad] = useState(false);
+  const reportRegionRef = useRef<HTMLDivElement | null>(null);
 
   const statusLabel = useMemo(() => {
     if (!report) return "No report";
@@ -82,6 +84,14 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
   useEffect(() => {
     setHistory(readReportHistory(window.localStorage));
   }, []);
+
+  useEffect(() => {
+    if (!report || !focusReportAfterLoad) return;
+
+    reportRegionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    reportRegionRef.current?.focus({ preventScroll: true });
+    setFocusReportAfterLoad(false);
+  }, [focusReportAfterLoad, report]);
 
   async function runAnalysis() {
     setLoading(true);
@@ -115,6 +125,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
           hint,
           guidance
         });
+        setForm((current) => ({ ...current, githubToken: "" }));
         return;
       }
 
@@ -126,9 +137,11 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
       setReport(nextReport);
       setHistory(saveReportToHistory(window.localStorage, nextReport));
       setForm((current) => ({ ...current, githubToken: "" }));
+      setFocusReportAfterLoad(true);
     } catch (analysisError) {
       setError({ message: analysisError instanceof Error ? analysisError.message : "Analysis failed" });
     } finally {
+      setForm((current) => ({ ...current, githubToken: "" }));
       setLoading(false);
     }
   }
@@ -180,13 +193,20 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
             <Database size={18} aria-hidden="true" />
           </div>
 
-          <a className="automation-note" href="/integrations">
-            <GitBranch size={16} aria-hidden="true" />
+          <div className="automation-note beta-note">
+            <KeyRound size={16} aria-hidden="true" />
             <span>
-              <strong>GitHub App event mode</strong>
-              Signed PR events can generate reports for allowlisted repos; saved links and marker comments stay opt-in.
+              <strong>Start with a public PR URL</strong>
+              For reviewer feedback, paste a public GitHub PR URL and leave the token blank. Demo is optional;
+              private repos, tokens, raw code, and full logs are not needed.
             </span>
-          </a>
+          </div>
+
+          <ol className="first-run-steps" aria-label="Guided beta steps">
+            <li>Use a public PR URL first.</li>
+            <li>Read the 30-second card after generation.</li>
+            <li>Send only short feedback, never raw code, logs, or tokens.</li>
+          </ol>
 
           <div className="mode-tabs" role="group" aria-label="Analysis source">
             <button
@@ -203,7 +223,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
               onClick={() => setMode("manual")}
               aria-pressed={mode === "manual"}
             >
-              PR evidence
+              PR URL
             </button>
           </div>
 
@@ -245,23 +265,29 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor="githubToken">Read token</label>
+                  <label htmlFor="githubToken">Optional GitHub token</label>
                   <input
                     id="githubToken"
                     className="input"
                     value={form.githubToken}
                     onChange={(event) => updateForm("githubToken", event.target.value)}
                     type="password"
-                    placeholder="Optional fine-grained token"
+                    placeholder="Only for rate limits or private repos"
+                    autoComplete="off"
+                    aria-describedby="githubTokenHelp"
                   />
-                  <p className="muted small credential-note">
-                    Used only for this analysis request and cleared after the report is generated.
+                  <p id="githubTokenHelp" className="muted small credential-note">
+                    Leave blank for public PRs. If needed, use a fine-grained read-only token for this request only;
+                    it is never saved and is cleared after the request completes.
                   </p>
                 </div>
               </section>
 
               <section className="input-section" aria-labelledby="request-evidence-title">
                 <h3 id="request-evidence-title">Request evidence</h3>
+                <p className="muted small input-privacy-note">
+                  Optional context only. Use issue/task summaries, not private code, secrets, tokens, or full logs.
+                </p>
                 <div className="field">
                   <label htmlFor="taskText">Issue or task text</label>
                   <textarea
@@ -284,6 +310,9 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
 
               <section className="input-section" aria-labelledby="execution-evidence-title">
                 <h3 id="execution-evidence-title">Execution evidence</h3>
+                <p className="muted small input-privacy-note">
+                  Prefer file paths and check summaries. Do not paste raw diffs, full logs, or secret-bearing output.
+                </p>
                 <div className="field">
                   <label htmlFor="changedFiles">Changed files</label>
                   <textarea
@@ -311,6 +340,7 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
                     className="textarea compact-textarea"
                     value={form.logs}
                     onChange={(event) => updateForm("logs", event.target.value)}
+                    placeholder="Short result summary only; no full logs"
                   />
                 </div>
               </section>
@@ -374,14 +404,16 @@ export function AnalyzeWorkspace({ initialReport }: { initialReport: Verificatio
         </aside>
 
         {report ? (
-          <ReportView report={report} />
+          <div ref={reportRegionRef} tabIndex={-1} className="report-focus-target">
+            <ReportView report={report} />
+          </div>
         ) : (
           <section className="panel empty-state">
             <div>
               <GitPullRequest size={36} />
-              <h1>Evidence report workspace</h1>
+              <h1>Paste a public PR URL first</h1>
               <p>
-                Submit PR evidence to map the original request against proof, gaps, tests, and review priority.
+                AgentProof will show the top risk, missing proof, first files, test/build status, and next agent ask in one 30-second card. Demo is optional if you do not have a public PR.
               </p>
             </div>
           </section>

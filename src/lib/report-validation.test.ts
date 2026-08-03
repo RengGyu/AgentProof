@@ -74,6 +74,54 @@ describe("validateVerificationReport", () => {
     expect(validateVerificationReport(report)).toEqual({ valid: true, errors: [] });
   });
 
+  it("accepts auditable GitHub source provenance with exact head and base anchors", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.source.provenance = {
+      version: 1,
+      origin: "github_snapshot",
+      evidenceCapturedAt: "2026-06-30T00:00:00.000Z",
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      baseSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      inputFingerprint: {
+        version: 1,
+        algorithm: "sha256",
+        value: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        coverage: "github_metadata"
+      }
+    };
+
+    expect(validateVerificationReport(report, {
+      mode: "full",
+      requireSourceProvenance: true
+    })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects strict GitHub source provenance without a full base anchor", () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.source.provenance = {
+      version: 1,
+      origin: "github_snapshot",
+      evidenceCapturedAt: "2026-06-30T00:00:00.000Z",
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      inputFingerprint: {
+        version: 1,
+        algorithm: "sha256",
+        value: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        coverage: "github_metadata"
+      }
+    };
+
+    const result = validateVerificationReport(report, {
+      mode: "full",
+      requireSourceProvenance: true
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "source.provenance.baseSha must be a full lowercase Git commit SHA for github_snapshot"
+    );
+  });
+
   it("requires full-report provenance when strict mode is enabled", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     delete report.scope.evidenceRefs;

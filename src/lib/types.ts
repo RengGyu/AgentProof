@@ -86,6 +86,7 @@ export interface SourceProvenance {
   version: 1;
   origin: "github_snapshot" | "pasted_evidence" | "demo";
   headSha?: string;
+  baseSha?: string;
   evidenceCapturedAt: string;
   inputFingerprint: {
     version: 1;
