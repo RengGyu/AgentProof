@@ -76,7 +76,7 @@ describe("/api/github/onboarding/repositories", () => {
   });
 
 
-  it("creates a tenant repository grant from server-fetched repository id metadata", async () => {
+  it("creates a tenant repository grant and keeps comments off when consent is omitted", async () => {
     stubOnboardingEnv();
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
@@ -93,8 +93,7 @@ describe("/api/github/onboarding/repositories", () => {
         installationId: 321,
         repositoryId: 100,
         repositoryFullName: "Attacker/ChosenName",
-        saveReportsEnabled: true,
-        commentEnabled: false
+        saveReportsEnabled: true
       })
     }));
     const json = await response.json();

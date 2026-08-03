@@ -781,7 +781,13 @@ async function handlePullRequestAutomation(
     const saved = canSaveReport
       ? await createAutomationSavedReport(report, {
         requestUrl: context.requestUrl,
-        tenantId: tenantGrant.grant?.tenantId
+        ...(tenantGrant.grant?.tenantId ? {
+          tenantId: tenantGrant.grant.tenantId,
+          installationId: automation.installationId,
+          repositoryId: automation.repositoryId,
+          pullRequestNumber: automation.pullRequestNumber,
+          headSha: automation.headSha
+        } : {})
       })
       : undefined;
     const comment = canPostComment

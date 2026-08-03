@@ -1789,12 +1789,9 @@ describe("POST /api/github/webhook", () => {
 
     expect(response.status).toBe(200);
     expect(json.analysis.savedReport.privacy).toBe("summary-only");
-    expect(savedKey).toBeTruthy();
+    expect(savedKey).toBeFalsy();
     expect(noKeyResponse.status).toBe(404);
-    expect(keyResponse.status).toBe(200);
-    expect(keyJson.report.evidenceIndex).toEqual([]);
-    expect(keyJson.report.claims).toEqual([]);
-    expect(keyJson.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
+    expect(keyResponse.status).toBe(404);
     expect(serialized).not.toContain("tenant_test");
     expect(serialized).not.toContain("Patch excerpt");
     expect(getAuditEventsForTests()[0]).toMatchObject({
@@ -1808,7 +1805,7 @@ describe("POST /api/github/webhook", () => {
         }
       }
     });
-    expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedKey);
+    if (savedKey) expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedKey);
     expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedReportUrl.toString());
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });

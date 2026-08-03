@@ -38,6 +38,7 @@ describe("tenant durable auth sessions", () => {
     expect(session.sessionCookie).toContain("HttpOnly");
     expect(session.sessionCookie).toContain("Secure");
     expect(session.sessionCookie).toContain("SameSite=Lax");
+    expect(session.sessionCookie).toContain("Path=/;");
     expect(access).toEqual({
       authorized: true,
       tenantId: "tenant_a",

@@ -4,6 +4,13 @@ import {
   createGitHubAppInstallSession
 } from "@/lib/github-onboarding";
 import { clearTenantGitHubInstallationsForTests } from "@/lib/github-installations";
+import { createTenantAuthSessionForMember, clearTenantAuthSessionsForTests } from "@/lib/tenant-auth";
+import {
+  beginGitHubOAuth,
+  bindGitHubInstallationAuthorization,
+  finishGitHubOAuth,
+  getGitHubOAuthConfig
+} from "@/lib/public-github-auth";
 import { GET } from "./route";
 
 describe("GET /api/github/onboarding/callback", () => {
@@ -12,6 +19,16 @@ describe("GET /api/github/onboarding/callback", () => {
     vi.unstubAllGlobals();
     clearGitHubOnboardingSessionsForTests();
     clearTenantGitHubInstallationsForTests();
+    clearTenantAuthSessionsForTests();
+  });
+
+  it("clears the transient installation cookie on an invalid terminal callback", async () => {
+    const response = await GET(new Request(
+      "http://localhost/api/github/onboarding/callback?setup_action=install"
+    ));
+
+    expect(response.status).toBe(422);
+    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_oauth_install=deleted");
   });
 
   it("creates a pending operator claim without exposing tenant or installation identity", async () => {
@@ -93,6 +110,7 @@ describe("GET /api/github/onboarding/callback", () => {
     ));
 
     expect(response.status).toBe(401);
+    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_oauth_install=deleted");
     await expect(response.json()).resolves.toEqual({
       error: "GitHub App onboarding state is invalid or expired.",
       code: "github_onboarding_state_invalid"
@@ -126,10 +144,61 @@ describe("GET /api/github/onboarding/callback", () => {
       { headers: { cookie: install.nonceCookie } }
     ));
     expect(response.status).toBe(503);
+    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_oauth_install=deleted");
     await expect(response.json()).resolves.toEqual({
       error: "GitHub App installation approval storage is unavailable.",
       code: "github_installation_claim_store_unavailable"
     });
+  });
+
+  it("rejects an installation not owned by the signed-in GitHub identity without entering the legacy claim flow", async () => {
+    stubOnboardingEnv();
+    stubPublicOAuthEnv();
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([{
+      tenantId: "tenant_a",
+      name: "Tenant A",
+      status: "active",
+      plan: "beta",
+      members: [{ memberId: "github:12345", role: "owner", status: "active" }]
+    }]));
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:12345" });
+    const config = getGitHubOAuthConfig();
+    if (!config) throw new Error("Expected OAuth config.");
+    const oauth = beginGitHubOAuth(config);
+    const oauthState = new URL(oauth.authorizationUrl).searchParams.get("state");
+    const tokenFetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "temporary-token" }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 12345 }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      }));
+    const identity = await finishGitHubOAuth({
+      code: "oauth-code",
+      state: oauthState,
+      cookieHeader: oauth.stateCookie,
+      tenantId: "pending"
+    }, config, tokenFetch);
+    const boundCookie = bindGitHubInstallationAuthorization({
+      cookieHeader: identity.installCookie,
+      tenantId: "tenant_a"
+    }, config);
+    if (!boundCookie) throw new Error("Expected bound install cookie.");
+    const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" });
+    const installState = new URL(install.installUrl).searchParams.get("state");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      installations: [{ id: 999 }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    const response = await GET(new Request(
+      `http://localhost/api/github/onboarding/callback?installation_id=321&setup_action=install&state=${installState}`,
+      { headers: { Cookie: [session.sessionCookie, install.nonceCookie, boundCookie].join("; ") } }
+    ));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_oauth_install=deleted");
+    await expect(response.json()).resolves.toMatchObject({ code: "github_installation_access_denied" });
   });
 
   it("uses the same pending path under strict operator-claim configuration", async () => {
@@ -155,4 +224,11 @@ function stubOnboardingEnv() {
   vi.stubEnv("AGENTPROOF_ONBOARDING_ALLOW_MEMORY", "true");
   vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_ALLOW_MEMORY", "true");
   vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATION_CLAIM_OPERATOR_TOKEN", "operator-claim-token");
+}
+
+function stubPublicOAuthEnv() {
+  vi.stubEnv("AGENTPROOF_GITHUB_APP_CLIENT_ID", "github-app-client-id");
+  vi.stubEnv("AGENTPROOF_GITHUB_APP_CLIENT_SECRET", "github-app-client-secret");
+  vi.stubEnv("AGENTPROOF_GITHUB_APP_OAUTH_CALLBACK_URL", "http://localhost/api/auth/github/callback");
+  vi.stubEnv("AGENTPROOF_PUBLIC_AUTH_SECRET", "public-auth-secret-that-is-at-least-thirty-two-characters");
 }

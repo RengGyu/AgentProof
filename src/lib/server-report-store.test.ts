@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
@@ -15,6 +16,9 @@ import {
   purgeTenantSavedReportsForDeletion,
   SavedReportStoreError
 } from "./server-report-store";
+import { createVerifiedAuthenticity } from "./report-authenticity";
+import { validateTenantStoredReport } from "./tenant-report-validation";
+import type { VerificationReport } from "./types";
 import { generateVerificationReport } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
@@ -110,6 +114,140 @@ describe("server report store", () => {
       id: saved.id,
       report: { authenticity: { trust: "verified_agentproof" } }
     });
+  });
+
+  it("marks an earlier verified report stale only when a different head is saved for the same PR", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const first = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "a".repeat(40)
+    });
+    const sameHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "a".repeat(40)
+    });
+    const nextHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "b".repeat(40)
+    });
+
+    expect((await getSavedReport(first.id, { tenantId: "tenant_a" }))?.staleAt).toEqual(expect.any(String));
+    expect((await getSavedReport(sameHead.id, { tenantId: "tenant_a" }))?.staleAt).toEqual(expect.any(String));
+    expect((await getSavedReport(nextHead.id, { tenantId: "tenant_a" }))?.staleAt).toBeUndefined();
+  });
+
+  it("defines the Supabase STALE transition in the same transaction as the new head insert", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/202608040001_saved_reports_stale_metadata.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain("before insert on public.agentproof_saved_reports");
+    expect(migration).toContain("head_sha is distinct from new.head_sha");
+    expect(migration).toContain("and stale_at is null");
+    expect(migration).toContain("agentproof_saved_reports_identity_metadata_check");
+    expect(migration).toContain("repository_id is not null");
+    expect(migration).toContain("pull_request_number is not null");
+    expect(migration).toContain("head_sha is not null");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("agentproof_store_tenant_report");
+  });
+
+  it("stores a verified tenant report through the atomic Supabase STALE RPC", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      return Response.json([{
+        id: body.p_id,
+        created_at: body.p_created_at,
+        expires_at: body.p_expires_at,
+        report: body.p_report,
+        tenant_id: body.p_tenant_id,
+        installation_id: body.p_installation_id,
+        repository_id: body.p_repository_id,
+        pull_request_number: body.p_pull_request_number,
+        head_sha: body.p_head_sha
+      }]);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+
+    expect(url).toBe("https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_store_tenant_report");
+    expect(init.method).toBe("POST");
+    expect(body).toMatchObject({
+      p_tenant_id: "tenant_a",
+      p_installation_id: 321,
+      p_repository_id: 100,
+      p_pull_request_number: 8,
+      p_head_sha: "a".repeat(40)
+    });
+    expect(saved).toMatchObject({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 8 });
+  });
+
+  it("stores only the exact signed tenant report contract and rejects a re-signed privacy violation", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.source.title = "RAW PR BODY SHOULD NOT SAVE";
+    report.source.author = "RAW GITHUB RESPONSE SHOULD NOT SAVE";
+    report.requirements[0].requirementText = "Issue body: PRIVATE ISSUE TEXT SHOULD NOT SAVE";
+    report.evidenceIndex[0].summary = "raw diff with github_pat_secret_should_not_leak";
+    report.reprompt.prompt = "raw log and token=secret_should_not_leak";
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+    const serialized = JSON.stringify(saved.report);
+
+    expect(validateTenantStoredReport(saved.report, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(serialized).not.toContain("RAW PR BODY");
+    expect(serialized).not.toContain("RAW GITHUB RESPONSE");
+    expect(serialized).not.toContain("PRIVATE ISSUE TEXT");
+    expect(serialized).not.toContain("raw diff");
+    expect(serialized).not.toContain("raw log");
+    expect(serialized).not.toContain("github_pat_");
+    expect(serialized).not.toContain("secret_should_not_leak");
+
+    const invalid = structuredClone(saved.report);
+    invalid.source.title = "Leaked pull request body";
+    invalid.authenticity = createVerifiedAuthenticity(invalid, signingSecret);
+
+    expect(validateTenantStoredReport(invalid, signingSecret)).toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining(["source.title is outside the tenant report contract."])
+    });
+
+    const extraField = structuredClone(saved.report) as VerificationReport & { rawDiff?: string };
+    extraField.rawDiff = "private patch";
+    const invalidEnum = structuredClone(saved.report);
+    (invalidEnum.summary as { priority: string }).priority = "urgent";
+    const missingReference = structuredClone(saved.report);
+    missingReference.requirements[0].evidenceRefs.push("ev_missing");
+    const unsafeLocation = structuredClone(saved.report);
+    unsafeLocation.reviewPriority[0].path = "../private/file.ts";
+    const oversized = structuredClone(saved.report);
+    oversized.evidenceIndex[0].locator = `src/${"a".repeat(1000)}`;
+
+    for (const candidate of [extraField, invalidEnum, missingReference, unsafeLocation, oversized]) {
+      candidate.authenticity = createVerifiedAuthenticity(candidate, signingSecret);
+      expect(validateTenantStoredReport(candidate, signingSecret).valid).toBe(false);
+    }
+
+    const badSignature = structuredClone(saved.report);
+    badSignature.summary.confidence = 0.1;
+    expect(validateTenantStoredReport(badSignature, signingSecret).errors).toContain("authenticity signature is invalid.");
   });
 
   it("does not store raw linked issue body evidence in saved reports", async () => {
@@ -427,6 +565,11 @@ describe("server report store", () => {
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       tenant_id: "tenant_a",
       access_token_hash: "a".repeat(64),
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 28,
+      head_sha: "a".repeat(40),
+      stale_at: new Date().toISOString(),
       report
     };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -476,6 +619,11 @@ describe("server report store", () => {
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       tenant_id: "tenant_a",
       access_token_hash: "a".repeat(64),
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 28,
+      head_sha: "a".repeat(40),
+      stale_at: new Date().toISOString(),
       report
     };
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json([row]));
@@ -489,6 +637,10 @@ describe("server report store", () => {
       expect.objectContaining({
         id: "tenant_report",
         sourceUrl: "https://github.com/RengGyu/AgentProof/pull/28",
+        repositoryId: 100,
+        pullRequestNumber: 28,
+        headSha: "a".repeat(40),
+        staleAt: expect.any(String),
         privacy: "summary-only"
       })
     ]);

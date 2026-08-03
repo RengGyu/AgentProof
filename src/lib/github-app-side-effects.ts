@@ -31,6 +31,10 @@ export async function createAutomationSavedReport(
   options: {
     requestUrl: string;
     tenantId?: string;
+    installationId?: number;
+    repositoryId?: number;
+    pullRequestNumber?: number;
+    headSha?: string;
   }
 ): Promise<AutomationSavedReportResult | undefined> {
   if (!/^(1|true|yes|on)$/i.test(process.env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS?.trim() ?? "")) {
@@ -38,7 +42,7 @@ export async function createAutomationSavedReport(
   }
 
   const status = getSavedReportStoreStatus();
-  const saved = await createVerifiedSavedReport(report, { tenantId: options.tenantId });
+  const saved = await createVerifiedSavedReport(report, { tenantId: options.tenantId, installationId: options.installationId, repositoryId: options.repositoryId, pullRequestNumber: options.pullRequestNumber, headSha: options.headSha });
   const url = new URL(`/reports/${saved.id}`, options.requestUrl);
   if (saved.accessToken) {
     url.searchParams.set("key", saved.accessToken);

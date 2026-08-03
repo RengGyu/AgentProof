@@ -81,7 +81,7 @@ export interface ReportValidationResult {
 }
 
 export interface ReportValidationOptions {
-  mode?: "default" | "full" | "summary";
+  mode?: "default" | "full" | "summary" | "tenant";
   requireFullProvenance?: boolean;
   requireSourceProvenance?: boolean;
 }
@@ -420,9 +420,11 @@ function validateProofGraph(
       validateEvidenceRefs(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceIds, errors);
       validateEvidenceRefs(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceIds, errors);
       validateEvidenceRefs(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceIds, errors);
-      validateProofEvidenceClass(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceById, isImplementationProofEvidence, errors);
-      validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
-      validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
+      if (mode !== "tenant") {
+        validateProofEvidenceClass(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceById, isImplementationProofEvidence, errors);
+        validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
+        validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
+      }
       validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
       validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
     }

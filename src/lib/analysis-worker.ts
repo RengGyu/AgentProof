@@ -396,7 +396,13 @@ export async function runNextAnalysisJob(
       await assertWorkerTenantDeletionNotActive(job, env);
       saved = await createAutomationSavedReport(report, {
         requestUrl: options.requestUrl,
-        tenantId: job.tenant_id ?? undefined
+        ...(job.tenant_id && job.installation_id && job.repository_id ? {
+          tenantId: job.tenant_id,
+          installationId: job.installation_id,
+          repositoryId: job.repository_id,
+          pullRequestNumber: job.pull_request_number,
+          headSha: job.head_sha
+        } : {})
       });
     }
 

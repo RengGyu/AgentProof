@@ -8,6 +8,7 @@ import {
 import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
+import { isSafeTenantLocator, validateTenantStoredReport } from "./tenant-report-validation";
 import type { VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -32,6 +33,11 @@ export interface StoredServerReport {
   tenantId?: string;
   accessToken?: string;
   accessTokenHash?: string;
+  installationId?: number;
+  repositoryId?: number;
+  pullRequestNumber?: number;
+  headSha?: string;
+  staleAt?: string;
 }
 
 export interface SavedReportAccessContext {
@@ -42,11 +48,19 @@ export interface SavedReportAccessContext {
 export interface CreateSavedReportOptions {
   ttlMs?: number;
   tenantId?: string;
+  installationId?: number;
+  repositoryId?: number;
+  pullRequestNumber?: number;
+  headSha?: string;
 }
 
 interface NormalizedCreateSavedReportOptions {
   ttlMs: number;
   tenantId?: string;
+  installationId?: number;
+  repositoryId?: number;
+  pullRequestNumber?: number;
+  headSha?: string;
 }
 
 export interface SavedReportStoreStatus {
@@ -63,6 +77,9 @@ export interface TenantSavedReportSummary {
   id: string;
   createdAt: string;
   expiresAt: string;
+  repositoryId?: number;
+  pullRequestNumber?: number;
+  headSha?: string;
   sourceTitle: string;
   sourceUrl?: string;
   priority: VerificationReport["summary"]["priority"];
@@ -76,6 +93,7 @@ export interface TenantSavedReportSummary {
   };
   reviewPriorityCount: number;
   scopeCreepSuspected: boolean;
+  staleAt?: string;
   privacy: "summary-only";
 }
 
@@ -127,6 +145,11 @@ interface SupabaseReportRow {
   report: VerificationReport;
   tenant_id?: string | null;
   access_token_hash?: string | null;
+  installation_id?: number | null;
+  repository_id?: number | null;
+  pull_request_number?: number | null;
+  head_sha?: string | null;
+  stale_at?: string | null;
 }
 
 export class SavedReportStoreError extends Error {
@@ -385,15 +408,20 @@ function createMemorySavedReport(
   cleanupExpiredReports();
 
   const createdAtDate = new Date();
-  const access = createTenantAccess(options.tenantId);
+  const access = createTenantAccess(options.tenantId, trust === "verified_agentproof");
   const saved: StoredServerReport = {
     id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
     expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
-    report: prepareSummaryReportForStorage(report, trust),
+    report: options.tenantId && trust === "verified_agentproof" ? prepareTenantDetailReportForStorage(report, trust) : prepareSummaryReportForStorage(report, trust),
+    ...(options.installationId ? { installationId: options.installationId } : {}),
+    ...(options.repositoryId ? { repositoryId: options.repositoryId } : {}),
+    ...(options.pullRequestNumber ? { pullRequestNumber: options.pullRequestNumber } : {}),
+    ...(options.headSha ? { headSha: options.headSha } : {}),
     ...access
   };
 
+  markPriorMemoryReportsStale(saved);
   reportStore().set(saved.id, withoutTransientAccessToken(saved));
   trimReportStore();
   return saved;
@@ -447,20 +475,43 @@ async function createSupabaseSavedReport(
   trust: "verified_agentproof" | "imported_unverified"
 ): Promise<StoredServerReport> {
   const createdAtDate = new Date();
-  const access = createTenantAccess(options.tenantId);
+  const access = createTenantAccess(options.tenantId, trust === "verified_agentproof");
   const saved: StoredServerReport = {
     id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
     expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
-    report: prepareSummaryReportForStorage(report, trust),
+    report: options.tenantId && trust === "verified_agentproof" ? prepareTenantDetailReportForStorage(report, trust) : prepareSummaryReportForStorage(report, trust),
+    ...(options.installationId ? { installationId: options.installationId } : {}),
+    ...(options.repositoryId ? { repositoryId: options.repositoryId } : {}),
+    ...(options.pullRequestNumber ? { pullRequestNumber: options.pullRequestNumber } : {}),
+    ...(options.headSha ? { headSha: options.headSha } : {}),
     ...access
   };
 
-  const response = await supabaseFetch(config, "", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(toSupabaseRow(saved))
-  });
+  const usesAtomicTenantStore = Boolean(
+    trust === "verified_agentproof" &&
+    saved.tenantId &&
+    saved.installationId &&
+    saved.repositoryId &&
+    saved.pullRequestNumber &&
+    saved.headSha
+  );
+  if (usesAtomicTenantStore && config.table !== DEFAULT_SUPABASE_REPORTS_TABLE) {
+    throw new SavedReportStoreError(
+      `Verified tenant report storage requires ${DEFAULT_SUPABASE_REPORTS_TABLE} and its atomic STALE migration.`
+    );
+  }
+  const response = usesAtomicTenantStore
+    ? await supabaseRpcFetch(config, "agentproof_store_tenant_report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toSupabaseTenantReportRpc(saved))
+      })
+    : await supabaseFetch(config, "", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(toSupabaseRow(saved))
+      });
 
   if (!response.ok) {
     throw new SavedReportStoreError(`Saved report storage failed with status ${response.status}.`);
@@ -514,7 +565,7 @@ async function listSupabaseTenantSavedReports(
   const params = new URLSearchParams({
     tenant_id: `eq.${tenantId}`,
     expires_at: `gt.${new Date().toISOString()}`,
-    select: "id,created_at,expires_at,report,tenant_id",
+    select: "id,created_at,expires_at,report,tenant_id,installation_id,repository_id,pull_request_number,head_sha,stale_at",
     order: "created_at.desc",
     limit: String(limit)
   });
@@ -691,6 +742,92 @@ function prepareSummaryReportForStorage(
   return safeReport;
 }
 
+/**
+ * Tenant reports retain verification structure, evidence ids and safe file or
+ * check locations while discarding all source-derived prose. This is the
+ * durable privacy boundary for private repositories: no diff, log, token,
+ * raw GitHub response, PR body, issue body, or generated free-text finding is
+ * written to the saved-report row.
+ */
+function prepareTenantDetailReportForStorage(report: VerificationReport, trust: "verified_agentproof" | "imported_unverified"): VerificationReport {
+  const safe: VerificationReport = {
+    analysisId: report.analysisId,
+    createdAt: report.createdAt,
+    source: {
+      title: "GitHub pull request evidence report",
+      ...(report.source.provenance ? { provenance: report.source.provenance } : {})
+    },
+    summary: {
+      oneLine: "Grounded verification result; review structured evidence.",
+      confidence: report.summary.confidence,
+      priority: report.summary.priority,
+      evidenceCoverage: report.summary.evidenceCoverage,
+      topRisks: report.summary.topRisks.map(() => "Verification evidence requires reviewer attention.").slice(0, 5)
+    },
+    requirements: report.requirements.map((item) => ({
+      requirementId: item.requirementId,
+      requirementText: `Requirement ${item.requirementId}`,
+      status: item.status,
+      evidenceRefs: item.evidenceRefs,
+      gaps: item.gaps.map(() => "Evidence gap recorded.").slice(0, 10),
+      reviewerNote: "Review the linked evidence and safe locations.",
+      confidence: item.confidence
+    })),
+    claims: [],
+    scope: {
+      suspected: report.scope.suspected,
+      outOfScopeFiles: report.scope.outOfScopeFiles.map(safeLocator).filter((value): value is string => Boolean(value)).slice(0, 50),
+      reasons: report.scope.reasons.map(() => "Scope evidence requires reviewer confirmation.").slice(0, 10),
+      ...(report.scope.evidenceRefs ? { evidenceRefs: report.scope.evidenceRefs } : {})
+    },
+    testing: {
+      ciStatus: report.testing.ciStatus,
+      lintStatus: report.testing.lintStatus,
+      typecheckStatus: report.testing.typecheckStatus,
+      missingTests: report.testing.missingTests.map((item) => ({ path: safeLocator(item.path) ?? "unavailable", why: "Targeted test evidence is missing.", evidenceRefs: item.evidenceRefs }))
+    },
+    reviewPriority: report.reviewPriority.map((item) => ({ path: safeLocator(item.path) ?? "unavailable", reason: "Review priority based on grounded evidence.", priority: item.priority, ...(item.evidenceRefs ? { evidenceRefs: item.evidenceRefs } : {}) })),
+    proofGraph: {
+      version: 1,
+      nodes: report.proofGraph.nodes.map((node) => ({
+        requirementId: node.requirementId,
+        requirementText: `Requirement ${node.requirementId}`,
+        sourceRole: node.sourceRole,
+        sourceQuality: node.sourceQuality,
+        sourceSection: null,
+        contextRoles: [],
+        status: node.status,
+        confidence: node.confidence,
+        implementationEvidenceRefs: node.implementationEvidenceRefs,
+        targetedTestEvidenceRefs: node.targetedTestEvidenceRefs,
+        executionEvidenceRefs: node.executionEvidenceRefs,
+        gapSignals: node.gapSignals.map((gap) => ({ kind: gap.kind, severity: gap.severity, message: "Evidence gap recorded.", evidenceRefs: gap.evidenceRefs })),
+        firstFiles: node.firstFiles.map(safeLocator).filter((value): value is string => Boolean(value)).slice(0, 20)
+      })),
+      context: [],
+      summary: report.proofGraph.summary
+    },
+    reprompt: { targetAgent: report.reprompt.targetAgent, prompt: "Address missing or unclear verification evidence, then rerun the relevant checks." },
+    evidenceIndex: report.evidenceIndex.map((item) => {
+      const locator = safeLocator(item.locator);
+      return { id: item.id, kind: item.kind, label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", ...(locator ? { locator } : {}), confidence: item.confidence };
+    }),
+    limitations: report.limitations.map(() => "Some evidence was unavailable or intentionally omitted for privacy.").slice(0, 20)
+  };
+  safe.authenticity = trust === "verified_agentproof" ? createVerifiedAuthenticity(safe, requireReportSigningSecret()) : createUnverifiedAuthenticity("imported_unverified");
+  const validation = validateTenantStoredReport(safe, requireReportSigningSecret());
+  if (!validation.valid) {
+    throw new SavedReportStoreError(`Tenant saved report failed validation: ${validation.errors.join("; ")}`);
+  }
+  return safe;
+}
+
+function safeLocator(value: string | undefined): string | null {
+  if (!value) return null;
+  const normalized = redactSecrets(value).trim();
+  return normalized && isSafeTenantLocator(normalized) ? normalized : null;
+}
+
 function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
   const safeReport = sanitizeReportForShare(report);
   const authenticity = report.authenticity;
@@ -711,7 +848,9 @@ function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
 }
 
 function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedReportSummary | null {
-  const validation = validateVerificationReport(saved.report, { mode: "summary" });
+  const validation = saved.tenantId && saved.report.authenticity?.trust === "verified_agentproof"
+    ? validateTenantStoredReport(saved.report, requireReportSigningSecret())
+    : validateVerificationReport(saved.report, { mode: "summary" });
   if (!validation.valid) return null;
 
   const report = saved.report;
@@ -719,6 +858,9 @@ function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedRepor
     id: saved.id,
     createdAt: saved.createdAt,
     expiresAt: saved.expiresAt,
+    ...(saved.repositoryId ? { repositoryId: saved.repositoryId } : {}),
+    ...(saved.pullRequestNumber ? { pullRequestNumber: saved.pullRequestNumber } : {}),
+    ...(saved.headSha ? { headSha: saved.headSha } : {}),
     sourceTitle: safeReportText(report.source.title, "Untitled PR"),
     sourceUrl: safeReportUrl(report.source.url),
     priority: report.summary.priority,
@@ -737,12 +879,25 @@ function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedRepor
     },
     reviewPriorityCount: report.reviewPriority.length,
     scopeCreepSuspected: report.scope.suspected,
+    ...(saved.staleAt ? { staleAt: saved.staleAt } : {}),
     privacy: "summary-only"
   };
 }
 
 async function supabaseFetch(config: SupabaseReportStoreConfig, query: string, init: RequestInit) {
   return fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}${query}`, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      ...(init.headers ?? {})
+    }
+  });
+}
+
+async function supabaseRpcFetch(config: SupabaseReportStoreConfig, rpc: string, init: RequestInit) {
+  return fetch(`${config.url}/rest/v1/rpc/${encodeURIComponent(rpc)}`, {
     ...init,
     cache: "no-store",
     headers: {
@@ -773,8 +928,27 @@ function toSupabaseRow(saved: StoredServerReport): SupabaseReportRow {
     row.tenant_id = saved.tenantId;
     row.access_token_hash = saved.accessTokenHash;
   }
+  if (saved.installationId) row.installation_id = saved.installationId;
+  if (saved.repositoryId) row.repository_id = saved.repositoryId;
+  if (saved.pullRequestNumber) row.pull_request_number = saved.pullRequestNumber;
+  if (saved.headSha) row.head_sha = saved.headSha;
+  if (saved.staleAt) row.stale_at = saved.staleAt;
 
   return row;
+}
+
+function toSupabaseTenantReportRpc(saved: StoredServerReport) {
+  return {
+    p_id: saved.id,
+    p_created_at: saved.createdAt,
+    p_expires_at: saved.expiresAt,
+    p_report: saved.report,
+    p_tenant_id: saved.tenantId,
+    p_installation_id: saved.installationId,
+    p_repository_id: saved.repositoryId,
+    p_pull_request_number: saved.pullRequestNumber,
+    p_head_sha: saved.headSha
+  };
 }
 
 function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerReport | null {
@@ -786,7 +960,12 @@ function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerRepo
     expiresAt: row.expires_at,
     report: row.report,
     tenantId: row.tenant_id ?? undefined,
-    accessTokenHash: row.access_token_hash ?? undefined
+    accessTokenHash: row.access_token_hash ?? undefined,
+    installationId: row.installation_id ?? undefined,
+    repositoryId: row.repository_id ?? undefined,
+    pullRequestNumber: row.pull_request_number ?? undefined,
+    headSha: row.head_sha ?? undefined,
+    staleAt: row.stale_at ?? undefined
   });
 }
 
@@ -796,10 +975,11 @@ function sanitizeStoredReport(saved: StoredServerReport): StoredServerReport | n
     if (authenticity?.trust === "verified_agentproof") {
       const secret = requireReportSigningSecret();
       if (!verifyVerifiedAuthenticity(saved.report, secret)) return null;
+      if (saved.tenantId && !validateTenantStoredReport(saved.report, secret).valid) return null;
     }
     return {
       ...saved,
-      report: sanitizeSummaryReport(saved.report)
+      report: saved.tenantId && authenticity?.trust === "verified_agentproof" ? saved.report : sanitizeSummaryReport(saved.report)
     };
   } catch {
     return null;
@@ -816,6 +996,11 @@ function isSupabaseReportRow(value: unknown): value is SupabaseReportRow {
     typeof row.expires_at === "string" &&
     (row.tenant_id === undefined || row.tenant_id === null || typeof row.tenant_id === "string") &&
     (row.access_token_hash === undefined || row.access_token_hash === null || typeof row.access_token_hash === "string") &&
+    (row.installation_id === undefined || row.installation_id === null || typeof row.installation_id === "number") &&
+    (row.repository_id === undefined || row.repository_id === null || typeof row.repository_id === "number") &&
+    (row.pull_request_number === undefined || row.pull_request_number === null || typeof row.pull_request_number === "number") &&
+    (row.head_sha === undefined || row.head_sha === null || typeof row.head_sha === "string") &&
+    (row.stale_at === undefined || row.stale_at === null || typeof row.stale_at === "string") &&
     Boolean(row.report && typeof row.report === "object" && !Array.isArray(row.report))
   );
 }
@@ -853,27 +1038,48 @@ function normalizeCreateOptions(optionsOrTtlMs: CreateSavedReportOptions | numbe
     ? options.ttlMs
     : SERVER_REPORT_TTL_MS;
   const tenantId = options.tenantId ? normalizeTenantId(options.tenantId) : undefined;
+  const installationId = normalizePositiveInteger(options.installationId);
+  const repositoryId = normalizePositiveInteger(options.repositoryId);
+  const pullRequestNumber = normalizePositiveInteger(options.pullRequestNumber);
+  const headSha = normalizeHeadSha(options.headSha);
 
   if (options.tenantId && !tenantId) {
     throw new SavedReportStoreError("Saved report tenant id is invalid.");
   }
+  if ((options.installationId !== undefined && !installationId) || (options.repositoryId !== undefined && !repositoryId) || (options.pullRequestNumber !== undefined && !pullRequestNumber) || (options.headSha !== undefined && !headSha)) {
+    throw new SavedReportStoreError("Saved report identity metadata is invalid.");
+  }
+  if ((installationId || repositoryId || pullRequestNumber || headSha) && (!tenantId || !installationId || !repositoryId || !pullRequestNumber || !headSha)) {
+    throw new SavedReportStoreError("Saved report identity metadata must be complete and tenant scoped.");
+  }
 
   return {
     ttlMs,
-    tenantId
+    tenantId, installationId, repositoryId, pullRequestNumber, headSha
   };
 }
 
-function createTenantAccess(tenantId: string | undefined): Partial<StoredServerReport> {
+function markPriorMemoryReportsStale(saved: StoredServerReport) {
+  if (!saved.tenantId || !saved.repositoryId || !saved.pullRequestNumber || !saved.headSha) return;
+  const staleAt = new Date().toISOString();
+  for (const [id, existing] of reportStore()) {
+    if (existing.tenantId === saved.tenantId && existing.repositoryId === saved.repositoryId && existing.pullRequestNumber === saved.pullRequestNumber && existing.headSha && existing.headSha !== saved.headSha && !existing.staleAt) {
+      reportStore().set(id, { ...existing, staleAt });
+    }
+  }
+}
+
+function normalizePositiveInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined; }
+function normalizeHeadSha(value: unknown): string | undefined { return typeof value === "string" && /^[a-f0-9]{6,64}$/.test(value) ? value : undefined; }
+
+function createTenantAccess(tenantId: string | undefined, sessionOnly = false): Partial<StoredServerReport> {
   if (!tenantId) return {};
-
+  // Tenant artifacts are never capability-link shared. They require the
+  // logged-in tenant session; legacy non-tenant reports retain their existing
+  // short-lived access key behavior.
+  if (sessionOnly) return { tenantId };
   const accessToken = randomBytes(24).toString("base64url");
-
-  return {
-    tenantId,
-    accessToken,
-    accessTokenHash: hashSavedReportAccessToken(accessToken)
-  };
+  return { tenantId, accessToken, accessTokenHash: hashSavedReportAccessToken(accessToken) };
 }
 
 function buildSupabaseReportAccessQuery(id: string, access: SavedReportAccessContext): string {
@@ -884,7 +1090,7 @@ function buildSupabaseReportAccessQuery(id: string, access: SavedReportAccessCon
   return [
     `id=eq.${encodeURIComponent(id)}`,
     ...supabaseAccessFilters(access),
-    "select=id,created_at,expires_at,report,tenant_id,access_token_hash",
+    "select=id,created_at,expires_at,report,tenant_id,access_token_hash,installation_id,repository_id,pull_request_number,head_sha,stale_at",
     "limit=1"
   ].join("&").replace(/^/, "?");
 }

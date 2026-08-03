@@ -11,6 +11,7 @@ import { noStoreJson, parseJsonSafely } from "@/lib/http";
 import { createTenantRepositoryGrant, getTenantControlPlaneSettings, TenantControlPlaneStoreError } from "@/lib/tenant-control-plane";
 import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/lib/tenant-deletion-state";
 import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
+import { resolveTenantAuthAccess } from "@/lib/tenant-auth";
 import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 
 export async function GET(request: Request) {
@@ -46,12 +47,15 @@ export async function GET(request: Request) {
       code: "github_onboarding_activation_invalid"
     }, { status: 401 });
   }
-  const access = await verifyTenantAccess({
+  const publicAccess = await resolveTenantAuthAccess({ cookieHeader: request.headers.get("cookie") });
+  const access = publicAccess.authorized
+    ? publicAccess
+    : await verifyTenantAccess({
     tenantId: activation.tenantId,
     inviteToken: request.headers.get("x-agentproof-beta-invite-token") ?? undefined,
     cookieHeader: request.headers.get("cookie")
-  });
-  if (!access.authorized || !access.tenantId || !canUsePrivilegedTenantAccess(access)) {
+    });
+  if (!access.authorized || !access.tenantId || access.tenantId !== activation.tenantId || !canUsePrivilegedTenantAccess(access)) {
     return noStoreJson({
       error: "GitHub App repository setup requires an owner or admin role.",
       code: "github_onboarding_role_required"
@@ -149,12 +153,15 @@ export async function POST(request: Request) {
       code: "github_onboarding_activation_invalid"
     }, { status: 401 });
   }
-  const access = await verifyTenantAccess({
+  const publicAccess = await resolveTenantAuthAccess({ cookieHeader: request.headers.get("cookie") });
+  const access = publicAccess.authorized
+    ? publicAccess
+    : await verifyTenantAccess({
     tenantId: activation.tenantId,
     inviteToken: request.headers.get("x-agentproof-beta-invite-token") ?? undefined,
     cookieHeader: request.headers.get("cookie")
-  });
-  if (!access.authorized || !access.tenantId || !canUsePrivilegedTenantAccess(access)) {
+    });
+  if (!access.authorized || !access.tenantId || access.tenantId !== activation.tenantId || !canUsePrivilegedTenantAccess(access)) {
     return noStoreJson({
       error: "GitHub App repository setup requires an owner or admin role.",
       code: "github_onboarding_role_required"

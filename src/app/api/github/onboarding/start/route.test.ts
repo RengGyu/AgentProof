@@ -66,6 +66,26 @@ describe("POST /api/github/onboarding/start", () => {
     expect(JSON.stringify(json)).not.toContain("member-bootstrap-token");
   });
 
+  it("starts public OAuth onboarding without any legacy beta invite configuration", async () => {
+    stubOnboardingEnv();
+    stubDurableAuthEnv();
+    vi.stubEnv("AGENTPROOF_BETA_INVITES", "");
+    const session = await createTenantAuthSession({
+      tenantId: "tenant_a",
+      memberId: "member_owner",
+      bootstrapToken: "member-bootstrap-token"
+    });
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/start", {
+      method: "POST",
+      headers: { ...sameOriginHeaders(), cookie: session.sessionCookie },
+      body: "{}"
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ next: "install_github_app" });
+  });
+
   it("does not treat a stateless tenant admin session as privileged onboarding authorization", async () => {
     stubOnboardingEnv();
     const session = createTenantAdminSession({

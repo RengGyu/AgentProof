@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearTenantGitHubInstallationsForTests,
-  countTenantGitHubInstallations
+  countTenantGitHubInstallations,
+  GitHubInstallationStoreError
 } from "./github-installations";
 import {
+  activateVerifiedGitHubInstallation,
   clearGitHubOnboardingSessionsForTests,
   clearTenantAdminSessionCookie,
   activateApprovedGitHubInstallationClaim,
@@ -115,6 +117,17 @@ describe("github onboarding helpers", () => {
       durable: false,
       configured: true
     });
+  });
+
+  it("fails public activation when canonical installation ownership cannot be stored", async () => {
+    const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" }, env, now);
+
+    await expect(activateVerifiedGitHubInstallation({
+      state: new URL(install.installUrl).searchParams.get("state"),
+      nonceCookieHeader: install.nonceCookie,
+      installationId: 321,
+      tenantId: "tenant_a"
+    }, env, now + 1_000)).rejects.toBeInstanceOf(GitHubInstallationStoreError);
   });
 
   it("requires an operator-approved installation claim before durable-style callback activation", async () => {

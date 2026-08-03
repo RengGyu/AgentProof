@@ -5,19 +5,12 @@ import {
 } from "@/lib/github-onboarding";
 import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
+import { resolveTenantAuthAccess } from "@/lib/tenant-auth";
 import { noStoreJson, parseJsonSafely } from "@/lib/http";
 
 export async function POST(request: Request) {
   const csrf = verifySameOriginMutationRequest(request);
   if (!csrf.ok) return csrfFailureResponse();
-
-  const status = getGitHubOnboardingConfigStatus();
-  if (!status.configured) {
-    return noStoreJson({
-      error: "GitHub App onboarding is not configured.",
-      code: "github_onboarding_not_configured"
-    }, { status: 501 });
-  }
 
   const body = parseJsonSafely<{ tenantId?: unknown }>(await request.text());
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -27,18 +20,22 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
-  if (typeof body.tenantId !== "string") {
+  const publicAccess = await resolveTenantAuthAccess({ cookieHeader: request.headers.get("cookie") });
+  const status = getGitHubOnboardingConfigStatus();
+  const publicConfigReady = status.appSlugConfigured && status.stateSecretConfigured;
+  if (publicAccess.authorized ? !publicConfigReady : !status.configured) {
     return noStoreJson({
-      error: "A tenant id is required before GitHub App onboarding can start.",
-      code: "github_onboarding_tenant_required"
-    }, { status: 422 });
+      error: "GitHub App onboarding is not configured.",
+      code: "github_onboarding_not_configured"
+    }, { status: 501 });
   }
-
-  const access = await verifyTenantAccess({
+  const access = publicAccess.authorized
+    ? publicAccess
+    : await verifyTenantAccess({
     tenantId: body.tenantId,
     inviteToken: request.headers.get("x-agentproof-beta-invite-token") ?? undefined,
     cookieHeader: request.headers.get("cookie")
-  });
+    });
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
       error: "GitHub App onboarding requires valid tenant authorization.",
