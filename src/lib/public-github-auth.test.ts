@@ -25,10 +25,11 @@ describe("public GitHub OAuth cookies", () => {
     expect(started.stateCookie).not.toContain("Path=/;");
   });
 
-  it("limits and expires the installation authorization cookie at its callback path", () => {
+  it("limits and expires the installation authorization cookie to the shared API callback prefix", () => {
     const expired = clearGitHubOAuthInstallCookie(Date.UTC(2026, 7, 4));
 
-    expect(expired).toContain("Path=/api/github/onboarding/callback");
+    expect(expired).toContain("Path=/api;");
+    expect(expired).not.toContain("Path=/;");
     expect(expired).toContain("Max-Age=0");
   });
 

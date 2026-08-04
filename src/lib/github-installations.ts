@@ -49,9 +49,9 @@ interface GitHubInstallationRecord {
 interface GitHubInstallationRow {
   tenant_id: string;
   installation_id: number;
-  account_id?: number | null;
-  account_login?: string | null;
-  account_type?: string | null;
+  account_id?: number;
+  account_login?: string;
+  account_type?: string;
   status: GitHubInstallationStatus;
   created_at: string;
   updated_at: string;
@@ -431,9 +431,9 @@ function toSupabaseGitHubInstallationRow(record: GitHubInstallationRecord): GitH
   return {
     tenant_id: record.tenantId,
     installation_id: record.installationId,
-    account_id: record.accountId ?? null,
-    account_login: record.accountLogin ?? null,
-    account_type: record.accountType ?? null,
+    ...(record.accountId === undefined ? {} : { account_id: record.accountId }),
+    ...(record.accountLogin === undefined ? {} : { account_login: record.accountLogin }),
+    ...(record.accountType === undefined ? {} : { account_type: record.accountType }),
     status: record.status,
     created_at: record.createdAt,
     updated_at: record.updatedAt,

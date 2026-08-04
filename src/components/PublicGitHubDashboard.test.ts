@@ -4,6 +4,14 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(new URL("./PublicGitHubDashboard.tsx", import.meta.url), "utf8");
 
 describe("PublicGitHubDashboard saved reports", () => {
+  it("checks for an existing verified App installation before opening GitHub installation", () => {
+    expect(source).toContain('"/api/github/onboarding/callback?existing=1"');
+    expect(source).toContain('existing?.next === "select_repository"');
+    expect(source).toContain('existing?.next === "choose_installation"');
+    expect(source).toContain('"/api/github/onboarding/start"');
+    expect(source).toContain('signedIn && !activeInstallationId');
+  });
+
   it("renders enough metadata to distinguish reports and labels stale heads", () => {
     expect(source).toContain("Repository #");
     expect(source).toContain("PR #");

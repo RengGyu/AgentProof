@@ -5,7 +5,10 @@ export const GITHUB_OAUTH_INSTALL_COOKIE = "agentproof_github_oauth_install";
 
 const OAUTH_TTL_MS = 15 * 60 * 1000;
 const OAUTH_CALLBACK_PATH = "/api/auth/github/callback";
-const INSTALL_CALLBACK_PATH = "/api/github/onboarding/callback";
+// This temporary credential is set by the OAuth callback and consumed by the
+// installation callback. `/api` is their narrowest shared path prefix, which
+// browsers accept for a Set-Cookie response from the OAuth callback.
+const INSTALL_CALLBACK_PATH = "/api";
 
 interface OAuthState {
   state: string;
@@ -35,6 +38,13 @@ export interface GitHubOAuthStart {
 export interface GitHubOAuthIdentity {
   githubUserId: string;
   installCookie: string;
+}
+
+export interface GitHubInstallationAccess {
+  installationId: number;
+  accountId: number;
+  accountLogin: string;
+  accountType: "User" | "Organization";
 }
 
 export class GitHubOAuthError extends Error {
@@ -134,6 +144,56 @@ export async function verifyGitHubInstallationAccess(
   return Boolean(response.ok && body?.installations?.some((item) => item.id === input.installationId));
 }
 
+/**
+ * Returns only installation ids for this App that the signed-in GitHub user
+ * can currently access. The GitHub response and OAuth token stay transient.
+ */
+export async function findGitHubInstallationAccess(
+  input: { cookieHeader?: string | null; tenantId: string; appId: number },
+  config: GitHubOAuthConfig,
+  fetchImpl: typeof fetch = fetch,
+  now = Date.now()
+): Promise<GitHubInstallationAccess[] | null> {
+  const authorization = openCookie<InstallAuthorization>(input.cookieHeader, GITHUB_OAUTH_INSTALL_COOKIE, config.secret, now);
+  if (!authorization || authorization.tenantId !== input.tenantId || !Number.isSafeInteger(input.appId) || input.appId <= 0) return null;
+  const response = await fetchImpl("https://api.github.com/user/installations?per_page=100", {
+    headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${authorization.accessToken}`, "X-GitHub-Api-Version": "2022-11-28" },
+    cache: "no-store"
+  });
+  const body = await response.json().catch(() => null) as {
+    installations?: Array<{
+      id?: unknown;
+      app_id?: unknown;
+      account?: { id?: unknown; login?: unknown; type?: unknown };
+    }>;
+  } | null;
+  if (!response.ok || !Array.isArray(body?.installations)) return null;
+  const installations = new Map<number, GitHubInstallationAccess>();
+  for (const installation of body.installations) {
+    const accountId = normalizeGitHubAccountId(installation.account?.id);
+    const accountType = normalizeGitHubAccountType(installation.account?.type);
+    if (installation.app_id !== input.appId || !isInstallationId(installation.id) || !accountId || !accountType) continue;
+    installations.set(installation.id, {
+      installationId: installation.id,
+      accountId,
+      accountLogin: normalizeGitHubAccountLogin(installation.account?.login),
+      accountType
+    });
+  }
+  return Array.from(installations.values()).sort((left, right) => left.installationId - right.installationId);
+}
+
+/** Returns only the verified numeric identity bound to the transient install cookie. */
+export function getGitHubInstallationAuthorizationIdentity(
+  input: { cookieHeader?: string | null; tenantId: string },
+  config: GitHubOAuthConfig,
+  now = Date.now()
+): string | null {
+  const authorization = openCookie<InstallAuthorization>(input.cookieHeader, GITHUB_OAUTH_INSTALL_COOKIE, config.secret, now);
+  if (!authorization || authorization.tenantId !== input.tenantId) return null;
+  return normalizeGitHubUserId(authorization.githubUserId);
+}
+
 /** Rebinds the transient, encrypted install credential after tenant creation. */
 export function bindGitHubInstallationAuthorization(
   input: { cookieHeader?: string | null; tenantId: string },
@@ -185,5 +245,9 @@ function cookie(name: string, value: string, expiresAt: number, now: number, pat
 function expiredCookie(name: string, path: string, now: number): string { return cookie(name, "deleted", now, now, path); }
 function readCookie(header: string | null | undefined, name: string): string | null { return header?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? null; }
 function normalizeGitHubUserId(value: unknown): string | null { return (typeof value === "number" || typeof value === "string") && /^\d{1,20}$/.test(String(value)) ? String(value) : null; }
+function isInstallationId(value: unknown): value is number { return typeof value === "number" && Number.isSafeInteger(value) && value > 0; }
+function normalizeGitHubAccountId(value: unknown): number | null { return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null; }
+function normalizeGitHubAccountLogin(value: unknown): string { return typeof value === "string" && /^[A-Za-z0-9-]{1,39}$/.test(value) ? value : "GitHub account"; }
+function normalizeGitHubAccountType(value: unknown): "User" | "Organization" | null { return value === "User" || value === "Organization" ? value : null; }
 function base64Url(value: Buffer): string { return value.toString("base64url"); }
 function safeEqual(a: string, b: string): boolean { const left = Buffer.from(a); const right = Buffer.from(b); return left.length === right.length && timingSafeEqual(left, right); }
