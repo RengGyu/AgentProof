@@ -981,6 +981,21 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
   if (!looksLikeTenantPersistedReport(report)) return report as VerificationReport;
   const secret = requireReportSigningSecret();
   if (!isTenantPersistedReport(report, secret)) return report as VerificationReport;
+  const proofNodes = report.requirements.map((item) => ({
+    requirementId: item.requirementId,
+    requirementText: `Requirement ${item.requirementId}`,
+    sourceRole: "core_requirement" as const,
+    sourceQuality: "fallback" as const,
+    sourceSection: null,
+    contextRoles: [],
+    status: item.status,
+    confidence: 0,
+    implementationEvidenceRefs: [],
+    targetedTestEvidenceRefs: [],
+    executionEvidenceRefs: [],
+    gapSignals: item.gaps.map(() => ({ kind: "evidence_unavailable" as const, severity: report.priority, message: "Evidence gap recorded.", evidenceRefs: [] })),
+    firstFiles: []
+  }));
   const hydrated: VerificationReport = {
     analysisId: "tenant-saved-report",
     createdAt,
@@ -991,7 +1006,7 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
     scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
     testing: { ...report.testing, missingTests: [] },
     reviewPriority: report.reviewPriority.map((item) => ({ path: item.path, priority: item.priority, evidenceRefs: item.evidenceRefs, reason: "Review priority based on grounded evidence." })),
-    proofGraph: { version: 1, nodes: [], context: [], summary: { requirementCount: report.requirements.length, requirementsWithImplementation: 0, requirementsWithTargetedTests: 0, requirementsWithExecution: 0, requirementsWithGaps: report.requirements.filter((item) => item.gaps.length > 0).length, gapCount: report.requirements.reduce((count, item) => count + item.gaps.length, 0) } },
+    proofGraph: { version: 1, nodes: proofNodes, context: [], summary: { requirementCount: proofNodes.length, requirementsWithImplementation: 0, requirementsWithTargetedTests: 0, requirementsWithExecution: 0, requirementsWithGaps: proofNodes.filter((node) => node.gapSignals.length > 0).length, gapCount: proofNodes.reduce((count, node) => count + node.gapSignals.length, 0) } },
     reprompt: { targetAgent: "codex", prompt: report.reprompt.prompt },
     evidenceIndex: report.evidenceIndex.map((item) => ({ id: item.id, kind: "inference", label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", confidence: 0, ...(item.locator ? { locator: item.locator } : {}) })),
     limitations: ["Some evidence was unavailable or intentionally omitted for privacy."]

@@ -714,6 +714,36 @@ describe("server report store", () => {
     expect(serialized).not.toContain("reprompt");
   });
 
+  it("lists a signed tenant persisted projection after privacy-safe hydration", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 28,
+      headSha: "a".repeat(40)
+    });
+    const row = {
+      id: "tenant_projection",
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      tenant_id: "tenant_a",
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 28,
+      head_sha: "a".repeat(40),
+      report: projectTenantPersistedReport(saved.report, signingSecret)
+    };
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    global.fetch = vi.fn(async () => Response.json([row])) as typeof fetch;
+
+    await expect(listTenantSavedReports({ tenantId: "tenant_a", limit: 25 })).resolves.toEqual([
+      expect.objectContaining({ id: "tenant_projection", repositoryId: 100, pullRequestNumber: 28 })
+    ]);
+  });
+
   it("returns null for expired Supabase reports and deletes them", async () => {
     process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
     process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
