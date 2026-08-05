@@ -14,4 +14,10 @@ describe("PublicGitHubEntry", () => {
   it("does not ask users to supply a GitHub token on the entry screen", () => {
     expect(source).not.toContain("githubToken");
   });
+
+  it("keeps report examples out of the GitHub sign-in screen", () => {
+    expect(source).not.toContain("Evidence summary");
+    expect(source).not.toContain("Pull request #14");
+    expect(source).not.toContain("src/auth.ts");
+  });
 });
