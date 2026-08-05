@@ -17,7 +17,7 @@ import {
   SavedReportStoreError
 } from "./server-report-store";
 import { createVerifiedAuthenticity } from "./report-authenticity";
-import { validateTenantStoredReport } from "./tenant-report-validation";
+import { projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
 import type { VerificationReport } from "./types";
 import { generateVerificationReport } from "./verifier";
 
@@ -189,6 +189,18 @@ describe("server report store", () => {
       p_pull_request_number: 8,
       p_head_sha: "a".repeat(40)
     });
+    expect(Object.keys(body.p_report).sort()).toEqual([
+      "evidenceIndex",
+      "integrity",
+      "priority",
+      "reprompt",
+      "requirements",
+      "reviewPriority",
+      "testing",
+      "version"
+    ]);
+    expect(JSON.stringify(body.p_report)).not.toContain("proofGraph");
+    expect(JSON.stringify(body.p_report)).not.toContain("source");
     expect(saved).toMatchObject({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 8 });
   });
 
@@ -248,6 +260,31 @@ describe("server report store", () => {
     const badSignature = structuredClone(saved.report);
     badSignature.summary.confidence = 0.1;
     expect(validateTenantStoredReport(badSignature, signingSecret).errors).toContain("authenticity signature is invalid.");
+  });
+
+  it("rejects a tampered or expanded persisted tenant report projection", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const safe = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+    const projected = projectTenantPersistedReport(safe.report, signingSecret);
+
+    expect(validateTenantPersistedReport(projected, signingSecret)).toEqual({ valid: true, errors: [] });
+
+    const tampered = structuredClone(projected);
+    tampered.priority = projected.priority === "low" ? "high" : "low";
+    expect(validateTenantPersistedReport(tampered, signingSecret)).toMatchObject({ valid: false });
+
+    const expanded = { ...projected, rawDiff: "private patch" };
+    expect(validateTenantPersistedReport(expanded, signingSecret)).toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining(["tenant persisted report contains disallowed field: rawDiff."])
+    });
   });
 
   it("does not store raw linked issue body evidence in saved reports", async () => {

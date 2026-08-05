@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { githubOnboardingStartFailureMessage } from "@/lib/github-onboarding-client";
 
 interface Repository { id: number; fullName: string; private: boolean; }
 interface ExistingInstallation { installationId: number; accountLogin: string; }
@@ -97,7 +98,7 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
     const response = await fetch("/api/github/onboarding/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const body = await response.json().catch(() => null);
     if (typeof body?.installUrl === "string") window.location.assign(body.installUrl);
-    else setMessage("GitHub App installation could not start.");
+    else setMessage(githubOnboardingStartFailureMessage(body?.code));
   }
   async function activateExistingInstallation(existingInstallationId: number) {
     const response = await fetch(`/api/github/onboarding/callback?existing=1&installationId=${encodeURIComponent(existingInstallationId)}`, {

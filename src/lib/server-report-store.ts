@@ -9,7 +9,7 @@ import {
 import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
-import { isSafeTenantLocator, validateTenantStoredReport } from "./tenant-report-validation";
+import { isSafeTenantLocator, isTenantPersistedReport, projectTenantPersistedReport, type TenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
 import type { VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -143,7 +143,7 @@ interface SupabaseReportRow {
   id: string;
   created_at: string;
   expires_at: string;
-  report: VerificationReport;
+  report: VerificationReport | TenantPersistedReport;
   tenant_id?: string | null;
   access_token_hash?: string | null;
   installation_id?: number | null;
@@ -922,7 +922,7 @@ function toSupabaseRow(saved: StoredServerReport): SupabaseReportRow {
     id: saved.id,
     created_at: saved.createdAt,
     expires_at: saved.expiresAt,
-    report: saved.report
+    report: reportForPersistence(saved)
   };
 
   if (saved.tenantId) {
@@ -943,7 +943,7 @@ function toSupabaseTenantReportRpc(saved: StoredServerReport) {
     p_id: saved.id,
     p_created_at: saved.createdAt,
     p_expires_at: saved.expiresAt,
-    p_report: saved.report,
+    p_report: reportForPersistence(saved),
     p_tenant_id: saved.tenantId,
     p_installation_id: saved.installationId,
     p_repository_id: saved.repositoryId,
@@ -959,7 +959,7 @@ function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerRepo
     id: row.id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
-    report: row.report,
+    report: hydratePersistedTenantReport(row.report, row.created_at),
     tenantId: row.tenant_id ?? undefined,
     accessTokenHash: row.access_token_hash ?? undefined,
     installationId: row.installation_id ?? undefined,
@@ -968,6 +968,40 @@ function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerRepo
     headSha: row.head_sha ?? undefined,
     staleAt: row.stale_at ?? undefined
   });
+}
+
+function reportForPersistence(saved: StoredServerReport): VerificationReport | TenantPersistedReport {
+  if (saved.tenantId && saved.report.authenticity?.trust === "verified_agentproof") {
+    return projectTenantPersistedReport(saved.report, requireReportSigningSecret());
+  }
+  return saved.report;
+}
+
+function hydratePersistedTenantReport(report: VerificationReport | TenantPersistedReport, createdAt: string): VerificationReport {
+  if (!looksLikeTenantPersistedReport(report)) return report as VerificationReport;
+  const secret = requireReportSigningSecret();
+  if (!isTenantPersistedReport(report, secret)) return report as VerificationReport;
+  const hydrated: VerificationReport = {
+    analysisId: "tenant-saved-report",
+    createdAt,
+    source: { title: "GitHub pull request evidence report" },
+    summary: { oneLine: "Grounded verification result; review structured evidence.", confidence: 0, priority: report.priority, evidenceCoverage: 0, topRisks: [] },
+    requirements: report.requirements.map((item) => ({ requirementId: item.requirementId, requirementText: `Requirement ${item.requirementId}`, status: item.status, evidenceRefs: item.evidenceRefs, gaps: item.gaps, reviewerNote: "Review the linked evidence and safe locations.", confidence: 0 })),
+    claims: [],
+    scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
+    testing: { ...report.testing, missingTests: [] },
+    reviewPriority: report.reviewPriority.map((item) => ({ path: item.path, priority: item.priority, evidenceRefs: item.evidenceRefs, reason: "Review priority based on grounded evidence." })),
+    proofGraph: { version: 1, nodes: [], context: [], summary: { requirementCount: report.requirements.length, requirementsWithImplementation: 0, requirementsWithTargetedTests: 0, requirementsWithExecution: 0, requirementsWithGaps: report.requirements.filter((item) => item.gaps.length > 0).length, gapCount: report.requirements.reduce((count, item) => count + item.gaps.length, 0) } },
+    reprompt: { targetAgent: "codex", prompt: report.reprompt.prompt },
+    evidenceIndex: report.evidenceIndex.map((item) => ({ id: item.id, kind: "inference", label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", confidence: 0, ...(item.locator ? { locator: item.locator } : {}) })),
+    limitations: ["Some evidence was unavailable or intentionally omitted for privacy."]
+  };
+  hydrated.authenticity = createVerifiedAuthenticity(hydrated, secret);
+  return hydrated;
+}
+
+function looksLikeTenantPersistedReport(report: unknown): report is TenantPersistedReport {
+  return Boolean(report && typeof report === "object" && !Array.isArray(report) && "integrity" in report && "version" in report);
 }
 
 function sanitizeStoredReport(saved: StoredServerReport): StoredServerReport | null {
