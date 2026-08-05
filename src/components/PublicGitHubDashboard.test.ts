@@ -21,6 +21,13 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Priority:");
   });
 
+  it("separates connected repositories from previously saved reports and disables a pending selection", () => {
+    expect(source).toContain("Connected repositories");
+    expect(source).toContain("Previous analysis reports");
+    expect(source).toContain("disabled={repositorySelectionPending}");
+    expect(source).toContain('"/api/dashboard/repositories"');
+  });
+
   it("renders only the agreed sanitized detail categories", () => {
     expect(source).toContain("Requirements:");
     expect(source).toContain("Evidence locations:");
