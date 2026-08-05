@@ -30,7 +30,7 @@ describe("PublicGitHubDashboard saved reports", () => {
 
   it("renders only the agreed sanitized detail categories", () => {
     expect(source).toContain(">Requirements<");
-    expect(source).toContain("Evidence IDs:");
+    expect(source).toContain("Reference IDs:");
     expect(source).toContain(">Priority files<");
     expect(source).toContain(">Agent request<");
     expect(source).not.toContain("rawDiff");

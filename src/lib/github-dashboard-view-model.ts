@@ -52,6 +52,13 @@ export function isPreviewDemoEnabled(previewDemoAvailable: boolean, demo: string
   return previewDemoAvailable && demo === "1";
 }
 
+export function toRequirementCoverageLabel(status: string): string {
+  if (status === "met") return "Supported";
+  if (status === "partial") return "Partially supported";
+  if (status === "missing") return "Evidence missing";
+  return "Unclear";
+}
+
 export function buildGitHubPullUrl(repositoryFullName: string | undefined, pullRequestNumber: number | undefined): string | undefined {
   if (!repositoryFullName || !SAFE_REPOSITORY.test(repositoryFullName) || typeof pullRequestNumber !== "number" || !Number.isSafeInteger(pullRequestNumber) || pullRequestNumber < 1) return undefined;
   return `https://github.com/${repositoryFullName}/pull/${pullRequestNumber}`;

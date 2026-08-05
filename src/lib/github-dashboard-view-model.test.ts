@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGitHubPullUrl,
   isPreviewDemoEnabled,
+  toRequirementCoverageLabel,
   toQuickSummary,
   toRepositoryWorkspaceRows
 } from "./github-dashboard-view-model";
@@ -11,6 +12,13 @@ describe("github dashboard view model", () => {
     expect(isPreviewDemoEnabled(true, "1")).toBe(true);
     expect(isPreviewDemoEnabled(false, "1")).toBe(false);
     expect(isPreviewDemoEnabled(true, undefined)).toBe(false);
+  });
+
+  it("translates stored requirement states into reviewer-facing language", () => {
+    expect(toRequirementCoverageLabel("met")).toBe("Supported");
+    expect(toRequirementCoverageLabel("partial")).toBe("Partially supported");
+    expect(toRequirementCoverageLabel("missing")).toBe("Evidence missing");
+    expect(toRequirementCoverageLabel("unclear")).toBe("Unclear");
   });
 
   it("builds a GitHub pull URL only from a safe repository name and PR number", () => {

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
@@ -16,11 +15,11 @@ import {
   Loader2,
   Settings2,
   ShieldCheck,
-  SlidersHorizontal,
   XCircle
 } from "lucide-react";
 import {
   buildGitHubPullUrl,
+  toRequirementCoverageLabel,
   toQuickSummary,
   toRepositoryWorkspaceRows,
   type DashboardReportDetail,
@@ -82,8 +81,8 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const [activeInstallationId, setActiveInstallationId] = useState(installationId);
   const [existingInstallations, setExistingInstallations] = useState<ExistingInstallation[]>([]);
   const [availableRepositories, setAvailableRepositories] = useState<Repository[]>([]);
-  const [connectedRepositories, setConnectedRepositories] = useState<DashboardRepositoryGrant[]>([]);
-  const [connectionsLoaded, setConnectionsLoaded] = useState(false);
+  const [connectedRepositories, setConnectedRepositories] = useState<DashboardRepositoryGrant[]>(previewDemoEnabled ? PREVIEW_DEMO_REPOSITORIES : []);
+  const [connectionsLoaded, setConnectionsLoaded] = useState(previewDemoEnabled);
   const [repositorySelectionPending, setRepositorySelectionPending] = useState(false);
   const [commentEnabledOnConnect, setCommentEnabledOnConnect] = useState(false);
   const [message, setMessage] = useState(previewDemoEnabled ? "Preview demo: sample data only. No GitHub, database, or comment action will run." : "Sign in with GitHub to start.");
@@ -345,17 +344,13 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   return <section className="github-dashboard">
     <aside className="dashboard-sidebar">
       <div className="dashboard-brand"><span className="dashboard-brand-mark"><ShieldCheck size={18} /></span><span>AgentProof<small>Evidence workspace</small></span></div>
-      <nav aria-label="Dashboard navigation">
-        <button className={screen === "repositories" ? "dashboard-nav-item active" : "dashboard-nav-item"} onClick={() => setScreen("repositories")}><FolderGit2 size={17} /> Repositories</button>
-        <button className={screen === "settings" ? "dashboard-nav-item active" : "dashboard-nav-item"} onClick={() => setScreen("settings")}><Settings2 size={17} /> Settings</button>
-      </nav>
       <p className="dashboard-sidebar-boundary"><ShieldCheck size={14} /> Evidence report only. Human review remains required.</p>
     </aside>
 
     <div className="dashboard-canvas">
       <header className="dashboard-topbar">
         <div><p className="dashboard-eyebrow">{screen === "settings" ? "SETTINGS" : "REPOSITORIES"}</p><h2>{screen === "settings" ? "Repository settings" : "Evidence workspace"}</h2></div>
-        <div className="dashboard-top-actions"><button className="dashboard-icon-button" aria-label="Notifications unavailable" title="Notifications are not available yet"><Bell size={18} /></button><button className="dashboard-icon-button" aria-label="Refresh reports" onClick={() => { void refreshReports(); }}><Clock3 size={18} /></button></div>
+        <div className="dashboard-top-actions"><button className="dashboard-text-action dashboard-settings-action" onClick={() => setScreen(screen === "settings" ? "repositories" : "settings")}><Settings2 size={16} /> {screen === "settings" ? "Reports" : "Settings"}</button><button className="dashboard-icon-button" aria-label="Refresh reports" onClick={() => { void refreshReports(); }}><Clock3 size={18} /></button></div>
       </header>
       <p className="dashboard-message" role="status">{message}</p>
       {demoMode ? <p className="dashboard-demo-banner"><Info size={15} /> Preview demo · sample data only · GitHub, database, and comments are disabled.</p> : null}
@@ -373,14 +368,13 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
         <section className="dashboard-workspace">
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports only. Issue grouping and inbox are unavailable until authoritative product data exists.</p></div></div>
           {!selectedRepository ? <p className="dashboard-empty">Connect a GitHub repository to review saved evidence reports.</p> : selectedReports.length === 0 ? <p className="dashboard-empty"><FileCheck2 size={20} /> No reports yet<br /><small>New PR events will appear here after analysis.</small></p> : <div className="dashboard-report-layout">
-            <div className="report-list" aria-label="Previous analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon">{report.staleAt ? <Clock3 size={17} /> : <FileCheck2 size={17} />}</span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label={report.staleAt ? "STALE" : "CURRENT"} title={report.staleAt ? "STALE (older head)" : "Current report"} /><small>Priority: {report.priority}</small></span></button>)}</div>
+            <div className="report-list" aria-label="Previous analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon">{report.staleAt ? <Clock3 size={17} /> : <FileCheck2 size={17} />}</span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label={report.staleAt ? "STALE" : "CURRENT"} title={report.staleAt ? "STALE (older head)" : "Current report"} /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
             {detail?.report && quickSummary ? <QuickSummaryPanel detail={detail} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
           </div>}
         </section>
       </> : <SettingsPanel repository={selectedRepository} pending={settingsPending} onUpdate={updateRepositorySetting} />}
     </div>
 
-    <nav className="dashboard-mobile-nav" aria-label="Mobile dashboard navigation"><button className={screen === "repositories" ? "active" : ""} onClick={() => setScreen("repositories")}><FolderGit2 size={18} />Repos</button><button className={screen === "settings" ? "active" : ""} onClick={() => setScreen("settings")}><SlidersHorizontal size={18} />Settings</button></nav>
   </section>;
 }
 
@@ -391,7 +385,7 @@ function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvi
   return <article className="quick-summary">
     <header className="quick-summary-header"><div><p className="dashboard-eyebrow">QUICK SUMMARY</p><h3>PR #{detail.pullRequestNumber ?? "Unknown"}</h3><p>Head <code>{headPrefix(detail.headSha)}</code> · Analyzed {detail.createdAt ? formatCreatedAt(detail.createdAt) : "unknown time"}</p></div><div className="summary-badges"><StatusToken label={quickSummary.freshness} /><StatusToken label={`Priority: ${detail.priority ?? "unknown"}`} /></div></header>
     <div className="summary-status-grid"><SummaryState label="Report state" value={quickSummary.freshness} /><SummaryState label="Check state" value={quickSummary.checkState} /><SummaryState label="Evidence" value={quickSummary.primaryEvidenceState} /><SummaryState label="Inspect first" value={quickSummary.inspectFirst} mono /></div>
-    <section className="summary-callout"><CircleAlert size={19} /><div><p className="dashboard-eyebrow">MOST IMPORTANT EVIDENCE GAP</p><strong>{quickSummary.primaryEvidenceState}</strong><p>{firstRequirement ? `Requirement ${firstRequirement.requirementId} has ${firstRequirement.evidenceRefs.length} bounded evidence reference${firstRequirement.evidenceRefs.length === 1 ? "" : "s"}.` : "No requirement evidence is available in this saved report."}</p></div></section>
+    <section className="summary-callout"><CircleAlert size={19} /><div><p className="dashboard-eyebrow">MOST IMPORTANT EVIDENCE GAP</p><strong>{quickSummary.primaryEvidenceState}</strong><p>{firstRequirement ? `Requirement ${firstRequirement.requirementId} is ${toRequirementCoverageLabel(firstRequirement.status).toLowerCase()}. More proof is needed before it is fully supported.` : "No requirement evidence is available in this saved report."}</p></div></section>
     <div className="summary-actions">{githubUrl ? <a className="dashboard-secondary-action" href={githubUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Open in GitHub</a> : <span className="dashboard-disabled-action">GitHub link unavailable</span>}<button className="dashboard-primary-action" onClick={onShowDetail}>{showDetailedEvidence ? "Hide detailed evidence" : "View detailed evidence"}</button></div>
     {showDetailedEvidence ? <DetailedEvidence detail={detail} /> : null}
     <p className="dashboard-boundary"><ShieldCheck size={15} /> This report organizes available evidence. It does not establish correctness, safety, requirement satisfaction, or merge readiness.</p>
@@ -400,7 +394,7 @@ function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvi
 
 function DetailedEvidence({ detail }: { detail: DashboardReportDetail }) {
   const report = detail.report;
-  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirements, checks, and review targets</h4></div></div><div className="detail-grid"><section><h5>Requirements</h5>{report?.requirements?.length ? report.requirements.map((item) => <div className="detail-row" key={item.requirementId}><strong>{item.requirementId} · {item.status}</strong><span>Evidence IDs: {item.evidenceRefs.join(", ") || "Unavailable"}</span><span>{item.gaps.length > 0 ? "Evidence missing" : "Evidence found"}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Agent request</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section><section><h5>Limitations</h5><p className="agent-request">Saved reports retain refined verification fields. Raw diffs, full logs, OAuth tokens, and raw GitHub responses are not displayed.</p></section></div></section>;
+  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirements, checks, and review targets</h4></div></div><div className="detail-grid"><section><h5>Requirements</h5>{report?.requirements?.length ? report.requirements.map((item) => <div className="detail-row" key={item.requirementId}><strong>{item.requirementId} · {toRequirementCoverageLabel(item.status)}</strong><span>{item.evidenceRefs.length > 0 ? `${item.evidenceRefs.length} evidence reference${item.evidenceRefs.length === 1 ? "" : "s"} available` : "No evidence reference available"}</span><span>Reference IDs: {item.evidenceRefs.join(", ") || "Unavailable"}</span><span>{item.gaps.length > 0 ? "Needs: more proof before this requirement is fully supported." : "No evidence gap recorded."}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Agent request</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section><section><h5>Limitations</h5><p className="agent-request">Saved reports retain refined verification fields. Raw diffs, full logs, OAuth tokens, and raw GitHub responses are not displayed.</p></section></div></section>;
 }
 
 function SettingsPanel({ repository, pending, onUpdate }: { repository: ReturnType<typeof toRepositoryWorkspaceRows>[number] | undefined; pending: string | null; onUpdate: (setting: RepositorySetting, nextValue: boolean) => Promise<void> }) {
