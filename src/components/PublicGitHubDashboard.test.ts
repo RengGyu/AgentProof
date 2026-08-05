@@ -23,19 +23,35 @@ describe("PublicGitHubDashboard saved reports", () => {
 
   it("separates connected repositories from previously saved reports and disables a pending selection", () => {
     expect(source).toContain("Connected repositories");
-    expect(source).toContain("Previous analysis reports");
+    expect(source).toContain("Repository reports");
     expect(source).toContain("disabled={repositorySelectionPending}");
     expect(source).toContain('"/api/dashboard/repositories"');
   });
 
   it("renders only the agreed sanitized detail categories", () => {
-    expect(source).toContain("Requirements:");
-    expect(source).toContain("Evidence locations:");
-    expect(source).toContain("Priority files:");
-    expect(source).toContain("Repair prompt:");
+    expect(source).toContain(">Requirements<");
+    expect(source).toContain("Evidence IDs:");
+    expect(source).toContain(">Priority files<");
+    expect(source).toContain(">Agent request<");
     expect(source).not.toContain("rawDiff");
     expect(source).not.toContain("rawLog");
     expect(source).not.toContain("pullRequestBody");
     expect(source).not.toContain("issueBody");
+  });
+
+  it("renders the evidence workspace without inventing issue or inbox data", () => {
+    expect(source).toContain("Repository reports");
+    expect(source).toContain("No reports yet");
+    expect(source).toContain("Quick Summary");
+    expect(source).toContain("View detailed evidence");
+    expect(source).toContain("STALE");
+    expect(source).not.toContain("Unlinked PRs");
+  });
+
+  it("keeps repository summary comments opt-in through the existing tenant settings endpoint", () => {
+    expect(source).toContain("Summary comments");
+    expect(source).toContain('"/api/tenants/repositories"');
+    expect(source).toContain('method: "PATCH"');
+    expect(source).toContain("Comments are off");
   });
 });

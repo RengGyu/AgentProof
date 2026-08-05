@@ -1,5 +1,5 @@
-import { AnalyzeWorkspace } from "@/components/AnalyzeWorkspace";
+import { PublicGitHubEntry } from "@/components/PublicGitHubEntry";
 
 export default function Home() {
-  return <AnalyzeWorkspace />;
+  return <PublicGitHubEntry />;
 }
