@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import { getSharedControlPlaneServiceRoleKey } from "./control-plane-supabase";
 import {
   createUnverifiedAuthenticity,
   createVerifiedAuthenticity,
@@ -1018,9 +1019,12 @@ function getSupabaseReportStoreConfig(): SupabaseReportStoreConfig | null {
 }
 
 function readSupabaseReportStoreEnv() {
+  const url = process.env.AGENTPROOF_REPORTS_SUPABASE_URL || process.env.SUPABASE_URL || "";
+
   return {
-    url: process.env.AGENTPROOF_REPORTS_SUPABASE_URL || process.env.SUPABASE_URL || "",
+    url,
     serviceRoleKey:
+      getSharedControlPlaneServiceRoleKey(url) ||
       process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "",
     table: process.env.AGENTPROOF_REPORTS_TABLE || DEFAULT_SUPABASE_REPORTS_TABLE
   };

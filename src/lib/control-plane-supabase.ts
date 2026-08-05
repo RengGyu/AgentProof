@@ -16,3 +16,21 @@ export function getControlPlaneSupabaseEnv(env: Record<string, string | undefine
       ""
   };
 }
+
+export function getSharedControlPlaneServiceRoleKey(
+  url: string,
+  env: Record<string, string | undefined> = process.env
+) {
+  const shared = getControlPlaneSupabaseEnv(env);
+  const normalizedUrl = trimTrailingSlash(url);
+
+  if (!normalizedUrl || normalizedUrl !== trimTrailingSlash(shared.url)) {
+    return "";
+  }
+
+  return shared.serviceRoleKey;
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}

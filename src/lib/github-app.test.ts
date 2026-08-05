@@ -407,6 +407,24 @@ describe("github app helpers", () => {
     expect(serialized).not.toContain("reprompt");
   });
 
+  it("reuses the onboarding service role for shared durable webhook idempotency", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "stale-reports-service-role");
+    vi.stubEnv("AGENTPROOF_CONTROL_PLANE_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ONBOARDING_SUPABASE_SERVICE_ROLE_KEY", "shared-service-role");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (init?.method === "POST") return new Response(null, { status: 201 });
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await reserveGitHubWebhookDelivery(webhookDeliveryInput(), 1_000);
+
+    const postCall = fetchMock.mock.calls.find((call) => call[1]?.method === "POST");
+    expect((postCall?.[1]?.headers as Record<string, string>).Authorization).toBe("Bearer shared-service-role");
+  });
+
   it("counts durable tenant webhook deliveries with a narrow HEAD query", async () => {
     vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");

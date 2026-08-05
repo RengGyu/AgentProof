@@ -1,4 +1,5 @@
 import { createHash, createHmac, createPrivateKey, createSign, timingSafeEqual } from "crypto";
+import { getSharedControlPlaneServiceRoleKey } from "./control-plane-supabase";
 import { getTenantControlPlaneSettings, readTenantRepositoryGrants } from "./tenant-control-plane";
 
 const GITHUB_APP_FETCH_TIMEOUT_MS = 8000;
@@ -901,14 +902,17 @@ function getSupabaseWebhookDeliveryConfig(env = process.env): SupabaseWebhookDel
 }
 
 function readSupabaseWebhookDeliveryEnv(env = process.env) {
+  const url =
+    env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL ||
+    env.AGENTPROOF_REPORTS_SUPABASE_URL ||
+    env.SUPABASE_URL ||
+    "";
+
   return {
-    url:
-      env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL ||
-      env.AGENTPROOF_REPORTS_SUPABASE_URL ||
-      env.SUPABASE_URL ||
-      "",
+    url,
     serviceRoleKey:
       env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY ||
+      getSharedControlPlaneServiceRoleKey(url, env) ||
       env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY ||
       env.SUPABASE_SERVICE_ROLE_KEY ||
       "",

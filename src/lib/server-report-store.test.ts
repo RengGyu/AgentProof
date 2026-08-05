@@ -512,6 +512,24 @@ describe("server report store", () => {
     });
   });
 
+  it("reuses the onboarding service role when reports share the control-plane Supabase project", async () => {
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "stale-reports-service-role";
+    process.env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_ONBOARDING_SUPABASE_SERVICE_ROLE_KEY = "shared-service-role";
+    process.env.AGENTPROOF_REPORTS_TABLE = "saved_reports_test";
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const row = JSON.parse(String(init?.body));
+      return Response.json([row]);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    await createSavedReport(generateVerificationReport(demoScenarios.clean));
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer shared-service-role");
+  });
+
   it("stores tenant metadata and hashed access only in Supabase saved report rows", async () => {
     process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
     process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
