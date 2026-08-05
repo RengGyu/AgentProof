@@ -1,4 +1,5 @@
 import { redactSecrets } from "./redact";
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 
 export const TENANT_DELETION_TOMBSTONES_ENV = "AGENTPROOF_TENANT_DELETION_TOMBSTONES";
 export const TENANT_DELETION_STATE_ALLOW_MEMORY_ENV = "AGENTPROOF_TENANT_DELETION_STATE_ALLOW_MEMORY";
@@ -212,11 +213,11 @@ async function supabaseTenantDeletionStateFetch(
 }
 
 function getTenantDeletionStateStoreConfig(env: NodeJS.ProcessEnv): TenantDeletionStateStoreConfig | null {
-  const url = env.AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
+  const shared = getControlPlaneSupabaseEnv(env);
+  const url = env.AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL || shared.url;
   const serviceRoleKey =
     env.AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY ||
-    env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY ||
-    env.SUPABASE_SERVICE_ROLE_KEY ||
+    shared.serviceRoleKey ||
     "";
 
   if (!url && !serviceRoleKey) return null;

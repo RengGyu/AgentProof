@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { noStoreJson } from "./http";
 import { redactSecrets } from "./redact";
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 import { readTenantAccountSummary, type TenantMemberRole } from "./tenant-accounts";
 
 export const TENANT_AUTH_SESSION_COOKIE = "agentproof_tenant_auth_session";
@@ -396,11 +397,11 @@ function tenantAuthFetch(config: TenantAuthSessionStoreConfig, query: string, in
 }
 
 function getTenantAuthSessionStoreConfig(env = process.env): TenantAuthSessionStoreConfig | null {
-  const url = env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
+  const shared = getControlPlaneSupabaseEnv(env);
+  const url = env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL || shared.url;
   const serviceRoleKey =
     env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY ||
-    env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY ||
-    env.SUPABASE_SERVICE_ROLE_KEY ||
+    shared.serviceRoleKey ||
     "";
 
   if (!url && !serviceRoleKey) return null;

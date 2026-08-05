@@ -1,3 +1,5 @@
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
+
 export const DEFAULT_GITHUB_INSTALLATIONS_TABLE = "agentproof_github_installations";
 
 export type GitHubInstallationStatus = "active" | "suspended" | "deleted";
@@ -416,12 +418,12 @@ function getGitHubInstallationStoreConfig(env = process.env): GitHubInstallation
 }
 
 function readGitHubInstallationStoreEnv(env = process.env) {
+  const shared = getControlPlaneSupabaseEnv(env);
   return {
-    url: env.AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "",
+    url: env.AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL || shared.url,
     serviceRoleKey:
       env.AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_SERVICE_ROLE_KEY ||
-      env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY ||
-      env.SUPABASE_SERVICE_ROLE_KEY ||
+      shared.serviceRoleKey ||
       "",
     table: env.AGENTPROOF_GITHUB_INSTALLATIONS_TABLE || DEFAULT_GITHUB_INSTALLATIONS_TABLE
   };

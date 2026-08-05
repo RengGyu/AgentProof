@@ -1,4 +1,5 @@
 import { redactSecrets } from "./redact";
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 import {
   assertTenantDeletionNotActiveAsync,
   isTenantDeletionActive,
@@ -748,11 +749,11 @@ async function supabaseTenantGrantFetch(config: TenantGrantStoreConfig, query: s
 }
 
 function getTenantGrantStoreConfig(env = process.env): TenantGrantStoreConfig | null {
-  const url = env.AGENTPROOF_TENANT_GRANTS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
+  const shared = getControlPlaneSupabaseEnv(env);
+  const url = env.AGENTPROOF_TENANT_GRANTS_SUPABASE_URL || shared.url;
   const serviceRoleKey =
     env.AGENTPROOF_TENANT_GRANTS_SUPABASE_SERVICE_ROLE_KEY ||
-    env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY ||
-    env.SUPABASE_SERVICE_ROLE_KEY ||
+    shared.serviceRoleKey ||
     "";
 
   if (!url && !serviceRoleKey) return null;
