@@ -20,4 +20,10 @@ describe("PublicGitHubEntry", () => {
     expect(source).not.toContain("Pull request #14");
     expect(source).not.toContain("src/auth.ts");
   });
+
+  it("offers the sample dashboard only when the server enables Preview demo mode", () => {
+    expect(source).toContain("previewDemoAvailable");
+    expect(source).toContain('href="/dashboard?demo=1"');
+    expect(source).toContain("Preview dashboard");
+  });
 });

@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGitHubPullUrl,
+  isPreviewDemoEnabled,
   toQuickSummary,
   toRepositoryWorkspaceRows
 } from "./github-dashboard-view-model";
 
 describe("github dashboard view model", () => {
+  it("enables sample data only for an explicitly requested Preview demo", () => {
+    expect(isPreviewDemoEnabled(true, "1")).toBe(true);
+    expect(isPreviewDemoEnabled(false, "1")).toBe(false);
+    expect(isPreviewDemoEnabled(true, undefined)).toBe(false);
+  });
+
   it("builds a GitHub pull URL only from a safe repository name and PR number", () => {
     expect(buildGitHubPullUrl("RengGyu/dongo", 14)).toBe("https://github.com/RengGyu/dongo/pull/14");
     expect(buildGitHubPullUrl("bad repo/name", 14)).toBeUndefined();

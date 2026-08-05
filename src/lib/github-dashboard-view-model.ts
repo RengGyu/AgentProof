@@ -48,6 +48,10 @@ export interface QuickSummary {
 const SAFE_REPOSITORY = /^[-.A-Za-z0-9_]+\/[-.A-Za-z0-9_]+$/;
 const SAFE_LOCATOR = /^[A-Za-z0-9_.:@#/-]{1,240}$/;
 
+export function isPreviewDemoEnabled(previewDemoAvailable: boolean, demo: string | undefined): boolean {
+  return previewDemoAvailable && demo === "1";
+}
+
 export function buildGitHubPullUrl(repositoryFullName: string | undefined, pullRequestNumber: number | undefined): string | undefined {
   if (!repositoryFullName || !SAFE_REPOSITORY.test(repositoryFullName) || typeof pullRequestNumber !== "number" || !Number.isSafeInteger(pullRequestNumber) || pullRequestNumber < 1) return undefined;
   return `https://github.com/${repositoryFullName}/pull/${pullRequestNumber}`;

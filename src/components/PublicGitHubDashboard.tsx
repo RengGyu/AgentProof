@@ -38,8 +38,47 @@ interface ExistingInstallation { installationId: number; accountLogin: string; }
 type WorkspaceScreen = "repositories" | "settings";
 type RepositorySetting = "analysisEnabled" | "saveReportsEnabled" | "commentEnabled";
 
-export function PublicGitHubDashboard({ installationId }: { installationId?: string }) {
-  const [signedIn, setSignedIn] = useState(false);
+const PREVIEW_DEMO_REPOSITORIES: DashboardRepositoryGrant[] = [{
+  installationId: 999,
+  repositoryId: 101,
+  repositoryFullName: "sample-org/checkout-service",
+  enabled: true,
+  analysisEnabled: true,
+  saveReportsEnabled: true,
+  commentEnabled: false
+}];
+
+const PREVIEW_DEMO_REPORTS: DashboardSavedReport[] = [{
+  id: "preview-report-current",
+  repositoryId: 101,
+  pullRequestNumber: 42,
+  headSha: "7cf2a98bf1d4c2508a0668da80c45151fca856d1",
+  priority: "medium",
+  createdAt: "2026-08-06T07:00:00.000Z"
+}, {
+  id: "preview-report-stale",
+  repositoryId: 101,
+  pullRequestNumber: 42,
+  headSha: "1b7a6e35b3ac00d94a7e7ea9d8e4bb178d5c7bd2",
+  priority: "medium",
+  createdAt: "2026-08-05T20:00:00.000Z",
+  staleAt: "2026-08-06T07:00:00.000Z"
+}];
+
+const PREVIEW_DEMO_DETAIL: DashboardReportDetail = {
+  ...PREVIEW_DEMO_REPORTS[0],
+  report: {
+    requirements: [{ requirementId: "req_1", status: "partial", evidenceRefs: ["ev_12", "ev_18"], gaps: ["Evidence gap recorded."] }],
+    testing: { ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "pending" },
+    reviewPriority: [{ path: "src/checkout/validation.ts", priority: "medium" }],
+    evidenceIndex: [{ id: "ev_12", locator: "src/checkout/validation.ts" }],
+    reprompt: { prompt: "Add bounded evidence for the requirement, then rerun the relevant check." }
+  }
+};
+
+export function PublicGitHubDashboard({ installationId, previewDemoEnabled = false }: { installationId?: string; previewDemoEnabled?: boolean }) {
+  const [demoMode] = useState(previewDemoEnabled);
+  const [signedIn, setSignedIn] = useState(previewDemoEnabled);
   const [activeInstallationId, setActiveInstallationId] = useState(installationId);
   const [existingInstallations, setExistingInstallations] = useState<ExistingInstallation[]>([]);
   const [availableRepositories, setAvailableRepositories] = useState<Repository[]>([]);
@@ -47,10 +86,10 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [repositorySelectionPending, setRepositorySelectionPending] = useState(false);
   const [commentEnabledOnConnect, setCommentEnabledOnConnect] = useState(false);
-  const [message, setMessage] = useState("Sign in with GitHub to start.");
-  const [reports, setReports] = useState<DashboardSavedReport[]>([]);
-  const [detail, setDetail] = useState<DashboardReportDetail | null>(null);
-  const [selectedRepositoryId, setSelectedRepositoryId] = useState<number | undefined>();
+  const [message, setMessage] = useState(previewDemoEnabled ? "Preview demo: sample data only. No GitHub, database, or comment action will run." : "Sign in with GitHub to start.");
+  const [reports, setReports] = useState<DashboardSavedReport[]>(previewDemoEnabled ? PREVIEW_DEMO_REPORTS : []);
+  const [detail, setDetail] = useState<DashboardReportDetail | null>(previewDemoEnabled ? PREVIEW_DEMO_DETAIL : null);
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState<number | undefined>(previewDemoEnabled ? 101 : undefined);
   const [screen, setScreen] = useState<WorkspaceScreen>("repositories");
   const [showDetailedEvidence, setShowDetailedEvidence] = useState(false);
   const [settingsPending, setSettingsPending] = useState<string | null>(null);
@@ -70,9 +109,21 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
     : null;
 
   useEffect(() => {
+    if (demoMode) {
+      setSignedIn(true);
+      setConnectedRepositories(PREVIEW_DEMO_REPOSITORIES);
+      setReports(PREVIEW_DEMO_REPORTS);
+      setDetail(PREVIEW_DEMO_DETAIL);
+      setSelectedRepositoryId(101);
+      setConnectionsLoaded(true);
+      setMessage("Preview demo: sample data only. No GitHub, database, or comment action will run.");
+      return;
+    }
+    let cancelled = false;
     fetch("/api/dashboard/session", { cache: "no-store" })
       .then(async (response) => response.ok ? response.json() : null)
       .then((body) => {
+        if (cancelled) return;
         setSignedIn(body?.signedIn === true);
         if (body?.signedIn) {
           setMessage("Review connected repositories or connect another repository.");
@@ -80,11 +131,12 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
           void refreshConnectedRepositories();
         }
       })
-      .catch(() => setMessage("Session status is temporarily unavailable."));
-  }, []);
+      .catch(() => { if (!cancelled) setMessage("Session status is temporarily unavailable."); });
+    return () => { cancelled = true; };
+  }, [demoMode]);
 
   useEffect(() => {
-    if (!signedIn || !activeInstallationId) return;
+    if (demoMode || !signedIn || !activeInstallationId) return;
     fetch(`/api/github/onboarding/repositories?installationId=${encodeURIComponent(activeInstallationId)}`, { cache: "no-store" })
       .then(async (response) => response.ok ? response.json() : null)
       .then((body) => {
@@ -94,13 +146,17 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
         } else setMessage("Repository selection has expired. Start the App installation again.");
       })
       .catch(() => setMessage("Repositories could not be loaded."));
-  }, [activeInstallationId, signedIn]);
+  }, [activeInstallationId, demoMode, signedIn]);
 
   useEffect(() => {
     setActiveInstallationId(installationId);
   }, [installationId]);
 
   async function refreshReports() {
+    if (demoMode) {
+      setReports(PREVIEW_DEMO_REPORTS);
+      return;
+    }
     try {
       const response = await fetch("/api/dashboard/reports", { cache: "no-store" });
       const body = await response.json().catch(() => null);
@@ -111,6 +167,12 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
   }
 
   async function refreshConnectedRepositories() {
+    if (demoMode) {
+      setConnectedRepositories(PREVIEW_DEMO_REPOSITORIES);
+      setSelectedRepositoryId(101);
+      setConnectionsLoaded(true);
+      return;
+    }
     try {
       const response = await fetch("/api/dashboard/repositories", { cache: "no-store" });
       const body = await response.json().catch(() => null);
@@ -126,6 +188,7 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
   }
 
   async function login() {
+    if (demoMode) return;
     const response = await fetch("/api/auth/github/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const body = await response.json().catch(() => null);
     if (typeof body?.authorizationUrl === "string") window.location.assign(body.authorizationUrl);
@@ -133,6 +196,10 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
   }
 
   async function install() {
+    if (demoMode) {
+      setMessage("Preview demo already includes a sample connected repository.");
+      return;
+    }
     const existingResponse = await fetch("/api/github/onboarding/callback?existing=1", {
       headers: { "x-agentproof-csrf": "same-origin" }
     });
@@ -213,6 +280,13 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
   }
 
   async function openReport(id: string) {
+    if (demoMode) {
+      const report = PREVIEW_DEMO_REPORTS.find((item) => item.id === id);
+      if (!report) return;
+      setDetail(report.id === "preview-report-current" ? PREVIEW_DEMO_DETAIL : { ...PREVIEW_DEMO_DETAIL, ...report });
+      setShowDetailedEvidence(false);
+      return;
+    }
     const response = await fetch(`/api/dashboard/reports?id=${encodeURIComponent(id)}`, { cache: "no-store" });
     const body = await response.json().catch(() => null);
     if (response.ok) {
@@ -225,6 +299,13 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
 
   async function updateRepositorySetting(setting: RepositorySetting, nextValue: boolean) {
     if (!selectedRepository?.repositoryId) return;
+    if (demoMode) {
+      setConnectedRepositories((current) => current.map((repository) => repository.repositoryId === selectedRepository.repositoryId && repository.installationId === selectedRepository.installationId
+        ? { ...repository, [setting]: nextValue }
+        : repository));
+      setMessage("Preview demo setting updated locally. No GitHub or database change was made.");
+      return;
+    }
     setSettingsPending(setting);
     try {
       const response = await fetch("/api/tenants/repositories", {
@@ -277,10 +358,11 @@ export function PublicGitHubDashboard({ installationId }: { installationId?: str
         <div className="dashboard-top-actions"><button className="dashboard-icon-button" aria-label="Notifications unavailable" title="Notifications are not available yet"><Bell size={18} /></button><button className="dashboard-icon-button" aria-label="Refresh reports" onClick={() => { void refreshReports(); }}><Clock3 size={18} /></button></div>
       </header>
       <p className="dashboard-message" role="status">{message}</p>
+      {demoMode ? <p className="dashboard-demo-banner"><Info size={15} /> Preview demo · sample data only · GitHub, database, and comments are disabled.</p> : null}
 
       {screen === "repositories" ? <>
         <section className="dashboard-section dashboard-repository-strip" aria-labelledby="connected-repositories-title">
-          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">CONNECTIONS</p><h3 id="connected-repositories-title">Connected repositories</h3></div>{signedIn && !activeInstallationId ? <button className="dashboard-text-action" onClick={install}><Link2 size={15} /> Connect repository</button> : null}</div>
+          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">CONNECTIONS</p><h3 id="connected-repositories-title">Connected repositories</h3></div>{signedIn && !activeInstallationId ? <button className="dashboard-text-action" onClick={install}><Link2 size={15} /> {demoMode ? "Sample repository" : "Connect repository"}</button> : null}</div>
           {!connectionsLoaded ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading connected repositories</p> : repositoryRows.length > 0 ? <div className="repository-tabs">{repositoryRows.map((repository) => <button key={`${repository.installationId}:${repository.repositoryId ?? repository.repositoryFullName}`} className={repository.repositoryId === selectedRepository?.repositoryId ? "repository-tab active" : "repository-tab"} onClick={() => { setSelectedRepositoryId(repository.repositoryId); setDetail(null); }}><span>{repository.repositoryFullName}</span><small>{repository.analysisEnabled ? "Analysis on" : "Analysis off"} · {repository.commentsEnabled ? "Comments on" : "Comments off"}</small></button>)}</div> : <p className="dashboard-empty">No repository is connected yet.</p>}
         </section>
 
