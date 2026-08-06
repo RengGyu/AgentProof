@@ -38,6 +38,7 @@ interface Repository { id: number; fullName: string; private: boolean; }
 interface ExistingInstallation { installationId: number; accountLogin: string; }
 type WorkspaceScreen = "repositories" | "settings";
 type RepositorySetting = "analysisEnabled" | "saveReportsEnabled" | "commentEnabled";
+const DASHBOARD_REFRESH_INTERVAL_MS = 60_000;
 
 const PREVIEW_DEMO_REPOSITORIES: DashboardRepositoryGrant[] = [{
   installationId: 999,
@@ -108,6 +109,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const [inboxOpen, setInboxOpen] = useState(false);
   const [inboxSeenAt, setInboxSeenAt] = useState<string | null>(null);
   const [settingsPending, setSettingsPending] = useState<string | null>(null);
+  const [logoutPending, setLogoutPending] = useState(false);
   const repositorySelectionGate = useRef(createRepositorySelectionGate());
 
   const repositoryRows = useMemo(
@@ -174,6 +176,23 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     const stored = window.localStorage.getItem("agentproof:inbox-seen-at");
     if (stored && !Number.isNaN(Date.parse(stored))) setInboxSeenAt(stored);
   }, []);
+
+  useEffect(() => {
+    if (demoMode || !signedIn) return;
+    const refreshVisibleWorkspace = () => {
+      if (document.visibilityState === "visible") {
+        void refreshReports();
+        void refreshActivity();
+        void refreshConnectedRepositories();
+      }
+    };
+    const intervalId = window.setInterval(refreshVisibleWorkspace, DASHBOARD_REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", refreshVisibleWorkspace);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshVisibleWorkspace);
+    };
+  }, [demoMode, signedIn]);
 
   async function refreshReports() {
     if (demoMode) {
@@ -394,6 +413,37 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     }
   }
 
+  async function logout() {
+    if (demoMode) {
+      setMessage("Preview demo stays local. No session was ended.");
+      return;
+    }
+    setLogoutPending(true);
+    try {
+      const response = await fetch("/api/tenants/auth/session", {
+        method: "DELETE",
+        headers: { "x-agentproof-csrf": "same-origin" }
+      });
+      if (!response.ok) {
+        setMessage("Your session could not be ended. Try again.");
+        return;
+      }
+      window.localStorage.removeItem("agentproof:inbox-seen-at");
+      setSignedIn(false);
+      setConnectedRepositories([]);
+      setReports([]);
+      setActivity([]);
+      setDetail(null);
+      setInboxOpen(false);
+      setInboxSeenAt(null);
+      setMessage("You are signed out of AgentProof.");
+    } catch {
+      setMessage("Your session could not be ended. Try again.");
+    } finally {
+      setLogoutPending(false);
+    }
+  }
+
   if (!signedIn) return <section className="github-dashboard github-sign-in">
     <div className="github-sign-in-mark"><ShieldCheck size={28} /></div>
     <p className="dashboard-eyebrow">EVIDENCE-FIRST REVIEW</p>
@@ -435,7 +485,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
             {detail?.report && quickSummary ? <QuickSummaryPanel detail={detail} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
           </div>}
         </section>
-      </> : <SettingsPanel repository={selectedRepository} pending={settingsPending} onUpdate={updateRepositorySetting} />}
+      </> : <SettingsPanel repository={selectedRepository} pending={settingsPending} onUpdate={updateRepositorySetting} onLogout={logout} logoutPending={logoutPending} />}
     </div>
 
   </section>;
@@ -460,9 +510,8 @@ function DetailedEvidence({ detail }: { detail: DashboardReportDetail }) {
   return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirements, checks, and review targets</h4></div></div><div className="detail-grid"><section><h5>Requirements</h5>{report?.requirements?.length ? report.requirements.map((item) => <div className="detail-row" key={item.requirementId}><strong>{item.requirementId} · {toRequirementCoverageLabel(item.status)}</strong><span>{item.evidenceRefs.length > 0 ? `${item.evidenceRefs.length} evidence reference${item.evidenceRefs.length === 1 ? "" : "s"} available` : "No evidence reference available"}</span><span>Reference IDs: {item.evidenceRefs.join(", ") || "Unavailable"}</span><span>{item.gaps.length > 0 ? "Needs: more proof before this requirement is fully supported." : "No evidence gap recorded."}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div></section>;
 }
 
-function SettingsPanel({ repository, pending, onUpdate }: { repository: ReturnType<typeof toRepositoryWorkspaceRows>[number] | undefined; pending: string | null; onUpdate: (setting: RepositorySetting, nextValue: boolean) => Promise<void> }) {
-  if (!repository) return <section className="dashboard-workspace"><p className="dashboard-empty">Connect and select a repository before changing its settings.</p></section>;
-  return <section className="dashboard-workspace settings-panel"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{repository.repositoryFullName}</p><h3>Repository settings</h3><p className="dashboard-section-copy">These settings apply only to this connected repository.</p></div></div><SettingToggle label="Automatic analysis" detail="Create an evidence report for supported PR events." checked={repository.analysisEnabled} pending={pending === "analysisEnabled"} onChange={(value) => onUpdate("analysisEnabled", value)} /><SettingToggle label="Saved reports" detail="Retain the bounded report fields allowed by the privacy policy." checked={repository.saveReportsEnabled} pending={pending === "saveReportsEnabled"} onChange={(value) => onUpdate("saveReportsEnabled", value)} /><SettingToggle label="Summary comments" detail={repository.commentEnabled ? "Comments are enabled for this repository." : "Comments are off by default. Enable only with repository-level consent."} checked={repository.commentEnabled} pending={pending === "commentEnabled"} onChange={(value) => onUpdate("commentEnabled", value)} /><p className="dashboard-boundary"><ShieldCheck size={15} /> Changes require your signed-in owner or admin session. GitHub comments never include raw diffs, logs, tokens, or full report content.</p></section>;
+function SettingsPanel({ repository, pending, onUpdate, onLogout, logoutPending }: { repository: ReturnType<typeof toRepositoryWorkspaceRows>[number] | undefined; pending: string | null; onUpdate: (setting: RepositorySetting, nextValue: boolean) => Promise<void>; onLogout: () => Promise<void>; logoutPending: boolean }) {
+  return <section className="dashboard-workspace settings-panel">{repository ? <><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{repository.repositoryFullName}</p><h3>Repository settings</h3><p className="dashboard-section-copy">These settings apply only to this connected repository.</p></div></div><SettingToggle label="Automatic analysis" detail="Create an evidence report for supported PR events." checked={repository.analysisEnabled} pending={pending === "analysisEnabled"} onChange={(value) => onUpdate("analysisEnabled", value)} /><SettingToggle label="Saved reports" detail="Retain the bounded report fields allowed by the privacy policy." checked={repository.saveReportsEnabled} pending={pending === "saveReportsEnabled"} onChange={(value) => onUpdate("saveReportsEnabled", value)} /><SettingToggle label="Summary comments" detail={repository.commentEnabled ? "Comments are enabled for this repository." : "Comments are off by default. Enable only with repository-level consent."} checked={repository.commentEnabled} pending={pending === "commentEnabled"} onChange={(value) => onUpdate("commentEnabled", value)} /></> : <p className="dashboard-empty">Connect and select a repository before changing repository settings.</p>}<div className="dashboard-section-heading dashboard-account-settings"><div><p className="dashboard-eyebrow">ACCOUNT</p><h3>AgentProof session</h3><p className="dashboard-section-copy">Ends this dashboard session only. Your GitHub account and App installation are unchanged.</p></div><button className="dashboard-secondary-action" disabled={logoutPending} onClick={() => { void onLogout(); }}>{logoutPending ? "Signing out…" : "Log out"}</button></div><p className="dashboard-boundary"><ShieldCheck size={15} /> Changes require your signed-in owner or admin session. GitHub comments never include raw diffs, logs, tokens, or full report content.</p></section>;
 }
 
 function SettingToggle({ label, detail, checked, pending, onChange }: { label: string; detail: string; checked: boolean; pending: boolean; onChange: (value: boolean) => void }) {

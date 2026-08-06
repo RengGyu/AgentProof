@@ -57,6 +57,16 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("Issue grouping and inbox are unavailable");
   });
 
+  it("refreshes visible signed-in workspaces and gives the owner a session-only logout", () => {
+    expect(source).toContain("DASHBOARD_REFRESH_INTERVAL_MS");
+    expect(source).toContain("document.visibilityState === \"visible\"");
+    expect(source).toContain("window.setInterval");
+    expect(source).toContain("window.clearInterval");
+    expect(source).toContain('"/api/tenants/auth/session"');
+    expect(source).toContain('method: "DELETE"');
+    expect(source).toContain("Log out");
+  });
+
   it("keeps repository summary comments opt-in through the existing tenant settings endpoint", () => {
     expect(source).toContain("Summary comments");
     expect(source).toContain('"/api/tenants/repositories"');
