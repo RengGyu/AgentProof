@@ -6,7 +6,7 @@ import {
 } from "@/lib/analysis-jobs";
 import { ANALYSIS_QUEUE_ALERT_BASIS, toAnalysisQueueAlerts } from "@/lib/analysis-job-alerts";
 import {
-  getGitHubAppReadinessStatus,
+  getGitHubAppReadinessStatusAsync,
   getGitHubWebhookIdempotencyStoreStatus,
   type GitHubAppReadinessStatus,
   type GitHubWebhookIdempotencyStoreStatus
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   const auth = verifyOpsRequest(request);
   if (!auth.ok) return auth.response;
 
-  const readiness = getGitHubAppReadinessStatus();
+  const readiness = await getGitHubAppReadinessStatusAsync();
   const idempotency = getGitHubWebhookIdempotencyStoreStatus();
   const installationMetadata = getGitHubInstallationMetadataStoreStatus();
   const tenantControl = {

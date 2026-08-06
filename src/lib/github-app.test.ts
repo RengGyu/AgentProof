@@ -11,6 +11,7 @@ import {
   getGitHubAppConfigStatus,
   getGitHubAppAutomationSettings,
   getPublicGitHubAppReadinessStatus,
+  getPublicGitHubAppReadinessStatusAsync,
   getGitHubAppReadinessStatus,
   getGitHubWebhookIdempotencyStoreStatus,
   isGitHubPrivateKeyFormatValid,
@@ -241,6 +242,28 @@ describe("github app helpers", () => {
       mode: "analysis-ready",
       allowedRepoCount: 1,
       canAnalyzePullRequests: true
+    }));
+  });
+
+  it("reports event mode when an active tenant grant is stored durably", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, {
+      headers: { "content-range": "0-0/1" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const readiness = await getPublicGitHubAppReadinessStatusAsync({
+      GITHUB_WEBHOOK_SECRET: "secret",
+      GITHUB_APP_ID: "123",
+      GITHUB_PRIVATE_KEY: testPrivateKey(),
+      AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED: "true",
+      AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "true",
+      AGENTPROOF_TENANT_GRANTS_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_TENANT_GRANTS_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret"
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(readiness).toEqual(expect.objectContaining({
+      mode: "event-mode",
+      label: "Event mode ready"
     }));
   });
 

@@ -324,6 +324,41 @@ export async function countTenantRepositoryGrants(
   throw new TenantControlPlaneStoreError("Tenant repository grant store is not configured.");
 }
 
+export async function countActiveTenantRepositoryGrants(
+  env = process.env
+): Promise<TenantRepositoryGrantCount> {
+  const config = getTenantGrantStoreConfig(env);
+  if (config) {
+    return {
+      count: await countSupabaseActiveTenantRepositoryGrants(config),
+      store: "supabase",
+      durable: true,
+      configured: true
+    };
+  }
+
+  if (truthy(env.AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY)) {
+    return {
+      count: Array.from(tenantGrantMemoryStore().values()).filter(isActiveAnalysisGrant).length,
+      store: "memory",
+      durable: false,
+      configured: true
+    };
+  }
+
+  const envGrants = readTenantRepositoryGrants(env);
+  if (envGrants) {
+    return {
+      count: envGrants.filter(isActiveAnalysisGrant).length,
+      store: "env",
+      durable: false,
+      configured: true
+    };
+  }
+
+  throw new TenantControlPlaneStoreError("Tenant repository grant store is not configured.");
+}
+
 export async function updateTenantRepositoryGrantSettings(
   input: TenantRepositoryGrantSettingsInput,
   env = process.env
@@ -590,6 +625,41 @@ async function countSupabaseTenantRepositoryGrants(
   }
 
   return count;
+}
+
+async function countSupabaseActiveTenantRepositoryGrants(
+  config: TenantGrantStoreConfig
+): Promise<number> {
+  const response = await supabaseTenantGrantFetch(
+    config,
+    [
+      "?enabled=eq.true",
+      "analysis_enabled=eq.true",
+      "select=tenant_id"
+    ].join("&"),
+    {
+      method: "HEAD",
+      headers: {
+        Prefer: "count=exact",
+        Range: "0-0"
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new TenantControlPlaneStoreError(`Tenant repository grant count failed with HTTP ${response.status}.`);
+  }
+
+  const count = countFromContentRange(response.headers.get("content-range"));
+  if (count === null) {
+    throw new TenantControlPlaneStoreError("Tenant repository grant count returned an invalid range.");
+  }
+
+  return count;
+}
+
+function isActiveAnalysisGrant(grant: TenantRepositoryGrant): boolean {
+  return grant.enabled && grant.analysisEnabled;
 }
 
 async function findSupabaseTenantRepositoryGrant(
