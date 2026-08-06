@@ -1,4 +1,4 @@
-import { AnalysisJobQueueError } from "@/lib/analysis-jobs";
+import { AnalysisJobQueueError, getAnalysisJobQueueStatus } from "@/lib/analysis-jobs";
 import { runAnalysisJobBatch } from "@/lib/analysis-worker";
 import { toPublicAnalysisWorkerBatchResult } from "@/lib/analysis-worker-public";
 import { noStoreJson } from "@/lib/http";
@@ -7,6 +7,13 @@ import { verifyOpsRequest } from "@/lib/ops-auth";
 export async function POST(request: Request) {
   const auth = verifyOpsRequest(request);
   if (!auth.ok) return auth.response;
+
+  if (!getAnalysisJobQueueStatus().enabled) {
+    return noStoreJson({
+      error: "Analysis queue mode is disabled; GitHub webhook analyses run inline.",
+      code: "analysis_worker_queue_disabled"
+    }, { status: 409 });
+  }
 
   try {
     const url = new URL(request.url);
