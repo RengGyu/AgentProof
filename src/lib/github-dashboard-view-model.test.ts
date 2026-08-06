@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGitHubPullUrl,
+  findCurrentReportForActivity,
   isPreviewDemoEnabled,
   toRequirementCoverageLabel,
   toQuickSummary,
@@ -49,6 +50,29 @@ describe("github dashboard view model", () => {
       inspectFirst: "src/auth.ts",
       githubUrl: "https://github.com/RengGyu/dongo/pull/14"
     });
+  });
+
+  it("selects the current report after an Inbox stale notice refreshes the report list", () => {
+    const selected = findCurrentReportForActivity(
+      { repositoryId: 10, pullRequestNumber: 14 },
+      [{
+        id: "report_stale",
+        repositoryId: 10,
+        pullRequestNumber: 14,
+        priority: "medium",
+        createdAt: "2026-08-06T00:00:00.000Z",
+        staleAt: "2026-08-06T00:05:00.000Z"
+      }],
+      [{
+        id: "report_current",
+        repositoryId: 10,
+        pullRequestNumber: 14,
+        priority: "high",
+        createdAt: "2026-08-06T00:06:00.000Z"
+      }]
+    );
+
+    expect(selected?.id).toBe("report_current");
   });
 
   it("groups saved reports under connected repositories without inventing a repository", () => {

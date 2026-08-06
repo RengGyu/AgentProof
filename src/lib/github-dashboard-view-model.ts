@@ -64,6 +64,18 @@ export function buildGitHubPullUrl(repositoryFullName: string | undefined, pullR
   return `https://github.com/${repositoryFullName}/pull/${pullRequestNumber}`;
 }
 
+export function findCurrentReportForActivity(
+  activity: Pick<DashboardSavedReport, "repositoryId" | "pullRequestNumber">,
+  cachedReports: DashboardSavedReport[],
+  refreshedReports: DashboardSavedReport[] = []
+): DashboardSavedReport | undefined {
+  return [...cachedReports, ...refreshedReports].find((report) =>
+    report.repositoryId === activity.repositoryId &&
+    report.pullRequestNumber === activity.pullRequestNumber &&
+    !report.staleAt
+  );
+}
+
 export function toRepositoryWorkspaceRows(
   repositories: DashboardRepositoryGrant[],
   reports: DashboardSavedReport[]

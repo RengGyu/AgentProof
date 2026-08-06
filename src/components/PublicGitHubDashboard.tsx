@@ -22,6 +22,7 @@ import {
 import type { DashboardActivityEvent } from "@/lib/dashboard-activity";
 import {
   buildGitHubPullUrl,
+  findCurrentReportForActivity,
   toRequirementCoverageLabel,
   toQuickSummary,
   toRepositoryWorkspaceRows,
@@ -204,17 +205,20 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     };
   }, [demoMode, signedIn]);
 
-  async function refreshReports() {
+  async function refreshReports(): Promise<DashboardSavedReport[]> {
     if (demoMode) {
       setReports(PREVIEW_DEMO_REPORTS);
-      return;
+      return PREVIEW_DEMO_REPORTS;
     }
     try {
       const response = await fetch("/api/dashboard/reports", { cache: "no-store" });
       const body = await response.json().catch(() => null);
-      setReports(response.ok && Array.isArray(body?.reports) ? body.reports : []);
+      const nextReports = response.ok && Array.isArray(body?.reports) ? body.reports : [];
+      setReports(nextReports);
+      return nextReports;
     } catch {
       setReports([]);
+      return [];
     }
   }
 
@@ -242,24 +246,30 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     }
   }
 
-  function openActivity(event: DashboardActivityEvent) {
+  async function openActivity(event: DashboardActivityEvent) {
     setInboxOpen(false);
     const repository = connectedRepositories.find((item) =>
       item.repositoryId === event.repositoryId || item.repositoryFullName === event.repositoryFullName
     );
     if (repository?.repositoryId) setSelectedRepositoryId(repository.repositoryId);
     if (event.kind === "report_stale") {
-      const currentReport = reports.find((report) =>
-        report.repositoryId === event.repositoryId &&
-        report.pullRequestNumber === event.pullRequestNumber &&
-        !report.staleAt
-      );
-      setMessage("A newer result is available. Previous result details stay out of the default workspace.");
-      if (currentReport) void openReport(currentReport.id);
+      const refreshedReports = findCurrentReportForActivity(event, reports)
+        ? reports
+        : await refreshReports();
+      const currentReport = findCurrentReportForActivity(event, reports, refreshedReports);
+      if (currentReport) {
+        setMessage("Showing the newest result for this PR.");
+        await openReport(currentReport.id);
+      } else if (event.reportId) {
+        setMessage("No newer saved result is available. Showing this previous result.");
+        await openReport(event.reportId);
+      } else {
+        setMessage("No saved result is available for this PR.");
+      }
       return;
     }
     if (event.reportId) {
-      void openReport(event.reportId);
+      await openReport(event.reportId);
       return;
     }
     const repositoryName = event.repositoryFullName ?? repositoryLabel(event.repositoryId, connectedRepositories) ?? "The repository";
@@ -491,7 +501,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       </header>
       <p className="dashboard-message" role="status">{message}</p>
       {demoMode ? <p className="dashboard-demo-banner"><Info size={15} /> Preview demo · sample data only · GitHub, database, and comments are disabled.</p> : null}
-      {inboxOpen ? <section className="dashboard-inbox" aria-label="Inbox"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">INBOX</p><h3>Recent activity</h3><p className="dashboard-section-copy">New analyses, pending work, and previous-result notices from your connected repositories.</p></div></div>{activity.length > 0 ? <div className="installation-list">{activity.map((event) => <button className="dashboard-list-row dashboard-activity-row" key={event.id} onClick={() => openActivity(event)}>{event.kind === "report_stale" ? <span className="dashboard-activity-icon" aria-label="Previous result" title="Previous result"><History size={16} /></span> : <StatusToken label={event.state} />}<span><strong>{event.repositoryFullName ?? repositoryLabel(event.repositoryId, connectedRepositories) ?? "Connected repository"} · PR #{event.pullRequestNumber ?? "Unknown"}</strong><small>{event.kind === "report_stale" ? "Previous result · newer commit received" : `${formatCreatedAt(event.occurredAt)} · head ${event.headShaPrefix ?? "unknown"}`}</small></span><ChevronRight size={16} /></button>)}</div> : <p className="dashboard-empty">No recent activity.</p>}</section> : null}
+      {inboxOpen ? <section className="dashboard-inbox" aria-label="Inbox"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">INBOX</p><h3>Recent activity</h3><p className="dashboard-section-copy">New analyses, pending work, and previous-result notices from your connected repositories.</p></div></div>{activity.length > 0 ? <div className="installation-list">{activity.map((event) => <button className="dashboard-list-row dashboard-activity-row" key={event.id} onClick={() => { void openActivity(event); }}>{event.kind === "report_stale" ? <span className="dashboard-activity-icon" aria-label="Previous result" title="Previous result"><History size={16} /></span> : <StatusToken label={event.state} />}<span><strong>{event.repositoryFullName ?? repositoryLabel(event.repositoryId, connectedRepositories) ?? "Connected repository"} · PR #{event.pullRequestNumber ?? "Unknown"}</strong><small>{event.kind === "report_stale" ? "Previous result · newer commit received" : `${formatCreatedAt(event.occurredAt)} · head ${event.headShaPrefix ?? "unknown"}`}</small></span><ChevronRight size={16} /></button>)}</div> : <p className="dashboard-empty">No recent activity.</p>}</section> : null}
 
       {screen === "repositories" ? <>
         <section className="dashboard-section dashboard-repository-strip" aria-labelledby="connected-repositories-title">
