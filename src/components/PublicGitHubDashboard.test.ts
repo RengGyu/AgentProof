@@ -12,12 +12,14 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain('signedIn && !activeInstallationId');
   });
 
-  it("renders enough metadata to distinguish reports and labels stale heads", () => {
+  it("shows only current reports in the default list and keeps stale state in Inbox", () => {
     expect(source).toContain("Repository #");
     expect(source).toContain("PR #");
     expect(source).toContain("formatCreatedAt(report.createdAt)");
     expect(source).toContain("headPrefix(report.headSha)");
-    expect(source).toContain("STALE (older head)");
+    expect(source).toContain("!report.staleAt");
+    expect(source).toContain('event.kind === "report_stale"');
+    expect(source).toContain("Previous result");
     expect(source).toContain("Priority:");
   });
 
@@ -45,7 +47,8 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("No reports yet");
     expect(source).toContain("Quick Summary");
     expect(source).toContain("View detailed evidence");
-    expect(source).toContain("STALE");
+    expect(source).toContain("report_stale");
+    expect(source).toContain("Current analysis reports");
     expect(source).not.toContain("Unlinked PRs");
   });
 

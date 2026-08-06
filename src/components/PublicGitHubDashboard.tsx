@@ -11,6 +11,7 @@ import {
   FileCheck2,
   FolderGit2,
   Github,
+  History,
   Info,
   Link2,
   Loader2,
@@ -87,6 +88,15 @@ const PREVIEW_DEMO_ACTIVITY: DashboardActivityEvent[] = [{
   pullRequestNumber: 42,
   headShaPrefix: "7cf2a98bf1d4",
   reportId: "preview-report-current"
+}, {
+  id: "report:preview-report-stale",
+  kind: "report_stale",
+  occurredAt: "2026-08-06T07:00:00.000Z",
+  state: "Report stale",
+  repositoryId: 101,
+  pullRequestNumber: 42,
+  headShaPrefix: "1b7a6e35b3ac",
+  reportId: "preview-report-stale"
 }];
 
 export function PublicGitHubDashboard({ installationId, previewDemoEnabled = false }: { installationId?: string; previewDemoEnabled?: boolean }) {
@@ -118,7 +128,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   );
   const selectedRepository = repositoryRows.find((repository) => repository.repositoryId === selectedRepositoryId) ?? repositoryRows[0];
   const selectedReports = reports
-    .filter((report) => report.repositoryId === selectedRepository?.repositoryId)
+    .filter((report) => report.repositoryId === selectedRepository?.repositoryId && !report.staleAt)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const selectedRepositoryName = selectedRepository?.repositoryFullName;
   const quickSummary = detail
@@ -238,6 +248,16 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       item.repositoryId === event.repositoryId || item.repositoryFullName === event.repositoryFullName
     );
     if (repository?.repositoryId) setSelectedRepositoryId(repository.repositoryId);
+    if (event.kind === "report_stale") {
+      const currentReport = reports.find((report) =>
+        report.repositoryId === event.repositoryId &&
+        report.pullRequestNumber === event.pullRequestNumber &&
+        !report.staleAt
+      );
+      setMessage("A newer result is available. Previous result details stay out of the default workspace.");
+      if (currentReport) void openReport(currentReport.id);
+      return;
+    }
     if (event.reportId) {
       void openReport(event.reportId);
       return;
@@ -471,7 +491,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       </header>
       <p className="dashboard-message" role="status">{message}</p>
       {demoMode ? <p className="dashboard-demo-banner"><Info size={15} /> Preview demo · sample data only · GitHub, database, and comments are disabled.</p> : null}
-      {inboxOpen ? <section className="dashboard-inbox" aria-label="Inbox"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">INBOX</p><h3>Recent activity</h3><p className="dashboard-section-copy">New analyses, pending work, and stale reports from your connected repositories.</p></div></div>{activity.length > 0 ? <div className="installation-list">{activity.map((event) => <button className="dashboard-list-row dashboard-activity-row" key={event.id} onClick={() => openActivity(event)}><StatusToken label={event.state} /><span><strong>{event.repositoryFullName ?? repositoryLabel(event.repositoryId, connectedRepositories) ?? "Connected repository"} · PR #{event.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(event.occurredAt)} · head {event.headShaPrefix ?? "unknown"}</small></span><ChevronRight size={16} /></button>)}</div> : <p className="dashboard-empty">No recent activity.</p>}</section> : null}
+      {inboxOpen ? <section className="dashboard-inbox" aria-label="Inbox"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">INBOX</p><h3>Recent activity</h3><p className="dashboard-section-copy">New analyses, pending work, and previous-result notices from your connected repositories.</p></div></div>{activity.length > 0 ? <div className="installation-list">{activity.map((event) => <button className="dashboard-list-row dashboard-activity-row" key={event.id} onClick={() => openActivity(event)}>{event.kind === "report_stale" ? <span className="dashboard-activity-icon" aria-label="Previous result" title="Previous result"><History size={16} /></span> : <StatusToken label={event.state} />}<span><strong>{event.repositoryFullName ?? repositoryLabel(event.repositoryId, connectedRepositories) ?? "Connected repository"} · PR #{event.pullRequestNumber ?? "Unknown"}</strong><small>{event.kind === "report_stale" ? "Previous result · newer commit received" : `${formatCreatedAt(event.occurredAt)} · head ${event.headShaPrefix ?? "unknown"}`}</small></span><ChevronRight size={16} /></button>)}</div> : <p className="dashboard-empty">No recent activity.</p>}</section> : null}
 
       {screen === "repositories" ? <>
         <section className="dashboard-section dashboard-repository-strip" aria-labelledby="connected-repositories-title">
@@ -486,7 +506,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
         <section className="dashboard-workspace">
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div></div>
           {!selectedRepository ? <p className="dashboard-empty">Connect a GitHub repository to review saved evidence reports.</p> : selectedReports.length === 0 ? <p className="dashboard-empty"><FileCheck2 size={20} /> No reports yet<br /><small>New PR events will appear here after analysis.</small></p> : <div className="dashboard-report-layout">
-            <div className="report-list" aria-label="Previous analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon">{report.staleAt ? <Clock3 size={17} /> : <FileCheck2 size={17} />}</span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label={report.staleAt ? "STALE" : "CURRENT"} title={report.staleAt ? "STALE (older head)" : "Current report"} /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
+            <div className="report-list" aria-label="Current analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label="CURRENT" title="Current report" /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
             {detail?.report && quickSummary ? <QuickSummaryPanel detail={detail} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
           </div>}
         </section>
