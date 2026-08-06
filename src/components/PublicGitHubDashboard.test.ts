@@ -60,6 +60,10 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("Issue grouping and inbox are unavailable");
   });
 
+  it("opens the saved previous report when a stale Inbox item is selected", () => {
+    expect(source).toMatch(/if \(event\.kind === "report_stale"\) \{\s*if \(event\.reportId\) \{\s*setMessage\("Showing this previous result\."\);\s*await openReport\(event\.reportId\);/);
+  });
+
   it("refreshes visible signed-in workspaces and gives the owner a session-only logout", () => {
     expect(source).toContain("DASHBOARD_REFRESH_INTERVAL_MS");
     expect(source).toContain("document.visibilityState === \"visible\"");

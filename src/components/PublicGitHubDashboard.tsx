@@ -22,7 +22,6 @@ import {
 import type { DashboardActivityEvent } from "@/lib/dashboard-activity";
 import {
   buildGitHubPullUrl,
-  findCurrentReportForActivity,
   toRequirementCoverageLabel,
   toQuickSummary,
   toRepositoryWorkspaceRows,
@@ -205,20 +204,17 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     };
   }, [demoMode, signedIn]);
 
-  async function refreshReports(): Promise<DashboardSavedReport[]> {
+  async function refreshReports() {
     if (demoMode) {
       setReports(PREVIEW_DEMO_REPORTS);
-      return PREVIEW_DEMO_REPORTS;
+      return;
     }
     try {
       const response = await fetch("/api/dashboard/reports", { cache: "no-store" });
       const body = await response.json().catch(() => null);
-      const nextReports = response.ok && Array.isArray(body?.reports) ? body.reports : [];
-      setReports(nextReports);
-      return nextReports;
+      setReports(response.ok && Array.isArray(body?.reports) ? body.reports : []);
     } catch {
       setReports([]);
-      return [];
     }
   }
 
@@ -253,18 +249,11 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     );
     if (repository?.repositoryId) setSelectedRepositoryId(repository.repositoryId);
     if (event.kind === "report_stale") {
-      const refreshedReports = findCurrentReportForActivity(event, reports)
-        ? reports
-        : await refreshReports();
-      const currentReport = findCurrentReportForActivity(event, reports, refreshedReports);
-      if (currentReport) {
-        setMessage("Showing the newest result for this PR.");
-        await openReport(currentReport.id);
-      } else if (event.reportId) {
-        setMessage("No newer saved result is available. Showing this previous result.");
+      if (event.reportId) {
+        setMessage("Showing this previous result.");
         await openReport(event.reportId);
       } else {
-        setMessage("No saved result is available for this PR.");
+        setMessage("This previous result is no longer available.");
       }
       return;
     }
