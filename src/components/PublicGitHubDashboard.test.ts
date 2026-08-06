@@ -32,20 +32,29 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain(">Requirements<");
     expect(source).toContain("Reference IDs:");
     expect(source).toContain(">Priority files<");
-    expect(source).toContain(">Agent request<");
+    expect(source).toContain(">Suggested next step<");
+    expect(source).not.toContain(">Limitations<");
     expect(source).not.toContain("rawDiff");
     expect(source).not.toContain("rawLog");
     expect(source).not.toContain("pullRequestBody");
     expect(source).not.toContain("issueBody");
   });
 
-  it("renders the evidence workspace without inventing issue or inbox data", () => {
+  it("renders the evidence workspace without inventing issue grouping", () => {
     expect(source).toContain("Repository reports");
     expect(source).toContain("No reports yet");
     expect(source).toContain("Quick Summary");
     expect(source).toContain("View detailed evidence");
     expect(source).toContain("STALE");
     expect(source).not.toContain("Unlinked PRs");
+  });
+
+  it("uses the tenant-safe activity endpoint for Inbox events and opens linked reports", () => {
+    expect(source).toContain('"/api/dashboard/activity"');
+    expect(source).toContain("Inbox");
+    expect(source).toContain("Recent activity");
+    expect(source).toContain("openActivity");
+    expect(source).not.toContain("Issue grouping and inbox are unavailable");
   });
 
   it("keeps repository summary comments opt-in through the existing tenant settings endpoint", () => {
