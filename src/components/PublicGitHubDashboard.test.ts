@@ -67,6 +67,11 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Log out");
   });
 
+  it("moves an ephemeral preview to the configured OAuth host before starting sign-in", () => {
+    expect(source).toContain("github_oauth_callback_origin_mismatch");
+    expect(source).toContain("Opening the configured AgentProof address for secure GitHub sign-in.");
+  });
+
   it("keeps repository summary comments opt-in through the existing tenant settings endpoint", () => {
     expect(source).toContain("Summary comments");
     expect(source).toContain('"/api/tenants/repositories"');

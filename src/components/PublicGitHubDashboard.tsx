@@ -271,6 +271,11 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     if (demoMode) return;
     const response = await fetch("/api/auth/github/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const body = await response.json().catch(() => null);
+    if (body?.code === "github_oauth_callback_origin_mismatch" && typeof body?.dashboardUrl === "string") {
+      setMessage("Opening the configured AgentProof address for secure GitHub sign-in.");
+      window.location.assign(body.dashboardUrl);
+      return;
+    }
     if (typeof body?.authorizationUrl === "string") window.location.assign(body.authorizationUrl);
     else setMessage("GitHub sign-in is temporarily unavailable.");
   }

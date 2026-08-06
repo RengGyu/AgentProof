@@ -18,6 +18,26 @@ describe("POST /api/auth/github/start", () => {
     expect(cookies).toContain("agentproof_github_oauth_install=deleted");
     expect(cookies).not.toContain("agentproof_tenant_auth_session=deleted");
   });
+
+  it("does not issue an OAuth state cookie on a host different from the configured callback origin", async () => {
+    stubOAuthEnv();
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_OAUTH_CALLBACK_URL", "https://stable-beta.example/api/auth/github/callback");
+
+    const response = await POST(new Request("https://ephemeral-preview.example/api/auth/github/start", {
+      method: "POST",
+      headers: { Origin: "https://ephemeral-preview.example" },
+      body: "{}"
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "GitHub sign-in must start from the configured AgentProof address.",
+      code: "github_oauth_callback_origin_mismatch",
+      dashboardUrl: "https://stable-beta.example/dashboard"
+    });
+    expect(response.headers.get("set-cookie")).toContain("agentproof_github_oauth_install=deleted");
+    expect(response.headers.get("set-cookie")).not.toContain("agentproof_github_oauth_state=");
+  });
 });
 
 function stubOAuthEnv() {

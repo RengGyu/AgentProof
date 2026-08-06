@@ -8,6 +8,9 @@ export async function POST(request: Request) {
   try {
     const config = getGitHubOAuthConfig();
     if (!config) return oauthUnavailable();
+    if (new URL(request.url).origin !== new URL(config.callbackUrl).origin) {
+      return oauthCallbackOriginMismatch(config.callbackUrl);
+    }
     const started = beginGitHubOAuth(config);
     return noStoreJson({ ok: true, authorizationUrl: started.authorizationUrl, privacy: "state-and-pkce-cookie-only", next: "github_login" }, {
       headers: cookieHeaders(started.stateCookie, clearGitHubOAuthInstallCookie())
@@ -21,6 +24,17 @@ export async function POST(request: Request) {
 function oauthUnavailable() {
   return noStoreJson({ error: "GitHub public OAuth is not configured.", code: "github_oauth_not_configured" }, {
     status: 501,
+    headers: cookieHeaders(clearGitHubOAuthInstallCookie())
+  });
+}
+
+function oauthCallbackOriginMismatch(callbackUrl: string) {
+  return noStoreJson({
+    error: "GitHub sign-in must start from the configured AgentProof address.",
+    code: "github_oauth_callback_origin_mismatch",
+    dashboardUrl: new URL("/dashboard", callbackUrl).toString()
+  }, {
+    status: 409,
     headers: cookieHeaders(clearGitHubOAuthInstallCookie())
   });
 }
