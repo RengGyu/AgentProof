@@ -25,6 +25,16 @@ export function githubRepositoryConnectionFailureMessage(code: unknown): string 
     : "Repository could not be connected.";
 }
 
+export function dashboardRepositoryLoadFailureMessage(status: number | undefined, code: unknown): string {
+  if (status === 401 || code === "dashboard_repositories_unauthorized") {
+    return "Your sign-in session has expired. Continue with GitHub again to load connected repositories.";
+  }
+  if (status === 503 || code === "dashboard_repositories_unavailable") {
+    return "Connected repositories are temporarily unavailable. Try again shortly.";
+  }
+  return "Connected repositories could not be loaded. Try again.";
+}
+
 export function createRepositorySelectionGate() {
   let started = false;
 

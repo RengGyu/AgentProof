@@ -31,6 +31,7 @@ import {
 } from "@/lib/github-dashboard-view-model";
 import {
   createRepositorySelectionGate,
+  dashboardRepositoryLoadFailureMessage,
   githubOnboardingStartFailureMessage,
   githubRepositoryConnectionFailureMessage
 } from "@/lib/github-onboarding-client";
@@ -287,9 +288,13 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       if (response.ok && Array.isArray(body?.repositories)) {
         setConnectedRepositories(body.repositories);
         setSelectedRepositoryId((current) => current ?? body.repositories[0]?.repositoryId);
+      } else {
+        setConnectedRepositories([]);
+        setMessage(dashboardRepositoryLoadFailureMessage(response.status, body?.code));
       }
     } catch {
       setConnectedRepositories([]);
+      setMessage(dashboardRepositoryLoadFailureMessage(undefined, undefined));
     } finally {
       setConnectionsLoaded(true);
     }
