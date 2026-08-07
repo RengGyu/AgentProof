@@ -35,6 +35,10 @@ import {
   githubOnboardingStartFailureMessage,
   githubRepositoryConnectionFailureMessage
 } from "@/lib/github-onboarding-client";
+import {
+  resolveRepositorySelectionLoad,
+  type RepositorySelectionLoadResult
+} from "@/lib/repository-selection-state";
 
 interface Repository { id: number; fullName: string; private: boolean; }
 interface ExistingInstallation { installationId: number; accountLogin: string; }
@@ -113,7 +117,8 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const [signedIn, setSignedIn] = useState(previewDemoEnabled);
   const [activeInstallationId, setActiveInstallationId] = useState(installationId);
   const [existingInstallations, setExistingInstallations] = useState<ExistingInstallation[]>([]);
-  const [availableRepositories, setAvailableRepositories] = useState<Repository[]>([]);
+  const [repositorySelection, setRepositorySelection] = useState<RepositorySelectionLoadResult>({ status: "idle", repositories: [], message: "" });
+  const [repositorySelectionReload, setRepositorySelectionReload] = useState(0);
   const [connectedRepositories, setConnectedRepositories] = useState<DashboardRepositoryGrant[]>(previewDemoEnabled ? PREVIEW_DEMO_REPOSITORIES : []);
   const [connectionsLoaded, setConnectionsLoaded] = useState(previewDemoEnabled);
   const [repositorySelectionPending, setRepositorySelectionPending] = useState(false);
@@ -177,16 +182,27 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
 
   useEffect(() => {
     if (demoMode || !signedIn || !activeInstallationId) return;
+    let cancelled = false;
+    setRepositorySelection({ status: "loading", repositories: [], message: "Loading repositories from your AgentProof App installation." });
     fetch(`/api/github/onboarding/repositories?installationId=${encodeURIComponent(activeInstallationId)}`, { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() : null)
-      .then((body) => {
-        if (Array.isArray(body?.repositories)) {
-          setAvailableRepositories(body.repositories);
-          setMessage("Choose a repository. Reports retain no raw diffs, logs, or tokens.");
-        } else setMessage("Repository selection has expired. Start the App installation again.");
+      .then(async (response) => ({
+        status: response.status,
+        payload: await response.json().catch(() => null)
+      }))
+      .then((result) => {
+        if (cancelled) return;
+        const next = resolveRepositorySelectionLoad(result);
+        setRepositorySelection(next);
+        setMessage(next.message);
       })
-      .catch(() => setMessage("Repositories could not be loaded."));
-  }, [activeInstallationId, demoMode, signedIn]);
+      .catch(() => {
+        if (cancelled) return;
+        const next = resolveRepositorySelectionLoad({ status: 0, payload: null });
+        setRepositorySelection(next);
+        setMessage(next.message);
+      });
+    return () => { cancelled = true; };
+  }, [activeInstallationId, demoMode, repositorySelectionReload, signedIn]);
 
   useEffect(() => {
     setActiveInstallationId(installationId);
@@ -326,6 +342,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       setExistingInstallations([]);
       repositorySelectionGate.current.reset();
       setRepositorySelectionPending(false);
+      setRepositorySelection({ status: "loading", repositories: [], message: "Loading repositories from your AgentProof App installation." });
       setActiveInstallationId(String(existing.installationId));
       setMessage("Loading repositories from your existing AgentProof App installation.");
       return;
@@ -355,6 +372,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       setExistingInstallations([]);
       repositorySelectionGate.current.reset();
       setRepositorySelectionPending(false);
+      setRepositorySelection({ status: "loading", repositories: [], message: "Loading repositories from your AgentProof App installation." });
       setActiveInstallationId(String(body.installationId));
       setMessage("Loading repositories from your existing AgentProof App installation.");
     } else setMessage("That GitHub App installation could not be verified. Reconnect GitHub and try again.");
@@ -375,7 +393,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
         setMessage(githubRepositoryConnectionFailureMessage(body?.code));
         return;
       }
-      setAvailableRepositories([]);
+      setRepositorySelection({ status: "idle", repositories: [], message: "" });
       setActiveInstallationId(undefined);
       setConnectedRepositories((current) => mergeConnectedRepository(current, {
         installationId: Number(activeInstallationId),
@@ -516,7 +534,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
 
         {existingInstallations.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">GITHUB APP</p><h3>Choose an installation</h3></div></div><div className="installation-list">{existingInstallations.map((installation) => <button key={installation.installationId} className="dashboard-list-row" onClick={() => { void activateExistingInstallation(installation.installationId); }}><Github size={17} /> {installation.accountLogin}<ChevronRight size={16} /></button>)}</div></section> : null}
 
-         {availableRepositories.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">REPOSITORY ACCESS</p><h3>Select a repository</h3></div></div><label className="dashboard-toggle-row"><span><strong>Summary comments</strong><small>Off by default. Only summary-only comments are posted.</small></span><input type="checkbox" checked={commentEnabledOnConnect} onChange={(event) => setCommentEnabledOnConnect(event.target.checked)} /></label><div className="installation-list">{availableRepositories.map((repository) => <button key={repository.id} className="dashboard-list-row" disabled={repositorySelectionPending} onClick={() => { if (repository.private) setPrivateRepositoryChoice(repository); else void selectRepository(repository, "enhanced"); }}><FolderGit2 size={17} /> {repository.fullName}{repository.private ? <small>Private</small> : null}<ChevronRight size={16} /></button>)}</div></section> : null}
+         {repositorySelection.status !== "idle" ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">REPOSITORY ACCESS</p><h3>Select a repository</h3></div></div>{repositorySelection.status === "loading" ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading repositories</p> : null}{repositorySelection.status === "ready" ? <><label className="dashboard-toggle-row"><span><strong>Summary comments</strong><small>Off by default. Only summary-only comments are posted.</small></span><input type="checkbox" checked={commentEnabledOnConnect} onChange={(event) => setCommentEnabledOnConnect(event.target.checked)} /></label><div className="installation-list">{repositorySelection.repositories.map((repository) => <button key={repository.id} className="dashboard-list-row" disabled={repositorySelectionPending} onClick={() => { if (repository.private) setPrivateRepositoryChoice(repository); else void selectRepository(repository, "enhanced"); }}><FolderGit2 size={17} /> {repository.fullName}{repository.private ? <small>Private</small> : null}<ChevronRight size={16} /></button>)}</div></> : null}{repositorySelection.status === "empty" ? <p className="dashboard-empty">{repositorySelection.message}</p> : null}{repositorySelection.status === "error" ? <div className="dashboard-empty"><p>{repositorySelection.message}</p><button className="dashboard-secondary-action" onClick={() => setRepositorySelectionReload((current) => current + 1)}>Try again</button></div> : null}</section> : null}
          {privateRepositoryChoice ? <section className="analysis-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-choice-title"><div><p className="dashboard-eyebrow">PRIVATE REPOSITORY</p><h3 id="analysis-choice-title">Choose analysis detail</h3><p>Enhanced analysis sends selected changed-code excerpts and evidence summaries to AI to explain this report more clearly.</p></div><div className="analysis-choice-actions"><button className="dashboard-secondary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "essential"); }}>Use essential analysis</button><button className="dashboard-primary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "enhanced"); }}>Enable enhanced analysis</button></div></section> : null}
 
         <section className="dashboard-workspace">
