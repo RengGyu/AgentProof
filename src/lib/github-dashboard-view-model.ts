@@ -1,3 +1,5 @@
+import type { LlmSemanticOutput } from "./llm-semantic-output";
+
 export interface DashboardRepositoryGrant {
   installationId: number;
   repositoryId?: number;
@@ -6,6 +8,7 @@ export interface DashboardRepositoryGrant {
   analysisEnabled: boolean;
   saveReportsEnabled: boolean;
   commentEnabled: boolean;
+  llmAnalysisMode?: "essential" | "enhanced";
 }
 
 export interface DashboardSavedReport {
@@ -27,6 +30,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     reviewPriority?: Array<{ path: string; priority: string }>;
     evidenceIndex?: Array<{ id: string; locator?: string }>;
     reprompt?: { prompt: string };
+    semantic?: LlmSemanticOutput;
   };
 }
 
@@ -41,6 +45,7 @@ export interface QuickSummary {
   freshness: "CURRENT" | "STALE";
   checkState: "Success" | "Check failed" | "Pending" | "Unknown" | "Unavailable";
   primaryEvidenceState: "Evidence found" | "Evidence missing" | "Needs attention" | "Unknown" | "Unavailable";
+  primaryEvidenceDetail?: string;
   inspectFirst: string;
   githubUrl?: string;
 }
@@ -87,11 +92,13 @@ export function toQuickSummary(detail: DashboardReportDetail & { repositoryFullN
   const firstRequirement = requirements.find((item) => item.gaps.length > 0) ?? requirements[0];
   const firstPriorityPath = detail.report?.reviewPriority?.map((item) => safeLocator(item.path)).find(Boolean);
   const firstEvidencePath = detail.report?.evidenceIndex?.map((item) => safeLocator(item.locator)).find(Boolean);
+  const primarySemanticGap = detail.report?.semantic?.evidence_gaps[0];
 
   return {
     freshness: detail.staleAt ? "STALE" : "CURRENT",
     checkState: toCheckState(detail.report?.testing),
     primaryEvidenceState: toEvidenceState(firstRequirement?.status, firstRequirement?.gaps.length ?? 0),
+    ...(primarySemanticGap ? { primaryEvidenceDetail: primarySemanticGap.description } : {}),
     inspectFirst: firstPriorityPath ?? firstEvidencePath ?? "Unavailable",
     githubUrl: buildGitHubPullUrl(detail.repositoryFullName, detail.pullRequestNumber)
   };

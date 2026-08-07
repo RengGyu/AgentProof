@@ -201,7 +201,8 @@ describe("analysis worker preflight", () => {
       sideEffects: {
         saveReport: true,
         comment: false
-      }
+      },
+      llmAnalysisMode: "essential"
     });
     expect(getAnalysisJobsForTests()[0]).toMatchObject({
       id,
@@ -211,6 +212,16 @@ describe("analysis worker preflight", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(serialized).not.toContain("BEGIN PRIVATE KEY");
     expect(serialized).not.toContain("service-role");
+  });
+
+  it("carries an enhanced repository choice from preflight into worker execution", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced" } });
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await expect(preflightNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") })).resolves.toMatchObject({
+      status: "ready",
+      llmAnalysisMode: "enhanced"
+    });
   });
 
   it("does not plan Slack delivery when the repository grant Slack opt-in is off", async () => {
@@ -1079,8 +1090,21 @@ function stubQueueEnv() {
   vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
 }
 
+type WorkerGrantRecord = {
+  tenantId: string;
+  installationId: number;
+  repositoryId: number;
+  repositoryFullName: string;
+  enabled: boolean;
+  analysisEnabled: boolean;
+  commentEnabled: boolean;
+  saveReportsEnabled: boolean;
+  slackNotificationsEnabled: boolean;
+  llmAnalysisMode: "essential" | "enhanced";
+};
+
 function stubReadyWorkerEnv(options: {
-  grant?: Partial<ReturnType<typeof grantRecord>> | null;
+  grant?: Partial<WorkerGrantRecord> | null;
 } = {}) {
   stubQueueEnv();
   vi.stubEnv("GITHUB_APP_ID", "123");
@@ -1097,17 +1121,7 @@ function stubReadyWorkerEnv(options: {
   }
 }
 
-function grantRecord(overrides: Partial<{
-  tenantId: string;
-  installationId: number;
-  repositoryId: number;
-  repositoryFullName: string;
-  enabled: boolean;
-  analysisEnabled: boolean;
-  commentEnabled: boolean;
-  saveReportsEnabled: boolean;
-  slackNotificationsEnabled: boolean;
-}> = {}) {
+function grantRecord(overrides: Partial<WorkerGrantRecord> = {}): WorkerGrantRecord {
   return {
     tenantId: "tenant_a",
     installationId: 321,
@@ -1118,6 +1132,7 @@ function grantRecord(overrides: Partial<{
     commentEnabled: true,
     saveReportsEnabled: true,
     slackNotificationsEnabled: false,
+    llmAnalysisMode: "essential",
     ...overrides
   };
 }

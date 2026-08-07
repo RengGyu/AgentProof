@@ -75,7 +75,15 @@ const PREVIEW_DEMO_DETAIL: DashboardReportDetail = {
     testing: { ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "pending" },
     reviewPriority: [{ path: "src/checkout/validation.ts", priority: "medium" }],
     evidenceIndex: [{ id: "ev_12", locator: "src/checkout/validation.ts" }],
-    reprompt: { prompt: "Add bounded evidence for the requirement, then rerun the relevant check." }
+    reprompt: { prompt: "Add bounded evidence for the requirement, then rerun the relevant check." },
+    semantic: {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{ requirement_id: "req_1", requirement_summary: "Validate the submitted checkout data before processing.", evidence_support: "partial_evidence_present", summary: "The supplied evidence covers the main validation path, but does not show focused coverage for the exceptional path.", evidence_ids: ["ev_12"], uncertainty: "medium" }],
+      evidence_gaps: [{ requirement_id: "req_1", gap_type: "missing_test_evidence", priority: "high", description: "A focused test for the exceptional input path is not available.", review_impact: "The reviewer cannot trace that path from the supplied evidence.", needed_evidence: "A focused test or execution reference.", evidence_ids: ["ev_12"], uncertainty: "medium" }],
+      review_targets: [{ target_type: "file", target_evidence_id: "ev_12", priority: "high", reason: "This file contains the validation branch relevant to the requirement.", inspection_goal: "Confirm how exceptional input is handled.", requirement_ids: ["req_1"], evidence_ids: ["ev_12"], uncertainty: "medium" }],
+      remediation_requests: [{ requirement_id: "req_1", request_type: "add_or_update_test", priority: "high", instruction: "Add or link focused evidence for the exceptional input path.", rationale: "The supplied evidence does not directly exercise that path.", expected_evidence: "A focused test and its associated execution evidence.", evidence_ids: ["ev_12"], uncertainty: "medium" }],
+      uncertainties: []
+    }
   }
 };
 
@@ -108,6 +116,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const [connectedRepositories, setConnectedRepositories] = useState<DashboardRepositoryGrant[]>(previewDemoEnabled ? PREVIEW_DEMO_REPOSITORIES : []);
   const [connectionsLoaded, setConnectionsLoaded] = useState(previewDemoEnabled);
   const [repositorySelectionPending, setRepositorySelectionPending] = useState(false);
+  const [privateRepositoryChoice, setPrivateRepositoryChoice] = useState<Repository | null>(null);
   const [commentEnabledOnConnect, setCommentEnabledOnConnect] = useState(false);
   const [message, setMessage] = useState(previewDemoEnabled ? "Preview demo: sample data only. No GitHub, database, or comment action will run." : "Sign in with GitHub to start.");
   const [reports, setReports] = useState<DashboardSavedReport[]>(previewDemoEnabled ? PREVIEW_DEMO_REPORTS : []);
@@ -346,14 +355,14 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     } else setMessage("That GitHub App installation could not be verified. Reconnect GitHub and try again.");
   }
 
-  async function selectRepository(repository: Repository) {
+  async function selectRepository(repository: Repository, llmAnalysisMode: "essential" | "enhanced") {
     if (!repositorySelectionGate.current.tryStart()) return;
     setRepositorySelectionPending(true);
     try {
       const response = await fetch("/api/github/onboarding/repositories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ installationId: Number(activeInstallationId), repositoryId: repository.id, saveReportsEnabled: true, commentEnabled: commentEnabledOnConnect })
+        body: JSON.stringify({ installationId: Number(activeInstallationId), repositoryId: repository.id, saveReportsEnabled: true, commentEnabled: commentEnabledOnConnect, llmAnalysisMode })
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
@@ -368,13 +377,15 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
         repositoryId: repository.id,
         repositoryFullName: repository.fullName,
         enabled: true,
-        analysisEnabled: body?.settings?.analysisEnabled === true,
-        saveReportsEnabled: body?.settings?.saveReportsEnabled === true,
-        commentEnabled: body?.settings?.commentEnabled === true
+         analysisEnabled: body?.settings?.analysisEnabled === true,
+         saveReportsEnabled: body?.settings?.saveReportsEnabled === true,
+         commentEnabled: body?.settings?.commentEnabled === true,
+         llmAnalysisMode: body?.settings?.llmAnalysisMode === "enhanced" ? "enhanced" : "essential"
       }));
       setSelectedRepositoryId(repository.id);
       setConnectionsLoaded(true);
-      setMessage(`${repository.fullName} is connected. PR events create evidence reports; GitHub comments are ${commentEnabledOnConnect ? "enabled" : "off"}.`);
+       setPrivateRepositoryChoice(null);
+       setMessage(`${repository.fullName} is connected. PR events will create an evidence report.`);
     } catch {
       repositorySelectionGate.current.reset();
       setMessage("Repository could not be connected.");
@@ -500,7 +511,8 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
 
         {existingInstallations.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">GITHUB APP</p><h3>Choose an installation</h3></div></div><div className="installation-list">{existingInstallations.map((installation) => <button key={installation.installationId} className="dashboard-list-row" onClick={() => { void activateExistingInstallation(installation.installationId); }}><Github size={17} /> {installation.accountLogin}<ChevronRight size={16} /></button>)}</div></section> : null}
 
-        {availableRepositories.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">REPOSITORY ACCESS</p><h3>Select a repository</h3></div></div><label className="dashboard-toggle-row"><span><strong>Summary comments</strong><small>Off by default. Only summary-only comments are posted.</small></span><input type="checkbox" checked={commentEnabledOnConnect} onChange={(event) => setCommentEnabledOnConnect(event.target.checked)} /></label><div className="installation-list">{availableRepositories.map((repository) => <button key={repository.id} className="dashboard-list-row" disabled={repositorySelectionPending} onClick={() => { void selectRepository(repository); }}><FolderGit2 size={17} /> {repository.fullName}{repository.private ? <small>Private</small> : null}<ChevronRight size={16} /></button>)}</div></section> : null}
+         {availableRepositories.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">REPOSITORY ACCESS</p><h3>Select a repository</h3></div></div><label className="dashboard-toggle-row"><span><strong>Summary comments</strong><small>Off by default. Only summary-only comments are posted.</small></span><input type="checkbox" checked={commentEnabledOnConnect} onChange={(event) => setCommentEnabledOnConnect(event.target.checked)} /></label><div className="installation-list">{availableRepositories.map((repository) => <button key={repository.id} className="dashboard-list-row" disabled={repositorySelectionPending} onClick={() => { if (repository.private) setPrivateRepositoryChoice(repository); else void selectRepository(repository, "enhanced"); }}><FolderGit2 size={17} /> {repository.fullName}{repository.private ? <small>Private</small> : null}<ChevronRight size={16} /></button>)}</div></section> : null}
+         {privateRepositoryChoice ? <section className="analysis-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-choice-title"><div><p className="dashboard-eyebrow">PRIVATE REPOSITORY</p><h3 id="analysis-choice-title">Choose analysis detail</h3><p>Enhanced analysis sends selected changed-code excerpts and evidence summaries to AI to explain this report more clearly.</p></div><div className="analysis-choice-actions"><button className="dashboard-secondary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "essential"); }}>Use essential analysis</button><button className="dashboard-primary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "enhanced"); }}>Enable enhanced analysis</button></div></section> : null}
 
         <section className="dashboard-workspace">
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div></div>
@@ -522,7 +534,7 @@ function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvi
   return <article className="quick-summary">
     <header className="quick-summary-header"><div><p className="dashboard-eyebrow">QUICK SUMMARY</p><h3>PR #{detail.pullRequestNumber ?? "Unknown"}</h3><p>Head <code>{headPrefix(detail.headSha)}</code> · Analyzed {detail.createdAt ? formatCreatedAt(detail.createdAt) : "unknown time"}</p></div><div className="summary-badges"><StatusToken label={quickSummary.freshness} /><StatusToken label={`Priority: ${detail.priority ?? "unknown"}`} /></div></header>
     <div className="summary-status-grid"><SummaryState label="Report state" value={quickSummary.freshness} /><SummaryState label="Check state" value={quickSummary.checkState} /><SummaryState label="Evidence" value={quickSummary.primaryEvidenceState} /><SummaryState label="Inspect first" value={quickSummary.inspectFirst} mono /></div>
-    <section className="summary-callout"><CircleAlert size={19} /><div><p className="dashboard-eyebrow">MOST IMPORTANT EVIDENCE GAP</p><strong>{quickSummary.primaryEvidenceState}</strong><p>{firstRequirement ? `Requirement ${firstRequirement.requirementId} is ${toRequirementCoverageLabel(firstRequirement.status).toLowerCase()}. More proof is needed before it is fully supported.` : "No requirement evidence is available in this saved report."}</p></div></section>
+    <section className="summary-callout"><CircleAlert size={19} /><div><p className="dashboard-eyebrow">MOST IMPORTANT EVIDENCE GAP</p><strong>{quickSummary.primaryEvidenceState}</strong><p>{quickSummary.primaryEvidenceDetail ?? (firstRequirement ? `Requirement ${firstRequirement.requirementId} is ${toRequirementCoverageLabel(firstRequirement.status).toLowerCase()}. More proof is needed before it is fully supported.` : "No requirement evidence is available in this saved report.")}</p></div></section>
     <div className="summary-actions">{githubUrl ? <a className="dashboard-secondary-action" href={githubUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Open in GitHub</a> : <span className="dashboard-disabled-action">GitHub link unavailable</span>}<button className="dashboard-primary-action" onClick={onShowDetail}>{showDetailedEvidence ? "Hide detailed evidence" : "View detailed evidence"}</button></div>
     {showDetailedEvidence ? <DetailedEvidence detail={detail} /> : null}
     <p className="dashboard-boundary"><ShieldCheck size={15} /> This report organizes available evidence. It does not establish correctness, safety, requirement satisfaction, or merge readiness.</p>
@@ -531,7 +543,12 @@ function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvi
 
 function DetailedEvidence({ detail }: { detail: DashboardReportDetail }) {
   const report = detail.report;
-  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirements, checks, and review targets</h4></div></div><div className="detail-grid"><section><h5>Requirements</h5>{report?.requirements?.length ? report.requirements.map((item) => <div className="detail-row" key={item.requirementId}><strong>{item.requirementId} · {toRequirementCoverageLabel(item.status)}</strong><span>{item.evidenceRefs.length > 0 ? `${item.evidenceRefs.length} evidence reference${item.evidenceRefs.length === 1 ? "" : "s"} available` : "No evidence reference available"}</span><span>Reference IDs: {item.evidenceRefs.join(", ") || "Unavailable"}</span><span>{item.gaps.length > 0 ? "Needs: more proof before this requirement is fully supported." : "No evidence gap recorded."}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div></section>;
+  const semantic = report?.semantic;
+  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirements, checks, and review targets</h4></div></div><div className="detail-grid"><section><h5>Requirements</h5>{report?.requirements?.length ? report.requirements.map((item) => <div className="detail-row" key={item.requirementId}><strong>{item.requirementId} · {toRequirementCoverageLabel(item.status)}</strong><span>{item.evidenceRefs.length > 0 ? `${item.evidenceRefs.length} evidence reference${item.evidenceRefs.length === 1 ? "" : "s"} available` : "No evidence reference available"}</span><span>Reference IDs: {item.evidenceRefs.join(", ") || "Unavailable"}</span><span>{item.gaps.length > 0 ? "Needs: more proof before this requirement is fully supported." : "No evidence gap recorded."}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div>{semantic ? <SemanticEvidence semantic={semantic} /> : null}</section>;
+}
+
+ function SemanticEvidence({ semantic }: { semantic: NonNullable<NonNullable<DashboardReportDetail["report"]>["semantic"]> }) {
+   return <section className="semantic-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">AI EVIDENCE READING</p><h5>AI explanation of the evidence</h5><p className="dashboard-section-copy">A plain-language explanation based on the evidence IDs already shown above.</p></div></div><div className="detail-grid"><section><h5>Requirement coverage</h5>{semantic.requirement_assessments.length ? semantic.requirement_assessments.map((item) => <div className="detail-row" key={item.requirement_id}><strong>{item.requirement_summary}</strong><span>{item.summary}</span><span>Evidence: {item.evidence_ids.join(", ") || "None supplied"} · confidence: {item.uncertainty}</span></div>) : <p className="dashboard-empty">No additional AI explanation.</p>}</section><section><h5>Needs attention</h5>{semantic.evidence_gaps.length ? semantic.evidence_gaps.map((item, index) => <div className="detail-row" key={`${item.requirement_id}:${index}`}><strong>{item.priority} priority</strong><span>{item.description}</span><span>To clarify: {item.needed_evidence}</span></div>) : <p className="dashboard-empty">No additional evidence gap note.</p>}</section><section><h5>Suggested next step</h5>{semantic.remediation_requests.length ? semantic.remediation_requests.map((item, index) => <div className="detail-row" key={`${item.requirement_id}:${index}`}><strong>{item.instruction}</strong><span>{item.rationale}</span><span>Expected: {item.expected_evidence}</span></div>) : <p className="dashboard-empty">No additional request.</p>}</section><section><h5>Inspect first</h5>{semantic.review_targets.length ? semantic.review_targets.map((item, index) => <div className="detail-row" key={`${item.target_evidence_id}:${index}`}><strong>{item.inspection_goal}</strong><span>{item.reason}</span><span>Evidence: {item.evidence_ids.join(", ") || "Unavailable"}</span></div>) : <p className="dashboard-empty">No additional review target.</p>}</section></div></section>;
 }
 
 function SettingsPanel({ repository, pending, onUpdate, onLogout, logoutPending }: { repository: ReturnType<typeof toRepositoryWorkspaceRows>[number] | undefined; pending: string | null; onUpdate: (setting: RepositorySetting, nextValue: boolean) => Promise<void>; onLogout: () => Promise<void>; logoutPending: boolean }) {

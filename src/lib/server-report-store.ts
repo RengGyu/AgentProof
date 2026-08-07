@@ -813,7 +813,8 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
       const locator = safeLocator(item.locator);
       return { id: item.id, kind: item.kind, label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", ...(locator ? { locator } : {}), confidence: item.confidence };
     }),
-    limitations: report.limitations.map(() => "Some evidence was unavailable or intentionally omitted for privacy.").slice(0, 20)
+    limitations: report.limitations.map(() => "Some evidence was unavailable or intentionally omitted for privacy.").slice(0, 20),
+    ...(report.semantic ? { semantic: report.semantic } : {})
   };
   safe.authenticity = trust === "verified_agentproof" ? createVerifiedAuthenticity(safe, requireReportSigningSecret()) : createUnverifiedAuthenticity("imported_unverified");
   const validation = validateTenantStoredReport(safe, requireReportSigningSecret());
@@ -1008,8 +1009,9 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
     reviewPriority: report.reviewPriority.map((item) => ({ path: item.path, priority: item.priority, evidenceRefs: item.evidenceRefs, reason: "Review priority based on grounded evidence." })),
     proofGraph: { version: 1, nodes: proofNodes, context: [], summary: { requirementCount: proofNodes.length, requirementsWithImplementation: 0, requirementsWithTargetedTests: 0, requirementsWithExecution: 0, requirementsWithGaps: proofNodes.filter((node) => node.gapSignals.length > 0).length, gapCount: proofNodes.reduce((count, node) => count + node.gapSignals.length, 0) } },
     reprompt: { targetAgent: "codex", prompt: report.reprompt.prompt },
-    evidenceIndex: report.evidenceIndex.map((item) => ({ id: item.id, kind: "inference", label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", confidence: 0, ...(item.locator ? { locator: item.locator } : {}) })),
-    limitations: ["Some evidence was unavailable or intentionally omitted for privacy."]
+    evidenceIndex: report.evidenceIndex.map((item) => ({ id: item.id, kind: item.kind ?? "inference", label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", confidence: 0, ...(item.locator ? { locator: item.locator } : {}) })),
+    limitations: ["Some evidence was unavailable or intentionally omitted for privacy."],
+    ...(report.semantic ? { semantic: report.semantic } : {})
   };
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, secret);
   return hydrated;

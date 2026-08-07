@@ -116,6 +116,38 @@ describe("server report store", () => {
     });
   });
 
+  it("retains only a validated semantic analysis in a signed tenant report", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    const requirementId = report.requirements[0]!.requirementId;
+    report.semantic = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        requirement_id: requirementId,
+        requirement_summary: "Review the supplied evidence for this requirement.",
+        evidence_support: "no_evidence_found",
+        summary: "No supplied evidence directly supports this requirement.",
+        evidence_ids: [],
+        uncertainty: "high"
+      }],
+      evidence_gaps: [],
+      review_targets: [],
+      remediation_requests: [],
+      uncertainties: []
+    };
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+
+    expect(saved.report.semantic).toEqual(report.semantic);
+    expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
+  });
+
   it("marks an earlier verified report stale only when a different head is saved for the same PR", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const first = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
@@ -717,7 +749,23 @@ describe("server report store", () => {
   it("lists a signed tenant persisted projection after privacy-safe hydration", async () => {
     const signingSecret = "test-report-signing-secret-that-is-long-enough";
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
-    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.semantic = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        requirement_id: report.requirements[0]!.requirementId,
+        requirement_summary: "Review the supplied evidence for this requirement.",
+        evidence_support: "no_evidence_found",
+        summary: "No supplied evidence directly supports this requirement.",
+        evidence_ids: [],
+        uncertainty: "high"
+      }],
+      evidence_gaps: [],
+      review_targets: [],
+      remediation_requests: [],
+      uncertainties: []
+    };
+    const saved = await createVerifiedSavedReport(report, {
       tenantId: "tenant_a",
       installationId: 321,
       repositoryId: 100,
@@ -742,6 +790,9 @@ describe("server report store", () => {
     await expect(listTenantSavedReports({ tenantId: "tenant_a", limit: 25 })).resolves.toEqual([
       expect.objectContaining({ id: "tenant_projection", repositoryId: 100, pullRequestNumber: 28 })
     ]);
+    await expect(getSavedReport("tenant_projection", { tenantId: "tenant_a" })).resolves.toMatchObject({
+      report: { semantic: report.semantic }
+    });
   });
 
   it("returns null for expired Supabase reports and deletes them", async () => {

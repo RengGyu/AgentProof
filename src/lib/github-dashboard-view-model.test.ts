@@ -51,6 +51,40 @@ describe("github dashboard view model", () => {
     });
   });
 
+  it("uses the validated semantic evidence gap as the quick-summary explanation when available", () => {
+    const summary = toQuickSummary({
+      repositoryFullName: "RengGyu/dongo",
+      pullRequestNumber: 14,
+      priority: "high",
+      report: {
+        requirements: [{ requirementId: "req_1", status: "partial", evidenceRefs: ["ev_1"], gaps: ["Evidence gap recorded."] }],
+        testing: { ciStatus: "passed", lintStatus: "passed", typecheckStatus: "passed" },
+        reviewPriority: [{ path: "src/auth.ts", priority: "high" }],
+        evidenceIndex: [{ id: "ev_1", locator: "src/auth.ts" }],
+        reprompt: { prompt: "Address missing or unclear verification evidence, then rerun the relevant checks." },
+        semantic: {
+          requirement_evidence_relations: [],
+          requirement_assessments: [],
+          evidence_gaps: [{
+            requirement_id: "req_1",
+            gap_type: "missing_test_evidence",
+            priority: "high",
+            description: "A focused test for the exceptional input path is not available.",
+            review_impact: "The reviewer cannot trace that path from the supplied evidence.",
+            needed_evidence: "A focused test or execution reference.",
+            evidence_ids: ["ev_1"],
+            uncertainty: "medium"
+          }],
+          review_targets: [],
+          remediation_requests: [],
+          uncertainties: []
+        }
+      }
+    });
+
+    expect(summary.primaryEvidenceDetail).toBe("A focused test for the exceptional input path is not available.");
+  });
+
   it("groups saved reports under connected repositories without inventing a repository", () => {
     expect(toRepositoryWorkspaceRows(
       [{ installationId: 1, repositoryId: 10, repositoryFullName: "RengGyu/dongo", enabled: true, analysisEnabled: true, saveReportsEnabled: true, commentEnabled: false }],

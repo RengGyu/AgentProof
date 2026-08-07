@@ -33,7 +33,8 @@ export async function GET(request: Request) {
         enabled: repository.enabled,
         analysisEnabled: repository.analysisEnabled,
         saveReportsEnabled: repository.saveReportsEnabled,
-        commentEnabled: repository.commentEnabled
+        commentEnabled: repository.commentEnabled,
+        llmAnalysisMode: repository.llmAnalysisMode ?? "essential"
       })),
       privacy: "grant-metadata-only"
     });

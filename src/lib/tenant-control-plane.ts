@@ -9,6 +9,8 @@ import {
 export const TENANT_CONTROL_PLANE_GRANTS_ENV = "AGENTPROOF_TENANT_REPOSITORY_GRANTS";
 export const DEFAULT_TENANT_REPOSITORY_GRANTS_TABLE = "agentproof_tenant_repository_grants";
 
+export type LlmAnalysisMode = "essential" | "enhanced";
+
 export interface TenantControlPlaneSettings {
   enabled: boolean;
 }
@@ -23,6 +25,7 @@ export interface TenantRepositoryGrant {
   commentEnabled: boolean;
   saveReportsEnabled: boolean;
   slackNotificationsEnabled: boolean;
+  llmAnalysisMode?: LlmAnalysisMode;
 }
 
 export interface TenantRepositoryGrantDecision {
@@ -41,6 +44,7 @@ export interface TenantRepositoryGrantSettingsInput {
   commentEnabled?: unknown;
   saveReportsEnabled?: unknown;
   slackNotificationsEnabled?: unknown;
+  llmAnalysisMode?: unknown;
 }
 
 export interface TenantRepositoryGrantDisableResult {
@@ -75,6 +79,7 @@ interface TenantRepositoryGrantInput {
   commentEnabled?: unknown;
   saveReportsEnabled?: unknown;
   slackNotificationsEnabled?: unknown;
+  llmAnalysisMode?: unknown;
 }
 
 interface TenantRepositoryGrantRow {
@@ -87,6 +92,7 @@ interface TenantRepositoryGrantRow {
   comment_enabled: boolean;
   save_reports_enabled: boolean;
   slack_notifications_enabled: boolean;
+  llm_analysis_mode?: LlmAnalysisMode | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -102,7 +108,7 @@ type GlobalWithTenantGrants = typeof globalThis & {
 };
 
 const TENANT_REPOSITORY_GRANT_SELECT =
-  "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled";
+  "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode";
 
 export class TenantControlPlaneStoreError extends Error {
   constructor(message: string) {
@@ -508,13 +514,18 @@ export function tenantGrantPublicReason(reason: TenantRepositoryGrantDecision["r
   return "No active tenant repository grant matches this GitHub App installation and repository.";
 }
 
+export function resolveTenantRepositoryLlmAnalysisMode(grant: Pick<TenantRepositoryGrant, "llmAnalysisMode"> | undefined): LlmAnalysisMode {
+  return grant?.llmAnalysisMode === "enhanced" ? "enhanced" : "essential";
+}
+
 function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGrant | null {
   const tenantId = normalizeId(input.tenantId);
   const installationId = normalizeInstallationId(input.installationId);
   const repositoryId = normalizeOptionalRepositoryId(input.repositoryId);
   const repositoryFullName = normalizeRepositoryFullName(input.repositoryFullName);
+  const llmAnalysisMode = normalizeOptionalLlmAnalysisMode(input.llmAnalysisMode);
 
-  if (!tenantId || !installationId || !repositoryFullName) {
+  if (!tenantId || !installationId || !repositoryFullName || llmAnalysisMode === null) {
     return null;
   }
 
@@ -527,7 +538,8 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
     analysisEnabled: input.analysisEnabled !== false,
     commentEnabled: input.commentEnabled === true,
     saveReportsEnabled: input.saveReportsEnabled === true,
-    slackNotificationsEnabled: input.slackNotificationsEnabled === true
+    slackNotificationsEnabled: input.slackNotificationsEnabled === true,
+    ...(llmAnalysisMode ? { llmAnalysisMode } : {})
   };
 }
 
@@ -695,7 +707,7 @@ async function updateSupabaseTenantRepositoryGrantSettings(
     tenantId: string;
     installationId: number;
     repositoryId: number;
-    settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled">>;
+    settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">>;
   }
 ): Promise<TenantRepositoryGrant> {
   const body = toTenantRepositoryGrantSettingsRow(input.settings);
@@ -850,13 +862,14 @@ function toTenantRepositoryGrantRow(grant: TenantRepositoryGrant, now: string): 
     comment_enabled: grant.commentEnabled,
     save_reports_enabled: grant.saveReportsEnabled,
     slack_notifications_enabled: grant.slackNotificationsEnabled,
+    ...(grant.llmAnalysisMode ? { llm_analysis_mode: grant.llmAnalysisMode } : {}),
     created_at: now,
     updated_at: now
   };
 }
 
 function toTenantRepositoryGrantSettingsRow(
-  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled">>
+  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">>
 ) {
   const row: Partial<TenantRepositoryGrantRow> = {};
 
@@ -865,6 +878,7 @@ function toTenantRepositoryGrantSettingsRow(
   if (settings.commentEnabled !== undefined) row.comment_enabled = settings.commentEnabled;
   if (settings.saveReportsEnabled !== undefined) row.save_reports_enabled = settings.saveReportsEnabled;
   if (settings.slackNotificationsEnabled !== undefined) row.slack_notifications_enabled = settings.slackNotificationsEnabled;
+  if (settings.llmAnalysisMode !== undefined) row.llm_analysis_mode = settings.llmAnalysisMode;
 
   return row;
 }
@@ -882,7 +896,8 @@ function rowToTenantRepositoryGrant(row: unknown): TenantRepositoryGrant | undef
     analysisEnabled: value.analysis_enabled,
     commentEnabled: value.comment_enabled,
     saveReportsEnabled: value.save_reports_enabled,
-    slackNotificationsEnabled: value.slack_notifications_enabled
+    slackNotificationsEnabled: value.slack_notifications_enabled,
+    llmAnalysisMode: value.llm_analysis_mode
   }) ?? undefined;
 }
 
@@ -890,17 +905,20 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
   tenantId: string;
   installationId: number;
   repositoryId: number;
-  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled">>;
+  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">>;
 } | null {
   const tenantId = normalizeId(input.tenantId);
   const installationId = normalizeInstallationId(input.installationId);
   const repositoryId = normalizeOptionalRepositoryId(input.repositoryId);
+  const llmAnalysisMode = normalizeOptionalLlmAnalysisMode(input.llmAnalysisMode);
+  if (input.llmAnalysisMode !== undefined && llmAnalysisMode === null) return null;
   const settings = {
     ...(typeof input.enabled === "boolean" ? { enabled: input.enabled } : {}),
     ...(typeof input.analysisEnabled === "boolean" ? { analysisEnabled: input.analysisEnabled } : {}),
     ...(typeof input.commentEnabled === "boolean" ? { commentEnabled: input.commentEnabled } : {}),
     ...(typeof input.saveReportsEnabled === "boolean" ? { saveReportsEnabled: input.saveReportsEnabled } : {}),
-    ...(typeof input.slackNotificationsEnabled === "boolean" ? { slackNotificationsEnabled: input.slackNotificationsEnabled } : {})
+    ...(typeof input.slackNotificationsEnabled === "boolean" ? { slackNotificationsEnabled: input.slackNotificationsEnabled } : {}),
+    ...(llmAnalysisMode ? { llmAnalysisMode } : {})
   };
 
   if (!tenantId || !installationId || !repositoryId || Object.keys(settings).length === 0) {
@@ -913,6 +931,12 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
     repositoryId,
     settings
   };
+}
+
+function normalizeOptionalLlmAnalysisMode(value: unknown): LlmAnalysisMode | undefined | null {
+  if (value === undefined) return undefined;
+  if (value === "essential" || value === "enhanced") return value;
+  return null;
 }
 
 function decisionForGrant(grant: TenantRepositoryGrant, env: NodeJS.ProcessEnv): TenantRepositoryGrantDecision {

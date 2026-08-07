@@ -54,6 +54,8 @@ import {
   UsageQuotaStoreError
 } from "./usage-quota";
 import { generateVerificationReport } from "./verifier";
+import { enrichReportWithOpenAISemantics } from "./llm-semantic-runtime";
+import { isGitHubRepositoryPublic } from "./github-repository-visibility";
 
 export const DEFAULT_ANALYSIS_WORKER_BATCH_LIMIT = 1;
 export const MAX_ANALYSIS_WORKER_BATCH_LIMIT = 5;
@@ -74,6 +76,7 @@ export interface AnalysisWorkerPreflightResult {
     comment: boolean;
     slackSummary?: boolean;
   };
+  llmAnalysisMode?: "essential" | "enhanced";
 }
 
 export interface RunAnalysisJobOptions extends AnalysisJobClaimOptions {
@@ -254,7 +257,8 @@ export async function preflightNextAnalysisJob(
       return {
         status: "ready",
         job,
-        sideEffects
+        sideEffects,
+        llmAnalysisMode: grant.grant.llmAnalysisMode
       };
     }
   } catch (error) {
@@ -328,7 +332,8 @@ export async function preflightNextAnalysisJob(
     sideEffects: {
       saveReport: job.save_report && settings.saveReportsEnabled,
       comment: job.comment && settings.commentEnabled
-    }
+    },
+    llmAnalysisMode: undefined
   };
 }
 
@@ -349,6 +354,8 @@ export async function runNextAnalysisJob(
     await assertWorkerTenantDeletionNotActive(job, env);
 
     const token = await createGitHubInstallationAccessToken(job.installation_id, env);
+    const llmAnalysisMode = preflight.llmAnalysisMode
+      ?? (await isGitHubRepositoryPublic(job.repository_full_name, token) ? "enhanced" : "essential");
     const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
       expectedHeadSha: job.head_sha,
       now: () => options.now ?? new Date()
@@ -361,7 +368,12 @@ export async function runNextAnalysisJob(
       );
     }
 
-    const report = generateVerificationReport(input);
+    const deterministicReport = generateVerificationReport(input);
+    const semanticResult = await enrichReportWithOpenAISemantics(input, deterministicReport, {
+      env,
+      mode: llmAnalysisMode
+    });
+    const report = semanticResult.report;
     const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
 
     if (!validation.valid) {

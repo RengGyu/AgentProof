@@ -58,6 +58,7 @@ import {
   type UsageQuotaReservation
 } from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
+import { enrichReportWithOpenAISemantics } from "@/lib/llm-semantic-runtime";
 
 const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
 const MAX_WEBHOOK_BODY_BYTES = 400_000;
@@ -759,7 +760,12 @@ async function handlePullRequestAutomation(
       throw new Error("GitHub App PR analysis could not build a pull request input.");
     }
 
-    const report = generateVerificationReport(input);
+    const deterministicReport = generateVerificationReport(input);
+    const semanticResult = await enrichReportWithOpenAISemantics(input, deterministicReport, {
+      mode: tenantGrant.grant?.llmAnalysisMode
+        ?? (automation.repositoryPrivate === false ? "enhanced" : "essential")
+    });
+    const report = semanticResult.report;
     const validation = validateVerificationReport(report, { mode: "full" });
 
     if (!validation.valid) {
@@ -1191,6 +1197,7 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
   const installation = getNestedRecord(payload, "installation");
   const repositoryFullName = getString(repository, "full_name");
   const repositoryId = getNumber(repository, "id");
+  const repositoryPrivate = typeof repository?.private === "boolean" ? repository.private : undefined;
   const pullRequestNumber = getNumber(pullRequest, "number");
   const pullRequestUrl = getString(pullRequest, "html_url");
   const head = getNestedRecord(pullRequest ?? {}, "head");
@@ -1213,6 +1220,7 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
   return {
     repositoryFullName,
     repositoryId,
+    repositoryPrivate,
     pullRequestNumber,
     pullRequestUrl,
     headSha,

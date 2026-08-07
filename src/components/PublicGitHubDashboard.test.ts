@@ -85,4 +85,11 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain('method: "PATCH"');
     expect(source).toContain("Comments are off");
   });
+
+  it("asks for a concise enhanced-analysis choice only when a private repository is selected", () => {
+    expect(source).toContain("Use essential analysis");
+    expect(source).toContain("Enable enhanced analysis");
+    expect(source).toContain("selected changed-code excerpts and evidence summaries");
+    expect(source).toContain("repository.private ?");
+  });
 });

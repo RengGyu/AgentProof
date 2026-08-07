@@ -8,7 +8,7 @@ import {
   verifyGitHubActivationSession
 } from "@/lib/github-onboarding";
 import { noStoreJson, parseJsonSafely } from "@/lib/http";
-import { createTenantRepositoryGrant, getTenantControlPlaneSettings, TenantControlPlaneStoreError } from "@/lib/tenant-control-plane";
+import { createTenantRepositoryGrant, getTenantControlPlaneSettings, resolveTenantRepositoryLlmAnalysisMode, TenantControlPlaneStoreError } from "@/lib/tenant-control-plane";
 import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/lib/tenant-deletion-state";
 import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { resolveTenantAuthAccess } from "@/lib/tenant-auth";
@@ -112,6 +112,7 @@ export async function POST(request: Request) {
     repositoryFullName?: unknown;
     saveReportsEnabled?: unknown;
     commentEnabled?: unknown;
+    llmAnalysisMode?: unknown;
   }>(await request.text());
 
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -198,6 +199,14 @@ export async function POST(request: Request) {
     }, { status: 422 });
   }
 
+  const llmAnalysisMode = selectRepositoryLlmAnalysisMode(selected.private, body.llmAnalysisMode);
+  if (!llmAnalysisMode) {
+    return noStoreJson({
+      error: "Repository analysis mode is invalid.",
+      code: "github_onboarding_analysis_mode_invalid"
+    }, { status: 422 });
+  }
+
   try {
     activation = await consumeGitHubActivationSession({
       cookieHeader: request.headers.get("cookie"),
@@ -229,7 +238,8 @@ export async function POST(request: Request) {
       enabled: true,
       analysisEnabled: true,
       saveReportsEnabled: body.saveReportsEnabled === true,
-      commentEnabled: body.commentEnabled === true
+      commentEnabled: body.commentEnabled === true,
+      llmAnalysisMode
     });
 
     return noStoreJson({
@@ -241,7 +251,8 @@ export async function POST(request: Request) {
       settings: {
         analysisEnabled: grant.analysisEnabled,
         saveReportsEnabled: grant.saveReportsEnabled,
-        commentEnabled: grant.commentEnabled
+        commentEnabled: grant.commentEnabled,
+        llmAnalysisMode: resolveTenantRepositoryLlmAnalysisMode(grant)
       },
       privacy: "grant-metadata-only",
       next: "webhook_analysis_enabled_for_repository"
@@ -260,6 +271,12 @@ export async function POST(request: Request) {
 
     throw error;
   }
+}
+
+function selectRepositoryLlmAnalysisMode(privateRepository: boolean, requested: unknown): "essential" | "enhanced" | undefined {
+  if (!privateRepository) return "enhanced";
+  if (requested === undefined) return "essential";
+  return requested === "essential" || requested === "enhanced" ? requested : undefined;
 }
 
 async function fetchInstallationRepositories(installationId: number) {

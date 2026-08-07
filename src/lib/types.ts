@@ -294,5 +294,7 @@ export interface VerificationReport {
   };
   evidenceIndex: EvidenceItem[];
   limitations: string[];
+  /** Validator-approved semantic interpretation. Deterministic evidence remains the source of truth. */
+  semantic?: import("./llm-semantic-output").LlmSemanticOutput;
   authenticity?: ReportAuthenticity;
 }

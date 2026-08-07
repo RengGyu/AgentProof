@@ -9,6 +9,7 @@ import {
   disableTenantRepositoryGrantsForTenantDeletion,
   listTenantRepositoryGrants,
   readTenantRepositoryGrants,
+  resolveTenantRepositoryLlmAnalysisMode,
   TenantControlPlaneStoreError,
   tenantGrantPublicReason,
   updateTenantRepositoryGrantSettings
@@ -271,6 +272,29 @@ describe("tenant control plane helpers", () => {
     }, env)).resolves.toMatchObject({
       reason: "analysis-disabled"
     });
+  });
+
+  it("defaults a repository to essential analysis and lets its owner enable enhanced analysis", async () => {
+    const env = {
+      AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "true",
+      AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "true"
+    } as unknown as NodeJS.ProcessEnv;
+
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/PrivateRepo"
+    }, env);
+
+    const [created] = await listTenantRepositoryGrants({ tenantId: "tenant_test" }, env);
+    expect(resolveTenantRepositoryLlmAnalysisMode(created)).toBe("essential");
+    await expect(updateTenantRepositoryGrantSettings({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      llmAnalysisMode: "enhanced"
+    }, env)).resolves.toEqual(expect.objectContaining({ llmAnalysisMode: "enhanced" }));
   });
 
   it("disables all stored grants for a GitHub App installation lifecycle event", async () => {
@@ -621,7 +645,7 @@ describe("tenant control plane helpers", () => {
       }
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled&order=repository_full_name.asc&limit=500",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode&order=repository_full_name.asc&limit=500",
       expect.objectContaining({ method: "GET" })
     );
   });
@@ -680,7 +704,7 @@ describe("tenant control plane helpers", () => {
       expect.objectContaining({ method: "HEAD" })
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&installation_id=eq.321&repository_id=eq.100&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&installation_id=eq.321&repository_id=eq.100&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode",
       expect.objectContaining({ method: "PATCH" })
     );
     expect(body).toMatchObject({
@@ -720,7 +744,7 @@ describe("tenant control plane helpers", () => {
 
     expect(result.updatedCount).toBe(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode",
       expect.objectContaining({ method: "PATCH" })
     );
     expect(body).toMatchObject({
@@ -751,7 +775,7 @@ describe("tenant control plane helpers", () => {
       grants: []
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled",
+      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode",
       expect.objectContaining({ method: "PATCH" })
     );
   });

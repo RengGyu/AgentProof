@@ -1,4 +1,5 @@
 import type { VerificationReport } from "./types";
+import { validateLlmSemanticCandidate } from "./llm-semantic-output";
 import {
   hasPassingEvidenceStatusPrefix,
   isExecutionEvidenceSignal,
@@ -115,7 +116,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["authenticity"]
+    ["authenticity", "semantic"]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -134,6 +135,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateProofGraph(report.proofGraph, evidenceIds, evidenceById, requirementIds, mode, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
+  validateSemanticAnalysis(report.semantic, requirementIds, report.evidenceIndex, errors);
   validateAuthenticity(report.authenticity, errors);
   if (mode === "summary") {
     validateSummaryOnlyReport(report, errors);
@@ -144,6 +146,30 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+function validateSemanticAnalysis(
+  value: unknown,
+  requirementIds: Set<string>,
+  evidenceIndex: unknown,
+  errors: string[]
+) {
+  if (value === undefined) return;
+  if (!Array.isArray(evidenceIndex)) {
+    errors.push("semantic analysis requires evidenceIndex.");
+    return;
+  }
+  const evidence = evidenceIndex.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.kind !== "string") return [];
+    return [{ id: item.id, kind: item.kind as import("./types").EvidenceKind }];
+  });
+  const validation = validateLlmSemanticCandidate(value, {
+    requirementIds: [...requirementIds],
+    evidence
+  });
+  if (validation.disposition !== "accepted") {
+    errors.push("semantic analysis is not a fully validated grounded candidate.");
+  }
 }
 
 function validateAuthenticity(value: unknown, errors: string[]) {

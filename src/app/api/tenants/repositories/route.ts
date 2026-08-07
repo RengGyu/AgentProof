@@ -17,7 +17,8 @@ const SETTINGS_KEYS = new Set([
   "analysisEnabled",
   "commentEnabled",
   "saveReportsEnabled",
-  "slackNotificationsEnabled"
+  "slackNotificationsEnabled",
+  "llmAnalysisMode"
 ]);
 
 interface RepositorySettingsPatchRequest {
@@ -30,6 +31,7 @@ interface RepositorySettingsPatchRequest {
     commentEnabled?: unknown;
     saveReportsEnabled?: unknown;
     slackNotificationsEnabled?: unknown;
+    llmAnalysisMode?: unknown;
   };
 }
 
@@ -226,7 +228,8 @@ function toPublicRepositorySettings(grant: TenantRepositoryGrant) {
     analysisEnabled: grant.analysisEnabled,
     saveReportsEnabled: grant.saveReportsEnabled,
     commentEnabled: grant.commentEnabled,
-    slackNotificationsEnabled: grant.slackNotificationsEnabled
+    slackNotificationsEnabled: grant.slackNotificationsEnabled,
+    llmAnalysisMode: grant.llmAnalysisMode ?? "essential"
   };
 }
 
@@ -250,6 +253,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     commentEnabled?: boolean;
     saveReportsEnabled?: boolean;
     slackNotificationsEnabled?: boolean;
+    llmAnalysisMode?: "essential" | "enhanced";
   };
 } {
   const entries = Object.entries(value);
@@ -261,14 +265,17 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     commentEnabled?: boolean;
     saveReportsEnabled?: boolean;
     slackNotificationsEnabled?: boolean;
+    llmAnalysisMode?: "essential" | "enhanced";
   } = {};
 
   for (const [key, setting] of entries) {
-    if (!SETTINGS_KEYS.has(key) || typeof setting !== "boolean") {
+    if (!SETTINGS_KEYS.has(key) || (key === "llmAnalysisMode"
+      ? setting !== "essential" && setting !== "enhanced"
+      : typeof setting !== "boolean")) {
       return { valid: false };
     }
 
-    settings[key as keyof typeof settings] = setting;
+    settings[key as keyof typeof settings] = setting as never;
   }
 
   return { valid: true, settings };
