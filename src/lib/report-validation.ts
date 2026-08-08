@@ -116,7 +116,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["authenticity", "semantic"]
+    ["authenticity", "semantic", "semanticAnalysis"]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -136,6 +136,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
   validateSemanticAnalysis(report.semantic, requirementIds, report.evidenceIndex, errors);
+  validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   validateAuthenticity(report.authenticity, errors);
   if (mode === "summary") {
     validateSummaryOnlyReport(report, errors);
@@ -169,6 +170,27 @@ function validateSemanticAnalysis(
   });
   if (validation.disposition !== "accepted") {
     errors.push("semantic analysis is not a fully validated grounded candidate.");
+  }
+}
+
+function validateSemanticRuntimeState(value: unknown, semantic: unknown, errors: string[]) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push("semanticAnalysis must be an object.");
+    return;
+  }
+  requireKeys(value, ["status", "attempts"], "semanticAnalysis", errors);
+  if (value.status !== "included" && value.status !== "unavailable") {
+    errors.push("semanticAnalysis.status is invalid.");
+  }
+  if (value.attempts !== 1 && value.attempts !== 2) {
+    errors.push("semanticAnalysis.attempts is invalid.");
+  }
+  if (value.status === "included" && semantic === undefined) {
+    errors.push("semanticAnalysis.included requires semantic analysis.");
+  }
+  if (value.status === "unavailable" && semantic !== undefined) {
+    errors.push("semanticAnalysis.unavailable must not include semantic analysis.");
   }
 }
 

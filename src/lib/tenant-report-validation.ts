@@ -23,6 +23,7 @@ export interface TenantPersistedReport {
   evidenceIndex: Array<{ id: string; kind?: EvidenceKind; locator?: string }>;
   reprompt: { prompt: string };
   semantic?: LlmSemanticOutput;
+  semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
   integrity: { version: 1; algorithm: "hmac-sha256"; canonicalDigest: string; signature: string };
 }
 
@@ -129,7 +130,8 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
     reviewPriority: report.reviewPriority.map(({ path, priority, evidenceRefs }) => ({ path, priority, evidenceRefs: [...(evidenceRefs ?? [])] })),
     evidenceIndex: report.evidenceIndex.map(({ id, kind, locator }) => locator ? { id, kind, locator } : { id, kind }),
     reprompt: { prompt: report.reprompt.prompt },
-    ...(report.semantic ? { semantic: report.semantic } : {})
+    ...(report.semantic ? { semantic: report.semantic } : {}),
+    ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
   const payload = stableJson(unsigned);
   return {
@@ -147,7 +149,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const errors: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return { valid: false, errors: ["Tenant persisted report must be an object."] };
   const report = value as Partial<TenantPersistedReport> & Record<string, unknown>;
-  const allowed = new Set(["version", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "integrity"]);
+  const allowed = new Set(["version", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
   for (const key of Object.keys(report)) if (!allowed.has(key)) errors.push(`tenant persisted report contains disallowed field: ${key}.`);
   if (report.version !== 1) errors.push("tenant persisted report version must be 1.");
   if (!isPriority(report.priority)) errors.push("tenant persisted report priority is invalid.");
@@ -197,12 +199,27 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
     });
     if (semanticValidation.disposition !== "accepted") errors.push("tenant persisted semantic analysis is invalid.");
   }
+  validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   const integrity = report.integrity as Record<string, unknown> | undefined;
-  const unsigned = { version: report.version, priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}) };
+  const unsigned = { version: report.version, priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
   const payload = stableJson(unsigned);
   if (!integrity || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > TENANT_REPORT_MAX_BYTES) errors.push(`report exceeds ${TENANT_REPORT_MAX_BYTES} bytes.`);
   return { valid: errors.length === 0, errors: [...new Set(errors)] };
+}
+
+function validateSemanticRuntimeState(value: unknown, semantic: unknown, errors: string[]) {
+  if (value === undefined) return;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    errors.push("tenant persisted semantic runtime state is invalid.");
+    return;
+  }
+  const state = value as { status?: unknown; attempts?: unknown } & Record<string, unknown>;
+  if (Object.keys(state).some((key) => key !== "status" && key !== "attempts")) errors.push("tenant persisted semantic runtime state has disallowed fields.");
+  if (state.status !== "included" && state.status !== "unavailable") errors.push("tenant persisted semantic runtime status is invalid.");
+  if (state.attempts !== 1 && state.attempts !== 2) errors.push("tenant persisted semantic runtime attempts is invalid.");
+  if (state.status === "included" && semantic === undefined) errors.push("tenant persisted included semantic runtime state requires semantic analysis.");
+  if (state.status === "unavailable" && semantic !== undefined) errors.push("tenant persisted unavailable semantic runtime state must not include semantic analysis.");
 }
 
 export function isTenantPersistedReport(value: unknown, signingSecret: string): value is TenantPersistedReport {

@@ -148,6 +148,23 @@ describe("server report store", () => {
     expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
   });
 
+  it("retains only bounded unavailable semantic runtime state in a signed tenant report", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.semanticAnalysis = { status: "unavailable", attempts: 2 };
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "c".repeat(40)
+    });
+
+    expect(saved.report.semanticAnalysis).toEqual({ status: "unavailable", attempts: 2 });
+    expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
+  });
+
   it("marks an earlier verified report stale only when a different head is saved for the same PR", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const first = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {

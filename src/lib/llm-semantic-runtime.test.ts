@@ -84,7 +84,7 @@ describe("LLM semantic runtime gate", () => {
     }));
   });
 
-  it("keeps the deterministic report when the model call fails", async () => {
+  it("keeps deterministic evidence and records a bounded unavailable state when the model call fails", async () => {
     const deterministic = generateVerificationReport(demoScenarios.clean);
 
     const result = await enrichReportWithOpenAISemantics(demoScenarios.clean, deterministic, {
@@ -97,8 +97,48 @@ describe("LLM semantic runtime gate", () => {
     });
 
     expect(result.status).toBe("unavailable");
-    expect(result.report).toBe(deterministic);
+    expect(result.attempts).toBe(2);
+    expect(result.report.requirements).toEqual(deterministic.requirements);
     expect(result.report.semantic).toBeUndefined();
+    expect(result.report.semanticAnalysis).toEqual({ status: "unavailable", attempts: 2 });
+  });
+
+  it("retries an enhanced analysis once and records the successful second attempt", async () => {
+    const deterministic = generateVerificationReport(demoScenarios.clean);
+    const analyze = vi.fn()
+      .mockRejectedValueOnce(new Error("temporary provider failure"))
+      .mockResolvedValueOnce({
+        output: semanticOutput(),
+        validation: { disposition: "accepted", candidate: semanticOutput(), rejected_units: [], discard_reason_codes: [] }
+      });
+
+    const result = await enrichReportWithOpenAISemantics(demoScenarios.clean, deterministic, {
+      env: { OPENAI_API_KEY: "test-key", AGENTPROOF_LLM_SEMANTIC_ENABLED: "true" },
+      mode: "enhanced",
+      analyze
+    });
+
+    expect(analyze).toHaveBeenCalledTimes(2);
+    expect(result.status).toBe("included");
+    expect(result.attempts).toBe(2);
+    expect(result.report.semanticAnalysis).toEqual({ status: "included", attempts: 2 });
+  });
+
+  it("records a privacy-safe unavailable status after the retry is exhausted", async () => {
+    const deterministic = generateVerificationReport(demoScenarios.clean);
+    const analyze = vi.fn().mockRejectedValue(new Error("provider response must not persist"));
+
+    const result = await enrichReportWithOpenAISemantics(demoScenarios.clean, deterministic, {
+      env: { OPENAI_API_KEY: "test-key", AGENTPROOF_LLM_SEMANTIC_ENABLED: "true" },
+      mode: "enhanced",
+      analyze
+    });
+
+    expect(analyze).toHaveBeenCalledTimes(2);
+    expect(result.status).toBe("unavailable");
+    expect(result.attempts).toBe(2);
+    expect(result.report.semanticAnalysis).toEqual({ status: "unavailable", attempts: 2 });
+    expect(JSON.stringify(result.report)).not.toContain("provider response must not persist");
   });
 
   it.runIf(process.env.AGENTPROOF_LLM_LIVE === "1")(

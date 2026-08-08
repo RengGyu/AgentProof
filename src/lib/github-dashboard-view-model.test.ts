@@ -85,6 +85,25 @@ describe("github dashboard view model", () => {
     expect(summary.primaryEvidenceDetail).toBe("A focused test for the exceptional input path is not available.");
   });
 
+  it("marks an exhausted enhanced-analysis retry as unavailable without changing grounded evidence", () => {
+    const summary = toQuickSummary({
+      repositoryFullName: "RengGyu/dongo",
+      pullRequestNumber: 16,
+      priority: "high",
+      report: {
+        requirements: [{ requirementId: "req_1", status: "partial", evidenceRefs: ["ev_1"], gaps: ["Evidence gap recorded."] }],
+        testing: { ciStatus: "unknown", lintStatus: "unknown", typecheckStatus: "unknown" },
+        reviewPriority: [{ path: "agentproof-smoke/session-expiry.js", priority: "high" }],
+        evidenceIndex: [{ id: "ev_1", locator: "agentproof-smoke/session-expiry.js" }],
+        reprompt: { prompt: "Address missing or unclear verification evidence, then rerun the relevant checks." },
+        semanticAnalysis: { status: "unavailable", attempts: 2 }
+      }
+    });
+
+    expect(summary.primaryEvidenceState).toBe("Evidence missing");
+    expect(summary.aiEvidenceState).toBe("Unavailable");
+  });
+
   it("groups saved reports under connected repositories without inventing a repository", () => {
     expect(toRepositoryWorkspaceRows(
       [{ installationId: 1, repositoryId: 10, repositoryFullName: "RengGyu/dongo", enabled: true, analysisEnabled: true, saveReportsEnabled: true, commentEnabled: false }],

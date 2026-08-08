@@ -31,6 +31,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     evidenceIndex?: Array<{ id: string; locator?: string }>;
     reprompt?: { prompt: string };
     semantic?: LlmSemanticOutput;
+    semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
   };
 }
 
@@ -46,6 +47,7 @@ export interface QuickSummary {
   checkState: "Success" | "Check failed" | "Pending" | "Unknown" | "Unavailable";
   primaryEvidenceState: "Evidence found" | "Evidence missing" | "Needs attention" | "Unknown" | "Unavailable";
   primaryEvidenceDetail?: string;
+  aiEvidenceState: "Available" | "Unavailable" | "Not requested";
   inspectFirst: string;
   githubUrl?: string;
 }
@@ -99,9 +101,16 @@ export function toQuickSummary(detail: DashboardReportDetail & { repositoryFullN
     checkState: toCheckState(detail.report?.testing),
     primaryEvidenceState: toEvidenceState(firstRequirement?.status, firstRequirement?.gaps.length ?? 0),
     ...(primarySemanticGap ? { primaryEvidenceDetail: primarySemanticGap.description } : {}),
+    aiEvidenceState: toAiEvidenceState(detail.report),
     inspectFirst: firstPriorityPath ?? firstEvidencePath ?? "Unavailable",
     githubUrl: buildGitHubPullUrl(detail.repositoryFullName, detail.pullRequestNumber)
   };
+}
+
+function toAiEvidenceState(report: DashboardReportDetail["report"]): QuickSummary["aiEvidenceState"] {
+  if (report?.semantic) return "Available";
+  if (report?.semanticAnalysis?.status === "unavailable") return "Unavailable";
+  return "Not requested";
 }
 
 function toCheckState(testing: NonNullable<DashboardReportDetail["report"]>["testing"]): QuickSummary["checkState"] {

@@ -814,7 +814,8 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
       return { id: item.id, kind: item.kind, label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", ...(locator ? { locator } : {}), confidence: item.confidence };
     }),
     limitations: report.limitations.map(() => "Some evidence was unavailable or intentionally omitted for privacy.").slice(0, 20),
-    ...(report.semantic ? { semantic: report.semantic } : {})
+    ...(report.semantic ? { semantic: report.semantic } : {}),
+    ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
   safe.authenticity = trust === "verified_agentproof" ? createVerifiedAuthenticity(safe, requireReportSigningSecret()) : createUnverifiedAuthenticity("imported_unverified");
   const validation = validateTenantStoredReport(safe, requireReportSigningSecret());
@@ -1011,7 +1012,8 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
     reprompt: { targetAgent: "codex", prompt: report.reprompt.prompt },
     evidenceIndex: report.evidenceIndex.map((item) => ({ id: item.id, kind: item.kind ?? "inference", label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", confidence: 0, ...(item.locator ? { locator: item.locator } : {}) })),
     limitations: ["Some evidence was unavailable or intentionally omitted for privacy."],
-    ...(report.semantic ? { semantic: report.semantic } : {})
+    ...(report.semantic ? { semantic: report.semantic } : {}),
+    ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, secret);
   return hydrated;

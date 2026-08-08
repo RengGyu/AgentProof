@@ -42,6 +42,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("issueBody");
   });
 
+  it("explains when the bounded AI retry was unavailable without exposing provider details", () => {
+    expect(source).toContain('label="AI explanation"');
+    expect(source).toContain("AI explanation is temporarily unavailable. Grounded evidence is still available.");
+    expect(source).not.toContain("provider response must not persist");
+  });
+
   it("renders the evidence workspace without inventing issue grouping", () => {
     expect(source).toContain("Repository reports");
     expect(source).toContain("No reports yet");

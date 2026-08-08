@@ -7,6 +7,7 @@ type SemanticRuntimeStatus = "disabled" | "included" | "unavailable";
 export interface SemanticRuntimeResult {
   report: VerificationReport;
   status: SemanticRuntimeStatus;
+  attempts: 0 | 1 | 2;
 }
 
 export interface EnrichReportWithOpenAISemanticsOptions {
@@ -37,19 +38,38 @@ export async function enrichReportWithOpenAISemantics(
     env.AGENTPROOF_LLM_SEMANTIC_ENABLED !== "true" ||
     options.mode !== "enhanced"
   ) {
-    return { report: deterministicReport, status: "disabled" };
+    return { report: deterministicReport, status: "disabled", attempts: 0 };
   }
 
-  try {
-    const result = await (options.analyze ?? analyzeSemanticsWithOpenAI)(input, deterministicReport, {
-      apiKey,
-      ...(env.OPENAI_MODEL ? { model: env.OPENAI_MODEL } : {})
-    });
-    return {
-      report: { ...deterministicReport, semantic: result.output },
-      status: "included"
-    };
-  } catch {
-    return { report: deterministicReport, status: "unavailable" };
+  const analyze = options.analyze ?? analyzeSemanticsWithOpenAI;
+  const providerOptions = {
+    apiKey,
+    ...(env.OPENAI_MODEL ? { model: env.OPENAI_MODEL } : {})
+  };
+
+  for (const attempts of [1, 2] as const) {
+    try {
+      const result = await analyze(input, deterministicReport, providerOptions);
+      return {
+        report: {
+          ...deterministicReport,
+          semantic: result.output,
+          semanticAnalysis: { status: "included", attempts }
+        },
+        status: "included",
+        attempts
+      };
+    } catch {
+      // One bounded retry handles transient provider or strict-output failures.
+    }
   }
+
+  return {
+    report: {
+      ...deterministicReport,
+      semanticAnalysis: { status: "unavailable", attempts: 2 }
+    },
+    status: "unavailable",
+    attempts: 2
+  };
 }

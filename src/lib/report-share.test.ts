@@ -103,6 +103,7 @@ describe("report share", () => {
 
   it("omits semantic LLM analysis from portable share payloads", () => {
     const report = generateVerificationReport(demoScenarios.clean);
+    report.semanticAnalysis = { status: "unavailable", attempts: 2 };
     report.semantic = {
       requirement_evidence_relations: [],
       requirement_assessments: [{
@@ -122,6 +123,7 @@ describe("report share", () => {
     const shared = decodeSharedReport(encodeReportForShare(report));
 
     expect(shared.semantic).toBeUndefined();
+    expect(shared.semanticAnalysis).toBeUndefined();
     expect(JSON.stringify(shared)).not.toContain("No supplied evidence directly supports this requirement.");
   });
 
