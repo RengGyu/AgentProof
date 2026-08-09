@@ -59,7 +59,7 @@ export function tenantGapKind(text: string): ProofGapKind {
 
 export function tenantRemediationText(kinds: readonly ProofGapKind[]): string {
   const selected = REMEDIATION_PRIORITY.find((kind) => kinds.includes(kind));
-  return selected ? REMEDIATION_TEXT[selected] : LEGACY_REMEDIATION;
+  return REMEDIATION_TEXT[selected ?? "evidence_unavailable"];
 }
 
 export function tenantReportAnalysisContext(report: VerificationReport): TenantReportAnalysisContext {
