@@ -275,6 +275,25 @@ describe("AgentProof LLM semantic output contract", () => {
     ]);
   });
 
+  it("removes a unit that appears truncated at the text boundary", () => {
+    const candidate = validCandidate();
+    candidate.evidence_gaps.push({
+      ...candidate.evidence_gaps[0],
+      description: "x".repeat(LLM_SEMANTIC_OUTPUT_LIMITS.explanation)
+    });
+
+    const result = validateLlmSemanticCandidate(candidate, referenceCatalog);
+
+    expect(result.disposition).toBe("partial");
+    expect(result.candidate?.evidence_gaps).toHaveLength(1);
+    expect(result.rejected_units).toEqual([
+      expect.objectContaining({
+        section: "evidence_gaps",
+        reason_codes: ["incomplete_text"]
+      })
+    ]);
+  });
+
   it("discards the complete semantic payload when secret-like content is returned", () => {
     const candidate = validCandidate();
     candidate.remediation_requests[0] = {

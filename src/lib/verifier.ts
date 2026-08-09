@@ -48,7 +48,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const requirements = requirementEvidence.requirements;
   const ciStatus = aggregateStatus(input.checks, input.logs);
   const rawRequirementFindings = requirements.map((requirement) =>
-    evaluateRequirement(requirement, evidenceIndex, input)
+    constrainAuthorIntentFinding(requirement, evaluateRequirement(requirement, evidenceIndex, input))
   );
   const missingTests = detectMissingTests(input, evidenceIndex);
   const proofGraph = buildProofGraph(requirements, rawRequirementFindings, input, evidenceIndex, missingTests, ciStatus, requirementEvidence.contexts);
@@ -119,6 +119,18 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     },
     evidenceIndex,
     limitations
+  };
+}
+
+function constrainAuthorIntentFinding(requirement: Requirement, finding: RequirementFinding): RequirementFinding {
+  if (requirement.sourceQuality !== "author_claim" || finding.status !== "met") return finding;
+
+  return {
+    ...finding,
+    status: "partial",
+    gaps: uniqueRefs([...finding.gaps, "PR author intent is not an authoritative linked requirement."]).slice(0, 8),
+    reviewerNote: "Review consistency between the PR intent, changed files, tests, and checks; do not treat author intent as requirement satisfaction.",
+    confidence: Math.min(finding.confidence, 0.62)
   };
 }
 

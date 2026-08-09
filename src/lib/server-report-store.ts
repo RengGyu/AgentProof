@@ -10,7 +10,8 @@ import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
 import { isSafeTenantLocator, isTenantPersistedReport, projectTenantPersistedReport, type TenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
-import type { VerificationReport } from "./types";
+import { tenantGapKind, tenantGapText, tenantRemediationText } from "./tenant-report-language";
+import type { ProofGapKind, VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_SERVER_REPORTS = 100;
@@ -410,8 +411,9 @@ function createMemorySavedReport(
 
   const createdAtDate = new Date();
   const access = createTenantAccess(options.tenantId, trust === "verified_agentproof");
+  const existingSameHeadId = findCurrentMemoryReportId(options);
   const saved: StoredServerReport = {
-    id: createSavedReportId(options.tenantId),
+    id: existingSameHeadId ?? createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
     expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
     report: options.tenantId && trust === "verified_agentproof" ? prepareTenantDetailReportForStorage(report, trust) : prepareSummaryReportForStorage(report, trust),
@@ -426,6 +428,22 @@ function createMemorySavedReport(
   reportStore().set(saved.id, withoutTransientAccessToken(saved));
   trimReportStore();
   return saved;
+}
+
+function findCurrentMemoryReportId(options: NormalizedCreateSavedReportOptions): string | undefined {
+  if (!options.tenantId || !options.repositoryId || !options.pullRequestNumber || !options.headSha) return undefined;
+
+  for (const [id, existing] of reportStore()) {
+    if (
+      existing.tenantId === options.tenantId &&
+      existing.repositoryId === options.repositoryId &&
+      existing.pullRequestNumber === options.pullRequestNumber &&
+      existing.headSha === options.headSha &&
+      !existing.staleAt
+    ) return id;
+  }
+
+  return undefined;
 }
 
 function getMemorySavedReport(id: string, access: SavedReportAccessContext): StoredServerReport | null {
@@ -751,6 +769,8 @@ function prepareSummaryReportForStorage(
  * written to the saved-report row.
  */
 function prepareTenantDetailReportForStorage(report: VerificationReport, trust: "verified_agentproof" | "imported_unverified"): VerificationReport {
+  const proofNodesByRequirement = new Map(report.proofGraph.nodes.map((node) => [node.requirementId, node]));
+  const allGapKinds = report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind));
   const safe: VerificationReport = {
     analysisId: report.analysisId,
     createdAt: report.createdAt,
@@ -765,15 +785,19 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
       evidenceCoverage: report.summary.evidenceCoverage,
       topRisks: report.summary.topRisks.map(() => "Verification evidence requires reviewer attention.").slice(0, 5)
     },
-    requirements: report.requirements.map((item) => ({
-      requirementId: item.requirementId,
-      requirementText: `Requirement ${item.requirementId}`,
-      status: item.status,
-      evidenceRefs: item.evidenceRefs,
-      gaps: item.gaps.map(() => "Evidence gap recorded.").slice(0, 10),
-      reviewerNote: "Review the linked evidence and safe locations.",
-      confidence: item.confidence
-    })),
+    requirements: report.requirements.map((item) => {
+      const proofGaps = proofNodesByRequirement.get(item.requirementId)?.gapSignals ?? [];
+      const gaps = uniqueStrings(proofGaps.map((gap) => tenantGapText(gap.kind)));
+      return {
+        requirementId: item.requirementId,
+        requirementText: `Requirement ${item.requirementId}`,
+        status: item.status,
+        evidenceRefs: item.evidenceRefs,
+        gaps: (gaps.length > 0 ? gaps : item.gaps.length > 0 ? [tenantGapText("evidence_unavailable")] : []).slice(0, 10),
+        reviewerNote: "Review the linked evidence and safe locations.",
+        confidence: item.confidence
+      };
+    }),
     claims: [],
     scope: {
       suspected: report.scope.suspected,
@@ -802,13 +826,13 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
         implementationEvidenceRefs: node.implementationEvidenceRefs,
         targetedTestEvidenceRefs: node.targetedTestEvidenceRefs,
         executionEvidenceRefs: node.executionEvidenceRefs,
-        gapSignals: node.gapSignals.map((gap) => ({ kind: gap.kind, severity: gap.severity, message: "Evidence gap recorded.", evidenceRefs: gap.evidenceRefs })),
+        gapSignals: node.gapSignals.map((gap) => ({ kind: gap.kind, severity: gap.severity, message: tenantGapText(gap.kind), evidenceRefs: gap.evidenceRefs })),
         firstFiles: node.firstFiles.map(safeLocator).filter((value): value is string => Boolean(value)).slice(0, 20)
       })),
       context: [],
       summary: report.proofGraph.summary
     },
-    reprompt: { targetAgent: report.reprompt.targetAgent, prompt: "Address missing or unclear verification evidence, then rerun the relevant checks." },
+    reprompt: { targetAgent: report.reprompt.targetAgent, prompt: tenantRemediationText(allGapKinds) },
     evidenceIndex: report.evidenceIndex.map((item) => {
       const locator = safeLocator(item.locator);
       return { id: item.id, kind: item.kind, label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", ...(locator ? { locator } : {}), confidence: item.confidence };
@@ -829,6 +853,10 @@ function safeLocator(value: string | undefined): string | null {
   if (!value) return null;
   const normalized = redactSecrets(value).trim();
   return normalized && isSafeTenantLocator(normalized) ? normalized : null;
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }
 
 function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
@@ -983,11 +1011,16 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
   if (!looksLikeTenantPersistedReport(report)) return report as VerificationReport;
   const secret = requireReportSigningSecret();
   if (!isTenantPersistedReport(report, secret)) return report as VerificationReport;
+  const hydratedSourceQuality = report.analysisContext === "unlinked_pr"
+    ? "author_claim" as const
+    : report.analysisContext === "linked_issue"
+      ? "linked_issue" as const
+      : "fallback" as const;
   const proofNodes = report.requirements.map((item) => ({
     requirementId: item.requirementId,
     requirementText: `Requirement ${item.requirementId}`,
     sourceRole: "core_requirement" as const,
-    sourceQuality: "fallback" as const,
+    sourceQuality: hydratedSourceQuality,
     sourceSection: null,
     contextRoles: [],
     status: item.status,
@@ -995,7 +1028,7 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
     implementationEvidenceRefs: [],
     targetedTestEvidenceRefs: [],
     executionEvidenceRefs: [],
-    gapSignals: item.gaps.map(() => ({ kind: "evidence_unavailable" as const, severity: report.priority, message: "Evidence gap recorded.", evidenceRefs: [] })),
+    gapSignals: item.gaps.map((message) => ({ kind: tenantGapKind(message), severity: report.priority, message, evidenceRefs: [] })),
     firstFiles: []
   }));
   const hydrated: VerificationReport = {

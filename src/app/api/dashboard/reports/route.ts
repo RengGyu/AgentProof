@@ -1,6 +1,7 @@
 import { noStoreJson } from "@/lib/http";
 import { getSavedReport, listTenantSavedReports, SavedReportStoreError } from "@/lib/server-report-store";
 import { resolveTenantAuthAccess, TenantAuthStoreError } from "@/lib/tenant-auth";
+import { tenantReportAnalysisContext } from "@/lib/tenant-report-language";
 
 export async function GET(request: Request) {
   try {
@@ -14,6 +15,9 @@ export async function GET(request: Request) {
         ok: true,
         report: saved.report,
         createdAt: saved.createdAt,
+        priority: saved.report.summary.priority,
+        evidenceCapturedAt: saved.report.source.provenance?.evidenceCapturedAt,
+        analysisContext: tenantReportAnalysisContext(saved.report),
         repositoryId: saved.repositoryId,
         pullRequestNumber: saved.pullRequestNumber,
         headSha: saved.headSha,

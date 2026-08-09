@@ -24,6 +24,8 @@ export interface DashboardSavedReport {
 export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" | "priority" | "createdAt"> {
   createdAt?: string;
   priority?: string;
+  evidenceCapturedAt?: string;
+  analysisContext?: "linked_issue" | "unlinked_pr" | "provided_requirement";
   report?: {
     requirements?: Array<{ requirementId: string; status: string; evidenceRefs: string[]; gaps: string[] }>;
     testing?: { ciStatus: string; lintStatus: string; typecheckStatus: string };

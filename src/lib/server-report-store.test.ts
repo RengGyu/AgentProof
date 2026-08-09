@@ -165,7 +165,29 @@ describe("server report store", () => {
     expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
   });
 
-  it("marks an earlier verified report stale only when a different head is saved for the same PR", async () => {
+  it("stores useful canonical gap and remediation text without source-derived prose", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.requirements[0]!.gaps.push("PRIVATE ISSUE WORDING SHOULD NOT SAVE");
+    report.reprompt.prompt = "RAW AGENT REQUEST SHOULD NOT SAVE";
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "d".repeat(40)
+    });
+    const serialized = JSON.stringify(saved.report);
+
+    expect(saved.report.requirements.flatMap((item) => item.gaps)).toContain(
+      "Targeted test evidence is missing for this requirement."
+    );
+    expect(saved.report.reprompt.prompt).toBe(
+      "Add or link a targeted test and its Check result for the requirement."
+    );
+    expect(serialized).not.toContain("PRIVATE ISSUE WORDING");
+    expect(serialized).not.toContain("RAW AGENT REQUEST");
+    expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("updates the current report for the same head and marks it stale only after a different head", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const first = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
       tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "a".repeat(40)
@@ -173,6 +195,9 @@ describe("server report store", () => {
     const sameHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
       tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "a".repeat(40)
     });
+    expect(sameHead.id).toBe(first.id);
+    expect(await listTenantSavedReports({ tenantId: "tenant_a", limit: 25 })).toHaveLength(1);
+
     const nextHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
       tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "b".repeat(40)
     });
@@ -180,6 +205,21 @@ describe("server report store", () => {
     expect((await getSavedReport(first.id, { tenantId: "tenant_a" }))?.staleAt).toEqual(expect.any(String));
     expect((await getSavedReport(sameHead.id, { tenantId: "tenant_a" }))?.staleAt).toEqual(expect.any(String));
     expect((await getSavedReport(nextHead.id, { tenantId: "tenant_a" }))?.staleAt).toBeUndefined();
+  });
+
+  it("defines same-head Supabase replacement without weakening different-head STALE semantics", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/202608090001_saved_reports_same_head_upsert.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain("agentproof_saved_reports_pr_head_unique_idx");
+    expect(migration).toContain("row_number() over");
+    expect(migration).toContain("current_rank > 1");
+    expect(migration).toContain("and stale_at is null");
+    expect(migration).toContain("on conflict (tenant_id, repository_id, pull_request_number, head_sha)");
+    expect(migration).toContain("do update set");
+    expect(migration).toContain("head_sha is distinct from p_head_sha");
   });
 
   it("defines the Supabase STALE transition in the same transaction as the new head insert", () => {
@@ -239,6 +279,7 @@ describe("server report store", () => {
       p_head_sha: "a".repeat(40)
     });
     expect(Object.keys(body.p_report).sort()).toEqual([
+      "analysisContext",
       "evidenceIndex",
       "integrity",
       "priority",

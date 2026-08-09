@@ -906,7 +906,7 @@ describe("buildPullRequestInput", () => {
     });
 
     expect(input.checks).toEqual([
-      expect.objectContaining({ name: "unit tests", status: "unknown" }),
+      expect.objectContaining({ name: "unit tests", status: "passed" }),
       expect.objectContaining({ name: "legacy e2e tests", status: "failed" })
     ]);
     expect(input.limitations?.join(" ")).not.toContain("legacy commit-status evidence was skipped");
@@ -1019,7 +1019,7 @@ describe("buildPullRequestInput", () => {
     });
 
     expect(input.checks).toEqual([
-      expect.objectContaining({ name: "legacy unit tests", status: "unknown" })
+      expect.objectContaining({ name: "legacy unit tests", status: "passed" })
     ]);
     expect(input.limitations?.join(" ")).not.toContain("legacy commit-status evidence was skipped");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status"))).toBe(true);
@@ -1121,11 +1121,11 @@ describe("buildPullRequestInput", () => {
     expect(input.logs).toEqual([
       expect.objectContaining({
         source: "GitHub Actions job: unit tests",
-        status: "unknown",
-        text: expect.stringContaining("pnpm test: unknown")
+        status: "passed",
+        text: expect.stringContaining("pnpm test: passed")
       })
     ]);
-    expect(input.logs[0]?.text).toContain("pnpm build: unknown");
+    expect(input.logs[0]?.text).toContain("pnpm build: passed");
     expect(input.logs[0]?.text).not.toContain("checkout");
     expect(input.logs[0]?.url).toBeUndefined();
     expect(input.logs[0]?.text).not.toContain("docs preview");
@@ -1453,12 +1453,12 @@ describe("buildPullRequestInput", () => {
     expect(input.logs).toEqual([
       expect.objectContaining({
         source: "GitHub Actions job: CI",
-        status: "unknown",
+        status: "passed",
         url: "https://github.com/acme/repo/actions/runs/123456/job/999",
-        text: expect.stringContaining("pnpm test src/app/api/analyze/route.test.ts: unknown")
+        text: expect.stringContaining("pnpm test src/app/api/analyze/route.test.ts: passed")
       })
     ]);
-    expect(input.logs[0]?.text).toContain("pnpm build: unknown");
+    expect(input.logs[0]?.text).toContain("pnpm build: passed");
     expect(input.logs[0]?.text).not.toContain("Checkout");
     expect(input.logs[0]?.text).not.toContain("Upload test report");
     expect(JSON.stringify(input)).not.toContain("ghp_secret");
@@ -1528,11 +1528,11 @@ describe("buildPullRequestInput", () => {
     expect(input.logs).toEqual([
       expect.objectContaining({
         source: "GitHub Actions job: Build&Test: node-24, ubuntu-latest",
-        status: "unknown",
-        text: expect.stringContaining("Test unit: unknown")
+        status: "passed",
+        text: expect.stringContaining("Test unit: passed")
       })
     ]);
-    expect(input.logs[0]?.text).toContain("pnpm build: unknown");
+    expect(input.logs[0]?.text).toContain("pnpm build: passed");
     expect(input.limitations?.join(" ")).toContain("success remains unverified");
   });
 
@@ -1619,7 +1619,7 @@ describe("buildPullRequestInput", () => {
       "GitHub Actions job: Build&Test",
       "GitHub Actions job: checks"
     ]);
-    expect(input.logs.map((log) => log.status)).toEqual(["unknown", "unknown"]);
+    expect(input.logs.map((log) => log.status)).toEqual(["passed", "passed"]);
     expect(input.limitations?.join(" ")).toContain("success remains unverified");
   });
 

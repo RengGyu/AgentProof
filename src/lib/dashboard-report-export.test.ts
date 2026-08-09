@@ -33,14 +33,17 @@ describe("dashboard report export", () => {
         number: 5,
         head_sha: "a".repeat(40),
         analyzed_at: "2026-08-09T00:00:00.000Z",
+        evidence_captured_at: null,
         priority: "high",
         state: "CURRENT"
       },
+      analysis_context: "provided_requirement",
       requirements: [{ id: "req_1", coverage: "partial", evidence_ids: ["ev_1"], evidence_gaps: ["Focused test evidence is missing."] }],
       checks: { ci: "passed", lint: "unknown", typecheck: "pending" },
       evidence_locations: [{ id: "ev_1", safe_location: "src/repositories/search.ts" }],
       priority_files: [{ safe_location: "src/repositories/search.ts", priority: "high" }],
       suggested_next_step: "Add focused evidence for the empty state.",
+      ai_analysis: null,
       ai_evidence_reading: null
     });
     expect(JSON.stringify(exported)).not.toContain("private source must never be copied");
@@ -79,5 +82,24 @@ describe("dashboard report export", () => {
       { requirement_id: "req_1", evidence_id: "ev_1", relation: "partial_support", rationale: "The test covers the normal path only.", uncertainty: "medium" }
     ]);
     expect(dashboardReportToMarkdown(semanticDetail)).toContain("The test covers the normal path only.");
+  });
+
+  it("exports safe evidence timing, analysis context, and AI runtime state", () => {
+    const runtimeDetail = {
+      ...detail,
+      evidenceCapturedAt: "2026-08-09T00:00:05.000Z",
+      analysisContext: "linked_issue" as const,
+      report: {
+        ...detail.report,
+        semanticAnalysis: { status: "unavailable" as const, attempts: 2 as const }
+      }
+    } satisfies DashboardReportDetail & { repositoryFullName: string };
+
+    const exported = JSON.parse(dashboardReportToJson(runtimeDetail));
+
+    expect(exported.pull_request.evidence_captured_at).toBe("2026-08-09T00:00:05.000Z");
+    expect(exported.analysis_context).toBe("linked_issue");
+    expect(exported.ai_analysis).toEqual({ status: "unavailable", attempts: 2 });
+    expect(dashboardReportToMarkdown(runtimeDetail)).toContain("**AI analysis:** unavailable after 2 attempts");
   });
 });

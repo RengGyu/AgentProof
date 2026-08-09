@@ -69,4 +69,42 @@ describe("/api/dashboard/reports", () => {
     expect(crossTenantResponse.status).toBe(404);
     await expect(crossTenantResponse.json()).resolves.toMatchObject({ code: "dashboard_report_not_found" });
   });
+
+  it("returns report priority and safe analysis metadata with tenant-authorized detail", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const source = {
+      ...demoScenarios.clean,
+      taskSource: "issue" as const,
+      sourceProvenance: {
+        version: 1 as const,
+        origin: "github_snapshot" as const,
+        headSha: "a".repeat(40),
+        evidenceCapturedAt: "2026-08-09T01:02:03.000Z",
+        inputFingerprint: {
+          version: 1 as const,
+          algorithm: "sha256" as const,
+          value: "b".repeat(64),
+          coverage: "github_metadata" as const
+        }
+      }
+    };
+    const report = generateVerificationReport(source);
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+
+    const response = await GET(new Request(`http://localhost/api/dashboard/reports?id=${saved.id}`, {
+      headers: { cookie: session.sessionCookie }
+    }));
+
+    await expect(response.json()).resolves.toMatchObject({
+      priority: report.summary.priority,
+      evidenceCapturedAt: "2026-08-09T01:02:03.000Z",
+      analysisContext: "linked_issue"
+    });
+  });
 });

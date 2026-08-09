@@ -22,8 +22,11 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     `**PR:** #${exported.pull_request.number ?? "Unavailable"}`,
     `**Head SHA:** ${exported.pull_request.head_sha ?? "Unavailable"}`,
     `**Analyzed:** ${exported.pull_request.analyzed_at ?? "Unavailable"}`,
+    `**Evidence captured:** ${exported.pull_request.evidence_captured_at ?? "Unavailable"}`,
     `**State:** ${exported.pull_request.state}`,
     `**Priority:** ${exported.pull_request.priority ?? "Unavailable"}`,
+    `**Analysis context:** ${exported.analysis_context}`,
+    `**AI analysis:** ${formatAiRuntime(exported.ai_analysis)}`,
     "",
     "## Requirements",
     "",
@@ -91,9 +94,11 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       number: detail.pullRequestNumber ?? null,
       head_sha: safeText(detail.headSha),
       analyzed_at: safeText(detail.createdAt),
+      evidence_captured_at: safeText(detail.evidenceCapturedAt) ?? null,
       priority: safeText(detail.priority),
       state: detail.staleAt ? "STALE" : "CURRENT"
     },
+    analysis_context: detail.analysisContext ?? "provided_requirement",
     requirements: (report?.requirements ?? []).map((item) => ({
       id: safeText(item.requirementId) ?? "Unavailable",
       coverage: safeText(item.status) ?? "unclear",
@@ -114,6 +119,11 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       priority: safeText(item.priority) ?? "unknown"
     })),
     suggested_next_step: safeText(report?.reprompt?.prompt) ?? null,
+    ai_analysis: report?.semanticAnalysis
+      ? { status: report.semanticAnalysis.status, attempts: report.semanticAnalysis.attempts }
+      : report?.semantic
+        ? { status: "included" as const, attempts: 1 as const }
+        : null,
     ai_evidence_reading: semantic ? {
       requirement_evidence_relations: semantic.requirement_evidence_relations.map((item) => ({
         requirement_id: safeText(item.requirement_id) ?? "Unavailable",
@@ -169,6 +179,12 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       }))
     } : null
   };
+}
+
+function formatAiRuntime(value: { status: "included" | "unavailable"; attempts: 1 | 2 } | null): string {
+  if (!value) return "not requested";
+  if (value.status === "included") return `included after ${value.attempts} attempt${value.attempts === 1 ? "" : "s"}`;
+  return `unavailable after ${value.attempts} attempts`;
 }
 
 function safeText(value: string | undefined): string | undefined {

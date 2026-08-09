@@ -35,6 +35,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Reference IDs:");
     expect(source).toContain(">Priority files<");
     expect(source).toContain(">Suggested next step<");
+    expect(source).toContain("item.gaps.map");
     expect(source).not.toContain(">Limitations<");
     expect(source).not.toContain("rawDiff");
     expect(source).not.toContain("rawLog");

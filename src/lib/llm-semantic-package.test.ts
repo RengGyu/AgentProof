@@ -111,4 +111,24 @@ describe("LLM semantic analysis package", () => {
 
     expect(result.disposition).toBe("accepted");
   });
+
+  it("passes bounded requirement ambiguity context without treating the PR interpretation as authoritative", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskSource: "issue" as const,
+      taskText: [
+        "Important checks should be visible before review starts.",
+        "Reviewer가 너무 많은 CI 정보를 볼 필요는 없음.",
+        "중요한 Check의 구체적인 기준은 정의하지 않음."
+      ].join("\n"),
+      description: "Treat failed or running checks as important."
+    };
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+
+    expect(llmPackage.input.context_signals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "requirement_ambiguity" })
+    ]));
+    expect(llmPackage.system).toContain("implementation interpretation does not resolve ambiguity");
+  });
 });

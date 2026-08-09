@@ -179,10 +179,12 @@ describe("extractRequirements", () => {
     const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
     const contextText = result.contexts.map((context) => context.text).join("\n");
 
-    expect(requirementText).toContain("Original requirement is too vague");
+    expect(requirementText).toContain("Rework report UI around evidence cards");
+    expect(result.requirements[0]?.source).toBe("pr_description");
+    expect(result.requirements[0]?.sourceQuality).toBe("author_claim");
     expect(contextText).toContain("Rework report UI around evidence cards");
     expect(result.contexts.some((context) => context.role === "author_claim")).toBe(true);
-    expect(requirementText).not.toMatch(/Validation|corepack|pnpm|typecheck|build|Rework report UI/i);
+    expect(requirementText).not.toMatch(/Validation|corepack|pnpm|typecheck|build/i);
   });
 
   it("keeps Node runtime requirements while still dropping node command lines", () => {
@@ -228,7 +230,7 @@ describe("extractRequirements", () => {
     expect(contextText).not.toMatch(/Preflight Checklist|contributing guidelines/i);
   });
 
-  it("keeps Django PR template fields as context or claims, not core requirements", () => {
+  it("keeps Django PR template metadata out while retaining the PR author intent", () => {
     const result = extractRequirementEvidence(
       "",
       [
@@ -243,7 +245,8 @@ describe("extractRequirements", () => {
     const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
     const contextText = result.contexts.map((context) => context.text).join("\n");
 
-    expect(requirementText).toContain("Original requirement is too vague");
+    expect(requirementText).toContain("This PR fixes SQL formatting crash");
+    expect(result.requirements[0]?.sourceQuality).toBe("author_claim");
     expect(contextText).toContain("SQL formatting crash");
     expect(result.contexts.some((context) => context.role === "external_reference")).toBe(true);
     expect(result.contexts.some((context) => context.role === "author_claim")).toBe(true);
@@ -262,11 +265,48 @@ describe("extractRequirements", () => {
     );
     const requirementText = result.requirements.map((requirement) => requirement.text).join("\n");
 
-    expect(result.requirements[0]?.sourceQuality).toBe("manual_check");
-    expect(requirementText).toContain("Original requirement is too vague");
+    expect(result.requirements[0]?.sourceQuality).toBe("author_claim");
+    expect(requirementText).toContain("The widget should preserve search params");
     expect(result.contexts.some((context) =>
       context.role === "author_claim" && /preserve search params/i.test(context.text)
     )).toBe(true);
+  });
+
+  it("extracts Korean linked-issue requirements without promoting the issue title", () => {
+    const result = extractRequirementEvidence(
+      [
+        "Linked issue RengGyu/repo#2: 만료된 저장소 연결 UI 추가",
+        "",
+        "저장소 연결이 만료되면 Reconnect 버튼을 표시한다.",
+        "버튼 클릭 시 GitHub 연결 화면으로 이동한다.",
+        "만료 상태의 저장소는 PR 분석을 시작할 수 없어야 한다."
+      ].join("\n"),
+      "만료 상태와 Reconnect 버튼을 추가함.",
+      "issue"
+    );
+
+    expect(result.requirements.map((item) => item.text)).toEqual([
+      "저장소 연결이 만료되면 Reconnect 버튼을 표시한다",
+      "버튼 클릭 시 GitHub 연결 화면으로 이동한다",
+      "만료 상태의 저장소는 PR 분석을 시작할 수 없어야 한다"
+    ]);
+    expect(result.contexts.some((item) => item.sourceSection === "linked_issue_title")).toBe(true);
+  });
+
+  it("extracts mixed Korean product requirements without duplicating the linked issue title", () => {
+    const result = extractRequirementEvidence(
+      [
+        "Linked issue RengGyu/repo#4: Show changed file count on PR details",
+        "",
+        "PR 상세 화면에서 changed files 수를 표시한다.",
+        "기존 repository detail 동작은 유지한다."
+      ].join("\n"),
+      "changed-file count를 상세 화면에 추가.",
+      "issue"
+    );
+
+    expect(result.requirements).toHaveLength(2);
+    expect(result.requirements.map((item) => item.text).join(" ")).not.toContain("Show changed file count on PR details");
   });
 
   it("keeps suggested fix sections as solution hints instead of core requirements", () => {

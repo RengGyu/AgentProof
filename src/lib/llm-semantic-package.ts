@@ -35,6 +35,10 @@ export interface LlmSemanticPackage {
       evidence_ids: string[];
       gap_kinds: string[];
     }>;
+    context_signals: Array<{
+      kind: "requirement_ambiguity";
+      text: string;
+    }>;
     evidence: LlmSemanticPackageEvidence[];
     limitations: string[];
     bounds: {
@@ -89,6 +93,10 @@ export function buildLlmSemanticPackage(
     safe_location: item.locator ? safeText(item.locator, 320) : null,
     code_excerpt: codeExcerptFor(item, patchesByPath)
   }));
+  const contextSignals = report.proofGraph.context
+    .filter((item) => /\b(?:undefined|not defined|unclear|ambiguous|unspecified)\b|(?:정의하지 않|명확하지 않|모호|불명확)/i.test(item.text))
+    .slice(0, 8)
+    .map((item) => ({ kind: "requirement_ambiguity" as const, text: safeText(item.text, 360) }));
 
   return {
     system: llmSemanticSystemPrompt(),
@@ -97,6 +105,7 @@ export function buildLlmSemanticPackage(
       version: 1,
       output_locale: normalizeLocale(options.outputLocale),
       requirements,
+      context_signals: contextSignals,
       evidence,
       limitations: report.limitations.slice(0, 12).map((item) => safeText(item, 360)),
       bounds: {
@@ -136,6 +145,8 @@ export function llmSemanticSystemPrompt(): string {
     "Use the requested output language for every natural-language field. Do not copy source code, raw patches, PR or Issue text, logs, tokens, URLs, file paths, check names, or SHA values into output.",
     "Assess supplied evidence coverage only. Do not state or imply correctness, safety, or merge readiness. Do not make security or requirement-satisfaction verdicts.",
     "When evidence is weak, conflicting, or absent, describe the uncertainty or evidence gap instead of guessing. Do not invent evidence or hidden repository facts.",
+    "A PR implementation interpretation does not resolve ambiguity in the supplied requirement context; preserve that uncertainty for the reviewer.",
+    "Write complete, concise sentences and never stop a sentence at a schema length boundary.",
     "Each array item must stand alone so a validator can remove one invalid item without changing the rest."
   ].join("\n");
 }

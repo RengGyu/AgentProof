@@ -776,6 +776,52 @@ describe("POST /api/github/webhook", () => {
     });
   });
 
+  it("reanalyzes a granted PR when its GitHub check run completes without enabling comments", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: false,
+      commentEnabled: false
+    });
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify({
+      action: "completed",
+      repository: { id: 100, full_name: "RengGyu/AgentProof", private: true },
+      installation: { id: 321 },
+      check_run: {
+        id: 999,
+        head_sha: "abc123",
+        pull_requests: [{ number: 7 }]
+      }
+    });
+
+    const response = await POST(signedRequest(body, {
+      event: "check_run",
+      delivery: "delivery-check-completed-reanalysis",
+      secret: "secret"
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({
+      event: "check_run",
+      automationEnabled: true,
+      willAnalyze: true,
+      willComment: false,
+      analysis: { status: "completed", pullRequestNumber: 7, headSha: "abc123" }
+    });
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/issues/7/comments"))).toBe(false);
+  });
+
   it("fails closed when the PR base changes after collection and before publication", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");

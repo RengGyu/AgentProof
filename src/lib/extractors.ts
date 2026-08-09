@@ -79,6 +79,9 @@ const EXTERNAL_REFERENCE_PATTERN = /\b(?:trac|jira|linear|fixes|closes|resolves|
 const REQUIREMENT_LANGUAGE_PATTERN =
   /\b(acceptance criteria|must|should|shall|required|expected|expectation|add|implement|prevent|preserve|allow|reject|return|support|handle|fix|ensure|validate|do not|don't|without crashing|should not|must not|successfully)\b/i;
 const ISSUE_PROBLEM_PATTERN = /\b(bug|crash|segfault|error|exception|fails?|broken|regression|incorrect|wrong|unable|cannot|does not|doesn't|missing required argument)\b/i;
+const KOREAN_REQUIREMENT_PATTERN = /(?:표시한다|이동한다|유지한다|복원한다|차단한다|제공한다|지원한다|저장한다|삭제한다|보여준다|할 수 없어야 한다|하지 않아야 한다|필요는 없(?:다|음))\.?$/;
+const AMBIGUITY_PATTERN = /\b(?:undefined|not defined|unclear|ambiguous|unspecified)\b|(?:정의하지 않|명확하지 않|모호|불명확)/i;
+const AUTHOR_EVIDENCE_SECTION_PATTERN = /\b(testing|test plan|validation|verified)\b/i;
 export const MAX_REPORT_EVIDENCE_ITEMS = 200;
 
 export interface RequirementExtractionResult {
@@ -129,7 +132,18 @@ export function extractRequirementEvidence(
   const promotedProblemCandidates = coreCandidates.length === 0 && taskLines.length > 0
     ? promoteProblemContexts(taskLines)
     : [];
-  const allRequirementCandidates = (coreCandidates.length > 0 ? coreCandidates : promotedProblemCandidates)
+  const authorIntentCandidates = taskLines.length === 0
+    ? prLines
+      .filter((line) => line.role === "author_claim")
+      .filter((line) => !AUTHOR_EVIDENCE_SECTION_PATTERN.test(line.sourceSection ?? ""))
+      .filter((line) => !isIssueTemplateNoiseLine(line.text))
+      .map((line) => ({ ...line, role: "core_requirement" as const, sourceQuality: "author_claim" as const }))
+    : [];
+  const allRequirementCandidates = (coreCandidates.length > 0
+    ? coreCandidates
+    : promotedProblemCandidates.length > 0
+      ? promotedProblemCandidates
+      : authorIntentCandidates)
     .filter((line) => line.text.length > 12)
     .filter((line) => !isVagueRequirementLine(line.text, sourceText))
   const requirementCandidates = allRequirementCandidates.slice(0, 8);
@@ -188,6 +202,7 @@ function classifyRequirementSource(
   let currentSection: string | undefined;
 
   for (const rawLine of sourceText.split(/\n+/)) {
+    const isLinkedIssueTitle = /^\s*Linked issue\s+(?:[\w.-]+\/[\w.-]+)?#\d+:/i.test(rawLine);
     const trimmed = normalizeSourceLine(rawLine);
     if (!trimmed) continue;
 
@@ -203,7 +218,7 @@ function classifyRequirementSource(
       continue;
     }
 
-    const section = inline?.section ?? currentSection;
+    const section = isLinkedIssueTitle ? "linked_issue_title" : inline?.section ?? currentSection;
     const text = inline?.text || trimmed;
 
     for (const segment of splitRequirementSegments(text)) {
@@ -284,6 +299,10 @@ function classifyLineRole(
     return "template_noise";
   }
 
+  if (sectionText === "linked_issue_title" || AMBIGUITY_PATTERN.test(line)) {
+    return "problem_context";
+  }
+
   if (MARKDOWN_IMAGE_PATTERN.test(line) || VISUAL_SECTION_PATTERN.test(sectionText)) {
     return "visual_context";
   }
@@ -324,7 +343,7 @@ function classifyLineRole(
     return "author_claim";
   }
 
-  if (REQUIREMENT_LANGUAGE_PATTERN.test(line)) {
+  if (REQUIREMENT_LANGUAGE_PATTERN.test(line) || KOREAN_REQUIREMENT_PATTERN.test(line)) {
     return "core_requirement";
   }
 
@@ -370,11 +389,14 @@ function sourceQualityForLine(
 }
 
 function promoteProblemContexts(lines: ClassifiedRequirementLine[]): ClassifiedRequirementLine[] {
-  return lines
+  const candidates = lines
     .filter((line) => line.role === "problem_context")
     .filter((line) => line.text.length > 12)
     .filter((line) => !isIssueTemplateNoiseLine(line.text))
-    .slice(0, 4)
+  const withoutLinkedIssueTitle = candidates.filter((line) => line.sourceSection !== "linked_issue_title");
+
+  return (withoutLinkedIssueTitle.length > 0 ? withoutLinkedIssueTitle : candidates)
+    .slice(0, 8)
     .map((line) => ({
       ...line,
       role: "core_requirement",
@@ -426,6 +448,9 @@ function contextRolesForRequirement(
 }
 
 function isRelevantContext(requirementText: string, context: RequirementContextSignal): boolean {
+  if (context.sourceSection === "ambiguity" || AMBIGUITY_PATTERN.test(context.text)) {
+    return true;
+  }
   if (context.role === "visual_context" && isVisualContextText(`${requirementText} ${context.text}`)) {
     return true;
   }

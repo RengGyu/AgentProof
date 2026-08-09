@@ -158,6 +158,7 @@ export type LlmSemanticDisposition = "accepted" | "partial" | "discarded";
 export type LlmSemanticRejectReason =
   | "invalid_unit_shape"
   | "length_limit"
+  | "incomplete_text"
   | "unknown_requirement_reference"
   | "unknown_evidence_reference"
   | "reference_type_mismatch"
@@ -779,13 +780,14 @@ function baseObjectReasons(
 }
 
 function validateId(value: unknown, reasons: LlmSemanticRejectReason[]) {
-  validateText(value, LLM_SEMANTIC_OUTPUT_LIMITS.id, reasons);
+  validateText(value, LLM_SEMANTIC_OUTPUT_LIMITS.id, reasons, false);
 }
 
 function validateText(
   value: unknown,
   maxLength: number,
-  reasons: LlmSemanticRejectReason[]
+  reasons: LlmSemanticRejectReason[],
+  requireCompleteSentence = true
 ) {
   if (typeof value !== "string" || value.trim().length === 0) {
     reasons.push("invalid_unit_shape");
@@ -793,6 +795,12 @@ function validateText(
   }
   if (value.length > maxLength) {
     reasons.push("length_limit");
+  } else if (
+    requireCompleteSentence
+    && value.length >= maxLength - 4
+    && !/[.!?。！？]$/u.test(value.trim())
+  ) {
+    reasons.push("incomplete_text");
   }
 }
 
