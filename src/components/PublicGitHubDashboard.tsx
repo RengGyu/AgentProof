@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleAlert,
+  Clipboard,
   Clock3,
   ExternalLink,
   FileCheck2,
@@ -39,6 +40,7 @@ import {
   resolveRepositorySelectionLoad,
   type RepositorySelectionLoadResult
 } from "@/lib/repository-selection-state";
+import { dashboardReportToJson, dashboardReportToMarkdown } from "@/lib/dashboard-report-export";
 
 interface Repository { id: number; fullName: string; private: boolean; }
 interface ExistingInstallation { installationId: number; accountLogin: string; }
@@ -541,7 +543,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div></div>
           {!selectedRepository ? <p className="dashboard-empty">Connect a GitHub repository to review saved evidence reports.</p> : selectedReports.length === 0 ? <p className="dashboard-empty"><FileCheck2 size={20} /> No reports yet<br /><small>New PR events will appear here after analysis.</small></p> : <div className="dashboard-report-layout">
             <div className="report-list" aria-label="Current analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label="CURRENT" title="Current report" /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
-            {detail?.report && quickSummary ? <QuickSummaryPanel detail={detail} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
+            {detail?.report && quickSummary ? <QuickSummaryPanel detail={{ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) }} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
           </div>}
         </section>
       </> : <SettingsPanel repository={selectedRepository} pending={settingsPending} onUpdate={updateRepositorySetting} onLogout={logout} logoutPending={logoutPending} />}
@@ -550,7 +552,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   </section>;
 }
 
-function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvidence }: { detail: DashboardReportDetail; quickSummary: ReturnType<typeof toQuickSummary>; onShowDetail: () => void; showDetailedEvidence: boolean }) {
+function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvidence }: { detail: DashboardReportDetail & { repositoryFullName?: string }; quickSummary: ReturnType<typeof toQuickSummary>; onShowDetail: () => void; showDetailedEvidence: boolean }) {
   const report = detail.report;
   const firstRequirement = report?.requirements?.find((item) => item.gaps.length > 0) ?? report?.requirements?.[0];
   const githubUrl = quickSummary.githubUrl;
@@ -565,10 +567,25 @@ function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvi
   </article>;
 }
 
-function DetailedEvidence({ detail }: { detail: DashboardReportDetail }) {
+function DetailedEvidence({ detail }: { detail: DashboardReportDetail & { repositoryFullName?: string } }) {
   const report = detail.report;
   const semantic = report?.semantic;
-  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirements, checks, and review targets</h4></div></div><div className="detail-grid"><section><h5>Requirements</h5>{report?.requirements?.length ? report.requirements.map((item) => <div className="detail-row" key={item.requirementId}><strong>{item.requirementId} · {toRequirementCoverageLabel(item.status)}</strong><span>{item.evidenceRefs.length > 0 ? `${item.evidenceRefs.length} evidence reference${item.evidenceRefs.length === 1 ? "" : "s"} available` : "No evidence reference available"}</span><span>Reference IDs: {item.evidenceRefs.join(", ") || "Unavailable"}</span><span>{item.gaps.length > 0 ? "Needs: more proof before this requirement is fully supported." : "No evidence gap recorded."}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div>{semantic ? <SemanticEvidence semantic={semantic} /> : null}</section>;
+  const [copiedFormat, setCopiedFormat] = useState<"markdown" | "json" | null>(null);
+  const [copyError, setCopyError] = useState(false);
+
+  async function copyReport(format: "markdown" | "json") {
+    try {
+      await navigator.clipboard.writeText(format === "markdown" ? dashboardReportToMarkdown(detail) : dashboardReportToJson(detail));
+      setCopyError(false);
+      setCopiedFormat(format);
+      window.setTimeout(() => setCopiedFormat(null), 1_600);
+    } catch {
+      setCopyError(true);
+      setCopiedFormat(null);
+    }
+  }
+
+  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirements, checks, and review targets</h4></div><div className="detailed-evidence-actions"><button className="dashboard-secondary-action" onClick={() => { void copyReport("markdown"); }}><Clipboard size={15} /> {copiedFormat === "markdown" ? "Copied" : "Copy report"}</button><button className="dashboard-secondary-action" onClick={() => { void copyReport("json"); }}><Clipboard size={15} /> {copiedFormat === "json" ? "Copied" : "Copy JSON"}</button></div></div>{copyError ? <p className="dashboard-boundary"><Info size={15} /> Copy failed in this browser. Select the report text manually.</p> : null}<div className="detail-grid"><section><h5>Requirements</h5>{report?.requirements?.length ? report.requirements.map((item) => <div className="detail-row" key={item.requirementId}><strong>{item.requirementId} · {toRequirementCoverageLabel(item.status)}</strong><span>{item.evidenceRefs.length > 0 ? `${item.evidenceRefs.length} evidence reference${item.evidenceRefs.length === 1 ? "" : "s"} available` : "No evidence reference available"}</span><span>Reference IDs: {item.evidenceRefs.join(", ") || "Unavailable"}</span><span>{item.gaps.length > 0 ? "Needs: more proof before this requirement is fully supported." : "No evidence gap recorded."}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div>{semantic ? <SemanticEvidence semantic={semantic} /> : null}</section>;
 }
 
  function SemanticEvidence({ semantic }: { semantic: NonNullable<NonNullable<DashboardReportDetail["report"]>["semantic"]> }) {
