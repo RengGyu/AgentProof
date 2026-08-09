@@ -5,7 +5,7 @@ import {
   enqueueAnalysisJob,
   getAnalysisJobsForTests
 } from "./analysis-jobs";
-import { clearAuditEventsForTests, getAuditEventsForTests } from "./audit-log";
+import { clearAuditEventsForTests } from "./audit-log";
 import { clearSavedReportsForTests, countTenantSavedReports } from "./server-report-store";
 import { preflightNextAnalysisJob, runAnalysisJobBatch, runNextAnalysisJob } from "./analysis-worker";
 import {
@@ -221,6 +221,149 @@ describe("analysis worker preflight", () => {
     await expect(preflightNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") })).resolves.toMatchObject({
       status: "ready",
       llmAnalysisMode: "enhanced"
+    });
+  });
+
+  it("parks enhanced analysis after background submission and completes it from the same response id", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("OPENAI_MODEL", "gpt-test");
+    const githubFetch = mockWorkerFetch();
+    let candidate: unknown;
+    const firstFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") {
+        const body = JSON.parse(String(init?.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        candidate = validSemanticCandidate(semanticInput.requirements[0].id, semanticInput.evidence[0].id);
+        return Response.json({ id: "resp_background_123", status: "queued", output: [] });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", firstFetch);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    const submitted = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(submitted).toMatchObject({ status: "waiting_provider", job: { id } });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id,
+      status: "queued",
+      provider_response_id: "resp_background_123",
+      provider_status: "queued",
+      provider_poll_attempts: 1
+    });
+    expect(JSON.stringify(submitted)).not.toContain("resp_background_123");
+    expect(JSON.stringify(submitted)).not.toContain("test-openai-key");
+
+    const secondGithubFetch = mockWorkerFetch();
+    const secondFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses/resp_background_123") {
+        return Response.json({
+          id: "resp_background_123",
+          status: "completed",
+          output_text: JSON.stringify(candidate)
+        });
+      }
+      return secondGithubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", secondFetch);
+
+    const completed = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+
+    expect(completed).toMatchObject({ status: "completed", job: { id } });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id,
+      status: "completed",
+      provider_response_id: null,
+      provider_status: null,
+      provider_poll_attempts: 0,
+      provider_submitted_at: null,
+      provider_expires_at: null
+    });
+    expect(secondFetch.mock.calls.some((call) => String(call[0]) === "https://api.openai.com/v1/responses")).toBe(false);
+  });
+
+  it("clears background continuation metadata when strict semantic output is rejected", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockWorkerFetch();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") {
+        return Response.json({ id: "resp_background_123", status: "queued", output: [] });
+      }
+      if (String(url) === "https://api.openai.com/v1/responses/resp_background_123") {
+        return Response.json({
+          id: "resp_background_123",
+          status: "completed",
+          output_text: JSON.stringify({ requirement_evidence_relations: [{ token: "must-not-persist" }] })
+        });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+
+    expect(result).toMatchObject({ status: "failed_terminal", reason: "openai_output_rejected", job: { id } });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "failed_terminal",
+      error_code: "openai_output_rejected",
+      provider_response_id: null,
+      provider_status: null
+    });
+    expect(JSON.stringify(getAnalysisJobsForTests()[0])).not.toContain("must-not-persist");
+  });
+
+  it("does not resubmit automatically when a background POST outcome is uncertain", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockWorkerFetch();
+    let submitCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") {
+        submitCount += 1;
+        throw new TypeError("network failed after request dispatch");
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    const first = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const second = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:05:00Z")
+    });
+
+    expect(first).toMatchObject({ status: "failed_terminal", reason: "openai_submission_uncertain", job: { id } });
+    expect(second).toEqual({ status: "idle" });
+    expect(submitCount).toBe(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "failed_terminal",
+      error_code: "openai_submission_uncertain",
+      claim_generation: null,
+      provider_response_id: null,
+      provider_status: null
     });
   });
 
@@ -1269,4 +1412,28 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
 
     return new Response(`unexpected url: ${href}`, { status: 500 });
   });
+}
+
+function validSemanticCandidate(requirementId: string, evidenceId: string) {
+  return {
+    requirement_evidence_relations: [{
+      requirement_id: requirementId,
+      evidence_id: evidenceId,
+      relation: "partial_support",
+      rationale: "The supplied evidence supports part of the requested behavior.",
+      uncertainty: "medium"
+    }],
+    requirement_assessments: [{
+      requirement_id: requirementId,
+      requirement_summary: "Review the requested behavior against the supplied evidence.",
+      evidence_support: "partial_evidence_present",
+      summary: "The supplied evidence supports only part of the requested behavior.",
+      evidence_ids: [evidenceId],
+      uncertainty: "medium"
+    }],
+    evidence_gaps: [],
+    review_targets: [],
+    remediation_requests: [],
+    uncertainties: []
+  };
 }

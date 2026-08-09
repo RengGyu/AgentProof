@@ -12,12 +12,14 @@ Use it only on a maintainer-owned disposable PR in one explicitly authorized rep
 - Automatic GitHub comments stay suppressed.
 - Saved reports stay suppressed unless the smoke explicitly opts in.
 - Secret-like probes, raw diff text, `evidenceIndex`, claims, and raw re-prompt text are not echoed.
+- When the background queue is enabled, the webhook returns a bounded queued result and the cron worker advances the same job through provider polling to a terminal result without exposing provider continuation metadata.
 
 ## What This Does Not Prove
 
 - It does not validate auto-merge behavior. AgentProof must not auto-merge.
 - It does not validate broad repository access. Use one test repository.
-- It does not validate Slack, OpenAI, or explicit user-token PR comments.
+- It does not validate Slack or explicit user-token PR comments.
+- The inline smoke command alone does not validate OpenAI. Background OpenAI validation additionally requires the queue observation steps below.
 - It does not fully prove durable idempotency across serverless instance restarts unless the Supabase webhook-delivery table is configured and inspected separately.
 
 ## Inputs To Prepare
@@ -55,6 +57,20 @@ AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=false
 AGENTPROOF_GITHUB_APP_SAVE_REPORTS=false
 AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE=agentproof_github_webhook_deliveries
 ```
+
+For background semantic analysis, first apply the queue migration and then confirm these server-only settings before enabling intake:
+
+```text
+AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED=true
+AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL=<set, or use the existing Supabase server URL>
+AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY=<set, or use the existing service-role key>
+AGENTPROOF_ANALYSIS_JOBS_TABLE=agentproof_analysis_jobs
+AGENTPROOF_LLM_SEMANTIC_ENABLED=true
+OPENAI_API_KEY=<set>
+CRON_SECRET=<set by Vercel, or configure AGENTPROOF_CRON_TOKEN>
+```
+
+Verify the Vercel plan accepts a one-minute schedule before enabling the queue. The checked-in Hobby-safe schedule is daily and is not sufficient for background provider polling. On a supported plan, change the analysis-job cron schedule to `* * * * *`, deploy code with the queue disabled, apply `202608090002_analysis_jobs_openai_background.sql`, verify the new columns and service-role-only table access, then enable the queue.
 
 For tenant control mode, replace the global repo authorization with an active server-only grant:
 
@@ -107,6 +123,8 @@ The command should report:
 - valid `priority` and numeric `evidenceCoverage`
 - optional saved report metadata with `privacy: "summary-only"` only when saved reports were explicitly allowed
 
+With the background queue enabled, the initial webhook result is expected to return HTTP `202` with `analysis.status: "queued"`, not inline `completed`. Observe only metadata-safe operator projections until the job reaches `completed` or a bounded terminal failure. At least one cron run should report the job as waiting for the provider before a later run completes it. Confirm the terminal row has cleared `provider_response_id`, `provider_status`, provider timestamps, provider poll count, and `claim_generation`; tenant, audit, dead-letter, and public worker responses must never contain those fields.
+
 The target PR must not receive a new or updated AgentProof marker comment.
 
 Safe result template:
@@ -135,18 +153,30 @@ saved_report_privacy: none | summary-only
 - `github_app_tenant_grants_invalid`: the tenant grant JSON env is malformed; fix it before retrying.
 - `GitHub PR metadata fetch failed`: use a public test PR or provide an optional read-only metadata token.
 - `duplicate-delivery guard`: wait for idempotency TTL, push a new commit to the disposable PR, or change to another allowed action.
+- `openai_submission_uncertain`: do not automatically resubmit. Keep new intake paused and reconcile the provider request manually so one PR head cannot be charged or analyzed twice.
+- provider `queued` or `in_progress`: keep cron enabled and allow the same opaque response id to be polled; do not create a replacement job.
+- provider terminal failure or strict semantic validation rejection: confirm the job becomes terminal with a bounded error code and all provider continuation fields are scrubbed.
 
 If the smoke fails after reaching automation, restore production env to the safe state before debugging.
 
 ## Rollback
 
-After the check:
+After a successful check, or when rolling back before any job is queued:
 
 ```text
 AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED=false
 AGENTPROOF_GITHUB_APP_COMMENT_ENABLED=false
 AGENTPROOF_GITHUB_APP_SAVE_REPORTS=false
 ```
+
+If queued, processing, retryable, or provider-pending jobs already exist, rollback in this order:
+
+1. Disable new GitHub automation intake while leaving the queue and cron enabled.
+2. Let existing jobs complete, or use the protected operator batch route to drain or terminalize them.
+3. Confirm active queue counts are zero and provider continuation fields are absent from terminal rows.
+4. Only then set `AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED=false`.
+
+If cron is unavailable, keep intake disabled and use the authenticated operator batch route as the manual-drain fallback. Do not disable the queue first, because that would strand provider-pending rows before their terminal privacy scrub.
 
 Keep `GITHUB_WEBHOOK_SECRET`, `GITHUB_APP_ID`, and `GITHUB_PRIVATE_KEY` configured only if the signed intake/status surface should remain ready.
 

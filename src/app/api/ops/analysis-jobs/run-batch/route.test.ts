@@ -110,6 +110,7 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
       requestedLimit: 2,
       processed: 2,
       completed: 2,
+      waitingProvider: 0,
       failedRetryable: 0,
       failedTerminal: 0,
       idle: false,

@@ -40,6 +40,7 @@ export function toPublicAnalysisWorkerBatchResult(result: AnalysisWorkerBatchRes
     requestedLimit: result.requestedLimit,
     processed: result.processed,
     completed: result.completed,
+    waitingProvider: result.waitingProvider ?? 0,
     failedRetryable: result.failedRetryable,
     failedTerminal: result.failedTerminal,
     idle: result.idle,
