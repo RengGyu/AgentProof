@@ -18,9 +18,19 @@ import { clearUsageQuotaForTests } from "@/lib/usage-quota";
 import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
 
+const deferredWebhookTasks = vi.hoisted(() => [] as Promise<unknown>[]);
+
+vi.mock("next/server", () => ({
+  after(task: Promise<unknown> | (() => unknown)) {
+    deferredWebhookTasks.push(Promise.resolve().then(() => typeof task === "function" ? task() : task));
+  }
+}));
+
 describe("POST /api/github/webhook", () => {
   beforeEach(() => {
     vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
+    vi.stubEnv("VERCEL", "");
+    deferredWebhookTasks.length = 0;
   });
 
   afterEach(() => {
@@ -783,6 +793,7 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("VERCEL", "1");
     await createTenantRepositoryGrant({
       tenantId: "tenant_test",
       installationId: 321,
@@ -811,14 +822,17 @@ describe("POST /api/github/webhook", () => {
     }));
     const json = await response.json();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     expect(json).toMatchObject({
       event: "check_run",
       automationEnabled: true,
       willAnalyze: true,
       willComment: false,
-      analysis: { status: "completed", pullRequestNumber: 7, headSha: "abc123" }
+      deferred: true
     });
+    expect(json).not.toHaveProperty("analysis");
+    await Promise.all(deferredWebhookTasks);
+    expect(getAuditEventsForTests()[0]).toMatchObject({ action: "github_app_analysis_completed" });
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/issues/7/comments"))).toBe(false);
   });
 

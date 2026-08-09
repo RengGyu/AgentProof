@@ -59,6 +59,7 @@ import {
 } from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
 import { enrichReportWithOpenAISemantics } from "@/lib/llm-semantic-runtime";
+import { after } from "next/server";
 
 const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
 const MAX_WEBHOOK_BODY_BYTES = 400_000;
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
       }, { status: 422 });
     }
 
-    return handlePullRequestAutomation(normalizedPayload.payload, {
+    const automationContext = {
       requestUrl: request.url,
       delivery: meta.delivery,
       event: meta.event,
@@ -140,7 +141,26 @@ export async function POST(request: Request) {
       commentEnabled: false,
       saveReportsEnabled: settings.saveReportsEnabled && !smokeControls.suppressSavedReport,
       legacyRepoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
-    });
+    };
+
+    if (process.env.VERCEL === "1") {
+      after(() => handlePullRequestAutomation(normalizedPayload.payload, automationContext).then(() => undefined));
+      return noStoreJson({
+        ok: true,
+        accepted: true,
+        deferred: true,
+        dryRun: false,
+        event: safeWebhookString(meta.event),
+        delivery: safeWebhookString(meta.delivery),
+        action: "check_run_completed",
+        automationEnabled: true,
+        willAnalyze: true,
+        willComment: false,
+        note: "Completed Check analysis was accepted for background processing."
+      }, { status: 202 });
+    }
+
+    return handlePullRequestAutomation(normalizedPayload.payload, automationContext);
   }
 
   if (meta.event !== "pull_request" || !settings.enabled) {
