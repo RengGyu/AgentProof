@@ -5,6 +5,7 @@ dist
 coverage
 .env
 .env.local
+codex.env
 *.log
 tsconfig.tsbuildinfo
 .vercel
