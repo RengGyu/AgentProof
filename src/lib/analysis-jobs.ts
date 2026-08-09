@@ -68,10 +68,25 @@ export interface AnalysisJobClaimOptions {
   leaseMs?: number;
 }
 
+export interface AnalysisJobProviderResponseClaimOptions extends AnalysisJobClaimOptions {
+  webhookId: string;
+}
+
 export interface AnalysisJobClaimResult {
   job: AnalysisJobRow | null;
   store: "memory" | "supabase";
   durable: boolean;
+}
+
+export type AnalysisJobProviderResponseClaimDisposition =
+  | "claimed"
+  | "not_found"
+  | "backoff"
+  | "busy"
+  | "expired";
+
+export interface AnalysisJobProviderResponseClaimResult extends AnalysisJobClaimResult {
+  disposition: AnalysisJobProviderResponseClaimDisposition;
 }
 
 export interface CompleteAnalysisJobInput {
@@ -163,6 +178,8 @@ export interface AnalysisJobRow {
   provider_poll_attempts?: number;
   provider_submitted_at?: string | null;
   provider_expires_at?: string | null;
+  provider_webhook_id_hash?: string | null;
+  provider_webhook_received_at?: string | null;
 }
 
 export interface TenantAnalysisJobSummary {
@@ -296,7 +313,9 @@ const ANALYSIS_JOB_SELECT = [
   "provider_status",
   "provider_poll_attempts",
   "provider_submitted_at",
-  "provider_expires_at"
+  "provider_expires_at",
+  "provider_webhook_id_hash",
+  "provider_webhook_received_at"
 ].join(",");
 
 const TENANT_ANALYSIS_JOB_SELECT = [
@@ -429,6 +448,56 @@ export async function claimNextAnalysisJob(
   const job = claimMemoryAnalysisJob(now, leaseMs);
   return {
     job,
+    store: "memory",
+    durable: false
+  };
+}
+
+export async function claimAnalysisJobForProviderResponse(
+  responseId: string,
+  options: AnalysisJobProviderResponseClaimOptions,
+  env = process.env
+): Promise<AnalysisJobProviderResponseClaimResult> {
+  if (!analysisJobQueueEnabled(env)) {
+    throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  }
+
+  const normalizedResponseId = safeProviderResponseId(responseId);
+  if (!normalizedResponseId) {
+    throw new AnalysisJobQueueError("Analysis job provider response id is invalid.");
+  }
+  const webhookId = safeOpenAIWebhookId(options.webhookId);
+  if (!webhookId) {
+    throw new AnalysisJobQueueError("OpenAI webhook id is invalid.");
+  }
+  const webhookIdHash = hashJobKey(webhookId);
+
+  const config = getAnalysisJobStoreConfig(env);
+  const now = options.now ?? new Date();
+  const leaseMs = safeDurationMs(options.leaseMs, DEFAULT_ANALYSIS_JOB_LEASE_MS);
+
+  if (config) {
+    const result = await claimSupabaseAnalysisJobForProviderResponse(
+      config,
+      normalizedResponseId,
+      webhookIdHash,
+      now,
+      leaseMs
+    );
+    return {
+      ...result,
+      store: "supabase",
+      durable: true
+    };
+  }
+
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+
+  const result = claimMemoryAnalysisJobForProviderResponse(normalizedResponseId, webhookIdHash, now, leaseMs);
+  return {
+    ...result,
     store: "memory",
     durable: false
   };
@@ -1341,6 +1410,28 @@ async function claimSupabaseAnalysisJob(
   });
 }
 
+async function claimSupabaseAnalysisJobForProviderResponse(
+  config: AnalysisJobStoreConfig,
+  responseId: string,
+  webhookIdHash: string,
+  now: Date,
+  leaseMs: number
+): Promise<Pick<AnalysisJobProviderResponseClaimResult, "job" | "disposition">> {
+  const candidates = await getSupabaseAnalysisJobsByProviderResponse(config, responseId);
+  if (candidates.length === 0) return { job: null, disposition: "not_found" };
+  const staleBefore = now.getTime() - leaseMs;
+  const candidate = candidates[0];
+  const disposition = providerContinuationClaimDisposition(candidate, webhookIdHash, now, staleBefore);
+  if (disposition !== "claimed") return { job: null, disposition };
+
+  const job = await patchSupabaseAnalysisJob(config, candidate.id, toClaimedAnalysisJobUpdate(candidate, now, webhookIdHash), {
+    currentStatus: candidate.status,
+    currentUpdatedAt: candidate.updated_at,
+    returnRepresentation: true
+  });
+  return job ? { job, disposition: "claimed" } : { job: null, disposition: "busy" };
+}
+
 function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | null {
   const store = analysisJobStore();
   const due = store.find((job) => isDueQueuedJob(job, now));
@@ -1353,6 +1444,58 @@ function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | nu
   assertAnalysisJobIsPrivate(stale);
 
   return { ...stale };
+}
+
+function claimMemoryAnalysisJobForProviderResponse(
+  responseId: string,
+  webhookIdHash: string,
+  now: Date,
+  leaseMs: number
+): Pick<AnalysisJobProviderResponseClaimResult, "job" | "disposition"> {
+  const staleBefore = now.getTime() - leaseMs;
+  const candidate = analysisJobStore().find((job) => job.provider_response_id === responseId);
+  if (!candidate) return { job: null, disposition: "not_found" };
+  const disposition = providerContinuationClaimDisposition(candidate, webhookIdHash, now, staleBefore);
+  if (disposition !== "claimed") return { job: null, disposition };
+
+  Object.assign(candidate, toClaimedAnalysisJobUpdate(candidate, now, webhookIdHash));
+  assertAnalysisJobIsPrivate(candidate);
+  return { job: { ...candidate }, disposition: "claimed" };
+}
+
+async function getSupabaseAnalysisJobsByProviderResponse(
+  config: AnalysisJobStoreConfig,
+  responseId: string
+): Promise<AnalysisJobRow[]> {
+  const params = new URLSearchParams([
+    ["provider_response_id", `eq.${responseId}`],
+    ["status", "in.(queued,failed_retryable,processing)"],
+    ["select", ANALYSIS_JOB_SELECT],
+    ["limit", "2"]
+  ]);
+
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: supabaseAnalysisJobHeaders(config)
+  });
+
+  if (!response.ok) {
+    throw new AnalysisJobQueueError(`Analysis job store failed with HTTP ${response.status}.`);
+  }
+
+  const rows = await response.json() as unknown;
+  if (!Array.isArray(rows)) return [];
+  if (rows.length > 1) {
+    throw new AnalysisJobQueueError("Analysis job provider response id is not unique.");
+  }
+
+  return rows
+    .filter((row): row is AnalysisJobRow => Boolean(row) && typeof row === "object" && !Array.isArray(row))
+    .map((job) => {
+      assertAnalysisJobIsPrivate(job);
+      return job;
+    });
 }
 
 async function getSupabaseAnalysisJobCandidate(
@@ -1492,7 +1635,11 @@ function updateMemoryAnalysisJob(
   return true;
 }
 
-function toClaimedAnalysisJobUpdate(row: AnalysisJobRow, now: Date): Partial<AnalysisJobRow> {
+function toClaimedAnalysisJobUpdate(
+  row: AnalysisJobRow,
+  now: Date,
+  providerWebhookIdHash?: string
+): Partial<AnalysisJobRow> {
   return {
     status: "processing",
     claim_generation: randomUUID(),
@@ -1502,7 +1649,11 @@ function toClaimedAnalysisJobUpdate(row: AnalysisJobRow, now: Date): Partial<Ana
     completed_at: null,
     error_code: null,
     error_summary: null,
-    result_summary: null
+    result_summary: null,
+    ...(providerWebhookIdHash ? {
+      provider_webhook_id_hash: providerWebhookIdHash,
+      provider_webhook_received_at: now.toISOString()
+    } : {})
   };
 }
 
@@ -1833,7 +1984,9 @@ function clearedProviderContinuation() {
     provider_status: null,
     provider_poll_attempts: 0,
     provider_submitted_at: null,
-    provider_expires_at: null
+    provider_expires_at: null,
+    provider_webhook_id_hash: null,
+    provider_webhook_received_at: null
   };
 }
 
@@ -1863,6 +2016,37 @@ function isDueQueuedJob(job: AnalysisJobRow, now: Date): boolean {
 function isStaleProcessingJob(job: AnalysisJobRow, staleBeforeMs: number): boolean {
   if (job.status !== "processing" || !job.locked_at) return false;
   return new Date(job.locked_at).getTime() < staleBeforeMs;
+}
+
+function providerContinuationClaimDisposition(
+  job: AnalysisJobRow,
+  webhookIdHash: string,
+  now: Date,
+  staleBeforeMs: number
+): AnalysisJobProviderResponseClaimDisposition {
+  if (!job.provider_response_id || (job.provider_status !== "queued" && job.provider_status !== "in_progress")) {
+    return "not_found";
+  }
+
+  const expiresAt = safeTimeMs(job.provider_expires_at);
+  if (expiresAt === null || expiresAt <= now.getTime()) return "expired";
+
+  if (job.status === "processing") {
+    return isStaleProcessingJob(job, staleBeforeMs) ? "claimed" : "busy";
+  }
+  if (job.status !== "queued" && job.status !== "failed_retryable") return "not_found";
+
+  if (job.provider_webhook_id_hash !== webhookIdHash) return "claimed";
+  const runAfter = safeTimeMs(job.run_after);
+  return runAfter !== null && runAfter <= now.getTime() ? "claimed" : "backoff";
+}
+
+function safeProviderResponseId(value: unknown): string | null {
+  return typeof value === "string" && /^resp_[A-Za-z0-9_-]{1,180}$/.test(value) ? value : null;
+}
+
+function safeOpenAIWebhookId(value: unknown): string | null {
+  return typeof value === "string" && /^wh_[A-Za-z0-9_-]{1,180}$/.test(value) ? value : null;
 }
 
 function supabaseAnalysisJobHeaders(config: AnalysisJobStoreConfig): HeadersInit {

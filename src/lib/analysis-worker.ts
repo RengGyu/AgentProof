@@ -167,7 +167,14 @@ export async function preflightNextAnalysisJob(
     return { status: "idle" };
   }
 
-  const job = claim.job;
+  return preflightClaimedAnalysisJob(claim.job, options, env);
+}
+
+export async function preflightClaimedAnalysisJob(
+  job: AnalysisJobRow,
+  options: AnalysisJobClaimOptions = {},
+  env = process.env
+): Promise<AnalysisWorkerPreflightResult> {
   const appStatus = getGitHubAppConfigStatus(env);
   if (!appStatus.ready) {
     await failAnalysisJob({
@@ -368,6 +375,23 @@ export async function runNextAnalysisJob(
   env = process.env
 ): Promise<AnalysisWorkerRunResult> {
   const preflight = await preflightNextAnalysisJob(options, env);
+  return runPreflightedAnalysisJob(preflight, options, env);
+}
+
+export async function runClaimedAnalysisJob(
+  job: AnalysisJobRow,
+  options: RunAnalysisJobOptions,
+  env = process.env
+): Promise<AnalysisWorkerRunResult> {
+  const preflight = await preflightClaimedAnalysisJob(job, options, env);
+  return runPreflightedAnalysisJob(preflight, options, env);
+}
+
+async function runPreflightedAnalysisJob(
+  preflight: AnalysisWorkerPreflightResult,
+  options: RunAnalysisJobOptions,
+  env: NodeJS.ProcessEnv
+): Promise<AnalysisWorkerRunResult> {
   if (preflight.status !== "ready" || !preflight.job) {
     return preflight;
   }

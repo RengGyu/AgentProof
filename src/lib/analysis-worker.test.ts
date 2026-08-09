@@ -2,12 +2,13 @@ import { generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearAnalysisJobsForTests,
+  claimAnalysisJobForProviderResponse,
   enqueueAnalysisJob,
   getAnalysisJobsForTests
 } from "./analysis-jobs";
 import { clearAuditEventsForTests } from "./audit-log";
 import { clearSavedReportsForTests, countTenantSavedReports } from "./server-report-store";
-import { preflightNextAnalysisJob, runAnalysisJobBatch, runNextAnalysisJob } from "./analysis-worker";
+import { preflightNextAnalysisJob, runAnalysisJobBatch, runClaimedAnalysisJob, runNextAnalysisJob } from "./analysis-worker";
 import {
   clearTenantRepositoryGrantsForTests,
   createTenantRepositoryGrant,
@@ -272,12 +273,19 @@ describe("analysis worker preflight", () => {
     });
     vi.stubGlobal("fetch", secondFetch);
 
-    const completed = await runNextAnalysisJob({
+    const webhookClaim = await claimAnalysisJobForProviderResponse("resp_background_123", {
+      now: new Date("2026-06-30T00:01:20Z"),
+      webhookId: "wh_background_123"
+    });
+    const completed = await runClaimedAnalysisJob(webhookClaim.job!, {
       requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
       now: new Date("2026-06-30T00:01:20Z")
     });
 
     expect(completed).toMatchObject({ status: "completed", job: { id } });
+    expect(secondFetch.mock.calls.some(([url, init]) =>
+      String(url) === "https://api.openai.com/v1/responses" && init?.method === "POST"
+    )).toBe(false);
     expect(getAnalysisJobsForTests()[0]).toMatchObject({
       id,
       status: "completed",
@@ -285,7 +293,9 @@ describe("analysis worker preflight", () => {
       provider_status: null,
       provider_poll_attempts: 0,
       provider_submitted_at: null,
-      provider_expires_at: null
+      provider_expires_at: null,
+      provider_webhook_id_hash: null,
+      provider_webhook_received_at: null
     });
     expect(secondFetch.mock.calls.some((call) => String(call[0]) === "https://api.openai.com/v1/responses")).toBe(false);
   });
