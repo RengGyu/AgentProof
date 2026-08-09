@@ -1,4 +1,14 @@
 .env*
 *.pem
-docs/superpowers
-supabase/.temp
+.codex
+.github
+docs
+eval
+outputs
+scripts
+supabase
+**/*.test.ts
+vitest*.ts
+AGENTS.md
+CLAUDE.md
+README.md
