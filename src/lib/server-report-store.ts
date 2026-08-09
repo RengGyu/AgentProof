@@ -10,7 +10,7 @@ import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
 import { isSafeTenantLocator, isTenantPersistedReport, projectTenantPersistedReport, type TenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
-import { tenantGapKind, tenantGapText, tenantRemediationText } from "./tenant-report-language";
+import { tenantGapKind, tenantGapText, tenantProofGapKindForSemanticGap, tenantRemediationText } from "./tenant-report-language";
 import type { ProofGapKind, VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -770,7 +770,16 @@ function prepareSummaryReportForStorage(
  */
 function prepareTenantDetailReportForStorage(report: VerificationReport, trust: "verified_agentproof" | "imported_unverified"): VerificationReport {
   const proofNodesByRequirement = new Map(report.proofGraph.nodes.map((node) => [node.requirementId, node]));
-  const allGapKinds = report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind));
+  const semanticGapKindsByRequirement = new Map<string, ProofGapKind[]>();
+  for (const gap of report.semantic?.evidence_gaps ?? []) {
+    const current = semanticGapKindsByRequirement.get(gap.requirement_id) ?? [];
+    current.push(tenantProofGapKindForSemanticGap(gap.gap_type));
+    semanticGapKindsByRequirement.set(gap.requirement_id, current);
+  }
+  const allGapKinds = [
+    ...report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind)),
+    ...[...semanticGapKindsByRequirement.values()].flatMap((kinds) => kinds)
+  ];
   const safe: VerificationReport = {
     analysisId: report.analysisId,
     createdAt: report.createdAt,
@@ -787,13 +796,17 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
     },
     requirements: report.requirements.map((item) => {
       const proofGaps = proofNodesByRequirement.get(item.requirementId)?.gapSignals ?? [];
-      const gaps = uniqueStrings(proofGaps.map((gap) => tenantGapText(gap.kind)));
+      const gapKinds = [
+        ...proofGaps.map((gap) => gap.kind),
+        ...(semanticGapKindsByRequirement.get(item.requirementId) ?? [])
+      ];
+      const gaps = uniqueStrings(gapKinds.map(tenantGapText));
       return {
         requirementId: item.requirementId,
         requirementText: `Requirement ${item.requirementId}`,
         status: item.status,
         evidenceRefs: item.evidenceRefs,
-        gaps: (gaps.length > 0 ? gaps : item.gaps.length > 0 ? [tenantGapText("evidence_unavailable")] : []).slice(0, 10),
+        gaps: gaps.slice(0, 10),
         reviewerNote: "Review the linked evidence and safe locations.",
         confidence: item.confidence
       };

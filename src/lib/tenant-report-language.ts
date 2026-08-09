@@ -1,4 +1,5 @@
 import type { ProofGapKind, VerificationReport } from "./types";
+import type { LlmSemanticOutput } from "./llm-semantic-output";
 
 export type TenantReportAnalysisContext = "linked_issue" | "unlinked_pr" | "provided_requirement";
 
@@ -60,6 +61,24 @@ export function tenantGapKind(text: string): ProofGapKind {
 export function tenantRemediationText(kinds: readonly ProofGapKind[]): string {
   const selected = REMEDIATION_PRIORITY.find((kind) => kinds.includes(kind));
   return REMEDIATION_TEXT[selected ?? "evidence_unavailable"];
+}
+
+export function tenantProofGapKindForSemanticGap(
+  gapType: LlmSemanticOutput["evidence_gaps"][number]["gap_type"]
+): ProofGapKind {
+  switch (gapType) {
+    case "missing_implementation_evidence":
+      return "missing_implementation";
+    case "missing_test_evidence":
+      return "missing_targeted_test";
+    case "missing_check_evidence":
+    case "missing_runtime_evidence":
+      return "missing_execution";
+    case "ambiguous_requirement":
+      return "ambiguous_requirement";
+    default:
+      return "evidence_unavailable";
+  }
 }
 
 export function tenantReportAnalysisContext(report: VerificationReport): TenantReportAnalysisContext {
