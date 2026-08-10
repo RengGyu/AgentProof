@@ -8,6 +8,7 @@ describe("RequirementEvidenceList", () => {
   it("renders compact requirement cards with a closed native evidence disclosure", () => {
     const markup = renderToStaticMarkup(createElement(RequirementEvidenceList, { requirements: [{
       requirementId: "req_checkout",
+      objectiveText: "Requirement req_checkout",
       status: "partial",
       coverageLabel: "Partially supported",
       coverageMeaning: "Deterministic evidence references only partially support this requirement.",
@@ -21,7 +22,9 @@ describe("RequirementEvidenceList", () => {
     }] }));
 
     expect(markup).toContain("req_checkout");
-    expect(markup).toContain("AI explanation");
+    expect(markup).toContain("Evidence coverage");
+    expect(markup).toContain("Requirement req_checkout");
+    expect(markup).toContain("AgentProof reading");
     expect(markup).toContain("The normal validation path has evidence.");
     expect(markup).toContain("<strong>Next:</strong> Add focused edge-case coverage.");
     expect(markup).toMatch(/<details\b[^>]*name="requirement-evidence"/);
@@ -30,12 +33,12 @@ describe("RequirementEvidenceList", () => {
     expect(markup).toContain("Deterministic evidence references only partially support this requirement.");
     expect(markup).toContain("2 evidence references");
     expect(markup).toContain("ev_1, ev_2");
-    expect(markup).toContain("Semantic evidence IDs: ev_1");
-    expect(markup).toContain("AI uncertainty: medium");
+    expect(markup).toContain("Supporting evidence IDs: ev_1");
+    expect(markup).toContain("Assessment uncertainty: medium");
     expect(markup).toContain('aria-hidden="true"');
   });
 
-  it("gives missing coverage a distinct icon and labels unavailable AI explanation", () => {
+  it("gives missing coverage a distinct icon and labels unavailable supporting details", () => {
     const markup = renderToStaticMarkup(createElement(RequirementEvidenceList, { requirements: [{
       requirementId: "req_missing",
       status: "missing",
@@ -43,13 +46,13 @@ describe("RequirementEvidenceList", () => {
       coverageMeaning: "No deterministic evidence references support this requirement.",
       evidenceRefs: [],
       deterministicGaps: ["No evidence is available."],
-      explanation: { state: "unavailable", text: "AI explanation is unavailable. Deterministic evidence is shown below." },
+      explanation: { state: "unavailable", text: "Some supporting details are unavailable. Available evidence is still shown." },
       actionIncluded: false,
       semanticEvidenceIds: [],
       uncertainties: []
     }] }));
 
-    expect(markup).toContain("AI explanation unavailable");
+    expect(markup).toContain("Supporting details");
     expect(markup).toContain("lucide-circle-x");
   });
 
@@ -61,18 +64,18 @@ describe("RequirementEvidenceList", () => {
       coverageMeaning: "Deterministic evidence references support this requirement.",
       evidenceRefs: [],
       deterministicGaps: [],
-      explanation: { state: "none", text: "No additional AI explanation is available for this requirement." },
+      explanation: { state: "none", text: "No additional supporting details are available for this requirement." },
       actionIncluded: false,
       semanticEvidenceIds: [],
       uncertainties: []
     }] }));
 
-    expect(markup).toContain("No additional AI explanation is available for this requirement.");
-    expect(markup).toContain("No AI explanation");
+    expect(markup).toContain("No additional supporting details are available for this requirement.");
+    expect(markup).toContain("Evidence note");
     expect(markup).not.toContain("Next:");
   });
 
-  it("labels compact AI guidance separately from deterministic coverage", () => {
+  it("labels compact evidence guidance separately from deterministic coverage", () => {
     const markup = renderToStaticMarkup(createElement(RequirementEvidenceList, { requirements: [{
       requirementId: "req_guidance",
       status: "partial",
@@ -87,7 +90,7 @@ describe("RequirementEvidenceList", () => {
       uncertainties: []
     }] }));
 
-    expect(markup).toContain("AI guidance");
+    expect(markup).toContain("AgentProof reading");
     expect(markup).toContain("<strong>Next:</strong> Provide a focused test result.");
   });
 
@@ -106,7 +109,7 @@ describe("RequirementEvidenceList", () => {
     } satisfies DashboardRequirementViewModel;
     const markup = renderToStaticMarkup(createElement(RequirementEvidenceList, { requirements: [requirement] }));
 
-    expect(markup).toContain("AI explanation · Next action");
+    expect(markup).toContain("AgentProof reading · Next");
     expect(markup).toContain("Add focused test coverage.");
     expect(markup).not.toContain("<strong>Next:</strong>");
   });

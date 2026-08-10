@@ -5,6 +5,7 @@ export type RequirementExplanationState = "assessment" | "guidance" | "unavailab
 
 export interface DashboardRequirementViewModel {
   requirementId: string;
+  objectiveText?: string;
   status: string;
   coverageLabel: string;
   coverageMeaning: string;
@@ -19,6 +20,7 @@ export interface DashboardRequirementViewModel {
 
 interface RequirementInput {
   requirementId: string;
+  requirementText?: string;
   status: string;
   evidenceRefs: string[];
   gaps: string[];
@@ -45,14 +47,14 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
     const explanation = assessment
       ? { state: "assessment" as const, text: assessment.summary }
       : action
-        ? { state: "guidance" as const, text: "AI guidance is available. Follow the next action." }
+        ? { state: "guidance" as const, text: "A next action is available from the evidence." }
         : guidance
           ? { state: "guidance" as const, text: guidance.description }
           : semanticAnalysis?.status === "unavailable"
-            ? { state: "unavailable" as const, text: "AI explanation is unavailable. Deterministic evidence is shown below." }
+            ? { state: "unavailable" as const, text: "Some supporting details are unavailable. Available evidence is still shown." }
             : requirement.gaps[0]
               ? { state: "none" as const, text: `Evidence gap: ${requirement.gaps[0]}` }
-              : { state: "none" as const, text: "No additional AI explanation is available for this requirement." };
+              : { state: "none" as const, text: "No additional supporting details are available for this requirement." };
     const candidateNextAction = action?.instruction ?? guidanceNextAction;
     const actionIncluded = Boolean(candidateNextAction && hasSameNormalizedText(explanation.text, candidateNextAction));
     const nextAction = candidateNextAction && !actionIncluded
@@ -61,6 +63,7 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
 
     return {
       requirementId: requirement.requirementId,
+      objectiveText: boundedObjectiveText(assessment?.requirement_summary, requirement.requirementId),
       status: requirement.status,
       coverageLabel: toRequirementCoverageLabel(requirement.status),
       coverageMeaning: toCoverageMeaning(requirement.status),
@@ -87,6 +90,11 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       ])
     };
   });
+}
+
+function boundedObjectiveText(value: string | undefined, requirementId: string): string {
+  const normalized = value?.trim().replace(/\s+/g, " ");
+  return normalized ? normalized.slice(0, 160) : `Requirement ${requirementId}`;
 }
 
 function toCoverageMeaning(status: string): string {

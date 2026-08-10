@@ -134,6 +134,301 @@ describe("LLM semantic analysis package", () => {
     expect(llmPackage.system).toContain("implementation interpretation does not resolve ambiguity");
   });
 
+  it("keeps only concrete PR-authored objectives for an unlinked PR and ignores operational meta-purpose", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: [
+        "## Evaluation",
+        "This fixture evaluates the verification pipeline.",
+        "## Summary",
+        "Add a visible evidence status for each requirement."
+      ].join("\n")
+    };
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+
+    expect(llmPackage.input.analysis_context).toBe("unlinked_pr");
+    expect(llmPackage.input.requirements).toEqual([
+      expect.objectContaining({ text: expect.stringMatching(/^Add a visible evidence status for each requirement\.?$/) })
+    ]);
+    expect(llmPackage.input.requirements.map((requirement) => requirement.text).join(" ")).not.toMatch(/evaluates? the verification pipeline/i);
+    expect(llmPackage.system).toContain("explicit PR-authored concrete objectives");
+  });
+
+  it("has no semantic requirement sections for an unlinked PR with only evaluation purpose", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: "This benchmark fixture evaluates the review pipeline and records operational test output."
+    };
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const evidence = llmPackage.input.evidence[0];
+    const evidenceId = evidence?.id;
+    expect(evidenceId).toBeTruthy();
+    const candidate = {
+      ...semanticCandidate("req_issue_absent", "ev_issue_absent", "An Issue was not supplied."),
+      review_targets: [{
+        target_type: evidence?.kind === "check" ? "check" as const : "file" as const,
+        target_evidence_id: evidenceId!,
+        priority: "low" as const,
+        reason: "The available evidence may need reviewer inspection.",
+        inspection_goal: "Review the supplied evidence reference.",
+        requirement_ids: [],
+        evidence_ids: [evidenceId!],
+        uncertainty: "medium" as const
+      }],
+      uncertainties: [{
+        uncertainty_type: "insufficient_context" as const,
+        impact: "minor" as const,
+        description: "The supplied evidence is bounded.",
+        needed_information: "Additional evidence context if available.",
+        requirement_ids: [],
+        evidence_ids: [evidenceId!]
+      }]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(llmPackage.input.analysis_context).toBe("unlinked_pr");
+    expect(llmPackage.input.requirements).toEqual([]);
+    expect(validation.candidate?.requirement_evidence_relations).toEqual([]);
+    expect(validation.candidate?.requirement_assessments).toEqual([]);
+    expect(validation.candidate?.evidence_gaps).toEqual([]);
+    expect(validation.candidate?.remediation_requests).toEqual([]);
+    expect(validation.candidate?.review_targets).toEqual(candidate.review_targets);
+    expect(validation.candidate?.uncertainties).toEqual(candidate.uncertainties);
+  });
+
+  it("keeps concrete CI, documentation, and test objectives for an unlinked PR", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: [
+        "Add CI workflow coverage for the package.",
+        "Document the required environment variable.",
+        "Add a regression test for the empty response.",
+        "CI 파이프라인에 회귀 테스트 단계를 추가합니다."
+      ].join("\n")
+    };
+    const llmPackage = buildLlmSemanticPackage(input, generateVerificationReport(input));
+
+    expect(llmPackage.input.requirements.map((requirement) => requirement.text)).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Add CI workflow/i),
+      expect.stringMatching(/Document the required/i),
+      expect.stringMatching(/Add a regression test/i),
+      expect.stringMatching(/CI 파이프라인/i)
+    ]));
+  });
+
+  it("admits concrete English and Korean PR outcomes while excluding meta-purpose statements", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: [
+        "Add a CI pipeline artifact for the release check.",
+        "문서에 배포 환경 변수를 추가합니다.",
+        "This ops scenario exercises semantic context handling.",
+        "이 운영 시나리오는 검증 컨텍스트를 평가합니다."
+      ].join("\n")
+    };
+    const llmPackage = buildLlmSemanticPackage(input, generateVerificationReport(input));
+    const texts = llmPackage.input.requirements.map((requirement) => requirement.text).join("\n");
+
+    expect(texts).toMatch(/CI pipeline artifact/i);
+    expect(texts).toMatch(/환경 변수를 추가/i);
+    expect(texts).not.toMatch(/ops scenario exercises semantic context/i);
+    expect(texts).not.toMatch(/운영 시나리오는 검증 컨텍스트를 평가/i);
+  });
+
+  it("admits approved concrete action verbs while excluding PR pipeline evaluation purpose", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: [
+        "Allow failed synchronization jobs to be retried.",
+        "Show changed-file count in the report.",
+        "Ensure the summary includes execution status.",
+        "Display the evidence coverage label.",
+        "실패한 동기화 작업을 재시도할 수 있도록 허용합니다.",
+        "보고서에 변경된 파일 수를 표시합니다.",
+        "요약에 실행 상태가 포함되도록 보장합니다.",
+        "증거 범위 레이블을 보여줍니다.",
+        "This PR tests the review pipeline.",
+        "이 PR은 검토 파이프라인을 테스트합니다."
+      ].join("\n")
+    };
+    const texts = buildLlmSemanticPackage(input, generateVerificationReport(input)).input.requirements
+      .map((requirement) => requirement.text)
+      .join("\n");
+
+    expect(texts).toMatch(/Allow failed synchronization jobs/i);
+    expect(texts).toMatch(/Show changed-file count/i);
+    expect(texts).toMatch(/Ensure the summary/i);
+    expect(texts).toMatch(/Display the evidence coverage/i);
+    expect(texts).toMatch(/재시도할 수 있도록 허용/i);
+    expect(texts).toMatch(/변경된 파일 수를 표시/i);
+    expect(texts).toMatch(/실행 상태가 포함되도록 보장/i);
+    expect(texts).toMatch(/증거 범위 레이블을 보여/i);
+    expect(texts).not.toMatch(/This PR tests the review pipeline/i);
+    expect(texts).not.toMatch(/이 PR은 검토 파이프라인을 테스트/i);
+  });
+
+  it("removes unavailable-Issue ambiguity from unlinked package input and candidate gaps", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: "Add a focused check summary for the deployment result.",
+      limitations: ["Linked issue acme/app#42 could not be fetched."]
+    };
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirement = llmPackage.input.requirements[0];
+    const evidenceId = llmPackage.input.evidence[0]?.id;
+    expect(requirement).toBeTruthy();
+    expect(evidenceId).toBeTruthy();
+    const candidate = {
+      ...semanticCandidate(requirement!.id, evidenceId!, "The requirement needs Issue clarification."),
+      evidence_gaps: [{
+        requirement_id: requirement!.id,
+        gap_type: "ambiguous_requirement" as const,
+        priority: "medium" as const,
+        description: "The linked Issue is unavailable.",
+        review_impact: "The requirement cannot be assessed from the unavailable Issue.",
+        needed_evidence: "The linked Issue text.",
+        evidence_ids: [evidenceId!],
+        uncertainty: "high" as const
+      }],
+      remediation_requests: [{
+        requirement_id: requirement!.id,
+        request_type: "clarify_requirement" as const,
+        priority: "medium" as const,
+        instruction: "Provide the unavailable linked Issue.",
+        rationale: "The linked Issue is unavailable.",
+        expected_evidence: "The linked Issue text.",
+        evidence_ids: [evidenceId!],
+        uncertainty: "high" as const
+      }]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(requirement?.gap_kinds).not.toContain("ambiguous_requirement");
+    expect(JSON.stringify(llmPackage.input)).not.toContain("issue_absence_requirement_ids");
+    expect(JSON.stringify(llmPackage.input)).not.toMatch(/linked issue .*could not be fetched/i);
+    expect(validation.candidate?.evidence_gaps).toEqual([]);
+    expect(validation.candidate?.remediation_requests).toEqual([]);
+  });
+
+  it("keeps a legitimate PR-objective ambiguity when the same unlinked PR also has an unavailable Issue", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: "Add a focused check summary for the deployment result.",
+      limitations: ["Linked issue acme/app#42 could not be fetched."]
+    };
+    const llmPackage = buildLlmSemanticPackage(input, generateVerificationReport(input));
+    const requirement = llmPackage.input.requirements[0];
+    const evidenceId = llmPackage.input.evidence[0]?.id;
+    expect(requirement).toBeTruthy();
+    expect(evidenceId).toBeTruthy();
+    const candidate = {
+      ...semanticCandidate(requirement!.id, evidenceId!, "The supplied evidence needs review."),
+      evidence_gaps: [
+        {
+          requirement_id: requirement!.id,
+          gap_type: "ambiguous_requirement" as const,
+          priority: "medium" as const,
+          description: "The linked Issue is unavailable.",
+          review_impact: "The unavailable Issue prevents interpretation.",
+          needed_evidence: "The linked Issue text.",
+          evidence_ids: [evidenceId!],
+          uncertainty: "high" as const
+        },
+        {
+          requirement_id: requirement!.id,
+          gap_type: "ambiguous_requirement" as const,
+          priority: "medium" as const,
+          description: "The explicit PR objective leaves the default behavior ambiguous.",
+          review_impact: "The available evidence cannot distinguish the default behavior.",
+          needed_evidence: "Clarify the default behavior in the PR objective.",
+          evidence_ids: [evidenceId!],
+          uncertainty: "medium" as const
+        }
+      ],
+      remediation_requests: [
+        {
+          requirement_id: requirement!.id,
+          request_type: "clarify_requirement" as const,
+          priority: "medium" as const,
+          instruction: "Provide the unavailable linked Issue.",
+          rationale: "The linked Issue is unavailable.",
+          expected_evidence: "The linked Issue text.",
+          evidence_ids: [evidenceId!],
+          uncertainty: "high" as const
+        },
+        {
+          requirement_id: requirement!.id,
+          request_type: "clarify_requirement" as const,
+          priority: "medium" as const,
+          instruction: "Clarify the default behavior in the PR objective.",
+          rationale: "The default behavior is not explicit in the PR objective.",
+          expected_evidence: "A concrete default behavior statement.",
+          evidence_ids: [evidenceId!],
+          uncertainty: "medium" as const
+        }
+      ]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.candidate?.evidence_gaps).toEqual([candidate.evidence_gaps[1]]);
+    expect(validation.candidate?.remediation_requests).toEqual([candidate.remediation_requests[1]]);
+  });
+
+  it("keeps a legitimate unlinked objective ambiguity available for semantic review", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: "Implement the new setting when its default behavior is unclear."
+    };
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+
+    expect(llmPackage.input.requirements[0]?.gap_kinds).toContain("ambiguous_requirement");
+  });
+
+  it("counts only eligible semantic requirements in package bounds", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: ["This benchmark fixture evaluates the pipeline.", "Add a visible evidence status."].join("\n")
+    };
+    const llmPackage = buildLlmSemanticPackage(input, generateVerificationReport(input));
+
+    expect(llmPackage.input.bounds.total_requirement_count).toBe(1);
+    expect(llmPackage.input.bounds.included_requirement_count).toBe(1);
+    expect(llmPackage.input.bounds.omitted_requirement_count).toBe(0);
+  });
+
+  it("preserves linked Issue ambiguity without passing a PR interpretation into context", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskSource: "issue" as const,
+      taskText: "The required check priority is unclear and needs human interpretation.",
+      description: "The PR implementation treats failed checks as the required priority."
+    };
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+
+    expect(llmPackage.input.analysis_context).toBe("linked_issue");
+    expect(llmPackage.input.context_signals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: expect.stringMatching(/unclear/i) })
+    ]));
+    expect(JSON.stringify(llmPackage.input.context_signals)).not.toContain("implementation treats failed checks");
+  });
+
   it("rejects empty, duplicate, and unknown requirement IDs for a retry subset", () => {
     const llmPackage = buildLlmSemanticPackage(
       demoScenarios.clean,

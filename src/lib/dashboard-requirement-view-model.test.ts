@@ -29,7 +29,7 @@ describe("toDashboardRequirementViewModels", () => {
     expect(card.nextAction).toBeUndefined();
   });
 
-  it("keeps a matching remediation instruction in Next and uses bounded AI guidance when an assessment is absent", () => {
+  it("keeps a matching remediation instruction in Next and uses bounded evidence guidance when an assessment is absent", () => {
     const [card] = toDashboardRequirementViewModels({
       requirements: [{ requirementId: "req_2", status: "missing", evidenceRefs: [], gaps: ["No deterministic evidence was captured."] }],
       semantic: {
@@ -43,7 +43,7 @@ describe("toDashboardRequirementViewModels", () => {
     });
 
     expect(card).toMatchObject({
-      explanation: { state: "guidance", text: "AI guidance is available. Follow the next action." },
+      explanation: { state: "guidance", text: "A next action is available from the evidence." },
       nextAction: "Add a focused test for the missing path.",
       semanticEvidenceIds: [],
       uncertainties: ["high"]
@@ -98,7 +98,7 @@ describe("toDashboardRequirementViewModels", () => {
     expect(cards[2]).toMatchObject({ explanation: { state: "guidance", text: "A focused path is not covered." }, nextAction: "Provide the focused test result.", actionIncluded: false });
   });
 
-  it("labels an unavailable AI explanation honestly while retaining deterministic gaps", () => {
+  it("labels unavailable supporting details honestly while retaining deterministic gaps", () => {
     const [card] = toDashboardRequirementViewModels({
       requirements: [{ requirementId: "req_3", status: "unclear", evidenceRefs: ["ev_3"], gaps: ["The check result was unavailable."] }],
       semanticAnalysis: { status: "unavailable", attempts: 2 }
@@ -106,8 +106,47 @@ describe("toDashboardRequirementViewModels", () => {
 
     expect(card).toMatchObject({
       status: "unclear",
-      explanation: { state: "unavailable", text: "AI explanation is unavailable. Deterministic evidence is shown below." },
+      explanation: { state: "unavailable", text: "Some supporting details are unavailable. Available evidence is still shown." },
       deterministicGaps: ["The check result was unavailable."]
     });
+  });
+
+  it("uses the validated one-line objective summary before the tenant-safe fallback label", () => {
+    const requirement = {
+      requirementId: "req_4",
+      requirementText: "Requirement req_4",
+      status: "partial",
+      evidenceRefs: [],
+      gaps: []
+    };
+
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [requirement],
+      semantic: {
+        requirement_evidence_relations: [],
+        requirement_assessments: [{
+          requirement_id: "req_4",
+          requirement_summary: "Show a fallback when the repository name is missing.",
+          evidence_support: "partial_evidence_present",
+          summary: "The normal path has evidence.",
+          evidence_ids: [],
+          uncertainty: "medium"
+        }],
+        evidence_gaps: [],
+        review_targets: [],
+        remediation_requests: [],
+        uncertainties: []
+      }
+    });
+
+    expect((card as typeof card & { objectiveText?: string }).objectiveText).toBe("Show a fallback when the repository name is missing.");
+  });
+
+  it("uses the requirement ID only when no validated objective summary is available", () => {
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{ requirementId: "req_5", requirementText: "Requirement req_5", status: "partial", evidenceRefs: [], gaps: [] }]
+    });
+
+    expect(card?.objectiveText).toBe("Requirement req_5");
   });
 });

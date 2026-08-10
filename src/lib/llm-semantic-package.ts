@@ -16,6 +16,7 @@ const MAX_REQUIREMENT_TEXT = 900;
 const MAX_EVIDENCE_TEXT = 700;
 const MAX_CODE_EXCERPT = 1_200;
 const ANALYZABLE_EVIDENCE_KINDS = new Set<EvidenceKind>(["diff", "changed_file", "test", "check"]);
+type LlmSemanticAnalysisContext = "linked_issue" | "unlinked_pr" | "provided_requirement";
 
 export interface LlmSemanticPackageEvidence {
   id: string;
@@ -29,9 +30,13 @@ export interface LlmSemanticPackageEvidence {
 export interface LlmSemanticPackage {
   system: string;
   schema: typeof llmSemanticOutputSchema;
+  validator: {
+    unavailableIssueRequirementIds: string[];
+  };
   input: {
     version: 1;
     output_locale: string;
+    analysis_context: LlmSemanticAnalysisContext;
     requirements: Array<{
       id: string;
       text: string;
@@ -72,12 +77,19 @@ export function buildLlmSemanticPackage(
   report: VerificationReport,
   options: { outputLocale?: string } = {}
 ): LlmSemanticPackage {
+  const analysisContext = semanticAnalysisContext(input, report);
+  const eligibleRequirementNodes = semanticRequirementNodes(report, analysisContext);
+  const issueAbsenceRequirementIds = new Set(
+    analysisContext === "unlinked_pr" && hasUnavailableLinkedIssue(input)
+      ? eligibleRequirementNodes.map((node) => node.requirementId)
+      : []
+  );
   const selectedEvidence = selectEvidence(report);
   const selectedEvidenceIds = new Set(selectedEvidence.map((item) => item.id));
   const patchesByPath = new Map(
     input.changedFiles.map((file) => [file.path, safeChangedCodeExcerpt(file.patch)])
   );
-  const requirements = report.proofGraph.nodes.slice(0, MAX_REQUIREMENTS).map((node) => ({
+  const requirements = eligibleRequirementNodes.slice(0, MAX_REQUIREMENTS).map((node) => ({
     id: node.requirementId,
     text: safeText(node.requirementText, MAX_REQUIREMENT_TEXT),
     source_quality: node.sourceQuality,
@@ -87,7 +99,9 @@ export function buildLlmSemanticPackage(
       ...node.executionEvidenceRefs,
       ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
     ]).filter((id) => selectedEvidenceIds.has(id)),
-    gap_kinds: uniqueIds(node.gapSignals.map((gap) => gap.kind))
+    gap_kinds: uniqueIds(node.gapSignals
+      .filter((gap) => !issueAbsenceRequirementIds.has(node.requirementId) || gap.kind !== "ambiguous_requirement")
+      .map((gap) => gap.kind))
   }));
   const evidence = selectedEvidence.map((item) => ({
     id: item.id,
@@ -98,6 +112,7 @@ export function buildLlmSemanticPackage(
     code_excerpt: codeExcerptFor(item, patchesByPath)
   }));
   const contextSignals = report.proofGraph.context
+    .filter((item) => analysisContext !== "linked_issue" || item.source === "issue")
     .filter((item) => /\b(?:undefined|not defined|unclear|ambiguous|unspecified)\b|(?:정의하지 않|명확하지 않|모호|불명확)/i.test(item.text))
     .slice(0, 8)
     .map((item) => ({ kind: "requirement_ambiguity" as const, text: safeText(item.text, 360) }));
@@ -105,17 +120,24 @@ export function buildLlmSemanticPackage(
   return {
     system: llmSemanticSystemPrompt(),
     schema: llmSemanticOutputSchema,
+    validator: {
+      unavailableIssueRequirementIds: [...issueAbsenceRequirementIds]
+    },
     input: {
       version: 1,
       output_locale: normalizeLocale(options.outputLocale),
+      analysis_context: analysisContext,
       requirements,
       context_signals: contextSignals,
       evidence,
-      limitations: report.limitations.slice(0, 12).map((item) => safeText(item, 360)),
+      limitations: report.limitations
+        .filter((item) => analysisContext !== "unlinked_pr" || !isUnavailableLinkedIssueLimitation(item))
+        .slice(0, 12)
+        .map((item) => safeText(item, 360)),
       bounds: {
-        total_requirement_count: report.proofGraph.nodes.length,
+        total_requirement_count: eligibleRequirementNodes.length,
         included_requirement_count: requirements.length,
-        omitted_requirement_count: Math.max(0, report.proofGraph.nodes.length - requirements.length),
+        omitted_requirement_count: Math.max(0, eligibleRequirementNodes.length - requirements.length),
         total_evidence_count: report.evidenceIndex.length,
         included_evidence_count: evidence.length,
         omitted_evidence_count: Math.max(0, report.evidenceIndex.length - evidence.length),
@@ -135,7 +157,7 @@ export function validateLlmSemanticPackageCandidate(
   candidate: unknown,
   llmPackage: LlmSemanticPackage
 ): LlmSemanticValidationResult {
-  return validateLlmSemanticCandidate(candidate, {
+  return validateLlmSemanticCandidate(withoutUnavailableIssueUnits(candidate, llmPackage), {
     requirementIds: llmPackage.input.requirements.map((requirement) => requirement.id),
     evidence: llmPackage.input.evidence.map((evidence) => ({ id: evidence.id, kind: evidence.kind }))
   });
@@ -171,6 +193,11 @@ export function buildLlmSemanticPackageSubset(
 
   return {
     ...llmPackage,
+    validator: {
+      unavailableIssueRequirementIds: llmPackage.validator.unavailableIssueRequirementIds.filter((id) =>
+        requestedIds.has(id)
+      )
+    },
     input: {
       ...llmPackage.input,
       requirements,
@@ -330,10 +357,93 @@ export function llmSemanticSystemPrompt(): string {
     "Use the requested output language for every natural-language field. Do not copy source code, raw patches, PR or Issue text, logs, tokens, URLs, file paths, check names, or SHA values into output.",
     "Assess supplied evidence coverage only. Do not state or imply correctness, safety, or merge readiness. Do not make security or requirement-satisfaction verdicts.",
     "When evidence is weak, conflicting, or absent, describe the uncertainty or evidence gap instead of guessing. Do not invent evidence or hidden repository facts.",
+    "Respect analysis_context. For linked_issue, assess only verified linked-Issue requirements and preserve linked-Issue ambiguity. For unlinked_pr, assess only explicit PR-authored concrete objectives; never treat a missing, unavailable, or ambiguous Issue as a gap or remediation request. Code, tests, checks, reviewer instructions, and operational or evaluation purpose never create objectives.",
     "A PR implementation interpretation does not resolve ambiguity in the supplied requirement context; preserve that uncertainty for the reviewer.",
     "Write complete, concise sentences and never stop a sentence at a schema length boundary.",
     "Each array item must stand alone so a validator can remove one invalid item without changing the rest."
   ].join("\n");
+}
+
+function semanticAnalysisContext(
+  input: PullRequestInput,
+  report: VerificationReport
+): LlmSemanticAnalysisContext {
+  const hasVerifiedIssueRequirement = input.taskSource === "issue" && report.proofGraph.nodes.some(
+    (node) => node.sourceQuality !== "author_claim" && node.sourceQuality !== "manual_check" && node.sourceQuality !== "fallback"
+  );
+  if (hasVerifiedIssueRequirement) return "linked_issue";
+  if (input.taskSource === "issue" || report.proofGraph.nodes.some((node) => node.sourceQuality === "author_claim")) return "unlinked_pr";
+  return "provided_requirement";
+}
+
+function semanticRequirementNodes(
+  report: VerificationReport,
+  analysisContext: LlmSemanticAnalysisContext
+) {
+  if (analysisContext === "linked_issue") {
+    return report.proofGraph.nodes.filter(
+      (node) => node.sourceQuality !== "author_claim" && node.sourceQuality !== "manual_check" && node.sourceQuality !== "fallback"
+    );
+  }
+  if (analysisContext === "unlinked_pr") {
+    return report.proofGraph.nodes.filter(
+      (node) => node.sourceQuality === "author_claim" && isConcretePrObjective(node.requirementText)
+    );
+  }
+  return report.proofGraph.nodes;
+}
+
+function isConcretePrObjective(text: string): boolean {
+  if (isMetaPurposeStatement(text)) return false;
+  return /\b(?:add(?:s|ed)?|update(?:s|d)?|remove(?:s|d)?|fix(?:es|ed)?|implement(?:s|ed)?|create(?:s|d)?|document(?:s|ed)?|refactor(?:s|ed)?|rename(?:s|d)?|support(?:s|ed)?|prevent(?:s|ed)?|preserve(?:s|d)?|enable(?:s|d)?|disable(?:s|d)?|migrate(?:s|d)?|replace(?:s|d)?|allow(?:s|ed)?|show(?:s|ed)?|ensure(?:s|d)?|display(?:s|ed)?|test(?:s|ed)?)\b/i.test(text) || /(?:추가|수정|삭제|구현|문서화|리팩터링|지원|방지|유지|개선|변경|테스트|허용|표시|보장)(?:합니다|한다|하세요|해요|됨|되었|할)|보여줍니다/.test(text);
+}
+
+function isMetaPurposeStatement(text: string): boolean {
+  return /\b(?:this|the)\s+(?:(?:ops|operational|evaluation|benchmark|demo|fixture)\s+)?(?:scenario|fixture|benchmark|demo)\b.*\b(?:evaluates?|exercises?|tests?|records?|verifies?)\b/i.test(text) || /\bthis\s+pr\s+(?:tests?|evaluates?|exercises?|validates?)\s+(?:the\s+)?(?:review|verification|semantic|analysis)\s+pipeline\b/i.test(text) || /(?:이|본)\s*(?:운영|평가|벤치마크|데모|픽스처)\s*(?:시나리오|목적).*?(?:평가|검증|실행)/.test(text) || /이\s*PR(?:은|는)?\s*(?:검토|검증|분석)\s*파이프라인을?\s*(?:테스트|평가|검증|실행)합니다/.test(text);
+}
+
+function hasUnavailableLinkedIssue(input: PullRequestInput): boolean {
+  return (input.limitations ?? []).some(isUnavailableLinkedIssueLimitation);
+}
+
+function isUnavailableLinkedIssueLimitation(limitation: string): boolean {
+  return /Multiple supported issue references found|Linked issue .* could not be fetched|Linked issue .* had no title or body text|Linked reference .* points to a pull request|No original task text was provided and no single valid linked issue was available/i.test(limitation);
+}
+
+function withoutUnavailableIssueUnits(candidate: unknown, llmPackage: LlmSemanticPackage): unknown {
+  const blockedRequirementIds = new Set(llmPackage.validator.unavailableIssueRequirementIds);
+  if (blockedRequirementIds.size === 0 || !candidate || typeof candidate !== "object" || Array.isArray(candidate)) return candidate;
+  const value = candidate as Record<string, unknown>;
+  return {
+    ...value,
+    evidence_gaps: Array.isArray(value.evidence_gaps)
+      ? value.evidence_gaps.filter((item) => !isUnavailableIssueAmbiguityGap(item, blockedRequirementIds))
+      : value.evidence_gaps,
+    remediation_requests: Array.isArray(value.remediation_requests)
+      ? value.remediation_requests.filter((item) => !isUnavailableIssueRemediation(item, blockedRequirementIds))
+      : value.remediation_requests
+  };
+}
+
+function isUnavailableIssueAmbiguityGap(value: unknown, blockedRequirementIds: Set<string>): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const gap = value as { requirement_id?: unknown; gap_type?: unknown; description?: unknown; review_impact?: unknown; needed_evidence?: unknown };
+  return gap.gap_type === "ambiguous_requirement" && typeof gap.requirement_id === "string" &&
+    blockedRequirementIds.has(gap.requirement_id) &&
+    hasUnavailableIssuePremise([gap.description, gap.review_impact, gap.needed_evidence]);
+}
+
+function isUnavailableIssueRemediation(value: unknown, blockedRequirementIds: Set<string>): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const remediation = value as { requirement_id?: unknown; request_type?: unknown; instruction?: unknown; rationale?: unknown; expected_evidence?: unknown };
+  return remediation.request_type === "clarify_requirement" && typeof remediation.requirement_id === "string" &&
+    blockedRequirementIds.has(remediation.requirement_id) &&
+    hasUnavailableIssuePremise([remediation.instruction, remediation.rationale, remediation.expected_evidence]);
+}
+
+function hasUnavailableIssuePremise(values: unknown[]): boolean {
+  const text = values.filter((value): value is string => typeof value === "string").join(" ");
+  return /(?:linked|original)\s+issue.{0,80}(?:unavailable|missing|not supplied|not available|could not|not fetched)|(?:unavailable|missing|not supplied|not available|not fetched).{0,80}(?:linked|original\s+)?issue/i.test(text) || /(?:연결된|원본)?\s*이슈.{0,80}(?:없|누락|불가|가져올 수 없)|(?:없|누락|불가).{0,80}이슈/.test(text);
 }
 
 function selectEvidence(report: VerificationReport): EvidenceItem[] {

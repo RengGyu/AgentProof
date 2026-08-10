@@ -31,7 +31,7 @@ describe("PublicGitHubDashboard saved reports", () => {
   });
 
   it("renders only the agreed sanitized detail categories", () => {
-    expect(source).toContain(">Requirements<");
+    expect(source).toContain(">Requirements and PR objectives<");
     expect(source).toContain("RequirementEvidenceList");
     expect(source).toContain("toDashboardRequirementViewModels");
     expect(source).toContain(">Priority files<");
@@ -43,9 +43,11 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("issueBody");
   });
 
-  it("explains when the bounded AI retry was unavailable without exposing provider details", () => {
-    expect(source).toContain('label="AI explanation"');
-    expect(source).toContain("AI explanation is temporarily unavailable. Grounded evidence is still available.");
+  it("uses AgentProof analysis language without exposing provider details", () => {
+    expect(source).toContain('label="Analysis"');
+    expect(source).toContain("Some supporting details are unavailable. Available evidence is still shown.");
+    expect(source).not.toContain("AI explanation");
+    expect(source).not.toContain("AI guidance");
     expect(source).not.toContain("provider response must not persist");
   });
 

@@ -27,7 +27,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
   evidenceCapturedAt?: string;
   analysisContext?: "linked_issue" | "unlinked_pr" | "provided_requirement";
   report?: {
-    requirements?: Array<{ requirementId: string; status: string; evidenceRefs: string[]; gaps: string[] }>;
+    requirements?: Array<{ requirementId: string; requirementText?: string; status: string; evidenceRefs: string[]; gaps: string[] }>;
     testing?: { ciStatus: string; lintStatus: string; typecheckStatus: string };
     reviewPriority?: Array<{ path: string; priority: string }>;
     evidenceIndex?: Array<{ id: string; locator?: string }>;
