@@ -582,7 +582,7 @@ function summaryOnlyReportFixture(fullReport) {
     evidenceIndex: [],
     limitations: [
       ...fullReport.limitations,
-      "Shared report omits raw evidence, patch/log excerpts, claims, and re-prompt text."
+      "Shared report omits raw evidence, patch/log excerpts, claims, proof-graph evidence refs, and re-prompt text."
     ]
   };
 }

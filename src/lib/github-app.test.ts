@@ -11,6 +11,7 @@ import {
   getGitHubAppConfigStatus,
   getGitHubAppAutomationSettings,
   getPublicGitHubAppReadinessStatus,
+  getPublicGitHubAppReadinessStatusAsync,
   getGitHubAppReadinessStatus,
   getGitHubWebhookIdempotencyStoreStatus,
   isGitHubPrivateKeyFormatValid,
@@ -244,6 +245,28 @@ describe("github app helpers", () => {
     }));
   });
 
+  it("reports event mode when an active tenant grant is stored durably", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, {
+      headers: { "content-range": "0-0/1" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const readiness = await getPublicGitHubAppReadinessStatusAsync({
+      GITHUB_WEBHOOK_SECRET: "secret",
+      GITHUB_APP_ID: "123",
+      GITHUB_PRIVATE_KEY: testPrivateKey(),
+      AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED: "true",
+      AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "true",
+      AGENTPROOF_TENANT_GRANTS_SUPABASE_URL: "https://agentproof-test.supabase.co",
+      AGENTPROOF_TENANT_GRANTS_SUPABASE_SERVICE_ROLE_KEY: "service-role-secret"
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(readiness).toEqual(expect.objectContaining({
+      mode: "event-mode",
+      label: "Event mode ready"
+    }));
+  });
+
   it("keeps public readiness status coarse enough for public UI and smoke probes", () => {
     const publicStatus = getPublicGitHubAppReadinessStatus({
       GITHUB_WEBHOOK_SECRET: "secret-value",
@@ -405,6 +428,24 @@ describe("github app helpers", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+  });
+
+  it("reuses the onboarding service role for shared durable webhook idempotency", async () => {
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY", "stale-reports-service-role");
+    vi.stubEnv("AGENTPROOF_CONTROL_PLANE_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ONBOARDING_SUPABASE_SERVICE_ROLE_KEY", "shared-service-role");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (init?.method === "POST") return new Response(null, { status: 201 });
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await reserveGitHubWebhookDelivery(webhookDeliveryInput(), 1_000);
+
+    const postCall = fetchMock.mock.calls.find((call) => call[1]?.method === "POST");
+    expect((postCall?.[1]?.headers as Record<string, string>).Authorization).toBe("Bearer shared-service-role");
   });
 
   it("counts durable tenant webhook deliveries with a narrow HEAD query", async () => {

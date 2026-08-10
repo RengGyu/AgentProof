@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
-import { upsertTenantGitHubInstallation } from "./github-installations";
+import { GitHubInstallationStoreError, upsertTenantGitHubInstallation } from "./github-installations";
 import { consumeApprovedInstallationClaim, createPendingInstallationClaim } from "./github-installation-claims";
 import { redactSecrets } from "./redact";
 
@@ -197,6 +197,113 @@ export async function requestGitHubInstallationClaim(
   const consumed = await consumeOnboardingSession({ kind: "install", tokenHash: hashOnboardingValue(input.state, secret), now, nonceHash: hashOnboardingValue(nonce, secret) }, env);
   if (!consumed) throw new GitHubOnboardingError("GitHub App onboarding state is invalid or expired.");
   return createPendingInstallationClaim({ tenantId: consumed.tenantId, installationId: input.installationId }, env, now);
+}
+
+/**
+ * Public OAuth flow only: the callback has already proved that the GitHub user
+ * can see this installation.  It bypasses the legacy operator-claim queue but
+ * retains the same one-time state, installation ownership record and
+ * repository activation session used by invite onboarding.
+ */
+export async function activateVerifiedGitHubInstallation(
+  input: {
+    state?: string | null;
+    nonceCookieHeader?: string | null;
+    installationId?: number | null;
+    tenantId?: string | null;
+  },
+  env = process.env,
+  now = Date.now()
+): Promise<GitHubInstallCallbackResult> {
+  const secret = env.AGENTPROOF_ONBOARDING_STATE_SECRET?.trim();
+  const nonce = readCookie(input.nonceCookieHeader, ONBOARDING_NONCE_COOKIE);
+  const authorizedTenantId = normalizeTenantId(input.tenantId);
+  if (!secret || !input.state || !nonce || !input.installationId || !authorizedTenantId) {
+    throw new GitHubOnboardingError("GitHub App onboarding callback is invalid.");
+  }
+  const consumed = await consumeOnboardingSession({
+    kind: "install",
+    tokenHash: hashOnboardingValue(input.state, secret),
+    now,
+    nonceHash: hashOnboardingValue(nonce, secret)
+  }, env);
+  if (!consumed || consumed.tenantId !== authorizedTenantId) {
+    throw new GitHubOnboardingError("GitHub App onboarding state is invalid or expired.");
+  }
+
+  return createVerifiedGitHubInstallationActivation({
+    tenantId: authorizedTenantId,
+    installationId: input.installationId
+  }, env, now);
+}
+
+/**
+ * The public route may use this only after the transient OAuth user token has
+ * confirmed the signed-in user can access this existing App installation.
+ */
+export async function activateExistingVerifiedGitHubInstallation(
+  input: {
+    tenantId?: string | null;
+    installationId?: number | null;
+    accountId?: number | null;
+    accountLogin?: string | null;
+    accountType?: string | null;
+  },
+  env = process.env,
+  now = Date.now()
+): Promise<GitHubInstallCallbackResult> {
+  const tenantId = normalizeTenantId(input.tenantId);
+  if (!tenantId || !input.installationId) throw new GitHubOnboardingError("GitHub App existing installation is invalid.");
+  return createVerifiedGitHubInstallationActivation({
+    tenantId,
+    installationId: input.installationId,
+    accountId: input.accountId,
+    accountLogin: input.accountLogin,
+    accountType: input.accountType
+  }, env, now);
+}
+
+async function createVerifiedGitHubInstallationActivation(
+  input: {
+    tenantId: string;
+    installationId: number;
+    accountId?: number | null;
+    accountLogin?: string | null;
+    accountType?: string | null;
+  },
+  env: NodeJS.ProcessEnv,
+  now: number
+): Promise<GitHubInstallCallbackResult> {
+  const secret = env.AGENTPROOF_ONBOARDING_STATE_SECRET?.trim();
+  if (!secret) throw new GitHubOnboardingError("GitHub App onboarding callback is invalid.");
+  const ownership = await upsertTenantGitHubInstallation({
+    tenantId: input.tenantId,
+    installationId: input.installationId,
+    accountId: input.accountId,
+    accountLogin: input.accountLogin,
+    accountType: input.accountType,
+    status: "active"
+  }, env, now);
+  if (!ownership.configured || ownership.count !== 1) {
+    throw new GitHubInstallationStoreError("GitHub installation ownership storage is required for public onboarding.");
+  }
+  const activationToken = randomToken();
+  const expiresAt = new Date(now + STATE_TTL_MS).toISOString();
+  await storeOnboardingSession({
+    id: randomToken(),
+    kind: "activation",
+    tokenHash: hashOnboardingValue(activationToken, secret),
+    tenantId: input.tenantId,
+    installationId: input.installationId,
+    createdAt: new Date(now).toISOString(),
+    expiresAt
+  }, env);
+  return {
+    tenantId: input.tenantId,
+    installationId: input.installationId,
+    expiresAt,
+    activationCookie: buildCookie(ONBOARDING_ACTIVATION_COOKIE, activationToken, expiresAt, now)
+  };
 }
 
 export async function activateApprovedGitHubInstallationClaim(

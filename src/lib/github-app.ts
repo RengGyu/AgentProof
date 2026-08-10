@@ -1,5 +1,11 @@
 import { createHash, createHmac, createPrivateKey, createSign, timingSafeEqual } from "crypto";
-import { getTenantControlPlaneSettings, readTenantRepositoryGrants } from "./tenant-control-plane";
+import { getSharedControlPlaneServiceRoleKey } from "./control-plane-supabase";
+import {
+  countActiveTenantRepositoryGrants,
+  getTenantControlPlaneSettings,
+  readTenantRepositoryGrants,
+  TenantControlPlaneStoreError
+} from "./tenant-control-plane";
 
 const GITHUB_APP_FETCH_TIMEOUT_MS = 8000;
 const GITHUB_WEBHOOK_IDEMPOTENCY_TTL_MS = 30 * 60 * 1000;
@@ -351,8 +357,69 @@ export function getGitHubAppReadinessStatus(env = process.env): GitHubAppReadine
   };
 }
 
+export async function getGitHubAppReadinessStatusAsync(env = process.env): Promise<GitHubAppReadinessStatus> {
+  const tenantControl = getTenantControlPlaneSettings(env);
+  const envGrants = tenantControl.enabled ? readTenantRepositoryGrants(env) : [];
+
+  if (!tenantControl.enabled || envGrants === null || envGrants.length > 0) {
+    return getGitHubAppReadinessStatus(env);
+  }
+
+  try {
+    const activeGrantCount = await countActiveTenantRepositoryGrants(env);
+    const readiness = getGitHubAppReadinessStatus(env);
+    if (activeGrantCount.count === 0) return readiness;
+
+    const canAnalyzePullRequests = readiness.appCredentialsReady && readiness.automationEnabled;
+    const canPostComments = canAnalyzePullRequests && readiness.commentEnabled;
+
+    return {
+      ...readiness,
+      mode: canPostComments
+        ? "analysis-and-comment-ready"
+        : canAnalyzePullRequests
+          ? "analysis-ready"
+          : "dry-run",
+      allowedRepoCount: activeGrantCount.count,
+      canAnalyzePullRequests,
+      canPostComments,
+      warnings: readiness.warnings.filter((warning) =>
+        warning !== "Tenant control plane is enabled but no tenant repository grants are configured."
+      )
+    };
+  } catch (error) {
+    if (error instanceof TenantControlPlaneStoreError) {
+      return getGitHubAppReadinessStatus(env);
+    }
+
+    throw error;
+  }
+}
+
 export function getPublicGitHubAppReadinessStatus(env = process.env): PublicGitHubAppReadinessStatus {
   const status = getGitHubAppReadinessStatus(env);
+  const publicMode = publicStatusMode(status.mode);
+
+  return {
+    mode: publicMode,
+    label: publicStatusLabel(publicMode),
+    description: publicStatusDescription(publicMode),
+    capabilities: [
+      "Manual PR URL analysis remains available from the main workspace.",
+      publicMode === "event-mode"
+        ? "Signed PR events can trigger AgentProof evidence reports for configured repositories."
+        : "Signed PR events are accepted as bounded metadata unless automation is explicitly enabled.",
+      "Saved report links and marker comments remain separate opt-in controls."
+    ],
+    cautions: [
+      "Public readiness status does not expose secret names, values, allowlists, or private-key validity.",
+      "AgentProof produces evidence reports for human decisions; it does not auto-merge."
+    ]
+  };
+}
+
+export async function getPublicGitHubAppReadinessStatusAsync(env = process.env): Promise<PublicGitHubAppReadinessStatus> {
+  const status = await getGitHubAppReadinessStatusAsync(env);
   const publicMode = publicStatusMode(status.mode);
 
   return {
@@ -901,14 +968,17 @@ function getSupabaseWebhookDeliveryConfig(env = process.env): SupabaseWebhookDel
 }
 
 function readSupabaseWebhookDeliveryEnv(env = process.env) {
+  const url =
+    env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL ||
+    env.AGENTPROOF_REPORTS_SUPABASE_URL ||
+    env.SUPABASE_URL ||
+    "";
+
   return {
-    url:
-      env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL ||
-      env.AGENTPROOF_REPORTS_SUPABASE_URL ||
-      env.SUPABASE_URL ||
-      "",
+    url,
     serviceRoleKey:
       env.AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY ||
+      getSharedControlPlaneServiceRoleKey(url, env) ||
       env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY ||
       env.SUPABASE_SERVICE_ROLE_KEY ||
       "",

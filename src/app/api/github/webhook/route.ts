@@ -1,6 +1,7 @@
 import { buildGitHubPullRequestInput, fetchGitHubPullRequestAnchor } from "@/lib/github";
 import {
   AnalysisJobQueueError,
+  claimAnalysisJobById,
   enqueueAnalysisJob,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
@@ -35,6 +36,7 @@ import {
 import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
+import { runClaimedAnalysisJob } from "@/lib/analysis-worker";
 import {
   assertSlackReportNotificationConfigured,
   sendSlackReportSummary,
@@ -58,6 +60,8 @@ import {
   type UsageQuotaReservation
 } from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
+import { enrichReportWithOpenAISemantics } from "@/lib/llm-semantic-runtime";
+import { after } from "next/server";
 
 const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
 const MAX_WEBHOOK_BODY_BYTES = 400_000;
@@ -117,6 +121,48 @@ export async function POST(request: Request) {
       event: meta.event,
       action
     });
+  }
+
+  if (meta.event === "check_run" && action === "completed" && settings.enabled) {
+    const normalizedPayload = pullRequestPayloadFromCompletedCheckRun(payload);
+    if (!normalizedPayload) {
+      return noStoreJson({
+        error: "GitHub check_run webhook payload is missing a single linked pull request or required automation metadata.",
+        code: "github_app_check_run_payload_invalid",
+        willAnalyze: false,
+        willComment: false
+      }, { status: 422 });
+    }
+
+    const automationContext = {
+      requestUrl: request.url,
+      delivery: meta.delivery,
+      event: meta.event,
+      action: "check_run_completed",
+      idempotencyScope: `check_run:${normalizedPayload.checkRunId}:${meta.delivery}`,
+      commentEnabled: false,
+      saveReportsEnabled: settings.saveReportsEnabled && !smokeControls.suppressSavedReport,
+      legacyRepoAllowed: isGitHubAppRepoAllowed(getString(getNestedRecord(payload, "repository"), "full_name"), settings)
+    };
+
+    if (process.env.VERCEL === "1") {
+      after(() => handlePullRequestAutomation(normalizedPayload.payload, automationContext).then(() => undefined));
+      return noStoreJson({
+        ok: true,
+        accepted: true,
+        deferred: true,
+        dryRun: false,
+        event: safeWebhookString(meta.event),
+        delivery: safeWebhookString(meta.delivery),
+        action: "check_run_completed",
+        automationEnabled: true,
+        willAnalyze: true,
+        willComment: false,
+        note: "Completed Check analysis was accepted for background processing."
+      }, { status: 202 });
+    }
+
+    return handlePullRequestAutomation(normalizedPayload.payload, automationContext);
   }
 
   if (meta.event !== "pull_request" || !settings.enabled) {
@@ -289,9 +335,10 @@ async function handlePullRequestAutomation(
     commentEnabled: boolean;
     saveReportsEnabled: boolean;
     legacyRepoAllowed: boolean;
+    idempotencyScope?: string;
   }
 ) {
-  if (!shouldHandlePullRequestAction(context.action)) {
+  if (!shouldHandlePullRequestAction(context.action) && context.action !== "check_run_completed") {
     return noStoreJson({
       ok: true,
       ignored: true,
@@ -424,7 +471,7 @@ async function handlePullRequestAutomation(
     automation.repositoryFullName.toLowerCase(),
     automation.pullRequestNumber,
     automation.headSha,
-    context.action
+    context.idempotencyScope ?? context.action
   ].join(":");
   const queueStatus = getAnalysisJobQueueStatus();
   if (queueStatus.enabled && !queueStatus.configured) {
@@ -701,6 +748,13 @@ async function handlePullRequestAutomation(
         code: job.durable ? "github_app_analysis_queued_durable" : "github_app_analysis_queued_memory"
       });
 
+      after(() => claimAnalysisJobById(job.id)
+        .then((claim) => claim.job
+          ? runClaimedAnalysisJob(claim.job, { requestUrl: context.requestUrl })
+          : undefined)
+        .then(() => undefined)
+        .catch(() => undefined));
+
       return noStoreJson({
         ok: true,
         accepted: true,
@@ -759,7 +813,12 @@ async function handlePullRequestAutomation(
       throw new Error("GitHub App PR analysis could not build a pull request input.");
     }
 
-    const report = generateVerificationReport(input);
+    const deterministicReport = generateVerificationReport(input);
+    const semanticResult = await enrichReportWithOpenAISemantics(input, deterministicReport, {
+      mode: tenantGrant.grant?.llmAnalysisMode
+        ?? (automation.repositoryPrivate === false ? "enhanced" : "essential")
+    });
+    const report = semanticResult.report;
     const validation = validateVerificationReport(report, { mode: "full" });
 
     if (!validation.valid) {
@@ -781,7 +840,13 @@ async function handlePullRequestAutomation(
     const saved = canSaveReport
       ? await createAutomationSavedReport(report, {
         requestUrl: context.requestUrl,
-        tenantId: tenantGrant.grant?.tenantId
+        ...(tenantGrant.grant?.tenantId ? {
+          tenantId: tenantGrant.grant.tenantId,
+          installationId: automation.installationId,
+          repositoryId: automation.repositoryId,
+          pullRequestNumber: automation.pullRequestNumber,
+          headSha: automation.headSha
+        } : {})
       })
       : undefined;
     const comment = canPostComment
@@ -1185,6 +1250,7 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
   const installation = getNestedRecord(payload, "installation");
   const repositoryFullName = getString(repository, "full_name");
   const repositoryId = getNumber(repository, "id");
+  const repositoryPrivate = typeof repository?.private === "boolean" ? repository.private : undefined;
   const pullRequestNumber = getNumber(pullRequest, "number");
   const pullRequestUrl = getString(pullRequest, "html_url");
   const head = getNestedRecord(pullRequest ?? {}, "head");
@@ -1207,10 +1273,41 @@ function parsePullRequestAutomationPayload(payload: Record<string, unknown>) {
   return {
     repositoryFullName,
     repositoryId,
+    repositoryPrivate,
     pullRequestNumber,
     pullRequestUrl,
     headSha,
     installationId
+  };
+}
+
+function pullRequestPayloadFromCompletedCheckRun(payload: Record<string, unknown>) {
+  const repository = getNestedRecord(payload, "repository");
+  const installation = getNestedRecord(payload, "installation");
+  const checkRun = getNestedRecord(payload, "check_run");
+  const checkRunId = getNumber(checkRun, "id");
+  const headSha = getString(checkRun, "head_sha");
+  const repositoryFullName = getString(repository, "full_name");
+  const installationId = getNumber(installation, "id");
+  const pullRequests = Array.isArray(checkRun?.pull_requests)
+    ? checkRun.pull_requests.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    : [];
+  const pullRequestNumber = pullRequests.length === 1 ? getNumber(pullRequests[0], "number") : undefined;
+
+  if (!checkRunId || !headSha || !isGitHubSha(headSha) || !repositoryFullName || !installationId || !pullRequestNumber) return null;
+
+  return {
+    checkRunId,
+    payload: {
+      action: "check_run_completed",
+      repository,
+      installation,
+      pull_request: {
+        number: pullRequestNumber,
+        html_url: `https://github.com/${repositoryFullName}/pull/${pullRequestNumber}`,
+        head: { sha: headSha }
+      }
+    } satisfies Record<string, unknown>
   };
 }
 

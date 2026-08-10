@@ -922,7 +922,7 @@ describe("generateVerificationReport", () => {
     expect(firstFiles.filter((path) => path === "Requirement evidence")).toHaveLength(0);
   });
 
-  it("marks PR-body-only criteria as manual check instead of confident requirements", () => {
+  it("evaluates PR-body-only intent without treating it as an authoritative requirement", () => {
     const report = generateVerificationReport({
       title: "Preserve URL params",
       description: [
@@ -946,8 +946,8 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
     const node = report.proofGraph.nodes[0];
 
-    expect(node?.sourceQuality).toBe("manual_check");
-    expect(report.requirements[0]?.status).toBe("unclear");
+    expect(node?.sourceQuality).toBe("author_claim");
+    expect(report.requirements[0]?.status).not.toBe("met");
     expect(report.limitations.join(" ")).toContain("No original task text was provided");
     expect(report.proofGraph.context.some((context) =>
       context.role === "author_claim" && /preserve search params/i.test(context.text)

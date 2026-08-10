@@ -111,7 +111,8 @@ describe("/api/tenants/repositories", () => {
           analysisEnabled: true,
           saveReportsEnabled: true,
           commentEnabled: false,
-          slackNotificationsEnabled: true
+          slackNotificationsEnabled: true,
+          llmAnalysisMode: "essential"
         }
       ],
       privacy: "grant-metadata-only",
@@ -189,7 +190,7 @@ describe("/api/tenants/repositories", () => {
     expect(serialized).not.toContain("member");
   });
 
-  it("updates only known boolean repository verification settings", async () => {
+  it("updates only known repository verification settings, including the LLM analysis mode", async () => {
     stubSettingsEnv();
     await createTenantRepositoryGrant({
       tenantId: "tenant_a",
@@ -212,7 +213,8 @@ describe("/api/tenants/repositories", () => {
           analysisEnabled: false,
           saveReportsEnabled: false,
           commentEnabled: false,
-          slackNotificationsEnabled: false
+          slackNotificationsEnabled: false,
+          llmAnalysisMode: "enhanced"
         }
       })
     }));
@@ -232,7 +234,8 @@ describe("/api/tenants/repositories", () => {
         analysisEnabled: false,
         saveReportsEnabled: false,
         commentEnabled: false,
-        slackNotificationsEnabled: false
+        slackNotificationsEnabled: false,
+        llmAnalysisMode: "enhanced"
       },
       privacy: "grant-metadata-only",
       next: "repository_settings_saved"
@@ -242,7 +245,8 @@ describe("/api/tenants/repositories", () => {
       analysisEnabled: false,
       saveReportsEnabled: false,
       commentEnabled: false,
-      slackNotificationsEnabled: false
+      slackNotificationsEnabled: false,
+      llmAnalysisMode: "enhanced"
     });
     expect(serialized).not.toContain("Patch excerpt");
   });

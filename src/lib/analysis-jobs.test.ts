@@ -1,17 +1,24 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertAnalysisJobIsPrivate,
+  claimAnalysisJobById,
   clearAnalysisJobsForTests,
+  claimAnalysisJobForProviderResponse,
   claimNextAnalysisJob,
   completeAnalysisJob,
   countTenantActiveAnalysisJobsForDeletion,
   enqueueAnalysisJob,
   failAnalysisJob,
+  fenceAnalysisJobSemanticRetryFinalization,
   getAnalysisJobDeadLetterSummary,
   getAnalysisJobQueueSummary,
   getAnalysisJobQueueStatus,
   getAnalysisJobsForTests,
   listTenantAnalysisJobs,
+  markAnalysisJobProviderSubmission,
+  markAnalysisJobSemanticRetrySubmission,
+  parkAnalysisJobForProvider,
   purgeTenantAnalysisJobsForDeletion
 } from "./analysis-jobs";
 import {
@@ -328,6 +335,949 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("key=");
   });
 
+  it("parks a processing job for provider polling and reclaims the same opaque response id when due", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    const parked = await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_background_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const early = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:14Z") });
+    const due = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+
+    expect(parked).toBe(true);
+    expect(early.job).toBeNull();
+    expect(due.job).toMatchObject({
+      id,
+      status: "processing",
+      provider_response_id: "resp_background_123",
+      provider_status: "in_progress",
+      attempts: 1,
+      provider_poll_attempts: 1,
+      provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    });
+    const tenantProjection = await listTenantAnalysisJobs({ tenantId: "tenant_a", limit: 10 });
+    expect(JSON.stringify(tenantProjection)).not.toContain("resp_background_123");
+    expect(JSON.stringify(tenantProjection)).not.toContain("provider_");
+  });
+
+  it("claims exactly one queued provider continuation by opaque response id", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_webhook_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:08:00Z")
+    });
+
+    const claimed = await claimAnalysisJobForProviderResponse("resp_webhook_123", {
+      now: new Date("2026-06-30T00:01:10Z"),
+      webhookId: "wh_delivery_123"
+    });
+    const duplicate = await claimAnalysisJobForProviderResponse("resp_webhook_123", {
+      now: new Date("2026-06-30T00:01:11Z"),
+      webhookId: "wh_delivery_123"
+    });
+    const unknown = await claimAnalysisJobForProviderResponse("resp_unknown_123", {
+      now: new Date("2026-06-30T00:01:12Z"),
+      webhookId: "wh_unknown_123"
+    });
+
+    expect(claimed.job).toMatchObject({
+      id,
+      status: "processing",
+      provider_response_id: "resp_webhook_123",
+      provider_status: "in_progress",
+      attempts: 1,
+      claim_generation: expect.any(String)
+    });
+    expect(duplicate.job).toBeNull();
+    expect(unknown.job).toBeNull();
+    expect(JSON.stringify(getAnalysisJobsForTests())).not.toContain("wh_delivery_123");
+    const tenantProjection = await listTenantAnalysisJobs({ tenantId: "tenant_a", limit: 10 });
+    expect(JSON.stringify(tenantProjection)).not.toContain("provider_webhook");
+    expect(JSON.stringify(tenantProjection)).not.toContain("resp_webhook_123");
+    expect(JSON.stringify({ claimed, duplicate, unknown })).not.toContain("service-role-secret");
+  });
+
+  it("claims the requested queued job without consuming an older queued job", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const first = await enqueueAnalysisJob(jobInput());
+    const requested = await enqueueAnalysisJob({
+      ...jobInput(),
+      headSha: "def456",
+      now: new Date("2026-06-30T00:00:01Z")
+    });
+    const claim = await claimAnalysisJobById(requested.id, { now: new Date("2026-06-30T00:00:02Z") });
+
+    expect(claim.job).toMatchObject({ id: requested.id });
+    expect(getAnalysisJobsForTests().find((job) => job.id === first.id)).toMatchObject({ status: "queued" });
+  });
+
+  it("rejects malformed provider response ids before lookup", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    await expect(claimAnalysisJobForProviderResponse("resp_bad?token=secret", { webhookId: "wh_delivery_123" }))
+      .rejects.toThrow("Analysis job provider response id is invalid.");
+    await expect(claimAnalysisJobForProviderResponse("resp_valid_123", { webhookId: "bad webhook id" }))
+      .rejects.toThrow("OpenAI webhook id is invalid.");
+    expect(getAnalysisJobsForTests()).toEqual([]);
+  });
+
+  it("does not let a repeated webhook delivery bypass retry backoff", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_webhook_retry_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const webhookClaim = await claimAnalysisJobForProviderResponse("resp_webhook_retry_123", {
+      now: new Date("2026-06-30T00:01:10Z"),
+      webhookId: "wh_retry_123"
+    });
+    await failAnalysisJob({
+      id,
+      claimGeneration: webhookClaim.job!.claim_generation!,
+      retryable: true,
+      code: "openai_provider_unavailable",
+      summary: "OpenAI response retrieval is temporarily unavailable.",
+      now: new Date("2026-06-30T00:01:11Z"),
+      retryAfterMs: 120_000
+    });
+
+    const replayBeforeBackoff = await claimAnalysisJobForProviderResponse("resp_webhook_retry_123", {
+      now: new Date("2026-06-30T00:01:12Z"),
+      webhookId: "wh_retry_123"
+    });
+    const replayAfterBackoff = await claimAnalysisJobForProviderResponse("resp_webhook_retry_123", {
+      now: new Date("2026-06-30T00:03:11Z"),
+      webhookId: "wh_retry_123"
+    });
+
+    expect(replayBeforeBackoff.job).toBeNull();
+    expect(replayBeforeBackoff.disposition).toBe("backoff");
+    expect(replayAfterBackoff.job).toMatchObject({ id, status: "processing" });
+    const serialized = JSON.stringify(getAnalysisJobsForTests());
+    expect(serialized).not.toContain("wh_retry_123");
+    expect(serialized).toMatch(/provider_webhook_id_hash[^a-z0-9]*[a-f0-9]{64}/i);
+  });
+
+  it("claims a Supabase provider continuation with status and updated-at fencing", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const queuedRow = {
+      id: "job_123",
+      status: "queued",
+      tenant_id: "tenant_a",
+      idempotency_key_hash: "a".repeat(64),
+      delivery_id: "delivery_123",
+      event: "pull_request",
+      action: "opened",
+      installation_id: 321,
+      repository_id: 100,
+      repository_full_name: "RengGyu/AgentProof",
+      pull_request_number: 7,
+      pull_request_url: "https://github.com/RengGyu/AgentProof/pull/7",
+      head_sha: "abc123",
+      save_report: true,
+      comment: false,
+      attempts: 0,
+      created_at: "2026-06-30T00:00:00.000Z",
+      updated_at: "2026-06-30T00:01:00.000Z",
+      run_after: "2026-06-30T00:08:00.000Z",
+      locked_at: null,
+      completed_at: null,
+      error_code: null,
+      error_summary: null,
+      result_summary: null,
+      claim_generation: null,
+      provider_response_id: "resp_webhook_123",
+      provider_status: "in_progress",
+      provider_poll_attempts: 1,
+      provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        const update = JSON.parse(String(init.body));
+        return Response.json([{ ...queuedRow, ...update }]);
+      }
+      return Response.json([queuedRow]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await claimAnalysisJobForProviderResponse("resp_webhook_123", {
+      now: new Date("2026-06-30T00:01:10Z"),
+      webhookId: "wh_delivery_123"
+    });
+
+    expect(result.job).toMatchObject({
+      id: "job_123",
+      status: "processing",
+      claim_generation: expect.any(String)
+    });
+    const [getUrl] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [patchUrl, patchInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(decodeURIComponent(getUrl)).toContain("provider_response_id=eq.resp_webhook_123");
+    expect(decodeURIComponent(getUrl)).toContain("status=in.(queued,failed_retryable,processing)");
+    expect(decodeURIComponent(patchUrl)).toContain("status=eq.queued");
+    expect(decodeURIComponent(patchUrl)).toContain("updated_at=eq.2026-06-30T00:01:00.000Z");
+    expect(JSON.stringify({ getUrl, patchUrl, body: patchInit.body })).not.toContain("service-role-secret");
+  });
+
+  it("rejects malformed or secret-like provider continuation ids before storage", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+
+    await expect(parkAnalysisJobForProvider({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      responseId: "resp_valid?token=github_pat_secret",
+      providerStatus: "queued",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    })).rejects.toThrow("Analysis job provider continuation is invalid.");
+    expect(JSON.stringify(getAnalysisJobsForTests()[0])).not.toContain("github_pat_secret");
+  });
+
+  it("fences stale workers and records submission intent before an external provider call", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const first = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:01:00Z"),
+      leaseMs: 1_000
+    });
+    const firstToken = first.job!.claim_generation!;
+    const marked = await markAnalysisJobProviderSubmission({
+      id,
+      claimGeneration: firstToken,
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const second = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:01:02Z"),
+      leaseMs: 1_000
+    });
+
+    expect(marked).toMatchObject({
+      status: "processing",
+      claim_generation: firstToken,
+      provider_status: "submitting",
+      provider_response_id: null
+    });
+    expect(second.job!.claim_generation).not.toBe(firstToken);
+    await expect(parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstToken,
+      responseId: "resp_stale_worker_123",
+      providerStatus: "queued",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z"),
+      now: new Date("2026-06-30T00:01:03Z")
+    })).resolves.toBe(false);
+    await expect(completeAnalysisJob({
+      id,
+      claimGeneration: firstToken,
+      now: new Date("2026-06-30T00:01:03Z")
+    })).resolves.toBe(false);
+    await expect(failAnalysisJob({
+      id,
+      claimGeneration: firstToken,
+      retryable: false,
+      code: "stale_worker",
+      summary: "Stale worker must not alter the current claim.",
+      now: new Date("2026-06-30T00:01:03Z")
+    })).resolves.toBe(false);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "processing",
+      claim_generation: second.job!.claim_generation,
+      provider_status: "submitting"
+    });
+  });
+
+  it("rejects provider submission windows longer than the bounded continuation lifetime", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+
+    await expect(markAnalysisJobProviderSubmission({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:12:00Z")
+    })).rejects.toThrow("Analysis job provider submission marker is invalid.");
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "processing",
+      provider_response_id: null,
+      provider_status: null
+    });
+  });
+
+  it("atomically moves the first response into a bounded prior continuation before retry submission", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_background_first_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const retryClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+
+    const marked = await markAnalysisJobSemanticRetrySubmission({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      priorResponseId: "resp_background_first_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+
+    expect(marked).toMatchObject({
+      status: "processing",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_first_123",
+      prior_provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      prior_provider_expires_at: "2026-06-30T00:09:00.000Z",
+      provider_response_id: null,
+      provider_status: "submitting",
+      provider_submitted_at: "2026-06-30T00:01:20.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    });
+
+    await expect(markAnalysisJobSemanticRetrySubmission({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      priorResponseId: "resp_background_first_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:21Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z")
+    })).resolves.toBeNull();
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_first_123",
+      provider_response_id: null,
+      provider_status: "submitting"
+    });
+  });
+
+  it("reclaims only an abandoned semantic retry submission after its bounded short lease", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_reclaim_first_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const retryClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+    const marked = await markAnalysisJobSemanticRetrySubmission({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      priorResponseId: "resp_reclaim_first_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+
+    const tooEarly = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:49.999Z") });
+    const reclaimed = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:50.001Z") });
+    const secondReclaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:02:20.002Z") });
+
+    expect(marked).toMatchObject({ locked_at: "2026-06-30T00:01:20.000Z" });
+    expect(tooEarly.job).toBeNull();
+    expect(reclaimed.job).toMatchObject({
+      id,
+      status: "processing",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_reclaim_first_123",
+      provider_response_id: null,
+      provider_status: "in_progress",
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      attempts: 2
+    });
+    expect(reclaimed.job!.claim_generation).not.toBe(retryClaim.job!.claim_generation);
+    expect(secondReclaim.job).toBeNull();
+  });
+
+  it("atomically exits semantic retry submission uncertainty before finalization side effects", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_fence_first_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const retryClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+    await markAnalysisJobSemanticRetrySubmission({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      priorResponseId: "resp_fence_first_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+
+    const fenced = await fenceAnalysisJobSemanticRetryFinalization({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      now: new Date("2026-06-30T00:01:25Z")
+    });
+    const earlyReclaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:55.001Z") });
+
+    expect(fenced).toMatchObject({
+      status: "processing",
+      locked_at: "2026-06-30T00:01:25.000Z",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_fence_first_123",
+      provider_response_id: null,
+      provider_status: null,
+      provider_submitted_at: null,
+      provider_expires_at: null
+    });
+    expect(earlyReclaim.job).toBeNull();
+  });
+
+  it("does not shorten the normal processing lease outside semantic retry submission uncertainty", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    const earlyReclaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:31Z") });
+
+    expect(claim.job).toMatchObject({ status: "processing", semantic_retry_attempts: 0 });
+    expect(earlyReclaim.job).toBeNull();
+  });
+
+  it("preserves both active and prior opaque references while a retryable retry poll backs off", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_background_first_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const retryClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+    await markAnalysisJobSemanticRetrySubmission({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      priorResponseId: "resp_background_first_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z")
+    });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      responseId: "resp_background_retry_123",
+      providerStatus: "queued",
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:35Z")
+    });
+    const pollClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:35Z") });
+    await failAnalysisJob({
+      id,
+      claimGeneration: pollClaim.job!.claim_generation!,
+      retryable: true,
+      code: "openai_rate_limited",
+      summary: "OpenAI semantic request is temporarily limited.",
+      now: new Date("2026-06-30T00:01:36Z"),
+      maxAttempts: 20
+    });
+
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "failed_retryable",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_first_123",
+      provider_response_id: "resp_background_retry_123",
+      provider_status: "queued"
+    });
+  });
+
+  it("preserves Supabase active and prior retry references through retryable backoff", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const processingRow = {
+      ...jobRow({ id: "job_retry_backoff_123", status: "processing", attempts: 2 }),
+      claim_generation: "123e4567-e89b-42d3-a456-426614174000",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_first_123",
+      prior_provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      prior_provider_expires_at: "2026-06-30T00:09:00.000Z",
+      provider_response_id: "resp_background_retry_123",
+      provider_status: "queued",
+      provider_submitted_at: "2026-06-30T00:01:20.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Response.json([{ ...processingRow, ...JSON.parse(String(init.body)) }]);
+      }
+      return Response.json([processingRow]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await failAnalysisJob({
+      id: processingRow.id,
+      claimGeneration: processingRow.claim_generation,
+      retryable: true,
+      code: "openai_rate_limited",
+      summary: "OpenAI semantic request is temporarily limited.",
+      now: new Date("2026-06-30T00:01:36Z"),
+      maxAttempts: 20
+    });
+    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    const patchBody = JSON.parse(String(patchCall?.[1]?.body));
+
+    expect(result).toBe(true);
+    expect(patchBody).toMatchObject({
+      status: "failed_retryable",
+      run_after: "2026-06-30T00:03:36.000Z"
+    });
+    expect(patchBody).not.toHaveProperty("semantic_retry_attempts");
+    expect(patchBody).not.toHaveProperty("prior_provider_response_id");
+    expect(patchBody).not.toHaveProperty("provider_response_id");
+  });
+
+  it("uses claim and updated-at fencing for the Supabase semantic retry transition", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const processingRow = {
+      ...jobRow({ id: "job_semantic_retry_123", status: "processing", attempts: 1 }),
+      status: "processing",
+      updated_at: "2026-06-30T00:01:15.000Z",
+      claim_generation: "123e4567-e89b-42d3-a456-426614174000",
+      provider_response_id: "resp_background_first_123",
+      provider_status: "in_progress",
+      provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      prior_provider_submitted_at: null,
+      prior_provider_expires_at: null
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Response.json([{ ...processingRow, ...JSON.parse(String(init.body)) }]);
+      }
+      return Response.json([processingRow]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await markAnalysisJobSemanticRetrySubmission({
+      id: processingRow.id,
+      claimGeneration: processingRow.claim_generation,
+      priorResponseId: "resp_background_first_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+
+    expect(result).toMatchObject({ semantic_retry_attempts: 1, provider_status: "submitting" });
+    const [patchUrl, patchInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(decodeURIComponent(patchUrl)).toContain("status=eq.processing");
+    expect(decodeURIComponent(patchUrl)).toContain(`claim_generation=eq.${processingRow.claim_generation}`);
+    expect(decodeURIComponent(patchUrl)).toContain("updated_at=eq.2026-06-30T00:01:15.000Z");
+    expect(JSON.parse(String(patchInit.body))).toMatchObject({
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_first_123",
+      provider_response_id: null,
+      provider_status: "submitting"
+    });
+  });
+
+  it("fences Supabase semantic retry finalization with claim and updated-at CAS", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const processingRow = {
+      ...jobRow({ id: "job_semantic_finalization_123", status: "processing", attempts: 2 }),
+      updated_at: "2026-06-30T00:01:20.000Z",
+      locked_at: "2026-06-30T00:01:20.000Z",
+      claim_generation: "123e4567-e89b-42d3-a456-426614174000",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_fence_first_123",
+      prior_provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      prior_provider_expires_at: "2026-06-30T00:09:00.000Z",
+      provider_response_id: null,
+      provider_status: "submitting",
+      provider_submitted_at: "2026-06-30T00:01:20.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Response.json([{ ...processingRow, ...JSON.parse(String(init.body)) }]);
+      }
+      return Response.json([processingRow]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fenceAnalysisJobSemanticRetryFinalization({
+      id: processingRow.id,
+      claimGeneration: processingRow.claim_generation,
+      now: new Date("2026-06-30T00:01:25Z")
+    });
+    const [patchUrl, patchInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    const patchBody = JSON.parse(String(patchInit.body));
+
+    expect(result).toMatchObject({
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_fence_first_123",
+      provider_status: null,
+      provider_submitted_at: null,
+      provider_expires_at: null
+    });
+    expect(decodeURIComponent(patchUrl)).toContain("status=eq.processing");
+    expect(decodeURIComponent(patchUrl)).toContain(`claim_generation=eq.${processingRow.claim_generation}`);
+    expect(decodeURIComponent(patchUrl)).toContain("updated_at=eq.2026-06-30T00:01:20.000Z");
+    expect(patchBody).toMatchObject({
+      updated_at: "2026-06-30T00:01:25.000Z",
+      locked_at: "2026-06-30T00:01:25.000Z",
+      provider_response_id: null,
+      provider_status: null,
+      provider_poll_attempts: 0,
+      provider_submitted_at: null,
+      provider_expires_at: null
+    });
+    expect(patchBody).not.toHaveProperty("prior_provider_response_id");
+    expect(patchBody).not.toHaveProperty("semantic_retry_attempts");
+  });
+
+  it("returns no Supabase semantic retry finalization fence when the CAS loses", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const processingRow = {
+      ...jobRow({ id: "job_semantic_finalization_loser_123", status: "processing", attempts: 2 }),
+      updated_at: "2026-06-30T00:01:20.000Z",
+      locked_at: "2026-06-30T00:01:20.000Z",
+      claim_generation: "123e4567-e89b-42d3-a456-426614174000",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_fence_first_123",
+      prior_provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      prior_provider_expires_at: "2026-06-30T00:09:00.000Z",
+      provider_response_id: null,
+      provider_status: "submitting",
+      provider_submitted_at: "2026-06-30T00:01:20.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+      init?.method === "PATCH" ? Response.json([]) : Response.json([processingRow])
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fenceAnalysisJobSemanticRetryFinalization({
+      id: processingRow.id,
+      claimGeneration: processingRow.claim_generation,
+      now: new Date("2026-06-30T00:01:25Z")
+    });
+
+    expect(result).toBeNull();
+    expect(fetchMock.mock.calls.filter((call) => call[1]?.method === "PATCH")).toHaveLength(1);
+  });
+
+  it("reclaims abandoned Supabase retry submission state with status and updated-at CAS fencing", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const uncertainRow = {
+      ...jobRow({ id: "job_retry_reclaim_123", status: "processing", attempts: 1 }),
+      updated_at: "2026-06-30T00:01:20.000Z",
+      locked_at: "2026-06-30T00:01:20.000Z",
+      claim_generation: "123e4567-e89b-42d3-a456-426614174000",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_reclaim_first_123",
+      prior_provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      prior_provider_expires_at: "2026-06-30T00:09:00.000Z",
+      provider_response_id: null,
+      provider_status: "submitting",
+      provider_submitted_at: "2026-06-30T00:01:20.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = decodeURIComponent(String(url));
+      if (init?.method === "PATCH") {
+        const update = JSON.parse(String(init.body));
+        return Response.json([{ ...uncertainRow, ...update }]);
+      }
+      if (href.includes("semantic_retry_attempts=eq.1")) return Response.json([uncertainRow]);
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:50.001Z") });
+
+    expect(result.job).toMatchObject({ id: uncertainRow.id, status: "processing", attempts: 2 });
+    const specialUrl = decodeURIComponent(String(fetchMock.mock.calls[1]?.[0]));
+    const patchUrl = decodeURIComponent(String(fetchMock.mock.calls[2]?.[0]));
+    const patchBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body));
+    expect(specialUrl).toContain("semantic_retry_attempts=eq.1");
+    expect(specialUrl).toContain("provider_status=eq.submitting");
+    expect(specialUrl).toContain("provider_response_id=is.null");
+    expect(specialUrl).toContain("prior_provider_expires_at=gt.2026-06-30T00:01:50.001Z");
+    expect(patchUrl).toContain("status=eq.processing");
+    expect(patchUrl).toContain("updated_at=eq.2026-06-30T00:01:20.000Z");
+    expect(patchBody).toMatchObject({
+      provider_response_id: null,
+      provider_status: "in_progress",
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_reclaim_first_123"
+    });
+  });
+
+  it("returns no Supabase retry reclaim when the CAS update loses", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    const uncertainRow = {
+      ...jobRow({ id: "job_retry_reclaim_loser_123", status: "processing", attempts: 1 }),
+      updated_at: "2026-06-30T00:01:20.000Z",
+      locked_at: "2026-06-30T00:01:20.000Z",
+      claim_generation: "123e4567-e89b-42d3-a456-426614174000",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_reclaim_first_123",
+      prior_provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      prior_provider_expires_at: "2026-06-30T00:09:00.000Z",
+      provider_response_id: null,
+      provider_status: "submitting",
+      provider_submitted_at: "2026-06-30T00:01:20.000Z",
+      provider_expires_at: "2026-06-30T00:09:00.000Z"
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = decodeURIComponent(String(url));
+      if (init?.method === "PATCH") return Response.json([]);
+      if (href.includes("semantic_retry_attempts=eq.1")) return Response.json([uncertainRow]);
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:50.001Z") });
+
+    expect(result.job).toBeNull();
+    expect(fetchMock.mock.calls.filter((call) => call[1]?.method === "PATCH")).toHaveLength(1);
+  });
+
+  it("clears active and prior continuation metadata when the semantic retry is exhausted", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_background_123",
+      providerStatus: "queued",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const secondClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+    await markAnalysisJobSemanticRetrySubmission({
+      id,
+      claimGeneration: secondClaim.job!.claim_generation!,
+      priorResponseId: "resp_background_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:16Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z")
+    });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: secondClaim.job!.claim_generation!,
+      responseId: "resp_background_retry_123",
+      providerStatus: "queued",
+      submittedAt: new Date("2026-06-30T00:01:16Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:31Z")
+    });
+    const retryClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:31Z") });
+    await failAnalysisJob({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      retryable: true,
+      code: "openai_background_failed",
+      summary: "OpenAI background analysis failed.",
+      now: new Date("2026-06-30T00:01:32Z"),
+      maxAttempts: 1
+    });
+
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "failed_terminal",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      prior_provider_submitted_at: null,
+      prior_provider_expires_at: null,
+      provider_response_id: null,
+      provider_status: null,
+      provider_poll_attempts: 0,
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      provider_webhook_id_hash: null,
+      provider_webhook_received_at: null
+    });
+  });
+
+  it("preserves provider continuation metadata for a bounded retryable poll failure", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_background_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const secondClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+    await failAnalysisJob({
+      id,
+      claimGeneration: secondClaim.job!.claim_generation!,
+      retryable: true,
+      code: "openai_rate_limited",
+      summary: "OpenAI semantic request is temporarily limited.",
+      now: new Date("2026-06-30T00:01:16Z"),
+      maxAttempts: 20
+    });
+
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "failed_retryable",
+      provider_response_id: "resp_background_123",
+      provider_status: "in_progress",
+      provider_poll_attempts: 1
+    });
+  });
+
+  it("defines a service-role-only durable queue with bounded provider continuation columns", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/202608090002_analysis_jobs_openai_background.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain("create table if not exists public.agentproof_analysis_jobs");
+    expect(migration).toContain("provider_response_id text");
+    expect(migration).toContain("claim_generation text");
+    expect(migration).toContain("provider_status text");
+    expect(migration).toContain("provider_poll_attempts integer");
+    expect(migration).toContain("enable row level security");
+    expect(migration).toContain("revoke all on table public.agentproof_analysis_jobs from anon, authenticated");
+    expect(migration).toContain("grant select, insert, update, delete on table public.agentproof_analysis_jobs to service_role");
+
+    const webhookMigration = readFileSync(
+      new URL("../../supabase/migrations/202608100001_analysis_jobs_openai_webhook.sql", import.meta.url),
+      "utf8"
+    );
+    expect(webhookMigration).toContain("create unique index if not exists agentproof_analysis_jobs_provider_response_id_idx");
+    expect(webhookMigration).toContain("where provider_response_id is not null");
+
+    const retryMigration = readFileSync(
+      new URL("../../supabase/migrations/202608100002_analysis_jobs_openai_semantic_retry.sql", import.meta.url),
+      "utf8"
+    );
+    expect(retryMigration).toContain("semantic_retry_attempts integer not null default 0");
+    expect(retryMigration).toContain("prior_provider_response_id text");
+    expect(retryMigration).toContain("prior_provider_submitted_at timestamptz");
+    expect(retryMigration).toContain("prior_provider_expires_at timestamptz");
+    expect(retryMigration).toContain("semantic_retry_attempts between 0 and 1");
+    expect(retryMigration).toContain("prior_provider_response_id ~ '^resp_[A-Za-z0-9_-]{1,180}$'");
+    expect(retryMigration).toContain("prior_provider_expires_at > prior_provider_submitted_at");
+    expect(retryMigration).toContain("prior_provider_expires_at <= prior_provider_submitted_at + interval '10 minutes'");
+    expect(retryMigration).toContain("revoke all on table public.agentproof_analysis_jobs from anon, authenticated");
+    expect(retryMigration).toContain("grant select, insert, update, delete on table public.agentproof_analysis_jobs to service_role");
+  });
+
   it("lists tenant analysis jobs as summary-only projections", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
@@ -515,6 +1465,52 @@ describe("analysis job queue", () => {
     expect(serializedRemaining).not.toContain("Patch excerpt");
     expect(serializedRemaining).not.toContain("claims");
     expect(serializedRemaining).not.toContain("reprompt");
+  });
+
+  it("deletes a tenant job populated with both prior and active semantic continuations", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      responseId: "resp_deletion_first_123",
+      providerStatus: "in_progress",
+      submittedAt: new Date("2026-06-30T00:01:00Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:15Z")
+    });
+    const retryClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
+    await markAnalysisJobSemanticRetrySubmission({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      priorResponseId: "resp_deletion_first_123",
+      priorSubmittedAt: new Date("2026-06-30T00:01:00Z"),
+      priorExpiresAt: new Date("2026-06-30T00:09:00Z"),
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+    await parkAnalysisJobForProvider({
+      id,
+      claimGeneration: retryClaim.job!.claim_generation!,
+      responseId: "resp_deletion_retry_123",
+      providerStatus: "queued",
+      submittedAt: new Date("2026-06-30T00:01:20Z"),
+      expiresAt: new Date("2026-06-30T00:09:00Z"),
+      runAfter: new Date("2026-06-30T00:01:35Z")
+    });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      prior_provider_response_id: "resp_deletion_first_123",
+      provider_response_id: "resp_deletion_retry_123"
+    });
+
+    const result = await purgeTenantAnalysisJobsForDeletion({ tenantId: "tenant_a" });
+
+    expect(result).toMatchObject({ deletedCount: 1, store: "memory" });
+    expect(getAnalysisJobsForTests()).toEqual([]);
   });
 
   it("purges durable Supabase tenant analysis jobs with count-first metadata and no row body", async () => {

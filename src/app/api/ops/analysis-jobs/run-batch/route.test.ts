@@ -66,6 +66,22 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
     expect(serialized).not.toContain("ops-secret-value");
   });
 
+  it("explains that the worker endpoint cannot run when queue mode is disabled", async () => {
+    vi.stubEnv("AGENTPROOF_OPS_TOKEN", "ops-secret-value");
+
+    const response = await POST(new Request("http://localhost/api/ops/analysis-jobs/run-batch?limit=1", {
+      method: "POST",
+      headers: { "x-agentproof-ops-token": "ops-secret-value" }
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json).toEqual({
+      error: "Analysis queue mode is disabled; GitHub webhook analyses run inline.",
+      code: "analysis_worker_queue_disabled"
+    });
+  });
+
   it("runs a bounded batch with metadata-only public results", async () => {
     stubReadyWorkerEnv();
     vi.stubEnv("AGENTPROOF_OPS_TOKEN", "ops-secret-value");
@@ -94,6 +110,7 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
       requestedLimit: 2,
       processed: 2,
       completed: 2,
+      waitingProvider: 0,
       failedRetryable: 0,
       failedTerminal: 0,
       idle: false,

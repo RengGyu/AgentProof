@@ -191,6 +191,28 @@ describe("GitHub installation metadata store", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves stored account metadata when a status-only Supabase upsert omits it", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes("select=tenant_id")) {
+        return Response.json([{ tenant_id: "tenant_a" }]);
+      }
+      return new Response(null, { status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertTenantGitHubInstallation({
+      tenantId: "tenant_a",
+      installationId: 321,
+      status: "active"
+    }, supabaseEnv(), Date.parse("2026-08-04T13:00:00Z"));
+
+    const [, init] = fetchMock.mock.calls[1] as unknown as [unknown, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body).not.toHaveProperty("account_id");
+    expect(body).not.toHaveProperty("account_login");
+    expect(body).not.toHaveProperty("account_type");
+  });
+
   it("counts Supabase installation rows with a narrow HEAD request", async () => {
     const fetchMock = vi.fn(async () => new Response(null, {
       status: 200,

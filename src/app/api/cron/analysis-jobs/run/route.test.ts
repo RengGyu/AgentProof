@@ -139,6 +139,7 @@ describe("GET /api/cron/analysis-jobs/run", () => {
       requestedLimit: 3,
       processed: 1,
       completed: 1,
+      waitingProvider: 0,
       failedRetryable: 0,
       failedTerminal: 0,
       idle: false,

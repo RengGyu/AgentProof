@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
@@ -15,6 +16,9 @@ import {
   purgeTenantSavedReportsForDeletion,
   SavedReportStoreError
 } from "./server-report-store";
+import { createVerifiedAuthenticity } from "./report-authenticity";
+import { projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
+import type { VerificationReport } from "./types";
 import { generateVerificationReport } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
@@ -109,6 +113,267 @@ describe("server report store", () => {
     await expect(getSavedReport(saved.id)).resolves.toMatchObject({
       id: saved.id,
       report: { authenticity: { trust: "verified_agentproof" } }
+    });
+  });
+
+  it("retains only a validated semantic analysis in a signed tenant report", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    const requirementId = report.requirements[0]!.requirementId;
+    report.semantic = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        requirement_id: requirementId,
+        requirement_summary: "Review the supplied evidence for this requirement.",
+        evidence_support: "no_evidence_found",
+        summary: "No supplied evidence directly supports this requirement.",
+        evidence_ids: [],
+        uncertainty: "high"
+      }],
+      evidence_gaps: [],
+      review_targets: [],
+      remediation_requests: [],
+      uncertainties: []
+    };
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+
+    expect(saved.report.semantic).toEqual(report.semantic);
+    expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("retains only bounded unavailable semantic runtime state in a signed tenant report", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.semanticAnalysis = { status: "unavailable", attempts: 2 };
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "c".repeat(40)
+    });
+
+    expect(saved.report.semanticAnalysis).toEqual({ status: "unavailable", attempts: 2 });
+    expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("stores useful canonical gap and remediation text without source-derived prose", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    report.requirements[0]!.gaps.push("PRIVATE ISSUE WORDING SHOULD NOT SAVE");
+    report.reprompt.prompt = "RAW AGENT REQUEST SHOULD NOT SAVE";
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "d".repeat(40)
+    });
+    const serialized = JSON.stringify(saved.report);
+
+    expect(saved.report.requirements.flatMap((item) => item.gaps)).toContain(
+      "Targeted test evidence is missing for this requirement."
+    );
+    expect(saved.report.reprompt.prompt).toBe(
+      "Add or link a targeted test and its Check result for the requirement."
+    );
+    expect(serialized).not.toContain("PRIVATE ISSUE WORDING");
+    expect(serialized).not.toContain("RAW AGENT REQUEST");
+    expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("updates the current report for the same head and marks it stale only after a different head", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const first = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "a".repeat(40)
+    });
+    const sameHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "a".repeat(40)
+    });
+    expect(sameHead.id).toBe(first.id);
+    expect(await listTenantSavedReports({ tenantId: "tenant_a", limit: 25 })).toHaveLength(1);
+
+    const nextHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "b".repeat(40)
+    });
+
+    expect((await getSavedReport(first.id, { tenantId: "tenant_a" }))?.staleAt).toEqual(expect.any(String));
+    expect((await getSavedReport(sameHead.id, { tenantId: "tenant_a" }))?.staleAt).toEqual(expect.any(String));
+    expect((await getSavedReport(nextHead.id, { tenantId: "tenant_a" }))?.staleAt).toBeUndefined();
+  });
+
+  it("defines same-head Supabase replacement without weakening different-head STALE semantics", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/202608090001_saved_reports_same_head_upsert.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain("agentproof_saved_reports_pr_head_unique_idx");
+    expect(migration).toContain("row_number() over");
+    expect(migration).toContain("current_rank > 1");
+    expect(migration).toContain("and stale_at is null");
+    expect(migration).toContain("on conflict (tenant_id, repository_id, pull_request_number, head_sha)");
+    expect(migration).toContain("do update set");
+    expect(migration).toContain("head_sha is distinct from p_head_sha");
+  });
+
+  it("defines the Supabase STALE transition in the same transaction as the new head insert", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/202608040001_saved_reports_stale_metadata.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain("before insert on public.agentproof_saved_reports");
+    expect(migration).toContain("head_sha is distinct from new.head_sha");
+    expect(migration).toContain("and stale_at is null");
+    expect(migration).toContain("agentproof_saved_reports_identity_metadata_check");
+    expect(migration).toContain("repository_id is not null");
+    expect(migration).toContain("pull_request_number is not null");
+    expect(migration).toContain("head_sha is not null");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("agentproof_store_tenant_report");
+  });
+
+  it("stores a verified tenant report through the atomic Supabase STALE RPC", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      return Response.json([{
+        id: body.p_id,
+        created_at: body.p_created_at,
+        expires_at: body.p_expires_at,
+        report: body.p_report,
+        tenant_id: body.p_tenant_id,
+        installation_id: body.p_installation_id,
+        repository_id: body.p_repository_id,
+        pull_request_number: body.p_pull_request_number,
+        head_sha: body.p_head_sha
+      }]);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+
+    expect(url).toBe("https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_store_tenant_report");
+    expect(init.method).toBe("POST");
+    expect(body).toMatchObject({
+      p_tenant_id: "tenant_a",
+      p_installation_id: 321,
+      p_repository_id: 100,
+      p_pull_request_number: 8,
+      p_head_sha: "a".repeat(40)
+    });
+    expect(Object.keys(body.p_report).sort()).toEqual([
+      "analysisContext",
+      "evidenceIndex",
+      "integrity",
+      "priority",
+      "reprompt",
+      "requirements",
+      "reviewPriority",
+      "testing",
+      "version"
+    ]);
+    expect(JSON.stringify(body.p_report)).not.toContain("proofGraph");
+    expect(JSON.stringify(body.p_report)).not.toContain("source");
+    expect(saved).toMatchObject({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 8 });
+  });
+
+  it("stores only the exact signed tenant report contract and rejects a re-signed privacy violation", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    report.source.title = "RAW PR BODY SHOULD NOT SAVE";
+    report.source.author = "RAW GITHUB RESPONSE SHOULD NOT SAVE";
+    report.requirements[0].requirementText = "Issue body: PRIVATE ISSUE TEXT SHOULD NOT SAVE";
+    report.evidenceIndex[0].summary = "raw diff with github_pat_secret_should_not_leak";
+    report.reprompt.prompt = "raw log and token=secret_should_not_leak";
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+    const serialized = JSON.stringify(saved.report);
+
+    expect(validateTenantStoredReport(saved.report, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(serialized).not.toContain("RAW PR BODY");
+    expect(serialized).not.toContain("RAW GITHUB RESPONSE");
+    expect(serialized).not.toContain("PRIVATE ISSUE TEXT");
+    expect(serialized).not.toContain("raw diff");
+    expect(serialized).not.toContain("raw log");
+    expect(serialized).not.toContain("github_pat_");
+    expect(serialized).not.toContain("secret_should_not_leak");
+
+    const invalid = structuredClone(saved.report);
+    invalid.source.title = "Leaked pull request body";
+    invalid.authenticity = createVerifiedAuthenticity(invalid, signingSecret);
+
+    expect(validateTenantStoredReport(invalid, signingSecret)).toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining(["source.title is outside the tenant report contract."])
+    });
+
+    const extraField = structuredClone(saved.report) as VerificationReport & { rawDiff?: string };
+    extraField.rawDiff = "private patch";
+    const invalidEnum = structuredClone(saved.report);
+    (invalidEnum.summary as { priority: string }).priority = "urgent";
+    const missingReference = structuredClone(saved.report);
+    missingReference.requirements[0].evidenceRefs.push("ev_missing");
+    const unsafeLocation = structuredClone(saved.report);
+    unsafeLocation.reviewPriority[0].path = "../private/file.ts";
+    const oversized = structuredClone(saved.report);
+    oversized.evidenceIndex[0].locator = `src/${"a".repeat(1000)}`;
+
+    for (const candidate of [extraField, invalidEnum, missingReference, unsafeLocation, oversized]) {
+      candidate.authenticity = createVerifiedAuthenticity(candidate, signingSecret);
+      expect(validateTenantStoredReport(candidate, signingSecret).valid).toBe(false);
+    }
+
+    const badSignature = structuredClone(saved.report);
+    badSignature.summary.confidence = 0.1;
+    expect(validateTenantStoredReport(badSignature, signingSecret).errors).toContain("authenticity signature is invalid.");
+  });
+
+  it("rejects a tampered or expanded persisted tenant report projection", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const safe = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "a".repeat(40)
+    });
+    const projected = projectTenantPersistedReport(safe.report, signingSecret);
+
+    expect(validateTenantPersistedReport(projected, signingSecret)).toEqual({ valid: true, errors: [] });
+
+    const tampered = structuredClone(projected);
+    tampered.priority = projected.priority === "low" ? "high" : "low";
+    expect(validateTenantPersistedReport(tampered, signingSecret)).toMatchObject({ valid: false });
+
+    const expanded = { ...projected, rawDiff: "private patch" };
+    expect(validateTenantPersistedReport(expanded, signingSecret)).toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining(["tenant persisted report contains disallowed field: rawDiff."])
     });
   });
 
@@ -374,6 +639,24 @@ describe("server report store", () => {
     });
   });
 
+  it("reuses the onboarding service role when reports share the control-plane Supabase project", async () => {
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "stale-reports-service-role";
+    process.env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_ONBOARDING_SUPABASE_SERVICE_ROLE_KEY = "shared-service-role";
+    process.env.AGENTPROOF_REPORTS_TABLE = "saved_reports_test";
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const row = JSON.parse(String(init?.body));
+      return Response.json([row]);
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    await createSavedReport(generateVerificationReport(demoScenarios.clean));
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer shared-service-role");
+  });
+
   it("stores tenant metadata and hashed access only in Supabase saved report rows", async () => {
     process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
     process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
@@ -427,6 +710,11 @@ describe("server report store", () => {
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       tenant_id: "tenant_a",
       access_token_hash: "a".repeat(64),
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 28,
+      head_sha: "a".repeat(40),
+      stale_at: new Date().toISOString(),
       report
     };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -476,6 +764,11 @@ describe("server report store", () => {
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       tenant_id: "tenant_a",
       access_token_hash: "a".repeat(64),
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 28,
+      head_sha: "a".repeat(40),
+      stale_at: new Date().toISOString(),
       report
     };
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json([row]));
@@ -489,6 +782,10 @@ describe("server report store", () => {
       expect.objectContaining({
         id: "tenant_report",
         sourceUrl: "https://github.com/RengGyu/AgentProof/pull/28",
+        repositoryId: 100,
+        pullRequestNumber: 28,
+        headSha: "a".repeat(40),
+        staleAt: expect.any(String),
         privacy: "summary-only"
       })
     ]);
@@ -505,6 +802,55 @@ describe("server report store", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+  });
+
+  it("lists a signed tenant persisted projection after privacy-safe hydration", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.semantic = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        requirement_id: report.requirements[0]!.requirementId,
+        requirement_summary: "Review the supplied evidence for this requirement.",
+        evidence_support: "no_evidence_found",
+        summary: "No supplied evidence directly supports this requirement.",
+        evidence_ids: [],
+        uncertainty: "high"
+      }],
+      evidence_gaps: [],
+      review_targets: [],
+      remediation_requests: [],
+      uncertainties: []
+    };
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 28,
+      headSha: "a".repeat(40)
+    });
+    const row = {
+      id: "tenant_projection",
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      tenant_id: "tenant_a",
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 28,
+      head_sha: "a".repeat(40),
+      report: projectTenantPersistedReport(saved.report, signingSecret)
+    };
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    global.fetch = vi.fn(async () => Response.json([row])) as typeof fetch;
+
+    await expect(listTenantSavedReports({ tenantId: "tenant_a", limit: 25 })).resolves.toEqual([
+      expect.objectContaining({ id: "tenant_projection", repositoryId: 100, pullRequestNumber: 28 })
+    ]);
+    await expect(getSavedReport("tenant_projection", { tenantId: "tenant_a" })).resolves.toMatchObject({
+      report: { semantic: report.semantic }
+    });
   });
 
   it("returns null for expired Supabase reports and deletes them", async () => {

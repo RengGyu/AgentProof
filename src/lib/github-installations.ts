@@ -1,3 +1,5 @@
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
+
 export const DEFAULT_GITHUB_INSTALLATIONS_TABLE = "agentproof_github_installations";
 
 export type GitHubInstallationStatus = "active" | "suspended" | "deleted";
@@ -49,9 +51,9 @@ interface GitHubInstallationRecord {
 interface GitHubInstallationRow {
   tenant_id: string;
   installation_id: number;
-  account_id?: number | null;
-  account_login?: string | null;
-  account_type?: string | null;
+  account_id?: number;
+  account_login?: string;
+  account_type?: string;
   status: GitHubInstallationStatus;
   created_at: string;
   updated_at: string;
@@ -416,12 +418,12 @@ function getGitHubInstallationStoreConfig(env = process.env): GitHubInstallation
 }
 
 function readGitHubInstallationStoreEnv(env = process.env) {
+  const shared = getControlPlaneSupabaseEnv(env);
   return {
-    url: env.AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "",
+    url: env.AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_URL || shared.url,
     serviceRoleKey:
       env.AGENTPROOF_GITHUB_INSTALLATIONS_SUPABASE_SERVICE_ROLE_KEY ||
-      env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY ||
-      env.SUPABASE_SERVICE_ROLE_KEY ||
+      shared.serviceRoleKey ||
       "",
     table: env.AGENTPROOF_GITHUB_INSTALLATIONS_TABLE || DEFAULT_GITHUB_INSTALLATIONS_TABLE
   };
@@ -431,9 +433,9 @@ function toSupabaseGitHubInstallationRow(record: GitHubInstallationRecord): GitH
   return {
     tenant_id: record.tenantId,
     installation_id: record.installationId,
-    account_id: record.accountId ?? null,
-    account_login: record.accountLogin ?? null,
-    account_type: record.accountType ?? null,
+    ...(record.accountId === undefined ? {} : { account_id: record.accountId }),
+    ...(record.accountLogin === undefined ? {} : { account_login: record.accountLogin }),
+    ...(record.accountType === undefined ? {} : { account_type: record.accountType }),
     status: record.status,
     created_at: record.createdAt,
     updated_at: record.updatedAt,

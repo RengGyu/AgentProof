@@ -693,13 +693,13 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(200);
     expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
-    expect(json.report.testing.ciStatus).toBe("unknown");
+    expect(json.report.testing.ciStatus).toBe("passed");
     expect(json.report.summary.confidence).toBeLessThanOrEqual(0.85);
     expect(json.report.limitations.join(" ")).toContain("GitHub check-run evidence unavailable: request timed out after 5000 ms or network failed.");
     expect(json.report.evidenceIndex.some((item) =>
       item.kind === "check" &&
       item.label === "legacy unit tests" &&
-      item.summary.includes("Status: unknown")
+      item.summary.includes("Status: passed")
     )).toBe(true);
     expect(githubEvidenceTiming).toMatch(/^ap_github_(pr|files|checks|statuses|annotations|jobs);dur=\d+/);
     expect(serialized).not.toContain("github_pat_secret_should_not_leak");

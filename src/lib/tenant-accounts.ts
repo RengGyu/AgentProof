@@ -1,8 +1,10 @@
 import { redactSecrets } from "./redact";
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 
 export const DEFAULT_TENANTS_TABLE = "agentproof_tenants";
 export const DEFAULT_TENANT_MEMBERS_TABLE = "agentproof_tenant_members";
 export const TENANT_ACCOUNTS_ENV = "AGENTPROOF_TENANT_ACCOUNTS";
+export const DEFAULT_GITHUB_IDENTITIES_TABLE = "agentproof_github_identities";
 
 export type TenantAccountStatus = "active" | "trialing" | "suspended" | "deleted" | "invite-only" | "unknown";
 export type TenantAccountPlan = "free" | "beta" | "team" | "pro" | "enterprise" | "custom" | "unknown";
@@ -80,6 +82,64 @@ export class TenantAccountStoreError extends Error {
     super(message);
     this.name = "TenantAccountStoreError";
   }
+}
+
+export interface GitHubOwnerTenant {
+  tenantId: string;
+  memberId: string;
+}
+
+/**
+ * A GitHub numeric identity deterministically owns exactly one beta tenant.
+ * Only opaque ids are retained; login names and OAuth credentials are not.
+ */
+export async function ensureGitHubOwnerTenant(
+  input: { githubUserId?: unknown },
+  env = process.env
+): Promise<GitHubOwnerTenant> {
+  const githubUserId = normalizeGitHubUserId(input.githubUserId);
+  const config = getTenantAccountStoreConfig(env);
+  if (!githubUserId || !config) {
+    throw new TenantAccountStoreError("GitHub public signup requires durable tenant account storage.");
+  }
+
+  const identitiesTable = env.AGENTPROOF_GITHUB_IDENTITIES_TABLE || DEFAULT_GITHUB_IDENTITIES_TABLE;
+  const existingResponse = await tenantAccountFetch(config, identitiesTable, `?github_user_id=eq.${encodeURIComponent(githubUserId)}&select=tenant_id,member_id&limit=1`, { method: "GET" });
+  if (!existingResponse.ok) throw new TenantAccountStoreError(`GitHub identity lookup failed with HTTP ${existingResponse.status}.`);
+  const existingRows = await existingResponse.json().catch(() => []) as unknown;
+  const existing = Array.isArray(existingRows) ? normalizeGitHubOwnerTenant(existingRows[0]) : null;
+  if (existing) return existing;
+
+  // Deterministic ids make concurrent first logins idempotent without storing
+  // an OAuth token or a display identity.
+  const tenantId = `gh_${githubUserId}`;
+  const memberId = `github:${githubUserId}`;
+  await upsertTenantAccountRow(config, config.tenantsTable, {
+    tenant_id: tenantId,
+    name: "GitHub beta workspace",
+    status: "active",
+    plan: "beta"
+  }, "tenant_id");
+  await upsertTenantAccountRow(config, config.membersTable, {
+    tenant_id: tenantId,
+    member_id: memberId,
+    role: "owner",
+    status: "active"
+  }, "tenant_id,member_id");
+  await upsertTenantAccountRow(config, identitiesTable, {
+    github_user_id: githubUserId,
+    tenant_id: tenantId,
+    member_id: memberId
+  }, "github_user_id");
+
+  const resolvedResponse = await tenantAccountFetch(config, identitiesTable, `?github_user_id=eq.${encodeURIComponent(githubUserId)}&select=tenant_id,member_id&limit=1`, { method: "GET" });
+  if (!resolvedResponse.ok) throw new TenantAccountStoreError(`GitHub identity confirmation failed with HTTP ${resolvedResponse.status}.`);
+  const resolvedRows = await resolvedResponse.json().catch(() => []) as unknown;
+  const resolved = Array.isArray(resolvedRows) ? normalizeGitHubOwnerTenant(resolvedRows[0]) : null;
+  if (!resolved || resolved.tenantId !== tenantId || resolved.memberId !== memberId) {
+    throw new TenantAccountStoreError("GitHub identity is already bound to a different tenant.");
+  }
+  return resolved;
 }
 
 export type TenantAccountLifecycleErrorCode =
@@ -359,12 +419,26 @@ async function tenantAccountFetch(
   });
 }
 
+async function upsertTenantAccountRow(
+  config: TenantAccountStoreConfig,
+  table: string,
+  row: Record<string, string>,
+  conflictTarget: string
+) {
+  const response = await tenantAccountFetch(config, table, `?on_conflict=${encodeURIComponent(conflictTarget)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" },
+    body: JSON.stringify(row)
+  });
+  if (!response.ok) throw new TenantAccountStoreError(`Tenant account creation failed with HTTP ${response.status}.`);
+}
+
 function getTenantAccountStoreConfig(env = process.env): TenantAccountStoreConfig | null {
-  const url = env.AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
+  const shared = getControlPlaneSupabaseEnv(env);
+  const url = env.AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_URL || shared.url;
   const serviceRoleKey =
     env.AGENTPROOF_TENANT_ACCOUNTS_SUPABASE_SERVICE_ROLE_KEY ||
-    env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY ||
-    env.SUPABASE_SERVICE_ROLE_KEY ||
+    shared.serviceRoleKey ||
     "";
 
   if (!url && !serviceRoleKey) return null;
@@ -459,6 +533,20 @@ function normalizeMemberId(value: unknown): string | null {
   const normalized = redactSecrets(value).trim();
 
   return /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{1,119}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeGitHubUserId(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const normalized = String(value).trim();
+  return /^\d{1,20}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeGitHubOwnerTenant(value: unknown): GitHubOwnerTenant | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as { tenant_id?: unknown; member_id?: unknown };
+  const tenantId = normalizeTenantId(row.tenant_id);
+  const memberId = normalizeMemberId(row.member_id);
+  return tenantId && memberId ? { tenantId, memberId } : null;
 }
 
 function normalizeName(value: unknown): string | null {

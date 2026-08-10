@@ -85,6 +85,233 @@ describe("audit log", () => {
     expect(serialized).not.toContain("token");
   });
 
+  it("stores bounded semantic diagnostics server-side but omits them from tenant activity", async () => {
+    const row = await recordAuditEvent({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      tenantId: "tenant_a",
+      repositoryFullName: "RengGyu/AgentProof",
+      semanticDiagnostics: {
+        disposition: "accepted",
+        inputRequirementCount: 4,
+        assessedRequirementCount: 3,
+        missingRequirementCount: 1,
+        rawSectionCounts: {
+          requirement_evidence_relations: 4,
+          requirement_assessments: 4,
+          evidence_gaps: 2,
+          review_targets: 1,
+          remediation_requests: 1,
+          uncertainties: 1
+        },
+        acceptedSectionCounts: {
+          requirement_evidence_relations: 3,
+          requirement_assessments: 3,
+          evidence_gaps: 1,
+          review_targets: 1,
+          remediation_requests: 1,
+          uncertainties: 1
+        },
+        rejectedSectionCounts: {
+          requirement_evidence_relations: 1,
+          requirement_assessments: 1,
+          evidence_gaps: 1,
+          review_targets: 0,
+          remediation_requests: 0,
+          uncertainties: 0
+        },
+        rejectedReasonCodeCounts: {
+          invalid_unit_shape: 1,
+          length_limit: 0,
+          incomplete_text: 1,
+          unknown_requirement_reference: 1,
+          unknown_evidence_reference: 0,
+          reference_type_mismatch: 0,
+          duplicate_reference: 0,
+          inconsistent_evidence_support: 0,
+          prohibited_assurance: 0
+        },
+        discardReasonCodeCounts: {
+          root_schema_invalid: 0,
+          secret_detected: 0,
+          raw_content_detected: 0,
+          untrusted_instruction_influence: 0,
+          empty_usable_analysis: 0
+        },
+        retryAttempted: true,
+        retryOutcome: "incomplete"
+      }
+    });
+
+    expect(row.metadata).toMatchObject({
+      semanticDiagnostics: {
+        disposition: "accepted",
+        inputRequirementCount: 4,
+        assessedRequirementCount: 3,
+        missingRequirementCount: 1,
+        rawSectionCounts: {
+          requirement_evidence_relations: 4,
+          requirement_assessments: 4,
+          evidence_gaps: 2,
+          review_targets: 1,
+          remediation_requests: 1,
+          uncertainties: 1
+        },
+        acceptedSectionCounts: {
+          requirement_evidence_relations: 3,
+          requirement_assessments: 3,
+          evidence_gaps: 1,
+          review_targets: 1,
+          remediation_requests: 1,
+          uncertainties: 1
+        },
+        rejectedSectionCounts: {
+          requirement_evidence_relations: 1,
+          requirement_assessments: 1,
+          evidence_gaps: 1,
+          review_targets: 0,
+          remediation_requests: 0,
+          uncertainties: 0
+        },
+        rejectedReasonCodeCounts: {
+          invalid_unit_shape: 1,
+          incomplete_text: 1,
+          unknown_requirement_reference: 1
+        },
+        discardReasonCodeCounts: {
+          root_schema_invalid: 0,
+          secret_detected: 0,
+          raw_content_detected: 0,
+          untrusted_instruction_influence: 0,
+          empty_usable_analysis: 0
+        },
+        retryAttempted: true,
+        retryOutcome: "incomplete"
+      }
+    });
+    const tenantRows = await listTenantAuditEvents({ tenantId: "tenant_a" });
+    expect(JSON.stringify(tenantRows)).not.toContain("semanticDiagnostics");
+    expect(JSON.stringify(row)).not.toContain("req_");
+    expect(JSON.stringify(row)).not.toContain("resp_");
+  });
+
+  it("sanitizes semantic aggregate counts to a fixed bounded shape without identifiers or text", async () => {
+    const row = await recordAuditEvent({
+      action: "github_app_analysis_completed",
+      result: "completed",
+      semanticDiagnostics: {
+        disposition: "accepted",
+        inputRequirementCount: 10_000,
+        assessedRequirementCount: -3,
+        missingRequirementCount: Number.NaN,
+        rawSectionCounts: {
+          requirement_evidence_relations: 10_000,
+          requirement_assessments: -2,
+          evidence_gaps: 2.4,
+          review_targets: Number.NaN,
+          remediation_requests: 1,
+          uncertainties: 0,
+          injected_section: 99
+        },
+        acceptedSectionCounts: {
+          requirement_evidence_relations: 1,
+          requirement_assessments: 1,
+          evidence_gaps: 1,
+          review_targets: 1,
+          remediation_requests: 1,
+          uncertainties: 1
+        },
+        rejectedSectionCounts: {
+          requirement_evidence_relations: 1,
+          requirement_assessments: 1,
+          evidence_gaps: 1,
+          review_targets: 1,
+          remediation_requests: 1,
+          uncertainties: 1
+        },
+        rejectedReasonCodeCounts: {
+          invalid_unit_shape: 10_000,
+          length_limit: -1,
+          incomplete_text: 2.4,
+          unknown_requirement_reference: Number.NaN,
+          unknown_evidence_reference: 1,
+          reference_type_mismatch: 0,
+          duplicate_reference: 0,
+          inconsistent_evidence_support: 0,
+          prohibited_assurance: 0,
+          injected_reason: 99
+        },
+        discardReasonCodeCounts: {
+          root_schema_invalid: 10_000,
+          secret_detected: -1,
+          raw_content_detected: 2.4,
+          untrusted_instruction_influence: Number.NaN,
+          empty_usable_analysis: 1,
+          injected_reason: 99
+        },
+        retryAttempted: true,
+        retryOutcome: "completed",
+        providerResponseId: "resp_private_123",
+        requirementIds: ["req_private_123"],
+        evidenceIds: ["evidence_private_123"],
+        rawContent: "private raw provider content",
+        text: "private semantic explanation"
+      } as never
+    });
+
+    expect(row.metadata.semanticDiagnostics).toEqual({
+      disposition: "accepted",
+      inputRequirementCount: 100,
+      assessedRequirementCount: 0,
+      missingRequirementCount: 0,
+      rawSectionCounts: {
+        requirement_evidence_relations: 100,
+        requirement_assessments: 0,
+        evidence_gaps: 2,
+        review_targets: 0,
+        remediation_requests: 1,
+        uncertainties: 0
+      },
+      acceptedSectionCounts: {
+        requirement_evidence_relations: 1,
+        requirement_assessments: 1,
+        evidence_gaps: 1,
+        review_targets: 1,
+        remediation_requests: 1,
+        uncertainties: 1
+      },
+      rejectedSectionCounts: {
+        requirement_evidence_relations: 1,
+        requirement_assessments: 1,
+        evidence_gaps: 1,
+        review_targets: 1,
+        remediation_requests: 1,
+        uncertainties: 1
+      },
+      rejectedReasonCodeCounts: {
+        invalid_unit_shape: 100,
+        length_limit: 0,
+        incomplete_text: 2,
+        unknown_requirement_reference: 0,
+        unknown_evidence_reference: 1,
+        reference_type_mismatch: 0,
+        duplicate_reference: 0,
+        inconsistent_evidence_support: 0,
+        prohibited_assurance: 0
+      },
+      discardReasonCodeCounts: {
+        root_schema_invalid: 100,
+        secret_detected: 0,
+        raw_content_detected: 2,
+        untrusted_instruction_influence: 0,
+        empty_usable_analysis: 1
+      },
+      retryAttempted: true,
+      retryOutcome: "completed"
+    });
+    expect(JSON.stringify(row)).not.toMatch(/resp_private|req_private|evidence_private|private raw|semantic explanation|injected/);
+  });
+
   it("stores Supabase audit rows through server-only credentials without exposing the key in the row", async () => {
     const env = {
       AGENTPROOF_AUDIT_SUPABASE_URL: "https://agentproof-test.supabase.co",
@@ -356,6 +583,9 @@ describe("audit log", () => {
     expect(() => assertAuditEventIsPrivate({ metadata: { invoiceId: "in_secret_should_not_leak" } })).toThrow(AuditPrivacyError);
     expect(() => assertAuditEventIsPrivate({ metadata: { paymentMethod: "pm_secret_should_not_leak" } })).toThrow(AuditPrivacyError);
     expect(() => assertAuditEventIsPrivate({ metadata: { card: { last4: "4242" } } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { providerResponseId: "resp_background_123" } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { priorProviderResponseId: "resp_background_123" } })).toThrow(AuditPrivacyError);
+    expect(() => assertAuditEventIsPrivate({ metadata: { missingRequirementIds: ["req_123"] } })).toThrow(AuditPrivacyError);
     expect(() => assertAuditEventIsPrivate({
       metadata: {
         savedReportUrl: "https://agentproof.example/reports/r_123?key=secret"

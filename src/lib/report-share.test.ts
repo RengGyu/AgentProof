@@ -101,6 +101,32 @@ describe("report share", () => {
     expect(summaryOnlyLimitations).toHaveLength(1);
   });
 
+  it("omits semantic LLM analysis from portable share payloads", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.semanticAnalysis = { status: "unavailable", attempts: 2 };
+    report.semantic = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        requirement_id: report.requirements[0]!.requirementId,
+        requirement_summary: "Review the supplied evidence for this requirement.",
+        evidence_support: "no_evidence_found",
+        summary: "No supplied evidence directly supports this requirement.",
+        evidence_ids: [],
+        uncertainty: "high"
+      }],
+      evidence_gaps: [],
+      review_targets: [],
+      remediation_requests: [],
+      uncertainties: []
+    };
+
+    const shared = decodeSharedReport(encodeReportForShare(report));
+
+    expect(shared.semantic).toBeUndefined();
+    expect(shared.semanticAnalysis).toBeUndefined();
+    expect(JSON.stringify(shared)).not.toContain("No supplied evidence directly supports this requirement.");
+  });
+
   it("preserves direct deterministic scope state and snapshot provenance even when top risks omit scope wording", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     report.scope = {

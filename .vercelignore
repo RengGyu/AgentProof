@@ -1,0 +1,15 @@
+.env*
+*.pem
+.codex
+.github
+docs
+eval
+outputs
+scripts
+supabase
+**/*.test.ts
+src/lib/llm-semantic-evaluation*.ts
+vitest*.ts
+AGENTS.md
+CLAUDE.md
+README.md

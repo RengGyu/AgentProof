@@ -1,12 +1,23 @@
 import {
   completeAnalysisJob,
+  fenceAnalysisJobSemanticRetryFinalization,
   claimNextAnalysisJob,
+  DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS,
+  DEFAULT_ANALYSIS_JOB_RETRY_AFTER_MS,
   failAnalysisJob,
+  markAnalysisJobProviderSubmission,
+  markAnalysisJobSemanticRetrySubmission,
+  parkAnalysisJobForProvider,
   type AnalysisJobResultSummary,
   type AnalysisJobClaimOptions,
   type AnalysisJobRow
 } from "./analysis-jobs";
-import { getAuditLogStoreStatus, recordAuditEvent, AuditLogError } from "./audit-log";
+import {
+  getAuditLogStoreStatus,
+  recordAuditEvent,
+  AuditLogError,
+  type AuditSemanticDiagnostics
+} from "./audit-log";
 import {
   buildGitHubPullRequestInput,
   fetchGitHubPullRequestAnchor,
@@ -54,10 +65,25 @@ import {
   UsageQuotaStoreError
 } from "./usage-quota";
 import { generateVerificationReport } from "./verifier";
+import {
+  OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS,
+  OpenAISemanticError,
+  retrieveMissingSemanticsWithOpenAIBackground,
+  retrieveSemanticsWithOpenAIBackground,
+  submitMissingSemanticsWithOpenAIBackground,
+  submitSemanticsWithOpenAIBackground
+} from "./openai-semantic";
+import type { LlmSemanticValidationResult } from "./llm-semantic-output";
+import { isGitHubRepositoryPublic } from "./github-repository-visibility";
+import type { PullRequestInput, VerificationReport } from "./types";
 
 export const DEFAULT_ANALYSIS_WORKER_BATCH_LIMIT = 1;
 export const MAX_ANALYSIS_WORKER_BATCH_LIMIT = 5;
 const TENANT_DELETION_ACTIVE_ERROR = "Tenant deletion is in progress.";
+const OPENAI_BACKGROUND_POLL_DELAY_MS = 15_000;
+const OPENAI_BACKGROUND_TTL_MS = 8 * 60_000;
+const OPENAI_BACKGROUND_RETRY_MIN_REMAINING_MS =
+  OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS + OPENAI_BACKGROUND_POLL_DELAY_MS;
 
 export type AnalysisWorkerPreflightStatus =
   | "idle"
@@ -74,10 +100,12 @@ export interface AnalysisWorkerPreflightResult {
     comment: boolean;
     slackSummary?: boolean;
   };
+  llmAnalysisMode?: "essential" | "enhanced";
 }
 
 export interface RunAnalysisJobOptions extends AnalysisJobClaimOptions {
   requestUrl: string;
+  clock?: () => Date;
 }
 
 export interface RunAnalysisJobBatchOptions extends RunAnalysisJobOptions {
@@ -85,7 +113,7 @@ export interface RunAnalysisJobBatchOptions extends RunAnalysisJobOptions {
 }
 
 export interface AnalysisWorkerRunResult {
-  status: AnalysisWorkerPreflightStatus | "completed";
+  status: AnalysisWorkerPreflightStatus | "waiting_provider" | "completed";
   job?: AnalysisJobRow;
   reason?: string;
   resultSummary?: AnalysisJobResultSummary;
@@ -105,6 +133,7 @@ export interface AnalysisWorkerBatchResult {
   requestedLimit: number;
   processed: number;
   completed: number;
+  waitingProvider?: number;
   failedRetryable: number;
   failedTerminal: number;
   idle: boolean;
@@ -132,6 +161,13 @@ class AnalysisWorkerRetryableError extends Error {
   }
 }
 
+class AnalysisWorkerLeaseLostError extends Error {
+  constructor() {
+    super("Analysis job claim ownership changed before the worker transition completed.");
+    this.name = "AnalysisWorkerLeaseLostError";
+  }
+}
+
 type WorkerSideEffects = {
   saveReport: boolean;
   comment: boolean;
@@ -147,11 +183,19 @@ export async function preflightNextAnalysisJob(
     return { status: "idle" };
   }
 
-  const job = claim.job;
+  return preflightClaimedAnalysisJob(claim.job, options, env);
+}
+
+export async function preflightClaimedAnalysisJob(
+  job: AnalysisJobRow,
+  options: AnalysisJobClaimOptions = {},
+  env = process.env
+): Promise<AnalysisWorkerPreflightResult> {
   const appStatus = getGitHubAppConfigStatus(env);
   if (!appStatus.ready) {
     await failAnalysisJob({
       id: job.id,
+      claimGeneration: job.claim_generation ?? undefined,
       retryable: true,
       code: "github_app_not_ready",
       summary: "GitHub App credentials are not ready for analysis worker execution.",
@@ -170,6 +214,7 @@ export async function preflightNextAnalysisJob(
     if (error instanceof AnalysisWorkerTerminalError || error instanceof AnalysisWorkerRetryableError) {
       await failAnalysisJob({
         id: job.id,
+        claimGeneration: job.claim_generation ?? undefined,
         retryable: error instanceof AnalysisWorkerRetryableError,
         code: error.code,
         summary: error.message,
@@ -196,6 +241,7 @@ export async function preflightNextAnalysisJob(
       const reason = tenantGrantPublicReason(grant.reason);
       await failAnalysisJob({
         id: job.id,
+        claimGeneration: job.claim_generation ?? undefined,
         retryable: false,
         code: grant.reason ?? "github_app_grant_denied",
         summary: reason,
@@ -212,6 +258,7 @@ export async function preflightNextAnalysisJob(
       const reason = tenantGrantPublicReason(grant.reason);
       await failAnalysisJob({
         id: job.id,
+        claimGeneration: job.claim_generation ?? undefined,
         retryable: false,
         code: grant.reason,
         summary: reason,
@@ -230,6 +277,7 @@ export async function preflightNextAnalysisJob(
       if (!billing.allowed) {
         await failAnalysisJob({
           id: job.id,
+          claimGeneration: job.claim_generation ?? undefined,
           retryable: false,
           code: "github_app_billing_subscription_blocked",
           summary: billingBetaPublicReason(billing.reason),
@@ -254,13 +302,15 @@ export async function preflightNextAnalysisJob(
       return {
         status: "ready",
         job,
-        sideEffects
+        sideEffects,
+        llmAnalysisMode: grant.grant.llmAnalysisMode
       };
     }
   } catch (error) {
     if (error instanceof TenantControlPlaneStoreError) {
       await failAnalysisJob({
         id: job.id,
+        claimGeneration: job.claim_generation ?? undefined,
         retryable: true,
         code: "github_app_tenant_grant_store_unavailable",
         summary: "Tenant repository grant store is unavailable during analysis worker preflight.",
@@ -276,6 +326,7 @@ export async function preflightNextAnalysisJob(
     if (error instanceof UsageQuotaStoreError) {
       await failAnalysisJob({
         id: job.id,
+        claimGeneration: job.claim_generation ?? undefined,
         retryable: true,
         code: "github_app_plan_gate_unavailable",
         summary: "Tenant plan side-effect gate is unavailable during analysis worker preflight.",
@@ -291,6 +342,7 @@ export async function preflightNextAnalysisJob(
     if (error instanceof BillingBetaStoreError) {
       await failAnalysisJob({
         id: job.id,
+        claimGeneration: job.claim_generation ?? undefined,
         retryable: true,
         code: "github_app_billing_gate_unavailable",
         summary: "Tenant billing gate is unavailable during analysis worker preflight.",
@@ -310,6 +362,7 @@ export async function preflightNextAnalysisJob(
   if (!settings.enabled || !isGitHubAppRepoAllowed(job.repository_full_name, settings)) {
     await failAnalysisJob({
       id: job.id,
+      claimGeneration: job.claim_generation ?? undefined,
       retryable: false,
       code: "github_app_repo_not_allowed",
       summary: "Repository is not allowed for GitHub App analysis worker execution.",
@@ -328,7 +381,8 @@ export async function preflightNextAnalysisJob(
     sideEffects: {
       saveReport: job.save_report && settings.saveReportsEnabled,
       comment: job.comment && settings.commentEnabled
-    }
+    },
+    llmAnalysisMode: undefined
   };
 }
 
@@ -337,6 +391,23 @@ export async function runNextAnalysisJob(
   env = process.env
 ): Promise<AnalysisWorkerRunResult> {
   const preflight = await preflightNextAnalysisJob(options, env);
+  return runPreflightedAnalysisJob(preflight, options, env);
+}
+
+export async function runClaimedAnalysisJob(
+  job: AnalysisJobRow,
+  options: RunAnalysisJobOptions,
+  env = process.env
+): Promise<AnalysisWorkerRunResult> {
+  const preflight = await preflightClaimedAnalysisJob(job, options, env);
+  return runPreflightedAnalysisJob(preflight, options, env);
+}
+
+async function runPreflightedAnalysisJob(
+  preflight: AnalysisWorkerPreflightResult,
+  options: RunAnalysisJobOptions,
+  env: NodeJS.ProcessEnv
+): Promise<AnalysisWorkerRunResult> {
   if (preflight.status !== "ready" || !preflight.job) {
     return preflight;
   }
@@ -349,6 +420,8 @@ export async function runNextAnalysisJob(
     await assertWorkerTenantDeletionNotActive(job, env);
 
     const token = await createGitHubInstallationAccessToken(job.installation_id, env);
+    const llmAnalysisMode = preflight.llmAnalysisMode
+      ?? (await isGitHubRepositoryPublic(job.repository_full_name, token) ? "enhanced" : "essential");
     const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
       expectedHeadSha: job.head_sha,
       now: () => options.now ?? new Date()
@@ -361,7 +434,41 @@ export async function runNextAnalysisJob(
       );
     }
 
-    const report = generateVerificationReport(input);
+    const deterministicReport = generateVerificationReport(input);
+    const semanticResult = await advanceQueuedSemanticAnalysis(
+      job,
+      input,
+      deterministicReport,
+      llmAnalysisMode,
+      options.now ?? new Date(),
+      options.clock ?? (() => options.now ?? new Date()),
+      env
+    );
+    if (semanticResult.status === "waiting_provider") {
+      return {
+        status: "waiting_provider",
+        job,
+        sideEffects
+      };
+    }
+    if (
+      job.semantic_retry_attempts === 1 &&
+      job.provider_response_id == null &&
+      (job.provider_status === "submitting" || job.provider_status === "in_progress")
+    ) {
+      const finalizationClaim = await fenceAnalysisJobSemanticRetryFinalization({
+        id: job.id,
+        claimGeneration: job.claim_generation ?? "",
+        now: options.now
+      }, env);
+      if (!finalizationClaim) throw new AnalysisWorkerLeaseLostError();
+      job.updated_at = finalizationClaim.updated_at;
+      job.locked_at = finalizationClaim.locked_at;
+      job.provider_status = finalizationClaim.provider_status;
+      job.provider_submitted_at = finalizationClaim.provider_submitted_at;
+      job.provider_expires_at = finalizationClaim.provider_expires_at;
+    }
+    const report = semanticResult.report;
     const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
 
     if (!validation.valid) {
@@ -396,7 +503,13 @@ export async function runNextAnalysisJob(
       await assertWorkerTenantDeletionNotActive(job, env);
       saved = await createAutomationSavedReport(report, {
         requestUrl: options.requestUrl,
-        tenantId: job.tenant_id ?? undefined
+        ...(job.tenant_id && job.installation_id && job.repository_id ? {
+          tenantId: job.tenant_id,
+          installationId: job.installation_id,
+          repositoryId: job.repository_id,
+          pullRequestNumber: job.pull_request_number,
+          headSha: job.head_sha
+        } : {})
       });
     }
 
@@ -454,11 +567,13 @@ export async function runNextAnalysisJob(
       } : undefined
     };
 
-    await completeAnalysisJob({
+    const completed = await completeAnalysisJob({
       id: job.id,
       resultSummary,
+      claimGeneration: job.claim_generation ?? undefined,
       now: options.now
     }, env);
+    if (!completed) throw new AnalysisWorkerLeaseLostError();
 
     await recordWorkerAudit("github_app_analysis_completed", "completed", job, {
       statusCode: 200,
@@ -466,7 +581,8 @@ export async function runNextAnalysisJob(
       evidenceCoverage: resultSummary.evidenceCoverage,
       savedReport: resultSummary.savedReport,
       comment: resultSummary.comment,
-      slack: resultSummary.slack
+      slack: resultSummary.slack,
+      semanticDiagnostics: semanticResult.semanticDiagnostics
     }, env);
 
     return {
@@ -477,8 +593,17 @@ export async function runNextAnalysisJob(
     };
   } catch (error) {
     const failure = classifyWorkerFailure(error);
+    if (error instanceof AnalysisWorkerLeaseLostError) {
+      return {
+        status: "failed_retryable",
+        job,
+        reason: failure.code,
+        sideEffects
+      };
+    }
     await failAnalysisJob({
       id: job.id,
+      claimGeneration: job.claim_generation ?? undefined,
       retryable: failure.retryable,
       code: failure.code,
       summary: failure.summary,
@@ -532,6 +657,7 @@ export async function runAnalysisJobBatch(
     requestedLimit,
     processed: items.length,
     completed: items.filter((item) => item.status === "completed").length,
+    waitingProvider: items.filter((item) => item.status === "waiting_provider").length,
     failedRetryable: items.filter((item) => item.status === "failed_retryable").length,
     failedTerminal: items.filter((item) => item.status === "failed_terminal").length,
     idle,
@@ -540,8 +666,457 @@ export async function runAnalysisJobBatch(
   };
 }
 
+async function advanceQueuedSemanticAnalysis(
+  job: AnalysisJobRow,
+  input: PullRequestInput,
+  deterministicReport: VerificationReport,
+  mode: "essential" | "enhanced",
+  now: Date,
+  clock: () => Date,
+  env: NodeJS.ProcessEnv
+): Promise<
+  | { status: "ready"; report: VerificationReport; semanticDiagnostics?: AuditSemanticDiagnostics }
+  | { status: "waiting_provider" }
+> {
+  const apiKey = env.OPENAI_API_KEY;
+  if (!apiKey || env.AGENTPROOF_LLM_SEMANTIC_ENABLED !== "true" || mode !== "enhanced") {
+    return { status: "ready", report: deterministicReport };
+  }
+
+  const providerOptions = {
+    apiKey,
+    ...(env.OPENAI_MODEL ? { model: env.OPENAI_MODEL } : {})
+  };
+  const retryAttempts = job.semantic_retry_attempts ?? 0;
+  const existingSubmittedAt = parseProviderTime(job.provider_submitted_at);
+  const existingExpiresAt = parseProviderTime(job.provider_expires_at);
+  const priorSubmittedAt = parseProviderTime(job.prior_provider_submitted_at);
+  const priorExpiresAt = parseProviderTime(job.prior_provider_expires_at);
+
+  if (retryAttempts === 1) {
+    return advanceSubmittedSemanticRetry({
+      job,
+      input,
+      deterministicReport,
+      now,
+      env,
+      providerOptions,
+      existingSubmittedAt,
+      existingExpiresAt,
+      priorSubmittedAt,
+      priorExpiresAt
+    });
+  }
+  if (retryAttempts !== 0 || job.prior_provider_response_id || priorSubmittedAt || priorExpiresAt) {
+    throw new OpenAISemanticError(
+      "openai_response_invalid",
+      false,
+      "OpenAI background retry continuation metadata was invalid."
+    );
+  }
+  if (!job.provider_response_id && job.provider_status === "submitting") {
+    throw new AnalysisWorkerTerminalError(
+      "openai_submission_uncertain",
+      "OpenAI background submission could not be reconciled safely."
+    );
+  }
+  if (job.provider_response_id && (!existingSubmittedAt || !existingExpiresAt)) {
+    throw new OpenAISemanticError(
+      "openai_response_invalid",
+      false,
+      "OpenAI background continuation metadata was invalid."
+    );
+  }
+  const submittedAt = existingSubmittedAt ?? now;
+  const expiresAt = existingExpiresAt ?? new Date(submittedAt.getTime() + OPENAI_BACKGROUND_TTL_MS);
+  if (job.provider_response_id && expiresAt.getTime() <= now.getTime()) {
+    throw new OpenAISemanticError(
+      "openai_background_expired",
+      false,
+      "OpenAI background semantic analysis expired before completion."
+    );
+  }
+
+  let result;
+  if (job.provider_response_id) {
+    result = await retrieveSemanticsWithOpenAIBackground(
+      job.provider_response_id,
+      input,
+      deterministicReport,
+      providerOptions
+    );
+  } else {
+    const claimGeneration = job.claim_generation;
+    if (!claimGeneration) throw new AnalysisWorkerLeaseLostError();
+    const marked = await markAnalysisJobProviderSubmission({
+      id: job.id,
+      claimGeneration,
+      submittedAt,
+      expiresAt,
+      now
+    }, env);
+    if (!marked) throw new AnalysisWorkerLeaseLostError();
+    job.updated_at = marked.updated_at;
+    job.provider_status = "submitting";
+    job.provider_submitted_at = marked.provider_submitted_at;
+    job.provider_expires_at = marked.provider_expires_at;
+    try {
+      result = await submitSemanticsWithOpenAIBackground(input, deterministicReport, providerOptions);
+    } catch (error) {
+      if (error instanceof OpenAISemanticError && error.retryable) {
+        throw new AnalysisWorkerTerminalError(
+          "openai_submission_uncertain",
+          "OpenAI background submission could not be reconciled safely."
+        );
+      }
+      throw error;
+    }
+  }
+
+  if (result.status === "pending") {
+    await parkSemanticResponse(job, result, submittedAt, expiresAt, now, env, false);
+    return { status: "waiting_provider" };
+  }
+
+  if (result.validation.missing_requirement_ids.length > 0) {
+    return startSemanticCoverageRetry({
+      job,
+      input,
+      deterministicReport,
+      firstResult: result,
+      firstSubmittedAt: submittedAt,
+      firstExpiresAt: expiresAt,
+      now,
+      clock,
+      env,
+      providerOptions
+    });
+  }
+
+  return {
+    status: "ready",
+    report: includedSemanticReport(deterministicReport, result.output, 1),
+    semanticDiagnostics: semanticAuditDiagnostics(result.validation, "not_needed")
+  };
+}
+
+async function startSemanticCoverageRetry(input: {
+  job: AnalysisJobRow;
+  input: PullRequestInput;
+  deterministicReport: VerificationReport;
+  firstResult: Extract<Awaited<ReturnType<typeof retrieveSemanticsWithOpenAIBackground>>, { status: "completed" }>;
+  firstSubmittedAt: Date;
+  firstExpiresAt: Date;
+  now: Date;
+  clock: () => Date;
+  env: NodeJS.ProcessEnv;
+  providerOptions: { apiKey: string; model?: string };
+}): Promise<
+  | { status: "ready"; report: VerificationReport; semanticDiagnostics: AuditSemanticDiagnostics }
+  | { status: "waiting_provider" }
+> {
+  const retrySubmittedAt = input.clock();
+  const retryExpiresAt = new Date(Math.min(
+    input.firstExpiresAt.getTime(),
+    retrySubmittedAt.getTime() + OPENAI_BACKGROUND_TTL_MS
+  ));
+  if (
+    retryExpiresAt.getTime() - retrySubmittedAt.getTime() <=
+      OPENAI_BACKGROUND_RETRY_MIN_REMAINING_MS
+  ) {
+    return firstSemanticFallback(
+      input.deterministicReport,
+      input.firstResult.validation,
+      "expired_before_retry",
+      1
+    );
+  }
+
+  const claimGeneration = input.job.claim_generation;
+  if (!claimGeneration) throw new AnalysisWorkerLeaseLostError();
+  const marked = await markAnalysisJobSemanticRetrySubmission({
+    id: input.job.id,
+    claimGeneration,
+    priorResponseId: input.firstResult.responseId,
+    priorSubmittedAt: input.firstSubmittedAt,
+    priorExpiresAt: input.firstExpiresAt,
+    submittedAt: retrySubmittedAt,
+    expiresAt: retryExpiresAt,
+    now: retrySubmittedAt
+  }, input.env);
+  if (!marked) throw new AnalysisWorkerLeaseLostError();
+  Object.assign(input.job, marked);
+
+  let retryResult;
+  try {
+    retryResult = await submitMissingSemanticsWithOpenAIBackground(
+      input.input,
+      input.deterministicReport,
+      input.firstResult.validation,
+      input.providerOptions
+    );
+  } catch (error) {
+    return firstSemanticFallback(
+      input.deterministicReport,
+      input.firstResult.validation,
+      error instanceof OpenAISemanticError && error.retryable ? "submission_uncertain" : "provider_failed"
+    );
+  }
+
+  if (retryResult.status === "pending") {
+    const parkNow = input.clock();
+    const nextPollAt = parkNow.getTime() + OPENAI_BACKGROUND_POLL_DELAY_MS;
+    if (nextPollAt >= Math.min(input.firstExpiresAt.getTime(), retryExpiresAt.getTime())) {
+      return firstSemanticFallback(
+        input.deterministicReport,
+        input.firstResult.validation,
+        "provider_failed"
+      );
+    }
+    await parkSemanticResponse(
+      { ...input.job, claim_generation: claimGeneration },
+      retryResult,
+      retrySubmittedAt,
+      retryExpiresAt,
+      parkNow,
+      input.env,
+      true
+    );
+    return { status: "waiting_provider" };
+  }
+
+  const outcome = retryResult.validation.missing_requirement_ids.length > 0 ? "incomplete" : "completed";
+  return {
+    status: "ready",
+    report: includedSemanticReport(input.deterministicReport, retryResult.output, 2),
+    semanticDiagnostics: semanticAuditDiagnostics(retryResult.validation, outcome)
+  };
+}
+
+async function advanceSubmittedSemanticRetry(input: {
+  job: AnalysisJobRow;
+  input: PullRequestInput;
+  deterministicReport: VerificationReport;
+  now: Date;
+  env: NodeJS.ProcessEnv;
+  providerOptions: { apiKey: string; model?: string };
+  existingSubmittedAt: Date | null;
+  existingExpiresAt: Date | null;
+  priorSubmittedAt: Date | null;
+  priorExpiresAt: Date | null;
+}): Promise<
+  | { status: "ready"; report: VerificationReport; semanticDiagnostics?: AuditSemanticDiagnostics }
+  | { status: "waiting_provider" }
+> {
+  if (
+    !input.job.prior_provider_response_id ||
+    !input.priorSubmittedAt ||
+    !input.priorExpiresAt ||
+    input.priorExpiresAt.getTime() <= input.now.getTime()
+  ) {
+    return unavailableSemanticFallback(input.deterministicReport);
+  }
+
+  let firstResult;
+  try {
+    firstResult = await retrieveSemanticsWithOpenAIBackground(
+      input.job.prior_provider_response_id,
+      input.input,
+      input.deterministicReport,
+      input.providerOptions
+    );
+  } catch (error) {
+    if (
+      error instanceof OpenAISemanticError &&
+      error.retryable &&
+      input.job.attempts < DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS
+    ) {
+      throw error;
+    }
+    return unavailableSemanticFallback(input.deterministicReport);
+  }
+  if (firstResult.status !== "completed") {
+    return unavailableSemanticFallback(input.deterministicReport);
+  }
+
+  if (
+    !input.job.provider_response_id &&
+    (input.job.provider_status === "submitting" || input.job.provider_status === "in_progress")
+  ) {
+    return firstSemanticFallback(input.deterministicReport, firstResult.validation, "submission_uncertain");
+  }
+  if (
+    !input.job.provider_response_id ||
+    !input.existingSubmittedAt ||
+    !input.existingExpiresAt ||
+    input.existingExpiresAt.getTime() <= input.now.getTime()
+  ) {
+    return firstSemanticFallback(input.deterministicReport, firstResult.validation, "provider_failed");
+  }
+
+  let retryResult;
+  try {
+    retryResult = await retrieveMissingSemanticsWithOpenAIBackground(
+      input.job.provider_response_id,
+      input.input,
+      input.deterministicReport,
+      firstResult.validation,
+      input.providerOptions
+    );
+  } catch (error) {
+    if (
+      error instanceof OpenAISemanticError &&
+      error.retryable &&
+      input.job.attempts < DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS &&
+      retryBackoffFitsContinuationWindow(
+        input.now,
+        input.priorExpiresAt,
+        input.existingExpiresAt
+      )
+    ) {
+      throw error;
+    }
+    return firstSemanticFallback(input.deterministicReport, firstResult.validation, "provider_failed");
+  }
+
+  if (retryResult.status === "pending") {
+    await parkSemanticResponse(
+      input.job,
+      retryResult,
+      input.existingSubmittedAt,
+      input.existingExpiresAt,
+      input.now,
+      input.env,
+      true
+    );
+    return { status: "waiting_provider" };
+  }
+
+  const outcome = retryResult.validation.missing_requirement_ids.length > 0 ? "incomplete" : "completed";
+  return {
+    status: "ready",
+    report: includedSemanticReport(input.deterministicReport, retryResult.output, 2),
+    semanticDiagnostics: semanticAuditDiagnostics(retryResult.validation, outcome)
+  };
+}
+
+async function parkSemanticResponse(
+  job: AnalysisJobRow,
+  result: { status: "pending"; responseId: string; providerStatus: "queued" | "in_progress" },
+  submittedAt: Date,
+  expiresAt: Date,
+  now: Date,
+  env: NodeJS.ProcessEnv,
+  retry: boolean
+): Promise<void> {
+  let parked: boolean;
+  try {
+    parked = await parkAnalysisJobForProvider({
+      id: job.id,
+      claimGeneration: job.claim_generation ?? "",
+      responseId: result.responseId,
+      providerStatus: result.providerStatus,
+      submittedAt,
+      expiresAt,
+      runAfter: new Date(Math.min(expiresAt.getTime(), now.getTime() + OPENAI_BACKGROUND_POLL_DELAY_MS)),
+      now
+    }, env);
+  } catch {
+    if (retry) throw new AnalysisWorkerLeaseLostError();
+    throw new AnalysisWorkerTerminalError(
+      "openai_submission_uncertain",
+      "OpenAI background submission could not be reconciled safely."
+    );
+  }
+  if (!parked) throw new AnalysisWorkerLeaseLostError();
+}
+
+function includedSemanticReport(
+  deterministicReport: VerificationReport,
+  output: NonNullable<VerificationReport["semantic"]>,
+  attempts: 1 | 2
+): VerificationReport {
+  return {
+    ...deterministicReport,
+    semantic: output,
+    semanticAnalysis: { status: "included", attempts }
+  };
+}
+
+function firstSemanticFallback(
+  deterministicReport: VerificationReport,
+  validation: LlmSemanticValidationResult,
+  retryOutcome: AuditSemanticDiagnostics["retryOutcome"],
+  attempts: 1 | 2 = 2
+) {
+  return {
+    status: "ready" as const,
+    report: includedSemanticReport(deterministicReport, validation.candidate!, attempts),
+    semanticDiagnostics: semanticAuditDiagnostics(validation, retryOutcome)
+  };
+}
+
+function unavailableSemanticFallback(deterministicReport: VerificationReport) {
+  return {
+    status: "ready" as const,
+    report: {
+      ...deterministicReport,
+      semanticAnalysis: { status: "unavailable" as const, attempts: 2 as const }
+    }
+  };
+}
+
+function semanticAuditDiagnostics(
+  validation: LlmSemanticValidationResult,
+  retryOutcome: AuditSemanticDiagnostics["retryOutcome"]
+): AuditSemanticDiagnostics {
+  const discardReasonCodeCounts: AuditSemanticDiagnostics["discardReasonCodeCounts"] = {
+    root_schema_invalid: 0,
+    secret_detected: 0,
+    raw_content_detected: 0,
+    untrusted_instruction_influence: 0,
+    empty_usable_analysis: 0
+  };
+  for (const reason of validation.diagnostics.discard_reason_codes) {
+    discardReasonCodeCounts[reason] += 1;
+  }
+
+  return {
+    disposition: validation.disposition,
+    inputRequirementCount: validation.diagnostics.input_requirement_count,
+    assessedRequirementCount: validation.diagnostics.assessed_requirement_count,
+    missingRequirementCount: validation.diagnostics.missing_requirement_count,
+    rawSectionCounts: validation.diagnostics.raw_section_counts,
+    acceptedSectionCounts: validation.diagnostics.accepted_section_counts,
+    rejectedSectionCounts: validation.diagnostics.rejected_section_counts,
+    rejectedReasonCodeCounts: validation.diagnostics.rejected_reason_code_counts,
+    discardReasonCodeCounts,
+    retryAttempted: retryOutcome !== "not_needed" && retryOutcome !== "expired_before_retry",
+    retryOutcome
+  };
+}
+
+function retryBackoffFitsContinuationWindow(
+  now: Date,
+  priorExpiresAt: Date,
+  activeExpiresAt: Date
+): boolean {
+  const nextRetryAt = now.getTime() + DEFAULT_ANALYSIS_JOB_RETRY_AFTER_MS;
+  return nextRetryAt < Math.min(priorExpiresAt.getTime(), activeExpiresAt.getTime());
+}
+
+function parseProviderTime(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
 function isSystemicRetryableFailure(reason: string | undefined): boolean {
   return reason === "github_fetch_failed" ||
+    reason === "openai_timeout" ||
+    reason === "openai_network_error" ||
+    reason === "openai_rate_limited" ||
+    reason === "openai_provider_unavailable" ||
     reason === "github_app_not_ready" ||
     reason === "github_app_tenant_grant_store_unavailable" ||
     reason === "github_app_plan_gate_unavailable" ||
@@ -700,6 +1275,7 @@ async function recordWorkerAudit(
       action?: string;
       privacy?: string;
     };
+    semanticDiagnostics?: AuditSemanticDiagnostics;
   },
   env: NodeJS.ProcessEnv,
   options: { swallowErrors?: boolean } = {}
@@ -721,7 +1297,8 @@ async function recordWorkerAudit(
     evidenceCoverage: metadata.evidenceCoverage,
     savedReport: metadata.savedReport,
     comment: metadata.comment,
-    slack: metadata.slack
+    slack: metadata.slack,
+    semanticDiagnostics: metadata.semanticDiagnostics
   }, env);
 
   if (options.swallowErrors === false) {
@@ -741,6 +1318,22 @@ function classifyWorkerFailure(error: unknown): { retryable: boolean; code: stri
 
   if (error instanceof AnalysisWorkerRetryableError) {
     return { retryable: true, code: error.code, summary };
+  }
+
+  if (error instanceof AnalysisWorkerLeaseLostError) {
+    return {
+      retryable: true,
+      code: "analysis_job_claim_lost",
+      summary: "Analysis job claim ownership changed before completion."
+    };
+  }
+
+  if (error instanceof OpenAISemanticError) {
+    return {
+      retryable: error.retryable,
+      code: error.code,
+      summary: safeOpenAISemanticSummary(error.code)
+    };
   }
 
   if (error instanceof GitHubPullRequestHeadChangedError) {
@@ -784,6 +1377,16 @@ function classifyWorkerFailure(error: unknown): { retryable: boolean; code: stri
   }
 
   return { retryable: true, code: "analysis_worker_failed", summary };
+}
+
+function safeOpenAISemanticSummary(code: string): string {
+  if (["openai_timeout", "openai_network_error", "openai_rate_limited", "openai_provider_unavailable"].includes(code)) {
+    return "OpenAI semantic analysis is temporarily unavailable and may be retried.";
+  }
+  if (code === "openai_output_rejected" || code === "openai_output_invalid") {
+    return "OpenAI semantic output did not pass AgentProof validation.";
+  }
+  return "OpenAI background semantic analysis could not be completed.";
 }
 
 async function assertWorkerTenantDeletionNotActive(job: AnalysisJobRow, env: NodeJS.ProcessEnv): Promise<void> {

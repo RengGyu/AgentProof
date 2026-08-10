@@ -577,7 +577,7 @@ export function assertSummaryOnlyReport(report, options = {}) {
     throw smokeError("Saved report retained evidenceRefs.");
   }
 
-  if (!Array.isArray(report.limitations) || !report.limitations.some((item) => /omits raw evidence, patch\/log excerpts, claims, and re-prompt text/i.test(item))) {
+  if (!Array.isArray(report.limitations) || !report.limitations.some((item) => /omits raw evidence, patch\/log excerpts, claims,(?: proof-graph evidence refs,)? and re-prompt text/i.test(item))) {
     throw smokeError("Saved report did not include the summary-only omission limitation.");
   }
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ensureGitHubOwnerTenant,
   TenantAccountLifecycleError,
   TenantAccountStoreError,
   readTenantAccountSeeds,
@@ -34,6 +35,48 @@ describe("tenant account metadata boundary", () => {
         member: 0
       }
     });
+  });
+
+  it("maps one GitHub identity to one deterministic owner tenant without storing profile data", async () => {
+    stubSupabaseAccountEnv();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(Response.json([{ tenant_id: "gh_12345", member_id: "github:12345" }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(ensureGitHubOwnerTenant({ githubUserId: 12345 })).resolves.toEqual({
+      tenantId: "gh_12345",
+      memberId: "github:12345"
+    });
+
+    const writes = fetchMock.mock.calls
+      .filter(([, init]) => init?.method === "POST")
+      .map(([url, init]) => ({ url: String(url), body: JSON.parse(String(init?.body)) }));
+    expect(writes).toEqual([
+      expect.objectContaining({ body: { tenant_id: "gh_12345", name: "GitHub beta workspace", status: "active", plan: "beta" } }),
+      expect.objectContaining({ body: { tenant_id: "gh_12345", member_id: "github:12345", role: "owner", status: "active" } }),
+      expect.objectContaining({ body: { github_user_id: "12345", tenant_id: "gh_12345", member_id: "github:12345" } })
+    ]);
+    expect(JSON.stringify(writes)).not.toContain("login");
+    expect(JSON.stringify(writes)).not.toContain("email");
+    expect(JSON.stringify(writes)).not.toContain("token");
+  });
+
+  it("reuses the existing owner tenant for a returning GitHub identity", async () => {
+    stubSupabaseAccountEnv();
+    const fetchMock = vi.fn(async () => Response.json([{ tenant_id: "gh_12345", member_id: "github:12345" }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(ensureGitHubOwnerTenant({ githubUserId: "12345" })).resolves.toEqual({
+      tenantId: "gh_12345",
+      memberId: "github:12345"
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe("GET");
   });
 
   it("reads env-seeded account members without exposing extra contact or secret fields", async () => {

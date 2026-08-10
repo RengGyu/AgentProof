@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { noStoreJson } from "./http";
 import { redactSecrets } from "./redact";
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 import { readTenantAccountSummary, type TenantMemberRole } from "./tenant-accounts";
 
 export const TENANT_AUTH_SESSION_COOKIE = "agentproof_tenant_auth_session";
@@ -129,6 +130,47 @@ export async function createTenantAuthSession(
   };
 }
 
+/**
+ * Creates the same revocable, opaque session used by invite onboarding after a
+ * GitHub identity has been verified.  The identity callback is the credential
+ * in this path; OAuth tokens are never copied into this session or its store.
+ */
+export async function createTenantAuthSessionForMember(
+  input: { tenantId?: unknown; memberId?: unknown },
+  env = process.env,
+  now = Date.now()
+): Promise<TenantAuthSession> {
+  const tenantId = normalizeTenantId(input.tenantId);
+  const memberId = normalizeMemberId(input.memberId);
+  if (!tenantId || !memberId) {
+    throw new TenantAuthError("Tenant auth session request is invalid.");
+  }
+
+  const member = await readActiveTenantMember({ tenantId, memberId }, env);
+  if (!member) {
+    throw new TenantAuthError("Tenant auth member is not active.");
+  }
+
+  const sessionToken = randomToken();
+  const expiresAt = new Date(now + TENANT_AUTH_SESSION_TTL_MS).toISOString();
+  await storeTenantAuthSession({
+    id: randomToken(),
+    tokenHash: hashToken(sessionToken),
+    tenantId,
+    memberId,
+    createdAt: new Date(now).toISOString(),
+    expiresAt
+  }, env);
+
+  return {
+    tenantId,
+    memberId,
+    role: member.role,
+    expiresAt,
+    sessionCookie: buildCookie(TENANT_AUTH_SESSION_COOKIE, sessionToken, expiresAt, now)
+  };
+}
+
 export async function verifyTenantAuthAccess(
   input: { tenantId?: unknown; cookieHeader?: string | null },
   env = process.env,
@@ -150,6 +192,31 @@ export async function verifyTenantAuthAccess(
   return {
     authorized: true,
     tenantId,
+    memberId: record.memberId,
+    role: member.role,
+    method: "durable-session",
+    sessionState: "active"
+  };
+}
+
+/** Resolves the tenant solely from the opaque session cookie. */
+export async function resolveTenantAuthAccess(
+  input: { cookieHeader?: string | null },
+  env = process.env,
+  now = Date.now()
+): Promise<TenantAuthAccessResult> {
+  const sessionToken = readCookie(input.cookieHeader, TENANT_AUTH_SESSION_COOKIE);
+  if (!sessionToken) return { authorized: false };
+
+  const record = await findTenantAuthSession({ tokenHash: hashToken(sessionToken) }, env);
+  if (!record || Date.parse(record.expiresAt) <= now || record.revokedAt) return { authorized: false };
+
+  const member = await readActiveTenantMember({ tenantId: record.tenantId, memberId: record.memberId }, env);
+  if (!member) return { authorized: false };
+
+  return {
+    authorized: true,
+    tenantId: record.tenantId,
     memberId: record.memberId,
     role: member.role,
     method: "durable-session",
@@ -330,11 +397,11 @@ function tenantAuthFetch(config: TenantAuthSessionStoreConfig, query: string, in
 }
 
 function getTenantAuthSessionStoreConfig(env = process.env): TenantAuthSessionStoreConfig | null {
-  const url = env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
+  const shared = getControlPlaneSupabaseEnv(env);
+  const url = env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL || shared.url;
   const serviceRoleKey =
     env.AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY ||
-    env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY ||
-    env.SUPABASE_SERVICE_ROLE_KEY ||
+    shared.serviceRoleKey ||
     "";
 
   if (!url && !serviceRoleKey) return null;

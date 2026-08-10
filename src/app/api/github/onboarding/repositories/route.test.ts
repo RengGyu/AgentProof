@@ -76,7 +76,7 @@ describe("/api/github/onboarding/repositories", () => {
   });
 
 
-  it("creates a tenant repository grant from server-fetched repository id metadata", async () => {
+  it("creates a private repository grant with essential analysis by default and keeps comments off", async () => {
     stubOnboardingEnv();
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
@@ -93,8 +93,7 @@ describe("/api/github/onboarding/repositories", () => {
         installationId: 321,
         repositoryId: 100,
         repositoryFullName: "Attacker/ChosenName",
-        saveReportsEnabled: true,
-        commentEnabled: false
+        saveReportsEnabled: true
       })
     }));
     const json = await response.json();
@@ -109,7 +108,8 @@ describe("/api/github/onboarding/repositories", () => {
       settings: {
         analysisEnabled: true,
         saveReportsEnabled: true,
-        commentEnabled: false
+        commentEnabled: false,
+        llmAnalysisMode: "essential"
       },
       privacy: "grant-metadata-only",
       next: "webhook_analysis_enabled_for_repository"
@@ -125,6 +125,27 @@ describe("/api/github/onboarding/repositories", () => {
         repositoryId: 100,
         repositoryFullName: "RengGyu/AgentProof"
       }
+    });
+  });
+
+  it("automatically enables enhanced analysis for a selected public repository", async () => {
+    stubOnboardingEnv();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubGlobal("fetch", mockRepositoryFetch());
+    const activationCookie = await createActivationCookie();
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
+      method: "POST",
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ installationId: 321, repositoryId: 101 })
+    }));
+
+    await expect(response.json()).resolves.toMatchObject({
+      repositoryId: 101,
+      settings: { llmAnalysisMode: "enhanced" }
     });
   });
 

@@ -1452,5 +1452,5 @@ function mapGitHubCommitStatus(state: string): CheckRun["status"] {
 }
 
 function mapGitHubObservationStatus(status: CheckRun["status"]): CheckRun["status"] {
-  return status === "passed" ? "unknown" : status;
+  return status;
 }

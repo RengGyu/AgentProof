@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 
 export const ONBOARDING_INSTALLATION_CLAIM_COOKIE = "agentproof_github_installation_claim";
 export const DEFAULT_GITHUB_INSTALLATION_CLAIMS_TABLE = "agentproof_github_installation_claims";
@@ -156,8 +157,9 @@ async function transitionClaim(record: ClaimRecord, from: ClaimStatus, to: Claim
 }
 
 function getClaimStoreConfig(env: NodeJS.ProcessEnv): ClaimStoreConfig | null {
-  const url = env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_URL || env.SUPABASE_URL || "";
-  const serviceRoleKey = env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY || env.AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "";
+  const shared = getControlPlaneSupabaseEnv(env);
+  const url = env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL || shared.url;
+  const serviceRoleKey = env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY || shared.serviceRoleKey;
   if (!url && !serviceRoleKey) return null;
   if (!url || !serviceRoleKey) throw new GitHubInstallationClaimStoreError("GitHub installation claim Supabase env is incomplete.");
   return { url: url.replace(/\/+$/, ""), serviceRoleKey, table: env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_TABLE || DEFAULT_GITHUB_INSTALLATION_CLAIMS_TABLE };

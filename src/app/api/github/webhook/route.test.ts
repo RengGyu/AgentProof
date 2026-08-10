@@ -18,9 +18,38 @@ import { clearUsageQuotaForTests } from "@/lib/usage-quota";
 import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
 
+const deferredWebhookTasks = vi.hoisted(() => [] as Promise<unknown>[]);
+const mockedClaimAnalysisJobById = vi.hoisted(() => vi.fn());
+const mockedRunClaimedAnalysisJob = vi.hoisted(() => vi.fn());
+
+vi.mock("next/server", () => ({
+  after(task: Promise<unknown> | (() => unknown)) {
+    deferredWebhookTasks.push(Promise.resolve().then(() => typeof task === "function" ? task() : task));
+  }
+}));
+
+vi.mock("@/lib/analysis-worker", () => ({
+  runClaimedAnalysisJob: mockedRunClaimedAnalysisJob
+}));
+
+vi.mock("@/lib/analysis-jobs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analysis-jobs")>()),
+  claimAnalysisJobById: mockedClaimAnalysisJobById
+}));
+
 describe("POST /api/github/webhook", () => {
   beforeEach(() => {
     vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
+    vi.stubEnv("VERCEL", "");
+    deferredWebhookTasks.length = 0;
+    mockedClaimAnalysisJobById.mockReset();
+    mockedClaimAnalysisJobById.mockResolvedValue({
+      job: { id: "claimed-job" },
+      store: "supabase",
+      durable: true
+    });
+    mockedRunClaimedAnalysisJob.mockReset();
+    mockedRunClaimedAnalysisJob.mockResolvedValue({ status: "completed" });
   });
 
   afterEach(() => {
@@ -776,6 +805,56 @@ describe("POST /api/github/webhook", () => {
     });
   });
 
+  it("reanalyzes a granted PR when its GitHub check run completes without enabling comments", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("VERCEL", "1");
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      saveReportsEnabled: false,
+      commentEnabled: false
+    });
+    const fetchMock = mockAutomationFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify({
+      action: "completed",
+      repository: { id: 100, full_name: "RengGyu/AgentProof", private: true },
+      installation: { id: 321 },
+      check_run: {
+        id: 999,
+        head_sha: "abc123",
+        pull_requests: [{ number: 7 }]
+      }
+    });
+
+    const response = await POST(signedRequest(body, {
+      event: "check_run",
+      delivery: "delivery-check-completed-reanalysis",
+      secret: "secret"
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(json).toMatchObject({
+      event: "check_run",
+      automationEnabled: true,
+      willAnalyze: true,
+      willComment: false,
+      deferred: true
+    });
+    expect(json).not.toHaveProperty("analysis");
+    await Promise.all(deferredWebhookTasks);
+    expect(getAuditEventsForTests()[0]).toMatchObject({ action: "github_app_analysis_completed" });
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/issues/7/comments"))).toBe(false);
+  });
+
   it("fails closed when the PR base changes after collection and before publication", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -934,6 +1013,12 @@ describe("POST /api/github/webhook", () => {
       }
     });
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+    expect(deferredWebhookTasks).toHaveLength(1);
+    await Promise.all(deferredWebhookTasks);
+    expect(mockedClaimAnalysisJobById).toHaveBeenCalledWith(json.analysis.jobId);
+    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledWith({ id: "claimed-job" }, {
+      requestUrl: "http://localhost/api/github/webhook",
+    });
   });
 
   it("clamps queued side effects to the tenant plan before Slack config or token fetch", async () => {
@@ -1789,12 +1874,9 @@ describe("POST /api/github/webhook", () => {
 
     expect(response.status).toBe(200);
     expect(json.analysis.savedReport.privacy).toBe("summary-only");
-    expect(savedKey).toBeTruthy();
+    expect(savedKey).toBeFalsy();
     expect(noKeyResponse.status).toBe(404);
-    expect(keyResponse.status).toBe(200);
-    expect(keyJson.report.evidenceIndex).toEqual([]);
-    expect(keyJson.report.claims).toEqual([]);
-    expect(keyJson.report.reprompt.prompt).toContain("Shared summary links omit re-prompt text");
+    expect(keyResponse.status).toBe(404);
     expect(serialized).not.toContain("tenant_test");
     expect(serialized).not.toContain("Patch excerpt");
     expect(getAuditEventsForTests()[0]).toMatchObject({
@@ -1808,7 +1890,7 @@ describe("POST /api/github/webhook", () => {
         }
       }
     });
-    expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedKey);
+    if (savedKey) expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedKey);
     expect(JSON.stringify(getAuditEventsForTests()[0])).not.toContain(savedReportUrl.toString());
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });

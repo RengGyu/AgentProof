@@ -1,4 +1,5 @@
 import type { VerificationReport } from "./types";
+import { validateLlmSemanticCandidate } from "./llm-semantic-output";
 import {
   hasPassingEvidenceStatusPrefix,
   isExecutionEvidenceSignal,
@@ -81,7 +82,7 @@ export interface ReportValidationResult {
 }
 
 export interface ReportValidationOptions {
-  mode?: "default" | "full" | "summary";
+  mode?: "default" | "full" | "summary" | "tenant";
   requireFullProvenance?: boolean;
   requireSourceProvenance?: boolean;
 }
@@ -115,7 +116,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["authenticity"]
+    ["authenticity", "semantic", "semanticAnalysis"]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -134,6 +135,8 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateProofGraph(report.proofGraph, evidenceIds, evidenceById, requirementIds, mode, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
+  validateSemanticAnalysis(report.semantic, requirementIds, report.evidenceIndex, errors);
+  validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   validateAuthenticity(report.authenticity, errors);
   if (mode === "summary") {
     validateSummaryOnlyReport(report, errors);
@@ -144,6 +147,51 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+function validateSemanticAnalysis(
+  value: unknown,
+  requirementIds: Set<string>,
+  evidenceIndex: unknown,
+  errors: string[]
+) {
+  if (value === undefined) return;
+  if (!Array.isArray(evidenceIndex)) {
+    errors.push("semantic analysis requires evidenceIndex.");
+    return;
+  }
+  const evidence = evidenceIndex.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.kind !== "string") return [];
+    return [{ id: item.id, kind: item.kind as import("./types").EvidenceKind }];
+  });
+  const validation = validateLlmSemanticCandidate(value, {
+    requirementIds: [...requirementIds],
+    evidence
+  });
+  if (validation.disposition !== "accepted") {
+    errors.push("semantic analysis is not a fully validated grounded candidate.");
+  }
+}
+
+function validateSemanticRuntimeState(value: unknown, semantic: unknown, errors: string[]) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push("semanticAnalysis must be an object.");
+    return;
+  }
+  requireKeys(value, ["status", "attempts"], "semanticAnalysis", errors);
+  if (value.status !== "included" && value.status !== "unavailable") {
+    errors.push("semanticAnalysis.status is invalid.");
+  }
+  if (value.attempts !== 1 && value.attempts !== 2) {
+    errors.push("semanticAnalysis.attempts is invalid.");
+  }
+  if (value.status === "included" && semantic === undefined) {
+    errors.push("semanticAnalysis.included requires semantic analysis.");
+  }
+  if (value.status === "unavailable" && semantic !== undefined) {
+    errors.push("semanticAnalysis.unavailable must not include semantic analysis.");
+  }
 }
 
 function validateAuthenticity(value: unknown, errors: string[]) {
@@ -420,9 +468,11 @@ function validateProofGraph(
       validateEvidenceRefs(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceIds, errors);
       validateEvidenceRefs(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceIds, errors);
       validateEvidenceRefs(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceIds, errors);
-      validateProofEvidenceClass(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceById, isImplementationProofEvidence, errors);
-      validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
-      validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
+      if (mode !== "tenant") {
+        validateProofEvidenceClass(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceById, isImplementationProofEvidence, errors);
+        validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
+        validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
+      }
       validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
       validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
     }

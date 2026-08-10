@@ -1,6 +1,7 @@
 import { noStoreJson } from "@/lib/http";
 import { redactSecrets } from "@/lib/redact";
 import { deleteSavedReport, getSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
+import { resolveTenantAuthAccess } from "@/lib/tenant-auth";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -12,7 +13,7 @@ export async function GET(request: Request, context: RouteContext) {
   let saved;
 
   try {
-    saved = await getSavedReport(id, savedReportAccessFromRequest(request));
+    saved = await getSavedReport(id, await savedReportAccessFromRequest(request));
   } catch (error) {
     if (error instanceof SavedReportStoreError) {
       return noStoreJson({ error: "Saved report lookup failed.", detail: redactSecrets(error.message) }, { status: 503 });
@@ -41,7 +42,7 @@ export async function DELETE(request: Request, context: RouteContext) {
   let deleted;
 
   try {
-    deleted = await deleteSavedReport(id, savedReportAccessFromRequest(request));
+    deleted = await deleteSavedReport(id, await savedReportAccessFromRequest(request));
   } catch (error) {
     if (error instanceof SavedReportStoreError) {
       return noStoreJson({ error: "Saved report delete failed.", detail: redactSecrets(error.message) }, { status: 503 });
@@ -53,9 +54,10 @@ export async function DELETE(request: Request, context: RouteContext) {
   return noStoreJson({ deleted });
 }
 
-function savedReportAccessFromRequest(request: Request) {
+async function savedReportAccessFromRequest(request: Request) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") ?? url.searchParams.get("reportKey") ?? undefined;
-
-  return key ? { accessToken: key.slice(0, 200) } : {};
+  if (key) return { accessToken: key.slice(0, 200) };
+  const access = await resolveTenantAuthAccess({ cookieHeader: request.headers.get("cookie") });
+  return access.authorized && access.tenantId ? { tenantId: access.tenantId } : {};
 }
