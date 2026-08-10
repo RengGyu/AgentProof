@@ -480,6 +480,43 @@ export async function claimNextAnalysisJob(
   };
 }
 
+export async function claimAnalysisJobById(
+  jobId: string,
+  options: AnalysisJobClaimOptions = {},
+  env = process.env
+): Promise<AnalysisJobClaimResult> {
+  if (!analysisJobQueueEnabled(env)) {
+    throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  }
+
+  const normalizedJobId = safeAnalysisJobId(jobId);
+  if (!normalizedJobId) {
+    throw new AnalysisJobQueueError("Analysis job id is invalid.");
+  }
+
+  const config = getAnalysisJobStoreConfig(env);
+  const now = options.now ?? new Date();
+
+  if (config) {
+    const job = await claimSupabaseAnalysisJobById(config, normalizedJobId, now);
+    return {
+      job,
+      store: "supabase",
+      durable: true
+    };
+  }
+
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+
+  return {
+    job: claimMemoryAnalysisJobById(normalizedJobId, now),
+    store: "memory",
+    durable: false
+  };
+}
+
 export async function claimAnalysisJobForProviderResponse(
   responseId: string,
   options: AnalysisJobProviderResponseClaimOptions,
@@ -1547,6 +1584,21 @@ async function claimSupabaseAnalysisJobForProviderResponse(
   return job ? { job, disposition: "claimed" } : { job: null, disposition: "busy" };
 }
 
+async function claimSupabaseAnalysisJobById(
+  config: AnalysisJobStoreConfig,
+  jobId: string,
+  now: Date
+): Promise<AnalysisJobRow | null> {
+  const candidate = await getSupabaseAnalysisJobById(config, jobId);
+  if (!candidate || !isDueQueuedJob(candidate, now)) return null;
+
+  return patchSupabaseAnalysisJob(config, candidate.id, toClaimedAnalysisJobUpdate(candidate, now), {
+    currentStatus: candidate.status,
+    currentUpdatedAt: candidate.updated_at,
+    returnRepresentation: true
+  });
+}
+
 function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | null {
   const store = analysisJobStore();
   const due = store.find((job) => isDueQueuedJob(job, now));
@@ -1575,6 +1627,15 @@ function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | nu
   assertAnalysisJobIsPrivate(stale);
 
   return { ...stale };
+}
+
+function claimMemoryAnalysisJobById(jobId: string, now: Date): AnalysisJobRow | null {
+  const candidate = analysisJobStore().find((job) => job.id === jobId);
+  if (!candidate || !isDueQueuedJob(candidate, now)) return null;
+
+  Object.assign(candidate, toClaimedAnalysisJobUpdate(candidate, now));
+  assertAnalysisJobIsPrivate(candidate);
+  return { ...candidate };
 }
 
 function claimMemoryAnalysisJobForProviderResponse(
@@ -2376,6 +2437,12 @@ function providerContinuationClaimDisposition(
 
 function safeProviderResponseId(value: unknown): string | null {
   return typeof value === "string" && /^resp_[A-Za-z0-9_-]{1,180}$/.test(value) ? value : null;
+}
+
+function safeAnalysisJobId(value: unknown): string | null {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null;
 }
 
 function safeOpenAIWebhookId(value: unknown): string | null {

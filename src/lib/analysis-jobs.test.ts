@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertAnalysisJobIsPrivate,
+  claimAnalysisJobById,
   clearAnalysisJobsForTests,
   claimAnalysisJobForProviderResponse,
   claimNextAnalysisJob,
@@ -413,6 +414,22 @@ describe("analysis job queue", () => {
     expect(JSON.stringify(tenantProjection)).not.toContain("provider_webhook");
     expect(JSON.stringify(tenantProjection)).not.toContain("resp_webhook_123");
     expect(JSON.stringify({ claimed, duplicate, unknown })).not.toContain("service-role-secret");
+  });
+
+  it("claims the requested queued job without consuming an older queued job", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const first = await enqueueAnalysisJob(jobInput());
+    const requested = await enqueueAnalysisJob({
+      ...jobInput(),
+      headSha: "def456",
+      now: new Date("2026-06-30T00:00:01Z")
+    });
+    const claim = await claimAnalysisJobById(requested.id, { now: new Date("2026-06-30T00:00:02Z") });
+
+    expect(claim.job).toMatchObject({ id: requested.id });
+    expect(getAnalysisJobsForTests().find((job) => job.id === first.id)).toMatchObject({ status: "queued" });
   });
 
   it("rejects malformed provider response ids before lookup", async () => {

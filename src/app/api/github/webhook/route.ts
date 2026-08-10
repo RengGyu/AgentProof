@@ -1,6 +1,7 @@
 import { buildGitHubPullRequestInput, fetchGitHubPullRequestAnchor } from "@/lib/github";
 import {
   AnalysisJobQueueError,
+  claimAnalysisJobById,
   enqueueAnalysisJob,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
@@ -35,7 +36,7 @@ import {
 import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
-import { runAnalysisJobBatch } from "@/lib/analysis-worker";
+import { runClaimedAnalysisJob } from "@/lib/analysis-worker";
 import {
   assertSlackReportNotificationConfigured,
   sendSlackReportSummary,
@@ -747,10 +748,12 @@ async function handlePullRequestAutomation(
         code: job.durable ? "github_app_analysis_queued_durable" : "github_app_analysis_queued_memory"
       });
 
-      after(() => runAnalysisJobBatch({
-        requestUrl: context.requestUrl,
-        limit: 1
-      }).then(() => undefined).catch(() => undefined));
+      after(() => claimAnalysisJobById(job.id)
+        .then((claim) => claim.job
+          ? runClaimedAnalysisJob(claim.job, { requestUrl: context.requestUrl })
+          : undefined)
+        .then(() => undefined)
+        .catch(() => undefined));
 
       return noStoreJson({
         ok: true,
