@@ -35,6 +35,7 @@ import {
 import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
+import { runAnalysisJobBatch } from "@/lib/analysis-worker";
 import {
   assertSlackReportNotificationConfigured,
   sendSlackReportSummary,
@@ -745,6 +746,11 @@ async function handlePullRequestAutomation(
         statusCode: 202,
         code: job.durable ? "github_app_analysis_queued_durable" : "github_app_analysis_queued_memory"
       });
+
+      after(() => runAnalysisJobBatch({
+        requestUrl: context.requestUrl,
+        limit: 1
+      }).then(() => undefined).catch(() => undefined));
 
       return noStoreJson({
         ok: true,

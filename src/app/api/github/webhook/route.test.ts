@@ -19,6 +19,7 @@ import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
 
 const deferredWebhookTasks = vi.hoisted(() => [] as Promise<unknown>[]);
+const mockedRunAnalysisJobBatch = vi.hoisted(() => vi.fn());
 
 vi.mock("next/server", () => ({
   after(task: Promise<unknown> | (() => unknown)) {
@@ -26,11 +27,27 @@ vi.mock("next/server", () => ({
   }
 }));
 
+vi.mock("@/lib/analysis-worker", () => ({
+  runAnalysisJobBatch: mockedRunAnalysisJobBatch
+}));
+
 describe("POST /api/github/webhook", () => {
   beforeEach(() => {
     vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
     vi.stubEnv("VERCEL", "");
     deferredWebhookTasks.length = 0;
+    mockedRunAnalysisJobBatch.mockReset();
+    mockedRunAnalysisJobBatch.mockResolvedValue({
+      requestedLimit: 1,
+      processed: 0,
+      completed: 0,
+      waitingProvider: 0,
+      failedRetryable: 0,
+      failedTerminal: 0,
+      idle: true,
+      stoppedReason: "idle",
+      items: []
+    });
   });
 
   afterEach(() => {
@@ -994,6 +1011,12 @@ describe("POST /api/github/webhook", () => {
       }
     });
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+    expect(deferredWebhookTasks).toHaveLength(1);
+    await Promise.all(deferredWebhookTasks);
+    expect(mockedRunAnalysisJobBatch).toHaveBeenCalledWith({
+      requestUrl: "http://localhost/api/github/webhook",
+      limit: 1
+    });
   });
 
   it("clamps queued side effects to the tenant plan before Slack config or token fetch", async () => {
