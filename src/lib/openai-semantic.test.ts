@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   analyzeSemanticsWithOpenAI,
+  retrieveMissingSemanticsWithOpenAIBackground,
   retrieveSemanticsWithOpenAIBackground,
+  submitMissingSemanticsWithOpenAIBackground,
   submitSemanticsWithOpenAIBackground
 } from "./openai-semantic";
+import {
+  buildLlmSemanticPackage,
+  validateLlmSemanticPackageCandidate
+} from "./llm-semantic-package";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
@@ -66,6 +72,186 @@ describe("OpenAI semantic adapter", () => {
     );
   });
 
+  it("submits one background retry containing only the first response's missing requirements", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
+    const firstEvidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
+    expect(requirementIds.length).toBeGreaterThan(2);
+    expect(firstEvidenceId).toBeTruthy();
+    const firstValidation = validateLlmSemanticPackageCandidate(
+      semanticOutput(requirementIds[0]!, firstEvidenceId!),
+      llmPackage
+    );
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "resp_background_retry_123",
+      status: "queued",
+      output: []
+    }));
+
+    const result = await submitMissingSemanticsWithOpenAIBackground(
+      input,
+      report,
+      firstValidation,
+      { apiKey: "test-key", fetchFn: fetchMock as unknown as typeof fetch }
+    );
+
+    expect(result).toEqual({
+      status: "pending",
+      responseId: "resp_background_retry_123",
+      providerStatus: "queued"
+    });
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    const retryInput = JSON.parse(requestBody.input[1].content[0].text);
+    expect(retryInput.requirements.map((requirement: { id: string }) => requirement.id)).toEqual(requirementIds.slice(1));
+    expect(requestBody.background).toBe(true);
+    expect(requestBody.store).toBe(false);
+  });
+
+  it("retrieves a background missing-only response and preserves first-valid semantic units", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
+    const firstEvidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
+    const retryEvidenceId = llmPackage.input.requirements[1]?.evidence_ids[0];
+    expect(requirementIds.length).toBeGreaterThan(2);
+    expect(firstEvidenceId).toBeTruthy();
+    expect(retryEvidenceId).toBeTruthy();
+    const firstOutput = semanticOutput(requirementIds[0]!, firstEvidenceId!);
+    const retryOutput = semanticOutput(requirementIds[1]!, retryEvidenceId!);
+    const firstValidation = validateLlmSemanticPackageCandidate(firstOutput, llmPackage);
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "resp_background_retry_123",
+      status: "completed",
+      output_text: JSON.stringify(retryOutput)
+    }));
+
+    const result = await retrieveMissingSemanticsWithOpenAIBackground(
+      "resp_background_retry_123",
+      input,
+      report,
+      firstValidation,
+      { apiKey: "test-key", fetchFn: fetchMock as unknown as typeof fetch }
+    );
+
+    expect(result).toMatchObject({
+      status: "completed",
+      responseId: "resp_background_retry_123",
+      output: {
+        requirement_assessments: expect.arrayContaining([
+          firstOutput.requirement_assessments[0],
+          retryOutput.requirement_assessments[0]
+        ])
+      },
+      validation: {
+        missing_requirement_ids: requirementIds.slice(2),
+        diagnostics: {
+          retryAttempted: true
+        }
+      }
+    });
+  });
+
+  it("preserves partial background retry raw and rejected diagnostics through merge", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
+    const firstEvidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
+    const retryEvidenceId = llmPackage.input.requirements[1]?.evidence_ids[0];
+    expect(requirementIds.length).toBeGreaterThan(2);
+    expect(firstEvidenceId).toBeTruthy();
+    expect(retryEvidenceId).toBeTruthy();
+    const firstOutput = semanticOutput(requirementIds[0]!, firstEvidenceId!);
+    const retryOutput = semanticOutput(requirementIds[1]!, retryEvidenceId!);
+    retryOutput.requirement_assessments.push({
+      ...retryOutput.requirement_assessments[0]!,
+      requirement_id: "req_unknown_retry_123"
+    });
+    const firstValidation = validateLlmSemanticPackageCandidate(firstOutput, llmPackage);
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "resp_background_partial_retry_123",
+      status: "completed",
+      output_text: JSON.stringify(retryOutput)
+    }));
+
+    const result = await retrieveMissingSemanticsWithOpenAIBackground(
+      "resp_background_partial_retry_123",
+      input,
+      report,
+      firstValidation,
+      { apiKey: "test-key", fetchFn: fetchMock as unknown as typeof fetch }
+    );
+
+    expect(result).toMatchObject({
+      status: "completed",
+      validation: {
+        diagnostics: {
+          raw_section_counts: { requirement_assessments: 3 },
+          accepted_section_counts: { requirement_assessments: 2 },
+          rejected_section_counts: { requirement_assessments: 1 },
+          rejected_reason_code_counts: { unknown_requirement_reference: 1 },
+          discard_reason_codes: []
+        }
+      }
+    });
+  });
+
+  it("preserves discarded background retry diagnostics while falling back to the first candidate", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
+    const firstEvidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
+    const retryEvidenceId = llmPackage.input.requirements[1]?.evidence_ids[0];
+    expect(requirementIds.length).toBeGreaterThan(2);
+    expect(firstEvidenceId).toBeTruthy();
+    expect(retryEvidenceId).toBeTruthy();
+    const firstOutput = semanticOutput(requirementIds[0]!, firstEvidenceId!);
+    const invalidAssessment = semanticOutput(requirementIds[1]!, retryEvidenceId!).requirement_assessments[0]!;
+    const discardedRetry = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        ...invalidAssessment,
+        requirement_id: "req_unknown_retry_123"
+      }],
+      evidence_gaps: [],
+      review_targets: [],
+      remediation_requests: [],
+      uncertainties: []
+    };
+    const firstValidation = validateLlmSemanticPackageCandidate(firstOutput, llmPackage);
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "resp_background_discarded_retry_123",
+      status: "completed",
+      output_text: JSON.stringify(discardedRetry)
+    }));
+
+    const result = await retrieveMissingSemanticsWithOpenAIBackground(
+      "resp_background_discarded_retry_123",
+      input,
+      report,
+      firstValidation,
+      { apiKey: "test-key", fetchFn: fetchMock as unknown as typeof fetch }
+    );
+
+    expect(result).toMatchObject({
+      status: "completed",
+      output: firstOutput,
+      validation: {
+        diagnostics: {
+          raw_section_counts: { requirement_assessments: 2 },
+          accepted_section_counts: { requirement_assessments: 1 },
+          rejected_section_counts: { requirement_assessments: 1 },
+          rejected_reason_code_counts: { unknown_requirement_reference: 1 },
+          discard_reason_codes: ["empty_usable_analysis"]
+        }
+      }
+    });
+  });
+
   it("classifies provider throttling as retryable without retaining the provider error body", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);
@@ -96,6 +282,27 @@ describe("OpenAI semantic adapter", () => {
     });
   });
 
+  it.each([
+    ["failed", "openai_background_failed"],
+    ["cancelled", "openai_background_cancelled"],
+    ["incomplete", "openai_background_incomplete"]
+  ] as const)("classifies terminal background status %s without retrying", async (status, code) => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "resp_background_terminal_123",
+      status
+    }));
+
+    await expect(retrieveSemanticsWithOpenAIBackground(
+      "resp_background_terminal_123",
+      input,
+      report,
+      { apiKey: "test-key", fetchFn: fetchMock as unknown as typeof fetch }
+    )).rejects.toMatchObject({ code, retryable: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("sends a transient strict-schema request and returns only validator-approved semantic output", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);
@@ -124,12 +331,12 @@ describe("OpenAI semantic adapter", () => {
       remediation_requests: [],
       uncertainties: []
     };
-    const fetchMock = vi.fn().mockResolvedValue(
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(
       new Response(JSON.stringify({ output_text: JSON.stringify(response) }), {
         status: 200,
         headers: { "Content-Type": "application/json" }
       })
-    );
+    ));
 
     const result = await analyzeSemanticsWithOpenAI(input, report, {
       apiKey: "test-key",
@@ -145,6 +352,78 @@ describe("OpenAI semantic adapter", () => {
     expect(requestBody.store).toBe(false);
     expect(requestBody.text.format.name).toBe("agentproof_llm_semantic_output_v1");
     expect(requestBody.input[1].content[0].text).toContain('"output_locale":"ko"');
+  });
+
+  it("retries once with only missing requirements and merges the first valid assessments", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
+    const firstEvidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
+    const retryEvidenceId = llmPackage.input.requirements[1]?.evidence_ids[0];
+    expect(requirementIds.length).toBeGreaterThan(1);
+    expect(firstEvidenceId).toBeTruthy();
+    expect(retryEvidenceId).toBeTruthy();
+    const firstOutput = semanticOutput(requirementIds[0]!, firstEvidenceId!);
+    const retryOutput = semanticOutput(requirementIds[1]!, retryEvidenceId!);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ output_text: JSON.stringify(firstOutput) }))
+      .mockResolvedValueOnce(Response.json({ output_text: JSON.stringify(retryOutput) }));
+
+    const result = await analyzeSemanticsWithOpenAI(input, report, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstRequestInput = JSON.parse(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).input[1].content[0].text);
+    const retryRequestInput = JSON.parse(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).input[1].content[0].text);
+    expect(retryRequestInput.requirements.map((requirement: { id: string }) => requirement.id)).toEqual(requirementIds.slice(1));
+    expect(retryRequestInput.evidence.map((evidence: { id: string }) => evidence.id)).toEqual(
+      firstRequestInput.evidence
+        .filter((evidence: { id: string }) => retryRequestInput.requirements.some(
+          (requirement: { evidence_ids: string[] }) => requirement.evidence_ids.includes(evidence.id)
+        ))
+        .map((evidence: { id: string }) => evidence.id)
+    );
+    expect(retryRequestInput.privacy).toEqual(firstRequestInput.privacy);
+    expect(result.output.requirement_assessments).toEqual(expect.arrayContaining([
+      firstOutput.requirement_assessments[0],
+      retryOutput.requirement_assessments[0]
+    ]));
+    expect(result.validation.diagnostics.retryAttempted).toBe(true);
+  });
+
+  it("returns valid merged units after one incomplete coverage retry without a third request", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
+    const firstEvidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
+    const retryEvidenceId = llmPackage.input.requirements[1]?.evidence_ids[0];
+    expect(requirementIds.length).toBeGreaterThan(2);
+    expect(firstEvidenceId).toBeTruthy();
+    expect(retryEvidenceId).toBeTruthy();
+    const firstOutput = semanticOutput(requirementIds[0]!, firstEvidenceId!);
+    const retryOutput = semanticOutput(requirementIds[1]!, retryEvidenceId!);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ output_text: JSON.stringify(firstOutput) }))
+      .mockResolvedValueOnce(Response.json({ output_text: JSON.stringify(retryOutput) }));
+
+    const result = await analyzeSemanticsWithOpenAI(input, report, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.validation.missing_requirement_ids).toEqual(requirementIds.slice(2));
+    expect(result.validation.diagnostics).toMatchObject({
+      input_requirement_count: requirementIds.length,
+      assessed_requirement_count: 2,
+      missing_requirement_count: requirementIds.length - 2,
+      retryAttempted: true
+    });
+    expect(JSON.stringify(result.validation.diagnostics)).not.toContain(requirementIds[2]);
   });
 
   it("rejects model output with references outside the package catalog", async () => {

@@ -1,8 +1,28 @@
 import { randomUUID } from "crypto";
 import { containsSecretPattern, redactSecrets } from "./redact";
+import type {
+  LlmSemanticDiscardReason,
+  LlmSemanticOutput,
+  LlmSemanticRejectReason
+} from "./llm-semantic-output";
 
 export const DEFAULT_AUDIT_EVENTS_TABLE = "agentproof_audit_events";
 export const MAX_MEMORY_AUDIT_EVENTS = 1000;
+export const MAX_SEMANTIC_AUDIT_REQUIREMENT_COUNT = 100;
+
+export interface AuditSemanticDiagnostics {
+  disposition: "accepted" | "partial" | "discarded";
+  inputRequirementCount: number;
+  assessedRequirementCount: number;
+  missingRequirementCount: number;
+  rawSectionCounts: Record<keyof LlmSemanticOutput, number>;
+  acceptedSectionCounts: Record<keyof LlmSemanticOutput, number>;
+  rejectedSectionCounts: Record<keyof LlmSemanticOutput, number>;
+  rejectedReasonCodeCounts: Record<LlmSemanticRejectReason, number>;
+  discardReasonCodeCounts: Record<LlmSemanticDiscardReason, number>;
+  retryAttempted: boolean;
+  retryOutcome: "not_needed" | "completed" | "incomplete" | "provider_failed" | "submission_uncertain" | "expired_before_retry";
+}
 
 export type AuditEventAction =
   | "github_app_analysis_completed"
@@ -55,6 +75,7 @@ export interface AuditEventInput {
     action?: string;
     privacy?: string;
   };
+  semanticDiagnostics?: AuditSemanticDiagnostics;
 }
 
 export interface AuditEventRow {
@@ -150,6 +171,12 @@ const FORBIDDEN_AUDIT_KEYS = [
   "patch",
   "private_key",
   "provider_customer_id",
+  "provider_response_id",
+  "prior_provider_response_id",
+  "provider_webhook_id",
+  "missing_requirement_ids",
+  "requirement_id",
+  "evidence_id",
   "raw",
   "raw_body",
   "raw_diff",
@@ -270,7 +297,12 @@ export async function countTenantAuditEvents(
 }
 
 export function assertAuditEventIsPrivate(value: unknown): void {
-  const serialized = JSON.stringify(value);
+  const serialized = JSON.stringify(value, (key, nested) =>
+    key === "secret_detected" && typeof nested === "number" &&
+      Number.isInteger(nested) && nested >= 0 && nested <= MAX_SEMANTIC_AUDIT_REQUIREMENT_COUNT
+      ? undefined
+      : nested
+  );
   if (containsSecretPattern(serialized)) {
     throw new AuditPrivacyError("Audit event contains a secret-like value.");
   }
@@ -310,7 +342,8 @@ function toAuditEventRow(input: AuditEventInput): AuditEventRow {
     slack: input.slack ? {
       action: safeSlug(input.slack.action),
       privacy: safeSlug(input.slack.privacy)
-    } : undefined
+    } : undefined,
+    semanticDiagnostics: sanitizeSemanticDiagnostics(input.semanticDiagnostics)
   };
 
   return {
@@ -632,6 +665,83 @@ function safeDurability(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const normalized = redactSecrets(value).trim();
   return /^[a-z0-9_.:-]{1,120}$/i.test(normalized) ? normalized : "unknown";
+}
+
+function sanitizeSemanticDiagnostics(
+  value: AuditSemanticDiagnostics | undefined
+): AuditSemanticDiagnostics | undefined {
+  if (!value) return undefined;
+  const disposition = value.disposition === "accepted" || value.disposition === "partial" || value.disposition === "discarded"
+    ? value.disposition
+    : "discarded";
+  const retryOutcome = [
+    "not_needed",
+    "completed",
+    "incomplete",
+    "provider_failed",
+    "submission_uncertain",
+    "expired_before_retry"
+  ].includes(value.retryOutcome) ? value.retryOutcome : "provider_failed";
+  return {
+    disposition,
+    inputRequirementCount: safeSemanticAuditCount(value.inputRequirementCount),
+    assessedRequirementCount: safeSemanticAuditCount(value.assessedRequirementCount),
+    missingRequirementCount: safeSemanticAuditCount(value.missingRequirementCount),
+    rawSectionCounts: sanitizeSemanticSectionCounts(value.rawSectionCounts),
+    acceptedSectionCounts: sanitizeSemanticSectionCounts(value.acceptedSectionCounts),
+    rejectedSectionCounts: sanitizeSemanticSectionCounts(value.rejectedSectionCounts),
+    rejectedReasonCodeCounts: sanitizeSemanticRejectReasonCounts(value.rejectedReasonCodeCounts),
+    discardReasonCodeCounts: sanitizeSemanticDiscardReasonCounts(value.discardReasonCodeCounts),
+    retryAttempted: value.retryAttempted === true,
+    retryOutcome: retryOutcome as AuditSemanticDiagnostics["retryOutcome"]
+  };
+}
+
+function sanitizeSemanticSectionCounts(
+  value: Record<keyof LlmSemanticOutput, number> | undefined
+): Record<keyof LlmSemanticOutput, number> {
+  return {
+    requirement_evidence_relations: safeSemanticAuditCount(value?.requirement_evidence_relations),
+    requirement_assessments: safeSemanticAuditCount(value?.requirement_assessments),
+    evidence_gaps: safeSemanticAuditCount(value?.evidence_gaps),
+    review_targets: safeSemanticAuditCount(value?.review_targets),
+    remediation_requests: safeSemanticAuditCount(value?.remediation_requests),
+    uncertainties: safeSemanticAuditCount(value?.uncertainties)
+  };
+}
+
+function sanitizeSemanticRejectReasonCounts(
+  value: Record<LlmSemanticRejectReason, number> | undefined
+): Record<LlmSemanticRejectReason, number> {
+  return {
+    invalid_unit_shape: safeSemanticAuditCount(value?.invalid_unit_shape),
+    length_limit: safeSemanticAuditCount(value?.length_limit),
+    incomplete_text: safeSemanticAuditCount(value?.incomplete_text),
+    unknown_requirement_reference: safeSemanticAuditCount(value?.unknown_requirement_reference),
+    unknown_evidence_reference: safeSemanticAuditCount(value?.unknown_evidence_reference),
+    reference_type_mismatch: safeSemanticAuditCount(value?.reference_type_mismatch),
+    duplicate_reference: safeSemanticAuditCount(value?.duplicate_reference),
+    inconsistent_evidence_support: safeSemanticAuditCount(value?.inconsistent_evidence_support),
+    prohibited_assurance: safeSemanticAuditCount(value?.prohibited_assurance)
+  };
+}
+
+function sanitizeSemanticDiscardReasonCounts(
+  value: Record<LlmSemanticDiscardReason, number> | undefined
+): Record<LlmSemanticDiscardReason, number> {
+  return {
+    root_schema_invalid: safeSemanticAuditCount(value?.root_schema_invalid),
+    secret_detected: safeSemanticAuditCount(value?.secret_detected),
+    raw_content_detected: safeSemanticAuditCount(value?.raw_content_detected),
+    untrusted_instruction_influence: safeSemanticAuditCount(value?.untrusted_instruction_influence),
+    empty_usable_analysis: safeSemanticAuditCount(value?.empty_usable_analysis)
+  };
+}
+
+function safeSemanticAuditCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(MAX_SEMANTIC_AUDIT_REQUIREMENT_COUNT, Math.round(value)))
+    : 0;
 }
 
 function normalizeListLimit(value: number | undefined): number {

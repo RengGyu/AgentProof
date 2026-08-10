@@ -3,10 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearAnalysisJobsForTests,
   claimAnalysisJobForProviderResponse,
+  claimNextAnalysisJob,
   enqueueAnalysisJob,
   getAnalysisJobsForTests
 } from "./analysis-jobs";
-import { clearAuditEventsForTests } from "./audit-log";
+import { clearAuditEventsForTests, getAuditEventsForTests } from "./audit-log";
 import { clearSavedReportsForTests, countTenantSavedReports } from "./server-report-store";
 import { preflightNextAnalysisJob, runAnalysisJobBatch, runClaimedAnalysisJob, runNextAnalysisJob } from "./analysis-worker";
 import {
@@ -225,18 +226,21 @@ describe("analysis worker preflight", () => {
     });
   });
 
-  it("parks enhanced analysis after background submission and completes it from the same response id", async () => {
+  it("parks one missing-only retry, resumes from prior and active ids, and completes without a third POST", async () => {
     stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
     vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     vi.stubEnv("OPENAI_MODEL", "gpt-test");
-    const githubFetch = mockWorkerFetch();
-    let candidate: unknown;
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let retryCandidate: unknown;
+    let requirementIds: string[] = [];
     const firstFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url) === "https://api.openai.com/v1/responses") {
         const body = JSON.parse(String(init?.body));
         const semanticInput = JSON.parse(body.input[1].content[0].text);
-        candidate = validSemanticCandidate(semanticInput.requirements[0].id, semanticInput.evidence[0].id);
+        requirementIds = semanticInput.requirements.map((requirement: { id: string }) => requirement.id);
+        firstCandidate = validSemanticCandidateForInput(semanticInput);
         return Response.json({ id: "resp_background_123", status: "queued", output: [] });
       }
       return githubFetch(url, init);
@@ -250,6 +254,7 @@ describe("analysis worker preflight", () => {
     });
 
     expect(submitted).toMatchObject({ status: "waiting_provider", job: { id } });
+    expect(requirementIds.length).toBeGreaterThan(1);
     expect(getAnalysisJobsForTests()[0]).toMatchObject({
       id,
       status: "queued",
@@ -260,14 +265,21 @@ describe("analysis worker preflight", () => {
     expect(JSON.stringify(submitted)).not.toContain("resp_background_123");
     expect(JSON.stringify(submitted)).not.toContain("test-openai-key");
 
-    const secondGithubFetch = mockWorkerFetch();
+    const secondGithubFetch = mockSemanticRetryWorkerFetch();
     const secondFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url) === "https://api.openai.com/v1/responses/resp_background_123") {
         return Response.json({
           id: "resp_background_123",
           status: "completed",
-          output_text: JSON.stringify(candidate)
+          output_text: JSON.stringify(firstCandidate)
         });
+      }
+      if (String(url) === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        expect(semanticInput.requirements.map((requirement: { id: string }) => requirement.id)).toEqual(requirementIds.slice(1));
+        retryCandidate = validSemanticCandidateForInput(semanticInput);
+        return Response.json({ id: "resp_background_retry_123", status: "queued", output: [] });
       }
       return secondGithubFetch(url, init);
     });
@@ -277,18 +289,59 @@ describe("analysis worker preflight", () => {
       now: new Date("2026-06-30T00:01:20Z"),
       webhookId: "wh_background_123"
     });
-    const completed = await runClaimedAnalysisJob(webhookClaim.job!, {
+    const retrySubmitted = await runClaimedAnalysisJob(webhookClaim.job!, {
       requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
       now: new Date("2026-06-30T00:01:20Z")
     });
 
+    expect(retrySubmitted).toMatchObject({ status: "waiting_provider", job: { id } });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id,
+      status: "queued",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_123",
+      provider_response_id: "resp_background_retry_123",
+      provider_status: "queued"
+    });
+    const thirdGithubFetch = mockSemanticRetryWorkerFetch();
+    const thirdFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses/resp_background_123") {
+        return Response.json({
+          id: "resp_background_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      if (String(url) === "https://api.openai.com/v1/responses/resp_background_retry_123") {
+        return Response.json({
+          id: "resp_background_retry_123",
+          status: "completed",
+          output_text: JSON.stringify(retryCandidate)
+        });
+      }
+      return thirdGithubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", thirdFetch);
+    const retryWebhookClaim = await claimAnalysisJobForProviderResponse("resp_background_retry_123", {
+      now: new Date("2026-06-30T00:01:40Z"),
+      webhookId: "wh_background_retry_123"
+    });
+    const completed = await runClaimedAnalysisJob(retryWebhookClaim.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:40Z")
+    });
+
     expect(completed).toMatchObject({ status: "completed", job: { id } });
-    expect(secondFetch.mock.calls.some(([url, init]) =>
+    expect(thirdFetch.mock.calls.some(([url, init]) =>
       String(url) === "https://api.openai.com/v1/responses" && init?.method === "POST"
     )).toBe(false);
     expect(getAnalysisJobsForTests()[0]).toMatchObject({
       id,
       status: "completed",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      prior_provider_submitted_at: null,
+      prior_provider_expires_at: null,
       provider_response_id: null,
       provider_status: null,
       provider_poll_attempts: 0,
@@ -297,7 +350,781 @@ describe("analysis worker preflight", () => {
       provider_webhook_id_hash: null,
       provider_webhook_received_at: null
     });
-    expect(secondFetch.mock.calls.some((call) => String(call[0]) === "https://api.openai.com/v1/responses")).toBe(false);
+    expect(getAuditEventsForTests().at(-1)?.metadata).toMatchObject({
+      semanticDiagnostics: {
+        inputRequirementCount: requirementIds.length,
+        assessedRequirementCount: 2,
+        missingRequirementCount: requirementIds.length - 2,
+        rawSectionCounts: {
+          requirement_assessments: 2
+        },
+        acceptedSectionCounts: {
+          requirement_assessments: 2
+        },
+        rejectedSectionCounts: {
+          requirement_assessments: 0
+        },
+        rejectedReasonCodeCounts: {
+          invalid_unit_shape: 0,
+          unknown_requirement_reference: 0
+        },
+        discardReasonCodeCounts: {
+          root_schema_invalid: 0,
+          secret_detected: 0,
+          raw_content_detected: 0
+        },
+        retryAttempted: true,
+        retryOutcome: "incomplete"
+      }
+    });
+  });
+
+  it("recovers the first validated response after a crash leaves retry submission uncertain", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let retryPostCount = 0;
+    const firstFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") {
+        const body = JSON.parse(String(init?.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        firstCandidate = validSemanticCandidateForInput(semanticInput);
+        return Response.json({ id: "resp_background_crash_first_123", status: "queued", output: [] });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", firstFetch);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const firstClaim = await claimAnalysisJobForProviderResponse("resp_background_crash_first_123", {
+      now: new Date("2026-06-30T00:01:20Z"),
+      webhookId: "wh_background_crash_first_123"
+    });
+    let releaseRetryPost!: (response: Response) => void;
+    let signalRetryPostStarted!: () => void;
+    const retryPostStarted = new Promise<void>((resolve) => {
+      signalRetryPostStarted = resolve;
+    });
+    const abandonedGithubFetch = mockSemanticRetryWorkerFetch();
+    const abandonedFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses/resp_background_crash_first_123") {
+        return Response.json({
+          id: "resp_background_crash_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      if (String(url) === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        retryPostCount += 1;
+        signalRetryPostStarted();
+        return new Promise<Response>((resolve) => {
+          releaseRetryPost = resolve;
+        });
+      }
+      return abandonedGithubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", abandonedFetch);
+
+    const abandonedRun = runClaimedAnalysisJob(firstClaim.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+    await retryPostStarted;
+
+    const tooEarly = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:49.999Z") });
+    const reclaimed = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:50.001Z") });
+    expect(tooEarly.job).toBeNull();
+    expect(reclaimed.job).toMatchObject({
+      id,
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_crash_first_123",
+      provider_response_id: null,
+      provider_status: "in_progress"
+    });
+    expect(reclaimed.job!.claim_generation).not.toBe(firstClaim.job!.claim_generation);
+    const secondRecoveryClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:02:20.002Z") });
+    expect(secondRecoveryClaim.job).toBeNull();
+
+    const resumedGithubFetch = mockSemanticRetryWorkerFetch();
+    const resumedFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses/resp_background_crash_first_123") {
+        return Response.json({
+          id: "resp_background_crash_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      return resumedGithubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", resumedFetch);
+
+    const result = await runClaimedAnalysisJob(reclaimed.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:50.001Z")
+    });
+    releaseRetryPost(Response.json({ id: "resp_orphaned_retry_123", status: "queued", output: [] }));
+    const abandonedResult = await abandonedRun;
+
+    expect(result).toMatchObject({ status: "completed", job: { id } });
+    expect(abandonedResult).toMatchObject({ status: "failed_retryable", reason: "analysis_job_claim_lost" });
+    expect(retryPostCount).toBe(1);
+    expect(resumedFetch.mock.calls.some(([url, init]) =>
+      String(url) === "https://api.openai.com/v1/responses" && init?.method === "POST"
+    )).toBe(false);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      provider_response_id: null
+    });
+    expect(getAuditEventsForTests().at(-1)?.metadata).toMatchObject({
+      semanticDiagnostics: {
+        retryAttempted: true,
+        retryOutcome: "submission_uncertain"
+      }
+    });
+  });
+
+  it.each(["completed", "error"] as const)(
+    "stops a reclaimed retry claimant before save, comment, or Slack when its POST returns %s",
+    async (settledAs) => {
+      stubReadyWorkerEnv({
+        grant: {
+          llmAnalysisMode: "enhanced",
+          saveReportsEnabled: true,
+          commentEnabled: true,
+          slackNotificationsEnabled: true
+        }
+      });
+      vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+      vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+      vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+      vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+      const githubFetch = mockSemanticRetryWorkerFetch();
+      let firstCandidate: unknown;
+      let retryCandidate: unknown;
+      let responsePostCount = 0;
+      let releaseRetryPost!: (response: Response) => void;
+      let signalRetryPostStarted!: () => void;
+      const retryPostStarted = new Promise<void>((resolve) => {
+        signalRetryPostStarted = resolve;
+      });
+      const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+          responsePostCount += 1;
+          const body = JSON.parse(String(init.body));
+          const semanticInput = JSON.parse(body.input[1].content[0].text);
+          if (responsePostCount === 1) {
+            firstCandidate = validSemanticCandidateForInput(semanticInput);
+            return Response.json({ id: "resp_side_effect_first_123", status: "queued", output: [] });
+          }
+          retryCandidate = validSemanticCandidateForInput(semanticInput);
+          signalRetryPostStarted();
+          return new Promise<Response>((resolve) => {
+            releaseRetryPost = resolve;
+          });
+        }
+        if (href === "https://api.openai.com/v1/responses/resp_side_effect_first_123") {
+          return Response.json({
+            id: "resp_side_effect_first_123",
+            status: "completed",
+            output_text: JSON.stringify(firstCandidate)
+          });
+        }
+        if (href === "https://hooks.slack.com/services/T/B/C") {
+          return Response.json({ ok: true });
+        }
+        return githubFetch(url, init);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+      await runNextAnalysisJob({
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:00Z")
+      });
+      const firstClaim = await claimAnalysisJobForProviderResponse("resp_side_effect_first_123", {
+        now: new Date("2026-06-30T00:01:20Z"),
+        webhookId: "wh_side_effect_first_123"
+      });
+      const abandonedRun = runClaimedAnalysisJob(firstClaim.job!, {
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:20Z")
+      });
+      await retryPostStarted;
+
+      const replacement = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:50.001Z") });
+      expect(replacement.job).toMatchObject({
+        id,
+        semantic_retry_attempts: 1,
+        provider_status: "in_progress"
+      });
+      releaseRetryPost(settledAs === "completed"
+        ? Response.json({
+          id: "resp_side_effect_retry_123",
+          status: "completed",
+          output_text: JSON.stringify(retryCandidate)
+        })
+        : new Response("temporarily unavailable", { status: 500 }));
+      const abandonedResult = await abandonedRun;
+      const savedBeforeReplacement = await countTenantSavedReports({ tenantId: "tenant_a" });
+      const commentPostsBeforeReplacement = fetchMock.mock.calls.filter(([url, init]) =>
+        String(url) === "https://api.github.com/repos/RengGyu/AgentProof/issues/7/comments" && init?.method === "POST"
+      );
+      const slackBeforeReplacement = fetchMock.mock.calls.filter(([url]) =>
+        String(url) === "https://hooks.slack.com/services/T/B/C"
+      );
+
+      expect(abandonedResult).toMatchObject({
+        status: "failed_retryable",
+        reason: "analysis_job_claim_lost"
+      });
+      expect(savedBeforeReplacement.count).toBe(0);
+      expect(commentPostsBeforeReplacement).toHaveLength(0);
+      expect(slackBeforeReplacement).toHaveLength(0);
+
+      const replacementResult = await runClaimedAnalysisJob(replacement.job!, {
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:50.001Z")
+      });
+      const savedAfterReplacement = await countTenantSavedReports({ tenantId: "tenant_a" });
+      const commentPosts = fetchMock.mock.calls.filter(([url, init]) =>
+        String(url) === "https://api.github.com/repos/RengGyu/AgentProof/issues/7/comments" && init?.method === "POST"
+      );
+      const slackCalls = fetchMock.mock.calls.filter(([url]) =>
+        String(url) === "https://hooks.slack.com/services/T/B/C"
+      );
+
+      expect(replacementResult).toMatchObject({ status: "completed", job: { id } });
+      expect(responsePostCount).toBe(2);
+      expect(savedAfterReplacement.count).toBe(1);
+      expect(commentPosts).toHaveLength(1);
+      expect(slackCalls).toHaveLength(1);
+    }
+  );
+
+  it("publishes save, comment, and Slack at most once when a retry completes on the live claim", async () => {
+    stubReadyWorkerEnv({
+      grant: {
+        llmAnalysisMode: "enhanced",
+        saveReportsEnabled: true,
+        commentEnabled: true,
+        slackNotificationsEnabled: true
+      }
+    });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let responsePostCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        const candidate = validSemanticCandidateForInput(semanticInput);
+        if (responsePostCount === 1) {
+          firstCandidate = candidate;
+          return Response.json({ id: "resp_live_side_effect_first_123", status: "queued", output: [] });
+        }
+        return Response.json({
+          id: "resp_live_side_effect_retry_123",
+          status: "completed",
+          output_text: JSON.stringify(candidate)
+        });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_live_side_effect_first_123") {
+        return Response.json({
+          id: "resp_live_side_effect_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      if (href === "https://hooks.slack.com/services/T/B/C") return Response.json({ ok: true });
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:15Z")
+    });
+    const saved = await countTenantSavedReports({ tenantId: "tenant_a" });
+    const commentPosts = fetchMock.mock.calls.filter(([url, init]) =>
+      String(url) === "https://api.github.com/repos/RengGyu/AgentProof/issues/7/comments" && init?.method === "POST"
+    );
+    const slackCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+    );
+
+    expect(result.status).toBe("completed");
+    expect(responsePostCount).toBe(2);
+    expect(saved.count).toBe(1);
+    expect(commentPosts).toHaveLength(1);
+    expect(slackCalls).toHaveLength(1);
+  });
+
+  it.each(["failed", "cancelled", "incomplete"] as const)(
+    "keeps the first candidate when the only retry is %s and never submits a third response",
+    async (terminalStatus) => {
+      stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+      vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+      vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+      const githubFetch = mockSemanticRetryWorkerFetch();
+      let firstCandidate: unknown;
+      let requirementCount = 0;
+      let responsePostCount = 0;
+      const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+          responsePostCount += 1;
+          const body = JSON.parse(String(init.body));
+          const semanticInput = JSON.parse(body.input[1].content[0].text);
+          if (responsePostCount === 1) {
+            requirementCount = semanticInput.requirements.length;
+            firstCandidate = validSemanticCandidateForInput(semanticInput);
+            return Response.json({ id: "resp_background_failed_first_123", status: "queued", output: [] });
+          }
+          return Response.json({ id: "resp_background_failed_retry_123", status: "queued", output: [] });
+        }
+        if (href === "https://api.openai.com/v1/responses/resp_background_failed_first_123") {
+          return Response.json({
+            id: "resp_background_failed_first_123",
+            status: "completed",
+            output_text: JSON.stringify(firstCandidate)
+          });
+        }
+        if (href === "https://api.openai.com/v1/responses/resp_background_failed_retry_123") {
+          return Response.json({ id: "resp_background_failed_retry_123", status: terminalStatus });
+        }
+        return githubFetch(url, init);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+      await runNextAnalysisJob({
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:00Z")
+      });
+      await runNextAnalysisJob({
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:15Z")
+      });
+      const result = await runNextAnalysisJob({
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:30Z")
+      });
+
+      expect(result).toMatchObject({ status: "completed", job: { id } });
+      expect(responsePostCount).toBe(2);
+      expect(getAnalysisJobsForTests()[0]).toMatchObject({
+        status: "completed",
+        semantic_retry_attempts: 0,
+        prior_provider_response_id: null,
+        provider_response_id: null
+      });
+      expect(getAuditEventsForTests().at(-1)?.metadata).toMatchObject({
+        semanticDiagnostics: {
+          inputRequirementCount: requirementCount,
+          assessedRequirementCount: 1,
+          missingRequirementCount: requirementCount - 1,
+          retryAttempted: true,
+          retryOutcome: "provider_failed"
+        }
+      });
+    }
+  );
+
+  it("preserves prior and active references when retry polling is transiently unavailable", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let responsePostCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        if (responsePostCount === 1) {
+          firstCandidate = validSemanticCandidateForInput(semanticInput);
+          return Response.json({ id: "resp_background_backoff_first_123", status: "queued", output: [] });
+        }
+        return Response.json({ id: "resp_background_backoff_retry_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_background_backoff_first_123") {
+        return Response.json({
+          id: "resp_background_backoff_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_background_backoff_retry_123") {
+        return new Response("temporarily unavailable", { status: 429 });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:15Z")
+    });
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:30Z")
+    });
+
+    expect(result).toMatchObject({ status: "failed_retryable", reason: "openai_rate_limited", job: { id } });
+    expect(responsePostCount).toBe(2);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "failed_retryable",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_background_backoff_first_123",
+      provider_response_id: "resp_background_backoff_retry_123"
+    });
+  });
+
+  it("uses the retrieved first candidate when normal retry backoff would cross continuation expiry", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let responsePostCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        if (responsePostCount === 1) {
+          firstCandidate = validSemanticCandidateForInput(semanticInput);
+          return Response.json({ id: "resp_background_expiry_first_123", status: "queued", output: [] });
+        }
+        return Response.json({ id: "resp_background_expiry_retry_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_background_expiry_first_123") {
+        return Response.json({
+          id: "resp_background_expiry_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_background_expiry_retry_123") {
+        return new Response("temporarily unavailable", { status: 429 });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:15Z")
+    });
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:08:00Z")
+    });
+
+    expect(result).toMatchObject({ status: "completed", job: { id } });
+    expect(responsePostCount).toBe(2);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      provider_response_id: null
+    });
+    expect(getAuditEventsForTests().at(-1)?.metadata).toMatchObject({
+      semanticDiagnostics: {
+        retryAttempted: true,
+        retryOutcome: "provider_failed"
+      }
+    });
+  });
+
+  it("keeps the first candidate without submitting a pending retry too close to expiry", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let responsePostCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        if (responsePostCount === 1) {
+          firstCandidate = validSemanticCandidateForInput(semanticInput);
+          return Response.json({ id: "resp_near_expiry_first_123", status: "queued", output: [] });
+        }
+        return Response.json({ id: "resp_near_expiry_retry_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_near_expiry_first_123") {
+        return Response.json({
+          id: "resp_near_expiry_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const firstClaim = await claimAnalysisJobForProviderResponse("resp_near_expiry_first_123", {
+      now: new Date("2026-06-30T00:08:59Z"),
+      webhookId: "wh_near_expiry_first_123"
+    });
+    const result = await runClaimedAnalysisJob(firstClaim.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:08:59Z")
+    });
+
+    expect(result).toMatchObject({ status: "completed", job: { id } });
+    expect(responsePostCount).toBe(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      provider_response_id: null
+    });
+    expect(getAuditEventsForTests().at(-1)?.metadata).toMatchObject({
+      semanticDiagnostics: {
+        retryAttempted: false,
+        retryOutcome: "expired_before_retry"
+      }
+    });
+  });
+
+  it("checks retry eligibility with fresh time after a slow first-response retrieval", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let responsePostCount = 0;
+    let currentTime = new Date("2026-06-30T00:08:24Z");
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        if (responsePostCount === 1) {
+          firstCandidate = validSemanticCandidateForInput(semanticInput);
+          return Response.json({ id: "resp_slow_retrieval_first_123", status: "queued", output: [] });
+        }
+        return Response.json({ id: "resp_slow_retrieval_retry_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_slow_retrieval_first_123") {
+        currentTime = new Date("2026-06-30T00:08:44Z");
+        return Response.json({
+          id: "resp_slow_retrieval_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const firstClaim = await claimAnalysisJobForProviderResponse("resp_slow_retrieval_first_123", {
+      now: currentTime,
+      webhookId: "wh_slow_retrieval_first_123"
+    });
+    const result = await runClaimedAnalysisJob(firstClaim.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: currentTime,
+      clock: () => currentTime
+    });
+
+    expect(result).toMatchObject({ status: "completed", job: { id } });
+    expect(responsePostCount).toBe(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      provider_response_id: null
+    });
+    expect(getAuditEventsForTests().at(-1)?.metadata).toMatchObject({
+      semanticDiagnostics: {
+        retryAttempted: false,
+        retryOutcome: "expired_before_retry"
+      }
+    });
+  });
+
+  it("starts retry submission uncertainty timing after first-response retrieval", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let responsePostCount = 0;
+    let currentTime = new Date("2026-06-30T00:08:15Z");
+    let releaseRetryPost!: (response: Response) => void;
+    let signalRetryPostStarted!: () => void;
+    const retryPostStarted = new Promise<void>((resolve) => {
+      signalRetryPostStarted = resolve;
+    });
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        if (responsePostCount === 1) {
+          firstCandidate = validSemanticCandidateForInput(semanticInput);
+          return Response.json({ id: "resp_fresh_retry_lease_first_123", status: "queued", output: [] });
+        }
+        signalRetryPostStarted();
+        return new Promise<Response>((resolve) => {
+          releaseRetryPost = resolve;
+        });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_fresh_retry_lease_first_123") {
+        currentTime = new Date("2026-06-30T00:08:20Z");
+        return Response.json({
+          id: "resp_fresh_retry_lease_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const invocationNow = currentTime;
+    const firstClaim = await claimAnalysisJobForProviderResponse("resp_fresh_retry_lease_first_123", {
+      now: invocationNow,
+      webhookId: "wh_fresh_retry_lease_first_123"
+    });
+    const run = runClaimedAnalysisJob(firstClaim.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: invocationNow,
+      clock: () => currentTime
+    });
+    await retryPostStarted;
+
+    const earlyReclaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:08:45.001Z") });
+    releaseRetryPost(Response.json({ id: "resp_fresh_retry_lease_pending_123", status: "queued", output: [] }));
+    const result = await run;
+
+    expect(earlyReclaim.job).toBeNull();
+    expect(result).toMatchObject({ status: "waiting_provider", job: { id } });
+    expect(responsePostCount).toBe(2);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      semantic_retry_attempts: 1,
+      prior_provider_response_id: "resp_fresh_retry_lease_first_123",
+      provider_response_id: "resp_fresh_retry_lease_pending_123"
+    });
+  });
+
+  it("checks pending retry park safety with fresh time after retry submission", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let responsePostCount = 0;
+    let currentTime = new Date("2026-06-30T00:08:20Z");
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        if (responsePostCount === 1) {
+          firstCandidate = validSemanticCandidateForInput(semanticInput);
+          return Response.json({ id: "resp_slow_retry_first_123", status: "queued", output: [] });
+        }
+        currentTime = new Date("2026-06-30T00:08:46Z");
+        return Response.json({ id: "resp_slow_retry_pending_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_slow_retry_first_123") {
+        return Response.json({
+          id: "resp_slow_retry_first_123",
+          status: "completed",
+          output_text: JSON.stringify(firstCandidate)
+        });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const firstClaim = await claimAnalysisJobForProviderResponse("resp_slow_retry_first_123", {
+      now: currentTime,
+      webhookId: "wh_slow_retry_first_123"
+    });
+    const result = await runClaimedAnalysisJob(firstClaim.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: currentTime,
+      clock: () => currentTime
+    });
+
+    expect(result).toMatchObject({ status: "completed", job: { id } });
+    expect(responsePostCount).toBe(2);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      provider_response_id: null
+    });
+    expect(getAuditEventsForTests().at(-1)?.metadata).toMatchObject({
+      semanticDiagnostics: {
+        retryAttempted: true,
+        retryOutcome: "provider_failed"
+      }
+    });
   });
 
   it("clears background continuation metadata when strict semantic output is rejected", async () => {
@@ -1374,6 +2201,22 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
       ]);
     }
 
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/issues/42") {
+      return Response.json({
+        number: 42,
+        title: "Background semantic coverage",
+        body: [
+          "Acceptance criteria:",
+          "- Add signed webhook-triggered AgentProof analysis.",
+          "- Save only summary reports.",
+          "- Keep automated comments opt-in."
+        ].join("\n"),
+        html_url: "https://github.com/RengGyu/AgentProof/issues/42",
+        state: "open",
+        pull_request: undefined
+      });
+    }
+
     if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1") {
       return Response.json({
         total_count: 1,
@@ -1424,6 +2267,12 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
   });
 }
 
+function mockSemanticRetryWorkerFetch() {
+  return mockWorkerFetch({
+    pullRequestBody: "Closes #42\n\nImplements the linked background semantic coverage requirements."
+  });
+}
+
 function validSemanticCandidate(requirementId: string, evidenceId: string) {
   return {
     requirement_evidence_relations: [{
@@ -1440,6 +2289,29 @@ function validSemanticCandidate(requirementId: string, evidenceId: string) {
       summary: "The supplied evidence supports only part of the requested behavior.",
       evidence_ids: [evidenceId],
       uncertainty: "medium"
+    }],
+    evidence_gaps: [],
+    review_targets: [],
+    remediation_requests: [],
+    uncertainties: []
+  };
+}
+
+function validSemanticCandidateForInput(input: {
+  requirements: Array<{ id: string; evidence_ids: string[] }>;
+}) {
+  const requirement = input.requirements[0]!;
+  const evidenceId = requirement.evidence_ids[0];
+  if (evidenceId) return validSemanticCandidate(requirement.id, evidenceId);
+  return {
+    requirement_evidence_relations: [],
+    requirement_assessments: [{
+      requirement_id: requirement.id,
+      requirement_summary: "Review the requested behavior against the supplied evidence.",
+      evidence_support: "no_evidence_found",
+      summary: "No supplied evidence directly supports this requirement.",
+      evidence_ids: [],
+      uncertainty: "high"
     }],
     evidence_gaps: [],
     review_targets: [],

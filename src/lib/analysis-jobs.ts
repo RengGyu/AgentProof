@@ -6,6 +6,7 @@ import { assertTenantDeletionNotActiveAsync } from "./tenant-deletion-state";
 export const DEFAULT_ANALYSIS_JOBS_TABLE = "agentproof_analysis_jobs";
 export const MAX_MEMORY_ANALYSIS_JOBS = 1000;
 export const DEFAULT_ANALYSIS_JOB_LEASE_MS = 10 * 60 * 1000;
+export const SEMANTIC_RETRY_SUBMISSION_RECLAIM_MS = 30 * 1000;
 export const DEFAULT_ANALYSIS_JOB_RETRY_AFTER_MS = 2 * 60 * 1000;
 export const DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS = 5;
 export const MAX_ANALYSIS_JOB_ERROR_SUMMARY_LENGTH = 500;
@@ -13,6 +14,7 @@ export const MAX_ANALYSIS_JOB_QUEUE_SUMMARY_ROWS = 1000;
 export const MAX_TENANT_ANALYSIS_JOB_ROLLUP_ROWS = 1000;
 export const MAX_ANALYSIS_JOB_DEAD_LETTER_SUMMARY_ROWS = 1000;
 export const MAX_ANALYSIS_JOB_DEAD_LETTER_ERROR_CODES = 10;
+export const MAX_PROVIDER_CONTINUATION_MS = 10 * 60 * 1000;
 
 export type AnalysisJobStatus = "queued" | "processing" | "completed" | "failed_retryable" | "failed_terminal";
 export type AnalysisJobStatusFilter = "all" | "active" | "failed" | "completed";
@@ -96,6 +98,12 @@ export interface CompleteAnalysisJobInput {
   now?: Date;
 }
 
+export interface FenceAnalysisJobSemanticRetryFinalizationInput {
+  id: string;
+  claimGeneration: string;
+  now?: Date;
+}
+
 export interface FailAnalysisJobInput {
   id: string;
   claimGeneration?: string;
@@ -121,6 +129,17 @@ export interface ParkAnalysisJobForProviderInput {
 export interface MarkAnalysisJobProviderSubmissionInput {
   id: string;
   claimGeneration: string;
+  submittedAt: Date;
+  expiresAt: Date;
+  now?: Date;
+}
+
+export interface MarkAnalysisJobSemanticRetrySubmissionInput {
+  id: string;
+  claimGeneration: string;
+  priorResponseId: string;
+  priorSubmittedAt: Date;
+  priorExpiresAt: Date;
   submittedAt: Date;
   expiresAt: Date;
   now?: Date;
@@ -180,6 +199,10 @@ export interface AnalysisJobRow {
   provider_expires_at?: string | null;
   provider_webhook_id_hash?: string | null;
   provider_webhook_received_at?: string | null;
+  semantic_retry_attempts?: number;
+  prior_provider_response_id?: string | null;
+  prior_provider_submitted_at?: string | null;
+  prior_provider_expires_at?: string | null;
 }
 
 export interface TenantAnalysisJobSummary {
@@ -315,7 +338,11 @@ const ANALYSIS_JOB_SELECT = [
   "provider_submitted_at",
   "provider_expires_at",
   "provider_webhook_id_hash",
-  "provider_webhook_received_at"
+  "provider_webhook_received_at",
+  "semantic_retry_attempts",
+  "prior_provider_response_id",
+  "prior_provider_submitted_at",
+  "prior_provider_expires_at"
 ].join(",");
 
 const TENANT_ANALYSIS_JOB_SELECT = [
@@ -541,6 +568,42 @@ export async function completeAnalysisJob(
   return updateMemoryAnalysisJob(input.id, "processing", update, input.claimGeneration);
 }
 
+export async function fenceAnalysisJobSemanticRetryFinalization(
+  input: FenceAnalysisJobSemanticRetryFinalizationInput,
+  env = process.env
+): Promise<AnalysisJobRow | null> {
+  if (!analysisJobQueueEnabled(env)) {
+    throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  }
+
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  if (!claimGeneration) {
+    throw new AnalysisJobQueueError("Analysis job finalization fence is invalid.");
+  }
+
+  const now = input.now ?? new Date();
+  const config = getAnalysisJobStoreConfig(env);
+  if (config) {
+    const row = await getSupabaseAnalysisJobById(config, input.id);
+    if (!canFenceAnalysisJobSemanticRetryFinalization(row, claimGeneration)) return null;
+    return patchSupabaseAnalysisJob(config, input.id, analysisJobSemanticRetryFinalizationFenceUpdate(now), {
+      currentStatus: "processing",
+      currentUpdatedAt: row.updated_at,
+      currentClaimGeneration: claimGeneration
+    });
+  }
+
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+
+  const row = analysisJobStore().find((job) => job.id === input.id);
+  if (!canFenceAnalysisJobSemanticRetryFinalization(row, claimGeneration)) return null;
+  Object.assign(row, analysisJobSemanticRetryFinalizationFenceUpdate(now));
+  assertAnalysisJobIsPrivate(row);
+  return { ...row };
+}
+
 export async function markAnalysisJobProviderSubmission(
   input: MarkAnalysisJobProviderSubmissionInput,
   env = process.env
@@ -552,7 +615,13 @@ export async function markAnalysisJobProviderSubmission(
   const claimGeneration = safeClaimGeneration(input.claimGeneration);
   const submittedAt = validDate(input.submittedAt);
   const expiresAt = validDate(input.expiresAt);
-  if (!claimGeneration || !submittedAt || !expiresAt || expiresAt.getTime() <= submittedAt.getTime()) {
+  if (
+    !claimGeneration ||
+    !submittedAt ||
+    !expiresAt ||
+    expiresAt.getTime() <= submittedAt.getTime() ||
+    expiresAt.getTime() - submittedAt.getTime() > MAX_PROVIDER_CONTINUATION_MS
+  ) {
     throw new AnalysisJobQueueError("Analysis job provider submission marker is invalid.");
   }
 
@@ -582,6 +651,38 @@ export async function markAnalysisJobProviderSubmission(
   );
   if (!row) return null;
   Object.assign(row, update);
+  assertAnalysisJobIsPrivate(row);
+  return { ...row };
+}
+
+export async function markAnalysisJobSemanticRetrySubmission(
+  input: MarkAnalysisJobSemanticRetrySubmissionInput,
+  env = process.env
+): Promise<AnalysisJobRow | null> {
+  if (!analysisJobQueueEnabled(env)) {
+    throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  }
+
+  const transition = semanticRetryTransitionFromInput(input);
+  const now = input.now ?? new Date();
+  const config = getAnalysisJobStoreConfig(env);
+  if (config) {
+    const row = await getSupabaseAnalysisJobById(config, input.id);
+    if (!row || !canStartSemanticRetry(row, transition, input.claimGeneration)) return null;
+    return patchSupabaseAnalysisJob(config, input.id, semanticRetrySubmissionUpdate(transition, now), {
+      currentStatus: "processing",
+      currentUpdatedAt: row.updated_at,
+      currentClaimGeneration: transition.claim_generation
+    });
+  }
+
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+
+  const row = analysisJobStore().find((job) => job.id === input.id);
+  if (!row || !canStartSemanticRetry(row, transition, input.claimGeneration)) return null;
+  Object.assign(row, semanticRetrySubmissionUpdate(transition, now));
   assertAnalysisJobIsPrivate(row);
   return { ...row };
 }
@@ -1392,6 +1493,20 @@ async function claimSupabaseAnalysisJob(
     if (claimed) return claimed;
   }
 
+  const semanticRetryStaleBefore = new Date(now.getTime() - SEMANTIC_RETRY_SUBMISSION_RECLAIM_MS);
+  const uncertainRetry = await getSupabaseSemanticRetrySubmissionCandidate(
+    config,
+    now,
+    semanticRetryStaleBefore
+  );
+  if (uncertainRetry) {
+    return patchSupabaseAnalysisJob(config, uncertainRetry.id, toRecoveredSemanticRetryClaimUpdate(uncertainRetry, now), {
+      currentStatus: "processing",
+      currentUpdatedAt: uncertainRetry.updated_at,
+      returnRepresentation: true
+    });
+  }
+
   const staleBefore = new Date(now.getTime() - leaseMs);
   const stale = await getSupabaseAnalysisJobCandidate(config, {
     statusFilter: "eq.processing",
@@ -1435,8 +1550,24 @@ async function claimSupabaseAnalysisJobForProviderResponse(
 function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | null {
   const store = analysisJobStore();
   const due = store.find((job) => isDueQueuedJob(job, now));
+  if (due) {
+    Object.assign(due, toClaimedAnalysisJobUpdate(due, now));
+    assertAnalysisJobIsPrivate(due);
+    return { ...due };
+  }
+
+  const semanticRetryStaleBefore = now.getTime() - SEMANTIC_RETRY_SUBMISSION_RECLAIM_MS;
+  const uncertainRetry = store.find((job) =>
+    isStaleSemanticRetrySubmissionJob(job, now, semanticRetryStaleBefore)
+  );
+  if (uncertainRetry) {
+    Object.assign(uncertainRetry, toRecoveredSemanticRetryClaimUpdate(uncertainRetry, now));
+    assertAnalysisJobIsPrivate(uncertainRetry);
+    return { ...uncertainRetry };
+  }
+
   const staleBefore = now.getTime() - leaseMs;
-  const stale = due ?? store.find((job) => isStaleProcessingJob(job, staleBefore));
+  const stale = store.find((job) => isStaleProcessingJob(job, staleBefore));
 
   if (!stale) return null;
 
@@ -1533,6 +1664,41 @@ async function getSupabaseAnalysisJobCandidate(
   const job = row as AnalysisJobRow;
   assertAnalysisJobIsPrivate(job);
   return job;
+}
+
+async function getSupabaseSemanticRetrySubmissionCandidate(
+  config: AnalysisJobStoreConfig,
+  now: Date,
+  staleBefore: Date
+): Promise<AnalysisJobRow | null> {
+  const params = new URLSearchParams([
+    ["status", "eq.processing"],
+    ["semantic_retry_attempts", "eq.1"],
+    ["provider_status", "eq.submitting"],
+    ["provider_response_id", "is.null"],
+    ["prior_provider_response_id", "not.is.null"],
+    ["prior_provider_expires_at", `gt.${now.toISOString()}`],
+    ["locked_at", `lt.${staleBefore.toISOString()}`],
+    ["select", ANALYSIS_JOB_SELECT],
+    ["order", "locked_at.asc"],
+    ["limit", "1"]
+  ]);
+
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: supabaseAnalysisJobHeaders(config)
+  });
+  if (!response.ok) {
+    throw new AnalysisJobQueueError(`Analysis job store failed with HTTP ${response.status}.`);
+  }
+
+  const rows = await response.json() as unknown;
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row || typeof row !== "object") return null;
+  const job = row as AnalysisJobRow;
+  assertAnalysisJobIsPrivate(job);
+  return isStaleSemanticRetrySubmissionJob(job, now, staleBefore.getTime()) ? job : null;
 }
 
 async function getSupabaseAnalysisJobById(
@@ -1655,6 +1821,28 @@ function toClaimedAnalysisJobUpdate(
       provider_webhook_received_at: now.toISOString()
     } : {})
   };
+}
+
+function toRecoveredSemanticRetryClaimUpdate(
+  row: AnalysisJobRow,
+  now: Date
+): Partial<AnalysisJobRow> {
+  const update = {
+    ...toClaimedAnalysisJobUpdate(row, now),
+    provider_response_id: null,
+    provider_status: "in_progress" as const,
+    provider_poll_attempts: 0,
+    provider_submitted_at: null,
+    provider_expires_at: null,
+    provider_webhook_id_hash: null,
+    provider_webhook_received_at: null,
+    semantic_retry_attempts: 1,
+    prior_provider_response_id: row.prior_provider_response_id,
+    prior_provider_submitted_at: row.prior_provider_submitted_at,
+    prior_provider_expires_at: row.prior_provider_expires_at
+  };
+  assertAnalysisJobIsPrivate(update);
+  return update;
 }
 
 function toAnalysisJobFailureUpdate(
@@ -1960,6 +2148,7 @@ function providerContinuationFromInput(input: ParkAnalysisJobForProviderInput) {
     !expiresAt ||
     !runAfter ||
     expiresAt.getTime() <= submittedAt.getTime() ||
+    expiresAt.getTime() - submittedAt.getTime() > MAX_PROVIDER_CONTINUATION_MS ||
     runAfter.getTime() > expiresAt.getTime()
   ) {
     throw new AnalysisJobQueueError("Analysis job provider continuation is invalid.");
@@ -1974,6 +2163,84 @@ function providerContinuationFromInput(input: ParkAnalysisJobForProviderInput) {
   };
 }
 
+function semanticRetryTransitionFromInput(input: MarkAnalysisJobSemanticRetrySubmissionInput) {
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  const priorResponseId = safeProviderResponseId(input.priorResponseId);
+  const priorSubmittedAt = validDate(input.priorSubmittedAt);
+  const priorExpiresAt = validDate(input.priorExpiresAt);
+  const submittedAt = validDate(input.submittedAt);
+  const expiresAt = validDate(input.expiresAt);
+  if (
+    !claimGeneration ||
+    !priorResponseId ||
+    !priorSubmittedAt ||
+    !priorExpiresAt ||
+    !submittedAt ||
+    !expiresAt ||
+    priorExpiresAt.getTime() <= priorSubmittedAt.getTime() ||
+    priorExpiresAt.getTime() - priorSubmittedAt.getTime() > MAX_PROVIDER_CONTINUATION_MS ||
+    expiresAt.getTime() <= submittedAt.getTime() ||
+    expiresAt.getTime() - submittedAt.getTime() > MAX_PROVIDER_CONTINUATION_MS ||
+    expiresAt.getTime() > priorExpiresAt.getTime()
+  ) {
+    throw new AnalysisJobQueueError("Analysis job semantic retry submission marker is invalid.");
+  }
+
+  return {
+    claim_generation: claimGeneration,
+    prior_provider_response_id: priorResponseId,
+    prior_provider_submitted_at: priorSubmittedAt.toISOString(),
+    prior_provider_expires_at: priorExpiresAt.toISOString(),
+    provider_submitted_at: submittedAt.toISOString(),
+    provider_expires_at: expiresAt.toISOString()
+  };
+}
+
+function canStartSemanticRetry(
+  row: AnalysisJobRow,
+  transition: ReturnType<typeof semanticRetryTransitionFromInput>,
+  claimGeneration: string
+): boolean {
+  if (
+    row.status !== "processing" ||
+    row.claim_generation !== claimGeneration ||
+    (row.semantic_retry_attempts ?? 0) !== 0 ||
+    row.prior_provider_response_id ||
+    row.prior_provider_submitted_at ||
+    row.prior_provider_expires_at ||
+    row.provider_submitted_at !== transition.prior_provider_submitted_at ||
+    row.provider_expires_at !== transition.prior_provider_expires_at
+  ) {
+    return false;
+  }
+
+  return row.provider_response_id === transition.prior_provider_response_id ||
+    (row.provider_response_id == null && row.provider_status === "submitting");
+}
+
+function semanticRetrySubmissionUpdate(
+  transition: ReturnType<typeof semanticRetryTransitionFromInput>,
+  now: Date
+): Partial<AnalysisJobRow> {
+  const update = {
+    updated_at: now.toISOString(),
+    locked_at: now.toISOString(),
+    semantic_retry_attempts: 1,
+    prior_provider_response_id: transition.prior_provider_response_id,
+    prior_provider_submitted_at: transition.prior_provider_submitted_at,
+    prior_provider_expires_at: transition.prior_provider_expires_at,
+    provider_response_id: null,
+    provider_status: "submitting" as const,
+    provider_poll_attempts: 0,
+    provider_submitted_at: transition.provider_submitted_at,
+    provider_expires_at: transition.provider_expires_at,
+    provider_webhook_id_hash: null,
+    provider_webhook_received_at: null
+  };
+  assertAnalysisJobIsPrivate(update);
+  return update;
+}
+
 function validDate(value: Date): Date | null {
   return value instanceof Date && Number.isFinite(value.getTime()) ? value : null;
 }
@@ -1986,7 +2253,11 @@ function clearedProviderContinuation() {
     provider_submitted_at: null,
     provider_expires_at: null,
     provider_webhook_id_hash: null,
-    provider_webhook_received_at: null
+    provider_webhook_received_at: null,
+    semantic_retry_attempts: 0,
+    prior_provider_response_id: null,
+    prior_provider_submitted_at: null,
+    prior_provider_expires_at: null
   };
 }
 
@@ -2016,6 +2287,68 @@ function isDueQueuedJob(job: AnalysisJobRow, now: Date): boolean {
 function isStaleProcessingJob(job: AnalysisJobRow, staleBeforeMs: number): boolean {
   if (job.status !== "processing" || !job.locked_at) return false;
   return new Date(job.locked_at).getTime() < staleBeforeMs;
+}
+
+function isStaleSemanticRetrySubmissionJob(
+  job: AnalysisJobRow,
+  now: Date,
+  staleBeforeMs: number
+): boolean {
+  const priorExpiresAt = safeTimeMs(job.prior_provider_expires_at);
+  return isSemanticRetrySubmissionUncertaintyState(job) &&
+    priorExpiresAt !== null &&
+    priorExpiresAt > now.getTime() &&
+    Boolean(job.locked_at) &&
+    new Date(job.locked_at!).getTime() < staleBeforeMs;
+}
+
+function canFenceAnalysisJobSemanticRetryFinalization(
+  job: AnalysisJobRow | null | undefined,
+  claimGeneration: string
+): job is AnalysisJobRow {
+  if (!job) return false;
+  return job.claim_generation === claimGeneration &&
+    isSemanticRetryFinalizationState(job);
+}
+
+function analysisJobSemanticRetryFinalizationFenceUpdate(
+  now: Date
+): Partial<AnalysisJobRow> {
+  const update = {
+    updated_at: now.toISOString(),
+    locked_at: now.toISOString(),
+    provider_response_id: null,
+    provider_status: null,
+    provider_poll_attempts: 0,
+    provider_submitted_at: null,
+    provider_expires_at: null,
+    provider_webhook_id_hash: null,
+    provider_webhook_received_at: null
+  };
+  assertAnalysisJobIsPrivate(update);
+  return update;
+}
+
+function isSemanticRetrySubmissionUncertaintyState(job: AnalysisJobRow): boolean {
+  return job.status === "processing" &&
+    job.semantic_retry_attempts === 1 &&
+    job.provider_response_id == null &&
+    job.provider_status === "submitting" &&
+    Boolean(job.prior_provider_response_id) &&
+    Boolean(job.prior_provider_submitted_at) &&
+    Boolean(job.prior_provider_expires_at);
+}
+
+function isSemanticRetryFinalizationState(job: AnalysisJobRow): boolean {
+  return isSemanticRetrySubmissionUncertaintyState(job) || (
+    job.status === "processing" &&
+    job.semantic_retry_attempts === 1 &&
+    job.provider_response_id == null &&
+    job.provider_status === "in_progress" &&
+    Boolean(job.prior_provider_response_id) &&
+    Boolean(job.prior_provider_submitted_at) &&
+    Boolean(job.prior_provider_expires_at)
+  );
 }
 
 function providerContinuationClaimDisposition(

@@ -179,11 +179,27 @@ export interface LlmSemanticRejectedUnit {
   reason_codes: LlmSemanticRejectReason[];
 }
 
+export interface LlmSemanticValidationDiagnostics {
+  version: 1;
+  raw_section_counts: Record<keyof LlmSemanticOutput, number>;
+  accepted_section_counts: Record<keyof LlmSemanticOutput, number>;
+  rejected_section_counts: Record<keyof LlmSemanticOutput, number>;
+  rejected_reason_code_counts: Record<LlmSemanticRejectReason, number>;
+  discard_reason_codes: LlmSemanticDiscardReason[];
+  input_requirement_count: number;
+  assessed_requirement_count: number;
+  missing_requirement_count: number;
+  retryAttempted: boolean;
+}
+
 export interface LlmSemanticValidationResult {
   disposition: LlmSemanticDisposition;
   candidate: LlmSemanticOutput | null;
   rejected_units: LlmSemanticRejectedUnit[];
   discard_reason_codes: LlmSemanticDiscardReason[];
+  /** Transient only: do not persist these identifiers with a report. */
+  missing_requirement_ids: string[];
+  diagnostics: LlmSemanticValidationDiagnostics;
 }
 
 const idSchema = {
@@ -406,19 +422,21 @@ export function validateLlmSemanticCandidate(
   value: unknown,
   catalog: LlmSemanticReferenceCatalog
 ): LlmSemanticValidationResult {
+  const inputRequirementIds = unique(catalog.requirementIds);
+  const rawSectionCounts = sectionCounts(value);
   if (!isValidRoot(value)) {
-    return discarded("root_schema_invalid");
+    return discarded("root_schema_invalid", inputRequirementIds, rawSectionCounts);
   }
 
   const allText = collectStrings(value);
   if (allText.some(containsSecretPattern)) {
-    return discarded("secret_detected");
+    return discarded("secret_detected", inputRequirementIds, rawSectionCounts);
   }
   if (allText.some((text) => RAW_CONTENT_PATTERN.test(text))) {
-    return discarded("raw_content_detected");
+    return discarded("raw_content_detected", inputRequirementIds, rawSectionCounts);
   }
   if (allText.some((text) => UNTRUSTED_INSTRUCTION_PATTERN.test(text))) {
-    return discarded("untrusted_instruction_influence");
+    return discarded("untrusted_instruction_influence", inputRequirementIds, rawSectionCounts);
   }
 
   const context: ValidationContext = {
@@ -485,16 +503,29 @@ export function validateLlmSemanticCandidate(
   };
 
   if (semanticUnitCount(candidate) === 0 && context.requirementIds.size > 0) {
-    return discarded("empty_usable_analysis");
+    return discarded("empty_usable_analysis", inputRequirementIds, rawSectionCounts, rejected);
   }
 
+  const missingRequirementIds = inputRequirementIds.filter(
+    (id) => !candidate.requirement_assessments.some((assessment) => assessment.requirement_id === id)
+  );
+  const sortedRejected = rejected.sort((left, right) =>
+    left.section.localeCompare(right.section) || left.index - right.index
+  );
   return {
     disposition: rejected.length > 0 ? "partial" : "accepted",
     candidate,
-    rejected_units: rejected.sort((left, right) =>
-      left.section.localeCompare(right.section) || left.index - right.index
-    ),
-    discard_reason_codes: []
+    rejected_units: sortedRejected,
+    discard_reason_codes: [],
+    missing_requirement_ids: missingRequirementIds,
+    diagnostics: diagnostics({
+      rawSectionCounts,
+      candidate,
+      rejected: sortedRejected,
+      discardReasonCodes: [],
+      inputRequirementIds,
+      missingRequirementIds
+    })
   };
 }
 
@@ -988,12 +1019,95 @@ function unique<T>(values: readonly T[]): T[] {
   return [...new Set(values)];
 }
 
-function discarded(reason: LlmSemanticDiscardReason): LlmSemanticValidationResult {
+function sectionCounts(value: unknown): Record<keyof LlmSemanticOutput, number> {
+  const counts = emptySectionCounts();
+  if (!isRecord(value)) return counts;
+
+  for (const section of ROOT_KEYS) {
+    if (Array.isArray(value[section])) {
+      counts[section] = value[section].length;
+    }
+  }
+  return counts;
+}
+
+function emptySectionCounts(): Record<keyof LlmSemanticOutput, number> {
+  return {
+    requirement_evidence_relations: 0,
+    requirement_assessments: 0,
+    evidence_gaps: 0,
+    review_targets: 0,
+    remediation_requests: 0,
+    uncertainties: 0
+  };
+}
+
+function diagnostics(input: {
+  rawSectionCounts: Record<keyof LlmSemanticOutput, number>;
+  candidate: LlmSemanticOutput | null;
+  rejected: readonly LlmSemanticRejectedUnit[];
+  discardReasonCodes: LlmSemanticDiscardReason[];
+  inputRequirementIds: readonly string[];
+  missingRequirementIds: readonly string[];
+}): LlmSemanticValidationDiagnostics {
+  const rejectedSectionCounts = emptySectionCounts();
+  const rejectedReasonCodeCounts: Record<LlmSemanticRejectReason, number> = {
+    invalid_unit_shape: 0,
+    length_limit: 0,
+    incomplete_text: 0,
+    unknown_requirement_reference: 0,
+    unknown_evidence_reference: 0,
+    reference_type_mismatch: 0,
+    duplicate_reference: 0,
+    inconsistent_evidence_support: 0,
+    prohibited_assurance: 0
+  };
+
+  for (const unit of input.rejected) {
+    rejectedSectionCounts[unit.section] += 1;
+    for (const reason of unit.reason_codes) rejectedReasonCodeCounts[reason] += 1;
+  }
+
+  return {
+    version: 1,
+    raw_section_counts: input.rawSectionCounts,
+    accepted_section_counts: input.candidate
+      ? ROOT_KEYS.reduce((counts, section) => {
+          counts[section] = input.candidate![section].length;
+          return counts;
+        }, emptySectionCounts())
+      : emptySectionCounts(),
+    rejected_section_counts: rejectedSectionCounts,
+    rejected_reason_code_counts: rejectedReasonCodeCounts,
+    discard_reason_codes: input.discardReasonCodes,
+    input_requirement_count: input.inputRequirementIds.length,
+    assessed_requirement_count: input.inputRequirementIds.length - input.missingRequirementIds.length,
+    missing_requirement_count: input.missingRequirementIds.length,
+    retryAttempted: false
+  };
+}
+
+function discarded(
+  reason: LlmSemanticDiscardReason,
+  inputRequirementIds: readonly string[],
+  rawSectionCounts: Record<keyof LlmSemanticOutput, number>,
+  rejected: readonly LlmSemanticRejectedUnit[] = []
+): LlmSemanticValidationResult {
+  const missingRequirementIds = [...inputRequirementIds];
   return {
     disposition: "discarded",
     candidate: null,
     rejected_units: [],
-    discard_reason_codes: [reason]
+    discard_reason_codes: [reason],
+    missing_requirement_ids: missingRequirementIds,
+    diagnostics: diagnostics({
+      rawSectionCounts,
+      candidate: null,
+      rejected,
+      discardReasonCodes: [reason],
+      inputRequirementIds,
+      missingRequirementIds
+    })
   };
 }
 

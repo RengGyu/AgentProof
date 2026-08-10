@@ -28,7 +28,11 @@ describe("analysis worker public projection", () => {
         provider_status: "in_progress",
         provider_poll_attempts: 2,
         provider_submitted_at: "2026-06-30T00:01:00.000Z",
-        provider_expires_at: "2026-06-30T00:09:00.000Z"
+        provider_expires_at: "2026-06-30T00:09:00.000Z",
+        semantic_retry_attempts: 1,
+        prior_provider_response_id: "resp_background_first_123",
+        prior_provider_submitted_at: "2026-06-30T00:00:30.000Z",
+        prior_provider_expires_at: "2026-06-30T00:08:30.000Z"
       },
       sideEffects: { saveReport: true, comment: false }
     });
@@ -39,6 +43,8 @@ describe("analysis worker public projection", () => {
       job: { id: "job_1", pullRequestNumber: 7, attempts: 2 }
     });
     expect(serialized).not.toContain("resp_background_123");
+    expect(serialized).not.toContain("resp_background_first_123");
+    expect(serialized).not.toContain("semantic_retry_attempts");
     expect(serialized).not.toContain("provider_");
     expect(serialized).not.toContain("claim_generation");
     expect(serialized).not.toContain("123e4567-e89b-42d3-a456-426614174300");

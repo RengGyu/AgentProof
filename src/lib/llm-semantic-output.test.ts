@@ -116,6 +116,101 @@ describe("AgentProof LLM semantic output contract", () => {
     expect(result.rejected_units).toEqual([]);
   });
 
+  it("reports privacy-safe section and requirement coverage diagnostics", () => {
+    const candidate = validCandidate();
+    candidate.requirement_assessments.push({
+      ...candidate.requirement_assessments[0],
+      requirement_id: "req-002",
+      evidence_support: "no_evidence_found",
+      evidence_ids: []
+    });
+    candidate.evidence_gaps.push({
+      ...candidate.evidence_gaps[0],
+      requirement_id: "req-not-in-catalog"
+    });
+
+    const result = validateLlmSemanticCandidate(candidate, referenceCatalog);
+
+    expect(result.missing_requirement_ids).toEqual([]);
+    expect(result.diagnostics).toEqual({
+      version: 1,
+      raw_section_counts: {
+        requirement_evidence_relations: 1,
+        requirement_assessments: 2,
+        evidence_gaps: 2,
+        review_targets: 1,
+        remediation_requests: 1,
+        uncertainties: 1
+      },
+      accepted_section_counts: {
+        requirement_evidence_relations: 1,
+        requirement_assessments: 2,
+        evidence_gaps: 1,
+        review_targets: 1,
+        remediation_requests: 1,
+        uncertainties: 1
+      },
+      rejected_section_counts: {
+        requirement_evidence_relations: 0,
+        requirement_assessments: 0,
+        evidence_gaps: 1,
+        review_targets: 0,
+        remediation_requests: 0,
+        uncertainties: 0
+      },
+      rejected_reason_code_counts: {
+        invalid_unit_shape: 0,
+        length_limit: 0,
+        incomplete_text: 0,
+        unknown_requirement_reference: 1,
+        unknown_evidence_reference: 0,
+        reference_type_mismatch: 0,
+        duplicate_reference: 0,
+        inconsistent_evidence_support: 0,
+        prohibited_assurance: 0
+      },
+      discard_reason_codes: [],
+      input_requirement_count: 2,
+      assessed_requirement_count: 2,
+      missing_requirement_count: 0,
+      retryAttempted: false
+    });
+  });
+
+  it("keeps exact missing requirement IDs transient while diagnostics retain counts only", () => {
+    const candidate = validCandidate();
+    candidate.requirement_assessments = [];
+
+    const result = validateLlmSemanticCandidate(candidate, referenceCatalog);
+
+    expect(result.disposition).toBe("accepted");
+    expect(result.missing_requirement_ids).toEqual(["req-001", "req-002"]);
+    expect(result.diagnostics.input_requirement_count).toBe(2);
+    expect(result.diagnostics.assessed_requirement_count).toBe(0);
+    expect(result.diagnostics.missing_requirement_count).toBe(2);
+    expect(JSON.stringify(result.diagnostics)).not.toContain("req-001");
+    expect(JSON.stringify(result.diagnostics)).not.toContain("req-002");
+  });
+
+  it("records discard reasons and complete requirement coverage loss without diagnostics text", () => {
+    const candidate = validCandidate();
+    candidate.remediation_requests[0] = {
+      ...candidate.remediation_requests[0],
+      instruction: "Use token=github_pat_abcdefghijklmnopqrstuvwxyz1234567890 to run the check."
+    };
+
+    const result = validateLlmSemanticCandidate(candidate, referenceCatalog);
+
+    expect(result.missing_requirement_ids).toEqual(["req-001", "req-002"]);
+    expect(result.diagnostics.discard_reason_codes).toEqual(["secret_detected"]);
+    expect(result.diagnostics.raw_section_counts.requirement_assessments).toBe(1);
+    expect(result.diagnostics.accepted_section_counts.requirement_assessments).toBe(0);
+    expect(result.diagnostics.input_requirement_count).toBe(2);
+    expect(result.diagnostics.assessed_requirement_count).toBe(0);
+    expect(result.diagnostics.missing_requirement_count).toBe(2);
+    expect(JSON.stringify(result.diagnostics)).not.toContain("github_pat_");
+  });
+
   it("removes only atomic units with unknown evidence references", () => {
     const candidate = validCandidate();
     candidate.requirement_evidence_relations.push({
@@ -362,6 +457,23 @@ describe("AgentProof LLM semantic output contract", () => {
     expect(result.disposition).toBe("discarded");
     expect(result.candidate).toBeNull();
     expect(result.discard_reason_codes).toContain("root_schema_invalid");
+  });
+
+  it("reports the actual raw count when an over-limit root array is discarded", () => {
+    const candidate = validCandidate();
+    candidate.requirement_assessments = Array.from(
+      { length: LLM_SEMANTIC_OUTPUT_LIMITS.requirementAssessments + 1 },
+      () => ({ ...candidate.requirement_assessments[0] })
+    );
+
+    const result = validateLlmSemanticCandidate(candidate, referenceCatalog);
+
+    expect(result.disposition).toBe("discarded");
+    expect(result.discard_reason_codes).toEqual(["root_schema_invalid"]);
+    expect(result.diagnostics.raw_section_counts.requirement_assessments).toBe(
+      LLM_SEMANTIC_OUTPUT_LIMITS.requirementAssessments + 1
+    );
+    expect(result.diagnostics.accepted_section_counts.requirement_assessments).toBe(0);
   });
 });
 

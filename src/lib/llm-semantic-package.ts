@@ -1,7 +1,11 @@
 import { compactText, redactSecrets } from "./redact";
 import {
+  LLM_SEMANTIC_OUTPUT_LIMITS,
   llmSemanticOutputSchema,
   validateLlmSemanticCandidate,
+  type LlmSemanticRejectReason,
+  type LlmSemanticOutput,
+  type LlmSemanticValidationDiagnostics,
   type LlmSemanticValidationResult
 } from "./llm-semantic-output";
 import type { EvidenceItem, EvidenceKind, PullRequestInput, VerificationReport } from "./types";
@@ -137,6 +141,187 @@ export function validateLlmSemanticPackageCandidate(
   });
 }
 
+export function buildLlmSemanticPackageSubset(
+  llmPackage: LlmSemanticPackage,
+  requirementIds: readonly string[]
+): LlmSemanticPackage {
+  if (requirementIds.length === 0 || requirementIds.some((id) => id.length === 0)) {
+    throw new Error("LLM semantic package subset requirement IDs cannot be empty.");
+  }
+  if (new Set(requirementIds).size !== requirementIds.length) {
+    throw new Error("LLM semantic package subset requirement IDs cannot contain duplicates.");
+  }
+
+  const requirementsById = new Map(
+    llmPackage.input.requirements.map((requirement) => [requirement.id, requirement])
+  );
+  const unknownIds = requirementIds.filter((id) => !requirementsById.has(id));
+  if (unknownIds.length > 0) {
+    throw new Error("LLM semantic package subset contains unknown requirement IDs.");
+  }
+
+  const requestedIds = new Set(requirementIds);
+  const requirements = llmPackage.input.requirements.filter((requirement) =>
+    requestedIds.has(requirement.id)
+  );
+  const referencedEvidenceIds = new Set(
+    requirements.flatMap((requirement) => requirement.evidence_ids)
+  );
+  const evidence = llmPackage.input.evidence.filter((item) => referencedEvidenceIds.has(item.id));
+
+  return {
+    ...llmPackage,
+    input: {
+      ...llmPackage.input,
+      requirements,
+      evidence,
+      bounds: {
+        ...llmPackage.input.bounds,
+        included_requirement_count: requirements.length,
+        omitted_requirement_count: Math.max(
+          0,
+          llmPackage.input.bounds.total_requirement_count - requirements.length
+        ),
+        included_evidence_count: evidence.length,
+        omitted_evidence_count: Math.max(
+          0,
+          llmPackage.input.bounds.total_evidence_count - evidence.length
+        ),
+        code_excerpt_count: evidence.filter((item) => item.code_excerpt !== null).length
+      }
+    }
+  };
+}
+
+export function mergeLlmSemanticPackageCandidates(
+  firstValidation: LlmSemanticValidationResult,
+  retryCandidate: unknown,
+  llmPackage: LlmSemanticPackage
+): LlmSemanticValidationResult {
+  if (!firstValidation.candidate) {
+    throw new Error("Cannot merge a coverage retry without a validator-approved first candidate.");
+  }
+  if (firstValidation.missing_requirement_ids.length === 0) {
+    return {
+      ...firstValidation,
+      diagnostics: { ...firstValidation.diagnostics, retryAttempted: true }
+    };
+  }
+  const retryPackage = buildLlmSemanticPackageSubset(
+    llmPackage,
+    firstValidation.missing_requirement_ids
+  );
+  const retryValidation = validateLlmSemanticPackageCandidate(retryCandidate, retryPackage);
+  return mergeLlmSemanticPackageValidationResults(firstValidation, retryValidation, llmPackage);
+}
+
+export function mergeLlmSemanticPackageValidationResults(
+  firstValidation: LlmSemanticValidationResult,
+  retryValidation: LlmSemanticValidationResult,
+  llmPackage: LlmSemanticPackage
+): LlmSemanticValidationResult {
+  if (!firstValidation.candidate) {
+    throw new Error("Cannot merge a coverage retry without a validator-approved first candidate.");
+  }
+
+  const missingRequirementIds = firstValidation.missing_requirement_ids;
+  if (missingRequirementIds.length === 0) {
+    return {
+      ...firstValidation,
+      diagnostics: { ...firstValidation.diagnostics, retryAttempted: true }
+    };
+  }
+
+  if (!retryValidation.candidate) {
+    return withAggregateRetryDiagnostics(firstValidation, firstValidation, retryValidation);
+  }
+
+  const missingIds = new Set(missingRequirementIds);
+  const retry = missingOnlyCandidate(retryValidation.candidate, missingIds);
+  const mergeDrops: MergeDrop[] = [];
+  recordUnscopedRetryDrops(retryValidation.candidate, retry, mergeDrops);
+  const relationInputs = [
+    ...firstValidation.candidate.requirement_evidence_relations,
+    ...retry.requirement_evidence_relations
+  ];
+  const uniqueRelations = firstByExactKey(
+    relationInputs,
+    (item) => `${item.requirement_id}\u0000${item.evidence_id}`
+  );
+  recordMergeDrop(
+    mergeDrops,
+    "requirement_evidence_relations",
+    "duplicate_reference",
+    relationInputs.length - uniqueRelations.length
+  );
+  recordMergeDrop(
+    mergeDrops,
+    "requirement_evidence_relations",
+    "length_limit",
+    Math.max(0, uniqueRelations.length - LLM_SEMANTIC_OUTPUT_LIMITS.requirementRelations)
+  );
+  const assessmentInputs = [
+    ...firstValidation.candidate.requirement_assessments,
+    ...retry.requirement_assessments
+  ];
+  const uniqueAssessments = firstByExactKey(
+    assessmentInputs,
+    (item) => item.requirement_id
+  );
+  recordMergeDrop(
+    mergeDrops,
+    "requirement_assessments",
+    "duplicate_reference",
+    assessmentInputs.length - uniqueAssessments.length
+  );
+  recordMergeDrop(
+    mergeDrops,
+    "requirement_assessments",
+    "length_limit",
+    Math.max(0, uniqueAssessments.length - LLM_SEMANTIC_OUTPUT_LIMITS.requirementAssessments)
+  );
+  const merged: LlmSemanticOutput = {
+    requirement_evidence_relations: uniqueRelations.slice(
+      0,
+      LLM_SEMANTIC_OUTPUT_LIMITS.requirementRelations
+    ),
+    requirement_assessments: uniqueAssessments.slice(
+      0,
+      LLM_SEMANTIC_OUTPUT_LIMITS.requirementAssessments
+    ),
+    evidence_gaps: appendWithinLimit(
+      firstValidation.candidate.evidence_gaps,
+      retry.evidence_gaps,
+      LLM_SEMANTIC_OUTPUT_LIMITS.evidenceGaps
+    ),
+    review_targets: appendWithinLimit(
+      firstValidation.candidate.review_targets,
+      retry.review_targets,
+      LLM_SEMANTIC_OUTPUT_LIMITS.reviewTargets
+    ),
+    remediation_requests: appendWithinLimit(
+      firstValidation.candidate.remediation_requests,
+      retry.remediation_requests,
+      LLM_SEMANTIC_OUTPUT_LIMITS.remediationRequests
+    ),
+    uncertainties: appendWithinLimit(
+      firstValidation.candidate.uncertainties,
+      retry.uncertainties,
+      LLM_SEMANTIC_OUTPUT_LIMITS.uncertainties
+    )
+  };
+  recordSectionLimitDrops(firstValidation.candidate, retry, mergeDrops);
+  const validation = validateLlmSemanticPackageCandidate(merged, llmPackage);
+  const returnedValidation = validation.candidate ? validation : firstValidation;
+  return withAggregateRetryDiagnostics(
+    returnedValidation,
+    firstValidation,
+    retryValidation,
+    mergeDrops,
+    validation
+  );
+}
+
 export function llmSemanticSystemPrompt(): string {
   return [
     "You produce AgentProof semantic evidence candidates for a pull-request reviewer.",
@@ -195,4 +380,189 @@ function uniqueIds(values: string[]): string[] {
 function normalizeLocale(value: string | undefined): string {
   const locale = value?.trim();
   return locale && /^[A-Za-z]{2,3}(?:-[A-Za-z]{2,4})?$/.test(locale) ? locale : "en";
+}
+
+function missingOnlyCandidate(
+  candidate: LlmSemanticOutput,
+  missingRequirementIds: ReadonlySet<string>
+): LlmSemanticOutput {
+  const containsOnlyMissingIds = (ids: readonly string[]) =>
+    ids.length > 0 && ids.every((id) => missingRequirementIds.has(id));
+
+  return {
+    requirement_evidence_relations: candidate.requirement_evidence_relations.filter((item) =>
+      missingRequirementIds.has(item.requirement_id)
+    ),
+    requirement_assessments: candidate.requirement_assessments.filter((item) =>
+      missingRequirementIds.has(item.requirement_id)
+    ),
+    evidence_gaps: candidate.evidence_gaps.filter((item) =>
+      missingRequirementIds.has(item.requirement_id)
+    ),
+    review_targets: candidate.review_targets.filter((item) =>
+      containsOnlyMissingIds(item.requirement_ids)
+    ),
+    remediation_requests: candidate.remediation_requests.filter((item) =>
+      missingRequirementIds.has(item.requirement_id)
+    ),
+    uncertainties: candidate.uncertainties.filter((item) =>
+      containsOnlyMissingIds(item.requirement_ids)
+    )
+  };
+}
+
+function firstByExactKey<T>(items: readonly T[], keyFor: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = keyFor(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function appendWithinLimit<T>(first: readonly T[], retry: readonly T[], limit: number): T[] {
+  return [...first, ...retry.slice(0, Math.max(0, limit - first.length))];
+}
+
+interface MergeDrop {
+  section: keyof LlmSemanticOutput;
+  reason: LlmSemanticRejectReason;
+  count: number;
+}
+
+function recordUnscopedRetryDrops(
+  validatedRetry: LlmSemanticOutput,
+  missingOnlyRetry: LlmSemanticOutput,
+  drops: MergeDrop[]
+): void {
+  for (const section of semanticSections(validatedRetry)) {
+    recordMergeDrop(
+      drops,
+      section,
+      "inconsistent_evidence_support",
+      validatedRetry[section].length - missingOnlyRetry[section].length
+    );
+  }
+}
+
+function recordSectionLimitDrops(
+  first: LlmSemanticOutput,
+  retry: LlmSemanticOutput,
+  drops: MergeDrop[]
+): void {
+  const limits: Partial<Record<keyof LlmSemanticOutput, number>> = {
+    evidence_gaps: LLM_SEMANTIC_OUTPUT_LIMITS.evidenceGaps,
+    review_targets: LLM_SEMANTIC_OUTPUT_LIMITS.reviewTargets,
+    remediation_requests: LLM_SEMANTIC_OUTPUT_LIMITS.remediationRequests,
+    uncertainties: LLM_SEMANTIC_OUTPUT_LIMITS.uncertainties
+  };
+  for (const section of Object.keys(limits) as Array<keyof LlmSemanticOutput>) {
+    recordMergeDrop(
+      drops,
+      section,
+      "length_limit",
+      Math.max(0, first[section].length + retry[section].length - limits[section]!)
+    );
+  }
+}
+
+function recordMergeDrop(
+  drops: MergeDrop[],
+  section: keyof LlmSemanticOutput,
+  reason: LlmSemanticRejectReason,
+  count: number
+): void {
+  if (count > 0) drops.push({ section, reason, count });
+}
+
+function withAggregateRetryDiagnostics(
+  returnedValidation: LlmSemanticValidationResult,
+  firstValidation: LlmSemanticValidationResult,
+  retryValidation: LlmSemanticValidationResult,
+  mergeDrops: readonly MergeDrop[] = [],
+  mergeValidation?: LlmSemanticValidationResult
+): LlmSemanticValidationResult {
+  const rawSectionCounts = addSectionCounts(
+    firstValidation.diagnostics.raw_section_counts,
+    retryValidation.diagnostics.raw_section_counts
+  );
+  const rejectedSectionCounts = addSectionCounts(
+    firstValidation.diagnostics.rejected_section_counts,
+    retryValidation.diagnostics.rejected_section_counts,
+    mergeValidation?.diagnostics.rejected_section_counts
+  );
+  const rejectedReasonCodeCounts = addReasonCounts(
+    firstValidation.diagnostics.rejected_reason_code_counts,
+    retryValidation.diagnostics.rejected_reason_code_counts,
+    mergeValidation?.diagnostics.rejected_reason_code_counts
+  );
+  for (const drop of mergeDrops) {
+    rejectedSectionCounts[drop.section] += drop.count;
+    rejectedReasonCodeCounts[drop.reason] += drop.count;
+  }
+
+  const discardReasonCodes = [...new Set([
+    ...firstValidation.diagnostics.discard_reason_codes,
+    ...retryValidation.diagnostics.discard_reason_codes,
+    ...(mergeValidation?.diagnostics.discard_reason_codes ?? [])
+  ])];
+  const finalDiagnostics = returnedValidation.diagnostics;
+  return {
+    ...returnedValidation,
+    diagnostics: {
+      ...finalDiagnostics,
+      raw_section_counts: rawSectionCounts,
+      accepted_section_counts: finalDiagnostics.accepted_section_counts,
+      rejected_section_counts: rejectedSectionCounts,
+      rejected_reason_code_counts: rejectedReasonCodeCounts,
+      discard_reason_codes: discardReasonCodes,
+      retryAttempted: true
+    }
+  };
+}
+
+function addSectionCounts(
+  ...counts: Array<LlmSemanticValidationDiagnostics["raw_section_counts"] | undefined>
+): LlmSemanticValidationDiagnostics["raw_section_counts"] {
+  const total = emptySectionCounts();
+  for (const count of counts) {
+    if (!count) continue;
+    for (const section of semanticSections(count)) total[section] += count[section];
+  }
+  return total;
+}
+
+function addReasonCounts(
+  ...counts: Array<LlmSemanticValidationDiagnostics["rejected_reason_code_counts"] | undefined>
+): LlmSemanticValidationDiagnostics["rejected_reason_code_counts"] {
+  const first = counts.find((count) => count !== undefined);
+  if (!first) throw new Error("Cannot aggregate semantic diagnostics without reason-code counts.");
+  const total = Object.fromEntries(
+    Object.keys(first).map((reason) => [reason, 0])
+  ) as unknown as LlmSemanticValidationDiagnostics["rejected_reason_code_counts"];
+  for (const count of counts) {
+    if (!count) continue;
+    for (const reason of Object.keys(total) as LlmSemanticRejectReason[]) {
+      total[reason] += count[reason];
+    }
+  }
+  return total;
+}
+
+function emptySectionCounts(): LlmSemanticValidationDiagnostics["raw_section_counts"] {
+  return {
+    requirement_evidence_relations: 0,
+    requirement_assessments: 0,
+    evidence_gaps: 0,
+    review_targets: 0,
+    remediation_requests: 0,
+    uncertainties: 0
+  };
+}
+
+function semanticSections<T extends Record<keyof LlmSemanticOutput, unknown>>(
+  value: T
+): Array<keyof LlmSemanticOutput> {
+  return Object.keys(value) as Array<keyof LlmSemanticOutput>;
 }

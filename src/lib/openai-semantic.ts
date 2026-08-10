@@ -1,4 +1,11 @@
-import { buildLlmSemanticPackage, validateLlmSemanticPackageCandidate } from "./llm-semantic-package";
+import {
+  buildLlmSemanticPackage,
+  buildLlmSemanticPackageSubset,
+  mergeLlmSemanticPackageCandidates,
+  mergeLlmSemanticPackageValidationResults,
+  validateLlmSemanticPackageCandidate,
+  type LlmSemanticPackage
+} from "./llm-semantic-package";
 import { extractOpenAIResponseText } from "./openai-verifier";
 import { redactSecrets } from "./redact";
 import type { LlmSemanticOutput, LlmSemanticValidationResult } from "./llm-semantic-output";
@@ -6,7 +13,7 @@ import type { PullRequestInput, VerificationReport } from "./types";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const OPENAI_TIMEOUT_MS = 30_000;
-const OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS = 20_000;
+export const OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS = 20_000;
 
 export type OpenAISemanticFailureCode =
   | "openai_timeout"
@@ -59,6 +66,14 @@ export type OpenAIBackgroundSemanticResult =
       responseId: string;
     } & OpenAISemanticResult);
 
+type ParsedOpenAIBackgroundSemanticResult =
+  | Extract<OpenAIBackgroundSemanticResult, { status: "pending" }>
+  | {
+      status: "completed";
+      responseId: string;
+      validation: LlmSemanticValidationResult;
+    };
+
 /**
  * Calls the Responses API with an ephemeral semantic package. This adapter
  * neither writes the package nor the provider response; callers may retain
@@ -72,28 +87,37 @@ export async function analyzeSemanticsWithOpenAI(
   const llmPackage = buildLlmSemanticPackage(input, report, {
     outputLocale: options.outputLocale
   });
+  const firstCandidate = await requestSynchronousSemanticCandidate(llmPackage, options);
+  const firstValidation = validateLlmSemanticPackageCandidate(firstCandidate, llmPackage);
+  if (firstValidation.disposition === "discarded" || !firstValidation.candidate) {
+    throw new Error(`OpenAI semantic output failed validation: ${firstValidation.rejected_units.flatMap((item) => item.reason_codes).join(", ") || "no usable semantic units"}.`);
+  }
+
+  if (firstValidation.missing_requirement_ids.length === 0) {
+    return { output: firstValidation.candidate, validation: firstValidation };
+  }
+
+  const retryPackage = buildLlmSemanticPackageSubset(
+    llmPackage,
+    firstValidation.missing_requirement_ids
+  );
+  const retryCandidate = await requestSynchronousSemanticCandidate(retryPackage, options);
+  const validation = mergeLlmSemanticPackageCandidates(
+    firstValidation,
+    retryCandidate,
+    llmPackage
+  );
+  return { output: validation.candidate ?? firstValidation.candidate, validation };
+}
+
+async function requestSynchronousSemanticCandidate(
+  llmPackage: LlmSemanticPackage,
+  options: OpenAISemanticOptions
+): Promise<unknown> {
   const response = await (options.fetchFn ?? fetch)(OPENAI_RESPONSES_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${options.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: options.model ?? "gpt-5-mini",
-      input: [
-        { role: "system", content: [{ type: "input_text", text: llmPackage.system }] },
-        { role: "user", content: [{ type: "input_text", text: JSON.stringify(llmPackage.input) }] }
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: llmPackage.schema.name,
-          schema: llmPackage.schema.schema,
-          strict: llmPackage.schema.strict
-        }
-      },
-      store: false
-    }),
+    headers: openAIHeaders(options.apiKey),
+    body: JSON.stringify(openAIRequestBody(llmPackage, options.model)),
     signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
   });
 
@@ -104,19 +128,11 @@ export async function analyzeSemanticsWithOpenAI(
   const text = extractOpenAIResponseText(await response.json());
   if (!text) throw new Error("OpenAI semantic analysis did not return text output.");
 
-  let candidate: unknown;
   try {
-    candidate = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
     throw new Error("OpenAI semantic analysis returned invalid JSON.");
   }
-
-  const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
-  if (validation.disposition === "discarded" || !validation.candidate) {
-    throw new Error(`OpenAI semantic output failed validation: ${validation.rejected_units.flatMap((item) => item.reason_codes).join(", ") || "no usable semantic units"}.`);
-  }
-
-  return { output: validation.candidate, validation };
 }
 
 export async function submitSemanticsWithOpenAIBackground(
@@ -137,7 +153,7 @@ export async function submitSemanticsWithOpenAIBackground(
     signal: AbortSignal.timeout(OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS)
   }, options.fetchFn);
   const payload = await parseOpenAIResponseJson(response);
-  return parseBackgroundSemanticPayload(payload, llmPackage);
+  return acceptedBackgroundSemanticResult(parseBackgroundSemanticPayload(payload, llmPackage));
 }
 
 export async function retrieveSemanticsWithOpenAIBackground(
@@ -156,7 +172,107 @@ export async function retrieveSemanticsWithOpenAIBackground(
     signal: AbortSignal.timeout(OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS)
   }, options.fetchFn, { retrieving: true });
   const payload = await parseOpenAIResponseJson(response);
-  return parseBackgroundSemanticPayload(payload, llmPackage, safeResponseId);
+  return acceptedBackgroundSemanticResult(parseBackgroundSemanticPayload(payload, llmPackage, safeResponseId));
+}
+
+export async function submitMissingSemanticsWithOpenAIBackground(
+  input: PullRequestInput,
+  report: VerificationReport,
+  firstValidation: LlmSemanticValidationResult,
+  options: OpenAISemanticOptions
+): Promise<OpenAIBackgroundSemanticResult> {
+  const llmPackage = buildLlmSemanticPackage(input, report, {
+    outputLocale: options.outputLocale
+  });
+  const retryPackage = missingSemanticPackage(llmPackage, firstValidation);
+  const response = await fetchOpenAIResponse(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: openAIHeaders(options.apiKey),
+    body: JSON.stringify({
+      ...openAIRequestBody(retryPackage, options.model),
+      background: true
+    }),
+    signal: AbortSignal.timeout(OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS)
+  }, options.fetchFn);
+  const payload = await parseOpenAIResponseJson(response);
+  return mergeBackgroundRetryResult(
+    parseBackgroundSemanticPayload(payload, retryPackage),
+    firstValidation,
+    llmPackage
+  );
+}
+
+export async function retrieveMissingSemanticsWithOpenAIBackground(
+  responseId: string,
+  input: PullRequestInput,
+  report: VerificationReport,
+  firstValidation: LlmSemanticValidationResult,
+  options: OpenAISemanticOptions
+): Promise<OpenAIBackgroundSemanticResult> {
+  const safeResponseId = normalizeOpenAIResponseId(responseId);
+  const llmPackage = buildLlmSemanticPackage(input, report, {
+    outputLocale: options.outputLocale
+  });
+  const retryPackage = missingSemanticPackage(llmPackage, firstValidation);
+  const response = await fetchOpenAIResponse(`${OPENAI_RESPONSES_URL}/${encodeURIComponent(safeResponseId)}`, {
+    method: "GET",
+    headers: openAIHeaders(options.apiKey),
+    signal: AbortSignal.timeout(OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS)
+  }, options.fetchFn, { retrieving: true });
+  const payload = await parseOpenAIResponseJson(response);
+  return mergeBackgroundRetryResult(
+    parseBackgroundSemanticPayload(payload, retryPackage, safeResponseId),
+    firstValidation,
+    llmPackage
+  );
+}
+
+function missingSemanticPackage(
+  llmPackage: LlmSemanticPackage,
+  firstValidation: LlmSemanticValidationResult
+): LlmSemanticPackage {
+  if (!firstValidation.candidate || firstValidation.missing_requirement_ids.length === 0) {
+    throw new OpenAISemanticError(
+      "openai_output_rejected",
+      false,
+      "OpenAI semantic coverage retry requires a validator-approved incomplete candidate."
+    );
+  }
+  return buildLlmSemanticPackageSubset(llmPackage, firstValidation.missing_requirement_ids);
+}
+
+function mergeBackgroundRetryResult(
+  result: ParsedOpenAIBackgroundSemanticResult,
+  firstValidation: LlmSemanticValidationResult,
+  llmPackage: LlmSemanticPackage
+): OpenAIBackgroundSemanticResult {
+  if (result.status === "pending") return result;
+  const validation = mergeLlmSemanticPackageValidationResults(
+    firstValidation,
+    result.validation,
+    llmPackage
+  );
+  return {
+    status: "completed",
+    responseId: result.responseId,
+    output: validation.candidate ?? firstValidation.candidate!,
+    validation
+  };
+}
+
+function acceptedBackgroundSemanticResult(
+  result: ParsedOpenAIBackgroundSemanticResult
+): OpenAIBackgroundSemanticResult {
+  if (result.status === "pending") return result;
+  if (result.validation.disposition === "discarded" || !result.validation.candidate) {
+    throw new OpenAISemanticError("openai_output_rejected", false, "OpenAI semantic output failed strict validation.");
+  }
+  return {
+    status: "completed",
+    responseId: result.responseId,
+    output: result.validation.candidate,
+    validation: result.validation
+  };
 }
 
 function openAIRequestBody(
@@ -239,7 +355,7 @@ function parseBackgroundSemanticPayload(
   payload: unknown,
   llmPackage: ReturnType<typeof buildLlmSemanticPackage>,
   expectedResponseId?: string
-): OpenAIBackgroundSemanticResult {
+): ParsedOpenAIBackgroundSemanticResult {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new OpenAISemanticError("openai_response_invalid", false, "OpenAI semantic response was malformed.");
   }
@@ -279,14 +395,9 @@ function parseBackgroundSemanticPayload(
   }
 
   const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
-  if (validation.disposition === "discarded" || !validation.candidate) {
-    throw new OpenAISemanticError("openai_output_rejected", false, "OpenAI semantic output failed strict validation.");
-  }
-
   return {
     status: "completed",
     responseId,
-    output: validation.candidate,
     validation
   };
 }

@@ -3,6 +3,8 @@ import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 import {
   buildLlmSemanticPackage,
+  buildLlmSemanticPackageSubset,
+  mergeLlmSemanticPackageCandidates,
   validateLlmSemanticPackageCandidate
 } from "./llm-semantic-package";
 
@@ -131,4 +133,203 @@ describe("LLM semantic analysis package", () => {
     ]));
     expect(llmPackage.system).toContain("implementation interpretation does not resolve ambiguity");
   });
+
+  it("rejects empty, duplicate, and unknown requirement IDs for a retry subset", () => {
+    const llmPackage = buildLlmSemanticPackage(
+      demoScenarios.clean,
+      generateVerificationReport(demoScenarios.clean)
+    );
+    const requirementId = llmPackage.input.requirements[0]?.id;
+    expect(requirementId).toBeTruthy();
+
+    expect(() => buildLlmSemanticPackageSubset(llmPackage, [])).toThrow(/empty/i);
+    expect(() => buildLlmSemanticPackageSubset(llmPackage, [requirementId!, requirementId!])).toThrow(/duplicate/i);
+    expect(() => buildLlmSemanticPackageSubset(llmPackage, ["req_unknown"])).toThrow(/unknown/i);
+  });
+
+  it("builds a retry subset with only requested requirements and their referenced bounded evidence", () => {
+    const llmPackage = buildLlmSemanticPackage(
+      demoScenarios.clean,
+      generateVerificationReport(demoScenarios.clean)
+    );
+    const requested = llmPackage.input.requirements.slice(-2);
+    expect(requested).toHaveLength(2);
+
+    const subset = buildLlmSemanticPackageSubset(
+      llmPackage,
+      requested.map((requirement) => requirement.id)
+    );
+    const expectedEvidenceIds = [...new Set(requested.flatMap((requirement) => requirement.evidence_ids))];
+
+    expect(subset.input.requirements).toEqual(requested);
+    expect(subset.input.evidence.map((evidence) => evidence.id)).toEqual(
+      llmPackage.input.evidence
+        .filter((evidence) => expectedEvidenceIds.includes(evidence.id))
+        .map((evidence) => evidence.id)
+    );
+    expect(subset.input.privacy).toEqual(llmPackage.input.privacy);
+    expect(subset.input.context_signals).toEqual(llmPackage.input.context_signals);
+    expect(subset.input.limitations).toEqual(llmPackage.input.limitations);
+    expect(subset.input.bounds.included_requirement_count).toBe(2);
+    expect(subset.input.bounds.included_evidence_count).toBe(subset.input.evidence.length);
+  });
+
+  it("merges validator-approved retry units only for missing exact IDs and keeps first assessments", () => {
+    const llmPackage = buildLlmSemanticPackage(
+      demoScenarios.clean,
+      generateVerificationReport(demoScenarios.clean)
+    );
+    const [firstRequirement, missingRequirement] = llmPackage.input.requirements;
+    const evidenceId = llmPackage.input.evidence[0]?.id;
+    expect(firstRequirement).toBeTruthy();
+    expect(missingRequirement).toBeTruthy();
+    expect(evidenceId).toBeTruthy();
+
+    const firstCandidate = {
+      ...semanticCandidate(firstRequirement!.id, evidenceId!, "First assessment is preserved."),
+      requirement_assessments: [
+        semanticCandidate(firstRequirement!.id, evidenceId!, "First assessment is preserved.").requirement_assessments[0],
+        semanticCandidate("req_outside_first", evidenceId!, "First rejection is counted.").requirement_assessments[0]
+      ]
+    };
+    const firstValidation = validateLlmSemanticPackageCandidate(firstCandidate, llmPackage);
+    expect(firstValidation.missing_requirement_ids).toContain(missingRequirement!.id);
+
+    const retryCandidate = {
+      ...semanticCandidate(missingRequirement!.id, evidenceId!, "Missing assessment is filled."),
+      requirement_assessments: [
+        semanticCandidate(firstRequirement!.id, evidenceId!, "Retry must not replace the first assessment.").requirement_assessments[0],
+        semanticCandidate(missingRequirement!.id, evidenceId!, "Missing assessment is filled.").requirement_assessments[0]
+      ]
+    };
+    const merged = mergeLlmSemanticPackageCandidates(firstValidation, retryCandidate, llmPackage);
+
+    expect(merged.candidate?.requirement_assessments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requirement_id: firstRequirement!.id, summary: "First assessment is preserved." }),
+      expect.objectContaining({ requirement_id: missingRequirement!.id, summary: "Missing assessment is filled." })
+    ]));
+    expect(merged.candidate?.requirement_assessments).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ summary: "Retry must not replace the first assessment." })
+    ]));
+    expect(merged.diagnostics.retryAttempted).toBe(true);
+    expect(merged.diagnostics.raw_section_counts.requirement_assessments).toBe(4);
+    expect(merged.diagnostics.accepted_section_counts.requirement_assessments).toBe(2);
+    expect(merged.diagnostics.rejected_section_counts.requirement_assessments).toBe(2);
+    expect(merged.diagnostics.rejected_reason_code_counts.unknown_requirement_reference).toBe(2);
+    expect(JSON.stringify(merged.diagnostics)).not.toContain(firstRequirement!.id);
+    expect(JSON.stringify(merged.diagnostics)).not.toContain("First rejection is counted.");
+    expect(validateLlmSemanticPackageCandidate(merged.candidate, llmPackage).candidate).toEqual(merged.candidate);
+  });
+
+  it("retains a bounded retry discard code while returning the first valid candidate", () => {
+    const llmPackage = buildLlmSemanticPackage(
+      demoScenarios.clean,
+      generateVerificationReport(demoScenarios.clean)
+    );
+    const firstRequirement = llmPackage.input.requirements[0];
+    const firstEvidenceId = firstRequirement?.evidence_ids[0];
+    expect(firstRequirement).toBeTruthy();
+    expect(firstEvidenceId).toBeTruthy();
+    const firstCandidate = semanticCandidate(
+      firstRequirement!.id,
+      firstEvidenceId!,
+      "First assessment is preserved."
+    );
+    const firstValidation = validateLlmSemanticPackageCandidate(firstCandidate, llmPackage);
+    const retryCandidate = {
+      ...semanticCandidate(
+        firstValidation.missing_requirement_ids[0]!,
+        llmPackage.input.requirements[1]!.evidence_ids[0]!,
+        "github_pat_abcdefghijklmnopqrstuvwxyz1234567890"
+      )
+    };
+
+    const merged = mergeLlmSemanticPackageCandidates(firstValidation, retryCandidate, llmPackage);
+
+    expect(merged.candidate).toEqual(firstValidation.candidate);
+    expect(merged.diagnostics.raw_section_counts.requirement_assessments).toBe(2);
+    expect(merged.diagnostics.accepted_section_counts.requirement_assessments).toBe(1);
+    expect(merged.diagnostics.discard_reason_codes).toEqual(["secret_detected"]);
+    expect(merged.diagnostics.missing_requirement_count).toBe(
+      llmPackage.input.requirements.length - 1
+    );
+    expect(merged.diagnostics.retryAttempted).toBe(true);
+    expect(JSON.stringify(merged.diagnostics)).not.toContain("github_pat_");
+    expect(JSON.stringify(merged.diagnostics)).not.toContain(firstRequirement!.id);
+  });
+
+  it("preserves bounded first units while still merging a valid missing assessment", () => {
+    const llmPackage = buildLlmSemanticPackage(
+      demoScenarios.clean,
+      generateVerificationReport(demoScenarios.clean)
+    );
+    const [firstRequirement, missingRequirement] = llmPackage.input.requirements;
+    const firstEvidenceId = firstRequirement?.evidence_ids[0];
+    const missingEvidenceId = missingRequirement?.evidence_ids[0];
+    expect(firstRequirement).toBeTruthy();
+    expect(missingRequirement).toBeTruthy();
+    expect(firstEvidenceId).toBeTruthy();
+    expect(missingEvidenceId).toBeTruthy();
+
+    const firstCandidate = {
+      ...semanticCandidate(firstRequirement!.id, firstEvidenceId!, "First assessment is preserved."),
+      uncertainties: Array.from({ length: 20 }, (_, index) => ({
+        uncertainty_type: "insufficient_context",
+        impact: "minor",
+        description: `Bounded uncertainty ${index + 1} remains available.`,
+        needed_information: "Review the supplied bounded evidence.",
+        requirement_ids: [firstRequirement!.id],
+        evidence_ids: [firstEvidenceId!]
+      }))
+    };
+    const firstValidation = validateLlmSemanticPackageCandidate(firstCandidate, llmPackage);
+    expect(firstValidation.candidate?.uncertainties).toHaveLength(20);
+    const retryCandidate = {
+      ...semanticCandidate(missingRequirement!.id, missingEvidenceId!, "Missing assessment is filled."),
+      uncertainties: [{
+        uncertainty_type: "insufficient_context",
+        impact: "minor",
+        description: "Retry uncertainty must not overflow the bounded section.",
+        needed_information: "Review the supplied bounded evidence.",
+        requirement_ids: [missingRequirement!.id],
+        evidence_ids: [missingEvidenceId!]
+      }]
+    };
+
+    const merged = mergeLlmSemanticPackageCandidates(firstValidation, retryCandidate, llmPackage);
+
+    expect(merged.candidate?.requirement_assessments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requirement_id: missingRequirement!.id })
+    ]));
+    expect(merged.candidate?.uncertainties).toHaveLength(20);
+    expect(merged.diagnostics.raw_section_counts.uncertainties).toBe(21);
+    expect(merged.diagnostics.accepted_section_counts.uncertainties).toBe(20);
+    expect(merged.diagnostics.rejected_section_counts.uncertainties).toBe(1);
+    expect(merged.diagnostics.rejected_reason_code_counts.length_limit).toBe(1);
+    expect(merged.diagnostics.retryAttempted).toBe(true);
+  });
 });
+
+function semanticCandidate(requirementId: string, evidenceId: string, summary: string) {
+  return {
+    requirement_evidence_relations: [{
+      requirement_id: requirementId,
+      evidence_id: evidenceId,
+      relation: "indeterminate",
+      rationale: "The supplied evidence requires reviewer interpretation.",
+      uncertainty: "medium"
+    }],
+    requirement_assessments: [{
+      requirement_id: requirementId,
+      requirement_summary: "Review the supplied requirement evidence.",
+      evidence_support: "indeterminate",
+      summary,
+      evidence_ids: [evidenceId],
+      uncertainty: "medium"
+    }],
+    evidence_gaps: [],
+    review_targets: [],
+    remediation_requests: [],
+    uncertainties: []
+  };
+}
