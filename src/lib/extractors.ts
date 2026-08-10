@@ -82,6 +82,10 @@ const ISSUE_PROBLEM_PATTERN = /\b(bug|crash|segfault|error|exception|fails?|brok
 const KOREAN_REQUIREMENT_PATTERN = /(?:표시한다|이동한다|유지한다|복원한다|차단한다|제공한다|지원한다|저장한다|삭제한다|보여준다|할 수 없어야 한다|하지 않아야 한다|필요는 없(?:다|음))\.?$/;
 const AMBIGUITY_PATTERN = /\b(?:undefined|not defined|unclear|ambiguous|unspecified)\b|(?:정의하지 않|명확하지 않|모호|불명확)/i;
 const AUTHOR_EVIDENCE_SECTION_PATTERN = /\b(testing|test plan|validation|verified)\b/i;
+const PR_OBJECTIVE_ACTION_PATTERN =
+  /\b(?:add|align|allow|block|create|delete|disable|display|document|enable|ensure|export|fix|handle|hide|implement|migrate|prevent|preserve|refactor|refresh|rename|replace|require|return|rework|save|send|show|support|test|update|validat|verif)(?:e?s?|ed|es|ing|ied)?\b|(?:추가|수정|삭제|구현|문서화|리팩터링|지원|방지|유지|개선|변경|테스트|허용|표시|보장|보여줍니다)/i;
+const PR_META_PURPOSE_PATTERN =
+  /\b(?:this|the)\b.{0,90}\b(?:PR|scenario|fixture|benchmark|demo)\b.{0,120}\b(?:evaluat|exercis|test|record|verif|validat)\w*\b.{0,120}\b(?:review|verification|semantic|analysis)\b|(?:이|본)\s*PR(?:은|는)?\s*(?:검토|검증|분석)\s*파이프라인을?\s*(?:테스트|평가|검증|실행)(?:합니다|한다|해요|함)?/i;
 export const MAX_REPORT_EVIDENCE_ITEMS = 200;
 
 export interface RequirementExtractionResult {
@@ -137,6 +141,7 @@ export function extractRequirementEvidence(
       .filter((line) => line.role === "author_claim")
       .filter((line) => !AUTHOR_EVIDENCE_SECTION_PATTERN.test(line.sourceSection ?? ""))
       .filter((line) => !isIssueTemplateNoiseLine(line.text))
+      .filter(isEligibleUnlinkedPrObjective)
       .map((line) => ({ ...line, role: "core_requirement" as const, sourceQuality: "author_claim" as const }))
     : [];
   const allRequirementCandidates = (coreCandidates.length > 0
@@ -190,6 +195,12 @@ export function extractRequirementEvidence(
       contexts,
       omittedRequirementCount: 0
   };
+}
+
+function isEligibleUnlinkedPrObjective(line: ClassifiedRequirementLine): boolean {
+  if (PR_META_PURPOSE_PATTERN.test(line.text)) return false;
+  if (ACCEPTANCE_SECTION_PATTERN.test(line.sourceSection ?? "")) return true;
+  return PR_OBJECTIVE_ACTION_PATTERN.test(line.text);
 }
 
 function classifyRequirementSource(
@@ -299,10 +310,6 @@ function classifyLineRole(
     return "template_noise";
   }
 
-  if (sectionText === "linked_issue_title" || AMBIGUITY_PATTERN.test(line)) {
-    return "problem_context";
-  }
-
   if (MARKDOWN_IMAGE_PATTERN.test(line) || VISUAL_SECTION_PATTERN.test(sectionText)) {
     return "visual_context";
   }
@@ -317,6 +324,10 @@ function classifyLineRole(
 
   if (isPrBody && source === "pr_description") {
     return "author_claim";
+  }
+
+  if (sectionText === "linked_issue_title" || AMBIGUITY_PATTERN.test(line)) {
+    return "problem_context";
   }
 
   if (ACCEPTANCE_SECTION_PATTERN.test(sectionText)) {

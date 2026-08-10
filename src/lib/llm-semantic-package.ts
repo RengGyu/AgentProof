@@ -132,6 +132,7 @@ export function buildLlmSemanticPackage(
       evidence,
       limitations: report.limitations
         .filter((item) => analysisContext !== "unlinked_pr" || !isUnavailableLinkedIssueLimitation(item))
+        .filter((item) => !isRawLogRetentionLimitation(item))
         .slice(0, 12)
         .map((item) => safeText(item, 360)),
       bounds: {
@@ -157,7 +158,7 @@ export function validateLlmSemanticPackageCandidate(
   candidate: unknown,
   llmPackage: LlmSemanticPackage
 ): LlmSemanticValidationResult {
-  return validateLlmSemanticCandidate(withoutUnavailableIssueUnits(candidate, llmPackage), {
+  return validateLlmSemanticCandidate(withoutNonActionableRawLogUnits(withoutUnavailableIssueUnits(candidate, llmPackage)), {
     requirementIds: llmPackage.input.requirements.map((requirement) => requirement.id),
     evidence: llmPackage.input.evidence.map((evidence) => ({ id: evidence.id, kind: evidence.kind }))
   });
@@ -356,7 +357,7 @@ export function llmSemanticSystemPrompt(): string {
     "Return only JSON that conforms to the supplied schema. Use only requirement IDs and evidence IDs present in the input.",
     "Use the requested output language for every natural-language field. Do not copy source code, raw patches, PR or Issue text, logs, tokens, URLs, file paths, check names, or SHA values into output.",
     "Assess supplied evidence coverage only. Do not state or imply correctness, safety, or merge readiness. Do not make security or requirement-satisfaction verdicts.",
-    "When evidence is weak, conflicting, or absent, describe the uncertainty or evidence gap instead of guessing. Do not invent evidence or hidden repository facts.",
+    "When evidence is weak, conflicting, or absent, describe the uncertainty or evidence gap instead of guessing. Do not invent evidence or hidden repository facts. Never ask for raw logs, full test output, or CI artifacts; refer to a supplied Check ID when a Check needs review.",
     "Respect analysis_context. For linked_issue, assess only verified linked-Issue requirements and preserve linked-Issue ambiguity. For unlinked_pr, assess only explicit PR-authored concrete objectives; never treat a missing, unavailable, or ambiguous Issue as a gap or remediation request. Code, tests, checks, reviewer instructions, and operational or evaluation purpose never create objectives.",
     "A PR implementation interpretation does not resolve ambiguity in the supplied requirement context; preserve that uncertainty for the reviewer.",
     "Write complete, concise sentences and never stop a sentence at a schema length boundary.",
@@ -372,7 +373,13 @@ function semanticAnalysisContext(
     (node) => node.sourceQuality !== "author_claim" && node.sourceQuality !== "manual_check" && node.sourceQuality !== "fallback"
   );
   if (hasVerifiedIssueRequirement) return "linked_issue";
-  if (input.taskSource === "issue" || report.proofGraph.nodes.some((node) => node.sourceQuality === "author_claim")) return "unlinked_pr";
+  if (
+    input.taskSource === "issue" ||
+    (!input.taskText.trim() && (
+      input.description.trim().length > 0 ||
+      report.proofGraph.nodes.some((node) => node.sourceQuality === "author_claim")
+    ))
+  ) return "unlinked_pr";
   return "provided_requirement";
 }
 
@@ -387,19 +394,10 @@ function semanticRequirementNodes(
   }
   if (analysisContext === "unlinked_pr") {
     return report.proofGraph.nodes.filter(
-      (node) => node.sourceQuality === "author_claim" && isConcretePrObjective(node.requirementText)
+      (node) => node.sourceQuality === "author_claim"
     );
   }
   return report.proofGraph.nodes;
-}
-
-function isConcretePrObjective(text: string): boolean {
-  if (isMetaPurposeStatement(text)) return false;
-  return /\b(?:add(?:s|ed)?|update(?:s|d)?|remove(?:s|d)?|fix(?:es|ed)?|implement(?:s|ed)?|create(?:s|d)?|document(?:s|ed)?|refactor(?:s|ed)?|rename(?:s|d)?|support(?:s|ed)?|prevent(?:s|ed)?|preserve(?:s|d)?|enable(?:s|d)?|disable(?:s|d)?|migrate(?:s|d)?|replace(?:s|d)?|allow(?:s|ed)?|show(?:s|ed)?|ensure(?:s|d)?|display(?:s|ed)?|test(?:s|ed)?)\b/i.test(text) || /(?:추가|수정|삭제|구현|문서화|리팩터링|지원|방지|유지|개선|변경|테스트|허용|표시|보장)(?:합니다|한다|하세요|해요|됨|되었|할)|보여줍니다/.test(text);
-}
-
-function isMetaPurposeStatement(text: string): boolean {
-  return /\b(?:this|the)\s+(?:(?:ops|operational|evaluation|benchmark|demo|fixture)\s+)?(?:scenario|fixture|benchmark|demo)\b.*\b(?:evaluates?|exercises?|tests?|records?|verifies?)\b/i.test(text) || /\bthis\s+pr\s+(?:tests?|evaluates?|exercises?|validates?)\s+(?:the\s+)?(?:review|verification|semantic|analysis)\s+pipeline\b/i.test(text) || /(?:이|본)\s*(?:운영|평가|벤치마크|데모|픽스처)\s*(?:시나리오|목적).*?(?:평가|검증|실행)/.test(text) || /이\s*PR(?:은|는)?\s*(?:검토|검증|분석)\s*파이프라인을?\s*(?:테스트|평가|검증|실행)합니다/.test(text);
 }
 
 function hasUnavailableLinkedIssue(input: PullRequestInput): boolean {
@@ -423,6 +421,38 @@ function withoutUnavailableIssueUnits(candidate: unknown, llmPackage: LlmSemanti
       ? value.remediation_requests.filter((item) => !isUnavailableIssueRemediation(item, blockedRequirementIds))
       : value.remediation_requests
   };
+}
+
+function isRawLogRetentionLimitation(value: string): boolean {
+  return /\b(?:raw|full)\s+(?:CI\s+)?logs?\b|\bexecution output\b/i.test(value) &&
+    /\bnot\s+(?:fetched|stored|collected|available)\b|\bno\b.{0,80}\b(?:fetched|stored|collected|available)\b/i.test(value);
+}
+
+function withoutNonActionableRawLogUnits(candidate: unknown): unknown {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return candidate;
+  }
+  const value = candidate as Record<string, unknown>;
+  return {
+    ...value,
+    evidence_gaps: Array.isArray(value.evidence_gaps)
+      ? value.evidence_gaps.filter((item) => !isRawLogDemand(item))
+      : value.evidence_gaps,
+    remediation_requests: Array.isArray(value.remediation_requests)
+      ? value.remediation_requests.filter((item) => !isRawLogDemand(item))
+      : value.remediation_requests,
+    uncertainties: Array.isArray(value.uncertainties)
+      ? value.uncertainties.filter((item) => !isRawLogDemand(item))
+      : value.uncertainties
+  };
+}
+
+function isRawLogDemand(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const text = Object.values(value)
+    .filter((item): item is string => typeof item === "string")
+    .join(" ");
+  return /\b(?:raw|full)\s+(?:CI\s+)?logs?\b|\b(?:CI|test(?:\s*run)?)\s+(?:logs?|output|artifacts?)\b/i.test(text);
 }
 
 function isUnavailableIssueAmbiguityGap(value: unknown, blockedRequirementIds: Set<string>): boolean {

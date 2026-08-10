@@ -1541,26 +1541,46 @@ function reviewPriorityPathForEvidence(refs: string[], evidenceIndex: EvidenceIt
   const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
   const concrete = refs
     .map((ref) => evidenceById.get(ref))
-    .find((item) =>
+    .filter((item): item is EvidenceItem => Boolean(
       item &&
       (item.kind === "diff" || item.kind === "changed_file" || item.kind === "test") &&
       item.locator &&
       item.locator !== "task" &&
       item.locator !== "pr_description"
-    );
+    ))
+    .sort((left, right) => priorityEvidenceRank(left) - priorityEvidenceRank(right));
 
-  if (concrete?.locator) {
-    return safeReportPath(concrete.locator);
+  const linkedImplementation = concrete.find((item) => priorityEvidenceRank(item) === 0);
+  if (linkedImplementation?.locator) {
+    return safeReportPath(linkedImplementation.locator);
   }
 
-  const fallbackConcrete = evidenceIndex.find((item) =>
-    (item.kind === "diff" || item.kind === "changed_file" || item.kind === "test") &&
-    item.locator &&
-    item.locator !== "task" &&
-    item.locator !== "pr_description"
-  );
+  const linkedFallback = concrete[0];
+  if (linkedFallback?.locator) {
+    return safeReportPath(linkedFallback.locator);
+  }
+
+  const fallbackConcrete = evidenceIndex
+    .filter((item) =>
+      (item.kind === "diff" || item.kind === "changed_file" || item.kind === "test") &&
+      item.locator &&
+      item.locator !== "task" &&
+      item.locator !== "pr_description"
+    )
+    .sort((left, right) => priorityEvidenceRank(left) - priorityEvidenceRank(right))[0];
 
   return fallbackConcrete?.locator ? safeReportPath(fallbackConcrete.locator) : "Requirement evidence";
+}
+
+function priorityEvidenceRank(item: EvidenceItem): number {
+  const locator = item.locator ?? "";
+  if (isDocumentationPriorityPath(locator)) return 3;
+  if (item.kind === "test" || isTestFile(locator)) return 1;
+  return 0;
+}
+
+function isDocumentationPriorityPath(path: string): boolean {
+  return /(?:^|\/)(?:docs?|documentation)\/|(?:^|\/)(?:readme|changelog|changes|contributing|license)(?:\.[^/]+)?$/i.test(path);
 }
 
 function safeReportPath(path: string): string {

@@ -15,6 +15,35 @@ describe("extractRequirements", () => {
     expect(requirements.map((requirement) => requirement.text).join(" ")).toContain("Reject expired reset links");
   });
 
+  it("keeps explicit unlinked PR objectives while excluding fixture-purpose prose", () => {
+    const requirements = extractRequirements(
+      "",
+      [
+        "## AgentProof live smoke fixture",
+        "This is an intentionally small, Issue-unlinked PR for validating the review pipeline.",
+        "### Requirements",
+        "- Add repositorySlug(repository) that returns owner/name when both values are present.",
+        "- Return unknown/repository when an owner or name is unavailable.",
+        "- Add focused tests for the normal and fallback paths.",
+        "### Validation",
+        "- pnpm test (3 passing tests)"
+      ].join("\n")
+    );
+
+    expect(requirements.map((requirement) => requirement.text)).toEqual([
+      "Add repositorySlug(repository) that returns owner/name when both values are present",
+      "Return unknown/repository when an owner or name is unavailable",
+      "Add focused tests for the normal and fallback paths"
+    ]);
+  });
+
+  it("does not promote Korean review-pipeline self-test prose into a PR objective", () => {
+    const extraction = extractRequirementEvidence("", "이 PR은 검토 파이프라인을 테스트합니다.");
+
+    expect(extraction.requirements).toHaveLength(1);
+    expect(extraction.requirements[0]?.sourceQuality).toBe("manual_check");
+  });
+
   it("ignores GitHub issue template comments and fenced traces", () => {
     const requirements = extractRequirements(
       [

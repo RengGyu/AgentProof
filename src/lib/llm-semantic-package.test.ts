@@ -275,6 +275,65 @@ describe("LLM semantic analysis package", () => {
     expect(texts).not.toMatch(/이 PR은 검토 파이프라인을 테스트/i);
   });
 
+  it("keeps successful Check metadata but removes raw-log absence from semantic input", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: "Add a focused validation test.",
+      checks: [{ name: "unit-tests", status: "passed" as const, summary: "Focused unit tests passed." }],
+      limitations: [
+        "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected.",
+        "Raw CI logs were not fetched or stored."
+      ]
+    };
+    const llmPackage = buildLlmSemanticPackage(input, generateVerificationReport(input));
+
+    expect(llmPackage.input.evidence.some((item) => item.kind === "check")).toBe(true);
+    expect(llmPackage.input.limitations.join(" ")).not.toMatch(/raw logs?|execution output/i);
+  });
+
+  it("drops raw-log evidence demands even when no execution Check is available", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "",
+      description: "Add a focused validation test.",
+      checks: [],
+      limitations: ["Raw CI logs were not fetched or stored."]
+    };
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirement = llmPackage.input.requirements[0]!;
+    const evidence = llmPackage.input.evidence[0]!;
+    const candidate = {
+      ...semanticCandidate(requirement.id, evidence.id, "Focused test evidence is available."),
+      evidence_gaps: [{
+        requirement_id: requirement.id,
+        gap_type: "missing_runtime_evidence" as const,
+        priority: "medium" as const,
+        description: "Raw CI logs were not collected.",
+        review_impact: "The raw test output cannot be inspected.",
+        needed_evidence: "Provide raw CI logs or test output.",
+        evidence_ids: [evidence.id],
+        uncertainty: "low" as const
+      }],
+      remediation_requests: [{
+        requirement_id: requirement.id,
+        request_type: "provide_or_link_evidence" as const,
+        priority: "medium" as const,
+        instruction: "Attach raw CI logs or test output.",
+        rationale: "Raw logs are unavailable.",
+        expected_evidence: "Raw CI logs.",
+        evidence_ids: [evidence.id],
+        uncertainty: "low" as const
+      }]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.candidate?.evidence_gaps).toEqual([]);
+    expect(validation.candidate?.remediation_requests).toEqual([]);
+  });
+
   it("removes unavailable-Issue ambiguity from unlinked package input and candidate gaps", () => {
     const input = {
       ...demoScenarios.clean,

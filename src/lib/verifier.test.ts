@@ -922,6 +922,48 @@ describe("generateVerificationReport", () => {
     expect(firstFiles.filter((path) => path === "Requirement evidence")).toHaveLength(0);
   });
 
+  it("keeps requirement-linked files ahead of an unrelated README marker", () => {
+    const report = generateVerificationReport({
+      title: "Add repository slug formatter",
+      description: [
+        "This PR validates a review pipeline.",
+        "### Requirements",
+        "- Add repositorySlug(repository) that returns owner/name when both values are present.",
+        "- Return unknown/repository when an owner or name is unavailable.",
+        "- Add focused tests for the normal and fallback paths."
+      ].join("\n"),
+      taskText: "",
+      changedFiles: [
+        { path: "README.md", additions: 1, deletions: 0, status: "modified", patch: "+ <!-- webhook marker -->" },
+        { path: "src/repositories/repository.js", additions: 7, deletions: 0, status: "modified", patch: "+ export function repositorySlug(repository) { return repository.owner && repository.name ? `${repository.owner}/${repository.name}` : 'unknown/repository'; }" },
+        { path: "test/baseline.test.js", additions: 10, deletions: 0, status: "modified", patch: "+ test('formats repository slug', () => {});" }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements).toHaveLength(3);
+    expect(report.reviewPriority.map((item) => item.path)).toContain("src/repositories/repository.js");
+    expect(report.reviewPriority.map((item) => item.path)).not.toContain("README.md");
+  });
+
+  it("does not prioritize an unrelated implementation over linked documentation evidence", () => {
+    const report = generateVerificationReport({
+      title: "Document local setup",
+      description: "### Requirements\n- Document local setup instructions.",
+      taskText: "",
+      changedFiles: [
+        { path: "src/auth/session.js", additions: 2, deletions: 1, status: "modified", patch: "+ const sessionVersion = 2;" },
+        { path: "docs/local-setup.md", additions: 5, deletions: 0, status: "added", patch: "+ # Local setup\n+ Run pnpm install." }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.reviewPriority[0]?.path).toBe("docs/local-setup.md");
+    expect(report.reviewPriority[0]?.path).not.toBe("src/auth/session.js");
+  });
+
   it("evaluates PR-body-only intent without treating it as an authoritative requirement", () => {
     const report = generateVerificationReport({
       title: "Preserve URL params",
