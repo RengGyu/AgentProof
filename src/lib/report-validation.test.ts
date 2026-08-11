@@ -345,6 +345,97 @@ describe("validateVerificationReport", () => {
     expect(unrelatedResult.errors.join("\n")).toContain("incompatible evidence");
   });
 
+  it("rejects axes derived from proof-node text that diverges from the matched requirement", () => {
+    const report = generateVerificationReport({
+      title: "Implement retry queue behavior",
+      description: "Implements retry queue behavior and adds documentation.",
+      taskText: "Acceptance criteria: implement retry queue behavior.",
+      changedFiles: [
+        { path: "src/retry-queue.ts", status: "modified", patch: "+ export function retryQueue() {}" },
+        { path: "docs/retry-queue.md", status: "modified", patch: "+ # Retry queue" }
+      ],
+      checks: [{ name: "Retry queue tests", status: "passed", summary: "Retry queue tests passed." }],
+      logs: []
+    });
+    const requirement = report.requirements[0]!;
+    const node = report.proofGraph.nodes[0]!;
+    const documentationRef = report.evidenceIndex.find((item) =>
+      item.kind === "diff" && item.locator === "docs/retry-queue.md"
+    )!.id;
+
+    requirement.status = "met";
+    requirement.gaps = [];
+    requirement.evidenceRefs = [documentationRef];
+    requirement.proofAxes = [{
+      subject: "documentation",
+      polarity: "present",
+      state: "satisfied",
+      evidenceRefs: [documentationRef],
+      collectionBasis: "matching_artifact_evidence"
+    }];
+    node.requirementText = "Document retry queue";
+    node.status = "met";
+    node.implementationEvidenceRefs = [documentationRef];
+    node.targetedTestEvidenceRefs = [];
+    node.executionEvidenceRefs = [];
+    node.gapSignals = [];
+    node.firstFiles = ["docs/retry-queue.md"];
+    report.proofGraph.summary = {
+      requirementCount: 1,
+      requirementsWithImplementation: 1,
+      requirementsWithTargetedTests: 0,
+      requirementsWithExecution: 0,
+      requirementsWithGaps: 0,
+      gapCount: 0
+    };
+
+    const result = validateVerificationReport(report, { mode: "full" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("requirementText must match requirements[0].requirementText");
+  });
+
+  it("allows fully evidenced author-claim axes to remain partial when duplicate text and status match", () => {
+    const report = generateVerificationReport({
+      title: "Preserve URL params",
+      description: "### Acceptance criteria\nThe widget should preserve search params.",
+      taskText: "",
+      changedFiles: [{
+        path: "src/widget/url-params.ts",
+        additions: 4,
+        deletions: 1,
+        status: "modified",
+        patch: "+ preserveSearchParams(params)"
+      }],
+      checks: [{
+        name: "Widget search params tests",
+        status: "passed",
+        summary: "Widget search params tests passed."
+      }],
+      logs: []
+    });
+    const requirement = report.requirements[0]!;
+    const node = report.proofGraph.nodes[0]!;
+
+    expect(node.sourceQuality).toBe("author_claim");
+    expect(node.requirementText).toBe(requirement.requirementText);
+    expect(node.status).toBe("partial");
+    expect(requirement.status).toBe("partial");
+    expect(requirement.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+
+    const statusMismatch = structuredClone(report);
+    statusMismatch.proofGraph.nodes[0]!.status = "met";
+    const statusResult = validateVerificationReport(statusMismatch, { mode: "full" });
+    expect(statusResult.valid).toBe(false);
+    expect(statusResult.errors.join("\n")).toContain("status must match proofGraph node status");
+
+    const textMismatch = structuredClone(report);
+    textMismatch.proofGraph.nodes[0]!.requirementText = "Preserve unrelated author claim";
+    const textResult = validateVerificationReport(textMismatch, { mode: "full" });
+    expect(textResult.valid).toBe(false);
+    expect(textResult.errors.join("\n")).toContain("requirementText must match requirements[0].requirementText");
+  });
+
   it("rejects a satisfied absence axis without matching authoritative GitHub inventory provenance", () => {
     const report = generateVerificationReport({
       title: "Keep implementation unchanged",

@@ -249,7 +249,8 @@ describe("POST /api/github/comment", () => {
 
   it("redacts the full rendered comment body before posting", async () => {
     const report = reportFor("https://github.com/org/repo/pull/1");
-    report.requirements[0].requirementText = "verify token=comment_secret_should_not_leak";
+    report.requirements[0].requirementText = `${report.requirements[0].requirementText} token=comment_secret_should_not_leak`;
+    report.proofGraph.nodes[0].requirementText = report.requirements[0].requirementText;
     report.evidenceIndex[0].summary = "Status: passed. Authorization: Bearer comment-secret-value";
     const fetchMock = vi
       .fn()

@@ -980,19 +980,31 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
 
     const axes = Array.isArray(item.proofAxes) ? item.proofAxes.filter(isRecord) : null;
     const proofNode = proofNodeByRequirement.get(typeof item.requirementId === "string" ? item.requirementId : "");
+    const requirementText = typeof item.requirementText === "string" ? item.requirementText : "";
+    const proofNodeText = typeof proofNode?.requirementText === "string" ? proofNode.requirementText : "";
+    const duplicateTextMatches = proofNode !== undefined && proofNodeText === requirementText;
+    const duplicateStatusMatches = proofNode !== undefined && proofNode.status === item.status;
 
-    if (axes && proofNode && item.status !== proofNode.status) {
+    if (proofNode && !duplicateTextMatches) {
+      errors.push(`proofGraph node requirementText must match requirements[${index}].requirementText.`);
+    }
+    if (axes && proofNode && !duplicateStatusMatches) {
       errors.push(`requirements[${index}].status must match proofGraph node status.`);
     }
     if (axes) {
-      validateFullRequirementProofAxes(report, item, proofNode, axes, evidenceById, index, errors);
+      validateFullRequirementProofAxes(report, requirementText, proofNode, axes, evidenceById, index, errors);
     }
 
+    const matchingAuthorClaimPartial = item.status === "partial" &&
+      proofNode?.sourceQuality === "author_claim" &&
+      proofNode.status === "partial" &&
+      duplicateTextMatches;
     if (
       axes &&
       axes.length > 0 &&
       axes.every((axis) => axis.state === "satisfied") &&
-      item.status !== "met"
+      item.status !== "met" &&
+      !matchingAuthorClaimPartial
     ) {
       errors.push(`requirements[${index}] status must agree with proofAxes; every satisfied authoritative axis requires met.`);
     }
@@ -1055,7 +1067,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
 
 function validateFullRequirementProofAxes(
   report: RecordValue,
-  requirement: RecordValue,
+  requirementText: string,
   proofNode: RecordValue | undefined,
   axes: RecordValue[],
   evidenceById: Map<string, RecordValue>,
@@ -1063,12 +1075,7 @@ function validateFullRequirementProofAxes(
   errors: string[]
 ) {
   const path = `requirements[${requirementIndex}].proofAxes`;
-  const text = typeof proofNode?.requirementText === "string"
-    ? proofNode.requirementText
-    : typeof requirement.requirementText === "string"
-      ? requirement.requirementText
-      : "";
-  const expectedKeys = expectedProofAxisKeys(text);
+  const expectedKeys = expectedProofAxisKeys(requirementText);
   const actualKeys = new Set(axes.flatMap((axis) =>
     typeof axis.subject === "string" && typeof axis.polarity === "string" ? [`${axis.subject}:${axis.polarity}`] : []
   ));
@@ -1108,7 +1115,7 @@ function validateFullRequirementProofAxes(
     }
     if (!refs.every((ref) => {
       const evidence = evidenceById.get(ref);
-      return evidence ? isSatisfiedAxisEvidenceCompatible(subject, axis.collectionBasis, evidence, proofNode, text, ref) : false;
+      return evidence ? isSatisfiedAxisEvidenceCompatible(subject, axis.collectionBasis, evidence, proofNode, requirementText, ref) : false;
     })) {
       errors.push(`${axisPath} cites incompatible evidence or collection basis.`);
     }
