@@ -5,7 +5,7 @@ import {
   isExecutionEvidenceSignal,
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
-import { extractKeywords } from "./extractors";
+import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
 import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
@@ -1197,11 +1197,11 @@ function isVisualVerificationProofEvidence(evidence: RecordValue): boolean {
 }
 
 function evidenceOverlapsRequirement(requirementText: string, evidence: RecordValue): boolean {
-  const weak = new Set(["api", "app", "auth", "code", "data", "edge", "file", "node", "page", "pages", "route", "test", "tests", "user"]);
-  const meaningfulKeywords = extractKeywords(requirementText)
-    .filter((keyword) => keyword.length >= 4 && !weak.has(keyword));
-  const evidenceText = `${String(evidence.label ?? "")} ${String(evidence.summary ?? "")}`.toLowerCase();
-  return meaningfulKeywords.some((keyword) => evidenceText.includes(keyword));
+  return evidenceOverlapsCanonicalRequirement(
+    requirementText,
+    String(evidence.label ?? ""),
+    String(evidence.summary ?? "")
+  );
 }
 
 function hasAuthoritativeReportChangedFileInventory(report: RecordValue): boolean {

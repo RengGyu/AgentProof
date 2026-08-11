@@ -9,7 +9,7 @@ import {
   sealAnalysisJobRevision
 } from "./analysis-jobs";
 import { clearAuditEventsForTests, getAuditEventsForTests } from "./audit-log";
-import { clearSavedReportsForTests, countTenantSavedReports } from "./server-report-store";
+import { clearSavedReportsForTests, countTenantSavedReports, getSavedReport, listTenantSavedReports } from "./server-report-store";
 import { preflightNextAnalysisJob, runAnalysisJobBatch, runClaimedAnalysisJob, runNextAnalysisJob } from "./analysis-worker";
 import {
   clearTenantRepositoryGrantsForTests,
@@ -378,6 +378,72 @@ describe("analysis worker preflight", () => {
         retryOutcome: "incomplete"
       }
     });
+  });
+
+  it("finishes deterministic-unavailable when both semantic coverage candidates are fully filtered", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: true, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let firstCandidate: unknown;
+    let retryCandidate: unknown;
+    let responsePostCount = 0;
+    const filteredCandidate = (input: { requirements: Array<{ id: string; evidence_ids: string[] }> }) => {
+      const candidate = validSemanticCandidateForInput(input) as ReturnType<typeof validSemanticCandidate>;
+      candidate.requirement_evidence_relations[0]!.rationale = "The implementation is correct.";
+      candidate.requirement_assessments[0]!.summary = "The implementation is correct.";
+      return candidate;
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        const body = JSON.parse(String(init.body));
+        const semanticInput = JSON.parse(body.input[1].content[0].text);
+        if (responsePostCount === 1) {
+          firstCandidate = filteredCandidate(semanticInput);
+          return Response.json({ id: "resp_filtered_first_123", status: "queued", output: [] });
+        }
+        retryCandidate = filteredCandidate(semanticInput);
+        return Response.json({ id: "resp_filtered_retry_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_filtered_first_123") {
+        return Response.json({ id: "resp_filtered_first_123", status: "completed", output_text: JSON.stringify(firstCandidate) });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_filtered_retry_123") {
+        return Response.json({ id: "resp_filtered_retry_123", status: "completed", output_text: JSON.stringify(retryCandidate) });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:15Z")
+    });
+    const completed = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:30Z")
+    });
+    const savedSummary = (await listTenantSavedReports({ tenantId: "tenant_a", limit: 1 }))[0]!;
+    const saved = await getSavedReport(savedSummary.id, { tenantId: "tenant_a" });
+
+    expect(completed).toMatchObject({ status: "completed", job: { id } });
+    expect(responsePostCount).toBe(2);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      error_code: null,
+      provider_response_id: null,
+      prior_provider_response_id: null
+    });
+    expect(saved?.report).toMatchObject({ semanticAnalysis: { status: "unavailable", attempts: 2 } });
+    expect(saved?.report.semantic).toBeUndefined();
   });
 
   it("recovers an expired processing continuation before lease and completes without another provider call", async () => {

@@ -2637,6 +2637,67 @@ describe("generateVerificationReport", () => {
     expect(billing?.proofAxes?.find((axis) => axis.subject === "visual")?.evidenceRefs).toEqual([]);
   });
 
+  it("does not let context-only keywords satisfy execution or visual proof axes", () => {
+    const execution = generateVerificationReport({
+      title: "Add settings-panel tests",
+      description: "Payments test output is attached as external context.",
+      taskText: [
+        "Acceptance criteria: add settings panel tests.",
+        "External reference: payments test output is available."
+      ].join("\n"),
+      changedFiles: [{ path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }],
+      checks: [{ name: "Payments tests", status: "passed", summary: "Payments tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    const visual = generateVerificationReport({
+      title: "Keep settings panel readable",
+      description: "Visual evidence references the billing card.",
+      taskText: [
+        "Acceptance criteria: keep the settings panel readable at 375px.",
+        "Visual reference: billing card screenshot at 375px."
+      ].join("\n"),
+      changedFiles: [{ path: "src/settings/Panel.tsx", status: "modified", patch: "+ return <section>settings panel</section>" }],
+      checks: [{ name: "Browser QA billing card", status: "passed", summary: "Status: passed. Billing card visual viewport check passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(execution.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "execution", state: "incomplete", evidenceRefs: [] })
+    ]));
+    expect(visual.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "visual", state: "incomplete", evidenceRefs: [] })
+    ]));
+    expect(execution.requirements[0]?.status).not.toBe("met");
+    expect(visual.requirements[0]?.status).not.toBe("met");
+    expect(validateVerificationReport(execution, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(visual, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("satisfies canonical requirement-text execution and visual matches without changing proof axes", () => {
+    const report = generateVerificationReport({
+      title: "Keep settings panel readable with regression coverage",
+      description: "Adds settings-panel coverage.",
+      taskText: "Acceptance criteria: keep the settings panel readable at 375px and add settings panel regression tests.",
+      changedFiles: [
+        { path: "src/settings/Panel.tsx", status: "modified", patch: "+ return <section>settings panel</section>" },
+        { path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }
+      ],
+      checks: [
+        { name: "Settings panel regression tests", status: "passed", summary: "Settings panel regression tests passed." },
+        { name: "Browser QA settings panel", status: "passed", summary: "Status: passed. Settings panel visual viewport check passed." }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+    const axes = structuredClone(report.requirements[0]?.proofAxes);
+
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "execution", state: "satisfied" }),
+      expect.objectContaining({ subject: "visual", state: "satisfied" })
+    ]));
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(report.requirements[0]?.proofAxes).toEqual(axes);
+  });
+
   it("keeps docs-only static proof met and ignores unrelated failed execution", () => {
     const input = {
       title: "Document retry queue setup",

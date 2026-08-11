@@ -12,6 +12,7 @@ import {
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import { redactSecrets } from "./redact";
+import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckStatus,
@@ -629,11 +630,11 @@ function buildProofGraph(
     const matchingExecutionRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
       (item.kind === "check" || item.kind === "log") &&
       isEvidenceExecutionSignal(item) &&
-      (isUsefulArtifactMatch(match) || isOpaqueMatrixExecutionFailure(item))
+      (evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary) || isOpaqueMatrixExecutionFailure(item))
     );
     const matchingFailedExecutionRefs = requirementFailedExecutionEvidenceRefs(requirement, input, evidenceIndex);
     const matchingVisualRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
-      isVisualVerificationEvidence(item) && isUsefulArtifactMatch(match)
+      isVisualVerificationEvidence(item) && evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary)
     );
     const executionEvidenceRefs = uniqueRefs([
       ...matchingExecutionRefs,

@@ -1047,11 +1047,21 @@ function includedSemanticReport(
   output: NonNullable<VerificationReport["semantic"]>,
   attempts: 1 | 2
 ): VerificationReport {
+  if (!hasUsableSemanticAnalysis(output)) {
+    return {
+      ...deterministicReport,
+      semanticAnalysis: { status: "unavailable", attempts }
+    };
+  }
   return {
     ...deterministicReport,
     semantic: output,
     semanticAnalysis: { status: "included", attempts }
   };
+}
+
+function hasUsableSemanticAnalysis(output: NonNullable<VerificationReport["semantic"]>): boolean {
+  return Object.values(output).some((section) => section.length > 0);
 }
 
 function firstSemanticFallback(

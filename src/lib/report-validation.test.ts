@@ -394,6 +394,39 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("requirementText must match requirements[0].requirementText");
   });
 
+  it("rejects context-only evidence when a satisfied execution or visual axis is revalidated", () => {
+    const report = generateVerificationReport({
+      title: "Keep settings panel readable with regression coverage",
+      description: "Adds settings-panel coverage.",
+      taskText: "Acceptance criteria: keep the settings panel readable at 375px and add settings panel regression tests.",
+      changedFiles: [
+        { path: "src/settings/Panel.tsx", status: "modified", patch: "+ return <section>settings panel</section>" },
+        { path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }
+      ],
+      checks: [
+        { name: "Settings panel regression tests", status: "passed", summary: "Settings panel regression tests passed." },
+        { name: "Browser QA settings panel", status: "passed", summary: "Status: passed. Settings panel visual viewport check passed." }
+      ],
+      logs: []
+    });
+    const requirement = report.requirements[0]!;
+    const node = report.proofGraph.nodes[0]!;
+    const execution = requirement.proofAxes!.find((axis) => axis.subject === "execution")!;
+    const visual = requirement.proofAxes!.find((axis) => axis.subject === "visual")!;
+    report.evidenceIndex.push(
+      { id: "ev_context_only_execution", kind: "check", label: "Payments regression tests", summary: "Status: passed. Payments regression tests passed.", locator: "ci://payments", confidence: 0.9 },
+      { id: "ev_context_only_visual", kind: "check", label: "Browser QA billing card", summary: "Status: passed. Billing card visual viewport check passed.", locator: "ci://billing", confidence: 0.9 }
+    );
+    execution.evidenceRefs = ["ev_context_only_execution"];
+    visual.evidenceRefs = ["ev_context_only_visual"];
+    node.executionEvidenceRefs = ["ev_context_only_execution"];
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("incompatible evidence");
+  });
+
   it("allows fully evidenced author-claim axes to remain partial when duplicate text and status match", () => {
     const report = generateVerificationReport({
       title: "Preserve URL params",
