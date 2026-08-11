@@ -12,7 +12,9 @@ export interface DashboardRequirementViewModel {
   evidenceRefs: string[];
   deterministicGaps: string[];
   explanation: { state: RequirementExplanationState; text: string };
+  primaryGap?: string;
   nextAction?: string;
+  inspectFirst?: string;
   actionIncluded: boolean;
   semanticEvidenceIds: string[];
   uncertainties: string[];
@@ -43,34 +45,44 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
     const assessment = assessments.find((item) => item.summary.trim());
     const action = remediation.find((item) => item.instruction.trim());
     const guidance = gaps.find((item) => item.description.trim());
+    const target = targets.find((item) => item.inspection_goal.trim());
     const guidanceNextAction = guidance?.needed_evidence.trim();
     const explanation = assessment
-      ? { state: "assessment" as const, text: assessment.summary }
+      ? { state: "assessment" as const, text: compactReadingText(assessment.summary) }
       : action
         ? { state: "guidance" as const, text: "A next action is available from the evidence." }
         : guidance
-          ? { state: "guidance" as const, text: guidance.description }
+          ? { state: "guidance" as const, text: "Available evidence needs the listed next action." }
           : semanticAnalysis?.status === "unavailable"
             ? { state: "unavailable" as const, text: "Some supporting details are unavailable. Available evidence is still shown." }
             : requirement.gaps[0]
-              ? { state: "none" as const, text: `Evidence gap: ${requirement.gaps[0]}` }
+              ? { state: "none" as const, text: "Available deterministic evidence is summarized in coverage. Review the key gap below." }
               : { state: "none" as const, text: "No additional supporting details are available for this requirement." };
+    const primaryGap = requirement.gaps.find((gap) => !hasSameNormalizedText(explanation.text, gap)) ??
+      (guidance?.description && !hasSameNormalizedText(explanation.text, guidance.description)
+        ? guidance.description
+        : undefined);
     const candidateNextAction = action?.instruction ?? guidanceNextAction;
-    const actionIncluded = Boolean(candidateNextAction && hasSameNormalizedText(explanation.text, candidateNextAction));
+    const actionIncluded = Boolean(candidateNextAction && (
+      hasSameNormalizedText(explanation.text, candidateNextAction) ||
+      hasSameNormalizedText(primaryGap ?? "", candidateNextAction)
+    ));
     const nextAction = candidateNextAction && !actionIncluded
       ? candidateNextAction
       : undefined;
 
     return {
       requirementId: requirement.requirementId,
-      objectiveText: boundedObjectiveText(assessment?.requirement_summary, requirement.requirementId),
+      objectiveText: boundedObjectiveText(assessment?.requirement_summary ?? requirement.requirementText, requirement.requirementId),
       status: requirement.status,
       coverageLabel: toRequirementCoverageLabel(requirement.status),
       coverageMeaning: toCoverageMeaning(requirement.status),
       evidenceRefs: requirement.evidenceRefs,
-      deterministicGaps: requirement.gaps,
+      deterministicGaps: requirement.gaps.map((gap) => compactReadingText(gap)),
       explanation,
-      ...(nextAction ? { nextAction } : {}),
+      ...(primaryGap ? { primaryGap: compactReadingText(primaryGap) } : {}),
+      ...(nextAction ? { nextAction: compactReadingText(nextAction) } : {}),
+      ...(target?.inspection_goal ? { inspectFirst: compactReadingText(target.inspection_goal) } : {}),
       actionIncluded,
       semanticEvidenceIds: unique([
         ...assessments.flatMap((item) => item.evidence_ids),
@@ -92,9 +104,18 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
   });
 }
 
-function boundedObjectiveText(value: string | undefined, requirementId: string): string {
+function boundedObjectiveText(value: string | undefined, requirementId: string): string | undefined {
   const normalized = value?.trim().replace(/\s+/g, " ");
-  return normalized ? normalized.slice(0, 160) : `Requirement ${requirementId}`;
+  return normalized && normalized !== `Requirement ${requirementId}` ? compactReadingText(normalized, 160) : undefined;
+}
+
+function compactReadingText(value: string, maxLength = 220): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  const sentence = normalized.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() ?? normalized;
+  if (sentence.length <= maxLength) return sentence;
+  const prefix = sentence.slice(0, Math.max(1, maxLength - 1));
+  const wholeWords = prefix.replace(/\s+\S*$/, "").trimEnd();
+  return `${wholeWords || prefix}…`;
 }
 
 function toCoverageMeaning(status: string): string {

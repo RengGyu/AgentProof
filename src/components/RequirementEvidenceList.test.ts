@@ -8,25 +8,30 @@ describe("RequirementEvidenceList", () => {
   it("renders compact requirement cards with a closed native evidence disclosure", () => {
     const markup = renderToStaticMarkup(createElement(RequirementEvidenceList, { requirements: [{
       requirementId: "req_checkout",
-      objectiveText: "Requirement req_checkout",
+      objectiveText: "Show checkout validation status.",
       status: "partial",
       coverageLabel: "Partially supported",
       coverageMeaning: "Deterministic evidence references only partially support this requirement.",
       evidenceRefs: ["ev_1", "ev_2"],
       deterministicGaps: ["Focused edge-case coverage is missing."],
       explanation: { state: "assessment", text: "The normal validation path has evidence." },
+      primaryGap: "Focused edge-case coverage is missing.",
       nextAction: "Add focused edge-case coverage.",
+      inspectFirst: "Inspect the retry transition.",
       actionIncluded: false,
       semanticEvidenceIds: ["ev_1"],
       uncertainties: ["medium"]
     }] }));
 
-    expect(markup).toContain("req_checkout");
+    expect(markup).toContain("Show checkout validation status.");
+    expect(markup).not.toMatch(/<h6>req_checkout<\/h6>/);
+    expect(markup).toContain("Requirement ID: req_checkout");
     expect(markup).toContain("Evidence coverage");
-    expect(markup).toContain("Requirement req_checkout");
-    expect(markup).toContain("AgentProof reading");
+    expect(markup).toContain("What the evidence shows");
     expect(markup).toContain("The normal validation path has evidence.");
+    expect(markup).toContain("<strong>Key gap:</strong> Focused edge-case coverage is missing.");
     expect(markup).toContain("<strong>Next:</strong> Add focused edge-case coverage.");
+    expect(markup).toContain("<strong>Inspect first:</strong> Inspect the retry transition.");
     expect(markup).toMatch(/<details\b[^>]*name="requirement-evidence"/);
     expect(markup).not.toMatch(/<details\b[^>]*\bopen(?:=|\s|>)/);
     expect(markup).toContain("Coverage is based on deterministic evidence captured for this requirement.");
@@ -90,7 +95,7 @@ describe("RequirementEvidenceList", () => {
       uncertainties: []
     }] }));
 
-    expect(markup).toContain("AgentProof reading");
+    expect(markup).toContain("What the evidence shows");
     expect(markup).toContain("<strong>Next:</strong> Provide a focused test result.");
   });
 
@@ -109,7 +114,7 @@ describe("RequirementEvidenceList", () => {
     } satisfies DashboardRequirementViewModel;
     const markup = renderToStaticMarkup(createElement(RequirementEvidenceList, { requirements: [requirement] }));
 
-    expect(markup).toContain("AgentProof reading · Next");
+    expect(markup).toContain("What the evidence shows · Next");
     expect(markup).toContain("Add focused test coverage.");
     expect(markup).not.toContain("<strong>Next:</strong>");
   });

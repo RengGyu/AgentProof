@@ -9,6 +9,7 @@ import {
   type LlmSemanticValidationResult
 } from "./llm-semantic-output";
 import type { EvidenceItem, EvidenceKind, PullRequestInput, VerificationReport } from "./types";
+import { requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 
 const MAX_REQUIREMENTS = 20;
 const MAX_EVIDENCE = 60;
@@ -17,6 +18,26 @@ const MAX_EVIDENCE_TEXT = 700;
 const MAX_CODE_EXCERPT = 1_200;
 const ANALYZABLE_EVIDENCE_KINDS = new Set<EvidenceKind>(["diff", "changed_file", "test", "check"]);
 type LlmSemanticAnalysisContext = "linked_issue" | "unlinked_pr" | "provided_requirement";
+const EMPTY_LLM_SEMANTIC_OUTPUT: LlmSemanticOutput = {
+  requirement_evidence_relations: [],
+  requirement_assessments: [],
+  evidence_gaps: [],
+  review_targets: [],
+  remediation_requests: [],
+  uncertainties: []
+};
+
+interface FreshRequirementProof {
+  requirementId: string;
+  expectations: RequirementProofExpectations;
+  nonTestArtifactPresent: {
+    implementation: boolean;
+    documentation: boolean;
+    ci: boolean;
+  };
+  targetedTestEvidencePresent: boolean;
+  executionEvidencePresent: boolean;
+}
 
 export interface LlmSemanticPackageEvidence {
   id: string;
@@ -32,6 +53,7 @@ export interface LlmSemanticPackage {
   schema: typeof llmSemanticOutputSchema;
   validator: {
     unavailableIssueRequirementIds: string[];
+    requirementProofs: FreshRequirementProof[];
   };
   input: {
     version: 1;
@@ -103,6 +125,24 @@ export function buildLlmSemanticPackage(
       .filter((gap) => !issueAbsenceRequirementIds.has(node.requirementId) || gap.kind !== "ambiguous_requirement")
       .map((gap) => gap.kind))
   }));
+  const requirementProofs = eligibleRequirementNodes.slice(0, MAX_REQUIREMENTS).map((node) => {
+    const baseExpectations = requirementProofExpectations(node.requirementText);
+    const expectations = {
+      ...baseExpectations,
+      targetedTest: baseExpectations.targetedTest || node.gapSignals.some((gap) => gap.kind === "missing_targeted_test")
+    };
+    return {
+      requirementId: node.requirementId,
+      expectations,
+      nonTestArtifactPresent: {
+        implementation: !expectations.implementation || !node.gapSignals.some((gap) => /implementation artifact/i.test(gap.message)),
+        documentation: !expectations.documentation || !node.gapSignals.some((gap) => /documentation artifact/i.test(gap.message)),
+        ci: !expectations.ci || !node.gapSignals.some((gap) => /CI workflow artifact/i.test(gap.message))
+      },
+      targetedTestEvidencePresent: node.targetedTestEvidenceRefs.length > 0,
+      executionEvidencePresent: !node.gapSignals.some((gap) => gap.kind === "missing_execution")
+    } satisfies FreshRequirementProof;
+  });
   const evidence = selectedEvidence.map((item) => ({
     id: item.id,
     kind: item.kind,
@@ -121,7 +161,8 @@ export function buildLlmSemanticPackage(
     system: llmSemanticSystemPrompt(),
     schema: llmSemanticOutputSchema,
     validator: {
-      unavailableIssueRequirementIds: [...issueAbsenceRequirementIds]
+      unavailableIssueRequirementIds: [...issueAbsenceRequirementIds],
+      requirementProofs
     },
     input: {
       version: 1,
@@ -158,10 +199,33 @@ export function validateLlmSemanticPackageCandidate(
   candidate: unknown,
   llmPackage: LlmSemanticPackage
 ): LlmSemanticValidationResult {
-  return validateLlmSemanticCandidate(withoutNonActionableRawLogUnits(withoutUnavailableIssueUnits(candidate, llmPackage)), {
+  const preFreshCandidate = withoutNonActionableRawLogUnits(withoutUnavailableIssueUnits(candidate, llmPackage));
+  const freshCandidate = withoutFreshUnsupportedUnits(preFreshCandidate, llmPackage);
+  const validation = validateLlmSemanticCandidate(freshCandidate, {
     requirementIds: llmPackage.input.requirements.map((requirement) => requirement.id),
     evidence: llmPackage.input.evidence.map((evidence) => ({ id: evidence.id, kind: evidence.kind }))
   });
+  const freshPolicyChanged = JSON.stringify(preFreshCandidate) !== JSON.stringify(freshCandidate);
+  if (!validation.candidate && freshPolicyChanged && validation.discard_reason_codes.includes("empty_usable_analysis")) {
+    const missingRequirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
+    return {
+      ...validation,
+      disposition: "partial",
+      candidate: EMPTY_LLM_SEMANTIC_OUTPUT,
+      discard_reason_codes: [],
+      missing_requirement_ids: missingRequirementIds,
+      diagnostics: {
+        ...validation.diagnostics,
+        discard_reason_codes: [],
+        assessed_requirement_count: 0,
+        missing_requirement_count: missingRequirementIds.length
+      }
+    };
+  }
+  if (!validation.candidate || !freshPolicyChanged) {
+    return validation;
+  }
+  return { ...validation, disposition: "partial" };
 }
 
 export function buildLlmSemanticPackageSubset(
@@ -197,7 +261,8 @@ export function buildLlmSemanticPackageSubset(
     validator: {
       unavailableIssueRequirementIds: llmPackage.validator.unavailableIssueRequirementIds.filter((id) =>
         requestedIds.has(id)
-      )
+      ),
+      requirementProofs: llmPackage.validator.requirementProofs.filter((item) => requestedIds.has(item.requirementId))
     },
     input: {
       ...llmPackage.input,
@@ -357,7 +422,7 @@ export function llmSemanticSystemPrompt(): string {
     "Return only JSON that conforms to the supplied schema. Use only requirement IDs and evidence IDs present in the input.",
     "Use the requested output language for every natural-language field. Do not copy source code, raw patches, PR or Issue text, logs, tokens, URLs, file paths, check names, or SHA values into output.",
     "Assess supplied evidence coverage only. Do not state or imply correctness, safety, or merge readiness. Do not make security or requirement-satisfaction verdicts.",
-    "When evidence is weak, conflicting, or absent, describe the uncertainty or evidence gap instead of guessing. Do not invent evidence or hidden repository facts. Never ask for raw logs, full test output, or CI artifacts; refer to a supplied Check ID when a Check needs review.",
+    "When evidence is weak, conflicting, or absent, describe the uncertainty or evidence gap instead of guessing. Do not invent evidence, hidden repository facts, examples, edge cases, test scenarios, or acceptance criteria not explicit in the supplied input. Never ask for raw logs, full test output, or CI artifacts; refer to a supplied Check ID when a Check needs review.",
     "Respect analysis_context. For linked_issue, assess only verified linked-Issue requirements and preserve linked-Issue ambiguity. For unlinked_pr, assess only explicit PR-authored concrete objectives; never treat a missing, unavailable, or ambiguous Issue as a gap or remediation request. Code, tests, checks, reviewer instructions, and operational or evaluation purpose never create objectives.",
     "A PR implementation interpretation does not resolve ambiguity in the supplied requirement context; preserve that uncertainty for the reviewer.",
     "Write complete, concise sentences and never stop a sentence at a schema length boundary.",
@@ -421,6 +486,140 @@ function withoutUnavailableIssueUnits(candidate: unknown, llmPackage: LlmSemanti
       ? value.remediation_requests.filter((item) => !isUnavailableIssueRemediation(item, blockedRequirementIds))
       : value.remediation_requests
   };
+}
+
+function withoutFreshUnsupportedUnits(candidate: unknown, llmPackage: LlmSemanticPackage): unknown {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return candidate;
+  const value = candidate as Record<string, unknown>;
+  const proofByRequirementId = new Map(llmPackage.validator.requirementProofs.map((proof) => [proof.requirementId, proof]));
+  const hasUnsupportedScope = (unit: Record<string, unknown>) => hasFreshUnsupportedScope(unit, llmPackage);
+  return {
+    ...value,
+    requirement_evidence_relations: filterUnits(value.requirement_evidence_relations, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    requirement_assessments: filterUnits(value.requirement_assessments, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    review_targets: filterUnits(value.review_targets, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    uncertainties: filterUnits(value.uncertainties, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    evidence_gaps: filterUnits(value.evidence_gaps, (unit) =>
+      !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofGap(unit, proofByRequirementId)
+    ),
+    remediation_requests: filterUnits(value.remediation_requests, (unit) =>
+      !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofRemediation(unit, proofByRequirementId)
+    )
+  };
+}
+
+function filterUnits(value: unknown, keep: (unit: Record<string, unknown>) => boolean): unknown {
+  return Array.isArray(value)
+    ? value.filter((unit): unit is Record<string, unknown> => Boolean(unit) && typeof unit === "object" && !Array.isArray(unit)).filter(keep)
+    : value;
+}
+
+function hasFreshProhibitedAssurance(unit: Record<string, unknown>): boolean {
+  return Object.values(unit).some((value) => typeof value === "string" &&
+    /\b(?:basic|overall|functional) correctness\b|\b(?:implementation\s+)?(?:is|works?)\s+correct(?:ly)?\b|\b(?:is|works?)\s+(?:safe|secure|complete)\b|\bready\s+(?:for|to)\s+merge\b|\bmerge readiness\b/i.test(value));
+}
+
+const SPECIFIC_SCOPE_ANCHORS = new Set([
+  "auth", "authenticated", "authentication", "authorization", "boundary", "cancelled", "concurrent", "edge", "empty", "exception", "exceptional",
+  "expired", "fallback", "malformed", "null", "permission", "race", "retry",
+  "timeout", "undefined"
+]);
+const KOREAN_SCOPE_ANCHORS = ["경계", "권한", "누락", "동시", "만료", "비어", "예외", "인증", "잘못된", "재시도", "타임아웃"];
+
+function hasFreshUnsupportedScope(unit: Record<string, unknown>, llmPackage: LlmSemanticPackage): boolean {
+  const requirementIds = unitRequirementIds(unit);
+  if (requirementIds.length === 0) return false;
+  const requirements = llmPackage.input.requirements.filter((requirement) => requirementIds.includes(requirement.id));
+  if (requirements.length === 0) return false;
+  const referencedEvidenceIds = unitEvidenceIds(unit);
+  const allowedEvidenceIds = new Set([
+    ...requirements.flatMap((requirement) => requirement.evidence_ids),
+    ...referencedEvidenceIds
+  ]);
+  const allowedText = [
+    ...requirements.map((requirement) => requirement.text),
+    ...llmPackage.input.evidence
+      .filter((evidence) => allowedEvidenceIds.has(evidence.id))
+      .flatMap((evidence) => [evidence.label, evidence.summary, evidence.code_excerpt ?? ""])
+  ].join(" ");
+  const allowedTokens = new Set(scopeTokens(allowedText));
+  const normalizedAllowedText = allowedText.toLowerCase();
+
+  return unitNaturalLanguage(unit).some((text) => {
+    const tokens = scopeTokens(text);
+    if (tokens.some((token) => SPECIFIC_SCOPE_ANCHORS.has(token) && !allowedTokens.has(token))) return true;
+    const normalizedText = text.toLowerCase();
+    return KOREAN_SCOPE_ANCHORS.some((anchor) => normalizedText.includes(anchor) && !normalizedAllowedText.includes(anchor));
+  });
+}
+
+function unitRequirementIds(unit: Record<string, unknown>): string[] {
+  const direct = typeof unit.requirement_id === "string" ? [unit.requirement_id] : [];
+  const multiple = Array.isArray(unit.requirement_ids)
+    ? unit.requirement_ids.filter((value): value is string => typeof value === "string")
+    : [];
+  return uniqueIds([...direct, ...multiple]);
+}
+
+function unitEvidenceIds(unit: Record<string, unknown>): string[] {
+  const direct = typeof unit.evidence_id === "string" ? [unit.evidence_id] : [];
+  const multiple = Array.isArray(unit.evidence_ids)
+    ? unit.evidence_ids.filter((value): value is string => typeof value === "string")
+    : [];
+  return uniqueIds([...direct, ...multiple]);
+}
+
+function unitNaturalLanguage(unit: Record<string, unknown>): string[] {
+  return Object.entries(unit)
+    .filter(([key, value]) => typeof value === "string" && !key.endsWith("_id") && key !== "relation" && key !== "priority" && key !== "uncertainty" && key !== "evidence_support" && key !== "gap_type" && key !== "request_type" && key !== "target_type" && key !== "uncertainty_type" && key !== "impact")
+    .map(([, value]) => value as string);
+}
+
+function scopeTokens(value: string): string[] {
+  return value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+}
+
+function contradictsFreshProofGap(
+  unit: Record<string, unknown>,
+  proofByRequirementId: Map<string, FreshRequirementProof>
+): boolean {
+  const proof = typeof unit.requirement_id === "string" ? proofByRequirementId.get(unit.requirement_id) : undefined;
+  if (!proof || typeof unit.gap_type !== "string") return false;
+  if (unit.gap_type === "missing_implementation_evidence") {
+    return hasNoExpectedNonTestArtifact(proof) || hasAllExpectedNonTestArtifacts(proof);
+  }
+  if (unit.gap_type === "missing_test_evidence") {
+    return !proof.expectations.targetedTest || proof.targetedTestEvidencePresent;
+  }
+  if (unit.gap_type === "missing_check_evidence" || unit.gap_type === "missing_runtime_evidence") {
+    return !proof.expectations.execution || proof.executionEvidencePresent;
+  }
+  return false;
+}
+
+function contradictsFreshProofRemediation(
+  unit: Record<string, unknown>,
+  proofByRequirementId: Map<string, FreshRequirementProof>
+): boolean {
+  const proof = typeof unit.requirement_id === "string" ? proofByRequirementId.get(unit.requirement_id) : undefined;
+  if (!proof || typeof unit.request_type !== "string") return false;
+  if (unit.request_type === "add_or_update_test") {
+    return !proof.expectations.targetedTest || proof.targetedTestEvidencePresent;
+  }
+  if (unit.request_type === "explain_implementation") {
+    return hasNoExpectedNonTestArtifact(proof) || hasAllExpectedNonTestArtifacts(proof);
+  }
+  return false;
+}
+
+function hasNoExpectedNonTestArtifact(proof: FreshRequirementProof): boolean {
+  return !proof.expectations.implementation && !proof.expectations.documentation && !proof.expectations.ci;
+}
+
+function hasAllExpectedNonTestArtifacts(proof: FreshRequirementProof): boolean {
+  return (!proof.expectations.implementation || proof.nonTestArtifactPresent.implementation) &&
+    (!proof.expectations.documentation || proof.nonTestArtifactPresent.documentation) &&
+    (!proof.expectations.ci || proof.nonTestArtifactPresent.ci);
 }
 
 function isRawLogRetentionLimitation(value: string): boolean {

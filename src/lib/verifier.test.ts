@@ -2294,6 +2294,268 @@ describe("generateVerificationReport", () => {
     )).toBe(true);
     expect(missingTest?.provenance?.every((item) => item.evidenceText.length <= 240)).toBe(true);
   });
+
+  it("does not require implementation or another targeted test for a test-only objective with test and execution evidence", () => {
+    const report = generateVerificationReport({
+      title: "Add retry queue regression coverage",
+      description: "Adds a regression test for retry queue synchronization.",
+      taskText: "Acceptance criteria: add a regression test for retry queue synchronization.",
+      changedFiles: [{
+        path: "src/queues/retry-queue.test.ts",
+        additions: 12,
+        deletions: 0,
+        status: "modified",
+        patch: "+ it('retries failed synchronization jobs', async () => {})"
+      }],
+      checks: [{ name: "Test", status: "passed", summary: "Retry queue regression test passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const node = report.proofGraph.nodes[0];
+
+    expect(node?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
+    expect(node?.executionEvidenceRefs.length).toBeGreaterThan(0);
+    expect(node?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+    expect(node?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+  });
+
+  it("keeps implementation and targeted-test expectations for a behavior objective that also asks for tests", () => {
+    const report = generateVerificationReport({
+      title: "Cover retry queue synchronization",
+      description: "Adds regression coverage for retry queue synchronization.",
+      taskText: "Acceptance criteria: retry failed synchronization jobs and add regression tests.",
+      changedFiles: [{
+        path: "src/queues/retry-queue.test.ts",
+        additions: 12,
+        deletions: 0,
+        status: "modified",
+        patch: "+ it('retries failed synchronization jobs', async () => {})"
+      }],
+      checks: [{ name: "Test", status: "passed", summary: "Retry queue regression test passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const node = report.proofGraph.nodes[0];
+
+    expect(node?.gapSignals.map((gap) => gap.kind)).toContain("missing_implementation");
+    expect(node?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+  });
+
+  it("keeps behavior proof when an add-support objective also explicitly asks for tests", () => {
+    const report = generateVerificationReport({
+      title: "Add retry queue support coverage",
+      description: "Adds regression coverage for retry queue support.",
+      taskText: "Acceptance criteria: add support for retry queue synchronization and add regression tests.",
+      changedFiles: [{
+        path: "src/queues/retry-queue.test.ts",
+        additions: 12,
+        deletions: 0,
+        status: "modified",
+        patch: "+ it('retries failed synchronization jobs', async () => {})"
+      }],
+      checks: [{ name: "Test", status: "passed", summary: "Retry queue regression test passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const gaps = report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind);
+
+    expect(gaps).toContain("missing_implementation");
+    expect(gaps).not.toContain("missing_targeted_test");
+  });
+
+  it("keeps documentation and CI proof independent from targeted tests and recognizes Korean test-only objectives", () => {
+    const documentation = generateVerificationReport({
+      title: "Document retry queue setup",
+      description: "Documents retry queue setup.",
+      taskText: "Acceptance criteria: must document retry queue setup.",
+      changedFiles: [{ path: "docs/retry-queue.md", additions: 8, deletions: 0, status: "modified", patch: "+ Retry queue setup" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+    const ci = generateVerificationReport({
+      title: "Add retry queue CI workflow",
+      description: "Adds retry queue CI workflow.",
+      taskText: "Acceptance criteria: add retry queue CI workflow.",
+      changedFiles: [{ path: ".github/workflows/retry-queue.yml", additions: 8, deletions: 0, status: "modified", patch: "+ name: Retry queue CI" }],
+      checks: [{ name: "CI", status: "passed", summary: "Retry queue CI workflow test suite passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    const koreanTest = generateVerificationReport({
+      title: "재시도 큐 회귀 테스트 추가",
+      description: "재시도 큐 동기화 회귀 테스트를 추가합니다.",
+      taskText: "수용 기준: 재시도 큐 동기화 회귀 테스트를 추가합니다.",
+      changedFiles: [{ path: "src/queues/재시도-큐.test.ts", additions: 8, deletions: 0, status: "modified", patch: "+ it('재시도 큐 동기화', async () => {})" }],
+      checks: [{ name: "Test", status: "passed", summary: "Retry queue regression test passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(documentation.proofGraph.nodes[0]?.implementationEvidenceRefs.length).toBeGreaterThan(0);
+    expect(documentation.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+    expect(documentation.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+    expect(documentation.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
+    expect(ci.proofGraph.nodes[0]?.implementationEvidenceRefs.length).toBeGreaterThan(0);
+    expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+    expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+    expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
+    expect(koreanTest.proofGraph.nodes[0]?.requirementText).toContain("테스트");
+    expect(koreanTest.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+    expect(koreanTest.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+  });
+
+  it("evaluates explicit Korean test, documentation, and CI objectives by their matching artifact contract", () => {
+    const koreanTest = generateVerificationReport({
+      title: "재시도 큐 회귀 테스트 추가",
+      description: "재시도 큐 동기화 회귀 테스트를 추가합니다.",
+      taskText: "수용 기준: 재시도 큐 동기화 회귀 테스트를 추가합니다.",
+      changedFiles: [{ path: "src/queues/재시도-큐.test.ts", additions: 8, deletions: 0, status: "modified", patch: "+ it('재시도 큐 동기화', async () => {})" }],
+      checks: [{ name: "Test", status: "passed", summary: "Retry queue regression test passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    const documentation = generateVerificationReport({
+      title: "Document retry queue setup",
+      description: "Documents retry queue setup.",
+      taskText: "Acceptance criteria: document retry queue setup.",
+      changedFiles: [{ path: "docs/retry-queue.md", additions: 8, deletions: 0, status: "modified", patch: "+ Retry queue setup" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+    const ci = generateVerificationReport({
+      title: "Add retry queue CI workflow",
+      description: "Adds retry queue CI workflow.",
+      taskText: "Acceptance criteria: add retry queue CI workflow.",
+      changedFiles: [{ path: ".github/workflows/retry-queue.yml", additions: 8, deletions: 0, status: "modified", patch: "+ name: Retry queue CI" }],
+      checks: [{ name: "CI", status: "passed", summary: "Retry queue CI workflow test suite passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(koreanTest.requirements[0]?.status).not.toBe("unclear");
+    expect(koreanTest.requirements[0]?.gaps.join(" ")).not.toMatch(/No changed-file evidence|asks for tests/i);
+    expect(documentation.requirements[0]?.gaps.join(" ")).not.toMatch(/matching test, log, or check|asks for tests/i);
+    expect(ci.requirements[0]?.evidenceRefs.length).toBeGreaterThan(0);
+    expect(ci.requirements[0]?.gaps.join(" ")).not.toMatch(/matching test, log, or check|asks for tests/i);
+  });
+
+  it("keeps docs-only artifact evidence partial and ignores unrelated failed execution", () => {
+    const input = {
+      title: "Document retry queue setup",
+      description: "Documents retry queue setup.",
+      taskText: "Acceptance criteria: document retry queue setup.",
+      changedFiles: [{ path: "docs/retry-queue.md", additions: 8, deletions: 0, status: "modified" as const, patch: "+ Retry queue setup" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput;
+    const artifactOnly = generateVerificationReport(input);
+    const withUnrelatedFailure = generateVerificationReport({
+      ...input,
+      checks: [{ name: "Unrelated integration", status: "failed", summary: "Unrelated integration workflow failed." }]
+    });
+
+    expect(artifactOnly.requirements[0]).toMatchObject({ status: "partial", gaps: [] });
+    expect(validateVerificationReport(artifactOnly, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(withUnrelatedFailure.requirements[0]).toMatchObject({ status: "partial", gaps: [] });
+  });
+
+  it("does not attach an unrelated failed execution signal to every requirement", () => {
+    const baseInput = {
+      title: "Add retry handling and tests",
+      description: "Adds retry handling and tests, plus CI workflow coverage.",
+      taskText: [
+        "Acceptance criteria: add retry handling and tests.",
+        "Acceptance criteria: add retry queue CI workflow."
+      ].join("\n"),
+      changedFiles: [
+        { path: "src/queues/retry.ts", additions: 8, deletions: 0, status: "modified", patch: "+ export function retry() {}" },
+        { path: "src/queues/retry.test.ts", additions: 8, deletions: 0, status: "modified", patch: "+ it('retries', () => {})" },
+        { path: ".github/workflows/retry.yml", additions: 8, deletions: 0, status: "modified", patch: "+ name: Retry CI" }
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput;
+
+    for (const check of [
+      { name: "Payments integration tests", status: "failed" as const, summary: "Payments integration tests failed." },
+      { name: "Docs build", status: "failed" as const, summary: "Documentation build failed." }
+    ]) {
+      const report = generateVerificationReport({ ...baseInput, checks: [check] });
+      expect(report.requirements.every((requirement) => !requirement.gaps.join(" ").includes("CI has a failing check"))).toBe(true);
+      expect(report.proofGraph.nodes.every((node) => !node.gapSignals.some((gap) => gap.kind === "failed_execution"))).toBe(true);
+    }
+  });
+
+  it("keeps an exactly repository-wide failed test signal available to execution objectives", () => {
+    const report = generateVerificationReport({
+      title: "Add retry handling and tests",
+      description: "Adds retry handling and tests.",
+      taskText: "Acceptance criteria: add retry handling and tests.",
+      changedFiles: [
+        { path: "src/queues/retry.ts", additions: 8, deletions: 0, status: "modified", patch: "+ export function retry() {}" },
+        { path: "src/queues/retry.test.ts", additions: 8, deletions: 0, status: "modified", patch: "+ it('retries', () => {})" }
+      ],
+      checks: [{ name: "unit tests", status: "failed", summary: "One test failed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.gaps.join(" ")).toContain("CI has a failing check");
+    expect(report.proofGraph.nodes[0]?.gapSignals.some((gap) => gap.kind === "failed_execution")).toBe(true);
+  });
+
+  it("does not treat a domain-prefixed pasted-log failure as repository-wide", () => {
+    const report = generateVerificationReport({
+      title: "Add retry handling and tests",
+      description: "Adds retry handling and tests.",
+      taskText: "Acceptance criteria: add retry handling and tests.",
+      changedFiles: [
+        { path: "src/queues/retry.ts", additions: 8, deletions: 0, status: "modified", patch: "+ export function retry() {}" },
+        { path: "src/queues/retry.test.ts", additions: 8, deletions: 0, status: "modified", patch: "+ it('retries', () => {})" }
+      ],
+      checks: [],
+      logs: [{ source: "pasted logs", status: "failed", text: "Payments integration tests failed" }]
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.gaps.join(" ")).not.toContain("CI has a failing check");
+    expect(report.proofGraph.nodes[0]?.gapSignals.some((gap) => gap.kind === "failed_execution")).toBe(false);
+  });
+
+  it("requires every explicit documentation, CI, and test proof axis instead of choosing one objective kind", () => {
+    const documentationAndTest = generateVerificationReport({
+      title: "Document retry queue and add coverage",
+      description: "Documents retry queue setup and adds regression coverage.",
+      taskText: "Acceptance criteria: document retry queue setup and add a regression test.",
+      changedFiles: [{ path: "docs/retry-queue.md", additions: 8, deletions: 0, status: "modified", patch: "+ Retry queue setup" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+    const ciAndTest = generateVerificationReport({
+      title: "Add retry queue workflow and coverage",
+      description: "Adds CI workflow and regression coverage.",
+      taskText: "Acceptance criteria: add a retry queue CI workflow and a regression test.",
+      changedFiles: [{ path: ".github/workflows/retry-queue.yml", additions: 8, deletions: 0, status: "modified", patch: "+ name: Retry queue CI" }],
+      checks: [{ name: "CI", status: "passed", summary: "Retry queue CI workflow test suite passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    const koreanDocumentationAndTest = generateVerificationReport({
+      title: "재시도 큐 문서와 회귀 테스트",
+      description: "재시도 큐 문서를 추가하고 회귀 테스트를 추가합니다.",
+      taskText: "수용 기준: 재시도 큐 문서를 추가하고 회귀 테스트를 추가합니다.",
+      changedFiles: [{ path: "docs/retry-queue.md", additions: 8, deletions: 0, status: "modified", patch: "+ Retry queue setup" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    for (const report of [documentationAndTest, ciAndTest, koreanDocumentationAndTest]) {
+      const gaps = report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind);
+      expect(gaps).toContain("missing_targeted_test");
+      expect(gaps).not.toContain("missing_implementation");
+    }
+  });
+
+  it("uses a targeted-test gap when an explicit test-only criterion lacks a test artifact", () => {
+    const report = generateVerificationReport(demoScenarios["missing-tests"]);
+    const testObjective = report.proofGraph.nodes.find((node) => /add tests? for csv generation/i.test(node.requirementText));
+
+    expect(testObjective?.gapSignals.map((gap) => gap.kind)).toContain("missing_targeted_test");
+    expect(testObjective?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+  });
 });
 
 function expectRefsResolve(report: VerificationReport, refs: string[]) {

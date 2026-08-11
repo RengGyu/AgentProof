@@ -1,5 +1,6 @@
 import { redactSecrets } from "./redact";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
+import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
 
 const EXPORT_SCHEMA_VERSION = "agentproof.dashboard-report-export.v1";
 
@@ -15,6 +16,12 @@ export function dashboardReportToJson(detail: DashboardExportDetail): string {
 
 export function dashboardReportToMarkdown(detail: DashboardExportDetail): string {
   const exported = toDashboardReportExport(detail);
+  const requirementCards = toDashboardRequirementViewModels({
+    requirements: detail.report?.requirements,
+    semantic: detail.report?.semantic,
+    semanticAnalysis: detail.report?.semanticAnalysis
+  });
+  const locationsByEvidenceId = new Map(exported.evidence_locations.map((item) => [item.id, item.safe_location]));
   const lines = [
     "# AgentProof evidence report",
     "",
@@ -22,20 +29,19 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     `**PR:** #${exported.pull_request.number ?? "Unavailable"}`,
     `**Head SHA:** ${exported.pull_request.head_sha ?? "Unavailable"}`,
     `**Analyzed:** ${exported.pull_request.analyzed_at ?? "Unavailable"}`,
-    `**Evidence captured:** ${exported.pull_request.evidence_captured_at ?? "Unavailable"}`,
+    ...(exported.pull_request.evidence_captured_at ? [`**Evidence captured:** ${exported.pull_request.evidence_captured_at}`] : []),
     `**State:** ${exported.pull_request.state}`,
     `**Priority:** ${exported.pull_request.priority ?? "Unavailable"}`,
-    `**Analysis context:** ${exported.analysis_context}`,
-    `**AI analysis:** ${formatAiRuntime(exported.ai_analysis)}`,
+    `**Analysis context:** ${readableAnalysisContext(exported.analysis_context)}`,
     "",
     "## Requirements",
     "",
-    ...(exported.requirements.length > 0
-      ? exported.requirements.flatMap((item) => [
-          `- **${item.id} · ${item.coverage}**`,
-          `  - Evidence IDs: ${item.evidence_ids.join(", ") || "None"}`,
-          ...(item.evidence_gaps.map((gap) => `  - Evidence gap: ${gap}`))
-        ])
+    ...(requirementCards.length > 0
+      ? requirementCards.flatMap((item, index) => conciseRequirementMarkdown(
+        item,
+        locationsByEvidenceId,
+        index === 0 ? exported.priority_files[0]?.safe_location : undefined
+      ))
       : ["- Unavailable"]),
     "",
     "## Checks",
@@ -43,45 +49,45 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     `- CI: ${exported.checks.ci}`,
     `- Lint: ${exported.checks.lint}`,
     `- Typecheck: ${exported.checks.typecheck}`,
-    "",
-    "## Evidence locations",
-    "",
-    ...(exported.evidence_locations.length > 0
-      ? exported.evidence_locations.map((item) => `- ${item.id}: ${item.safe_location ?? "No safe location"}`)
-      : ["- Unavailable"]),
-    "",
-    "## Priority files",
-    "",
-    ...(exported.priority_files.length > 0
-      ? exported.priority_files.map((item) => `- **${item.priority}** ${item.safe_location}`)
-      : ["- Unavailable"]),
-    "",
-    "## Suggested next step",
-    "",
-    exported.suggested_next_step ?? "Unavailable"
+    ""
   ];
 
-  if (exported.ai_evidence_reading) {
-    lines.push(
-      "",
-      "## AI evidence reading",
-      "",
-      ...exported.ai_evidence_reading.requirement_evidence_relations.map((item) => `- **${item.requirement_id} ↔ ${item.evidence_id} · ${item.relation}** ${item.rationale}`),
-      ...exported.ai_evidence_reading.requirement_coverage.flatMap((item) => [
-        `- **${item.requirement_id} · ${item.evidence_support}** ${item.summary}`,
-        `  - Evidence IDs: ${item.evidence_ids.join(", ") || "None"}`
-      ]),
-      ...exported.ai_evidence_reading.evidence_gaps.flatMap((item) => [
-        `- **Needs attention · ${item.priority}** ${item.description}`,
-        `  - Needed: ${item.needed_evidence}`
-      ]),
-      ...exported.ai_evidence_reading.review_targets.map((item) => `- **Inspect first · ${item.priority}** ${item.inspection_goal}`),
-      ...exported.ai_evidence_reading.remediation_requests.map((item) => `- **Suggested next step · ${item.priority}** ${item.instruction}`),
-      ...exported.ai_evidence_reading.uncertainties.map((item) => `- **Uncertainty · ${item.impact}** ${item.description}`)
-    );
-  }
-
   return lines.join("\n");
+}
+
+function conciseRequirementMarkdown(
+  item: ReturnType<typeof toDashboardRequirementViewModels>[number],
+  locationsByEvidenceId: Map<string, string | null>,
+  fallbackInspectFirst?: string
+): string[] {
+  const references = [...new Set([...item.evidenceRefs, ...item.semanticEvidenceIds])];
+  const locations = references
+    .map((id) => locationsByEvidenceId.get(id))
+    .filter((value): value is string => Boolean(value));
+  const inspectFirst = item.inspectFirst ?? fallbackInspectFirst;
+  return [
+    `- **${item.objectiveText ?? `Requirement ${item.requirementId}`}**`,
+    `  - Evidence coverage: ${item.coverageLabel}`,
+    `  - What the evidence shows: ${item.explanation.text}`,
+    ...(item.primaryGap ? [`  - Key gap: ${item.primaryGap}`] : []),
+    ...(item.nextAction ? [`  - Next: ${item.nextAction}`] : []),
+    ...(inspectFirst ? [`  - Inspect first: ${inspectFirst}`] : []),
+    "",
+    "  <details>",
+    "  <summary>Evidence details</summary>",
+    "",
+    `  Requirement ID: ${item.requirementId}`,
+    `  Evidence IDs: ${references.join(", ") || "Unavailable"}`,
+    `  Locations: ${locations.join(", ") || "Unavailable"}`,
+    "",
+    "  </details>"
+  ];
+}
+
+function readableAnalysisContext(value: "linked_issue" | "unlinked_pr" | "provided_requirement"): string {
+  if (value === "linked_issue") return "Linked Issue";
+  if (value === "unlinked_pr") return "PR objectives";
+  return "Provided requirement";
 }
 
 function toDashboardReportExport(detail: DashboardExportDetail) {
@@ -179,12 +185,6 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       }))
     } : null
   };
-}
-
-function formatAiRuntime(value: { status: "included" | "unavailable"; attempts: 1 | 2 } | null): string {
-  if (!value) return "not requested";
-  if (value.status === "included") return `included after ${value.attempts} attempt${value.attempts === 1 ? "" : "s"}`;
-  return `unavailable after ${value.attempts} attempts`;
 }
 
 function safeText(value: string | undefined): string | undefined {

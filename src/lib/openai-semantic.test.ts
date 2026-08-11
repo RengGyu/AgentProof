@@ -394,6 +394,41 @@ describe("OpenAI semantic adapter", () => {
     expect(result.validation.diagnostics.retryAttempted).toBe(true);
   });
 
+  it("retries when a fresh-only assurance filter removes the only assessment", async () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementId = llmPackage.input.requirements[0]?.id;
+    const evidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
+    expect(requirementId).toBeTruthy();
+    expect(evidenceId).toBeTruthy();
+    const rejectedAssessmentOutput = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        ...semanticOutput(requirementId!, evidenceId!).requirement_assessments[0]!,
+        summary: "The implementation works correctly and is ready for merge."
+      }],
+      evidence_gaps: [],
+      review_targets: [],
+      remediation_requests: [],
+      uncertainties: []
+    };
+    const retryOutput = semanticOutput(requirementId!, evidenceId!);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ output_text: JSON.stringify(rejectedAssessmentOutput) }))
+      .mockResolvedValueOnce(Response.json({ output_text: JSON.stringify(retryOutput) }));
+
+    const result = await analyzeSemanticsWithOpenAI(input, report, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryInput = JSON.parse(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).input[1].content[0].text);
+    expect(retryInput.requirements.map((requirement: { id: string }) => requirement.id)).toContain(requirementId);
+    expect(result.output.requirement_assessments).toEqual(expect.arrayContaining([retryOutput.requirement_assessments[0]]));
+  });
+
   it("returns valid merged units after one incomplete coverage retry without a third request", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);

@@ -64,8 +64,29 @@ describe("toDashboardRequirementViewModels", () => {
     });
 
     expect(card).toMatchObject({
-      explanation: { state: "guidance", text: "A focused path is not supported by the available evidence." },
+      explanation: { state: "guidance", text: "Available evidence needs the listed next action." },
+      primaryGap: "A focused path is not supported by the available evidence.",
       nextAction: "A focused test result."
+    });
+  });
+
+  it("prefers a distinct deterministic gap over semantic interpretation in the compact card", () => {
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{ requirementId: "req_deterministic", requirementText: "Show retry status.", status: "partial", evidenceRefs: ["ev_1"], gaps: ["A passed execution check was not captured."] }],
+      semantic: {
+        requirement_evidence_relations: [],
+        requirement_assessments: [{ requirement_id: "req_deterministic", requirement_summary: "Show retry status.", evidence_support: "partial_evidence_present", summary: "The status update has file evidence.", evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        evidence_gaps: [{ requirement_id: "req_deterministic", gap_type: "missing_check_evidence", priority: "medium", description: "The semantic reading needs an execution check.", review_impact: "Coverage is incomplete.", needed_evidence: "A passing check result.", evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        review_targets: [],
+        remediation_requests: [],
+        uncertainties: []
+      }
+    });
+
+    expect(card).toMatchObject({
+      explanation: { state: "assessment", text: "The status update has file evidence." },
+      primaryGap: "A passed execution check was not captured.",
+      nextAction: "A passing check result."
     });
   });
 
@@ -92,10 +113,10 @@ describe("toDashboardRequirementViewModels", () => {
     expect(cards[0]).toMatchObject({ explanation: { state: "assessment", text: "Add focused test coverage." } });
     expect(cards[0]?.nextAction).toBeUndefined();
     expect(cards[0]?.actionIncluded).toBe(true);
-    expect(cards[1]).toMatchObject({ explanation: { state: "guidance", text: "Provide focused test evidence." } });
+    expect(cards[1]).toMatchObject({ explanation: { state: "guidance", text: "Available evidence needs the listed next action." }, primaryGap: "Provide focused test evidence." });
     expect(cards[1]?.nextAction).toBeUndefined();
     expect(cards[1]?.actionIncluded).toBe(true);
-    expect(cards[2]).toMatchObject({ explanation: { state: "guidance", text: "A focused path is not covered." }, nextAction: "Provide the focused test result.", actionIncluded: false });
+    expect(cards[2]).toMatchObject({ explanation: { state: "guidance", text: "Available evidence needs the listed next action." }, primaryGap: "A focused path is not covered.", nextAction: "Provide the focused test result.", actionIncluded: false });
   });
 
   it("labels unavailable supporting details honestly while retaining deterministic gaps", () => {
@@ -109,6 +130,35 @@ describe("toDashboardRequirementViewModels", () => {
       explanation: { state: "unavailable", text: "Some supporting details are unavailable. Available evidence is still shown." },
       deterministicGaps: ["The check result was unavailable."]
     });
+  });
+
+  it("shows a deterministic-only gap once and bounds compact reading text", () => {
+    const longSentence = `${"A bounded evidence reading remains concise ".repeat(12)}without cutting the final word.`;
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{ requirementId: "req_bounded", requirementText: longSentence, status: "partial", evidenceRefs: ["ev_1"], gaps: [longSentence] }],
+      semantic: {
+        requirement_evidence_relations: [],
+        requirement_assessments: [{ requirement_id: "req_bounded", requirement_summary: longSentence, evidence_support: "partial_evidence_present", summary: longSentence, evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        evidence_gaps: [],
+        review_targets: [{ target_type: "file", target_evidence_id: "ev_1", priority: "medium", reason: "Review the bounded evidence.", inspection_goal: longSentence, requirement_ids: ["req_bounded"], evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        remediation_requests: [{ requirement_id: "req_bounded", request_type: "provide_or_link_evidence", priority: "medium", instruction: `Provide ${longSentence}`, rationale: "More evidence is needed.", expected_evidence: "A bounded reference.", evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        uncertainties: []
+      }
+    });
+    const [deterministicOnly] = toDashboardRequirementViewModels({
+      requirements: [{ requirementId: "req_once", status: "partial", evidenceRefs: [], gaps: ["A deterministic check is missing."] }]
+    });
+
+    expect(deterministicOnly).toMatchObject({
+      explanation: { state: "none", text: "Available deterministic evidence is summarized in coverage. Review the key gap below." },
+      primaryGap: "A deterministic check is missing."
+    });
+    expect(deterministicOnly.explanation.text).not.toContain("Evidence gap:");
+    expect(card?.objectiveText?.length).toBeLessThanOrEqual(160);
+    expect(card?.explanation.text.length).toBeLessThanOrEqual(220);
+    expect(card?.nextAction?.length).toBeLessThanOrEqual(220);
+    expect(card?.inspectFirst?.length).toBeLessThanOrEqual(220);
+    expect(card?.explanation.text).toMatch(/[.…!?]$/);
   });
 
   it("uses the validated one-line objective summary before the tenant-safe fallback label", () => {
@@ -142,11 +192,32 @@ describe("toDashboardRequirementViewModels", () => {
     expect((card as typeof card & { objectiveText?: string }).objectiveText).toBe("Show a fallback when the repository name is missing.");
   });
 
-  it("uses the requirement ID only when no validated objective summary is available", () => {
+  it("leaves objective text absent so renderers can use the requirement ID only as a fallback", () => {
     const [card] = toDashboardRequirementViewModels({
       requirements: [{ requirementId: "req_5", requirementText: "Requirement req_5", status: "partial", evidenceRefs: [], gaps: [] }]
     });
 
-    expect(card?.objectiveText).toBe("Requirement req_5");
+    expect(card?.objectiveText).toBeUndefined();
+  });
+
+  it("projects one primary gap and one inspect-first action instead of semantic array dumps", () => {
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{ requirementId: "req_compact", requirementText: "Requirement req_compact", status: "partial", evidenceRefs: ["ev_1"], gaps: ["Deterministic gap."] }],
+      semantic: {
+        requirement_evidence_relations: [],
+        requirement_assessments: [{ requirement_id: "req_compact", requirement_summary: "Show a retry status.", evidence_support: "partial_evidence_present", summary: "The supplied evidence covers the status update.", evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        evidence_gaps: [{ requirement_id: "req_compact", gap_type: "missing_test_evidence", priority: "high", description: "The retry failure path is not evidenced.", review_impact: "Coverage remains partial.", needed_evidence: "A focused retry failure test.", evidence_ids: ["ev_1"], uncertainty: "high" }],
+        review_targets: [{ target_type: "file", target_evidence_id: "ev_1", priority: "high", reason: "The status update is relevant.", inspection_goal: "Inspect the retry status transition.", requirement_ids: ["req_compact"], evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        remediation_requests: [{ requirement_id: "req_compact", request_type: "add_or_update_test", priority: "high", instruction: "Add the focused retry failure test.", rationale: "The failure path is not evidenced.", expected_evidence: "A passing focused test.", evidence_ids: ["ev_1"], uncertainty: "medium" }],
+        uncertainties: []
+      }
+    });
+
+    expect(card).toMatchObject({
+      objectiveText: "Show a retry status.",
+      primaryGap: "Deterministic gap.",
+      nextAction: "Add the focused retry failure test.",
+      inspectFirst: "Inspect the retry status transition."
+    });
   });
 });

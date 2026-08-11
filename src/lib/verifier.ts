@@ -12,6 +12,7 @@ import {
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import { redactSecrets } from "./redact";
+import { requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckStatus,
   EvidenceItem,
@@ -170,7 +171,10 @@ function evaluateRequirement(
     };
   }
 
-  if (requirement.keywords.length === 0) {
+  const expectations = requirementProofExpectations(requirement.text);
+  const hasExplicitArtifactObjective = expectations.documentation || expectations.ci || expectations.targetedTest;
+
+  if (requirement.keywords.length === 0 && !hasExplicitArtifactObjective) {
     const refs = sourceEvidenceRefs(evidenceIndex);
 
     return {
@@ -197,7 +201,7 @@ function evaluateRequirement(
     .map(({ item }) => item.id);
   const hasImplementationEvidence = implementationMatches.length > 0;
   const hasStrongImplementationEvidence = strongImplementationRefs.length > 0;
-  const asksForTests = /\b(tests?|coverage|specs?)\b/i.test(requirement.text);
+  const asksForTests = expectations.targetedTest;
   const matchingTestArtifactRefs = matches
     .filter(({ item, match }) => item.kind === "test" && isUsefulArtifactMatch(match))
     .map(({ item }) => item.id);
@@ -211,23 +215,70 @@ function evaluateRequirement(
     .filter(({ item, match }) => match.strong && isVisualVerificationEvidence(item))
     .map(({ item }) => item.id);
   const hasMatchingVisualEvidence = matchingVisualEvidenceRefs.length > 0;
-  const failedCheck = hasFailingExecutionEvidence(input);
+  const matchingFailedExecutionRefs = requirementFailedExecutionEvidenceRefs(requirement, input, evidenceIndex);
+  const failedCheck = matchingFailedExecutionRefs.length > 0;
 
-  if (failedCheck) {
-    const failedExecutionRefs = executionFailureEvidenceRefs(input, evidenceIndex);
-
+  if (failedCheck && expectations.execution) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
       status: hasImplementationEvidence ? "partial" : "unclear",
-      evidenceRefs: uniqueRefs([...refs, ...failedExecutionRefs]).slice(0, 5),
+      evidenceRefs: uniqueRefs([...refs, ...matchingFailedExecutionRefs]).slice(0, 5),
       gaps: ["CI has a failing check, so requirement satisfaction is not proven."],
       reviewerNote: "Review failed checks before relying on implementation evidence.",
       confidence: hasImplementationEvidence ? 0.45 : 0.25
     };
   }
 
-  if (asksForTests && hasMatchingTestArtifactEvidence && hasMatchingPassingTestExecutionEvidence && !failedCheck) {
+  const implementationEvidenceRefs = implementationMatches.map(({ item }) => item.id);
+  const targetedProofRefs = targetedTestEvidenceRefsForRequirement(
+    requirement,
+    evidenceIndex,
+    input,
+    implementationEvidenceRefs,
+    expectations
+  );
+  const artifactRefs = artifactEvidenceRefsByExpectation(
+    requirement,
+    evidenceIndex,
+    implementationEvidenceRefs,
+    targetedProofRefs,
+    expectations
+  );
+  const expectedArtifactGroups = Object.values(artifactRefs);
+  const hasExpectedArtifacts = expectedArtifactGroups.length > 0 && expectedArtifactGroups.every((items) => items.length > 0);
+  const anyPassingExecutionRefs = executionEvidenceRefs(input, evidenceIndex).filter((ref) =>
+    refsToEvidence(evidenceIndex, [ref]).some(isPassingTestExecutionEvidence)
+  );
+
+  if (!expectations.implementation && hasExplicitArtifactObjective && hasExpectedArtifacts) {
+    if (expectations.execution && anyPassingExecutionRefs.length === 0) {
+      return {
+        requirementId: requirement.id,
+        requirementText: requirement.text,
+        status: "partial",
+        evidenceRefs: uniqueRefs([...expectedArtifactGroups.flat(), ...refs]).slice(0, 5),
+        gaps: [expectations.targetedTest
+          ? "Test files changed, but no passing test check or log proves those tests executed."
+          : "The required artifact changed, but no passing execution evidence was collected."],
+        reviewerNote: "Request a passing check or log tied to this explicit objective.",
+        confidence: 0.58
+      };
+    }
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: expectations.execution ? "met" : "partial",
+      evidenceRefs: uniqueRefs([...expectedArtifactGroups.flat(), ...anyPassingExecutionRefs, ...refs]).slice(0, 5),
+      gaps: [],
+      reviewerNote: expectations.execution
+        ? "The explicit artifact objective has matching deterministic evidence."
+        : "The explicit documentation artifact has matching deterministic evidence; no execution proof is required by this objective.",
+      confidence: expectations.execution ? 0.82 : 0.72
+    };
+  }
+
+  if (asksForTests && !expectations.implementation && hasMatchingTestArtifactEvidence && hasMatchingPassingTestExecutionEvidence && !failedCheck) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -243,7 +294,7 @@ function evaluateRequirement(
     };
   }
 
-  if (asksForTests && hasMatchingTestArtifactEvidence && !hasMatchingPassingTestExecutionEvidence) {
+  if (asksForTests && !expectations.implementation && hasMatchingTestArtifactEvidence && !hasMatchingPassingTestExecutionEvidence) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -264,6 +315,18 @@ function evaluateRequirement(
       gaps: ["The requirement asks for tests, but no matching test evidence was found."],
       reviewerNote: "Request test evidence tied to this criterion.",
       confidence: hasImplementationEvidence ? 0.55 : 0.3
+    };
+  }
+
+  if (asksForTests && expectations.implementation && hasMatchingTestArtifactEvidence && !hasMatchingPassingTestExecutionEvidence) {
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "partial",
+      evidenceRefs: refsForReport(matches, [...matchingTestArtifactRefs, ...strongImplementationRefs]),
+      gaps: ["Test files changed, but no passing test check or log proves those tests executed."],
+      reviewerNote: "Request the exact passing test command or CI check tied to this criterion.",
+      confidence: 0.58
     };
   }
 
@@ -540,7 +603,6 @@ function buildProofGraph(
   contexts: RequirementContextSignal[]
 ): ProofGraph {
   const findingByRequirement = new Map(findings.map((finding) => [finding.requirementId, finding]));
-  const failedExecutionRefs = executionFailureEvidenceRefs(input, evidenceIndex);
   const allExecutionRefs = executionEvidenceRefs(input, evidenceIndex);
   const selfReportedTestGapRefs = selfReportedTestGapEvidenceRefs(evidenceIndex);
   const changedFileEvidenceUnavailable = hasChangedFileEvidenceUnavailable(input);
@@ -548,6 +610,10 @@ function buildProofGraph(
 
   const nodes = requirements.map((requirement): RequirementProofNode => {
     const finding = findingByRequirement.get(requirement.id);
+    const expectations = {
+      ...requirementProofExpectations(requirement.text),
+      targetedTest: requirementProofExpectations(requirement.text).targetedTest || requiresRiskTargetedProof(requirement.text)
+    };
     const implementationEvidenceRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
       (item.kind === "diff" || item.kind === "changed_file") && match.score > 0
     );
@@ -555,38 +621,53 @@ function buildProofGraph(
       requirement,
       evidenceIndex,
       input,
-      implementationEvidenceRefs
+      implementationEvidenceRefs,
+      expectations
     );
     const matchingExecutionRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
       (item.kind === "check" || item.kind === "log") &&
       isEvidenceExecutionSignal(item) &&
       isUsefulArtifactMatch(match)
     );
+    const matchingFailedExecutionRefs = requirementFailedExecutionEvidenceRefs(requirement, input, evidenceIndex);
     const executionEvidenceRefs = uniqueRefs([
       ...matchingExecutionRefs,
-      ...(ciStatus === "failed" ? failedExecutionRefs : [])
+      ...matchingFailedExecutionRefs
     ]).slice(0, 8);
     const relatedMissingTests = missingTests.filter((missing) =>
       implementationEvidenceRefs.some((ref) => evidenceRefsForPath(evidenceIndex, missing.path).includes(ref)) ||
       missing.evidenceRefs.some((ref) => implementationEvidenceRefs.includes(ref))
     );
     const gapSignals: RequirementProofNode["gapSignals"] = [];
-    const expectsTargetedProof = shouldExpectTargetedProof(requirement.text, input);
+    const artifactRefs = artifactEvidenceRefsByExpectation(
+      requirement,
+      evidenceIndex,
+      implementationEvidenceRefs,
+      targetedTestEvidenceRefs,
+      expectations
+    );
+    const expectedArtifactRefs = uniqueRefs(Object.values(artifactRefs).flat());
 
-    if ((!finding || finding.status === "missing" || implementationEvidenceRefs.length === 0) && changedFileEvidenceUnavailable) {
+    if ((finding?.status === "missing" || expectedArtifactRefs.length === 0) && changedFileEvidenceUnavailable) {
       gapSignals.push({
         kind: "evidence_unavailable",
         severity: "medium",
-        message: "Changed-file evidence could not be collected, so missing implementation proof is inconclusive rather than proven absent.",
+        message: "Changed-file evidence could not be collected, so missing required artifact proof is inconclusive rather than proven absent.",
         evidenceRefs: finding?.evidenceRefs.length ? finding.evidenceRefs : sourceEvidenceRefs(evidenceIndex)
       });
-    } else if (!finding || finding.status === "missing" || implementationEvidenceRefs.length === 0) {
-      gapSignals.push({
-        kind: "missing_implementation",
-        severity: missingImplementationSeverity(requirement, input),
-        message: "No implementation evidence clearly maps to this requirement.",
-        evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
-      });
+    } else {
+      for (const [kind, refs] of Object.entries(artifactRefs) as Array<[keyof typeof artifactRefs, string[]]>) {
+        if (refs.length > 0) continue;
+        const isTargetedTest = kind === "targetedTest";
+        gapSignals.push({
+          kind: isTargetedTest ? "missing_targeted_test" : "missing_implementation",
+          severity: isTargetedTest
+            ? targetedProofGapSeverity(requirement, input, ciStatus)
+            : missingImplementationSeverity(requirement, input),
+          message: `No ${artifactExpectationLabel(kind)} evidence clearly maps to this requirement.`,
+          evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
+        });
+      }
     }
 
     if (finding?.status === "unclear") {
@@ -595,15 +676,6 @@ function buildProofGraph(
         severity: "medium",
         message: "Requirement needs human interpretation before trusting the report.",
         evidenceRefs: finding.evidenceRefs
-      });
-    }
-
-    if (implementationEvidenceRefs.length > 0 && expectsTargetedProof && targetedTestEvidenceRefs.length === 0) {
-      gapSignals.push({
-        kind: "missing_targeted_test",
-        severity: targetedProofGapSeverity(requirement, input, ciStatus),
-        message: "Implementation evidence exists, but no targeted test-file evidence maps to this requirement.",
-        evidenceRefs: uniqueRefs([...implementationEvidenceRefs, ...relatedMissingTests.flatMap((item) => item.evidenceRefs)]).slice(0, 8)
       });
     }
 
@@ -622,25 +694,25 @@ function buildProofGraph(
       });
     }
 
-    if (implementationEvidenceRefs.length > 0 && allExecutionRefs.length === 0) {
+    if (expectedArtifactRefs.length > 0 && expectations.execution && allExecutionRefs.length === 0) {
       gapSignals.push({
         kind: "missing_execution",
         severity: "medium",
         message: "No deterministic test/build execution evidence was collected for this requirement.",
-        evidenceRefs: implementationEvidenceRefs.slice(0, 8)
+        evidenceRefs: expectedArtifactRefs.slice(0, 8)
       });
     }
 
-    if (ciStatus === "failed") {
+    if (matchingFailedExecutionRefs.length > 0 && expectations.execution) {
       gapSignals.push({
         kind: "failed_execution",
         severity: "blocker",
         message: "A relevant test/build execution signal failed, so this requirement is not proven ready.",
-        evidenceRefs: failedExecutionRefs.slice(0, 8)
+        evidenceRefs: matchingFailedExecutionRefs.slice(0, 8)
       });
     }
 
-    if (implementationEvidenceRefs.length > 0 && selfReportedTestGapRefs.length > 0) {
+    if (expectations.implementation && implementationEvidenceRefs.length > 0 && selfReportedTestGapRefs.length > 0) {
       gapSignals.push({
         kind: "self_reported_test_gap",
         severity: targetedProofGapSeverity(requirement, input, ciStatus),
@@ -761,7 +833,8 @@ function targetedTestEvidenceRefsForRequirement(
   requirement: Requirement,
   evidenceIndex: EvidenceItem[],
   input: PullRequestInput,
-  implementationEvidenceRefs: string[]
+  implementationEvidenceRefs: string[],
+  expectations: RequirementProofExpectations
 ): string[] {
   const directRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
     item.kind === "test" && isUsefulArtifactMatch(match)
@@ -786,8 +859,17 @@ function targetedTestEvidenceRefsForRequirement(
       );
     })
     .map((item) => item.id);
+  const singleArtifactFallbackRefs = directRefs.length === 0 &&
+    requirement.keywords.length === 0 &&
+    expectations.targetedTest &&
+    testFiles.length === 1
+    ? evidenceIndex
+      .filter((item) => item.kind === "test")
+      .filter((item) => testFiles.some((file) => file.path === item.locator || file.path === item.label))
+      .map((item) => item.id)
+    : [];
 
-  return uniqueRefs([...directRefs, ...relatedRefs]);
+  return uniqueRefs([...directRefs, ...relatedRefs, ...singleArtifactFallbackRefs]);
 }
 
 function refsToPaths(evidenceIndex: EvidenceItem[], refs: string[]): string[] {
@@ -832,10 +914,54 @@ function selfReportedTestGapEvidenceRefs(evidenceIndex: EvidenceItem[]): string[
     .map((item) => item.id);
 }
 
-function shouldExpectTargetedProof(requirementText: string, input: PullRequestInput): boolean {
-  const combined = `${requirementText} ${input.taskText} ${input.description}`;
+function artifactEvidenceRefsByExpectation(
+  requirement: Requirement,
+  evidenceIndex: EvidenceItem[],
+  implementationEvidenceRefs: string[],
+  targetedTestEvidenceRefs: string[],
+  expectations: RequirementProofExpectations
+): Partial<Record<"implementation" | "documentation" | "ci" | "targetedTest", string[]>> {
+  const artifactRefs = (pathPattern: RegExp) => {
+    const matched = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+      (item.kind === "diff" || item.kind === "changed_file") &&
+      isUsefulArtifactMatch(match) &&
+      pathPattern.test(item.locator ?? item.label)
+    );
+    if (matched.length > 0 || requirement.keywords.length > 0) return matched;
+    const candidates = evidenceIndex.filter((item) =>
+      (item.kind === "diff" || item.kind === "changed_file") && pathPattern.test(item.locator ?? item.label)
+    );
+    const paths = new Set(candidates.map((item) => item.locator ?? item.label));
+    return paths.size === 1 ? candidates.map((item) => item.id) : [];
+  };
+  const result: Partial<Record<"implementation" | "documentation" | "ci" | "targetedTest", string[]>> = {};
+  if (expectations.implementation) result.implementation = implementationEvidenceRefs.filter((ref) => {
+    const path = refsToPaths(evidenceIndex, [ref])[0] ?? "";
+    return !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path);
+  });
+  if (expectations.documentation) result.documentation = artifactRefs(/(?:^|\/)(?:docs?\/|readme(?:\.|$))|\.md$/i);
+  if (expectations.ci) result.ci = artifactRefs(/(?:^|\/)(?:\.github\/workflows\/|workflows?\/)|(?:ci|pipeline)[^/]*\.(?:ya?ml|json)$/i);
+  if (expectations.targetedTest) result.targetedTest = targetedTestEvidenceRefs;
+  return result;
+}
 
-  return /\b(tests?|coverage|specs?|crash|segfault|regression|data loss|mutat(?:e|ion)|security|auth|permission|billing|payment)\b/i.test(combined);
+function artifactExpectationLabel(kind: "implementation" | "documentation" | "ci" | "targetedTest"): string {
+  if (kind === "targetedTest") return "targeted test-file";
+  if (kind === "documentation") return "documentation artifact";
+  if (kind === "ci") return "CI workflow artifact";
+  return "implementation artifact";
+}
+
+function isDocumentationPath(path: string): boolean {
+  return /(?:^|\/)(?:docs?\/|readme(?:\.|$))|\.md$/i.test(path);
+}
+
+function isCiPath(path: string): boolean {
+  return /(?:^|\/)(?:\.github\/workflows\/|workflows?\/)|(?:ci|pipeline)[^/]*\.(?:ya?ml|json)$/i.test(path);
+}
+
+function requiresRiskTargetedProof(text: string): boolean {
+  return /\b(?:crash|segfault|data loss|mutat(?:e|ion)|security|auth|permission|billing|payment)\b|(?:보안|권한|결제|데이터 손실)/i.test(text);
 }
 
 function missingImplementationSeverity(requirement: Requirement, input: PullRequestInput): PriorityLevel {
@@ -1707,11 +1833,6 @@ function isEvidenceExecutionSignal(item: EvidenceItem): boolean {
     isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
 }
 
-function hasFailingExecutionEvidence(input: PullRequestInput): boolean {
-  return input.checks.some((check) => check.status === "failed" && isCheckExecutionSignal(check)) ||
-    input.logs.some((log) => log.status === "failed" && isLogExecutionSignal(log));
-}
-
 function nonExecutionFailures(input: PullRequestInput): string[] {
   return [
     ...input.checks
@@ -1753,6 +1874,45 @@ function executionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: Ev
       (item.kind === "log" && failedLogLabels.has(item.label))
     )
     .map((item) => item.id);
+}
+
+function requirementFailedExecutionEvidenceRefs(
+  requirement: Requirement,
+  input: PullRequestInput,
+  evidenceIndex: EvidenceItem[]
+): string[] {
+  const failedRefs = new Set(executionFailureEvidenceRefs(input, evidenceIndex));
+  return evidenceIndex
+    .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
+    .filter(({ item, match }) =>
+      failedRefs.has(item.id) &&
+      (isUsefulArtifactMatch(match) || isSharedExecutionFailure(item))
+    )
+    .map(({ item }) => item.id);
+}
+
+function isSharedExecutionFailure(item: EvidenceItem): boolean {
+  const normalizedLabel = item.label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const normalizedSummary = item.summary
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const genericExecutionName = /^(?:unit tests?|integration tests?|e2e tests?|regression tests?|tests?|test suite|build|compile|ci|test matrix)$/;
+  const genericExecutionFailure = /^(?:unit tests?|integration tests?|e2e tests?|regression tests?|tests?|test suite|build|compile|ci|test matrix) (?:failed|failure)$/;
+  const pastedSummary = normalizedSummary
+    .replace(/^status failed pasted logs /, "")
+    .replace(/^log pasted logs /, "");
+  const pastedGenericExecutionFailure = normalizedLabel === "pasted logs" && genericExecutionFailure.test(pastedSummary);
+  const opaqueMatrixJob = /^[A-Z0-9_=-]+$/.test(item.label) &&
+    isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
+
+  // Only a deliberately generic repository-wide check may apply without a
+  // requirement match. Domain-prefixed checks such as "Payments integration
+  // tests" or "Docs build" remain scoped to matching requirements.
+  return genericExecutionName.test(normalizedLabel) || genericExecutionFailure.test(normalizedSummary) || pastedGenericExecutionFailure || opaqueMatrixJob;
 }
 
 function statusForCheck(checks: PullRequestInput["checks"], pattern: RegExp): CheckStatus {

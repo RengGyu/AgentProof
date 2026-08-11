@@ -448,6 +448,51 @@ describe("AgentProof LLM semantic output contract", () => {
     ]);
   });
 
+  it("keeps persisted core validation independent from fresh package scope and correctness policy", () => {
+    const candidate = validCandidate();
+    candidate.requirement_assessments[0] = {
+      ...candidate.requirement_assessments[0],
+      summary: "The supplied evidence establishes basic correctness."
+    };
+    candidate.evidence_gaps.push({
+      ...candidate.evidence_gaps[0],
+      description: "No supplied evidence covers additional edge cases.",
+      review_impact: "The reviewer cannot confirm those added cases.",
+      needed_evidence: "A focused test for the additional edge cases."
+    });
+    candidate.review_targets[0] = {
+      ...candidate.review_targets[0],
+      inspection_goal: "Confirm merge readiness."
+    };
+
+    const result = validateLlmSemanticCandidate(candidate, referenceCatalog);
+
+    expect(result.disposition).toBe("accepted");
+    expect(result.candidate?.requirement_evidence_relations).toHaveLength(1);
+    expect(result.candidate?.requirement_assessments).toHaveLength(1);
+    expect(result.candidate?.evidence_gaps).toHaveLength(2);
+    expect(result.candidate?.review_targets).toHaveLength(1);
+    expect(result.rejected_units).toEqual([]);
+  });
+
+  it("does not reject a grounded relation or assessment merely for using an illustrative phrase", () => {
+    const candidate = validCandidate();
+    candidate.requirement_evidence_relations[0] = {
+      ...candidate.requirement_evidence_relations[0],
+      rationale: "The evidence supports the supplied main path, such as the normal request."
+    };
+    candidate.requirement_assessments[0] = {
+      ...candidate.requirement_assessments[0],
+      summary: "The supplied evidence covers the requested behavior, for example the normal request."
+    };
+
+    const result = validateLlmSemanticCandidate(candidate, referenceCatalog);
+
+    expect(result.disposition).toBe("accepted");
+    expect(result.candidate?.requirement_evidence_relations).toHaveLength(1);
+    expect(result.candidate?.requirement_assessments).toHaveLength(1);
+  });
+
   it("discards a candidate with an invalid root contract", () => {
     const candidate = validCandidate() as unknown as Record<string, unknown>;
     delete candidate.requirement_assessments;

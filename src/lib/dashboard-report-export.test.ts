@@ -57,10 +57,12 @@ describe("dashboard report export", () => {
     expect(markdown).toContain("**PR:** #5");
     expect(markdown).toContain("Focused test evidence is missing.");
     expect(markdown).toContain("src/repositories/search.ts");
+    expect(markdown).toContain("Requirement ID: req_1");
+    expect(markdown).not.toContain("**Evidence captured:**");
     expect(markdown).not.toContain("raw diff");
   });
 
-  it("includes the validator-approved AI relation in both export formats", () => {
+  it("keeps the validator-approved relation in machine JSON without dumping it into Markdown", () => {
     const semanticDetail = {
       ...detail,
       report: {
@@ -71,7 +73,7 @@ describe("dashboard report export", () => {
           evidence_gaps: [],
           review_targets: [],
           remediation_requests: [],
-          uncertainties: []
+          uncertainties: [{ uncertainty_type: "insufficient_context", impact: "limits_assessment", description: "The remaining context is bounded.", needed_information: "A linked requirement statement.", requirement_ids: ["req_1"], evidence_ids: ["ev_1"] }]
         }
       }
     } satisfies DashboardReportDetail & { repositoryFullName: string };
@@ -81,10 +83,50 @@ describe("dashboard report export", () => {
     expect(exported.ai_evidence_reading.requirement_evidence_relations).toEqual([
       { requirement_id: "req_1", evidence_id: "ev_1", relation: "partial_support", rationale: "The test covers the normal path only.", uncertainty: "medium" }
     ]);
-    expect(dashboardReportToMarkdown(semanticDetail)).toContain("The test covers the normal path only.");
+    expect(dashboardReportToMarkdown(semanticDetail)).not.toContain("The test covers the normal path only.");
   });
 
-  it("exports safe evidence timing, analysis context, and AI runtime state", () => {
+  it("keeps machine JSON detailed while projecting Markdown into one concise provider-neutral requirement reading", () => {
+    const semanticDetail = {
+      ...detail,
+      report: {
+        ...detail.report,
+        semantic: {
+          requirement_evidence_relations: [{ requirement_id: "req_1", evidence_id: "ev_1", relation: "partial_support", rationale: "The test covers the normal path only.", uncertainty: "medium" }],
+          requirement_assessments: [{ requirement_id: "req_1", requirement_summary: "Show a retry status.", evidence_support: "partial_evidence_present", summary: "The supplied test evidence covers the status update.", evidence_ids: ["ev_1"], uncertainty: "medium" }],
+          evidence_gaps: [{ requirement_id: "req_1", gap_type: "missing_test_evidence", priority: "high", description: "The retry failure path is not evidenced.", review_impact: "Coverage remains partial.", needed_evidence: "A focused retry failure test.", evidence_ids: ["ev_1"], uncertainty: "high" }],
+          review_targets: [{ target_type: "file", target_evidence_id: "ev_1", priority: "high", reason: "The status update is relevant.", inspection_goal: "Inspect the retry status transition.", requirement_ids: ["req_1"], evidence_ids: ["ev_1"], uncertainty: "medium" }],
+          remediation_requests: [{ requirement_id: "req_1", request_type: "add_or_update_test", priority: "high", instruction: "Add the focused retry failure test.", rationale: "The failure path is not evidenced.", expected_evidence: "A passing focused test.", evidence_ids: ["ev_1"], uncertainty: "medium" }],
+          uncertainties: [{ uncertainty_type: "insufficient_context", impact: "limits_assessment", description: "The remaining context is bounded.", needed_information: "A linked requirement statement.", requirement_ids: ["req_1"], evidence_ids: ["ev_1"] }]
+        }
+      }
+    } satisfies DashboardReportDetail & { repositoryFullName: string };
+
+    const exported = JSON.parse(dashboardReportToJson(semanticDetail));
+    const markdown = dashboardReportToMarkdown(semanticDetail);
+
+    expect(exported.ai_evidence_reading.requirement_evidence_relations).toHaveLength(1);
+    expect(exported.ai_evidence_reading.requirement_coverage).toHaveLength(1);
+    expect(exported.ai_evidence_reading.evidence_gaps).toHaveLength(1);
+    expect(exported.ai_evidence_reading.review_targets).toHaveLength(1);
+    expect(exported.ai_evidence_reading.remediation_requests).toHaveLength(1);
+    expect(exported.ai_evidence_reading.uncertainties).toHaveLength(1);
+    expect(markdown).toContain("Show a retry status.");
+    expect(markdown).toContain("Evidence coverage: Partially supported");
+    expect(markdown).toContain("What the evidence shows: The supplied test evidence covers the status update.");
+    expect(markdown).toContain("Key gap: Focused test evidence is missing.");
+    expect(markdown).toContain("Next: Add the focused retry failure test.");
+    expect(markdown).toContain("Inspect first: Inspect the retry status transition.");
+    expect(markdown).not.toContain("AI analysis");
+    expect(markdown).not.toContain("AI evidence reading");
+    expect(markdown).not.toContain("req_1 ↔ ev_1");
+    expect(markdown).not.toContain("**req_1 ·");
+    expect(markdown).not.toContain("The test covers the normal path only.");
+    expect(markdown).not.toContain("Coverage remains partial.");
+    expect(markdown).not.toContain("A passing focused test.");
+  });
+
+  it("keeps safe evidence timing and analysis context in both exports while runtime detail stays machine-only", () => {
     const runtimeDetail = {
       ...detail,
       evidenceCapturedAt: "2026-08-09T00:00:05.000Z",
@@ -100,6 +142,16 @@ describe("dashboard report export", () => {
     expect(exported.pull_request.evidence_captured_at).toBe("2026-08-09T00:00:05.000Z");
     expect(exported.analysis_context).toBe("linked_issue");
     expect(exported.ai_analysis).toEqual({ status: "unavailable", attempts: 2 });
-    expect(dashboardReportToMarkdown(runtimeDetail)).toContain("**AI analysis:** unavailable after 2 attempts");
+    const markdown = dashboardReportToMarkdown(runtimeDetail);
+    expect(markdown).toContain("Some supporting details are unavailable. Available evidence is still shown.");
+    expect(markdown).toContain("**Analysis context:** Linked Issue");
+    expect(markdown).toContain("**Evidence captured:** 2026-08-09T00:00:05.000Z");
+    expect(markdown).not.toContain("AI analysis");
+  });
+
+  it("keeps one deterministic inspect-first fallback when semantic targets are absent", () => {
+    const markdown = dashboardReportToMarkdown(detail);
+
+    expect(markdown).toContain("Inspect first: src/repositories/search.ts");
   });
 });

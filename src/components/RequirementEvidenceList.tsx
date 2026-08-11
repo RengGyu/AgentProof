@@ -5,7 +5,7 @@ import type { DashboardRequirementViewModel } from "@/lib/dashboard-requirement-
 export function RequirementEvidenceList({ requirements }: { requirements: DashboardRequirementViewModel[] }) {
   return createElement("div", { className: "requirement-evidence-list" }, requirements.map((requirement) => createElement("article", { className: "requirement-evidence-card", key: requirement.requirementId },
     createElement("div", { className: "requirement-evidence-card-header" },
-      createElement("div", { className: "requirement-evidence-heading" }, createElement("h6", null, requirement.requirementId), createElement("p", null, requirement.objectiveText ?? `Requirement ${requirement.requirementId}`)),
+      createElement("div", { className: "requirement-evidence-heading" }, createElement("h6", null, requirement.objectiveText ?? `Requirement ${requirement.requirementId}`)),
       createElement("details", { className: "requirement-evidence-disclosure", name: "requirement-evidence" },
         createElement("summary", null,
           createElement("span", { className: `requirement-coverage-status ${requirement.status}` }, createElement("span", { className: "requirement-coverage-label" }, "Evidence coverage"), createElement(RequirementStatusIcon, { status: requirement.status }), " ", createElement("span", null, requirement.coverageLabel)),
@@ -13,6 +13,7 @@ export function RequirementEvidenceList({ requirements }: { requirements: Dashbo
         ),
         createElement("div", { className: "requirement-evidence-disclosure-content" },
           createElement("p", null, "Coverage is based on deterministic evidence captured for this requirement."),
+          createElement("p", null, `Requirement ID: ${requirement.requirementId}`),
           createElement("p", null, requirement.coverageMeaning),
           createElement("p", null, `${requirement.evidenceRefs.length} evidence reference${requirement.evidenceRefs.length === 1 ? "" : "s"}`),
           createElement("p", null, `Evidence IDs: ${requirement.evidenceRefs.join(", ") || "Unavailable"}`),
@@ -25,7 +26,9 @@ export function RequirementEvidenceList({ requirements }: { requirements: Dashbo
       )
     ),
     createElement("p", { className: `requirement-explanation ${requirement.explanation.state}` }, createElement("span", { className: "requirement-explanation-label" }, toExplanationLabel(requirement.explanation.state, requirement.actionIncluded)), requirement.explanation.text),
-    requirement.nextAction ? createElement("p", { className: "requirement-next-action" }, createElement("strong", null, "Next:"), " ", requirement.nextAction) : null
+    requirement.primaryGap ? createElement("p", { className: "requirement-primary-gap" }, createElement("strong", null, "Key gap:"), " ", requirement.primaryGap) : null,
+    requirement.nextAction ? createElement("p", { className: "requirement-next-action" }, createElement("strong", null, "Next:"), " ", requirement.nextAction) : null,
+    requirement.inspectFirst ? createElement("p", { className: "requirement-inspect-first" }, createElement("strong", null, "Inspect first:"), " ", requirement.inspectFirst) : null
   )));
 }
 
@@ -35,7 +38,7 @@ function RequirementStatusIcon({ status }: { status: string }) {
 }
 
 function toExplanationLabel(state: DashboardRequirementViewModel["explanation"]["state"], actionIncluded: boolean): string {
-  if (state === "assessment" || state === "guidance") return actionIncluded ? "AgentProof reading · Next" : "AgentProof reading";
+  if (state === "assessment" || state === "guidance") return actionIncluded ? "What the evidence shows · Next" : "What the evidence shows";
   if (state === "unavailable") return "Supporting details";
   return "Evidence note";
 }
