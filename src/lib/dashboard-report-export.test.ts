@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
-import { dashboardReportToJson, dashboardReportToMarkdown } from "./dashboard-report-export";
+import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "./dashboard-report-export";
 
 const detail = {
   repositoryFullName: "RengGyu/agentproof-evaluation-fixtures",
@@ -60,6 +60,20 @@ describe("dashboard report export", () => {
     expect(markdown).toContain("Requirement ID: req_1");
     expect(markdown).not.toContain("**Evidence captured:**");
     expect(markdown).not.toContain("raw diff");
+  });
+
+  it("bundles every selected repository report in newest-first order using the bounded Markdown projection", () => {
+    const older = { ...detail, pullRequestNumber: 12, createdAt: "2026-08-09T00:00:00.000Z" };
+    const newer = { ...detail, pullRequestNumber: 28, createdAt: "2026-08-11T00:00:00.000Z" };
+
+    const markdown = dashboardReportsToMarkdown([older, newer]);
+
+    expect(markdown).toContain("# AgentProof repository evidence reports");
+    expect(markdown).toContain("**Repository:** RengGyu/agentproof-evaluation-fixtures");
+    expect(markdown).toContain("**Reports:** 2");
+    expect(markdown.indexOf("**PR:** #28")).toBeLessThan(markdown.indexOf("**PR:** #12"));
+    expect(markdown.match(/# AgentProof evidence report/g)).toHaveLength(2);
+    expect(markdown).not.toContain("private source must never be copied");
   });
 
   it("keeps the validator-approved relation in machine JSON without dumping it into Markdown", () => {

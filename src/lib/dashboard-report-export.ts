@@ -55,6 +55,25 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
   return lines.join("\n");
 }
 
+export function dashboardReportsToMarkdown(details: DashboardExportDetail[]): string {
+  const ordered = [...details].sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
+  if (ordered.length === 0) return "";
+  const repository = safeText(ordered[0]?.repositoryFullName) ?? "Unavailable";
+  return [
+    "# AgentProof repository evidence reports",
+    "",
+    `**Repository:** ${repository}`,
+    `**Reports:** ${ordered.length}`,
+    "**Scope:** Current saved reports",
+    "",
+    ...ordered.flatMap((detail, index) => [
+      ...(index > 0 ? ["---", ""] : []),
+      dashboardReportToMarkdown(detail),
+      ""
+    ])
+  ].join("\n").trimEnd();
+}
+
 function conciseRequirementMarkdown(
   item: ReturnType<typeof toDashboardRequirementViewModels>[number],
   locationsByEvidenceId: Map<string, string | null>,
