@@ -10,7 +10,7 @@ import { requirementProofAxisExpectations } from "./verifier-proof-expectations"
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
-const PROOF_AXIS_SUBJECTS = new Set(["implementation", "documentation", "ci_configuration", "targeted_test", "execution", "visual"]);
+const PROOF_AXIS_SUBJECTS = new Set(["implementation", "documentation", "ci_configuration", "targeted_test", "execution", "interaction", "visual"]);
 const PROOF_AXIS_POLARITIES = new Set(["present", "absent"]);
 const PROOF_AXIS_STATES = new Set(["satisfied", "violated", "incomplete"]);
 const PROOF_COLLECTION_BASES = new Set([
@@ -18,7 +18,9 @@ const PROOF_COLLECTION_BASES = new Set([
   "incomplete_changed_file_inventory",
   "matching_artifact_evidence",
   "passing_execution",
+  "passing_suite_execution",
   "failed_execution",
+  "interaction_verification",
   "visual_verification"
 ]);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
@@ -50,6 +52,7 @@ const PROOF_GAP_KINDS = new Set([
   "missing_targeted_test",
   "missing_execution",
   "failed_execution",
+  "interaction_proof_missing",
   "ambiguous_requirement",
   "self_reported_test_gap",
   "evidence_unavailable",
@@ -265,7 +268,7 @@ function validateSource(value: unknown, errors: string[], requireSourceProvenanc
 
 function validateSourceProvenance(value: unknown, errors: string[], requireFullHeadSha: boolean) {
   if (!isRecord(value)) { errors.push("source.provenance must be an object."); return; }
-  requireKeys(value, ["version", "origin", "evidenceCapturedAt", "inputFingerprint"], "source.provenance", errors, ["headSha", "baseSha", "changedFileInventory"]);
+  requireKeys(value, ["version", "origin", "evidenceCapturedAt", "inputFingerprint"], "source.provenance", errors, ["headSha", "baseSha", "changedFileInventory", "executionSuites"]);
   if (value.version !== 1) errors.push("source.provenance.version must be 1.");
   const origin = value.origin;
   if (origin !== "github_snapshot" && origin !== "pasted_evidence" && origin !== "demo") errors.push("source.provenance.origin is invalid.");
@@ -286,6 +289,9 @@ function validateSourceProvenance(value: unknown, errors: string[], requireFullH
   if (value.changedFileInventory !== undefined) {
     validateChangedFileInventoryProvenance(value.changedFileInventory, origin, value.headSha, errors);
   }
+  if (value.executionSuites !== undefined) {
+    validateExecutionSuiteProvenance(value.executionSuites, origin, value.headSha, errors);
+  }
   if (!isRecord(value.inputFingerprint)) { errors.push("source.provenance.inputFingerprint must be an object."); return; }
   requireKeys(value.inputFingerprint, ["version", "algorithm", "value", "coverage"], "source.provenance.inputFingerprint", errors);
   if (value.inputFingerprint.version !== 1) errors.push("source.provenance.inputFingerprint.version must be 1.");
@@ -293,6 +299,30 @@ function validateSourceProvenance(value: unknown, errors: string[], requireFullH
   if (typeof value.inputFingerprint.value !== "string" || !/^[a-f0-9]{64}$/.test(value.inputFingerprint.value)) errors.push("source.provenance.inputFingerprint.value must be a lowercase SHA-256 digest.");
   const expectedCoverage = origin === "github_snapshot" ? "github_metadata" : origin === "pasted_evidence" ? "pasted_metadata" : "demo_fixture";
   if (value.inputFingerprint.coverage !== expectedCoverage) errors.push("source.provenance.inputFingerprint.coverage does not match source.provenance.origin.");
+}
+
+function validateExecutionSuiteProvenance(value: unknown, origin: unknown, headSha: unknown, errors: string[]) {
+  const suites = validateArray(value, "source.provenance.executionSuites", 12, errors);
+  if (!suites) return;
+
+  for (const [index, suite] of suites.entries()) {
+    const path = `source.provenance.executionSuites[${index}]`;
+    if (!isRecord(suite)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(suite, ["headSha", "status", "executionSource", "runner", "scope", "testPaths"], path, errors);
+    if (origin !== "github_snapshot" || suite.headSha !== headSha || typeof headSha !== "string") {
+      errors.push(`${path} must be anchored to the GitHub snapshot head.`);
+    }
+    validateEnum(suite.status, `${path}.status`, CHECK_STATUSES, errors);
+    if (suite.status !== "passed") errors.push(`${path}.status must be passed.`);
+    validateString(suite.executionSource, `${path}.executionSource`, LIMITS.evidenceLabel, errors);
+    validateEnum(suite.runner, `${path}.runner`, new Set(["node_test", "pytest", "go_test", "cargo_test"]), errors);
+    validateEnum(suite.scope, `${path}.scope`, new Set(["repository_discovery", "explicit_paths"]), errors);
+    validateStringArray(suite.testPaths, `${path}.testPaths`, 60, LIMITS.evidenceLocator, errors);
+    if (Array.isArray(suite.testPaths) && suite.testPaths.length === 0) errors.push(`${path}.testPaths must not be empty.`);
+  }
 }
 
 function validateChangedFileInventoryProvenance(value: unknown, origin: unknown, provenanceHeadSha: unknown, errors: string[]) {
@@ -1125,7 +1155,7 @@ function validateFullRequirementProofAxes(
     }
     if (!refs.every((ref) => {
       const evidence = evidenceById.get(ref);
-      return evidence ? isSatisfiedAxisEvidenceCompatible(subject, axis.collectionBasis, evidence, proofNode, requirementText, ref) : false;
+      return evidence ? isSatisfiedAxisEvidenceCompatible(report, subject, axis.collectionBasis, evidence, proofNode, requirementText, ref) : false;
     })) {
       errors.push(`${axisPath} cites incompatible evidence or collection basis.`);
     }
@@ -1140,12 +1170,14 @@ function expectedProofAxisKeys(text: string): Set<string> {
   if (expectations.ci) keys.push("ci_configuration:present");
   if (expectations.targetedTest) keys.push("targeted_test:present");
   if (expectations.execution) keys.push("execution:present");
+  if (expectations.interaction) keys.push("interaction:present");
   if (expectations.visual) keys.push("visual:present");
   if (expectations.noImplementationChanges) keys.push("implementation:absent");
   return new Set(keys);
 }
 
 function isSatisfiedAxisEvidenceCompatible(
+  report: RecordValue,
   subject: string,
   collectionBasis: unknown,
   evidence: RecordValue,
@@ -1171,12 +1203,62 @@ function isSatisfiedAxisEvidenceCompatible(
     return collectionBasis === "matching_artifact_evidence" && evidence.kind === "test" && targetedTestRefs.has(ref);
   }
   if (subject === "execution") {
-    return collectionBasis === "passing_execution" && isPassingTestExecutionEvidence(evidence) && executionRefs.has(ref) && evidenceOverlapsRequirement(requirementText, evidence);
+    if (collectionBasis === "passing_execution") {
+      return isPassingTestExecutionEvidence(evidence) && executionRefs.has(ref) && evidenceOverlapsRequirement(requirementText, evidence);
+    }
+    if (collectionBasis === "passing_suite_execution") {
+      return isVerifiedSuiteExecutionEvidenceCompatible(report, evidence, proofNode, ref);
+    }
+    return false;
   }
   if (subject === "visual") {
     return collectionBasis === "visual_verification" && isVisualVerificationProofEvidence(evidence) && evidenceOverlapsRequirement(requirementText, evidence);
   }
+  if (subject === "interaction") {
+    return collectionBasis === "interaction_verification" && isVisualVerificationProofEvidence(evidence) && evidenceOverlapsRequirement(requirementText, evidence);
+  }
   return false;
+}
+
+function isVerifiedSuiteExecutionEvidenceCompatible(
+  report: RecordValue,
+  evidence: RecordValue,
+  proofNode: RecordValue | undefined,
+  ref: string
+): boolean {
+  if (!isPassingTestExecutionEvidence(evidence)) return false;
+  if (!new Set(getStringArray(proofNode?.executionEvidenceRefs)).has(ref)) return false;
+
+  const source = isRecord(report.source) ? report.source : null;
+  const provenance = source && isRecord(source.provenance) ? source.provenance : null;
+  const headSha = typeof provenance?.headSha === "string" ? provenance.headSha : "";
+  if (provenance?.origin !== "github_snapshot" || !/^[a-f0-9]{40,64}$/.test(headSha)) return false;
+
+  const suites = Array.isArray(provenance.executionSuites) ? provenance.executionSuites.filter(isRecord) : [];
+  const label = typeof evidence.label === "string" ? evidence.label : "";
+  const targetedTestRefs = new Set(getStringArray(proofNode?.targetedTestEvidenceRefs));
+  const evidenceIndex = Array.isArray(report.evidenceIndex) ? report.evidenceIndex.filter(isRecord) : [];
+
+  return suites.some((suite) => {
+    if (
+      suite.headSha !== headSha ||
+      suite.status !== "passed" ||
+      suite.executionSource !== label ||
+      (suite.scope !== "repository_discovery" && suite.scope !== "explicit_paths") ||
+      !Array.isArray(suite.testPaths)
+    ) {
+      return false;
+    }
+
+    const coveredPaths = new Set(suite.testPaths.filter((path): path is string => typeof path === "string").map((path) => path.toLowerCase()));
+    return evidenceIndex.some((item) =>
+      typeof item.id === "string" &&
+      targetedTestRefs.has(item.id) &&
+      item.kind === "test" &&
+      typeof item.locator === "string" &&
+      coveredPaths.has(item.locator.toLowerCase())
+    );
+  });
 }
 
 function isViolatedExecutionAxisEvidenceCompatible(

@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import type { AnalyzeRequest, ChangedFile, CheckRun, LogSnippet, PullRequestInput, SourceProvenance } from "./types";
+import type { AnalyzeRequest, ChangedFile, CheckRun, ExecutionSuiteObservation, LogSnippet, PullRequestInput, SourceProvenance } from "./types";
 import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
 import {
   extractSupportedIssueReferences,
@@ -166,6 +166,7 @@ interface GitHubCheckAnnotationFetchResult {
 
 interface GitHubActionJobFetchResult {
   logs: LogSnippet[];
+  executionSuites: ExecutionSuiteObservation[];
   limitation?: string;
 }
 
@@ -359,7 +360,7 @@ async function fetchGitHubPullRequest(
   ]);
   const annotationLimitations: string[] = [];
   const actionJobLimitations: string[] = [];
-  const [annotatedCheckRuns, actionJobLogs] = await Promise.all([
+  const [annotatedCheckRuns, actionJobEvidence] = await Promise.all([
     measureGitHubEvidenceTiming(
       evidenceTiming,
       "github_annotations",
@@ -368,12 +369,12 @@ async function fetchGitHubPullRequest(
     measureGitHubEvidenceTiming(
       evidenceTiming,
       "github_jobs",
-      () => fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, actionJobLimitations, hasToken)
+      () => fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, actionJobLimitations, hasToken, initialHeadSha, files)
     )
   ]);
 
   limitations.push(...annotationLimitations, ...actionJobLimitations);
-  limitations.push(...githubEvidenceSourceLimitations(checkRuns, statuses, actionJobLogs));
+  limitations.push(...githubEvidenceSourceLimitations(checkRuns, statuses, actionJobEvidence.logs, actionJobEvidence.executionSuites));
   const missingPatchCount = files.filter((file) => !file.patch).length;
 
   if (missingPatchCount > 0) {
@@ -417,7 +418,8 @@ async function fetchGitHubPullRequest(
       summary: status.description ? compactText(status.description, 240) : undefined,
       url: sanitizeGitHubEvidenceUrl(status.target_url)
     }))),
-    logs: actionJobLogs,
+    logs: actionJobEvidence.logs,
+    executionSuites: actionJobEvidence.executionSuites,
     limitations: normalizeGitHubEvidenceLimitations(limitations)
   };
   input.sourceProvenance = buildMetadataOnlyProvenance({
@@ -529,6 +531,14 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseS
     changedFiles: [...input.changedFiles].map((file) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, patchLength: file.patch?.length ?? 0 })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     checks: [...input.checks].map((check) => ({ name: check.name, status: check.status, summaryLength: check.summary?.length ?? 0, urlHost: safeUrlHost(check.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     logs: [...input.logs].map((log) => ({ source: log.source, status: log.status, textLength: log.text.length, urlHost: safeUrlHost(log.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    executionSuites: [...(input.executionSuites ?? [])].map((suite) => ({
+      headSha: suite.headSha,
+      status: suite.status,
+      executionSource: suite.executionSource,
+      runner: suite.runner,
+      scope: suite.scope,
+      testPaths: [...suite.testPaths].sort()
+    })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     limitations: [...(input.limitations ?? [])].map((limitation) => limitation.length).sort((left, right) => left - right)
   });
   return {
@@ -543,6 +553,7 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseS
         : "incomplete",
       ...(hasFullHeadSha ? { headSha } : {})
     },
+    ...(input.executionSuites?.length ? { executionSuites: input.executionSuites } : {}),
     evidenceCapturedAt: capturedAt,
     inputFingerprint: {
       version: 1,
@@ -567,7 +578,8 @@ function safeUrlHost(value: string | undefined): string | undefined {
 function githubEvidenceSourceLimitations(
   checkRuns: GitHubCheckRunResponse[],
   statuses: GitHubStatusResponse[],
-  actionJobLogs: LogSnippet[]
+  actionJobLogs: LogSnippet[],
+  executionSuites: ExecutionSuiteObservation[] = []
 ): string[] {
   const limitations: string[] = [];
   const hasExecutionCheckRun = checkRuns.some(isExecutionCheckRun);
@@ -608,7 +620,9 @@ function githubEvidenceSourceLimitations(
     }
   }
 
-  if (hasReportedSuccessfulExecutionMetadata) {
+  if (executionSuites.length > 0) {
+    limitations.push("Public GitHub Actions metadata linked a passing generic test suite to changed test artifacts; raw log archives were not fetched or stored.");
+  } else if (hasReportedSuccessfulExecutionMetadata) {
     limitations.push(
       "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation."
     );
@@ -1193,8 +1207,10 @@ async function fetchActionJobSummaries(
   checkRuns: GitHubCheckRunResponse[],
   headers: Record<string, string>,
   limitations: string[],
-  hasToken: boolean
-): Promise<LogSnippet[]> {
+  hasToken: boolean,
+  headSha: string,
+  changedFiles: GitHubFileResponse[]
+): Promise<{ logs: LogSnippet[]; executionSuites: ExecutionSuiteObservation[] }> {
   const runIds = Array.from(new Set(checkRuns
     .filter((check) => shouldFetchActionJobMetadata(check, owner, repo))
     .map((check) => actionRunIdFromCheckRun(check, owner, repo))
@@ -1202,13 +1218,14 @@ async function fetchActionJobSummaries(
     .slice(0, GITHUB_MAX_ACTION_RUNS);
 
   if (runIds.length === 0) {
-    return [];
+    return { logs: [], executionSuites: [] };
   }
 
   const jobResults = await Promise.all(
-    runIds.map((runId) => fetchActionJobsForRun(owner, repo, runId, headers, hasToken))
+    runIds.map((runId) => fetchActionJobsForRun(owner, repo, runId, headers, hasToken, headSha, changedFiles))
   );
   const logs: LogSnippet[] = [];
+  const executionSuites: ExecutionSuiteObservation[] = [];
 
   for (const result of jobResults) {
     if (result.limitation) {
@@ -1220,13 +1237,14 @@ async function fetchActionJobSummaries(
     }
 
     logs.push(...result.logs.slice(0, GITHUB_MAX_ACTION_JOB_SUMMARIES - logs.length));
+    executionSuites.push(...result.executionSuites.slice(0, GITHUB_MAX_ACTION_JOB_SUMMARIES - executionSuites.length));
   }
 
   if (logs.length > 0) {
-    limitations.push(githubActionsMetadataLimitation(logs));
+    limitations.push(githubActionsMetadataLimitation(logs, executionSuites));
   }
 
-  return logs;
+  return { logs, executionSuites };
 }
 
 async function fetchActionJobsForRun(
@@ -1234,7 +1252,9 @@ async function fetchActionJobsForRun(
   repo: string,
   runId: string,
   headers: Record<string, string>,
-  hasToken: boolean
+  hasToken: boolean,
+  headSha: string,
+  changedFiles: GitHubFileResponse[]
 ): Promise<GitHubActionJobFetchResult> {
   try {
     const response = await githubFetch(
@@ -1246,15 +1266,19 @@ async function fetchActionJobsForRun(
     if (!response.ok) {
       return {
         logs: [],
+        executionSuites: [],
         limitation: `GitHub Actions job-step metadata fetch failed: ${githubFailureReason(response, hasToken)} Test/build evidence may be incomplete.`
       };
     }
 
     const json = await response.json();
-    const logs = ((json.jobs ?? []) as GitHubActionJobResponse[])
+    const jobs = ((json.jobs ?? []) as GitHubActionJobResponse[])
       .filter(isExecutionActionJob)
-      .slice(0, GITHUB_MAX_ACTION_JOB_SUMMARIES)
-      .map((job) => {
+      .slice(0, GITHUB_MAX_ACTION_JOB_SUMMARIES);
+    const packageTestRunner = jobs.some((job) => actionExecutionSteps(job).some((step) => /^run\s+npm\s+test$/i.test(step.name.trim())))
+      ? await fetchRootNpmTestRunner(owner, repo, headSha, headers)
+      : null;
+    const logs = jobs.map((job) => {
         const safeJobName = redactSecrets(compactText(job.name, 160));
         const steps = actionExecutionSteps(job)
           .filter((step) => step.name)
@@ -1273,13 +1297,91 @@ async function fetchActionJobsForRun(
         };
       });
 
-    return { logs };
+    const executionSuites = jobs.flatMap((job) => genericSuiteObservationForJob(job, headSha, changedFiles, packageTestRunner));
+
+    return { logs, executionSuites };
   } catch {
     return {
       logs: [],
+      executionSuites: [],
       limitation: `GitHub Actions job-step metadata unavailable: request timed out after ${GITHUB_ACTION_JOB_TIMEOUT_MS} ms or network failed.`
     };
   }
+}
+
+function genericSuiteObservationForJob(
+  job: GitHubActionJobResponse,
+  headSha: string,
+  changedFiles: GitHubFileResponse[],
+  packageTestRunner: ExecutionSuiteObservation["runner"] | null
+): ExecutionSuiteObservation[] {
+  if (mapGitHubObservationStatus(mapGitHubCheckStatus(job.status, job.conclusion)) !== "passed") return [];
+  const runner = normalizedUnfilteredRunner(actionExecutionSteps(job), packageTestRunner);
+  if (!runner) return [];
+
+  const testPaths = changedFiles
+    .map((file) => file.filename)
+    .filter((path) => testPathCoveredByRunner(path, runner))
+    .slice(0, 60);
+  if (testPaths.length === 0) return [];
+
+  return [{
+    headSha,
+    status: "passed",
+    executionSource: `GitHub Actions job: ${redactSecrets(compactText(job.name, 160))}`,
+    runner,
+    scope: "repository_discovery",
+    testPaths
+  }];
+}
+
+function normalizedUnfilteredRunner(
+  steps: GitHubActionStepResponse[],
+  packageTestRunner: ExecutionSuiteObservation["runner"] | null
+): ExecutionSuiteObservation["runner"] | null {
+  for (const step of steps) {
+    const command = step.name.trim().replace(/^run\s+/i, "");
+    if (/^node\s+--test$/i.test(command)) return "node_test";
+    if (/^npm\s+test$/i.test(command)) return packageTestRunner;
+    if (/^pytest$/i.test(command)) return "pytest";
+    if (/^go\s+test\s+\.\/\.\.$/i.test(command)) return "go_test";
+    if (/^cargo\s+test$/i.test(command)) return "cargo_test";
+  }
+  return null;
+}
+
+async function fetchRootNpmTestRunner(
+  owner: string,
+  repo: string,
+  headSha: string,
+  headers: Record<string, string>
+): Promise<ExecutionSuiteObservation["runner"] | null> {
+  try {
+    const response = await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/package.json?ref=${encodeURIComponent(headSha)}`,
+      headers,
+      GITHUB_ACTION_JOB_TIMEOUT_MS
+    );
+    if (!response.ok) return null;
+    const payload = await response.json();
+    if (payload?.encoding !== "base64" || typeof payload.content !== "string") return null;
+    const parsed = JSON.parse(Buffer.from(payload.content, "base64").toString("utf8"));
+    const script = typeof parsed?.scripts?.test === "string" ? parsed.scripts.test.trim() : "";
+    if (/^node\s+--test$/i.test(script)) return "node_test";
+    if (/^pytest$/i.test(script)) return "pytest";
+    if (/^go\s+test\s+\.\/\.\.$/i.test(script)) return "go_test";
+    if (/^cargo\s+test$/i.test(script)) return "cargo_test";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function testPathCoveredByRunner(path: string, runner: ExecutionSuiteObservation["runner"]): boolean {
+  if (runner === "node_test") return /(?:^|\/)(?:test|tests)\/.*\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(path) || /(?:^|\/)test-[^/]+\.[cm]?[jt]sx?$/i.test(path);
+  if (runner === "pytest") return /(?:^|\/)(?:test_[^/]+|[^/]+_test)\.py$/i.test(path);
+  if (runner === "go_test") return /_test\.go$/i.test(path);
+  return /(?:^|\/)tests?\/.*\.rs$/i.test(path);
 }
 
 function isExecutionCheckRun(check: GitHubCheckRunResponse): boolean {
@@ -1303,7 +1405,7 @@ function shouldFetchActionJobMetadata(check: GitHubCheckRunResponse, owner: stri
   return GENERIC_ACTION_JOB_NAME_PATTERN.test(check.name);
 }
 
-function githubActionsMetadataLimitation(logs: LogSnippet[]): string {
+function githubActionsMetadataLimitation(logs: LogSnippet[], executionSuites: ExecutionSuiteObservation[] = []): string {
   const statuses = logs.map((log) => log.status ?? "unknown");
 
   if (statuses.some((status) => status === "failed")) {
@@ -1312,6 +1414,10 @@ function githubActionsMetadataLimitation(logs: LogSnippet[]): string {
 
   if (statuses.some((status) => status === "pending")) {
     return "Public GitHub Actions metadata showed pending build/test jobs; raw log archives were not fetched or stored.";
+  }
+
+  if (executionSuites.length > 0) {
+    return "Public GitHub Actions metadata linked a passing generic test suite to changed test artifacts; raw log archives were not fetched or stored.";
   }
 
   if (logs.some((log) => /\breported conclusion: success\b/i.test(log.text))) {

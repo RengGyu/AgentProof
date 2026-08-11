@@ -762,6 +762,8 @@ function proofPlanTextForGap(kind: string): string {
       return "Ask a human to identify the exact source-of-truth sentence for this requirement.";
     case "evidence_unavailable":
       return "Record which evidence source was unavailable before interpreting the proof gap.";
+    case "interaction_proof_missing":
+      return "Ask for bounded component or browser evidence of the user-facing interaction.";
     case "visual_proof_missing":
       return "Ask for bounded visual proof that demonstrates the changed behavior.";
     default:
@@ -783,6 +785,8 @@ function missingProofText(kind: string): string {
       return "Requirement wording or source of truth is ambiguous.";
     case "evidence_unavailable":
       return "Required evidence could not be fetched and should not be treated as missing implementation.";
+    case "interaction_proof_missing":
+      return "User-facing interaction proof is missing; logic and suite execution do not establish the UI behavior.";
     case "visual_proof_missing":
       return "Visual proof or screenshot evidence is missing.";
     default:

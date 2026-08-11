@@ -4,6 +4,7 @@ export interface RequirementProofExpectations {
   ci: boolean;
   targetedTest: boolean;
   visual: boolean;
+  interaction: boolean;
   noImplementationChanges: boolean;
   execution: boolean;
 }
@@ -17,6 +18,9 @@ export function requirementProofExpectations(text: string): RequirementProofExpe
   const explicitTestArtifact = /\b(?:add|create|write|update|extend|include|provide|require)\b.{0,50}\b(?:tests?|test cases?|coverage|specs?|regression tests?)\b|\b(?:tests?|test cases?|coverage|specs?|regression tests?)\b.{0,50}\b(?:must|should|shall|required|add|create|write|update|cover|verify|confirm)\b|(?:테스트|회귀)(?:를|가|는)?\s*(?:추가|작성|수정|보강|포함|검증)|(?:추가|작성|수정|보강|포함)(?:하|해)?고?.{0,30}(?:테스트|회귀)/i.test(normalized);
   const targetedTest = explicitTestArtifact && !(ci && /^\s*(?:run|execute)\b/i.test(normalized));
   const visual = /\b(?:accessibility|browser-facing|layout|mobile|readability|readable|responsive|screenshot|visual|viewport)\b|\b(?:text|content|card|layout)\s+overlap\b|\boverlap\b.{0,30}\b(?:text|content|card|layout)\b|\b\d{3,4}px\b|(?:접근성|가독성|반응형|모바일|레이아웃|스크린샷|시각적|뷰포트|텍스트\s*겹침)/i.test(normalized);
+  const interactionSurface = /\b(?:search|filter|input|button|form|list|results?|screen|ui|interface)\b|(?:검색|입력|버튼|목록|화면|사용자\s*인터페이스)/i.test(normalized);
+  const interactionVerb = /\b(?:show|display|render|clear|click|tap|type|select|restore)\b|(?:표시|보여|렌더링|지우|클릭|탭|입력|복원)/i.test(normalized);
+  const interaction = interactionSurface && interactionVerb;
   const genericAddBehaviorAndTests = /^add\s+(?!(?:an?\s+)?(?:tests?|coverage|specs?|regression)\b).{1,120}\b(?:and|with)\s+(?:tests?|coverage|specs?|regression)\b/i.test(normalized) && !documentation && !ci;
   const koreanBehaviorAndTests = /(?:기능|동작|처리|지원).{0,60}(?:추가|변경|구현).{0,80}(?:테스트|회귀)|(?:테스트|회귀).{0,80}(?:기능|동작|처리|지원).{0,60}(?:추가|변경|구현)/.test(normalized) && !documentation && !ci;
   const explicitBehavior = genericAddBehaviorAndTests || koreanBehaviorAndTests || /^(?:(?:must|should|shall|required to)\s+)?(?:allow|show|ensure|display|keep|retry|implement|support|prevent|handle|validate|return|render|enable|disable|remove|fix|add\s+support|change|refactor|reject|normalize|format)\b|\b(?:and|to)\s+(?:allow|show|ensure|display|keep|retry|implement|support|prevent|handle|validate|return|render|enable|disable|remove|fix)\b|(?:허용|표시|보장|구현|지원|방지|처리|검증|반환|렌더링|활성화|비활성화|제거)/i.test(normalized);
@@ -28,6 +32,7 @@ export function requirementProofExpectations(text: string): RequirementProofExpe
     ci,
     targetedTest,
     visual,
+    interaction,
     noImplementationChanges,
     execution: implementation || ci || targetedTest
   };

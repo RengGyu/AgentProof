@@ -92,7 +92,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
       author: input.author ? redactSecrets(input.author) : undefined,
       baseBranch: input.baseBranch ? redactSecrets(input.baseBranch) : undefined,
       headBranch: input.headBranch ? redactSecrets(input.headBranch) : undefined,
-      provenance: input.sourceProvenance
+      provenance: provenanceWithExecutionSuites(input)
     },
     summary: {
       oneLine: summarize(priority, evidenceCoverage, topRisks),
@@ -127,6 +127,25 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   };
   report.analysisContext = tenantReportAnalysisContext(report);
   return report;
+}
+
+function provenanceWithExecutionSuites(input: PullRequestInput) {
+  const provenance = input.sourceProvenance;
+  if (!provenance || provenance.origin !== "github_snapshot" || !input.executionSuites?.length) {
+    return provenance;
+  }
+
+  return {
+    ...provenance,
+    executionSuites: input.executionSuites.map((suite) => ({
+      headSha: suite.headSha,
+      status: suite.status,
+      executionSource: redactSecrets(suite.executionSource),
+      runner: suite.runner,
+      scope: suite.scope,
+      testPaths: suite.testPaths.map((path) => redactSecrets(path))
+    }))
+  };
 }
 
 function constrainAuthorIntentFinding(requirement: Requirement, finding: RequirementFinding): RequirementFinding {
@@ -579,6 +598,41 @@ function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
     hasPassingEvidenceStatusPrefix(item.summary);
 }
 
+/**
+ * A generic suite is only requirement-local when GitHub snapshot metadata
+ * proves that its normalized, unfiltered discovery scope includes a changed
+ * test artifact already linked to this requirement.
+ */
+function verifiedSuiteExecutionEvidenceRefs(
+  input: PullRequestInput,
+  evidenceIndex: EvidenceItem[],
+  targetedTestEvidenceRefs: string[]
+): string[] {
+  const headSha = input.sourceProvenance?.origin === "github_snapshot"
+    ? input.sourceProvenance.headSha
+    : undefined;
+  if (!headSha || targetedTestEvidenceRefs.length === 0) return [];
+
+  const targetedPaths = new Set(targetedTestEvidenceRefs
+    .flatMap((ref) => refsToPaths(evidenceIndex, [ref]))
+    .map((path) => path.toLowerCase()));
+  if (targetedPaths.size === 0) return [];
+
+  const evidenceByLabel = new Map(evidenceIndex
+    .filter(isPassingTestExecutionEvidence)
+    .map((item) => [item.label, item]));
+
+  return uniqueRefs((input.executionSuites ?? [])
+    .filter((suite) =>
+      suite.status === "passed" &&
+        suite.headSha === headSha &&
+        suite.scope === "repository_discovery" &&
+        suite.testPaths.some((path) => targetedPaths.has(path.toLowerCase()))
+    )
+    .map((suite) => evidenceByLabel.get(suite.executionSource)?.id)
+    .filter((ref): ref is string => Boolean(ref)));
+}
+
 function evidenceStatusFromSummary(summary: string): CheckStatus {
   const match = summary.trim().match(/^Status:\s*(passed|failed|pending|unknown)\b/i);
 
@@ -627,15 +681,21 @@ function buildProofGraph(
       implementationEvidenceRefs,
       expectations
     );
-    const matchingExecutionRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+    const directlyMatchingExecutionRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
       (item.kind === "check" || item.kind === "log") &&
       isEvidenceExecutionSignal(item) &&
       (evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary) || isOpaqueMatrixExecutionFailure(item))
     );
+    const verifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceIndex, targetedTestEvidenceRefs);
+    const matchingExecutionRefs = uniqueRefs([
+      ...directlyMatchingExecutionRefs,
+      ...verifiedSuiteExecutionRefs
+    ]);
     const matchingFailedExecutionRefs = requirementFailedExecutionEvidenceRefs(requirement, input, evidenceIndex);
     const matchingVisualRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
       isVisualVerificationEvidence(item) && evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary)
     );
+    const matchingInteractionRefs = matchingVisualRefs;
     const executionEvidenceRefs = uniqueRefs([
       ...matchingExecutionRefs,
       ...matchingFailedExecutionRefs
@@ -662,8 +722,10 @@ function buildProofGraph(
       artifactRefs,
       forbiddenImplementationRefs,
       matchingExecutionRefs,
+      verifiedSuiteExecutionRefs,
       matchingFailedExecutionRefs,
       matchingVisualRefs,
+      matchingInteractionRefs,
       evidenceIndex,
       changedFileEvidenceUnavailable,
       diffEvidenceUnavailable,
@@ -738,21 +800,21 @@ function buildProofGraph(
     const matchingPassingExecutionRefs = matchingExecutionRefs.filter((ref) =>
       refsToEvidence(evidenceIndex, [ref]).some(isPassingTestExecutionEvidence)
     );
-    if (expectedArtifactRefs.length > 0 && expectations.execution && matchingPassingExecutionRefs.length === 0) {
-      gapSignals.push({
-        kind: "missing_execution",
-        severity: "medium",
-        message: "No deterministic test/build execution evidence was collected for this requirement.",
-        evidenceRefs: expectedArtifactRefs.slice(0, 8)
-      });
-    }
-
     if (matchingFailedExecutionRefs.length > 0 && expectations.execution) {
       gapSignals.push({
         kind: "failed_execution",
         severity: "blocker",
         message: "A relevant test/build execution signal failed, so this requirement is not proven ready.",
         evidenceRefs: matchingFailedExecutionRefs.slice(0, 8)
+      });
+    }
+
+    if (expectations.interaction && matchingInteractionRefs.length === 0) {
+      gapSignals.push({
+        kind: "interaction_proof_missing",
+        severity: "medium",
+        message: "User-facing interaction needs component or browser evidence beyond logic and suite execution.",
+        evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
       });
     }
 
@@ -771,6 +833,15 @@ function buildProofGraph(
         severity: "medium",
         message: "Visual or browser-facing behavior needs proof beyond test/build status.",
         evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
+      });
+    }
+
+    if (expectedArtifactRefs.length > 0 && expectations.execution && matchingPassingExecutionRefs.length === 0) {
+      gapSignals.push({
+        kind: "missing_execution",
+        severity: "medium",
+        message: "No deterministic test/build execution evidence was collected for this requirement.",
+        evidenceRefs: expectedArtifactRefs.slice(0, 8)
       });
     }
 
@@ -861,8 +932,10 @@ interface RequirementProofAxisBuildInput {
   artifactRefs: Partial<Record<"implementation" | "documentation" | "ci" | "targetedTest", string[]>>;
   forbiddenImplementationRefs: string[];
   matchingExecutionRefs: string[];
+  verifiedSuiteExecutionRefs: string[];
   matchingFailedExecutionRefs: string[];
   matchingVisualRefs: string[];
+  matchingInteractionRefs: string[];
   evidenceIndex: EvidenceItem[];
   changedFileEvidenceUnavailable: boolean;
   diffEvidenceUnavailable: boolean;
@@ -902,6 +975,7 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
     const passingRefs = uniqueRefs(input.matchingExecutionRefs)
       .filter((ref) => refsToEvidence(input.evidenceIndex, [ref]).some(isPassingTestExecutionEvidence));
     const failedRefs = uniqueRefs(input.matchingFailedExecutionRefs);
+    const directPassingRefs = passingRefs.filter((ref) => !input.verifiedSuiteExecutionRefs.includes(ref));
     axes.push({
       subject: "execution",
       polarity: "present",
@@ -909,8 +983,10 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
       evidenceRefs: (failedRefs.length > 0 ? failedRefs : passingRefs).slice(0, 8),
       ...(failedRefs.length > 0
         ? { collectionBasis: "failed_execution" as const }
-        : passingRefs.length > 0
+        : directPassingRefs.length > 0
           ? { collectionBasis: "passing_execution" as const }
+          : passingRefs.length > 0
+            ? { collectionBasis: "passing_suite_execution" as const }
           : {})
     });
   }
@@ -923,6 +999,17 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
       state: visualRefs.length > 0 ? "satisfied" : "incomplete",
       evidenceRefs: visualRefs,
       ...(visualRefs.length > 0 ? { collectionBasis: "visual_verification" as const } : {})
+    });
+  }
+
+  if (input.expectations.interaction) {
+    const interactionRefs = input.matchingInteractionRefs.slice(0, 8);
+    axes.push({
+      subject: "interaction",
+      polarity: "present",
+      state: interactionRefs.length > 0 ? "satisfied" : "incomplete",
+      evidenceRefs: interactionRefs,
+      ...(interactionRefs.length > 0 ? { collectionBasis: "interaction_verification" as const } : {})
     });
   }
 

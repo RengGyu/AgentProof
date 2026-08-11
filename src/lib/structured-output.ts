@@ -58,6 +58,7 @@ const proofGapSignalSchema = {
           "missing_targeted_test",
           "missing_execution",
           "failed_execution",
+          "interaction_proof_missing",
           "ambiguous_requirement",
           "self_reported_test_gap",
           "evidence_unavailable",

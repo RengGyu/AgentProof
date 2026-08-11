@@ -11,6 +11,7 @@ const GAP_TEXT: Record<ProofGapKind, string> = {
   missing_targeted_test: "Targeted test evidence is missing for this requirement.",
   missing_execution: "Check or runtime execution evidence is missing for this requirement.",
   failed_execution: "A relevant Check reported failure; review the failed Check evidence.",
+  interaction_proof_missing: "User-facing interaction evidence is missing for this requirement.",
   ambiguous_requirement: "The requirement needs clarification before its evidence can be assessed.",
   self_reported_test_gap: "The PR indicates its targeted test evidence may be incomplete.",
   evidence_unavailable: "Required evidence was unavailable during collection.",
@@ -23,6 +24,7 @@ const REMEDIATION_TEXT: Record<ProofGapKind, string> = {
   missing_targeted_test: "Add or link a targeted test and its Check result for the requirement.",
   missing_execution: "Run or link the relevant Check for the requirement.",
   failed_execution: "Investigate the failed Check and provide updated execution evidence.",
+  interaction_proof_missing: "Add component or browser evidence for the user-facing interaction.",
   ambiguous_requirement: "Clarify the requirement, then link evidence to the agreed interpretation.",
   self_reported_test_gap: "Complete or link the targeted test evidence described by the PR.",
   evidence_unavailable: "Collect the unavailable evidence and run the analysis again.",
@@ -32,6 +34,7 @@ const REMEDIATION_TEXT: Record<ProofGapKind, string> = {
 
 const REMEDIATION_PRIORITY: ProofGapKind[] = [
   "failed_execution",
+  "interaction_proof_missing",
   "ambiguous_requirement",
   "forbidden_implementation_present",
   "missing_targeted_test",

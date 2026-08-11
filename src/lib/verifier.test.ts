@@ -2890,6 +2890,61 @@ describe("generateVerificationReport", () => {
     expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("visual_proof_missing");
   });
 
+  it("links an unfiltered generic suite to a changed requirement test only through a verified suite observation", () => {
+    const input = {
+      title: "Add repository search empty state",
+      description: "Adds repository search empty-state behavior.",
+      taskText: "Search results must show an empty-state message when no repositories match.",
+      changedFiles: [
+        { path: "src/repositories/RepositorySearch.js", additions: 10, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
+        { path: "test/repository-search.test.js", additions: 12, deletions: 0, status: "added", patch: "+ test('shows an empty state', () => {})" }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "GitHub Actions job unit-tests: passed. Steps: Run npm test: passed." }],
+      sourceProvenance: githubInventoryProvenance("c".repeat(40)),
+      executionSuites: [{
+        status: "passed",
+        headSha: "c".repeat(40),
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/repository-search.test.js"]
+      }]
+    } as PullRequestInput;
+
+    const report = generateVerificationReport(input);
+    const execution = report.requirements[0]?.proofAxes?.find((axis) => axis.subject === "execution");
+
+    expect(execution).toMatchObject({
+      state: "satisfied",
+      collectionBasis: "passing_suite_execution"
+    });
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
+  });
+
+  it("keeps explicit search UI behavior partial when only logic and suite execution are linked", () => {
+    const headSha = "d".repeat(40);
+    const report = generateVerificationReport({
+      title: "Add repository search empty state",
+      description: "Adds search behavior.",
+      taskText: "Search results must show an empty-state message when no repositories match.",
+      changedFiles: [
+        { path: "src/repositories/RepositorySearch.js", additions: 8, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
+        { path: "test/repository-search.test.js", additions: 8, deletions: 0, status: "added", patch: "+ test('empty state', () => {})" }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "Steps: Run node --test: passed." }],
+      executionSuites: [{ headSha, status: "passed", executionSource: "GitHub Actions job: unit-tests", runner: "node_test", scope: "repository_discovery", testPaths: ["test/repository-search.test.js"] }],
+      sourceProvenance: githubInventoryProvenance(headSha)
+    } satisfies PullRequestInput);
+
+    const axes = report.requirements[0]?.proofAxes ?? [];
+    expect(axes).toContainEqual(expect.objectContaining({ subject: "execution", state: "satisfied" }));
+    expect(axes).toContainEqual(expect.objectContaining({ subject: "interaction", state: "incomplete" }));
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("interaction_proof_missing");
+    expect(report.requirements[0]?.status).toBe("partial");
+  });
+
   it("requires visual proof only for an explicit visual acceptance criterion", () => {
     const report = generateVerificationReport({
       title: "Keep compact settings readable",
@@ -2901,6 +2956,20 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("visual_proof_missing");
+  });
+
+  it("prioritizes an explicit visual-proof gap above generic missing execution", () => {
+    const report = generateVerificationReport({
+      title: "Keep compact settings readable",
+      description: "Keep the compact settings panel readable at 375px.",
+      taskText: "Keep the compact settings panel readable at 375px.",
+      changedFiles: [{ path: "src/settings/CompactPanel.css", additions: 8, deletions: 0, status: "modified", patch: "+ .panel { overflow-wrap: anywhere; }" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+    const gaps = report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind) ?? [];
+
+    expect(gaps.indexOf("visual_proof_missing")).toBeLessThan(gaps.indexOf("missing_execution"));
   });
 
   it("does not attach an unrelated generic failed check to a requirement", () => {

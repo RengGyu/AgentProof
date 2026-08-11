@@ -741,12 +741,12 @@ const SEMANTIC_GAP_PROOF_KINDS: Record<string, readonly ProofGapKind[]> = {
   ambiguous_requirement: ["ambiguous_requirement"],
   traceability_gap: ["evidence_unavailable"],
   conflicting_evidence: ["failed_execution", "forbidden_implementation_present"],
-  insufficient_context: ["evidence_unavailable", "visual_proof_missing"]
+  insufficient_context: ["evidence_unavailable", "interaction_proof_missing", "visual_proof_missing"]
 };
 
 const REMEDIATION_PROOF_KINDS: Record<string, readonly ProofGapKind[]> = {
   add_or_update_test: ["missing_targeted_test", "self_reported_test_gap"],
-  provide_or_link_evidence: ["missing_implementation", "missing_targeted_test", "missing_execution", "self_reported_test_gap", "evidence_unavailable", "visual_proof_missing"],
+  provide_or_link_evidence: ["missing_implementation", "missing_targeted_test", "missing_execution", "self_reported_test_gap", "evidence_unavailable", "interaction_proof_missing", "visual_proof_missing"],
   clarify_requirement: ["ambiguous_requirement"],
   explain_implementation: ["missing_implementation"],
   investigate_check_result: ["missing_execution", "failed_execution"],

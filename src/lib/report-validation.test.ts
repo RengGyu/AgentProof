@@ -11,6 +11,45 @@ describe("validateVerificationReport", () => {
     expect(validateVerificationReport(report)).toEqual({ valid: true, errors: [] });
   });
 
+  it("accepts verified suite execution only with a GitHub-head-anchored changed test path", () => {
+    const headSha = "c".repeat(40);
+    const report = generateVerificationReport({
+      title: "Add repository search empty state",
+      description: "Adds repository search behavior.",
+      taskText: "Search results must show an empty-state message when no repositories match.",
+      changedFiles: [
+        { path: "src/repositories/RepositorySearch.js", additions: 8, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
+        { path: "test/repository-search.test.js", additions: 8, deletions: 0, status: "added", patch: "+ test('empty state', () => {})" }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "Steps: Run npm test: passed." }],
+      executionSuites: [{
+        headSha,
+        status: "passed",
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/repository-search.test.js"]
+      }],
+      sourceProvenance: {
+        version: 1,
+        origin: "github_snapshot",
+        headSha,
+        baseSha: "b".repeat(40),
+        changedFileInventory: { version: 1, completeness: "complete", headSha },
+        evidenceCapturedAt: "2026-08-11T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "a".repeat(64), coverage: "github_metadata" }
+      }
+    });
+
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+
+    report.source.provenance!.executionSuites![0]!.testPaths = ["test/unrelated.test.js"];
+    const forged = validateVerificationReport(report, { mode: "full" });
+    expect(forged.valid).toBe(false);
+    expect(forged.errors.join("\n")).toContain("cites incompatible evidence or collection basis");
+  });
+
   it("validates every no-secret demo report in full and summary modes", () => {
     for (const [scenarioId, input] of Object.entries(demoScenarios)) {
       const report = generateVerificationReport(input);

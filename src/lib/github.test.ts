@@ -1140,6 +1140,124 @@ describe("buildPullRequestInput", () => {
     expect(input.limitations?.join(" ")).toContain("raw log archives were not fetched or stored");
   });
 
+  it("records a changed test as verified generic-suite coverage for an unfiltered runner", async () => {
+    const headSha = "a".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Search empty state",
+          body: "Adds search behavior.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          user: { login: "ai-agent" },
+          base: { ref: "main", sha: "b".repeat(40) },
+          head: { ref: "agent/search", sha: headSha }
+        }));
+      }
+      if (url.includes("/files?")) {
+        return Promise.resolve(Response.json([
+          { filename: "test/repository-search.test.js", status: "added", additions: 12, deletions: 0, patch: "+ test('empty state', () => {})" }
+        ]));
+      }
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({
+          total_count: 1,
+          check_runs: [{
+            name: "unit-tests",
+            status: "completed",
+            conclusion: "success",
+            details_url: "https://github.com/acme/repo/actions/runs/123456/job/999"
+          }]
+        }));
+      }
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/actions/runs/123456/jobs")) {
+        return Promise.resolve(Response.json({ jobs: [{
+          name: "unit-tests",
+          status: "completed",
+          conclusion: "success",
+          steps: [{ name: "Run node --test", status: "completed", conclusion: "success" }]
+        }] }));
+      }
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.executionSuites).toEqual([{
+      headSha,
+      status: "passed",
+      executionSource: "GitHub Actions job: unit-tests",
+      runner: "node_test",
+      scope: "repository_discovery",
+      testPaths: ["test/repository-search.test.js"]
+    }]);
+    expect(input.sourceProvenance?.executionSuites).toEqual(input.executionSuites);
+    expect(input.limitations?.join(" ")).toContain("linked a passing generic test suite to changed test artifacts");
+    expect(input.limitations?.join(" ")).not.toContain("success remains an unverified observation");
+  });
+
+  it("resolves npm test only when the head package script is an unfiltered supported runner", async () => {
+    const headSha = "d".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Search empty state",
+          body: "Adds search behavior.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          user: { login: "ai-agent" },
+          base: { ref: "main", sha: "b".repeat(40) },
+          head: { ref: "agent/search", sha: headSha }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([
+        { filename: "test/repository-search.test.js", status: "added", additions: 12, deletions: 0 }
+      ]));
+      if (url.includes("/commits/") && url.includes("/check-runs")) return Promise.resolve(Response.json({
+        total_count: 1,
+        check_runs: [{ name: "unit-tests", status: "completed", conclusion: "success", details_url: "https://github.com/acme/repo/actions/runs/123456/job/999" }]
+      }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/actions/runs/123456/jobs")) return Promise.resolve(Response.json({ jobs: [{
+        name: "unit-tests", status: "completed", conclusion: "success",
+        steps: [{ name: "Run npm test", status: "completed", conclusion: "success" }]
+      }] }));
+      if (url.includes("/contents/package.json?ref=")) return Promise.resolve(Response.json({
+        encoding: "base64",
+        content: Buffer.from(JSON.stringify({ scripts: { test: "node --test" } })).toString("base64")
+      }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.executionSuites?.[0]).toMatchObject({ headSha, runner: "node_test", scope: "repository_discovery" });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/contents/package.json?ref="))).toBe(true);
+    expect(JSON.stringify(input)).not.toContain('"scripts"');
+  });
+
+  it("does not link a generic npm test job when the resolved script filters to a path", async () => {
+    const headSha = "e".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Filtered tests", body: "Adds tests.", url: "https://api.github.com/repos/acme/repo/pulls/12",
+        user: { login: "ai-agent" }, base: { ref: "main", sha: "b".repeat(40) }, head: { ref: "agent/tests", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "test/repository-search.test.js", status: "added", additions: 4, deletions: 0 }]));
+      if (url.includes("/commits/") && url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 1, check_runs: [{ name: "unit-tests", status: "completed", conclusion: "success", details_url: "https://github.com/acme/repo/actions/runs/123456/job/999" }] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/actions/runs/123456/jobs")) return Promise.resolve(Response.json({ jobs: [{ name: "unit-tests", status: "completed", conclusion: "success", steps: [{ name: "Run npm test", status: "completed", conclusion: "success" }] }] }));
+      if (url.includes("/contents/package.json?ref=")) return Promise.resolve(Response.json({ encoding: "base64", content: Buffer.from(JSON.stringify({ scripts: { test: "node --test test/other.test.js" } })).toString("base64") }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.executionSuites).toEqual([]);
+  });
+
   it("fetches Actions job metadata for multiple workflow runs concurrently", async () => {
     let activeJobFetches = 0;
     let maxActiveJobFetches = 0;

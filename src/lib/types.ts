@@ -73,9 +73,24 @@ export interface PullRequestInput {
   changedFiles: ChangedFile[];
   checks: CheckRun[];
   logs: LogSnippet[];
+  /** Bounded, normalized Actions suite metadata. Raw commands and logs are excluded. */
+  executionSuites?: ExecutionSuiteObservation[];
   taskText: string;
   limitations?: string[];
   sourceProvenance?: SourceProvenance;
+}
+
+export type ExecutionSuiteRunner = "node_test" | "pytest" | "go_test" | "cargo_test";
+export type ExecutionSuiteScope = "repository_discovery" | "explicit_paths" | "unknown";
+
+export interface ExecutionSuiteObservation {
+  headSha: string;
+  status: CheckStatus;
+  executionSource: string;
+  runner: ExecutionSuiteRunner;
+  scope: ExecutionSuiteScope;
+  /** Changed test paths deterministically covered by the normalized scope. */
+  testPaths: string[];
 }
 
 /**
@@ -93,6 +108,8 @@ export interface SourceProvenance {
     completeness: "complete" | "incomplete";
     headSha?: string;
   };
+  /** Normalized suite coverage captured from GitHub Actions; no raw job output. */
+  executionSuites?: ExecutionSuiteObservation[];
   evidenceCapturedAt: string;
   inputFingerprint: {
     version: 1;
@@ -204,6 +221,7 @@ export type RequirementProofSubject =
   | "ci_configuration"
   | "targeted_test"
   | "execution"
+  | "interaction"
   | "visual";
 export type RequirementProofPolarity = "present" | "absent";
 export type RequirementProofState = "satisfied" | "violated" | "incomplete";
@@ -212,7 +230,9 @@ export type RequirementProofCollectionBasis =
   | "incomplete_changed_file_inventory"
   | "matching_artifact_evidence"
   | "passing_execution"
+  | "passing_suite_execution"
   | "failed_execution"
+  | "interaction_verification"
   | "visual_verification";
 
 export interface RequirementProofAxis {
@@ -250,6 +270,7 @@ export type ProofGapKind =
   | "missing_targeted_test"
   | "missing_execution"
   | "failed_execution"
+  | "interaction_proof_missing"
   | "ambiguous_requirement"
   | "self_reported_test_gap"
   | "evidence_unavailable"
