@@ -34,9 +34,13 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Copy all reports");
     expect(source).toContain("copySelectedRepositoryReports");
     expect(source).toContain("dashboardReportsToMarkdown");
-    expect(source).toContain("selectedReports.map");
+    expect(source).toContain("repositoryId=${encodeURIComponent(String(repositoryId))}");
+    expect(source).toContain("scope=current");
+    expect(source).toContain("AbortController");
+    expect(source).toContain("Tap Copy all reports again");
+    expect(source).not.toContain("Promise.all(selectedReports.map");
     expect(source).toContain("disabled={selectedReports.length === 0 || bulkCopyState === \"copying\"}");
-    expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setBulkCopyState\("idle"\);/);
+    expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setPreparedBulkCopy\(null\); setBulkCopyCount\(0\); setBulkCopyState\("idle"\);/);
   });
 
   it("renders only the agreed sanitized detail categories", () => {

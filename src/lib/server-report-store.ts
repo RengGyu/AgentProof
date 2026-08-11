@@ -223,6 +223,26 @@ export async function listTenantSavedReports(
     .filter((summary): summary is TenantSavedReportSummary => Boolean(summary));
 }
 
+export async function listTenantSavedReportDetails(input: {
+  tenantId?: unknown;
+  repositoryId?: unknown;
+  currentOnly?: boolean;
+  limit?: number;
+}): Promise<StoredServerReport[]> {
+  const tenantId = typeof input.tenantId === "string" ? normalizeTenantId(input.tenantId) : undefined;
+  const repositoryId = typeof input.repositoryId === "number" && Number.isSafeInteger(input.repositoryId) && input.repositoryId > 0
+    ? input.repositoryId
+    : undefined;
+  if (!tenantId) throw new SavedReportStoreError("Saved report tenant id is invalid.");
+  if (!repositoryId) throw new SavedReportStoreError("Saved report repository id is invalid.");
+
+  const limit = normalizeSavedReportListLimit(input.limit);
+  const config = getSupabaseReportStoreConfig();
+  return config
+    ? listSupabaseTenantSavedReports(config, tenantId, limit, { repositoryId, currentOnly: input.currentOnly === true })
+    : listMemoryTenantSavedReports(tenantId, limit, { repositoryId, currentOnly: input.currentOnly === true });
+}
+
 export function normalizeTenantSavedReportFilters(input: {
   priority?: unknown;
   status?: unknown;
@@ -460,11 +480,17 @@ function getMemorySavedReport(id: string, access: SavedReportAccessContext): Sto
   return sanitizeStoredReport(saved);
 }
 
-function listMemoryTenantSavedReports(tenantId: string, limit: number): StoredServerReport[] {
+function listMemoryTenantSavedReports(
+  tenantId: string,
+  limit: number,
+  filters: { repositoryId?: number; currentOnly?: boolean } = {}
+): StoredServerReport[] {
   cleanupExpiredReports();
 
   return [...reportStore().values()]
     .filter((saved) => saved.tenantId === tenantId)
+    .filter((saved) => filters.repositoryId === undefined || saved.repositoryId === filters.repositoryId)
+    .filter((saved) => filters.currentOnly !== true || !saved.staleAt)
     .map(sanitizeStoredReport)
     .filter((saved): saved is StoredServerReport => Boolean(saved))
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -579,7 +605,8 @@ async function getSupabaseSavedReport(
 async function listSupabaseTenantSavedReports(
   config: SupabaseReportStoreConfig,
   tenantId: string,
-  limit: number
+  limit: number,
+  filters: { repositoryId?: number; currentOnly?: boolean } = {}
 ): Promise<StoredServerReport[]> {
   const params = new URLSearchParams({
     tenant_id: `eq.${tenantId}`,
@@ -588,6 +615,8 @@ async function listSupabaseTenantSavedReports(
     order: "created_at.desc",
     limit: String(limit)
   });
+  if (filters.repositoryId !== undefined) params.set("repository_id", `eq.${filters.repositoryId}`);
+  if (filters.currentOnly === true) params.set("stale_at", "is.null");
   const response = await supabaseFetch(config, `?${params.toString()}`, {
     method: "GET"
   });
@@ -598,7 +627,9 @@ async function listSupabaseTenantSavedReports(
 
   return (await parseSupabaseArray(response))
     .map(rowToStoredReport)
-    .filter((row): row is StoredServerReport => Boolean(row && row.tenantId === tenantId));
+    .filter((row): row is StoredServerReport => Boolean(row && row.tenantId === tenantId))
+    .filter((row) => filters.repositoryId === undefined || row.repositoryId === filters.repositoryId)
+    .filter((row) => filters.currentOnly !== true || !row.staleAt);
 }
 
 async function countSupabaseTenantSavedReports(

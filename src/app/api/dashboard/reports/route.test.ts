@@ -107,4 +107,72 @@ describe("/api/dashboard/reports", () => {
       analysisContext: "linked_issue"
     });
   });
+
+  it("returns one tenant-scoped bundle of current reports for a repository", async () => {
+    const sessionA = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const firstHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 10,
+      headSha: "a".repeat(40)
+    });
+    const currentHead = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 10,
+      headSha: "b".repeat(40)
+    });
+    await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 200,
+      pullRequestNumber: 11,
+      headSha: "c".repeat(40)
+    });
+    const otherTenant = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_b",
+      installationId: 654,
+      repositoryId: 100,
+      pullRequestNumber: 12,
+      headSha: "d".repeat(40)
+    });
+
+    const response = await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=100&scope=current", {
+      headers: { cookie: sessionA.sessionCookie }
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      privacy: "tenant-sanitized-detail-bundle",
+      reports: [{
+        repositoryId: 100,
+        pullRequestNumber: 10,
+        headSha: "b".repeat(40),
+        report: expect.any(Object)
+      }]
+    });
+    expect(body.reports[0]).not.toHaveProperty("staleAt");
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain(firstHead.id);
+    expect(serialized).not.toContain(otherTenant.id);
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("tenant_b");
+    expect(serialized).not.toContain("access_token");
+    expect(serialized).not.toContain("rawDiff");
+    expect(serialized).not.toContain("rawLog");
+  });
+
+  it("rejects an invalid repository bundle selector", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const response = await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=not-a-number&scope=current", {
+      headers: { cookie: session.sessionCookie }
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "dashboard_reports_repository_invalid" });
+  });
 });

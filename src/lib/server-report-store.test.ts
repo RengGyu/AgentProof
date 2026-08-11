@@ -11,6 +11,7 @@ import {
   deleteSavedReport,
   getSavedReport,
   getSavedReportStoreStatus,
+  listTenantSavedReportDetails,
   listTenantSavedReports,
   MAX_SERVER_REPORTS,
   purgeTenantSavedReportsForDeletion,
@@ -802,6 +803,34 @@ describe("server report store", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+  });
+
+  it("filters a Supabase detail bundle by repository and current state at the query boundary", async () => {
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    const report = decodeSharedReport(encodeReportForShare(generateVerificationReport(demoScenarios.clean)));
+    const row = {
+      id: "tenant_current_report",
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      tenant_id: "tenant_a",
+      repository_id: 100,
+      pull_request_number: 28,
+      head_sha: "a".repeat(40),
+      report
+    };
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json([row]));
+    global.fetch = fetchMock as typeof fetch;
+
+    const rows = await listTenantSavedReportDetails({ tenantId: "tenant_a", repositoryId: 100, currentOnly: true, limit: 100 });
+    const [url] = fetchMock.mock.calls[0] ?? [];
+
+    expect(rows).toEqual([expect.objectContaining({ id: "tenant_current_report", repositoryId: 100 })]);
+    expect(String(url)).toContain("tenant_id=eq.tenant_a");
+    expect(String(url)).toContain("repository_id=eq.100");
+    expect(String(url)).toContain("stale_at=is.null");
+    expect(String(url)).toContain("limit=100");
+    expect(String(url)).not.toContain("service-role-secret");
   });
 
   it("lists a signed tenant persisted projection after privacy-safe hydration", async () => {
