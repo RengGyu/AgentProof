@@ -1983,6 +1983,7 @@ async function listSupabaseAnalysisJobDeadLetterRows(
 ): Promise<AnalysisJobDeadLetterRow[]> {
   const params = new URLSearchParams([
     ["status", "eq.failed_terminal"],
+    ["is_historical", "eq.false"],
     ["select", "error_code,updated_at"],
     ["order", "updated_at.asc"],
     ["limit", String(limit)]
@@ -2022,7 +2023,7 @@ function listMemoryAnalysisJobSummaryRows(limit: number): AnalysisJobQueueSummar
 
 function listMemoryAnalysisJobDeadLetterRows(limit: number): AnalysisJobDeadLetterRow[] {
   return analysisJobStore()
-    .filter((job) => job.status === "failed_terminal")
+    .filter((job) => job.is_historical !== true && job.status === "failed_terminal")
     .sort((left, right) => left.updated_at.localeCompare(right.updated_at))
     .slice(0, limit)
     .map((job) => ({

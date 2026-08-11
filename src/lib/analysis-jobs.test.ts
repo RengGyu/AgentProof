@@ -26,7 +26,7 @@ import {
   resolveAnalysisJobFreshness,
   sealAnalysisJobRevision
 } from "./analysis-jobs";
-import { toAnalysisQueueAlerts } from "./analysis-job-alerts";
+import { toAnalysisDeadLetterOpsStatus, toAnalysisQueueAlerts } from "./analysis-job-alerts";
 import { buildTenantSetupWarningRollup } from "./tenant-dashboard-warnings";
 import {
   clearTenantRepositoryGrantsForTests,
@@ -2501,6 +2501,58 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("idempotency");
   });
 
+  it("keeps historical terminal rows readable without dead-letter alerts", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    await enqueueAnalysisJob(jobInput());
+    const historical = getAnalysisJobsForTests()[0];
+    Object.assign(historical, {
+      is_historical: true,
+      status: "failed_terminal",
+      updated_at: "2026-06-29T20:00:00.000Z",
+      error_code: "historical_failure"
+    });
+
+    const emptySummary = await getAnalysisJobDeadLetterSummary({
+      now: new Date("2026-06-30T00:05:00Z")
+    });
+    expect(await countTenantAnalysisJobs({ tenantId: "tenant_a" })).toMatchObject({ count: 1 });
+    expect(await listTenantAnalysisJobs({ tenantId: "tenant_a" })).toHaveLength(1);
+    expect(emptySummary).toMatchObject({ sampled: 0, sampledTerminalCount: 0, topErrorCodes: [] });
+    expect(toAnalysisDeadLetterOpsStatus(emptySummary!)).toMatchObject({
+      state: "clear",
+      alerts: [],
+      nextActions: ["continue_monitoring"]
+    });
+
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "active-terminal",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174375",
+      pullRequestNumber: 8,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/8",
+      headSha: "b".repeat(40)
+    });
+    Object.assign(getAnalysisJobsForTests()[1], {
+      status: "failed_terminal",
+      updated_at: "2026-06-30T00:04:00.000Z",
+      error_code: "active_failure"
+    });
+    const activeSummary = await getAnalysisJobDeadLetterSummary({
+      now: new Date("2026-06-30T00:05:00Z")
+    });
+
+    expect(activeSummary).toMatchObject({
+      sampled: 1,
+      sampledTerminalCount: 1,
+      topErrorCodes: [{ errorCode: "active_failure", count: 1 }]
+    });
+    expect(toAnalysisDeadLetterOpsStatus(activeSummary!)).toMatchObject({
+      state: "needs_attention",
+      alerts: [expect.objectContaining({ code: "analysis_dead_letter_terminal_failures", count: 1 })]
+    });
+  });
+
   it("queries durable dead-letter summaries with a narrow Supabase projection", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
@@ -2533,11 +2585,18 @@ describe("analysis job queue", () => {
       oldestTerminalAgeSeconds: 300
     });
     expect(url).toContain("status=eq.failed_terminal");
+    expect(decodeURIComponent(url)).toContain("is_historical=eq.false");
     expect(url).toContain("select=error_code%2Cupdated_at");
     expect(url).toContain("limit=3");
     expect(url).not.toContain("repository_full_name");
     expect(url).not.toContain("pull_request_url");
     expect(init.method).toBe("GET");
+    expect(toAnalysisDeadLetterOpsStatus(summary!)).toMatchObject({
+      state: "incident",
+      alerts: expect.arrayContaining([
+        expect.objectContaining({ code: "analysis_dead_letter_terminal_failures", count: 2 })
+      ])
+    });
     expect(serialized).not.toContain("service-role-secret");
     expect(serialized).not.toContain("agentproof_analysis_jobs");
   });
