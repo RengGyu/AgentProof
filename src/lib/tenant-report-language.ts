@@ -14,6 +14,7 @@ const GAP_TEXT: Record<ProofGapKind, string> = {
   ambiguous_requirement: "The requirement needs clarification before its evidence can be assessed.",
   self_reported_test_gap: "The PR indicates its targeted test evidence may be incomplete.",
   evidence_unavailable: "Required evidence was unavailable during collection.",
+  forbidden_implementation_present: "Implementation evidence is present even though this requirement forbids implementation changes.",
   visual_proof_missing: "Visual or browser evidence is missing for this requirement."
 };
 
@@ -25,12 +26,14 @@ const REMEDIATION_TEXT: Record<ProofGapKind, string> = {
   ambiguous_requirement: "Clarify the requirement, then link evidence to the agreed interpretation.",
   self_reported_test_gap: "Complete or link the targeted test evidence described by the PR.",
   evidence_unavailable: "Collect the unavailable evidence and run the analysis again.",
+  forbidden_implementation_present: "Remove the forbidden implementation change or revise the requirement with reviewer approval.",
   visual_proof_missing: "Add visual or browser evidence for the requirement."
 };
 
 const REMEDIATION_PRIORITY: ProofGapKind[] = [
   "failed_execution",
   "ambiguous_requirement",
+  "forbidden_implementation_present",
   "missing_targeted_test",
   "missing_implementation",
   "missing_execution",

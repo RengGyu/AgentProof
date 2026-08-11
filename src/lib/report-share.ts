@@ -13,7 +13,7 @@ interface ShareableReportV1 {
   createdAt: string;
   source: VerificationReport["source"];
   summary: VerificationReport["summary"];
-  requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "gaps" | "reviewerNote" | "confidence">>;
+  requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "gaps" | "reviewerNote" | "confidence" | "proofAxes">>;
   testing: VerificationReport["testing"];
   reviewPriority: VerificationReport["reviewPriority"];
   proofGraph: VerificationReport["proofGraph"];
@@ -88,7 +88,16 @@ function toShareableReport(report: VerificationReport): ShareableReport {
       status: requirement.status,
       gaps: requirement.gaps.map(redactSecrets),
       reviewerNote: redactSecrets(requirement.reviewerNote),
-      confidence: requirement.confidence
+      confidence: requirement.confidence,
+      ...(requirement.proofAxes ? {
+        proofAxes: requirement.proofAxes.map((axis) => ({
+          subject: axis.subject,
+          polarity: axis.polarity,
+          state: axis.state,
+          evidenceRefs: [],
+          ...(axis.collectionBasis ? { collectionBasis: axis.collectionBasis } : {})
+        }))
+      } : {})
     })),
     testing: {
       ...report.testing,

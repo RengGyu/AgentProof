@@ -8,6 +8,17 @@ import {
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
+const PROOF_AXIS_SUBJECTS = new Set(["implementation", "documentation", "ci_configuration", "targeted_test", "execution", "visual"]);
+const PROOF_AXIS_POLARITIES = new Set(["present", "absent"]);
+const PROOF_AXIS_STATES = new Set(["satisfied", "violated", "incomplete"]);
+const PROOF_COLLECTION_BASES = new Set([
+  "complete_changed_file_inventory",
+  "incomplete_changed_file_inventory",
+  "matching_artifact_evidence",
+  "passing_execution",
+  "failed_execution",
+  "visual_verification"
+]);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
 const EVIDENCE_KINDS = new Set(["task", "pr_description", "diff", "changed_file", "check", "log", "test", "inference"]);
 const TARGET_AGENTS = new Set(["codex", "claude_code", "cursor", "copilot"]);
@@ -40,6 +51,7 @@ const PROOF_GAP_KINDS = new Set([
   "ambiguous_requirement",
   "self_reported_test_gap",
   "evidence_unavailable",
+  "forbidden_implementation_present",
   "visual_proof_missing"
 ]);
 const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
@@ -303,7 +315,7 @@ function validateRequirements(value: unknown, evidenceIds: Set<string>, errors: 
       continue;
     }
 
-    requireKeys(item, ["requirementId", "requirementText", "status", "evidenceRefs", "gaps", "reviewerNote", "confidence"], path, errors);
+    requireKeys(item, ["requirementId", "requirementText", "status", "evidenceRefs", "gaps", "reviewerNote", "confidence"], path, errors, ["proofAxes"]);
     validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
     validateString(item.requirementText, `${path}.requirementText`, LIMITS.requirementText, errors);
     validateEnum(item.status, `${path}.status`, REQUIREMENT_STATUSES, errors);
@@ -311,6 +323,41 @@ function validateRequirements(value: unknown, evidenceIds: Set<string>, errors: 
     validateStringArray(item.gaps, `${path}.gaps`, LIMITS.requirementGaps, LIMITS.shortText, errors);
     validateString(item.reviewerNote, `${path}.reviewerNote`, LIMITS.shortText, errors);
     validateRange(item.confidence, `${path}.confidence`, 0, 1, errors);
+    if (item.proofAxes !== undefined) validateRequirementProofAxes(item.proofAxes, `${path}.proofAxes`, evidenceIds, errors);
+  }
+}
+
+function validateRequirementProofAxes(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {
+  const axes = validateArray(value, path, 12, errors);
+  if (!axes) return;
+  if (axes.length === 0) errors.push(`${path} must contain at least one axis when present.`);
+  const seen = new Set<string>();
+
+  for (const [index, item] of axes.entries()) {
+    const itemPath = `${path}[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${itemPath} must be an object.`);
+      continue;
+    }
+    requireKeys(item, ["subject", "polarity", "state", "evidenceRefs"], itemPath, errors, ["collectionBasis"]);
+    validateEnum(item.subject, `${itemPath}.subject`, PROOF_AXIS_SUBJECTS, errors);
+    validateEnum(item.polarity, `${itemPath}.polarity`, PROOF_AXIS_POLARITIES, errors);
+    validateEnum(item.state, `${itemPath}.state`, PROOF_AXIS_STATES, errors);
+    validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+    if ("collectionBasis" in item) {
+      validateEnum(item.collectionBasis, `${itemPath}.collectionBasis`, PROOF_COLLECTION_BASES, errors);
+    }
+    if (typeof item.subject === "string" && typeof item.polarity === "string") {
+      const key = `${item.subject}:${item.polarity}`;
+      if (seen.has(key)) errors.push(`${itemPath} duplicates proof axis ${key}.`);
+      seen.add(key);
+    }
+    if (item.polarity === "absent" && item.state === "satisfied" && item.collectionBasis !== "complete_changed_file_inventory") {
+      errors.push(`${itemPath} cannot satisfy absence without a complete changed-file inventory.`);
+    }
+    if (item.polarity === "absent" && item.state === "incomplete" && item.collectionBasis !== "incomplete_changed_file_inventory") {
+      errors.push(`${itemPath} incomplete absence must record an incomplete changed-file inventory.`);
+    }
   }
 }
 
@@ -817,6 +864,17 @@ function validateSummaryOnlyReport(report: RecordValue, errors: string[]) {
     });
   }
 
+  if (Array.isArray(report.requirements)) {
+    report.requirements.forEach((requirement, requirementIndex) => {
+      if (!isRecord(requirement) || !Array.isArray(requirement.proofAxes)) return;
+      requirement.proofAxes.forEach((axis, axisIndex) => {
+        if (isRecord(axis) && Array.isArray(axis.evidenceRefs) && axis.evidenceRefs.length > 0) {
+          errors.push(`summary-only reports must omit requirements[${requirementIndex}].proofAxes[${axisIndex}].evidenceRefs.`);
+        }
+      });
+    });
+  }
+
   if (isRecord(report.proofGraph) && Array.isArray(report.proofGraph.context)) {
     report.proofGraph.context.forEach((context, index) => {
       if (!isRecord(context)) return;
@@ -838,11 +896,19 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
   const testing = isRecord(report.testing) ? report.testing : null;
   const scope = isRecord(report.scope) ? report.scope : null;
   const evidenceById = new Map<string, RecordValue>();
+  const proofSourceQualityByRequirement = new Map<string, unknown>();
 
   if (Array.isArray(report.evidenceIndex)) {
     for (const item of report.evidenceIndex) {
       if (isRecord(item) && typeof item.id === "string") {
         evidenceById.set(item.id, item);
+      }
+    }
+  }
+  if (isRecord(report.proofGraph) && Array.isArray(report.proofGraph.nodes)) {
+    for (const node of report.proofGraph.nodes) {
+      if (isRecord(node) && typeof node.requirementId === "string") {
+        proofSourceQualityByRequirement.set(node.requirementId, node.sourceQuality);
       }
     }
   }
@@ -885,11 +951,33 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
   report.requirements.forEach((item, index) => {
     if (!isRecord(item)) return;
 
+    const axes = Array.isArray(item.proofAxes) ? item.proofAxes.filter(isRecord) : null;
+
+    if (
+      axes &&
+      axes.length > 0 &&
+      axes.every((axis) => axis.state === "satisfied") &&
+      item.status !== "met" &&
+      proofSourceQualityByRequirement.get(typeof item.requirementId === "string" ? item.requirementId : "") !== "author_claim"
+    ) {
+      errors.push(`requirements[${index}] status must agree with proofAxes; every satisfied authoritative axis requires met.`);
+    }
+
     if (item.status === "met" && Array.isArray(item.gaps) && item.gaps.length > 0) {
       errors.push(`requirements[${index}] cannot be met while evidence gaps are present.`);
     }
 
     if (item.status !== "met") {
+      return;
+    }
+
+    if (axes) {
+      if (axes.length === 0 || axes.some((axis) => axis.state !== "satisfied")) {
+        errors.push(`requirements[${index}] status must agree with proofAxes; met requires every axis satisfied.`);
+        if (axes.some((axis) => axis.subject === "execution" && axis.state !== "satisfied")) {
+          errors.push(`requirements[${index}] cannot be met without passing test, build, or CI execution evidence.`);
+        }
+      }
       return;
     }
 

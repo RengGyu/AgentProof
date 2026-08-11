@@ -9,7 +9,7 @@ import {
   tenantReportAnalysisContext,
   type TenantReportAnalysisContext
 } from "./tenant-report-language";
-import type { CheckStatus, EvidenceKind, PriorityLevel, RequirementStatus, VerificationReport } from "./types";
+import type { CheckStatus, EvidenceKind, PriorityLevel, RequirementProofAxis, RequirementStatus, VerificationReport } from "./types";
 
 const TENANT_REPORT_MAX_BYTES = 256 * 1024;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9_.:@#-]{1,160}$/;
@@ -26,7 +26,7 @@ export interface TenantPersistedReport {
   version: 1;
   analysisContext?: TenantReportAnalysisContext;
   priority: PriorityLevel;
-  requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceRefs: string[]; gaps: string[] }>;
+  requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[] }>;
   testing: { ciStatus: CheckStatus; lintStatus: CheckStatus; typecheckStatus: CheckStatus };
   reviewPriority: Array<{ path: string; priority: PriorityLevel; evidenceRefs: string[] }>;
   evidenceIndex: Array<{ id: string; kind?: EvidenceKind; locator?: string }>;
@@ -127,14 +127,15 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
     version: 1 as const,
     analysisContext: tenantReportAnalysisContext(report),
     priority: report.summary.priority,
-    requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceRefs, gaps }) => {
+    requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceRefs, gaps, proofAxes }) => {
       const objectiveLabel = tenantObjectiveLabel(requirementText);
       return {
         requirementId,
         ...(objectiveLabel ? { objectiveLabel } : {}),
         status,
         evidenceRefs: [...evidenceRefs],
-        gaps: [...gaps]
+        gaps: [...gaps],
+        ...(proofAxes ? { proofAxes: copyProofAxes(proofAxes) } : {})
       };
     }),
     testing: {
@@ -184,12 +185,13 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   for (const requirement of report.requirements ?? []) {
     if (!requirement || typeof requirement !== "object" || Array.isArray(requirement)) { errors.push("tenant persisted requirement is invalid."); continue; }
-    const item = requirement as { requirementId?: unknown; objectiveLabel?: unknown; status?: unknown; evidenceRefs?: unknown; gaps?: unknown } & Record<string, unknown>;
-    if (Object.keys(item).some((key) => !["requirementId", "objectiveLabel", "status", "evidenceRefs", "gaps"].includes(key))) errors.push("tenant persisted requirement has disallowed fields.");
+    const item = requirement as { requirementId?: unknown; objectiveLabel?: unknown; status?: unknown; evidenceRefs?: unknown; gaps?: unknown; proofAxes?: unknown } & Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["requirementId", "objectiveLabel", "status", "evidenceRefs", "gaps", "proofAxes"].includes(key))) errors.push("tenant persisted requirement has disallowed fields.");
     if (typeof item.requirementId !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.requirementId)) errors.push("tenant persisted requirement id is invalid.");
     if (item.objectiveLabel !== undefined && (typeof item.objectiveLabel !== "string" || tenantObjectiveLabel(item.objectiveLabel) !== item.objectiveLabel)) errors.push("tenant persisted objective label is invalid.");
     if (!isRequirementStatus(item.status)) errors.push("tenant persisted requirement status is invalid.");
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
+    if (item.proofAxes !== undefined) validatePersistedProofAxes(item.proofAxes, evidenceIds, errors);
     if (!Array.isArray(item.gaps) || item.gaps.length > MAX_TENANT_GAPS || item.gaps.some((gap) => typeof gap !== "string" || !ALLOWED_TENANT_GAP_TEXTS.has(gap))) errors.push("tenant persisted requirement gaps are invalid.");
   }
   const testing = report.testing as Record<string, unknown> | undefined;
@@ -277,6 +279,40 @@ function isReport(value: unknown): value is VerificationReport {
 
 function validateEvidenceRefs(value: unknown, evidenceIds: Set<string>, errors: string[]) {
   if (!Array.isArray(value) || value.length > MAX_TENANT_EVIDENCE_REFS || value.some((reference) => typeof reference !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(reference) || !evidenceIds.has(reference))) errors.push("tenant persisted evidence references are invalid.");
+}
+
+function validatePersistedProofAxes(value: unknown, evidenceIds: Set<string>, errors: string[]) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 12) {
+    errors.push("tenant persisted proof axes are invalid.");
+    return;
+  }
+  const seen = new Set<string>();
+  for (const axis of value) {
+    if (!axis || typeof axis !== "object" || Array.isArray(axis)) {
+      errors.push("tenant persisted proof axis is invalid.");
+      continue;
+    }
+    const item = axis as Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["subject", "polarity", "state", "evidenceRefs", "collectionBasis"].includes(key))) errors.push("tenant persisted proof axis has disallowed fields.");
+    if (!["implementation", "documentation", "ci_configuration", "targeted_test", "execution", "visual"].includes(String(item.subject))) errors.push("tenant persisted proof axis subject is invalid.");
+    if (item.polarity !== "present" && item.polarity !== "absent") errors.push("tenant persisted proof axis polarity is invalid.");
+    if (item.state !== "satisfied" && item.state !== "violated" && item.state !== "incomplete") errors.push("tenant persisted proof axis state is invalid.");
+    if ("collectionBasis" in item && !["complete_changed_file_inventory", "incomplete_changed_file_inventory", "matching_artifact_evidence", "passing_execution", "failed_execution", "visual_verification"].includes(String(item.collectionBasis))) errors.push("tenant persisted proof axis collection basis is invalid.");
+    validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
+    const key = `${String(item.subject)}:${String(item.polarity)}`;
+    if (seen.has(key)) errors.push("tenant persisted proof axis is duplicated.");
+    seen.add(key);
+  }
+}
+
+function copyProofAxes(axes: RequirementProofAxis[]): RequirementProofAxis[] {
+  return axes.map((axis) => ({
+    subject: axis.subject,
+    polarity: axis.polarity,
+    state: axis.state,
+    evidenceRefs: [...axis.evidenceRefs],
+    ...(axis.collectionBasis ? { collectionBasis: axis.collectionBasis } : {})
+  }));
 }
 
 function isPriority(value: unknown): value is PriorityLevel { return value === "low" || value === "medium" || value === "high" || value === "blocker"; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
+import { tenantGapKind, tenantGapText, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
 import { generateVerificationReport } from "./verifier";
 
 describe("tenant report language", () => {
@@ -7,6 +7,13 @@ describe("tenant report language", () => {
     expect(tenantRemediationText([])).toBe(
       "Review the linked evidence."
     );
+  });
+
+  it("round-trips the additive forbidden-implementation gap without changing legacy fallback", () => {
+    const text = tenantGapText("forbidden_implementation_present");
+    expect(text).toContain("forbids implementation changes");
+    expect(tenantGapKind(text)).toBe("forbidden_implementation_present");
+    expect(tenantGapKind("Legacy unknown gap text.")).toBe("evidence_unavailable");
   });
 
   it("keeps a no-objective unlinked PR in PR-objective context", () => {

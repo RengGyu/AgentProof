@@ -34,6 +34,10 @@ describe("report share", () => {
 
     expect(shared.source.title).toBe(report.source.title);
     expect(shared.requirements).toHaveLength(report.requirements.length);
+    expect(shared.requirements[0]?.proofAxes).toEqual(report.requirements[0]?.proofAxes?.map((axis) => ({
+      ...axis,
+      evidenceRefs: []
+    })));
     expect(shared.evidenceIndex).toHaveLength(0);
     expect(shared.claims).toHaveLength(0);
     expect(shared.scope.provenance).toBeUndefined();
@@ -41,6 +45,9 @@ describe("report share", () => {
     expect(shared.reprompt.prompt).not.toContain("Explain or revert");
     expect(shared.testing.missingTests.every((item) => item.evidenceRefs.length === 0)).toBe(true);
     expect(shared.reviewPriority.every((item) => !item.evidenceRefs || item.evidenceRefs.length === 0)).toBe(true);
+    expect(shared.requirements.every((requirement) =>
+      requirement.proofAxes?.every((axis) => axis.evidenceRefs.length === 0) ?? true
+    )).toBe(true);
     expect(shared.proofGraph.nodes.every((node) =>
       node.implementationEvidenceRefs.length === 0 &&
       node.targetedTestEvidenceRefs.length === 0 &&

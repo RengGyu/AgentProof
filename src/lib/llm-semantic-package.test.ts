@@ -33,6 +33,28 @@ describe("LLM semantic analysis package", () => {
     expect(serialized).not.toContain('"logs"');
   });
 
+  it("reads deterministic proof axes without allowing semantic output to mutate them", () => {
+    const input = demoScenarios.clean;
+    const report = generateVerificationReport(input);
+    const before = structuredClone(report.requirements.map((requirement) => requirement.proofAxes));
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirement = llmPackage.input.requirements[0];
+    const evidenceId = requirement?.evidence_ids[0] ?? llmPackage.input.evidence[0]?.id;
+
+    expect(requirement?.proof_axes).toEqual(report.requirements[0]?.proofAxes?.map((axis) => expect.objectContaining({
+      subject: axis.subject,
+      polarity: axis.polarity,
+      state: axis.state,
+      collectionBasis: axis.collectionBasis
+    })));
+    expect(evidenceId).toBeTruthy();
+    validateLlmSemanticPackageCandidate({
+      ...semanticCandidate(requirement!.id, evidenceId!, "Semantic text cannot change deterministic axes."),
+      proof_axes: [{ subject: "implementation", polarity: "present", state: "satisfied", evidenceRefs: [] }]
+    }, llmPackage);
+    expect(report.requirements.map((item) => item.proofAxes)).toEqual(before);
+  });
+
   it("includes redacted, bounded changed-code excerpts only for selected file evidence", () => {
     const input = {
       ...demoScenarios.clean,

@@ -23,6 +23,7 @@ import type {
   PullRequestInput,
   Requirement,
   RequirementContextSignal,
+  RequirementProofAxis,
   RequirementProofNode,
   RequirementFinding,
   ReviewPriorityItem,
@@ -53,8 +54,9 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     constrainAuthorIntentFinding(requirement, evaluateRequirement(requirement, evidenceIndex, input))
   );
   const missingTests = detectMissingTests(input, evidenceIndex);
-  const proofGraph = buildProofGraph(requirements, rawRequirementFindings, input, evidenceIndex, missingTests, ciStatus, requirementEvidence.contexts);
-  const proofAdjustedRequirementFindings = applyProofGraphToRequirements(rawRequirementFindings, proofGraph);
+  const proofBuild = buildProofGraph(requirements, rawRequirementFindings, input, evidenceIndex, missingTests, ciStatus, requirementEvidence.contexts);
+  const proofGraph = proofBuild.proofGraph;
+  const proofAdjustedRequirementFindings = applyProofGraphToRequirements(rawRequirementFindings, proofGraph, proofBuild.proofAxesByRequirement);
   const cappedRequirements = capRequirementFindingRefs(proofAdjustedRequirementFindings, requirements, evidenceIndex);
   const requirementFindings = cappedRequirements.findings;
   const rawScope = detectScopeCreep(requirements, input.changedFiles, evidenceIndex);
@@ -176,45 +178,6 @@ function evaluateRequirement(
 
   const expectations = requirementProofExpectations(requirement.text);
   const hasExplicitArtifactObjective = expectations.documentation || expectations.ci || expectations.targetedTest;
-
-  if (expectations.noImplementationChanges) {
-    const changedArtifactEvidence = evidenceIndex.filter((item) => item.kind === "changed_file" || item.kind === "diff");
-    const changedImplementationEvidence = changedArtifactEvidence.filter((item) => {
-      const path = item.locator ?? item.label;
-      return !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path);
-    });
-    if (hasChangedFileEvidenceUnavailable(input)) {
-      return {
-        requirementId: requirement.id,
-        requirementText: requirement.text,
-        status: "unclear",
-        evidenceRefs: sourceEvidenceRefs(evidenceIndex),
-        gaps: ["Changed-file evidence was unavailable, so the no-implementation-change constraint could not be checked."],
-        reviewerNote: "Collect the changed-file inventory before evaluating this constraint.",
-        confidence: 0.3
-      };
-    }
-    if (changedImplementationEvidence.length > 0) {
-      return {
-        requirementId: requirement.id,
-        requirementText: requirement.text,
-        status: "partial",
-        evidenceRefs: changedImplementationEvidence.map((item) => item.id).slice(0, 5),
-        gaps: ["Implementation files changed even though this requirement limits the PR to non-implementation artifacts."],
-        reviewerNote: "Review the changed implementation files against the stated scope constraint.",
-        confidence: 0.9
-      };
-    }
-    return {
-      requirementId: requirement.id,
-      requirementText: requirement.text,
-      status: "met",
-      evidenceRefs: uniqueRefs([...changedArtifactEvidence.map((item) => item.id), ...sourceEvidenceRefs(evidenceIndex)]).slice(0, 5),
-      gaps: [],
-      reviewerNote: "The collected changed-file inventory contains no implementation artifact.",
-      confidence: 0.9
-    };
-  }
 
   if (requirement.keywords.length === 0 && !hasExplicitArtifactObjective) {
     const refs = sourceEvidenceRefs(evidenceIndex);
@@ -642,13 +605,14 @@ function buildProofGraph(
   missingTests: MissingTestFinding[],
   ciStatus: CheckStatus,
   contexts: RequirementContextSignal[]
-): ProofGraph {
+): { proofGraph: ProofGraph; proofAxesByRequirement: Map<string, RequirementProofAxis[]> } {
   const findingByRequirement = new Map(findings.map((finding) => [finding.requirementId, finding]));
   const allExecutionRefs = executionEvidenceRefs(input, evidenceIndex);
   const selfReportedTestGapRefs = selfReportedTestGapEvidenceRefs(evidenceIndex);
   const changedFileEvidenceUnavailable = hasChangedFileEvidenceUnavailable(input);
   const diffEvidenceUnavailable = hasDiffEvidenceUnavailable(input);
 
+  const proofAxesByRequirement = new Map<string, RequirementProofAxis[]>();
   const nodes = requirements.map((requirement): RequirementProofNode => {
     const finding = findingByRequirement.get(requirement.id);
     const expectations = {
@@ -688,8 +652,24 @@ function buildProofGraph(
       expectations
     );
     const expectedArtifactRefs = uniqueRefs(Object.values(artifactRefs).flat());
+    const forbiddenImplementationRefs = expectations.noImplementationChanges
+      ? allImplementationArtifactEvidenceRefs(evidenceIndex)
+      : [];
 
-    if ((finding?.status === "missing" || expectedArtifactRefs.length === 0) && changedFileEvidenceUnavailable) {
+    const proofAxes = buildRequirementProofAxes({
+      expectations,
+      artifactRefs,
+      forbiddenImplementationRefs,
+      matchingExecutionRefs,
+      matchingFailedExecutionRefs,
+      allExecutionRefs,
+      evidenceIndex,
+      changedFileEvidenceUnavailable,
+      diffEvidenceUnavailable
+    });
+    proofAxesByRequirement.set(requirement.id, proofAxes);
+
+    if (Object.keys(artifactRefs).length > 0 && expectedArtifactRefs.length === 0 && changedFileEvidenceUnavailable) {
       gapSignals.push({
         kind: "evidence_unavailable",
         severity: "medium",
@@ -709,6 +689,23 @@ function buildProofGraph(
           evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
         });
       }
+    }
+
+    const absentImplementationAxis = proofAxes.find((axis) => axis.subject === "implementation" && axis.polarity === "absent");
+    if (absentImplementationAxis?.state === "violated") {
+      gapSignals.push({
+        kind: "forbidden_implementation_present",
+        severity: "high",
+        message: "Implementation files changed even though this requirement forbids implementation changes.",
+        evidenceRefs: absentImplementationAxis.evidenceRefs
+      });
+    } else if (absentImplementationAxis?.state === "incomplete") {
+      gapSignals.push({
+        kind: "evidence_unavailable",
+        severity: "medium",
+        message: "The changed-file inventory was incomplete, so implementation absence could not be proven.",
+        evidenceRefs: absentImplementationAxis.evidenceRefs
+      });
     }
 
     if (finding?.status === "unclear") {
@@ -779,7 +776,9 @@ function buildProofGraph(
       sourceQuality: requirement.sourceQuality,
       sourceSection: requirement.sourceSection,
       contextRoles: requirement.contextRoles,
-      status: finding?.status ?? "unclear",
+      status: requirement.sourceQuality === "author_claim" && finding?.status !== "met"
+        ? finding?.status ?? "unclear"
+        : aggregateProofAxisStatus(proofAxes, finding?.status ?? "unclear"),
       confidence: finding?.confidence ?? 0.2,
       implementationEvidenceRefs: implementationEvidenceRefs.slice(0, 8),
       targetedTestEvidenceRefs: targetedTestEvidenceRefs.slice(0, 8),
@@ -793,7 +792,7 @@ function buildProofGraph(
     };
   });
 
-  return {
+  const proofGraph: ProofGraph = {
     version: 1,
     nodes,
     context: contexts.map((context) => ({
@@ -809,35 +808,33 @@ function buildProofGraph(
       gapCount: nodes.reduce((count, node) => count + node.gapSignals.length, 0)
     }
   };
+  return { proofGraph, proofAxesByRequirement };
 }
 
 function applyProofGraphToRequirements(
   findings: RequirementFinding[],
-  proofGraph: ProofGraph
+  proofGraph: ProofGraph,
+  proofAxesByRequirement: Map<string, RequirementProofAxis[]>
 ): RequirementFinding[] {
   const nodeByRequirement = new Map(proofGraph.nodes.map((node) => [node.requirementId, node]));
 
   return findings.map((finding) => {
     const node = nodeByRequirement.get(finding.requirementId);
-    if (!node || node.gapSignals.length === 0) {
-      return finding;
-    }
+    const proofAxes = proofAxesByRequirement.get(finding.requirementId);
+    if (!node || !proofAxes || proofAxes.length === 0) return finding;
 
     const gapMessages = node.gapSignals.map((gap) => gap.message);
     const hasHardGap = node.gapSignals.some((gap) => gap.severity === "blocker" || gap.severity === "high");
     const hasEvidenceUnavailable = node.gapSignals.some((gap) => gap.kind === "evidence_unavailable");
-    const status = finding.status === "met" && hasHardGap
-      ? "partial"
-      : finding.status === "missing" && hasEvidenceUnavailable
-        ? "unclear"
-        : finding.status;
+    const status = node.status;
     const confidence = hasHardGap ? Math.min(finding.confidence, 0.58) : finding.confidence;
 
     return {
       ...finding,
       status,
+      proofAxes,
       confidence,
-      gaps: uniqueRefs([...finding.gaps, ...gapMessages]).slice(0, 8),
+      gaps: status === "met" ? [] : uniqueRefs([...finding.gaps, ...gapMessages]).slice(0, 8),
       evidenceRefs: uniqueRefs([
         ...finding.evidenceRefs,
         ...node.implementationEvidenceRefs,
@@ -852,6 +849,115 @@ function applyProofGraphToRequirements(
         : finding.reviewerNote
     };
   });
+}
+
+interface RequirementProofAxisBuildInput {
+  expectations: RequirementProofExpectations;
+  artifactRefs: Partial<Record<"implementation" | "documentation" | "ci" | "targetedTest", string[]>>;
+  forbiddenImplementationRefs: string[];
+  matchingExecutionRefs: string[];
+  matchingFailedExecutionRefs: string[];
+  allExecutionRefs: string[];
+  evidenceIndex: EvidenceItem[];
+  changedFileEvidenceUnavailable: boolean;
+  diffEvidenceUnavailable: boolean;
+}
+
+function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): RequirementProofAxis[] {
+  const axes: RequirementProofAxis[] = [];
+  const addArtifactAxis = (
+    subject: RequirementProofAxis["subject"],
+    refs: string[],
+    requiresDiff = false
+  ) => {
+    const usableRefs = requiresDiff
+      ? refs.filter((ref) => refsToEvidence(input.evidenceIndex, [ref]).some((item) => item.kind === "diff"))
+      : refs;
+    const inventoryIncomplete = input.changedFileEvidenceUnavailable || (requiresDiff && refs.length > 0 && input.diffEvidenceUnavailable);
+    axes.push({
+      subject,
+      polarity: "present",
+      state: usableRefs.length > 0 ? "satisfied" : inventoryIncomplete ? "incomplete" : "violated",
+      evidenceRefs: uniqueRefs(usableRefs.length > 0 ? usableRefs : refs).slice(0, 8),
+      collectionBasis: usableRefs.length > 0
+        ? "matching_artifact_evidence"
+        : inventoryIncomplete
+          ? "incomplete_changed_file_inventory"
+          : "complete_changed_file_inventory"
+    });
+  };
+
+  if (input.expectations.implementation) addArtifactAxis("implementation", input.artifactRefs.implementation ?? [], true);
+  if (input.expectations.documentation) addArtifactAxis("documentation", input.artifactRefs.documentation ?? []);
+  if (input.expectations.ci) addArtifactAxis("ci_configuration", input.artifactRefs.ci ?? []);
+  if (input.expectations.targetedTest) addArtifactAxis("targeted_test", input.artifactRefs.targetedTest ?? []);
+
+  if (input.expectations.execution) {
+    const passingRefs = uniqueRefs([...input.matchingExecutionRefs, ...input.allExecutionRefs])
+      .filter((ref) => refsToEvidence(input.evidenceIndex, [ref]).some(isPassingTestExecutionEvidence));
+    const failedRefs = uniqueRefs(input.matchingFailedExecutionRefs);
+    axes.push({
+      subject: "execution",
+      polarity: "present",
+      state: failedRefs.length > 0 ? "violated" : passingRefs.length > 0 ? "satisfied" : "incomplete",
+      evidenceRefs: (failedRefs.length > 0 ? failedRefs : passingRefs).slice(0, 8),
+      ...(failedRefs.length > 0
+        ? { collectionBasis: "failed_execution" as const }
+        : passingRefs.length > 0
+          ? { collectionBasis: "passing_execution" as const }
+          : {})
+    });
+  }
+
+  if (input.expectations.visual) {
+    const visualRefs = input.evidenceIndex.filter(isVisualVerificationEvidence).map((item) => item.id).slice(0, 8);
+    axes.push({
+      subject: "visual",
+      polarity: "present",
+      state: visualRefs.length > 0 ? "satisfied" : "incomplete",
+      evidenceRefs: visualRefs,
+      ...(visualRefs.length > 0 ? { collectionBasis: "visual_verification" as const } : {})
+    });
+  }
+
+  if (input.expectations.noImplementationChanges) {
+    axes.push({
+      subject: "implementation",
+      polarity: "absent",
+      state: input.changedFileEvidenceUnavailable
+        ? "incomplete"
+        : input.forbiddenImplementationRefs.length > 0
+          ? "violated"
+          : "satisfied",
+      evidenceRefs: input.forbiddenImplementationRefs.slice(0, 8),
+      collectionBasis: input.changedFileEvidenceUnavailable
+        ? "incomplete_changed_file_inventory"
+        : "complete_changed_file_inventory"
+    });
+  }
+
+  return axes;
+}
+
+function aggregateProofAxisStatus(axes: RequirementProofAxis[], fallback: RequirementFinding["status"]): RequirementFinding["status"] {
+  if (axes.length === 0) return fallback;
+  const absentAxis = axes.find((axis) => axis.polarity === "absent");
+  if (absentAxis?.state === "incomplete") return "unclear";
+  if (absentAxis?.state === "violated") {
+    return axes.some((axis) => axis !== absentAxis && axis.state === "satisfied") ? "partial" : "missing";
+  }
+  if (axes.some((axis) => axis.state !== "satisfied")) return fallback === "met" ? "partial" : fallback;
+  return "met";
+}
+
+function allImplementationArtifactEvidenceRefs(evidenceIndex: EvidenceItem[]): string[] {
+  return uniqueRefs(evidenceIndex
+    .filter((item) => item.kind === "changed_file" || item.kind === "diff")
+    .filter((item) => {
+      const path = item.locator ?? item.label;
+      return !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path);
+    })
+    .map((item) => item.id));
 }
 
 function hasRequirementEvidenceRefPressure(requirements: Requirement[], evidenceIndex: EvidenceItem[]): boolean {
@@ -1055,7 +1161,7 @@ function isRiskSensitiveRequirement(requirement: Requirement, input: PullRequest
 
 function hasChangedFileEvidenceUnavailable(input: PullRequestInput): boolean {
   return (input.limitations ?? []).some((limitation) =>
-    /changed-file evidence unavailable|changed-file fetch failed|file evidence may be incomplete/i.test(limitation)
+    /changed-file evidence (?:unavailable|was capped)|changed-file fetch failed|file evidence may be incomplete/i.test(limitation)
   );
 }
 
@@ -1635,7 +1741,7 @@ function buildReviewPriority(
       items.push({
         path: safePath,
         reason: "Risk-sensitive path changed; verify manually even if other evidence passes.",
-        priority: hasSpecificRisk ? "high" : "medium",
+        priority: hasSpecificRisk ? "high" : "low",
         evidenceRefs: evidenceRefsForPath(evidenceIndex, file.path)
       });
     }

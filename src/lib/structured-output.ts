@@ -61,6 +61,7 @@ const proofGapSignalSchema = {
           "ambiguous_requirement",
           "self_reported_test_gap",
           "evidence_unavailable",
+          "forbidden_implementation_present",
           "visual_proof_missing"
         ]
       },

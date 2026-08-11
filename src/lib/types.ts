@@ -188,6 +188,33 @@ export interface RequirementFinding {
   gaps: string[];
   reviewerNote: string;
   confidence: number;
+  /** Deterministic, independently evaluated proof obligations. Optional for v1 compatibility. */
+  proofAxes?: RequirementProofAxis[];
+}
+
+export type RequirementProofSubject =
+  | "implementation"
+  | "documentation"
+  | "ci_configuration"
+  | "targeted_test"
+  | "execution"
+  | "visual";
+export type RequirementProofPolarity = "present" | "absent";
+export type RequirementProofState = "satisfied" | "violated" | "incomplete";
+export type RequirementProofCollectionBasis =
+  | "complete_changed_file_inventory"
+  | "incomplete_changed_file_inventory"
+  | "matching_artifact_evidence"
+  | "passing_execution"
+  | "failed_execution"
+  | "visual_verification";
+
+export interface RequirementProofAxis {
+  subject: RequirementProofSubject;
+  polarity: RequirementProofPolarity;
+  state: RequirementProofState;
+  evidenceRefs: string[];
+  collectionBasis?: RequirementProofCollectionBasis;
 }
 
 export interface ScopeFinding {
@@ -220,6 +247,7 @@ export type ProofGapKind =
   | "ambiguous_requirement"
   | "self_reported_test_gap"
   | "evidence_unavailable"
+  | "forbidden_implementation_present"
   | "visual_proof_missing";
 
 export type ReportAnalysisContext = "linked_issue" | "unlinked_pr" | "provided_requirement";

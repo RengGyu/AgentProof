@@ -239,6 +239,48 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("cannot be met without passing test, build, or CI execution evidence");
   });
 
+  it("validates full reports from proof axes while retaining conservative legacy behavior", () => {
+    const report = generateVerificationReport({
+      title: "Keep implementation unchanged",
+      description: "Changes documentation only.",
+      taskText: "Acceptance criteria: do not change implementation code.",
+      changedFiles: [{ path: "docs/retry.md", status: "modified", patch: "+ Retry guide" }],
+      checks: [],
+      logs: []
+    });
+
+    expect(report.requirements[0]?.status).toBe("met");
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+
+    const legacy = structuredClone(report);
+    delete legacy.requirements[0].proofAxes;
+    const legacyValidation = validateVerificationReport(legacy, { mode: "full" });
+    expect(legacyValidation.valid).toBe(false);
+    expect(legacyValidation.errors.join("\n")).toContain("cannot be met without passing test, build, or CI execution evidence");
+
+    const legacyPassing = generateVerificationReport(demoScenarios.clean);
+    for (const requirement of legacyPassing.requirements) delete requirement.proofAxes;
+    expect(validateVerificationReport(legacyPassing, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects malformed axes and disagreement between axes and requirement status", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    const requirement = report.requirements[0];
+    expect(requirement?.proofAxes?.length).toBeGreaterThan(0);
+    requirement!.proofAxes![0].state = "incomplete";
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("status must agree with proofAxes");
+
+    const satisfied = generateVerificationReport(demoScenarios.clean);
+    satisfied.requirements[0]!.status = "partial";
+    const reverseResult = validateVerificationReport(satisfied, { mode: "full" });
+    expect(reverseResult.valid).toBe(false);
+    expect(reverseResult.errors.join("\n")).toContain("every satisfied authoritative axis requires met");
+  });
+
   it("rejects supported execution claims without passing check or log evidence", () => {
     const report = generateVerificationReport(demoScenarios["missing-tests"]);
     report.claims = [

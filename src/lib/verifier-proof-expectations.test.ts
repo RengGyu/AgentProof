@@ -12,6 +12,9 @@ describe("requirementProofExpectations", () => {
     ["Run the existing npm test command in the cache-check workflow.", { implementation: false, ci: true, targetedTest: false, visual: false, noImplementationChanges: false }],
     ["Reject overlapping booking windows.", { implementation: true, targetedTest: false, visual: false, noImplementationChanges: false }],
     ["Do not change implementation code.", { implementation: false, targetedTest: false, visual: false, noImplementationChanges: true }],
+    ["Add regression tests without changing implementation code.", { implementation: false, targetedTest: true, visual: false, noImplementationChanges: true }],
+    ["Document the retry queue without implementation changes.", { implementation: false, documentation: true, targetedTest: false, visual: false, noImplementationChanges: true }],
+    ["Do not add implementation code.", { implementation: false, targetedTest: false, visual: false, noImplementationChanges: true }],
     ["Documentar el reinicio del entorno local.", { implementation: false, documentation: true, targetedTest: false, visual: false, noImplementationChanges: false }]
   ])("classifies %s without collapsing behavior and tests", (text, expected) => {
     expect(requirementProofExpectations(text)).toMatchObject(expected);

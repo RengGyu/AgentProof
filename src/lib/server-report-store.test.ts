@@ -255,15 +255,18 @@ describe("server report store", () => {
 
     expect(saved.report.requirements[0]?.requirementText).toBe("Normalize an invoice reference before display");
     expect(projected.requirements[0]).toMatchObject({
-      objectiveLabel: "Normalize an invoice reference before display"
+      objectiveLabel: "Normalize an invoice reference before display",
+      proofAxes: report.requirements[0]?.proofAxes
     });
     expect(validateTenantPersistedReport(projected, signingSecret)).toEqual({ valid: true, errors: [] });
     expect(validateTenantPersistedReport(JSON.parse(JSON.stringify(projected)), signingSecret)).toEqual({ valid: true, errors: [] });
 
     const legacyReport = saved.report;
     legacyReport.requirements[0]!.requirementText = `Requirement ${legacyReport.requirements[0]!.requirementId}`;
+    delete legacyReport.requirements[0]!.proofAxes;
     const legacy = projectTenantPersistedReport(legacyReport, signingSecret);
     expect(legacy.requirements[0]).not.toHaveProperty("objectiveLabel");
+    expect(legacy.requirements[0]).not.toHaveProperty("proofAxes");
     expect(validateTenantPersistedReport(legacy, signingSecret)).toEqual({ valid: true, errors: [] });
 
     const unsignedNestedField = structuredClone(projected) as unknown as {

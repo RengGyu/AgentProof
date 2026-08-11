@@ -2436,7 +2436,133 @@ describe("generateVerificationReport", () => {
     expect(ci.requirements[0]?.gaps.join(" ")).not.toMatch(/matching test, log, or check|asks for tests/i);
   });
 
-  it("keeps docs-only artifact evidence partial and ignores unrelated failed execution", () => {
+  it("proves an absence-only requirement from a complete changed-file inventory without execution", () => {
+    const report = generateVerificationReport({
+      title: "Keep the change test-only",
+      description: "Adds test coverage only.",
+      taskText: "Acceptance criteria: do not change implementation code.",
+      changedFiles: [{ path: "src/queues/retry-queue.test.ts", status: "modified", patch: "+ it('retries', () => {})" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]).toMatchObject({
+      status: "met",
+      proofAxes: [{
+        subject: "implementation",
+        polarity: "absent",
+        state: "satisfied",
+        collectionBasis: "complete_changed_file_inventory"
+      }]
+    });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("records a deterministic violation when forbidden implementation is present", () => {
+    const report = generateVerificationReport({
+      title: "Keep the change test-only",
+      description: "Updates retry handling.",
+      taskText: "Acceptance criteria: do not change implementation code.",
+      changedFiles: [{ path: "src/queues/retry-queue.ts", status: "modified", patch: "+ export const retry = true" }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).not.toBe("met");
+    expect(report.requirements[0]?.proofAxes).toEqual([
+      expect.objectContaining({ subject: "implementation", polarity: "absent", state: "violated" })
+    ]);
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("forbidden_implementation_present");
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.message).join(" ")).toContain("forbids implementation changes");
+  });
+
+  it.each([
+    "GitHub changed-file evidence was capped at 120 files.",
+    "GitHub changed-file evidence unavailable: request timed out or network failed."
+  ])("keeps absence proof incomplete when inventory is incomplete: %s", (limitation) => {
+    const report = generateVerificationReport({
+      title: "Keep the change test-only",
+      description: "Adds test coverage only.",
+      taskText: "Acceptance criteria: do not change implementation code.",
+      changedFiles: [{ path: "src/queues/retry-queue.test.ts", status: "modified", patch: "+ it('retries', () => {})" }],
+      checks: [],
+      logs: [],
+      limitations: [limitation]
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("unclear");
+    expect(report.requirements[0]?.proofAxes).toEqual([
+      expect.objectContaining({
+        subject: "implementation",
+        polarity: "absent",
+        state: "incomplete",
+        collectionBasis: "incomplete_changed_file_inventory"
+      })
+    ]);
+  });
+
+  it("requires every test and absence axis in a mixed requirement", () => {
+    const passing = generateVerificationReport({
+      title: "Add retry coverage only",
+      description: "Adds retry coverage only.",
+      taskText: "Acceptance criteria: add regression tests for retry queue without changing implementation code.",
+      changedFiles: [{ path: "src/queues/retry-queue.test.ts", status: "modified", patch: "+ it('retries failed jobs', () => {})" }],
+      checks: [{ name: "Test", status: "passed", summary: "Retry queue regression tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    const violated = generateVerificationReport({
+      title: "Add retry coverage only",
+      description: "Adds retry coverage and implementation.",
+      taskText: "Acceptance criteria: add regression tests for retry queue without changing implementation code.",
+      changedFiles: [
+        { path: "src/queues/retry-queue.test.ts", status: "modified", patch: "+ it('retries failed jobs', () => {})" },
+        { path: "src/queues/retry-queue.ts", status: "modified", patch: "+ export const retry = true" }
+      ],
+      checks: [{ name: "Test", status: "passed", summary: "Retry queue regression tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(passing.requirements[0]?.status).toBe("met");
+    expect(passing.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", polarity: "present", state: "satisfied" }),
+      expect.objectContaining({ subject: "execution", polarity: "present", state: "satisfied" }),
+      expect.objectContaining({ subject: "implementation", polarity: "absent", state: "satisfied" })
+    ]));
+    expect(violated.requirements[0]?.status).not.toBe("met");
+    expect(violated.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "implementation", polarity: "absent", state: "violated" })
+    ]));
+  });
+
+  it.each([
+    {
+      text: "Document retry queue setup without changing implementation code.",
+      file: { path: "docs/retry-queue.md", status: "modified" as const, patch: "+ Retry queue setup" },
+      checks: [] as PullRequestInput["checks"],
+      subjects: ["documentation", "implementation"]
+    },
+    {
+      text: "Add retry queue CI workflow without changing implementation code.",
+      file: { path: ".github/workflows/retry-queue.yml", status: "modified" as const, patch: "+ name: Retry queue CI" },
+      checks: [{ name: "CI", status: "passed" as const, summary: "Retry queue CI test suite passed." }],
+      subjects: ["ci_configuration", "execution", "implementation"]
+    }
+  ])("keeps $subjects proof axes independent", ({ text, file, checks, subjects }) => {
+    const report = generateVerificationReport({
+      title: text,
+      description: text,
+      taskText: `Acceptance criteria: ${text}`,
+      changedFiles: [file],
+      checks,
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.proofAxes?.map((axis) => axis.subject)).toEqual(subjects);
+    expect(report.requirements[0]?.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+  });
+
+  it("keeps docs-only static proof met and ignores unrelated failed execution", () => {
     const input = {
       title: "Document retry queue setup",
       description: "Documents retry queue setup.",
@@ -2451,9 +2577,9 @@ describe("generateVerificationReport", () => {
       checks: [{ name: "Unrelated integration", status: "failed", summary: "Unrelated integration workflow failed." }]
     });
 
-    expect(artifactOnly.requirements[0]).toMatchObject({ status: "partial", gaps: [] });
+    expect(artifactOnly.requirements[0]).toMatchObject({ status: "met", gaps: [] });
     expect(validateVerificationReport(artifactOnly, { mode: "full" })).toEqual({ valid: true, errors: [] });
-    expect(withUnrelatedFailure.requirements[0]).toMatchObject({ status: "partial", gaps: [] });
+    expect(withUnrelatedFailure.requirements[0]).toMatchObject({ status: "met", gaps: [] });
   });
 
   it("does not attach an unrelated failed execution signal to every requirement", () => {

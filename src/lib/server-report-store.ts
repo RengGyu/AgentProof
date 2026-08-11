@@ -11,7 +11,7 @@ import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
 import { isSafeTenantLocator, isTenantPersistedReport, projectTenantPersistedReport, tenantObjectiveLabel, type TenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
 import { tenantGapKind, tenantGapText, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
-import type { VerificationReport } from "./types";
+import type { RequirementProofAxis, VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_SERVER_REPORTS = 100;
@@ -830,7 +830,8 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
         evidenceRefs: item.evidenceRefs,
         gaps: gaps.slice(0, 10),
         reviewerNote: "Review the linked evidence and safe locations.",
-        confidence: item.confidence
+        confidence: item.confidence,
+        ...(item.proofAxes ? { proofAxes: copyProofAxes(item.proofAxes) } : {})
       };
     }),
     claims: [],
@@ -1072,7 +1073,16 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
     analysisContext: report.analysisContext,
     source: { title: "GitHub pull request evidence report" },
     summary: { oneLine: "Grounded verification result; review structured evidence.", confidence: 0, priority: report.priority, evidenceCoverage: 0, topRisks: [] },
-    requirements: report.requirements.map((item) => ({ requirementId: item.requirementId, requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`, status: item.status, evidenceRefs: item.evidenceRefs, gaps: item.gaps, reviewerNote: "Review the linked evidence and safe locations.", confidence: 0 })),
+    requirements: report.requirements.map((item) => ({
+      requirementId: item.requirementId,
+      requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`,
+      status: item.status,
+      evidenceRefs: item.evidenceRefs,
+      gaps: item.gaps,
+      reviewerNote: "Review the linked evidence and safe locations.",
+      confidence: 0,
+      ...(item.proofAxes ? { proofAxes: copyProofAxes(item.proofAxes) } : {})
+    })),
     claims: [],
     scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
     testing: { ...report.testing, missingTests: [] },
@@ -1086,6 +1096,16 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
   };
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, secret);
   return hydrated;
+}
+
+function copyProofAxes(axes: RequirementProofAxis[]): RequirementProofAxis[] {
+  return axes.map((axis) => ({
+    subject: axis.subject,
+    polarity: axis.polarity,
+    state: axis.state,
+    evidenceRefs: [...axis.evidenceRefs],
+    ...(axis.collectionBasis ? { collectionBasis: axis.collectionBasis } : {})
+  }));
 }
 
 function looksLikeTenantPersistedReport(report: unknown): report is TenantPersistedReport {
