@@ -83,6 +83,7 @@ export function tenantProofGapKindForSemanticGap(
 
 export function tenantReportAnalysisContext(report: VerificationReport): TenantReportAnalysisContext {
   if (report.proofGraph.nodes.some((node) => node.sourceQuality === "author_claim")) return "unlinked_pr";
+  if (report.proofGraph.context.some((context) => context.source === "pr_description" && context.role === "author_claim")) return "unlinked_pr";
   if (report.proofGraph.nodes.some((node) => node.sourceQuality !== "manual_check" && node.sourceQuality !== "fallback")) return "linked_issue";
   return "provided_requirement";
 }
