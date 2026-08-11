@@ -2620,6 +2620,77 @@ describe("analysis job queue", () => {
     });
   });
 
+  it("claims only an unsealed active expired provider continuation before the normal lease", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    for (let index = 0; index < 4; index += 1) {
+      await enqueueAnalysisJob({
+        ...jobInput(),
+        idempotencyKey: `provider-expiry-${index}`,
+        deliveryId: `123e4567-e89b-12d3-a456-42661417438${index}`,
+        pullRequestNumber: index + 7,
+        pullRequestUrl: `https://github.com/RengGyu/AgentProof/pull/${index + 7}`,
+        headSha: `${index + 1}`.repeat(40)
+      });
+    }
+    const [nonExpired, historical, sealed, expired] = getAnalysisJobsForTests();
+    for (const row of [nonExpired, historical, sealed, expired]) {
+      Object.assign(row, {
+        status: "processing",
+        attempts: 1,
+        desired_revision: 1,
+        running_revision: 1,
+        claim_generation: "123e4567-e89b-42d3-a456-426614174380",
+        updated_at: "2026-06-30T00:02:00.000Z",
+        locked_at: "2026-06-30T00:02:00.000Z",
+        run_after: "2026-06-30T00:01:15.000Z",
+        provider_response_id: `resp_expiry_${row.id.replaceAll("-", "")}`,
+        provider_status: "in_progress",
+        provider_submitted_at: "2026-06-30T00:01:00.000Z",
+        provider_expires_at: "2026-06-30T00:07:00.000Z"
+      });
+    }
+    nonExpired.provider_expires_at = "2026-06-30T00:09:00.000Z";
+    historical.is_historical = true;
+    Object.assign(sealed, {
+      sealed_revision: 1,
+      publication_sealed_at: "2026-06-30T00:06:00.000Z",
+      sealed_event: sealed.event,
+      sealed_action: sealed.action,
+      sealed_save_report: sealed.save_report,
+      sealed_comment: sealed.comment,
+      sealed_slack_summary: sealed.slack_summary === true
+    });
+    expired.desired_revision = 2;
+    expired.running_revision = 1;
+
+    const claimed = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:08:00Z"),
+      leaseMs: 10 * 60 * 1000
+    });
+    const immediateSecondClaim = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:08:00Z"),
+      leaseMs: 10 * 60 * 1000
+    });
+
+    expect(claimed.job).toMatchObject({
+      id: expired.id,
+      status: "processing",
+      desired_revision: 2,
+      running_revision: 2,
+      sealed_revision: null,
+      provider_response_id: expired.provider_response_id,
+      provider_expires_at: "2026-06-30T00:07:00.000Z",
+      locked_at: "2026-06-30T00:08:00.000Z",
+      run_after: "2026-06-30T00:18:00.000Z"
+    });
+    expect(claimed.job!.claim_generation).not.toBe("123e4567-e89b-42d3-a456-426614174380");
+    expect(immediateSecondClaim.job).toBeNull();
+    expect(nonExpired).toMatchObject({ locked_at: "2026-06-30T00:02:00.000Z" });
+    expect(historical).toMatchObject({ is_historical: true, locked_at: "2026-06-30T00:02:00.000Z" });
+    expect(sealed).toMatchObject({ sealed_revision: 1, locked_at: "2026-06-30T00:02:00.000Z" });
+  });
+
   it("marks retryable and terminal memory failures with redacted bounded summaries", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
@@ -2672,6 +2743,78 @@ describe("analysis job queue", () => {
       error_code: "github_fetch_failed",
       error_summary: "Still unavailable"
     });
+  });
+
+  it("claims an expired Supabase provider continuation with revision and seal CAS", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
+    const expiredRow = {
+      ...jobRow({ id: "job_expired_provider_1", status: "processing", attempts: 1 }),
+      is_historical: false,
+      desired_revision: 3,
+      running_revision: 2,
+      sealed_revision: null,
+      claim_generation: "123e4567-e89b-42d3-a456-426614174380",
+      updated_at: "2026-06-30T00:02:00.000Z",
+      locked_at: "2026-06-30T00:02:00.000Z",
+      run_after: "2026-06-30T00:01:15.000Z",
+      provider_response_id: "resp_expired_provider_1",
+      provider_status: "in_progress" as const,
+      provider_submitted_at: "2026-06-30T00:01:00.000Z",
+      provider_expires_at: "2026-06-30T00:07:00.000Z"
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = decodeURIComponent(String(url));
+      if (init?.method === "PATCH") {
+        return Response.json([{ ...expiredRow, ...JSON.parse(String(init.body)) }]);
+      }
+      if (href.includes("provider_expires_at=lte.2026-06-30T00:08:00.000Z")) {
+        return Response.json([expiredRow]);
+      }
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:08:00Z"),
+      leaseMs: 10 * 60 * 1000
+    });
+    const expiredGet = fetchMock.mock.calls.find((call) =>
+      decodeURIComponent(String(call[0])).includes("provider_expires_at=lte.")
+    );
+    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    const expiredUrl = decodeURIComponent(String(expiredGet?.[0]));
+    const patchUrl = decodeURIComponent(String(patchCall?.[0]));
+    const patchBody = JSON.parse(String(patchCall?.[1]?.body));
+
+    expect(result.job).toMatchObject({
+      id: expiredRow.id,
+      provider_response_id: "resp_expired_provider_1",
+      provider_expires_at: "2026-06-30T00:07:00.000Z",
+      desired_revision: 3,
+      running_revision: 3,
+      sealed_revision: null
+    });
+    expect(expiredUrl).toContain("status=eq.processing");
+    expect(expiredUrl).toContain("is_historical=eq.false");
+    expect(expiredUrl).toContain("sealed_revision=is.null");
+    expect(expiredUrl).toContain("provider_status=in.(submitting,queued,in_progress)");
+    expect(expiredUrl).toContain("provider_submitted_at=not.is.null");
+    expect(expiredUrl).toContain("run_after=lte.2026-06-30T00:08:00.000Z");
+    expect(patchUrl).toContain("status=eq.processing");
+    expect(patchUrl).toContain("updated_at=eq.2026-06-30T00:02:00.000Z");
+    expect(patchUrl).toContain("desired_revision=eq.3");
+    expect(patchUrl).toContain("running_revision=eq.2");
+    expect(patchUrl).toContain("sealed_revision=is.null");
+    expect(patchBody).toMatchObject({
+      status: "processing",
+      locked_at: "2026-06-30T00:08:00.000Z",
+      run_after: "2026-06-30T00:18:00.000Z"
+    });
+    expect(patchBody).not.toHaveProperty("provider_response_id");
+    expect(patchBody).not.toHaveProperty("provider_expires_at");
   });
 
   it("claims durable Supabase jobs with conditional patch and without storing raw secrets", async () => {

@@ -380,6 +380,71 @@ describe("analysis worker preflight", () => {
     });
   });
 
+  it("recovers an expired processing continuation before lease and completes without another provider call", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockSemanticRetryWorkerFetch();
+    let responsePostCount = 0;
+    let responseRetrieveCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        responsePostCount += 1;
+        return Response.json({ id: "resp_expired_processing_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_expired_processing_123") {
+        responseRetrieveCount += 1;
+        return Response.json({ id: "resp_expired_processing_123", status: "queued", output: [] });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    const submitted = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const stored = getAnalysisJobsForTests()[0];
+    Object.assign(stored, {
+      status: "processing",
+      attempts: 1,
+      desired_revision: 1,
+      running_revision: 1,
+      claim_generation: "123e4567-e89b-42d3-a456-426614174390",
+      updated_at: "2026-06-30T00:02:00.000Z",
+      locked_at: "2026-06-30T00:02:00.000Z",
+      run_after: "2026-06-30T00:01:15.000Z"
+    });
+
+    const recovered = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:09:01Z"),
+      leaseMs: 10 * 60 * 1000
+    });
+
+    expect(submitted).toMatchObject({ status: "waiting_provider", job: { id } });
+    expect(recovered).toMatchObject({ status: "completed", job: { id } });
+    expect(responsePostCount).toBe(1);
+    expect(responseRetrieveCount).toBe(0);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id,
+      status: "completed",
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      prior_provider_submitted_at: null,
+      prior_provider_expires_at: null,
+      provider_response_id: null,
+      provider_status: null,
+      provider_poll_attempts: 0,
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      provider_webhook_id_hash: null,
+      provider_webhook_received_at: null
+    });
+  });
+
   it("recovers the first validated response after a crash leaves retry submission uncertain", async () => {
     stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
     vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
