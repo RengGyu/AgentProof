@@ -40,8 +40,28 @@ describe("extractRequirements", () => {
   it("does not promote Korean review-pipeline self-test prose into a PR objective", () => {
     const extraction = extractRequirementEvidence("", "이 PR은 검토 파이프라인을 테스트합니다.");
 
+    expect(extraction.requirements).toEqual([]);
+  });
+
+  it("does not invent a requirement when an unlinked PR has no concrete objective", () => {
+    const extraction = extractRequirementEvidence("", "Improve background processing.");
+
+    expect(extraction.requirements).toEqual([]);
+  });
+
+  it("recognizes an explicit Spanish documentation objective", () => {
+    const extraction = extractRequirementEvidence("", "Documentar el reinicio del entorno local con tres pasos reproducibles.");
+
     expect(extraction.requirements).toHaveLength(1);
-    expect(extraction.requirements[0]?.sourceQuality).toBe("manual_check");
+    expect(extraction.requirements[0]?.sourceQuality).toBe("author_claim");
+    expect(extraction.requirements[0]?.text).toContain("Documentar el reinicio");
+  });
+
+  it("recognizes an explicit responsive preservation objective", () => {
+    const extraction = extractRequirementEvidence("", "Keep the compact settings panel readable at 375px.");
+
+    expect(extraction.requirements).toHaveLength(1);
+    expect(extraction.requirements[0]?.text).toContain("readable at 375px");
   });
 
   it("ignores GitHub issue template comments and fenced traces", () => {

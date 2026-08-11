@@ -83,7 +83,7 @@ const KOREAN_REQUIREMENT_PATTERN = /(?:표시한다|이동한다|유지한다|�
 const AMBIGUITY_PATTERN = /\b(?:undefined|not defined|unclear|ambiguous|unspecified)\b|(?:정의하지 않|명확하지 않|모호|불명확)/i;
 const AUTHOR_EVIDENCE_SECTION_PATTERN = /\b(testing|test plan|validation|verified)\b/i;
 const PR_OBJECTIVE_ACTION_PATTERN =
-  /\b(?:add|align|allow|block|create|delete|disable|display|document|enable|ensure|export|fix|handle|hide|implement|migrate|prevent|preserve|refactor|refresh|rename|replace|require|return|rework|save|send|show|support|test|update|validat|verif)(?:e?s?|ed|es|ing|ied)?\b|(?:추가|수정|삭제|구현|문서화|리팩터링|지원|방지|유지|개선|변경|테스트|허용|표시|보장|보여줍니다)/i;
+  /\b(?:add|align|allow|block|create|delete|disable|display|document|enable|ensure|export|fix|handle|hide|implement|keep|migrate|prevent|preserve|refactor|refresh|rename|replace|require|return|rework|save|send|show|support|test|update|validat|verif)(?:e?s?|ed|es|ing|ied)?\b|(?:추가|수정|삭제|구현|문서화|리팩터링|지원|방지|유지|개선|변경|테스트|허용|표시|보장|보여줍니다)|\b(?:documentar|agregar|añadir|actualizar|mostrar|permitir|impedir|devolver|mantener)\b/i;
 const PR_META_PURPOSE_PATTERN =
   /\b(?:this|the)\b.{0,90}\b(?:PR|scenario|fixture|benchmark|demo)\b.{0,120}\b(?:evaluat|exercis|test|record|verif|validat)\w*\b.{0,120}\b(?:review|verification|semantic|analysis)\b|(?:이|본)\s*PR(?:은|는)?\s*(?:검토|검증|분석)\s*파이프라인을?\s*(?:테스트|평가|검증|실행)(?:합니다|한다|해요|함)?/i;
 export const MAX_REPORT_EVIDENCE_ITEMS = 200;
@@ -179,21 +179,21 @@ export function extractRequirementEvidence(
   }
 
   return {
-    requirements: [
-      {
-        id: "req_1",
-        source: "manual",
-        text: "Original requirement is too vague to verify automatically.",
-        keywords: [],
-        priority: "must",
-        role: "core_requirement",
-        sourceQuality: "manual_check",
-        sourceSection: null,
-        contextRoles: contexts.map((context) => context.role).filter(uniqueRole).slice(0, 8)
-      }
-    ],
-      contexts,
-      omittedRequirementCount: 0
+    requirements: taskRaw
+      ? [{
+          id: "req_1",
+          source: "manual",
+          text: "Original requirement is too vague to verify automatically.",
+          keywords: [],
+          priority: "must",
+          role: "core_requirement",
+          sourceQuality: "manual_check",
+          sourceSection: null,
+          contextRoles: contexts.map((context) => context.role).filter(uniqueRole).slice(0, 8)
+        }]
+      : [],
+    contexts,
+    omittedRequirementCount: 0
   };
 }
 

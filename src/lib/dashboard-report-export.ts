@@ -42,7 +42,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
         locationsByEvidenceId,
         index === 0 ? exported.priority_files[0]?.safe_location : undefined
       ))
-      : ["- Unavailable"]),
+      : ["- No explicit requirement or PR objective was found."]),
     "",
     "## Checks",
     "",
@@ -83,7 +83,7 @@ function conciseRequirementMarkdown(
   const locations = references
     .map((id) => locationsByEvidenceId.get(id))
     .filter((value): value is string => Boolean(value));
-  const inspectFirst = item.inspectFirst ?? fallbackInspectFirst;
+  const inspectFirst = item.nextAction ? undefined : item.inspectFirst ?? fallbackInspectFirst;
   return [
     `- **${item.objectiveText ?? `Requirement ${item.requirementId}`}**`,
     `  - Evidence coverage: ${item.coverageLabel}`,

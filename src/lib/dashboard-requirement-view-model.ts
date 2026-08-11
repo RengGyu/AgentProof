@@ -42,11 +42,11 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
     const targets = semantic?.review_targets.filter((item) => item.requirement_ids.includes(requirement.requirementId)) ?? [];
     const relations = semantic?.requirement_evidence_relations.filter((item) => item.requirement_id === requirement.requirementId) ?? [];
     const uncertainties = semantic?.uncertainties.filter((item) => item.requirement_ids.includes(requirement.requirementId)) ?? [];
-    const assessment = assessments.find((item) => item.summary.trim());
-    const action = remediation.find((item) => item.instruction.trim());
-    const guidance = gaps.find((item) => item.description.trim());
-    const target = targets.find((item) => item.inspection_goal.trim());
-    const guidanceNextAction = guidance?.needed_evidence.trim();
+    const assessment = assessments.find((item) => usableCompactText(item.summary));
+    const action = remediation.find((item) => usableCompactText(item.instruction));
+    const guidance = gaps.find((item) => usableCompactText(item.description));
+    const target = targets.find((item) => usableCompactText(item.inspection_goal));
+    const guidanceNextAction = usableCompactText(guidance?.needed_evidence);
     const explanation = assessment
       ? { state: "assessment" as const, text: compactReadingText(assessment.summary) }
       : action
@@ -62,7 +62,7 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       (guidance?.description && !hasSameNormalizedText(explanation.text, guidance.description)
         ? guidance.description
         : undefined);
-    const candidateNextAction = action?.instruction ?? guidanceNextAction;
+    const candidateNextAction = usableCompactText(action?.instruction) ?? guidanceNextAction;
     const actionIncluded = Boolean(candidateNextAction && (
       hasSameNormalizedText(explanation.text, candidateNextAction) ||
       hasSameNormalizedText(primaryGap ?? "", candidateNextAction)
@@ -82,7 +82,7 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       explanation,
       ...(primaryGap ? { primaryGap: compactReadingText(primaryGap) } : {}),
       ...(nextAction ? { nextAction: compactReadingText(nextAction) } : {}),
-      ...(target?.inspection_goal ? { inspectFirst: compactReadingText(target.inspection_goal) } : {}),
+      ...(!nextAction && usableCompactText(target?.inspection_goal) ? { inspectFirst: compactReadingText(target!.inspection_goal) } : {}),
       actionIncluded,
       semanticEvidenceIds: unique([
         ...assessments.flatMap((item) => item.evidence_ids),
@@ -115,7 +115,15 @@ function compactReadingText(value: string, maxLength = 220): string {
   if (sentence.length <= maxLength) return sentence;
   const prefix = sentence.slice(0, Math.max(1, maxLength - 1));
   const wholeWords = prefix.replace(/\s+\S*$/, "").trimEnd();
-  return `${wholeWords || prefix}…`;
+  return `${(wholeWords || prefix).replace(/[,:;\-–—]+$/, "")}.`;
+}
+
+function usableCompactText(value: string | undefined): string | undefined {
+  const normalized = value?.trim().replace(/\s+/g, " ");
+  if (!normalized || /^(?:unavailable|unknown|none|n\/a)$/i.test(normalized)) return undefined;
+  if (/(?:…|\.\.\.)\s*$/.test(normalized)) return undefined;
+  if (/\b(?:raw|full|complete)\s+(?:(?:CI|test|job|check)(?:[-\s](?:run|step))?\s+)?(?:logs?|output|artifacts?)\b|\b(?:CI|test(?:[-\s]run)?|job(?:[-\s](?:run|step))?|check)\s+(?:logs?|output|artifacts?|metadata)\b|\bartifact[-\s]level\s+evidence\b/i.test(normalized)) return undefined;
+  return normalized;
 }
 
 function toCoverageMeaning(status: string): string {

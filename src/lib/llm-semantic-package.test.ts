@@ -643,6 +643,43 @@ describe("LLM semantic analysis package", () => {
     expect(validation.missing_requirement_ids).toContain(requirement!.id);
   });
 
+  it.each([
+    "Provide job-run logs for reviewer inspection.",
+    "Attach job-step metadata or artifact-level evidence.",
+    "Provide the complete test output and CI artifacts."
+  ])("removes privacy-incompatible execution-detail requests: %s", (instruction) => {
+    const llmPackage = buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean));
+    const requirement = llmPackage.input.requirements[0]!;
+    const evidenceId = llmPackage.input.evidence[0]!.id;
+    const candidate = {
+      ...semanticCandidate(requirement.id, evidenceId, "The supplied evidence is available."),
+      remediation_requests: [{
+        requirement_id: requirement.id,
+        request_type: "provide_or_link_evidence" as const,
+        priority: "medium" as const,
+        instruction,
+        rationale: "More execution detail was requested.",
+        expected_evidence: instruction,
+        evidence_ids: [evidenceId],
+        uncertainty: "medium" as const
+      }]
+    };
+
+    expect(validateLlmSemanticPackageCandidate(candidate, llmPackage).candidate?.remediation_requests).toEqual([]);
+  });
+
+  it("removes incomplete generated units instead of showing an ellipsis", () => {
+    const llmPackage = buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean));
+    const requirement = llmPackage.input.requirements[0]!;
+    const evidenceId = llmPackage.input.evidence[0]!.id;
+    const candidate = semanticCandidate(requirement.id, evidenceId, "The supplied evidence suggests that…");
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.candidate?.requirement_assessments).toEqual([]);
+    expect(validation.missing_requirement_ids).toContain(requirement.id);
+  });
+
   it("retains a scoped condition when it is explicit in the requirement and evidence", () => {
     const input = {
       ...demoScenarios.clean,

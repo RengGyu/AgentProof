@@ -31,7 +31,7 @@ describe("RequirementEvidenceList", () => {
     expect(markup).toContain("The normal validation path has evidence.");
     expect(markup).toContain("<strong>Key gap:</strong> Focused edge-case coverage is missing.");
     expect(markup).toContain("<strong>Next:</strong> Add focused edge-case coverage.");
-    expect(markup).toContain("<strong>Inspect first:</strong> Inspect the retry transition.");
+    expect(markup).not.toContain("<strong>Inspect first:</strong> Inspect the retry transition.");
     expect(markup).toMatch(/<details\b[^>]*name="requirement-evidence"/);
     expect(markup).not.toMatch(/<details\b[^>]*\bopen(?:=|\s|>)/);
     expect(markup).toContain("Coverage is based on deterministic evidence captured for this requirement.");

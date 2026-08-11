@@ -174,6 +174,45 @@ function evaluateRequirement(
   const expectations = requirementProofExpectations(requirement.text);
   const hasExplicitArtifactObjective = expectations.documentation || expectations.ci || expectations.targetedTest;
 
+  if (expectations.noImplementationChanges) {
+    const changedArtifactEvidence = evidenceIndex.filter((item) => item.kind === "changed_file" || item.kind === "diff");
+    const changedImplementationEvidence = changedArtifactEvidence.filter((item) => {
+      const path = item.locator ?? item.label;
+      return !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path);
+    });
+    if (hasChangedFileEvidenceUnavailable(input)) {
+      return {
+        requirementId: requirement.id,
+        requirementText: requirement.text,
+        status: "unclear",
+        evidenceRefs: sourceEvidenceRefs(evidenceIndex),
+        gaps: ["Changed-file evidence was unavailable, so the no-implementation-change constraint could not be checked."],
+        reviewerNote: "Collect the changed-file inventory before evaluating this constraint.",
+        confidence: 0.3
+      };
+    }
+    if (changedImplementationEvidence.length > 0) {
+      return {
+        requirementId: requirement.id,
+        requirementText: requirement.text,
+        status: "partial",
+        evidenceRefs: changedImplementationEvidence.map((item) => item.id).slice(0, 5),
+        gaps: ["Implementation files changed even though this requirement limits the PR to non-implementation artifacts."],
+        reviewerNote: "Review the changed implementation files against the stated scope constraint.",
+        confidence: 0.9
+      };
+    }
+    return {
+      requirementId: requirement.id,
+      requirementText: requirement.text,
+      status: "met",
+      evidenceRefs: uniqueRefs([...changedArtifactEvidence.map((item) => item.id), ...sourceEvidenceRefs(evidenceIndex)]).slice(0, 5),
+      gaps: [],
+      reviewerNote: "The collected changed-file inventory contains no implementation artifact.",
+      confidence: 0.9
+    };
+  }
+
   if (requirement.keywords.length === 0 && !hasExplicitArtifactObjective) {
     const refs = sourceEvidenceRefs(evidenceIndex);
 
@@ -210,7 +249,7 @@ function evaluateRequirement(
     .filter(({ item, match }) => match.strong && isPassingTestExecutionEvidence(item))
     .map(({ item }) => item.id);
   const hasMatchingPassingTestExecutionEvidence = matchingPassingExecutionRefs.length > 0;
-  const asksForVisualProof = isVisualRequirement(requirement.text);
+  const asksForVisualProof = expectations.visual;
   const matchingVisualEvidenceRefs = matches
     .filter(({ item, match }) => match.strong && isVisualVerificationEvidence(item))
     .map(({ item }) => item.id);
@@ -580,8 +619,7 @@ function evidenceStatusFromSummary(summary: string): CheckStatus {
 }
 
 function isVisualRequirement(text: string): boolean {
-  return /\b(accessibility|browser|desktop|layout|mobile|overlap|overflow|responsive|screenshot|screen|visual|viewport|ui|ux)\b/i.test(text) ||
-    /\b(readable|readability|30 seconds?)\b/i.test(text);
+  return requirementProofExpectations(text).visual;
 }
 
 function isVisualVerificationEvidence(item: EvidenceItem): boolean {
@@ -627,7 +665,7 @@ function buildProofGraph(
     const matchingExecutionRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
       (item.kind === "check" || item.kind === "log") &&
       isEvidenceExecutionSignal(item) &&
-      isUsefulArtifactMatch(match)
+      (isUsefulArtifactMatch(match) || isOpaqueMatrixExecutionFailure(item))
     );
     const matchingFailedExecutionRefs = requirementFailedExecutionEvidenceRefs(requirement, input, evidenceIndex);
     const executionEvidenceRefs = uniqueRefs([
@@ -680,6 +718,7 @@ function buildProofGraph(
     }
 
     if (
+      expectations.implementation &&
       implementationEvidenceRefs.length > 0 &&
       diffEvidenceUnavailable &&
       implementationEvidenceRefs.every((ref) =>
@@ -721,7 +760,7 @@ function buildProofGraph(
       });
     }
 
-    if ((finding?.gaps ?? []).some((gap) => /visual|screenshot|browser|ux|ui/i.test(gap)) || requirement.contextRoles.includes("visual_context")) {
+    if (expectations.visual && !hasPassingVisualVerification(input)) {
       gapSignals.push({
         kind: "visual_proof_missing",
         severity: "medium",
@@ -827,6 +866,11 @@ function requirementEvidenceRefs(
     .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
     .filter(({ item, match }) => predicate(item, match))
     .map(({ item }) => item.id);
+}
+
+function isOpaqueMatrixExecutionFailure(item: EvidenceItem): boolean {
+  return /^[A-Z0-9_=-]+$/.test(item.label) &&
+    isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
 }
 
 function targetedTestEvidenceRefsForRequirement(
@@ -1886,33 +1930,9 @@ function requirementFailedExecutionEvidenceRefs(
     .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
     .filter(({ item, match }) =>
       failedRefs.has(item.id) &&
-      (isUsefulArtifactMatch(match) || isSharedExecutionFailure(item))
+      (isUsefulArtifactMatch(match) || isOpaqueMatrixExecutionFailure(item))
     )
     .map(({ item }) => item.id);
-}
-
-function isSharedExecutionFailure(item: EvidenceItem): boolean {
-  const normalizedLabel = item.label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const normalizedSummary = item.summary
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const genericExecutionName = /^(?:unit tests?|integration tests?|e2e tests?|regression tests?|tests?|test suite|build|compile|ci|test matrix)$/;
-  const genericExecutionFailure = /^(?:unit tests?|integration tests?|e2e tests?|regression tests?|tests?|test suite|build|compile|ci|test matrix) (?:failed|failure)$/;
-  const pastedSummary = normalizedSummary
-    .replace(/^status failed pasted logs /, "")
-    .replace(/^log pasted logs /, "");
-  const pastedGenericExecutionFailure = normalizedLabel === "pasted logs" && genericExecutionFailure.test(pastedSummary);
-  const opaqueMatrixJob = /^[A-Z0-9_=-]+$/.test(item.label) &&
-    isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
-
-  // Only a deliberately generic repository-wide check may apply without a
-  // requirement match. Domain-prefixed checks such as "Payments integration
-  // tests" or "Docs build" remain scoped to matching requirements.
-  return genericExecutionName.test(normalizedLabel) || genericExecutionFailure.test(normalizedSummary) || pastedGenericExecutionFailure || opaqueMatrixJob;
 }
 
 function statusForCheck(checks: PullRequestInput["checks"], pattern: RegExp): CheckStatus {

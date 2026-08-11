@@ -638,6 +638,7 @@ describe("generateVerificationReport", () => {
     expect(report.summary.topRisks).toContain("Test/build execution failed, so the PR is not proven ready.");
     expect(report.reviewPriority[0]).toEqual(expect.objectContaining({ path: "Test/build checks", priority: "blocker" }));
     expect(refsToEvidence(report, report.reviewPriority[0]?.evidenceRefs ?? []).map((item) => item.label)).toContain("PANDAS_FUTURE_INFER_STRING=0");
+    expect(report.testing.ciStatus).toBe("failed");
     expect(report.proofGraph.nodes.some((node) =>
       node.gapSignals.some((gap) => gap.kind === "failed_execution" && gap.severity === "blocker")
     )).toBe(true);
@@ -2200,10 +2201,10 @@ describe("generateVerificationReport", () => {
 
     expect(report.testing.ciStatus).toBe("failed");
     expect(report.summary.priority).toBe("blocker");
-    expect(report.requirements[0]?.gaps.join(" ")).toContain("failing check");
+    expect(report.requirements[0]?.gaps.join(" ")).not.toContain("failing check");
   });
 
-  it("cites failed execution evidence on requirement findings even without keyword overlap", () => {
+  it("does not cite failed execution evidence on requirement findings without keyword overlap", () => {
     const report = generateVerificationReport({
       title: "Validate invoice export",
       description: "Implemented invoice export validation.",
@@ -2229,8 +2230,8 @@ describe("generateVerificationReport", () => {
     const failedRefs = refsToEvidence(report, report.requirements[0]?.evidenceRefs ?? [])
       .filter((item) => item.kind === "check" && item.summary.startsWith("Status: failed"));
 
-    expect(report.requirements[0]?.gaps.join(" ")).toContain("CI has a failing check");
-    expect(failedRefs.map((item) => item.label)).toContain("unit tests");
+    expect(report.requirements[0]?.gaps.join(" ")).not.toContain("CI has a failing check");
+    expect(failedRefs.map((item) => item.label)).not.toContain("unit tests");
   });
 
   it("keeps generated findings tied to evidence refs or explicit gaps", () => {
@@ -2482,7 +2483,7 @@ describe("generateVerificationReport", () => {
     }
   });
 
-  it("keeps an exactly repository-wide failed test signal available to execution objectives", () => {
+  it("keeps a generic failed test visible at report level without assigning it to a requirement", () => {
     const report = generateVerificationReport({
       title: "Add retry handling and tests",
       description: "Adds retry handling and tests.",
@@ -2495,8 +2496,9 @@ describe("generateVerificationReport", () => {
       logs: []
     } satisfies PullRequestInput);
 
-    expect(report.requirements[0]?.gaps.join(" ")).toContain("CI has a failing check");
-    expect(report.proofGraph.nodes[0]?.gapSignals.some((gap) => gap.kind === "failed_execution")).toBe(true);
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(report.requirements[0]?.gaps.join(" ")).not.toContain("CI has a failing check");
+    expect(report.proofGraph.nodes[0]?.gapSignals.some((gap) => gap.kind === "failed_execution")).toBe(false);
   });
 
   it("does not treat a domain-prefixed pasted-log failure as repository-wide", () => {
@@ -2555,6 +2557,70 @@ describe("generateVerificationReport", () => {
 
     expect(testObjective?.gapSignals.map((gap) => gap.kind)).toContain("missing_targeted_test");
     expect(testObjective?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+  });
+
+  it("does not require visual proof for non-visual formatting behavior", () => {
+    const report = generateVerificationReport({
+      title: "Normalize invoice references",
+      description: "Trim and uppercase invoice references before display.",
+      taskText: "Normalize invoice references before display.",
+      changedFiles: [
+        { path: "src/billing/invoice-reference.js", additions: 8, deletions: 0, status: "modified", patch: "+ return value.trim().toUpperCase();" },
+        { path: "test/invoice-reference.test.js", additions: 8, deletions: 0, status: "modified", patch: "+ expect(normalizeInvoiceReference(' ab ')).toBe('AB');" }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Invoice reference tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("visual_proof_missing");
+  });
+
+  it("requires visual proof only for an explicit visual acceptance criterion", () => {
+    const report = generateVerificationReport({
+      title: "Keep compact settings readable",
+      description: "Keep the compact settings panel readable at 375px.",
+      taskText: "Keep the compact settings panel readable at 375px.",
+      changedFiles: [{ path: "src/settings/CompactPanel.css", additions: 8, deletions: 0, status: "modified", patch: "+ .panel { overflow-wrap: anywhere; }" }],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Settings tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("visual_proof_missing");
+  });
+
+  it("does not attach an unrelated generic failed check to a requirement", () => {
+    const report = generateVerificationReport({
+      title: "Format customer display name",
+      description: "Format and trim the customer display name.",
+      taskText: "Format and trim the customer display name.",
+      changedFiles: [
+        { path: "src/customers/display-name.js", additions: 8, deletions: 0, status: "modified", patch: "+ return name.trim();" },
+        { path: "test/customer-display-name.test.js", additions: 8, deletions: 0, status: "modified", patch: "+ expect(displayName(' Ada ')).toBe('Ada');" }
+      ],
+      checks: [
+        { name: "display-name tests", status: "passed", summary: "Customer display name tests passed." },
+        { name: "integration tests", status: "failed", summary: "CSV import integration failed." }
+      ],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("failed_execution");
+    expect(report.testing.ciStatus).toBe("failed");
+  });
+
+  it("treats a no-implementation-change constraint as an independent proof obligation", () => {
+    const report = generateVerificationReport({
+      title: "Add connection label regression tests",
+      description: "Add tests. Do not change implementation code.",
+      taskText: "Acceptance criteria:\n- Add a regression test for connectionLabel.\n- Do not change implementation code.",
+      changedFiles: [{ path: "test/connection-label.test.js", additions: 8, deletions: 0, status: "modified", patch: "+ expect(connectionLabel(false)).toBe('Connected');" }],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Connection label tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const noChange = report.proofGraph.nodes.find((node) => /Do not change implementation/i.test(node.requirementText));
+    expect(noChange?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+    expect(report.requirements.find((item) => item.requirementId === noChange?.requirementId)?.status).not.toBe("unclear");
   });
 });
 

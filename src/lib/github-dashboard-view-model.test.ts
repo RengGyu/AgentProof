@@ -85,6 +85,19 @@ describe("github dashboard view model", () => {
     expect(summary.primaryEvidenceDetail).toBe("A focused test for the exceptional input path is not available.");
   });
 
+  it("never exposes an internal requirement ID as the quick-summary gap", () => {
+    const summary = toQuickSummary({
+      repositoryFullName: "RengGyu/dongo",
+      pullRequestNumber: 18,
+      report: {
+        requirements: [{ requirementId: "req_3", requirementText: "Add focused tests.", status: "partial", evidenceRefs: ["ev_1"], gaps: [] }]
+      }
+    });
+
+    expect(summary.primaryEvidenceDetail).toBe("Some evidence is linked, but coverage is incomplete.");
+    expect(summary.primaryEvidenceDetail).not.toContain("req_3");
+  });
+
   it("marks an exhausted enhanced-analysis retry as unavailable without changing grounded evidence", () => {
     const summary = toQuickSummary({
       repositoryFullName: "RengGyu/dongo",

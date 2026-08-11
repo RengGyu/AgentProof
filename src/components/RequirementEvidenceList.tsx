@@ -28,7 +28,7 @@ export function RequirementEvidenceList({ requirements }: { requirements: Dashbo
     createElement("p", { className: `requirement-explanation ${requirement.explanation.state}` }, createElement("span", { className: "requirement-explanation-label" }, toExplanationLabel(requirement.explanation.state, requirement.actionIncluded)), requirement.explanation.text),
     requirement.primaryGap ? createElement("p", { className: "requirement-primary-gap" }, createElement("strong", null, "Key gap:"), " ", requirement.primaryGap) : null,
     requirement.nextAction ? createElement("p", { className: "requirement-next-action" }, createElement("strong", null, "Next:"), " ", requirement.nextAction) : null,
-    requirement.inspectFirst ? createElement("p", { className: "requirement-inspect-first" }, createElement("strong", null, "Inspect first:"), " ", requirement.inspectFirst) : null
+    requirement.inspectFirst && !requirement.nextAction ? createElement("p", { className: "requirement-inspect-first" }, createElement("strong", null, "Inspect first:"), " ", requirement.inspectFirst) : null
   )));
 }
 

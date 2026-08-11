@@ -157,8 +157,8 @@ describe("toDashboardRequirementViewModels", () => {
     expect(card?.objectiveText?.length).toBeLessThanOrEqual(160);
     expect(card?.explanation.text.length).toBeLessThanOrEqual(220);
     expect(card?.nextAction?.length).toBeLessThanOrEqual(220);
-    expect(card?.inspectFirst?.length).toBeLessThanOrEqual(220);
-    expect(card?.explanation.text).toMatch(/[.…!?]$/);
+    expect(card?.inspectFirst).toBeUndefined();
+    expect(card?.explanation.text).toMatch(/[.!?]$/);
   });
 
   it("uses the validated one-line objective summary before the tenant-safe fallback label", () => {
@@ -216,8 +216,34 @@ describe("toDashboardRequirementViewModels", () => {
     expect(card).toMatchObject({
       objectiveText: "Show a retry status.",
       primaryGap: "Deterministic gap.",
-      nextAction: "Add the focused retry failure test.",
-      inspectFirst: "Inspect the retry status transition."
+      nextAction: "Add the focused retry failure test."
     });
+    expect(card?.inspectFirst).toBeUndefined();
+  });
+
+  it("does not surface unavailable, truncated, or raw-detail actions", () => {
+    const cards = toDashboardRequirementViewModels({
+      requirements: [
+        { requirementId: "req_1", status: "partial", evidenceRefs: [], gaps: [] },
+        { requirementId: "req_2", status: "partial", evidenceRefs: [], gaps: [] }
+      ],
+      semantic: {
+        requirement_evidence_relations: [],
+        requirement_assessments: [],
+        evidence_gaps: [],
+        review_targets: [
+          { target_type: "file", target_evidence_id: "ev_1", priority: "medium", reason: "Review.", inspection_goal: "unavailable", requirement_ids: ["req_1"], evidence_ids: [], uncertainty: "medium" },
+          { target_type: "file", target_evidence_id: "ev_2", priority: "medium", reason: "Review.", inspection_goal: "Inspect the remaining implementation…", requirement_ids: ["req_2"], evidence_ids: [], uncertainty: "medium" }
+        ],
+        remediation_requests: [
+          { requirement_id: "req_1", request_type: "provide_or_link_evidence", priority: "medium", instruction: "Provide job-run logs.", rationale: "More detail.", expected_evidence: "Logs.", evidence_ids: [], uncertainty: "medium" }
+        ],
+        uncertainties: []
+      }
+    });
+
+    expect(cards[0]?.nextAction).toBeUndefined();
+    expect(cards[0]?.inspectFirst).toBeUndefined();
+    expect(cards[1]?.inspectFirst).toBeUndefined();
   });
 });

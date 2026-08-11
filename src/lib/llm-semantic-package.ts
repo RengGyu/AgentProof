@@ -493,17 +493,18 @@ function withoutFreshUnsupportedUnits(candidate: unknown, llmPackage: LlmSemanti
   const value = candidate as Record<string, unknown>;
   const proofByRequirementId = new Map(llmPackage.validator.requirementProofs.map((proof) => [proof.requirementId, proof]));
   const hasUnsupportedScope = (unit: Record<string, unknown>) => hasFreshUnsupportedScope(unit, llmPackage);
+  const isIncomplete = (unit: Record<string, unknown>) => unitNaturalLanguage(unit).some((text) => /(?:…|\.\.\.)\s*$/.test(text.trim()));
   return {
     ...value,
-    requirement_evidence_relations: filterUnits(value.requirement_evidence_relations, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
-    requirement_assessments: filterUnits(value.requirement_assessments, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
-    review_targets: filterUnits(value.review_targets, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
-    uncertainties: filterUnits(value.uncertainties, (unit) => !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    requirement_evidence_relations: filterUnits(value.requirement_evidence_relations, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    requirement_assessments: filterUnits(value.requirement_assessments, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    review_targets: filterUnits(value.review_targets, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    uncertainties: filterUnits(value.uncertainties, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
     evidence_gaps: filterUnits(value.evidence_gaps, (unit) =>
-      !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofGap(unit, proofByRequirementId)
+      !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofGap(unit, proofByRequirementId)
     ),
     remediation_requests: filterUnits(value.remediation_requests, (unit) =>
-      !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofRemediation(unit, proofByRequirementId)
+      !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofRemediation(unit, proofByRequirementId)
     )
   };
 }
@@ -651,7 +652,7 @@ function isRawLogDemand(value: unknown): boolean {
   const text = Object.values(value)
     .filter((item): item is string => typeof item === "string")
     .join(" ");
-  return /\b(?:raw|full)\s+(?:CI\s+)?logs?\b|\b(?:CI|test(?:\s*run)?)\s+(?:logs?|output|artifacts?)\b/i.test(text);
+  return /\b(?:raw|full|complete)\s+(?:(?:CI|test|job|check)(?:[-\s](?:run|step))?\s+)?(?:logs?|output|artifacts?)\b|\b(?:CI|test(?:[-\s]run)?|job(?:[-\s](?:run|step))?|check)\s+(?:logs?|output|artifacts?|metadata)\b|\bartifact[-\s]level\s+evidence\b|\b(?:logs?|output|artifacts?)\s+(?:from|for|of)\s+(?:CI|test|job|check)\b/i.test(text);
 }
 
 function isUnavailableIssueAmbiguityGap(value: unknown, blockedRequirementIds: Set<string>): boolean {

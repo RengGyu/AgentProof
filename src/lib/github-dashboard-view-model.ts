@@ -97,12 +97,19 @@ export function toQuickSummary(detail: DashboardReportDetail & { repositoryFullN
   const firstPriorityPath = detail.report?.reviewPriority?.map((item) => safeLocator(item.path)).find(Boolean);
   const firstEvidencePath = detail.report?.evidenceIndex?.map((item) => safeLocator(item.locator)).find(Boolean);
   const primarySemanticGap = detail.report?.semantic?.evidence_gaps[0];
+  const primaryEvidenceDetail = primarySemanticGap?.description ??
+    firstRequirement?.gaps[0] ??
+    (firstRequirement?.status === "partial"
+      ? "Some evidence is linked, but coverage is incomplete."
+      : firstRequirement
+        ? "Review the linked evidence for this requirement."
+        : "No explicit requirement or PR objective was found.");
 
   return {
     freshness: detail.staleAt ? "STALE" : "CURRENT",
     checkState: toCheckState(detail.report?.testing),
     primaryEvidenceState: toEvidenceState(firstRequirement?.status, firstRequirement?.gaps.length ?? 0),
-    ...(primarySemanticGap ? { primaryEvidenceDetail: primarySemanticGap.description } : {}),
+    primaryEvidenceDetail,
     aiEvidenceState: toAiEvidenceState(detail.report),
     inspectFirst: firstPriorityPath ?? firstEvidencePath ?? "Unavailable",
     githubUrl: buildGitHubPullUrl(detail.repositoryFullName, detail.pullRequestNumber)
