@@ -149,6 +149,50 @@ describe("server report store", () => {
     expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
   });
 
+  it("does not promote a semantic suggestion into a deterministic tenant gap or next action", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    const requirement = report.requirements[0]!;
+    const proofNode = report.proofGraph.nodes.find((node) => node.requirementId === requirement.requirementId)!;
+    requirement.gaps = [];
+    proofNode.gapSignals = [];
+    report.semantic = {
+      requirement_evidence_relations: [],
+      requirement_assessments: [],
+      evidence_gaps: [{
+        requirement_id: requirement.requirementId,
+        gap_type: "insufficient_context",
+        priority: "medium",
+        description: "The supplied evidence leaves additional context unclear.",
+        review_impact: "The evidence reading remains limited.",
+        needed_evidence: "A bounded additional reference.",
+        evidence_ids: [],
+        uncertainty: "medium"
+      }],
+      review_targets: [],
+      remediation_requests: [{
+        requirement_id: requirement.requirementId,
+        request_type: "provide_or_link_evidence",
+        priority: "medium",
+        instruction: "Link a bounded additional reference.",
+        rationale: "The evidence reading is limited.",
+        expected_evidence: "A supplied evidence reference.",
+        evidence_ids: [],
+        uncertainty: "medium"
+      }],
+      uncertainties: []
+    };
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "9".repeat(40)
+    });
+
+    expect(saved.report.semantic).toEqual(report.semantic);
+    expect(saved.report.requirements[0]?.gaps).toEqual([]);
+    expect(saved.report.proofGraph.nodes[0]?.gapSignals).toEqual([]);
+    expect(saved.report.reprompt.prompt).toBe("Review the linked evidence.");
+  });
+
   it("retains only bounded unavailable semantic runtime state in a signed tenant report", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const report = generateVerificationReport(demoScenarios.clean);
@@ -186,6 +230,111 @@ describe("server report store", () => {
     expect(serialized).not.toContain("PRIVATE ISSUE WORDING");
     expect(serialized).not.toContain("RAW AGENT REQUEST");
     expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("persists only a safe one-line objective label and keeps legacy placeholder reports valid", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const report = generateVerificationReport({
+      title: "Normalize an invoice reference",
+      taskText: "Normalize an invoice reference before display.",
+      description: "Normalize an invoice reference before display.",
+      changedFiles: [{ path: "src/billing/reference.ts", status: "modified", patch: "+ return value.trim().toUpperCase();" }],
+      checks: [],
+      logs: []
+    });
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "e".repeat(40)
+    });
+    const projected = projectTenantPersistedReport(saved.report, signingSecret);
+
+    expect(saved.report.requirements[0]?.requirementText).toBe("Normalize an invoice reference before display");
+    expect(projected.requirements[0]).toMatchObject({
+      objectiveLabel: "Normalize an invoice reference before display"
+    });
+    expect(validateTenantPersistedReport(projected, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(validateTenantPersistedReport(JSON.parse(JSON.stringify(projected)), signingSecret)).toEqual({ valid: true, errors: [] });
+
+    const legacyReport = saved.report;
+    legacyReport.requirements[0]!.requirementText = `Requirement ${legacyReport.requirements[0]!.requirementId}`;
+    const legacy = projectTenantPersistedReport(legacyReport, signingSecret);
+    expect(legacy.requirements[0]).not.toHaveProperty("objectiveLabel");
+    expect(validateTenantPersistedReport(legacy, signingSecret)).toEqual({ valid: true, errors: [] });
+
+    const unsignedNestedField = structuredClone(projected) as unknown as {
+      evidenceIndex: Array<Record<string, unknown>>;
+      reviewPriority: Array<Record<string, unknown>>;
+      integrity: Record<string, unknown>;
+    };
+    unsignedNestedField.evidenceIndex[0]!.rawLog = "must not survive";
+    unsignedNestedField.integrity.rawLog = "must not survive";
+    expect(validateTenantPersistedReport(unsignedNestedField, signingSecret)).toMatchObject({ valid: false });
+    expect(validateTenantPersistedReport(unsignedNestedField, signingSecret).errors).toEqual(expect.arrayContaining([
+      "tenant persisted evidence has disallowed fields.",
+      "tenant persisted report signature is invalid."
+    ]));
+
+    unsignedNestedField.reviewPriority.push({
+      path: "src/billing/reference.ts",
+      priority: "medium",
+      evidenceRefs: [],
+      rawOutput: "must not survive"
+    });
+    expect(validateTenantPersistedReport(unsignedNestedField, signingSecret).errors).toContain(
+      "tenant persisted priority file has disallowed fields."
+    );
+  });
+
+  it("rejects unsafe objective-label source text instead of persisting raw source details", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.requirements[0]!.requirementText = "Issue body: inspect https://example.test/private and src/private/token.ts";
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "f".repeat(40)
+    });
+    const serialized = JSON.stringify(projectTenantPersistedReport(saved.report, signingSecret));
+
+    expect(saved.report.requirements[0]?.requirementText).toBe(`Requirement ${report.requirements[0]!.requirementId}`);
+    expect(serialized).not.toContain("example.test");
+    expect(serialized).not.toContain("src/private/token.ts");
+    expect(serialized).not.toContain("Issue body");
+  });
+
+  it("preserves no-objective PR context through tenant sanitization and persistence", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const report = generateVerificationReport({
+      title: "Improve background processing",
+      taskText: "",
+      description: "Improve background processing.",
+      changedFiles: [{ path: "src/jobs/label.js", status: "modified", patch: "+ export const label = 'background';" }],
+      checks: [],
+      logs: []
+    });
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 8,
+      headSha: "1".repeat(40)
+    });
+    const projected = projectTenantPersistedReport(saved.report, signingSecret);
+
+    expect(report.requirements).toEqual([]);
+    expect(saved.report.analysisContext).toBe("unlinked_pr");
+    expect(projected.analysisContext).toBe("unlinked_pr");
   });
 
   it("updates the current report for the same head and marks it stale only after a different head", async () => {

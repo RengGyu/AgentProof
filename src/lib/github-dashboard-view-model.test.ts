@@ -51,7 +51,7 @@ describe("github dashboard view model", () => {
     });
   });
 
-  it("uses the validated semantic evidence gap as the quick-summary explanation when available", () => {
+  it("uses the deterministic evidence gap as the quick-summary explanation when semantic prose differs", () => {
     const summary = toQuickSummary({
       repositoryFullName: "RengGyu/dongo",
       pullRequestNumber: 14,
@@ -82,7 +82,7 @@ describe("github dashboard view model", () => {
       }
     });
 
-    expect(summary.primaryEvidenceDetail).toBe("A focused test for the exceptional input path is not available.");
+    expect(summary.primaryEvidenceDetail).toBe("Evidence gap recorded.");
   });
 
   it("never exposes an internal requirement ID as the quick-summary gap", () => {

@@ -222,6 +222,8 @@ export type ProofGapKind =
   | "evidence_unavailable"
   | "visual_proof_missing";
 
+export type ReportAnalysisContext = "linked_issue" | "unlinked_pr" | "provided_requirement";
+
 export interface ProofGapSignal {
   kind: ProofGapKind;
   severity: PriorityLevel;
@@ -262,6 +264,8 @@ export interface ProofGraph {
 export interface VerificationReport {
   analysisId: string;
   createdAt: string;
+  /** Deterministic requirement-authority classification. */
+  analysisContext?: ReportAnalysisContext;
   source: {
     title: string;
     url?: string;

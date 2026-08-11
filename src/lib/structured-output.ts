@@ -163,6 +163,7 @@ export const verificationReportSchema = {
     required: [
       "analysisId",
       "createdAt",
+      "analysisContext",
       "source",
       "summary",
       "requirements",
@@ -178,6 +179,7 @@ export const verificationReportSchema = {
     properties: {
       analysisId: { type: "string", maxLength: 160 },
       createdAt: { type: "string", maxLength: 80 },
+      analysisContext: { type: "string", enum: ["linked_issue", "unlinked_pr", "provided_requirement"] },
       source: {
         type: "object",
         additionalProperties: false,

@@ -8,8 +8,8 @@ import {
   type LlmSemanticValidationDiagnostics,
   type LlmSemanticValidationResult
 } from "./llm-semantic-output";
-import type { EvidenceItem, EvidenceKind, PullRequestInput, VerificationReport } from "./types";
-import { requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
+import type { EvidenceItem, EvidenceKind, ProofGapKind, PullRequestInput, VerificationReport } from "./types";
+import { isProhibitedEvidenceRequestText } from "./semantic-text-policy";
 
 const MAX_REQUIREMENTS = 20;
 const MAX_EVIDENCE = 60;
@@ -29,14 +29,7 @@ const EMPTY_LLM_SEMANTIC_OUTPUT: LlmSemanticOutput = {
 
 interface FreshRequirementProof {
   requirementId: string;
-  expectations: RequirementProofExpectations;
-  nonTestArtifactPresent: {
-    implementation: boolean;
-    documentation: boolean;
-    ci: boolean;
-  };
-  targetedTestEvidencePresent: boolean;
-  executionEvidencePresent: boolean;
+  gapKinds: ProofGapKind[];
 }
 
 export interface LlmSemanticPackageEvidence {
@@ -106,6 +99,12 @@ export function buildLlmSemanticPackage(
       ? eligibleRequirementNodes.map((node) => node.requirementId)
       : []
   );
+  const issueAbsenceOnlyAmbiguityIds = new Set(
+    eligibleRequirementNodes
+      .filter((node) => issueAbsenceRequirementIds.has(node.requirementId))
+      .filter((node) => !hasExplicitAmbiguity(node.requirementText))
+      .map((node) => node.requirementId)
+  );
   const selectedEvidence = selectEvidence(report);
   const selectedEvidenceIds = new Set(selectedEvidence.map((item) => item.id));
   const patchesByPath = new Map(
@@ -122,27 +121,15 @@ export function buildLlmSemanticPackage(
       ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
     ]).filter((id) => selectedEvidenceIds.has(id)),
     gap_kinds: uniqueIds(node.gapSignals
-      .filter((gap) => !issueAbsenceRequirementIds.has(node.requirementId) || gap.kind !== "ambiguous_requirement")
+      .filter((gap) => !issueAbsenceOnlyAmbiguityIds.has(node.requirementId) || gap.kind !== "ambiguous_requirement")
       .map((gap) => gap.kind))
   }));
-  const requirementProofs = eligibleRequirementNodes.slice(0, MAX_REQUIREMENTS).map((node) => {
-    const baseExpectations = requirementProofExpectations(node.requirementText);
-    const expectations = {
-      ...baseExpectations,
-      targetedTest: baseExpectations.targetedTest || node.gapSignals.some((gap) => gap.kind === "missing_targeted_test")
-    };
-    return {
+  const requirementProofs = eligibleRequirementNodes.slice(0, MAX_REQUIREMENTS).map((node) => ({
       requirementId: node.requirementId,
-      expectations,
-      nonTestArtifactPresent: {
-        implementation: !expectations.implementation || !node.gapSignals.some((gap) => /implementation artifact/i.test(gap.message)),
-        documentation: !expectations.documentation || !node.gapSignals.some((gap) => /documentation artifact/i.test(gap.message)),
-        ci: !expectations.ci || !node.gapSignals.some((gap) => /CI workflow artifact/i.test(gap.message))
-      },
-      targetedTestEvidencePresent: node.targetedTestEvidenceRefs.length > 0,
-      executionEvidencePresent: !node.gapSignals.some((gap) => gap.kind === "missing_execution")
-    } satisfies FreshRequirementProof;
-  });
+      gapKinds: uniqueIds(node.gapSignals
+        .filter((gap) => !issueAbsenceOnlyAmbiguityIds.has(node.requirementId) || gap.kind !== "ambiguous_requirement")
+        .map((gap) => gap.kind)) as ProofGapKind[]
+    } satisfies FreshRequirementProof));
   const evidence = selectedEvidence.map((item) => ({
     id: item.id,
     kind: item.kind,
@@ -199,16 +186,17 @@ export function validateLlmSemanticPackageCandidate(
   candidate: unknown,
   llmPackage: LlmSemanticPackage
 ): LlmSemanticValidationResult {
-  const preFreshCandidate = withoutNonActionableRawLogUnits(withoutUnavailableIssueUnits(candidate, llmPackage));
+  const preFreshCandidate = withoutUnavailableIssueUnits(candidate, llmPackage);
   const freshCandidate = withoutFreshUnsupportedUnits(preFreshCandidate, llmPackage);
-  const validation = validateLlmSemanticCandidate(freshCandidate, {
+  const baseValidation = validateLlmSemanticCandidate(freshCandidate, {
     requirementIds: llmPackage.input.requirements.map((requirement) => requirement.id),
     evidence: llmPackage.input.evidence.map((evidence) => ({ id: evidence.id, kind: evidence.kind }))
   });
-  const freshPolicyChanged = JSON.stringify(preFreshCandidate) !== JSON.stringify(freshCandidate);
-  if (!validation.candidate && freshPolicyChanged && validation.discard_reason_codes.includes("empty_usable_analysis")) {
+  const policyChanged = JSON.stringify(candidate) !== JSON.stringify(freshCandidate);
+  let validation = withPackagePolicyDiagnostics(baseValidation, candidate, freshCandidate);
+  if (!validation.candidate && policyChanged && validation.discard_reason_codes.includes("empty_usable_analysis")) {
     const missingRequirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
-    return {
+    validation = {
       ...validation,
       disposition: "partial",
       candidate: EMPTY_LLM_SEMANTIC_OUTPUT,
@@ -222,10 +210,122 @@ export function validateLlmSemanticPackageCandidate(
       }
     };
   }
-  if (!validation.candidate || !freshPolicyChanged) {
+  if (!validation.candidate || !policyChanged) {
     return validation;
   }
   return { ...validation, disposition: "partial" };
+}
+
+function withPackagePolicyDiagnostics(
+  validation: LlmSemanticValidationResult,
+  original: unknown,
+  filtered: unknown
+): LlmSemanticValidationResult {
+  const drops = packagePolicyDrops(original, filtered);
+  if (drops.length === 0) return validation;
+  const rawSectionCounts = sectionCounts(original);
+  const rejectedSectionCounts = { ...validation.diagnostics.rejected_section_counts };
+  const rejectedReasonCodeCounts = { ...validation.diagnostics.rejected_reason_code_counts };
+  for (const drop of drops) {
+    rejectedSectionCounts[drop.section] += 1;
+    rejectedReasonCodeCounts[drop.reason] += 1;
+  }
+  return {
+    ...validation,
+    rejected_units: [
+      ...remapRejectedUnitIndices(validation.rejected_units, original, filtered),
+      ...drops.map((drop) => ({ section: drop.section, index: drop.index, reason_codes: [drop.reason] }))
+    ],
+    diagnostics: {
+      ...validation.diagnostics,
+      raw_section_counts: rawSectionCounts,
+      rejected_section_counts: rejectedSectionCounts,
+      rejected_reason_code_counts: rejectedReasonCodeCounts
+    }
+  };
+}
+
+function remapRejectedUnitIndices(
+  rejected: readonly LlmSemanticValidationResult["rejected_units"][number][],
+  original: unknown,
+  filtered: unknown
+): LlmSemanticValidationResult["rejected_units"] {
+  if (!isSemanticSectionRecord(original) || !isSemanticSectionRecord(filtered)) return [...rejected];
+  const mappings = new Map<keyof LlmSemanticOutput, number[]>();
+  for (const section of SEMANTIC_SECTION_KEYS) {
+    const originalItems = original[section];
+    let searchFrom = 0;
+    const indices = filtered[section].map((item) => {
+      const serialized = JSON.stringify(item);
+      const offset = originalItems.slice(searchFrom).findIndex((candidate) => JSON.stringify(candidate) === serialized);
+      if (offset < 0) return -1;
+      const originalIndex = searchFrom + offset;
+      searchFrom = originalIndex + 1;
+      return originalIndex;
+    });
+    mappings.set(section, indices);
+  }
+  return rejected.map((unit) => ({
+    ...unit,
+    index: mappings.get(unit.section)?.[unit.index] ?? unit.index
+  }));
+}
+
+interface PackagePolicyDrop {
+  section: keyof LlmSemanticOutput;
+  index: number;
+  reason: LlmSemanticRejectReason;
+}
+
+function packagePolicyDrops(original: unknown, filtered: unknown): PackagePolicyDrop[] {
+  if (!isSemanticSectionRecord(original) || !isSemanticSectionRecord(filtered)) return [];
+  const drops: PackagePolicyDrop[] = [];
+  for (const section of SEMANTIC_SECTION_KEYS) {
+    const remaining = [...filtered[section]];
+    for (const [itemIndex, item] of original[section].entries()) {
+      const serialized = JSON.stringify(item);
+      const index = remaining.findIndex((candidate) => JSON.stringify(candidate) === serialized);
+      if (index >= 0) {
+        remaining.splice(index, 1);
+        continue;
+      }
+      const unit = item && typeof item === "object" && !Array.isArray(item)
+        ? item as Record<string, unknown>
+        : {};
+      const reason: LlmSemanticRejectReason = hasFreshOverlongText(unit)
+        ? "length_limit"
+        : unitNaturalLanguage(unit).some((text) => /(?:…|\.\.\.)\s*$/.test(text.trim()))
+          ? "incomplete_text"
+          : isProhibitedEvidenceDemand(unit)
+            ? "prohibited_evidence_demand"
+            : hasFreshProhibitedAssurance(unit)
+              ? "prohibited_assurance"
+            : "inconsistent_evidence_support";
+      drops.push({ section, index: itemIndex, reason });
+    }
+  }
+  return drops;
+}
+
+const SEMANTIC_SECTION_KEYS: Array<keyof LlmSemanticOutput> = [
+  "requirement_evidence_relations",
+  "requirement_assessments",
+  "evidence_gaps",
+  "review_targets",
+  "remediation_requests",
+  "uncertainties"
+];
+
+function isSemanticSectionRecord(value: unknown): value is Record<keyof LlmSemanticOutput, unknown[]> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
+    SEMANTIC_SECTION_KEYS.every((section) => Array.isArray((value as Record<string, unknown>)[section])));
+}
+
+function sectionCounts(value: unknown): LlmSemanticValidationDiagnostics["raw_section_counts"] {
+  const counts = emptySectionCounts();
+  if (!isSemanticSectionRecord(value)) return counts;
+  for (const section of SEMANTIC_SECTION_KEYS) counts[section] = value[section].length;
+  return counts;
 }
 
 export function buildLlmSemanticPackageSubset(
@@ -469,6 +569,10 @@ function hasUnavailableLinkedIssue(input: PullRequestInput): boolean {
   return (input.limitations ?? []).some(isUnavailableLinkedIssueLimitation);
 }
 
+function hasExplicitAmbiguity(value: string): boolean {
+  return /\b(?:ambiguous|clarif(?:y|ication)|unclear|undefined|unspecified|not defined|not specified)\b|(?:명확화|모호|불명확|명확하지 않|정의되지 않|정의하지 않)/i.test(value);
+}
+
 function isUnavailableLinkedIssueLimitation(limitation: string): boolean {
   return /Multiple supported issue references found|Linked issue .* could not be fetched|Linked issue .* had no title or body text|Linked reference .* points to a pull request|No original task text was provided and no single valid linked issue was available/i.test(limitation);
 }
@@ -494,19 +598,42 @@ function withoutFreshUnsupportedUnits(candidate: unknown, llmPackage: LlmSemanti
   const proofByRequirementId = new Map(llmPackage.validator.requirementProofs.map((proof) => [proof.requirementId, proof]));
   const hasUnsupportedScope = (unit: Record<string, unknown>) => hasFreshUnsupportedScope(unit, llmPackage);
   const isIncomplete = (unit: Record<string, unknown>) => unitNaturalLanguage(unit).some((text) => /(?:…|\.\.\.)\s*$/.test(text.trim()));
+  const isOverlong = (unit: Record<string, unknown>) => hasFreshOverlongText(unit);
+  const hasProhibitedDemand = (unit: Record<string, unknown>) => isProhibitedEvidenceDemand(unit);
+  const hasForeignEvidence = (unit: Record<string, unknown>) => hasForeignRequirementEvidence(unit, llmPackage);
+  const keepCommon = (unit: Record<string, unknown>) => !isIncomplete(unit) && !isOverlong(unit) && !hasProhibitedDemand(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !hasForeignEvidence(unit);
   return {
     ...value,
-    requirement_evidence_relations: filterUnits(value.requirement_evidence_relations, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
-    requirement_assessments: filterUnits(value.requirement_assessments, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
-    review_targets: filterUnits(value.review_targets, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
-    uncertainties: filterUnits(value.uncertainties, (unit) => !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit)),
+    requirement_evidence_relations: filterUnits(value.requirement_evidence_relations, keepCommon),
+    requirement_assessments: filterUnits(value.requirement_assessments, keepCommon),
+    review_targets: filterUnits(value.review_targets, keepCommon),
+    uncertainties: filterUnits(value.uncertainties, keepCommon),
     evidence_gaps: filterUnits(value.evidence_gaps, (unit) =>
-      !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofGap(unit, proofByRequirementId)
+      keepCommon(unit) && !contradictsFreshProofGap(unit, proofByRequirementId)
     ),
     remediation_requests: filterUnits(value.remediation_requests, (unit) =>
-      !isIncomplete(unit) && !hasFreshProhibitedAssurance(unit) && !hasUnsupportedScope(unit) && !contradictsFreshProofRemediation(unit, proofByRequirementId)
+      keepCommon(unit) && !contradictsFreshProofRemediation(unit, proofByRequirementId)
     )
   };
+}
+
+function hasFreshOverlongText(unit: Record<string, unknown>): boolean {
+  return Object.entries(unit).some(([key, value]) => {
+    if (typeof value !== "string") return false;
+    const limit = key === "requirement_summary" ? 160 : 220;
+    return value.trim().replace(/\s+/g, " ").length > limit;
+  });
+}
+
+function hasForeignRequirementEvidence(unit: Record<string, unknown>, llmPackage: LlmSemanticPackage): boolean {
+  const requirementIds = unitRequirementIds(unit);
+  if (requirementIds.length === 0) return false;
+  const knownRequirementIds = new Set(llmPackage.input.requirements.map((requirement) => requirement.id));
+  if (requirementIds.some((requirementId) => !knownRequirementIds.has(requirementId))) return false;
+  const requirements = llmPackage.input.requirements.filter((requirement) => requirementIds.includes(requirement.id));
+  return unitEvidenceIds(unit).some((evidenceId) =>
+    requirements.some((requirement) => !requirement.evidence_ids.includes(evidenceId))
+  );
 }
 
 function filterUnits(value: unknown, keep: (unit: Record<string, unknown>) => boolean): unknown {
@@ -532,10 +659,8 @@ function hasFreshUnsupportedScope(unit: Record<string, unknown>, llmPackage: Llm
   if (requirementIds.length === 0) return false;
   const requirements = llmPackage.input.requirements.filter((requirement) => requirementIds.includes(requirement.id));
   if (requirements.length === 0) return false;
-  const referencedEvidenceIds = unitEvidenceIds(unit);
   const allowedEvidenceIds = new Set([
-    ...requirements.flatMap((requirement) => requirement.evidence_ids),
-    ...referencedEvidenceIds
+    ...requirements.flatMap((requirement) => requirement.evidence_ids)
   ]);
   const allowedText = [
     ...requirements.map((requirement) => requirement.text),
@@ -564,10 +689,11 @@ function unitRequirementIds(unit: Record<string, unknown>): string[] {
 
 function unitEvidenceIds(unit: Record<string, unknown>): string[] {
   const direct = typeof unit.evidence_id === "string" ? [unit.evidence_id] : [];
+  const target = typeof unit.target_evidence_id === "string" ? [unit.target_evidence_id] : [];
   const multiple = Array.isArray(unit.evidence_ids)
     ? unit.evidence_ids.filter((value): value is string => typeof value === "string")
     : [];
-  return uniqueIds([...direct, ...multiple]);
+  return uniqueIds([...direct, ...target, ...multiple]);
 }
 
 function unitNaturalLanguage(unit: Record<string, unknown>): string[] {
@@ -585,17 +711,9 @@ function contradictsFreshProofGap(
   proofByRequirementId: Map<string, FreshRequirementProof>
 ): boolean {
   const proof = typeof unit.requirement_id === "string" ? proofByRequirementId.get(unit.requirement_id) : undefined;
-  if (!proof || typeof unit.gap_type !== "string") return false;
-  if (unit.gap_type === "missing_implementation_evidence") {
-    return hasNoExpectedNonTestArtifact(proof) || hasAllExpectedNonTestArtifacts(proof);
-  }
-  if (unit.gap_type === "missing_test_evidence") {
-    return !proof.expectations.targetedTest || proof.targetedTestEvidencePresent;
-  }
-  if (unit.gap_type === "missing_check_evidence" || unit.gap_type === "missing_runtime_evidence") {
-    return !proof.expectations.execution || proof.executionEvidencePresent;
-  }
-  return false;
+  if (!proof || typeof unit.gap_type !== "string") return true;
+  const allowed = SEMANTIC_GAP_PROOF_KINDS[unit.gap_type];
+  return !allowed || !proof.gapKinds.some((kind) => allowed.includes(kind));
 }
 
 function contradictsFreshProofRemediation(
@@ -603,56 +721,41 @@ function contradictsFreshProofRemediation(
   proofByRequirementId: Map<string, FreshRequirementProof>
 ): boolean {
   const proof = typeof unit.requirement_id === "string" ? proofByRequirementId.get(unit.requirement_id) : undefined;
-  if (!proof || typeof unit.request_type !== "string") return false;
-  if (unit.request_type === "add_or_update_test") {
-    return !proof.expectations.targetedTest || proof.targetedTestEvidencePresent;
-  }
-  if (unit.request_type === "explain_implementation") {
-    return hasNoExpectedNonTestArtifact(proof) || hasAllExpectedNonTestArtifacts(proof);
-  }
-  return false;
+  if (!proof || typeof unit.request_type !== "string") return true;
+  const allowed = REMEDIATION_PROOF_KINDS[unit.request_type];
+  return !allowed || !proof.gapKinds.some((kind) => allowed.includes(kind));
 }
 
-function hasNoExpectedNonTestArtifact(proof: FreshRequirementProof): boolean {
-  return !proof.expectations.implementation && !proof.expectations.documentation && !proof.expectations.ci;
-}
+const SEMANTIC_GAP_PROOF_KINDS: Record<string, readonly ProofGapKind[]> = {
+  missing_implementation_evidence: ["missing_implementation"],
+  missing_test_evidence: ["missing_targeted_test", "self_reported_test_gap"],
+  missing_check_evidence: ["missing_execution"],
+  missing_runtime_evidence: ["missing_execution"],
+  ambiguous_requirement: ["ambiguous_requirement"],
+  traceability_gap: ["evidence_unavailable"],
+  conflicting_evidence: ["failed_execution"],
+  insufficient_context: ["evidence_unavailable", "visual_proof_missing"]
+};
 
-function hasAllExpectedNonTestArtifacts(proof: FreshRequirementProof): boolean {
-  return (!proof.expectations.implementation || proof.nonTestArtifactPresent.implementation) &&
-    (!proof.expectations.documentation || proof.nonTestArtifactPresent.documentation) &&
-    (!proof.expectations.ci || proof.nonTestArtifactPresent.ci);
-}
+const REMEDIATION_PROOF_KINDS: Record<string, readonly ProofGapKind[]> = {
+  add_or_update_test: ["missing_targeted_test", "self_reported_test_gap"],
+  provide_or_link_evidence: ["missing_implementation", "missing_targeted_test", "missing_execution", "self_reported_test_gap", "evidence_unavailable", "visual_proof_missing"],
+  clarify_requirement: ["ambiguous_requirement"],
+  explain_implementation: ["missing_implementation"],
+  investigate_check_result: ["missing_execution", "failed_execution"],
+  investigate_requirement_mismatch: ["ambiguous_requirement", "failed_execution"]
+};
 
 function isRawLogRetentionLimitation(value: string): boolean {
   return /\b(?:raw|full)\s+(?:CI\s+)?logs?\b|\bexecution output\b/i.test(value) &&
     /\bnot\s+(?:fetched|stored|collected|available)\b|\bno\b.{0,80}\b(?:fetched|stored|collected|available)\b/i.test(value);
 }
 
-function withoutNonActionableRawLogUnits(candidate: unknown): unknown {
-  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-    return candidate;
-  }
-  const value = candidate as Record<string, unknown>;
-  return {
-    ...value,
-    evidence_gaps: Array.isArray(value.evidence_gaps)
-      ? value.evidence_gaps.filter((item) => !isRawLogDemand(item))
-      : value.evidence_gaps,
-    remediation_requests: Array.isArray(value.remediation_requests)
-      ? value.remediation_requests.filter((item) => !isRawLogDemand(item))
-      : value.remediation_requests,
-    uncertainties: Array.isArray(value.uncertainties)
-      ? value.uncertainties.filter((item) => !isRawLogDemand(item))
-      : value.uncertainties
-  };
-}
-
-function isRawLogDemand(value: unknown): boolean {
+function isProhibitedEvidenceDemand(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const text = Object.values(value)
+  return Object.values(value)
     .filter((item): item is string => typeof item === "string")
-    .join(" ");
-  return /\b(?:raw|full|complete)\s+(?:(?:CI|test|job|check)(?:[-\s](?:run|step))?\s+)?(?:logs?|output|artifacts?)\b|\b(?:CI|test(?:[-\s]run)?|job(?:[-\s](?:run|step))?|check)\s+(?:logs?|output|artifacts?|metadata)\b|\bartifact[-\s]level\s+evidence\b|\b(?:logs?|output|artifacts?)\s+(?:from|for|of)\s+(?:CI|test|job|check)\b/i.test(text);
+    .some(isProhibitedEvidenceRequestText);
 }
 
 function isUnavailableIssueAmbiguityGap(value: unknown, blockedRequirementIds: Set<string>): boolean {

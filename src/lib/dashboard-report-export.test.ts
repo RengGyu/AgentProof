@@ -129,8 +129,8 @@ describe("dashboard report export", () => {
     expect(markdown).toContain("Evidence coverage: Partially supported");
     expect(markdown).toContain("What the evidence shows: The supplied test evidence covers the status update.");
     expect(markdown).toContain("Key gap: Focused test evidence is missing.");
-    expect(markdown).toContain("Next: Add the focused retry failure test.");
-    expect(markdown).not.toContain("Inspect first: Inspect the retry status transition.");
+    expect(markdown).not.toContain("Next: Add the focused retry failure test.");
+    expect(markdown).toContain("Inspect first: Inspect the retry status transition.");
     expect(markdown).not.toContain("AI analysis");
     expect(markdown).not.toContain("AI evidence reading");
     expect(markdown).not.toContain("req_1 ↔ ev_1");

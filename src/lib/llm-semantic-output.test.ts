@@ -167,6 +167,7 @@ describe("AgentProof LLM semantic output contract", () => {
         reference_type_mismatch: 0,
         duplicate_reference: 0,
         inconsistent_evidence_support: 0,
+        prohibited_evidence_demand: 0,
         prohibited_assurance: 0
       },
       discard_reason_codes: [],

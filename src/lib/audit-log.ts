@@ -722,6 +722,7 @@ function sanitizeSemanticRejectReasonCounts(
     reference_type_mismatch: safeSemanticAuditCount(value?.reference_type_mismatch),
     duplicate_reference: safeSemanticAuditCount(value?.duplicate_reference),
     inconsistent_evidence_support: safeSemanticAuditCount(value?.inconsistent_evidence_support),
+    prohibited_evidence_demand: safeSemanticAuditCount(value?.prohibited_evidence_demand),
     prohibited_assurance: safeSemanticAuditCount(value?.prohibited_assurance)
   };
 }

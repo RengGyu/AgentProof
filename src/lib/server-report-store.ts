@@ -9,9 +9,9 @@ import {
 import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
-import { isSafeTenantLocator, isTenantPersistedReport, projectTenantPersistedReport, type TenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
-import { tenantGapKind, tenantGapText, tenantProofGapKindForSemanticGap, tenantRemediationText } from "./tenant-report-language";
-import type { ProofGapKind, VerificationReport } from "./types";
+import { isSafeTenantLocator, isTenantPersistedReport, projectTenantPersistedReport, tenantObjectiveLabel, type TenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
+import { tenantGapKind, tenantGapText, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
+import type { VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_SERVER_REPORTS = 100;
@@ -793,27 +793,21 @@ function prepareSummaryReportForStorage(
 }
 
 /**
- * Tenant reports retain verification structure, evidence ids and safe file or
- * check locations while discarding all source-derived prose. This is the
+ * Tenant reports retain verification structure, evidence ids, safe file or
+ * check locations, and a validated one-line objective label. This is the
  * durable privacy boundary for private repositories: no diff, log, token,
- * raw GitHub response, PR body, issue body, or generated free-text finding is
- * written to the saved-report row.
+ * raw GitHub response, PR/Issue body, or unbounded generated prose is written
+ * to the saved-report row.
  */
 function prepareTenantDetailReportForStorage(report: VerificationReport, trust: "verified_agentproof" | "imported_unverified"): VerificationReport {
+  const analysisContext = tenantReportAnalysisContext(report);
   const proofNodesByRequirement = new Map(report.proofGraph.nodes.map((node) => [node.requirementId, node]));
-  const semanticGapKindsByRequirement = new Map<string, ProofGapKind[]>();
-  for (const gap of report.semantic?.evidence_gaps ?? []) {
-    const current = semanticGapKindsByRequirement.get(gap.requirement_id) ?? [];
-    current.push(tenantProofGapKindForSemanticGap(gap.gap_type));
-    semanticGapKindsByRequirement.set(gap.requirement_id, current);
-  }
-  const allGapKinds = [
-    ...report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind)),
-    ...[...semanticGapKindsByRequirement.values()].flatMap((kinds) => kinds)
-  ];
+  const objectiveLabels = new Map(report.requirements.map((item) => [item.requirementId, tenantObjectiveLabel(item.requirementText)]));
+  const allGapKinds = report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind));
   const safe: VerificationReport = {
     analysisId: report.analysisId,
     createdAt: report.createdAt,
+    analysisContext,
     source: {
       title: "GitHub pull request evidence report",
       ...(report.source.provenance ? { provenance: report.source.provenance } : {})
@@ -827,14 +821,11 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
     },
     requirements: report.requirements.map((item) => {
       const proofGaps = proofNodesByRequirement.get(item.requirementId)?.gapSignals ?? [];
-      const gapKinds = [
-        ...proofGaps.map((gap) => gap.kind),
-        ...(semanticGapKindsByRequirement.get(item.requirementId) ?? [])
-      ];
+      const gapKinds = proofGaps.map((gap) => gap.kind);
       const gaps = uniqueStrings(gapKinds.map(tenantGapText));
       return {
         requirementId: item.requirementId,
-        requirementText: `Requirement ${item.requirementId}`,
+        requirementText: objectiveLabels.get(item.requirementId) ?? `Requirement ${item.requirementId}`,
         status: item.status,
         evidenceRefs: item.evidenceRefs,
         gaps: gaps.slice(0, 10),
@@ -860,7 +851,7 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
       version: 1,
       nodes: report.proofGraph.nodes.map((node) => ({
         requirementId: node.requirementId,
-        requirementText: `Requirement ${node.requirementId}`,
+        requirementText: objectiveLabels.get(node.requirementId) ?? `Requirement ${node.requirementId}`,
         sourceRole: node.sourceRole,
         sourceQuality: node.sourceQuality,
         sourceSection: null,
@@ -1062,7 +1053,7 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
       : "fallback" as const;
   const proofNodes = report.requirements.map((item) => ({
     requirementId: item.requirementId,
-    requirementText: `Requirement ${item.requirementId}`,
+    requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`,
     sourceRole: "core_requirement" as const,
     sourceQuality: hydratedSourceQuality,
     sourceSection: null,
@@ -1078,9 +1069,10 @@ function hydratePersistedTenantReport(report: VerificationReport | TenantPersist
   const hydrated: VerificationReport = {
     analysisId: "tenant-saved-report",
     createdAt,
+    analysisContext: report.analysisContext,
     source: { title: "GitHub pull request evidence report" },
     summary: { oneLine: "Grounded verification result; review structured evidence.", confidence: 0, priority: report.priority, evidenceCoverage: 0, topRisks: [] },
-    requirements: report.requirements.map((item) => ({ requirementId: item.requirementId, requirementText: `Requirement ${item.requirementId}`, status: item.status, evidenceRefs: item.evidenceRefs, gaps: item.gaps, reviewerNote: "Review the linked evidence and safe locations.", confidence: 0 })),
+    requirements: report.requirements.map((item) => ({ requirementId: item.requirementId, requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`, status: item.status, evidenceRefs: item.evidenceRefs, gaps: item.gaps, reviewerNote: "Review the linked evidence and safe locations.", confidence: 0 })),
     claims: [],
     scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
     testing: { ...report.testing, missingTests: [] },

@@ -116,11 +116,14 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["authenticity", "semantic", "semanticAnalysis"]
+    ["analysisContext", "authenticity", "semantic", "semanticAnalysis"]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
   validateString(report.createdAt, "createdAt", LIMITS.createdAt, errors);
+  if (report.analysisContext !== undefined && report.analysisContext !== "linked_issue" && report.analysisContext !== "unlinked_pr" && report.analysisContext !== "provided_requirement") {
+    errors.push("analysisContext is invalid.");
+  }
 
   const evidenceIds = validateEvidenceIndex(report.evidenceIndex, errors);
   const evidenceById = collectEvidenceById(report.evidenceIndex);

@@ -28,6 +28,7 @@ import type {
   ReviewPriorityItem,
   VerificationReport
 } from "./types";
+import { tenantReportAnalysisContext } from "./tenant-report-language";
 
 const MAX_MISSING_TEST_FINDINGS = 100;
 const MAX_FINDING_PROVENANCE_ITEMS = 5;
@@ -79,7 +80,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
   const reprompt = buildReprompt(requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, failedNonExecutionChecks, proofGraph);
   const claims = extractClaims(input.description, evidenceIndex);
 
-  return {
+  const report: VerificationReport = {
     analysisId: `ap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     source: {
@@ -121,6 +122,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     evidenceIndex,
     limitations
   };
+  report.analysisContext = tenantReportAnalysisContext(report);
+  return report;
 }
 
 function constrainAuthorIntentFinding(requirement: Requirement, finding: RequirementFinding): RequirementFinding {

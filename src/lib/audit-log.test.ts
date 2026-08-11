@@ -129,6 +129,7 @@ describe("audit log", () => {
           reference_type_mismatch: 0,
           duplicate_reference: 0,
           inconsistent_evidence_support: 0,
+          prohibited_evidence_demand: 0,
           prohibited_assurance: 0
         },
         discardReasonCodeCounts: {
@@ -238,6 +239,7 @@ describe("audit log", () => {
           reference_type_mismatch: 0,
           duplicate_reference: 0,
           inconsistent_evidence_support: 0,
+          prohibited_evidence_demand: 0,
           prohibited_assurance: 0,
           injected_reason: 99
         },
@@ -297,6 +299,7 @@ describe("audit log", () => {
         reference_type_mismatch: 0,
         duplicate_reference: 0,
         inconsistent_evidence_support: 0,
+        prohibited_evidence_demand: 0,
         prohibited_assurance: 0
       },
       discardReasonCodeCounts: {

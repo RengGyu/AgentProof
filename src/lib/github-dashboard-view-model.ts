@@ -96,9 +96,7 @@ export function toQuickSummary(detail: DashboardReportDetail & { repositoryFullN
   const firstRequirement = requirements.find((item) => item.gaps.length > 0) ?? requirements[0];
   const firstPriorityPath = detail.report?.reviewPriority?.map((item) => safeLocator(item.path)).find(Boolean);
   const firstEvidencePath = detail.report?.evidenceIndex?.map((item) => safeLocator(item.locator)).find(Boolean);
-  const primarySemanticGap = detail.report?.semantic?.evidence_gaps[0];
-  const primaryEvidenceDetail = primarySemanticGap?.description ??
-    firstRequirement?.gaps[0] ??
+  const primaryEvidenceDetail = firstRequirement?.gaps[0] ??
     (firstRequirement?.status === "partial"
       ? "Some evidence is linked, but coverage is incomplete."
       : firstRequirement

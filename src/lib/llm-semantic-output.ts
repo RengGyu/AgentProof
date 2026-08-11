@@ -164,6 +164,7 @@ export type LlmSemanticRejectReason =
   | "reference_type_mismatch"
   | "duplicate_reference"
   | "inconsistent_evidence_support"
+  | "prohibited_evidence_demand"
   | "prohibited_assurance";
 
 export type LlmSemanticDiscardReason =
@@ -1060,6 +1061,7 @@ function diagnostics(input: {
     reference_type_mismatch: 0,
     duplicate_reference: 0,
     inconsistent_evidence_support: 0,
+    prohibited_evidence_demand: 0,
     prohibited_assurance: 0
   };
 

@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { containsSecretPattern } from "./redact";
 import { verifyVerifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport, type ReportValidationResult } from "./report-validation";
 import { validateLlmSemanticCandidate, type LlmSemanticOutput } from "./llm-semantic-output";
@@ -19,12 +20,13 @@ const MAX_TENANT_EVIDENCE = 200;
 const MAX_TENANT_PRIORITY_FILES = 100;
 const MAX_TENANT_EVIDENCE_REFS = 50;
 const MAX_TENANT_GAPS = 20;
+const MAX_TENANT_OBJECTIVE_LABEL = 160;
 
 export interface TenantPersistedReport {
   version: 1;
   analysisContext?: TenantReportAnalysisContext;
   priority: PriorityLevel;
-  requirements: Array<{ requirementId: string; status: RequirementStatus; evidenceRefs: string[]; gaps: string[] }>;
+  requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceRefs: string[]; gaps: string[] }>;
   testing: { ciStatus: CheckStatus; lintStatus: CheckStatus; typecheckStatus: CheckStatus };
   reviewPriority: Array<{ path: string; priority: PriorityLevel; evidenceRefs: string[] }>;
   evidenceIndex: Array<{ id: string; kind?: EvidenceKind; locator?: string }>;
@@ -86,7 +88,9 @@ export function validateTenantStoredReport(
   if (!isSafeTenantIdentifier(report.analysisId)) errors.push("analysisId is not a safe identifier.");
   for (const requirement of report.requirements) {
     if (!isSafeTenantIdentifier(requirement.requirementId)) errors.push(`requirement id is unsafe: ${requirement.requirementId}`);
-    if (requirement.requirementText !== `Requirement ${requirement.requirementId}`) errors.push(`requirement ${requirement.requirementId} contains non-contract text.`);
+    if (requirement.requirementText !== `Requirement ${requirement.requirementId}` && tenantObjectiveLabel(requirement.requirementText) !== requirement.requirementText) {
+      errors.push(`requirement ${requirement.requirementId} contains non-contract text.`);
+    }
     if (requirement.gaps.some((value) => !ALLOWED_TENANT_GAP_TEXTS.has(value))) errors.push(`requirement ${requirement.requirementId} contains non-contract gap text.`);
     if (requirement.reviewerNote !== FIXED.reviewerNote) errors.push(`requirement ${requirement.requirementId} contains non-contract reviewer text.`);
   }
@@ -101,7 +105,8 @@ export function validateTenantStoredReport(
     if (item.reason !== FIXED.priorityReason) errors.push("reviewPriority.reason contains non-contract text.");
   }
   for (const node of report.proofGraph.nodes) {
-    if (node.requirementText !== `Requirement ${node.requirementId}`) errors.push(`proofGraph node ${node.requirementId} contains non-contract text.`);
+    const requirementText = report.requirements.find((requirement) => requirement.requirementId === node.requirementId)?.requirementText;
+    if (node.requirementText !== requirementText) errors.push(`proofGraph node ${node.requirementId} does not match its requirement label.`);
     if (node.sourceSection !== null || node.contextRoles.length !== 0) errors.push(`proofGraph node ${node.requirementId} retains source context.`);
     node.firstFiles.forEach((value) => validateLocator(value, "proofGraph.firstFiles", errors));
     if (node.gapSignals.some((gap) => !ALLOWED_TENANT_GAP_TEXTS.has(gap.message))) errors.push(`proofGraph node ${node.requirementId} contains non-contract gap text.`);
@@ -122,12 +127,16 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
     version: 1 as const,
     analysisContext: tenantReportAnalysisContext(report),
     priority: report.summary.priority,
-    requirements: report.requirements.map(({ requirementId, status, evidenceRefs, gaps }) => ({
-      requirementId,
-      status,
-      evidenceRefs: [...evidenceRefs],
-      gaps: [...gaps]
-    })),
+    requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceRefs, gaps }) => {
+      const objectiveLabel = tenantObjectiveLabel(requirementText);
+      return {
+        requirementId,
+        ...(objectiveLabel ? { objectiveLabel } : {}),
+        status,
+        evidenceRefs: [...evidenceRefs],
+        gaps: [...gaps]
+      };
+    }),
     testing: {
       ciStatus: report.testing.ciStatus,
       lintStatus: report.testing.lintStatus,
@@ -166,7 +175,8 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const evidenceIds = new Set<string>();
   for (const evidence of report.evidenceIndex ?? []) {
     if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) { errors.push("tenant persisted evidence is invalid."); continue; }
-    const item = evidence as { id?: unknown; kind?: unknown; locator?: unknown };
+    const item = evidence as { id?: unknown; kind?: unknown; locator?: unknown } & Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["id", "kind", "locator"].includes(key))) errors.push("tenant persisted evidence has disallowed fields.");
     if (typeof item.id !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.id) || evidenceIds.has(item.id)) errors.push("tenant persisted evidence id is invalid.");
     else evidenceIds.add(item.id);
     if (item.kind !== undefined && !isEvidenceKind(item.kind)) errors.push("tenant persisted evidence kind is invalid.");
@@ -174,8 +184,10 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   for (const requirement of report.requirements ?? []) {
     if (!requirement || typeof requirement !== "object" || Array.isArray(requirement)) { errors.push("tenant persisted requirement is invalid."); continue; }
-    const item = requirement as { requirementId?: unknown; status?: unknown; evidenceRefs?: unknown; gaps?: unknown };
+    const item = requirement as { requirementId?: unknown; objectiveLabel?: unknown; status?: unknown; evidenceRefs?: unknown; gaps?: unknown } & Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["requirementId", "objectiveLabel", "status", "evidenceRefs", "gaps"].includes(key))) errors.push("tenant persisted requirement has disallowed fields.");
     if (typeof item.requirementId !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.requirementId)) errors.push("tenant persisted requirement id is invalid.");
+    if (item.objectiveLabel !== undefined && (typeof item.objectiveLabel !== "string" || tenantObjectiveLabel(item.objectiveLabel) !== item.objectiveLabel)) errors.push("tenant persisted objective label is invalid.");
     if (!isRequirementStatus(item.status)) errors.push("tenant persisted requirement status is invalid.");
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
     if (!Array.isArray(item.gaps) || item.gaps.length > MAX_TENANT_GAPS || item.gaps.some((gap) => typeof gap !== "string" || !ALLOWED_TENANT_GAP_TEXTS.has(gap))) errors.push("tenant persisted requirement gaps are invalid.");
@@ -184,7 +196,8 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   if (!testing || !isCheckStatus(testing.ciStatus) || !isCheckStatus(testing.lintStatus) || !isCheckStatus(testing.typecheckStatus) || Object.keys(testing).some((key) => !["ciStatus", "lintStatus", "typecheckStatus"].includes(key))) errors.push("tenant persisted check status is invalid.");
   for (const priority of report.reviewPriority ?? []) {
     if (!priority || typeof priority !== "object" || Array.isArray(priority)) { errors.push("tenant persisted priority file is invalid."); continue; }
-    const item = priority as { path?: unknown; priority?: unknown; evidenceRefs?: unknown };
+    const item = priority as { path?: unknown; priority?: unknown; evidenceRefs?: unknown } & Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["path", "priority", "evidenceRefs"].includes(key))) errors.push("tenant persisted priority file has disallowed fields.");
     if (typeof item.path !== "string" || !isSafeTenantLocator(item.path) || !isPriority(item.priority)) errors.push("tenant persisted priority file is invalid.");
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
   }
@@ -210,7 +223,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const integrity = report.integrity as Record<string, unknown> | undefined;
   const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
   const payload = stableJson(unsigned);
-  if (!integrity || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
+  if (!integrity || Object.keys(integrity).some((key) => !["version", "algorithm", "canonicalDigest", "signature"].includes(key)) || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > TENANT_REPORT_MAX_BYTES) errors.push(`report exceeds ${TENANT_REPORT_MAX_BYTES} bytes.`);
   return { valid: errors.length === 0, errors: [...new Set(errors)] };
 }
@@ -236,6 +249,18 @@ export function isTenantPersistedReport(value: unknown, signingSecret: string): 
 export function isSafeTenantLocator(value: string): boolean {
   if (!SAFE_LOCATOR_PATTERN.test(value) || value.startsWith("/") || value.includes("://") || value.includes("\\")) return false;
   return !value.split("/").some((segment) => segment === "..");
+}
+
+export function tenantObjectiveLabel(value: string): string | undefined {
+  if (!value || value.length > MAX_TENANT_OBJECTIVE_LABEL || /[\r\n\u0000-\u001f\u007f]/.test(value)) return undefined;
+  const normalized = value.trim().replace(/[\t ]+/g, " ");
+  if (!normalized || normalized.length > MAX_TENANT_OBJECTIVE_LABEL || normalized !== value.trim()) return undefined;
+  if (/^Requirement\s+[A-Za-z0-9_.:@#-]+$/i.test(normalized)) return undefined;
+  if (containsSecretPattern(normalized) || normalized.includes("[redacted]")) return undefined;
+  if (/```|https?:\/\/|www\.|\b(?:Issue|PR)\s+body\s*:|\b(?:raw|full|complete)\s+(?:source|patch|diff|logs?|output|artifacts?)\b/i.test(normalized)) return undefined;
+  if (/(?:^|\s)(?:src|app|lib|test|tests|docs|\.github)\/[A-Za-z0-9_.@/-]+/i.test(normalized)) return undefined;
+  if (/\b(?:ignore|disregard)\s+(?:all\s+)?(?:previous|prior)\b|\b(?:system|developer)\s+prompt\b/i.test(normalized)) return undefined;
+  return normalized;
 }
 
 function isSafeTenantIdentifier(value: string): boolean {

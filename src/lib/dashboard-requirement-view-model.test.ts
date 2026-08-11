@@ -31,7 +31,7 @@ describe("toDashboardRequirementViewModels", () => {
 
   it("keeps a matching remediation instruction in Next and uses bounded evidence guidance when an assessment is absent", () => {
     const [card] = toDashboardRequirementViewModels({
-      requirements: [{ requirementId: "req_2", status: "missing", evidenceRefs: [], gaps: ["No deterministic evidence was captured."] }],
+      requirements: [{ requirementId: "req_2", status: "missing", evidenceRefs: [], gaps: ["Targeted test evidence is missing for this requirement."] }],
       semantic: {
         requirement_evidence_relations: [],
         requirement_assessments: [],
@@ -43,14 +43,15 @@ describe("toDashboardRequirementViewModels", () => {
     });
 
     expect(card).toMatchObject({
-      explanation: { state: "guidance", text: "A next action is available from the evidence." },
-      nextAction: "Add a focused test for the missing path.",
+      explanation: { state: "guidance", text: "Review the key evidence gap and next action." },
+      primaryGap: "Targeted test evidence is missing for this requirement.",
+      nextAction: "Add or link a targeted test and its Check result for the requirement.",
       semanticEvidenceIds: [],
       uncertainties: ["high"]
     });
   });
 
-  it("uses matching semantic gap guidance and needed evidence as the next action without a remediation request", () => {
+  it("does not promote a semantic gap when deterministic verification recorded no gap", () => {
     const [card] = toDashboardRequirementViewModels({
       requirements: [{ requirementId: "req_gap", status: "partial", evidenceRefs: ["ev_gap"], gaps: [] }],
       semantic: {
@@ -64,10 +65,10 @@ describe("toDashboardRequirementViewModels", () => {
     });
 
     expect(card).toMatchObject({
-      explanation: { state: "guidance", text: "Available evidence needs the listed next action." },
-      primaryGap: "A focused path is not supported by the available evidence.",
-      nextAction: "A focused test result."
+      explanation: { state: "none", text: "No additional supporting details are available for this requirement." }
     });
+    expect(card?.primaryGap).toBeUndefined();
+    expect(card?.nextAction).toBeUndefined();
   });
 
   it("prefers a distinct deterministic gap over semantic interpretation in the compact card", () => {
@@ -85,9 +86,9 @@ describe("toDashboardRequirementViewModels", () => {
 
     expect(card).toMatchObject({
       explanation: { state: "assessment", text: "The status update has file evidence." },
-      primaryGap: "A passed execution check was not captured.",
-      nextAction: "A passing check result."
+      primaryGap: "A passed execution check was not captured."
     });
+    expect(card.nextAction).toBeUndefined();
   });
 
   it("omits a normalized duplicate next action while preserving distinct actionable text", () => {
@@ -112,11 +113,13 @@ describe("toDashboardRequirementViewModels", () => {
 
     expect(cards[0]).toMatchObject({ explanation: { state: "assessment", text: "Add focused test coverage." } });
     expect(cards[0]?.nextAction).toBeUndefined();
-    expect(cards[0]?.actionIncluded).toBe(true);
-    expect(cards[1]).toMatchObject({ explanation: { state: "guidance", text: "Available evidence needs the listed next action." }, primaryGap: "Provide focused test evidence." });
+    expect(cards[0]?.actionIncluded).toBe(false);
+    expect(cards[1]).toMatchObject({ explanation: { state: "none", text: "No additional supporting details are available for this requirement." } });
     expect(cards[1]?.nextAction).toBeUndefined();
-    expect(cards[1]?.actionIncluded).toBe(true);
-    expect(cards[2]).toMatchObject({ explanation: { state: "guidance", text: "Available evidence needs the listed next action." }, primaryGap: "A focused path is not covered.", nextAction: "Provide the focused test result.", actionIncluded: false });
+    expect(cards[1]?.actionIncluded).toBe(false);
+    expect(cards[2]).toMatchObject({ explanation: { state: "none", text: "No additional supporting details are available for this requirement." }, actionIncluded: false });
+    expect(cards[2]?.primaryGap).toBeUndefined();
+    expect(cards[2]?.nextAction).toBeUndefined();
   });
 
   it("labels unavailable supporting details honestly while retaining deterministic gaps", () => {
@@ -132,7 +135,7 @@ describe("toDashboardRequirementViewModels", () => {
     });
   });
 
-  it("shows a deterministic-only gap once and bounds compact reading text", () => {
+  it("shows a deterministic-only gap once and omits overlong semantic text instead of manufacturing a sentence", () => {
     const longSentence = `${"A bounded evidence reading remains concise ".repeat(12)}without cutting the final word.`;
     const [card] = toDashboardRequirementViewModels({
       requirements: [{ requirementId: "req_bounded", requirementText: longSentence, status: "partial", evidenceRefs: ["ev_1"], gaps: [longSentence] }],
@@ -150,15 +153,15 @@ describe("toDashboardRequirementViewModels", () => {
     });
 
     expect(deterministicOnly).toMatchObject({
-      explanation: { state: "none", text: "Available deterministic evidence is summarized in coverage. Review the key gap below." },
+      explanation: { state: "guidance", text: "Review the key evidence gap and next action." },
       primaryGap: "A deterministic check is missing."
     });
     expect(deterministicOnly.explanation.text).not.toContain("Evidence gap:");
-    expect(card?.objectiveText?.length).toBeLessThanOrEqual(160);
-    expect(card?.explanation.text.length).toBeLessThanOrEqual(220);
-    expect(card?.nextAction?.length).toBeLessThanOrEqual(220);
+    expect(card?.objectiveText).toBeUndefined();
+    expect(card?.explanation).toEqual({ state: "none", text: "No additional supporting details are available for this requirement." });
+    expect(card?.nextAction).toBeUndefined();
     expect(card?.inspectFirst).toBeUndefined();
-    expect(card?.explanation.text).toMatch(/[.!?]$/);
+    expect(card?.explanation.text).not.toContain("A bounded evidence reading remains concise");
   });
 
   it("uses the validated one-line objective summary before the tenant-safe fallback label", () => {
@@ -215,10 +218,10 @@ describe("toDashboardRequirementViewModels", () => {
 
     expect(card).toMatchObject({
       objectiveText: "Show a retry status.",
-      primaryGap: "Deterministic gap.",
-      nextAction: "Add the focused retry failure test."
+      primaryGap: "Deterministic gap."
     });
-    expect(card?.inspectFirst).toBeUndefined();
+    expect(card.nextAction).toBeUndefined();
+    expect(card?.inspectFirst).toBe("Inspect the retry status transition.");
   });
 
   it("does not surface unavailable, truncated, or raw-detail actions", () => {

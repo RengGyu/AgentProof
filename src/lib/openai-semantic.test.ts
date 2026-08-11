@@ -43,8 +43,9 @@ describe("OpenAI semantic adapter", () => {
   it("retrieves and validates a completed background semantic response", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);
-    const requirementId = report.proofGraph.nodes[0]?.requirementId;
-    const evidenceId = report.evidenceIndex.find((item) => ["diff", "changed_file", "test", "check"].includes(item.kind))?.id;
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementId = llmPackage.input.requirements[0]?.id;
+    const evidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
     expect(requirementId).toBeTruthy();
     expect(evidenceId).toBeTruthy();
     const output = semanticOutput(requirementId!, evidenceId!);
@@ -306,8 +307,9 @@ describe("OpenAI semantic adapter", () => {
   it("sends a transient strict-schema request and returns only validator-approved semantic output", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);
-    const requirementId = report.proofGraph.nodes[0]?.requirementId;
-    const evidenceId = report.evidenceIndex.find((item) => ["diff", "changed_file", "test", "check"].includes(item.kind))?.id;
+    const llmPackage = buildLlmSemanticPackage(input, report);
+    const requirementId = llmPackage.input.requirements[0]?.id;
+    const evidenceId = llmPackage.input.requirements[0]?.evidence_ids[0];
     expect(requirementId).toBeTruthy();
     expect(evidenceId).toBeTruthy();
     const response = {

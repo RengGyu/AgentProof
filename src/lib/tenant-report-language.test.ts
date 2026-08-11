@@ -1,19 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { tenantProofGapKindForSemanticGap, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
+import { tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
 import { generateVerificationReport } from "./verifier";
 
 describe("tenant report language", () => {
   it("uses an actionable privacy-safe fallback when no specific gap kind is available", () => {
     expect(tenantRemediationText([])).toBe(
-      "Collect the unavailable evidence and run the analysis again."
+      "Review the linked evidence."
     );
-  });
-
-  it("maps validated AI gap enums to the same canonical evidence language", () => {
-    expect(tenantProofGapKindForSemanticGap("missing_runtime_evidence")).toBe("missing_execution");
-    expect(tenantProofGapKindForSemanticGap("missing_check_evidence")).toBe("missing_execution");
-    expect(tenantProofGapKindForSemanticGap("missing_test_evidence")).toBe("missing_targeted_test");
-    expect(tenantProofGapKindForSemanticGap("ambiguous_requirement")).toBe("ambiguous_requirement");
   });
 
   it("keeps a no-objective unlinked PR in PR-objective context", () => {
@@ -28,5 +21,20 @@ describe("tenant report language", () => {
 
     expect(report.requirements).toEqual([]);
     expect(tenantReportAnalysisContext(report)).toBe("unlinked_pr");
+  });
+
+  it("keeps an authoritative Issue context even when the PR description adds author claims", () => {
+    const report = generateVerificationReport({
+      title: "Persist notification preference",
+      taskText: "Users must be able to save whether notifications are enabled.",
+      taskSource: "issue",
+      description: "Implemented the preference storage and tests.",
+      changedFiles: [{ path: "src/notifications/preference.js", status: "modified", patch: "+ savePreference(enabled);" }],
+      checks: [],
+      logs: []
+    });
+
+    expect(report.requirements).not.toHaveLength(0);
+    expect(tenantReportAnalysisContext(report)).toBe("linked_issue");
   });
 });

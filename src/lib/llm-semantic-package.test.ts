@@ -345,11 +345,15 @@ describe("LLM semantic analysis package", () => {
     const report = generateVerificationReport(input);
     const llmPackage = buildLlmSemanticPackage(input, report);
     const requirement = llmPackage.input.requirements[0];
-    const evidenceId = llmPackage.input.evidence[0]?.id;
+    const evidenceId = "ev_unused";
     expect(requirement).toBeTruthy();
-    expect(evidenceId).toBeTruthy();
     const candidate = {
       ...semanticCandidate(requirement!.id, evidenceId!, "The requirement needs Issue clarification."),
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        ...semanticCandidate(requirement!.id, evidenceId!, "The requirement needs Issue clarification.").requirement_assessments[0],
+        evidence_ids: []
+      }],
       evidence_gaps: [{
         requirement_id: requirement!.id,
         gap_type: "ambiguous_requirement" as const,
@@ -357,7 +361,7 @@ describe("LLM semantic analysis package", () => {
         description: "The linked Issue is unavailable.",
         review_impact: "The requirement cannot be assessed from the unavailable Issue.",
         needed_evidence: "The linked Issue text.",
-        evidence_ids: [evidenceId!],
+        evidence_ids: [],
         uncertainty: "high" as const
       }],
       remediation_requests: [{
@@ -367,7 +371,7 @@ describe("LLM semantic analysis package", () => {
         instruction: "Provide the unavailable linked Issue.",
         rationale: "The linked Issue is unavailable.",
         expected_evidence: "The linked Issue text.",
-        evidence_ids: [evidenceId!],
+        evidence_ids: [],
         uncertainty: "high" as const
       }]
     };
@@ -395,6 +399,11 @@ describe("LLM semantic analysis package", () => {
     expect(evidenceId).toBeTruthy();
     const candidate = {
       ...semanticCandidate(requirement!.id, evidenceId!, "The supplied evidence needs review."),
+      requirement_evidence_relations: [],
+      requirement_assessments: [{
+        ...semanticCandidate(requirement!.id, evidenceId!, "The supplied evidence needs review.").requirement_assessments[0],
+        evidence_ids: []
+      }],
       evidence_gaps: [
         {
           requirement_id: requirement!.id,
@@ -403,7 +412,7 @@ describe("LLM semantic analysis package", () => {
           description: "The linked Issue is unavailable.",
           review_impact: "The unavailable Issue prevents interpretation.",
           needed_evidence: "The linked Issue text.",
-          evidence_ids: [evidenceId!],
+          evidence_ids: [],
           uncertainty: "high" as const
         },
         {
@@ -413,7 +422,7 @@ describe("LLM semantic analysis package", () => {
           description: "The explicit PR objective leaves the default behavior ambiguous.",
           review_impact: "The available evidence cannot distinguish the default behavior.",
           needed_evidence: "Clarify the default behavior in the PR objective.",
-          evidence_ids: [evidenceId!],
+          evidence_ids: [],
           uncertainty: "medium" as const
         }
       ],
@@ -425,7 +434,7 @@ describe("LLM semantic analysis package", () => {
           instruction: "Provide the unavailable linked Issue.",
           rationale: "The linked Issue is unavailable.",
           expected_evidence: "The linked Issue text.",
-          evidence_ids: [evidenceId!],
+          evidence_ids: [],
           uncertainty: "high" as const
         },
         {
@@ -435,7 +444,7 @@ describe("LLM semantic analysis package", () => {
           instruction: "Clarify the default behavior in the PR objective.",
           rationale: "The default behavior is not explicit in the PR objective.",
           expected_evidence: "A concrete default behavior statement.",
-          evidence_ids: [evidenceId!],
+          evidence_ids: [],
           uncertainty: "medium" as const
         }
       ]
@@ -646,7 +655,12 @@ describe("LLM semantic analysis package", () => {
   it.each([
     "Provide job-run logs for reviewer inspection.",
     "Attach job-step metadata or artifact-level evidence.",
-    "Provide the complete test output and CI artifacts."
+    "Provide the complete test output and CI artifacts.",
+    "Provide the full source of the test file.",
+    "Attach the complete source file contents for review.",
+    "The full source is needed.",
+    "Collect raw CI logs.",
+    "Download the complete patch."
   ])("removes privacy-incompatible execution-detail requests: %s", (instruction) => {
     const llmPackage = buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean));
     const requirement = llmPackage.input.requirements[0]!;
@@ -665,7 +679,216 @@ describe("LLM semantic analysis package", () => {
       }]
     };
 
-    expect(validateLlmSemanticPackageCandidate(candidate, llmPackage).candidate?.remediation_requests).toEqual([]);
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+    expect(validation.candidate?.remediation_requests).toEqual([]);
+    expect(validation.rejected_units).toEqual(expect.arrayContaining([
+      expect.objectContaining({ section: "remediation_requests", reason_codes: ["prohibited_evidence_demand"] })
+    ]));
+    expect(validation.diagnostics.rejected_reason_code_counts.prohibited_evidence_demand).toBe(1);
+  });
+
+  it("rejects a multi-requirement target unless every evidence reference belongs to every requirement", () => {
+    const llmPackage = structuredClone(buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean)));
+    const [first, second] = llmPackage.input.requirements;
+    const [firstEvidence, secondEvidence] = llmPackage.input.evidence;
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    expect(firstEvidence).toBeTruthy();
+    expect(secondEvidence).toBeTruthy();
+    first!.evidence_ids = [firstEvidence!.id];
+    second!.evidence_ids = [secondEvidence!.id];
+    const candidate = {
+      ...semanticCandidate(first!.id, firstEvidence!.id, "The supplied evidence is relevant."),
+      review_targets: [{
+        target_type: "file" as const,
+        target_evidence_id: firstEvidence!.id,
+        priority: "medium" as const,
+        reason: "The supplied evidence is relevant to review.",
+        inspection_goal: "Review the supplied evidence reference.",
+        requirement_ids: [first!.id, second!.id],
+        evidence_ids: [firstEvidence!.id],
+        uncertainty: "medium" as const
+      }]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.candidate?.review_targets).toEqual([]);
+    expect(validation.rejected_units).toEqual(expect.arrayContaining([
+      expect.objectContaining({ section: "review_targets", reason_codes: ["inconsistent_evidence_support"] })
+    ]));
+  });
+
+  it("reports original array indices when policy and base validation reject different units", () => {
+    const llmPackage = structuredClone(buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean)));
+    const requirement = llmPackage.input.requirements[0]!;
+    const evidenceId = requirement.evidence_ids[0]!;
+    llmPackage.validator.requirementProofs[0]!.gapKinds = ["missing_targeted_test"];
+    const candidate = {
+      ...semanticCandidate(requirement.id, evidenceId, "The supplied evidence is relevant."),
+      remediation_requests: [
+        {
+          requirement_id: requirement.id,
+          request_type: "provide_or_link_evidence" as const,
+          priority: "medium" as const,
+          instruction: "Send the full source.",
+          rationale: "More detail was requested.",
+          expected_evidence: "The full source.",
+          evidence_ids: [evidenceId],
+          uncertainty: "medium" as const
+        },
+        {
+          requirement_id: requirement.id,
+          request_type: "add_or_update_test" as const,
+          instruction: "Add a bounded focused test.",
+          rationale: "The deterministic gap expects a test.",
+          expected_evidence: "A supplied test reference.",
+          evidence_ids: [evidenceId],
+          uncertainty: "medium" as const
+        }
+      ]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.rejected_units).toEqual(expect.arrayContaining([
+      expect.objectContaining({ section: "remediation_requests", index: 0, reason_codes: ["prohibited_evidence_demand"] }),
+      expect.objectContaining({ section: "remediation_requests", index: 1, reason_codes: ["invalid_unit_shape"] })
+    ]));
+  });
+
+  it("evaluates privacy policy per semantic field instead of joining unrelated clauses", () => {
+    const llmPackage = buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean));
+    const requirement = llmPackage.input.requirements[0]!;
+    const evidenceId = requirement.evidence_ids[0]!;
+    const candidate = {
+      ...semanticCandidate(requirement.id, evidenceId, "The supplied evidence is relevant."),
+      uncertainties: [{
+        uncertainty_type: "insufficient_context" as const,
+        impact: "minor" as const,
+        description: "The full logs were not stored",
+        needed_information: "Review the supplied Check reference.",
+        requirement_ids: [requirement.id],
+        evidence_ids: [evidenceId]
+      }]
+    };
+
+    expect(validateLlmSemanticPackageCandidate(candidate, llmPackage).candidate?.uncertainties).toEqual(candidate.uncertainties);
+  });
+
+  it("removes semantic gaps and remediation that have no deterministic gap premise", () => {
+    const llmPackage = buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean));
+    const requirement = llmPackage.input.requirements.find((item) => item.gap_kinds.length === 0)!;
+    const evidenceId = requirement.evidence_ids[0]!;
+    expect(requirement).toBeTruthy();
+    expect(evidenceId).toBeTruthy();
+    const candidate = {
+      ...semanticCandidate(requirement.id, evidenceId, "The supplied evidence is directly relevant."),
+      evidence_gaps: [{
+        requirement_id: requirement.id,
+        gap_type: "insufficient_context" as const,
+        priority: "medium" as const,
+        description: "Additional repository detail is unavailable.",
+        review_impact: "Review is limited.",
+        needed_evidence: "More repository detail.",
+        evidence_ids: [evidenceId],
+        uncertainty: "medium" as const
+      }],
+      remediation_requests: [{
+        requirement_id: requirement.id,
+        request_type: "provide_or_link_evidence" as const,
+        priority: "medium" as const,
+        instruction: "Provide more repository detail.",
+        rationale: "More context could be useful.",
+        expected_evidence: "A repository detail reference.",
+        evidence_ids: [evidenceId],
+        uncertainty: "medium" as const
+      }]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.candidate?.requirement_assessments).toHaveLength(1);
+    expect(validation.candidate?.evidence_gaps).toEqual([]);
+    expect(validation.candidate?.remediation_requests).toEqual([]);
+  });
+
+  it("keeps only semantic gap and remediation types supported by the deterministic gap kind", () => {
+    const input = {
+      ...demoScenarios.clean,
+      taskText: "Keep the compact settings panel readable at 375px.",
+      description: "Keep the compact settings panel readable at 375px.",
+      changedFiles: [{ path: "src/settings/panel.css", status: "modified" as const, patch: "+ .panel { display: block; }" }],
+      checks: []
+    };
+    const llmPackage = buildLlmSemanticPackage(input, generateVerificationReport(input));
+    const requirement = llmPackage.input.requirements[0]!;
+    const evidenceId = requirement.evidence_ids[0]!;
+    expect(requirement.gap_kinds).toContain("visual_proof_missing");
+    const candidate = {
+      ...semanticCandidate(requirement.id, evidenceId, "The supplied stylesheet is relevant to the visual requirement."),
+      evidence_gaps: [
+        {
+          requirement_id: requirement.id,
+          gap_type: "insufficient_context" as const,
+          priority: "medium" as const,
+          description: "Visual evidence is not available.",
+          review_impact: "The visual result cannot be inspected.",
+          needed_evidence: "A bounded screenshot or browser result.",
+          evidence_ids: [evidenceId],
+          uncertainty: "medium" as const
+        },
+        {
+          requirement_id: requirement.id,
+          gap_type: "missing_test_evidence" as const,
+          priority: "medium" as const,
+          description: "A unit test is not available.",
+          review_impact: "Test coverage is limited.",
+          needed_evidence: "A unit test.",
+          evidence_ids: [evidenceId],
+          uncertainty: "medium" as const
+        }
+      ],
+      remediation_requests: [
+        {
+          requirement_id: requirement.id,
+          request_type: "provide_or_link_evidence" as const,
+          priority: "medium" as const,
+          instruction: "Provide bounded visual or browser evidence.",
+          rationale: "The deterministic report records a visual-proof gap.",
+          expected_evidence: "A screenshot or browser result.",
+          evidence_ids: [evidenceId],
+          uncertainty: "medium" as const
+        },
+        {
+          requirement_id: requirement.id,
+          request_type: "add_or_update_test" as const,
+          priority: "medium" as const,
+          instruction: "Add a unit test.",
+          rationale: "A unit test could be useful.",
+          expected_evidence: "A passing unit test.",
+          evidence_ids: [evidenceId],
+          uncertainty: "medium" as const
+        }
+      ]
+    };
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.candidate?.evidence_gaps).toEqual([candidate.evidence_gaps[0]]);
+    expect(validation.candidate?.remediation_requests).toEqual([candidate.remediation_requests[0]]);
+  });
+
+  it("rejects overlong fresh semantic units so the caller can retry the missing assessment", () => {
+    const llmPackage = buildLlmSemanticPackage(demoScenarios.clean, generateVerificationReport(demoScenarios.clean));
+    const requirement = llmPackage.input.requirements[0]!;
+    const evidenceId = requirement.evidence_ids[0]!;
+    const candidate = semanticCandidate(requirement.id, evidenceId, `${"A complete but overlong explanation ".repeat(9)}ends here.`);
+
+    const validation = validateLlmSemanticPackageCandidate(candidate, llmPackage);
+
+    expect(validation.candidate?.requirement_assessments).toEqual([]);
+    expect(validation.missing_requirement_ids).toContain(requirement.id);
   });
 
   it("removes incomplete generated units instead of showing an ellipsis", () => {
