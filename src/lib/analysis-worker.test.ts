@@ -1167,7 +1167,7 @@ describe("analysis worker preflight", () => {
     expect(JSON.stringify(getAnalysisJobsForTests()[0])).not.toContain("must-not-persist");
   });
 
-  it("does not resubmit automatically when a background POST outcome is uncertain", async () => {
+  it("completes deterministic fallback without resubmitting when a background POST outcome is uncertain", async () => {
     stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
     vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
@@ -1192,15 +1192,57 @@ describe("analysis worker preflight", () => {
       now: new Date("2026-06-30T00:05:00Z")
     });
 
-    expect(first).toMatchObject({ status: "failed_terminal", reason: "openai_submission_uncertain", job: { id } });
+    expect(first).toMatchObject({ status: "completed", job: { id } });
     expect(second).toEqual({ status: "idle" });
     expect(submitCount).toBe(1);
     expect(getAnalysisJobsForTests()[0]).toMatchObject({
-      status: "failed_terminal",
-      error_code: "openai_submission_uncertain",
+      status: "completed",
+      error_code: null,
       claim_generation: null,
       provider_response_id: null,
       provider_status: null
+    });
+  });
+
+  it("completes deterministic fallback when a parked provider response expires", async () => {
+    stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockWorkerFetch();
+    let submitCount = 0;
+    let retrieveCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        submitCount += 1;
+        return Response.json({ id: "resp_expiring_123", status: "queued", output: [] });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_expiring_123") {
+        retrieveCount += 1;
+        return Response.json({ id: "resp_expiring_123", status: "queued", output: [] });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const recovered = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:09:01Z")
+    });
+
+    expect(recovered).toMatchObject({ status: "completed", job: { id } });
+    expect(submitCount).toBe(1);
+    expect(retrieveCount).toBe(0);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      provider_response_id: null,
+      provider_status: null,
+      provider_expires_at: null
     });
   });
 
@@ -1664,6 +1706,62 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("comment_body");
   });
 
+  it("requeues a stale revision before save, comment, or Slack publication", async () => {
+    stubReadyWorkerEnv({
+      grant: {
+        saveReportsEnabled: true,
+        commentEnabled: true,
+        slackNotificationsEnabled: true
+      }
+    });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const baseFetch = mockWorkerFetch();
+    let pullReads = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+        pullReads += 1;
+        if (pullReads === 3) {
+          await enqueueAnalysisJob(jobInput({
+            idempotencyKey: "same-head-refresh-before-publish",
+            deliveryId: "123e4567-e89b-12d3-a456-426614174304",
+            saveReport: true,
+            comment: true,
+            slackSummary: true
+          }));
+        }
+      }
+      if (href === "https://hooks.slack.com/services/T/B/C") return Response.json({ ok: true });
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const saved = await countTenantSavedReports({ tenantId: "tenant_a" });
+    const commentPosts = fetchMock.mock.calls.filter(([url, init]) =>
+      String(url).endsWith("/issues/7/comments") && init?.method === "POST"
+    );
+    const slackPosts = fetchMock.mock.calls.filter(([url]) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+    );
+
+    expect(result).toMatchObject({ status: "failed_retryable", reason: "analysis_job_claim_lost", job: { id } });
+    expect(saved.count).toBe(0);
+    expect(commentPosts).toHaveLength(0);
+    expect(slackPosts).toHaveLength(0);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      claim_generation: null
+    });
+  });
+
   it("rechecks tenant grants before side effects and stops if deletion disables the grant mid-run", async () => {
     stubReadyWorkerEnv({ grant: null });
     vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
@@ -1957,7 +2055,7 @@ describe("analysis worker preflight", () => {
       comment: false,
       idempotencyKey: "second-batch-job",
       deliveryId: "123e4567-e89b-12d3-a456-426614174301",
-      pullRequestNumber: 7,
+      pullRequestNumber: 8,
       headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
     await enqueueAnalysisJob(jobInput({
@@ -1965,7 +2063,7 @@ describe("analysis worker preflight", () => {
       comment: false,
       idempotencyKey: "third-batch-job",
       deliveryId: "123e4567-e89b-12d3-a456-426614174302",
-      pullRequestNumber: 7,
+      pullRequestNumber: 9,
       headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
 
@@ -2017,7 +2115,7 @@ describe("analysis worker preflight", () => {
       comment: false,
       idempotencyKey: "untouched-batch-job",
       deliveryId: "123e4567-e89b-12d3-a456-426614174301",
-      pullRequestNumber: 7,
+      pullRequestNumber: 8,
       headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }));
 
@@ -2049,7 +2147,7 @@ describe("analysis worker preflight", () => {
     stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false, slackNotificationsEnabled: true } });
     vi.stubGlobal("fetch", mockWorkerFetch());
     await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: true, idempotencyKey: "slack-retryable-job" }));
-    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: false, idempotencyKey: "later-completes-job", deliveryId: "123e4567-e89b-12d3-a456-426614174302" }));
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false, slackSummary: false, idempotencyKey: "later-completes-job", deliveryId: "123e4567-e89b-12d3-a456-426614174302", pullRequestNumber: 8 }));
 
     const result = await runAnalysisJobBatch({
       requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run-batch?limit=2",
@@ -2177,19 +2275,21 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
       return Response.json({ token: "installation-token" });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+    const pullMatch = href.match(/^https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/pulls\/(\d+)$/);
+    if (pullMatch) {
+      const pullNumber = Number(pullMatch[1]);
       return Response.json({
         title: "Fetched PR title",
         body: options.pullRequestBody
           ?? "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
-        url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
+        url: `https://api.github.com/repos/RengGyu/AgentProof/pulls/${pullNumber}`,
         user: { login: "agent-author" },
         base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
         head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7/files?per_page=100&page=1") {
+    if (/^https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/pulls\/\d+\/files\?per_page=100&page=1$/.test(href)) {
       return Response.json([
         {
           filename: "src/app/api/github/webhook/route.ts",

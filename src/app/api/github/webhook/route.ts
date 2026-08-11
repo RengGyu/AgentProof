@@ -1,7 +1,6 @@
 import { buildGitHubPullRequestInput, fetchGitHubPullRequestAnchor } from "@/lib/github";
 import {
   AnalysisJobQueueError,
-  claimAnalysisJobById,
   enqueueAnalysisJob,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
@@ -36,7 +35,6 @@ import {
 import { redactSecrets } from "@/lib/redact";
 import { validateVerificationReport } from "@/lib/report-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
-import { runClaimedAnalysisJob } from "@/lib/analysis-worker";
 import {
   assertSlackReportNotificationConfigured,
   sendSlackReportSummary,
@@ -465,12 +463,16 @@ async function handlePullRequestAutomation(
     }, { status: 503 });
   }
 
-  const idempotencyKey = [
+  const canonicalAnalysisKey = [
     tenantGrant.grant?.tenantId ?? "operator",
     automation.installationId,
-    automation.repositoryFullName.toLowerCase(),
+    automation.repositoryId ?? automation.repositoryFullName.toLowerCase(),
     automation.pullRequestNumber,
-    automation.headSha,
+    automation.headSha
+  ].join(":");
+  const deliveryIdempotencyKey = [
+    canonicalAnalysisKey,
+    context.delivery,
     context.idempotencyScope ?? context.action
   ].join(":");
   const queueStatus = getAnalysisJobQueueStatus();
@@ -540,7 +542,7 @@ async function handlePullRequestAutomation(
       quota = await reserveUsageQuota({
         tenantId: tenantGrant.grant?.tenantId,
         feature: "github_app_analysis",
-        idempotencyKey
+        idempotencyKey: canonicalAnalysisKey
       });
     } catch (error) {
       if (error instanceof UsageQuotaStoreError) {
@@ -593,7 +595,7 @@ async function handlePullRequestAutomation(
   let reservation;
   try {
     reservation = await reserveGitHubWebhookDelivery({
-      key: idempotencyKey,
+      key: deliveryIdempotencyKey,
       tenantId: tenantGrant.grant?.tenantId,
       event: context.event,
       delivery: context.delivery,
@@ -672,7 +674,7 @@ async function handlePullRequestAutomation(
   } catch (error) {
     if (error instanceof UsageQuotaStoreError) {
       await failGitHubWebhookDelivery({
-        key: idempotencyKey
+        key: deliveryIdempotencyKey
       }, {
         code: "github_app_plan_gate_unavailable",
         summary: "Tenant plan side-effect gate is unavailable."
@@ -697,7 +699,7 @@ async function handlePullRequestAutomation(
   const slackGate = validateSlackSummaryForSideEffects(plannedSideEffects);
   if (slackGate) {
     await failGitHubWebhookDelivery({
-      key: idempotencyKey
+      key: deliveryIdempotencyKey
     }, {
       code: slackGate.code,
       summary: slackGate.summary
@@ -714,7 +716,7 @@ async function handlePullRequestAutomation(
   );
   if (sideEffectGateResponse) {
     await failGitHubWebhookDelivery({
-      key: idempotencyKey
+      key: deliveryIdempotencyKey
     }, {
       code: "github_app_durable_audit_required",
       summary: "Durable audit storage is required before GitHub App side effects."
@@ -727,7 +729,7 @@ async function handlePullRequestAutomation(
     try {
       const job = await enqueueAnalysisJob({
         tenantId: tenantGrant.grant?.tenantId,
-        idempotencyKey,
+        idempotencyKey: canonicalAnalysisKey,
         deliveryId: context.delivery,
         event: context.event,
         action: context.action,
@@ -747,13 +749,6 @@ async function handlePullRequestAutomation(
         statusCode: 202,
         code: job.durable ? "github_app_analysis_queued_durable" : "github_app_analysis_queued_memory"
       });
-
-      after(() => claimAnalysisJobById(job.id)
-        .then((claim) => claim.job
-          ? runClaimedAnalysisJob(claim.job, { requestUrl: context.requestUrl })
-          : undefined)
-        .then(() => undefined)
-        .catch(() => undefined));
 
       return noStoreJson({
         ok: true,
@@ -781,7 +776,7 @@ async function handlePullRequestAutomation(
     } catch (error) {
       const errorMessage = redactSecrets(error instanceof Error ? error.message : "Analysis job queue is unavailable.");
       await failGitHubWebhookDelivery({
-        key: idempotencyKey
+        key: deliveryIdempotencyKey
       }, {
         code: "github_app_analysis_queue_unavailable",
         summary: errorMessage
@@ -867,7 +862,7 @@ async function handlePullRequestAutomation(
       slack
     };
 
-    await completeGitHubWebhookDelivery({ key: idempotencyKey }, {
+    await completeGitHubWebhookDelivery({ key: deliveryIdempotencyKey }, {
       status: "completed",
       repository: analysis.repository,
       pullRequestNumber: analysis.pullRequestNumber,
@@ -921,7 +916,7 @@ async function handlePullRequestAutomation(
     const errorMessage = redactSecrets(error instanceof Error ? error.message : "GitHub App automation failed.");
     const status = error instanceof SavedReportStoreError || error instanceof SlackNotificationError ? 503 : 502;
     await failGitHubWebhookDelivery({
-      key: idempotencyKey
+      key: deliveryIdempotencyKey
     }, {
       code: error instanceof SavedReportStoreError
         ? "saved_report_store_error"

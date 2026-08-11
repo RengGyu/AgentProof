@@ -132,7 +132,7 @@ describe("POST /api/openai/webhook", () => {
       comment: false,
       now
     });
-    const initialClaim = await claimNextAnalysisJob({ now });
+    const initialClaim = await claimNextAnalysisJob({ now: new Date(now.getTime() + 15_000) });
     await parkAnalysisJobForProvider({
       id,
       claimGeneration: initialClaim.job!.claim_generation!,

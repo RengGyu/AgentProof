@@ -5,6 +5,7 @@ import {
   DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS,
   DEFAULT_ANALYSIS_JOB_RETRY_AFTER_MS,
   failAnalysisJob,
+  fenceAnalysisJobRevision,
   markAnalysisJobProviderSubmission,
   markAnalysisJobSemanticRetrySubmission,
   parkAnalysisJobForProvider,
@@ -497,9 +498,11 @@ async function runPreflightedAnalysisJob(
       );
     }
 
+    await assertCurrentAnalysisJobRevision(job, env, options.now);
     const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, sideEffects, env);
     let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
     if (sideEffectsBeforeSave.saveReport) {
+      await assertCurrentAnalysisJobRevision(job, env, options.now);
       await assertWorkerTenantDeletionNotActive(job, env);
       saved = await createAutomationSavedReport(report, {
         requestUrl: options.requestUrl,
@@ -534,6 +537,7 @@ async function runPreflightedAnalysisJob(
     };
     let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
     if (completedSideEffects.comment) {
+      await assertCurrentAnalysisJobRevision(job, env, options.now);
       await assertWorkerTenantDeletionNotActive(job, env);
       comment = await postGitHubAppMarkerComment({
         repositoryFullName: job.repository_full_name,
@@ -543,6 +547,7 @@ async function runPreflightedAnalysisJob(
     }
     let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
     if (completedSideEffects.slackSummary) {
+      await assertCurrentAnalysisJobRevision(job, env, options.now);
       await assertWorkerTenantDeletionNotActive(job, env);
       slack = await sendSlackReportSummary(report, {}, env);
     }
@@ -715,10 +720,7 @@ async function advanceQueuedSemanticAnalysis(
     );
   }
   if (!job.provider_response_id && job.provider_status === "submitting") {
-    throw new AnalysisWorkerTerminalError(
-      "openai_submission_uncertain",
-      "OpenAI background submission could not be reconciled safely."
-    );
+    return unavailableSemanticFallback(deterministicReport);
   }
   if (job.provider_response_id && (!existingSubmittedAt || !existingExpiresAt)) {
     throw new OpenAISemanticError(
@@ -730,11 +732,7 @@ async function advanceQueuedSemanticAnalysis(
   const submittedAt = existingSubmittedAt ?? now;
   const expiresAt = existingExpiresAt ?? new Date(submittedAt.getTime() + OPENAI_BACKGROUND_TTL_MS);
   if (job.provider_response_id && expiresAt.getTime() <= now.getTime()) {
-    throw new OpenAISemanticError(
-      "openai_background_expired",
-      false,
-      "OpenAI background semantic analysis expired before completion."
-    );
+    return unavailableSemanticFallback(deterministicReport);
   }
 
   let result;
@@ -764,10 +762,7 @@ async function advanceQueuedSemanticAnalysis(
       result = await submitSemanticsWithOpenAIBackground(input, deterministicReport, providerOptions);
     } catch (error) {
       if (error instanceof OpenAISemanticError && error.retryable) {
-        throw new AnalysisWorkerTerminalError(
-          "openai_submission_uncertain",
-          "OpenAI background submission could not be reconciled safely."
-        );
+        return unavailableSemanticFallback(deterministicReport);
       }
       throw error;
     }
@@ -1121,6 +1116,22 @@ function isSystemicRetryableFailure(reason: string | undefined): boolean {
     reason === "github_app_tenant_grant_store_unavailable" ||
     reason === "github_app_plan_gate_unavailable" ||
     reason === "github_app_durable_audit_required";
+}
+
+async function assertCurrentAnalysisJobRevision(
+  job: AnalysisJobRow,
+  env: NodeJS.ProcessEnv,
+  now?: Date
+): Promise<void> {
+  const runningRevision = job.running_revision;
+  if (!job.claim_generation || !runningRevision) throw new AnalysisWorkerLeaseLostError();
+  const current = await fenceAnalysisJobRevision({
+    id: job.id,
+    claimGeneration: job.claim_generation,
+    runningRevision,
+    now
+  }, env);
+  if (!current) throw new AnalysisWorkerLeaseLostError();
 }
 
 async function prepareWorkerSideEffects(

@@ -6,6 +6,7 @@ import { assertTenantDeletionNotActiveAsync } from "./tenant-deletion-state";
 export const DEFAULT_ANALYSIS_JOBS_TABLE = "agentproof_analysis_jobs";
 export const MAX_MEMORY_ANALYSIS_JOBS = 1000;
 export const DEFAULT_ANALYSIS_JOB_LEASE_MS = 10 * 60 * 1000;
+export const DEFAULT_ANALYSIS_JOB_DEBOUNCE_MS = 15 * 1000;
 export const SEMANTIC_RETRY_SUBMISSION_RECLAIM_MS = 30 * 1000;
 export const DEFAULT_ANALYSIS_JOB_RETRY_AFTER_MS = 2 * 60 * 1000;
 export const DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS = 5;
@@ -104,6 +105,13 @@ export interface FenceAnalysisJobSemanticRetryFinalizationInput {
   now?: Date;
 }
 
+export interface FenceAnalysisJobRevisionInput {
+  id: string;
+  claimGeneration: string;
+  runningRevision: number;
+  now?: Date;
+}
+
 export interface FailAnalysisJobInput {
   id: string;
   claimGeneration?: string;
@@ -179,6 +187,9 @@ export interface AnalysisJobRow {
   pull_request_number: number;
   pull_request_url: string;
   head_sha: string;
+  canonical_key_hash?: string;
+  desired_revision?: number;
+  running_revision?: number | null;
   save_report: boolean;
   comment: boolean;
   slack_summary?: boolean;
@@ -319,6 +330,9 @@ const ANALYSIS_JOB_SELECT = [
   "pull_request_number",
   "pull_request_url",
   "head_sha",
+  "canonical_key_hash",
+  "desired_revision",
+  "running_revision",
   "save_report",
   "comment",
   "slack_summary",
@@ -425,9 +439,9 @@ export async function enqueueAnalysisJob(
   const config = getAnalysisJobStoreConfig(env);
 
   if (config) {
-    await createSupabaseAnalysisJob(config, row);
+    const durableRow = await enqueueOrRefreshSupabaseAnalysisJob(config, row);
     return {
-      id: row.id,
+      id: durableRow.id,
       status: "queued",
       store: "supabase",
       durable: true
@@ -438,13 +452,68 @@ export async function enqueueAnalysisJob(
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  createMemoryAnalysisJob(row);
+  const memoryRow = enqueueOrRefreshMemoryAnalysisJob(row);
   return {
-    id: row.id,
+    id: memoryRow.id,
     status: "queued",
     store: "memory",
     durable: false
   };
+}
+
+export async function fenceAnalysisJobRevision(
+  input: FenceAnalysisJobRevisionInput,
+  env = process.env
+): Promise<boolean> {
+  if (!analysisJobQueueEnabled(env)) {
+    throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  }
+
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  const runningRevision = safeRevision(input.runningRevision);
+  if (!safeAnalysisJobId(input.id) || !claimGeneration || !runningRevision) {
+    throw new AnalysisJobQueueError("Analysis job revision fence is invalid.");
+  }
+
+  const now = input.now ?? new Date();
+  const config = getAnalysisJobStoreConfig(env);
+  if (config) {
+    return fenceSupabaseAnalysisJobRevision(config, {
+      id: input.id,
+      claimGeneration,
+      runningRevision,
+      now
+    });
+  }
+
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+
+  const row = analysisJobStore().find((job) =>
+    job.id === input.id &&
+    job.status === "processing" &&
+    job.claim_generation === claimGeneration &&
+    job.running_revision === runningRevision
+  );
+  if (!row) return false;
+  if ((row.desired_revision ?? 1) === runningRevision) return true;
+
+  Object.assign(row, {
+    status: "queued" as const,
+    attempts: 0,
+    updated_at: now.toISOString(),
+    locked_at: null,
+    completed_at: null,
+    error_code: null,
+    error_summary: null,
+    result_summary: null,
+    claim_generation: null,
+    running_revision: null,
+    ...clearedProviderContinuation()
+  });
+  assertAnalysisJobIsPrivate(row);
+  return false;
 }
 
 export async function claimNextAnalysisJob(
@@ -586,6 +655,7 @@ export async function completeAnalysisJob(
     error_summary: null,
     result_summary: input.resultSummary ? sanitizeAnalysisJobResultSummary(input.resultSummary) : null,
     claim_generation: null,
+    running_revision: null,
     ...clearedProviderContinuation()
   };
 
@@ -750,6 +820,7 @@ export async function parkAnalysisJobForProvider(
       error_summary: null,
       result_summary: null,
       claim_generation: null,
+      running_revision: null,
       provider_response_id: continuation.provider_response_id,
       provider_status: continuation.provider_status,
       provider_poll_attempts: Math.min(100, Math.max(0, row.provider_poll_attempts ?? 0) + 1),
@@ -781,6 +852,7 @@ export async function parkAnalysisJobForProvider(
     error_summary: null,
     result_summary: null,
     claim_generation: null,
+    running_revision: null,
     provider_response_id: continuation.provider_response_id,
     provider_status: continuation.provider_status,
     provider_poll_attempts: Math.min(100, Math.max(0, row.provider_poll_attempts ?? 0) + 1),
@@ -1149,19 +1221,29 @@ function toAnalysisJobRow(input: EnqueueAnalysisJobInput): AnalysisJobRow {
     pull_request_number: pullRequestNumber,
     pull_request_url: pullRequestUrl,
     head_sha: headSha,
+    canonical_key_hash: canonicalAnalysisJobKey({
+      tenantId: safeTenantId(input.tenantId),
+      installationId,
+      repositoryId: safePositiveInteger(input.repositoryId),
+      repositoryFullName,
+      pullRequestNumber,
+      headSha
+    }),
+    desired_revision: 1,
     save_report: input.saveReport === true,
     comment: input.comment === true,
     slack_summary: input.slackSummary === true,
     attempts: 0,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
-    run_after: now.toISOString(),
+    run_after: new Date(now.getTime() + DEFAULT_ANALYSIS_JOB_DEBOUNCE_MS).toISOString(),
     locked_at: null,
     completed_at: null,
     error_code: null,
     error_summary: null,
     result_summary: null,
     claim_generation: null,
+    running_revision: null,
     ...clearedProviderContinuation()
   };
 }
@@ -1180,29 +1262,107 @@ async function assertTenantRepositoryGrantAllowsEnqueue(row: AnalysisJobRow, env
   }
 }
 
-async function createSupabaseAnalysisJob(config: AnalysisJobStoreConfig, row: AnalysisJobRow) {
-  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}`, {
+async function enqueueOrRefreshSupabaseAnalysisJob(
+  config: AnalysisJobStoreConfig,
+  row: AnalysisJobRow
+): Promise<Pick<AnalysisJobRow, "id" | "status">> {
+  const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_enqueue_analysis_job`, {
     method: "POST",
     cache: "no-store",
     headers: {
       apikey: config.serviceRoleKey,
       Authorization: `Bearer ${config.serviceRoleKey}`,
       "Content-Type": "application/json",
-      Prefer: "return=minimal"
+      Prefer: "return=representation"
     },
-    body: JSON.stringify(row)
+    body: JSON.stringify({ job_payload: row })
   });
 
   if (!response.ok) {
     throw new AnalysisJobQueueError(`Analysis job store failed with HTTP ${response.status}.`);
   }
+
+  const rows = await response.json().catch(() => []) as unknown;
+  const durableRow = Array.isArray(rows) ? rows[0] : rows;
+  if (!durableRow || typeof durableRow !== "object" || typeof (durableRow as { id?: unknown }).id !== "string") {
+    throw new AnalysisJobQueueError("Analysis job store returned an invalid canonical row.");
+  }
+  assertAnalysisJobIsPrivate(durableRow);
+  return durableRow as Pick<AnalysisJobRow, "id" | "status">;
 }
 
-function createMemoryAnalysisJob(row: AnalysisJobRow) {
+function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow {
+  const existing = analysisJobStore().find((job) => job.canonical_key_hash === row.canonical_key_hash);
+  if (existing) {
+    const processing = existing.status === "processing";
+    Object.assign(existing, {
+      tenant_id: row.tenant_id,
+      idempotency_key_hash: row.idempotency_key_hash,
+      delivery_id: row.delivery_id,
+      event: row.event,
+      action: row.action,
+      installation_id: row.installation_id,
+      repository_id: row.repository_id,
+      repository_full_name: row.repository_full_name,
+      pull_request_number: row.pull_request_number,
+      pull_request_url: row.pull_request_url,
+      head_sha: row.head_sha,
+      save_report: row.save_report,
+      comment: row.comment,
+      slack_summary: row.slack_summary,
+      desired_revision: (existing.desired_revision ?? 1) + 1,
+      updated_at: row.updated_at,
+      run_after: row.run_after,
+      completed_at: null,
+      error_code: null,
+      error_summary: null,
+      result_summary: null,
+      ...(processing ? {} : {
+        status: "queued" as const,
+        attempts: 0,
+        locked_at: null,
+        claim_generation: null,
+        running_revision: null,
+        ...clearedProviderContinuation()
+      })
+    });
+    assertAnalysisJobIsPrivate(existing);
+    return { ...existing };
+  }
+
   analysisJobStore().push(row);
   while (analysisJobStore().length > MAX_MEMORY_ANALYSIS_JOBS) {
     analysisJobStore().shift();
   }
+  return { ...row };
+}
+
+async function fenceSupabaseAnalysisJobRevision(
+  config: AnalysisJobStoreConfig,
+  input: Required<Omit<FenceAnalysisJobRevisionInput, "now">> & { now: Date }
+): Promise<boolean> {
+  const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_fence_analysis_job_revision`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      ...supabaseAnalysisJobHeaders(config),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      job_id: input.id,
+      claim_token: input.claimGeneration,
+      claim_revision: input.runningRevision,
+      fence_time: input.now.toISOString()
+    })
+  });
+  if (!response.ok) {
+    throw new AnalysisJobQueueError(`Analysis job store failed with HTTP ${response.status}.`);
+  }
+  const rows = await response.json().catch(() => []) as unknown;
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return false;
+  assertAnalysisJobIsPrivate(row);
+  return true;
 }
 
 async function listSupabaseTenantAnalysisJobs(
@@ -1870,6 +2030,7 @@ function toClaimedAnalysisJobUpdate(
   return {
     status: "processing",
     claim_generation: randomUUID(),
+    running_revision: row.desired_revision ?? 1,
     attempts: Math.max(0, Number(row.attempts) || 0) + 1,
     updated_at: now.toISOString(),
     locked_at: now.toISOString(),
@@ -1925,6 +2086,7 @@ function toAnalysisJobFailureUpdate(
     error_summary: safeJobErrorSummary(input.summary),
     result_summary: null,
     claim_generation: null,
+    running_revision: null,
     ...(shouldRetry ? {} : clearedProviderContinuation())
   };
 
@@ -2328,6 +2490,10 @@ function safeClaimGeneration(value: unknown): string | null {
     : null;
 }
 
+function safeRevision(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 function safeTimeMs(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const ms = new Date(value).getTime();
@@ -2692,6 +2858,23 @@ function normalizeKey(value: string): string {
 
 function hashJobKey(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function canonicalAnalysisJobKey(input: {
+  tenantId: string | null;
+  installationId: number;
+  repositoryId: number | null;
+  repositoryFullName: string;
+  pullRequestNumber: number;
+  headSha: string;
+}): string {
+  return hashJobKey([
+    input.tenantId ?? "operator",
+    String(input.installationId),
+    input.repositoryId ? `id:${input.repositoryId}` : `name:${input.repositoryFullName.toLowerCase()}`,
+    String(input.pullRequestNumber),
+    input.headSha.toLowerCase()
+  ].join("\u001f"));
 }
 
 function analysisJobStore() {

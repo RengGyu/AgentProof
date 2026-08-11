@@ -10,6 +10,7 @@ import {
   countTenantActiveAnalysisJobsForDeletion,
   enqueueAnalysisJob,
   failAnalysisJob,
+  fenceAnalysisJobRevision,
   fenceAnalysisJobSemanticRetryFinalization,
   getAnalysisJobDeadLetterSummary,
   getAnalysisJobQueueSummary,
@@ -92,6 +93,9 @@ describe("analysis job queue", () => {
       pull_request_number: 7,
       pull_request_url: "https://github.com/RengGyu/AgentProof/pull/7",
       head_sha: "abc123",
+      canonical_key_hash: "365bee0a7b6f15bad9e7d640940e17d5449861b5495d7e96097927274503078a",
+      desired_revision: 1,
+      running_revision: null,
       save_report: true,
       comment: false,
       attempts: 0
@@ -103,6 +107,165 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
     expect(serialized).not.toContain("github_pat_secret");
+  });
+
+  it("coalesces same-head events into one debounced canonical memory revision", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const first = await enqueueAnalysisJob(jobInput());
+    const refreshed = await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "second-delivery-key",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174301",
+      event: "check_suite",
+      action: "completed",
+      comment: true,
+      now: new Date("2026-06-30T00:00:05Z")
+    });
+
+    expect(refreshed.id).toBe(first.id);
+    expect(getAnalysisJobsForTests()).toHaveLength(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id: first.id,
+      status: "queued",
+      event: "check_suite",
+      action: "completed",
+      delivery_id: "123e4567-e89b-12d3-a456-426614174301",
+      desired_revision: 2,
+      running_revision: null,
+      run_after: "2026-06-30T00:00:20.000Z",
+      comment: true
+    });
+  });
+
+  it("keeps separate canonical rows for different heads", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const first = await enqueueAnalysisJob(jobInput());
+    const nextHead = await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "next-head-key",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174302",
+      headSha: "def456"
+    });
+
+    expect(nextHead.id).not.toBe(first.id);
+    expect(getAnalysisJobsForTests()).toHaveLength(2);
+    expect(new Set(getAnalysisJobsForTests().map((job) => job.canonical_key_hash)).size).toBe(2);
+  });
+
+  it("requeues a processing canonical row when its running revision becomes stale", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const first = await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "refresh-while-processing",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174303",
+      now: new Date("2026-06-30T00:00:16Z")
+    });
+
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      id: first.id,
+      status: "processing",
+      desired_revision: 2,
+      running_revision: 1
+    });
+    await expect(fenceAnalysisJobRevision({
+      id: first.id,
+      claimGeneration: claim.job!.claim_generation!,
+      runningRevision: claim.job!.running_revision!,
+      now: new Date("2026-06-30T00:00:17Z")
+    })).resolves.toBe(false);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      claim_generation: null
+    });
+  });
+
+  it("requeues a completed canonical row only when a later eligible event refreshes it", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const first = await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
+    await completeAnalysisJob({
+      id: first.id,
+      claimGeneration: claim.job!.claim_generation!,
+      now: new Date("2026-06-30T00:00:16Z")
+    });
+    expect(getAnalysisJobsForTests()[0].status).toBe("completed");
+
+    const refreshed = await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "later-completed-refresh",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174305",
+      now: new Date("2026-06-30T00:00:20Z")
+    });
+
+    expect(refreshed.id).toBe(first.id);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      run_after: "2026-06-30T00:00:35.000Z"
+    });
+  });
+
+  it("uses one durable RPC call to atomically enqueue or refresh a canonical row", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
+    const fetchMock = vi.fn(async () => Response.json([{ id: "canonical-job", status: "queued" }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await enqueueAnalysisJob(jobInput());
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+
+    expect(result.id).toBe("canonical-job");
+    expect(url).toBe("https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_enqueue_analysis_job");
+    expect(init.method).toBe("POST");
+    expect(body.job_payload).toMatchObject({
+      canonical_key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      desired_revision: 1,
+      running_revision: null
+    });
+    expect(JSON.stringify(body)).not.toContain("raw-idempotency-key");
+    expect(JSON.stringify(body)).not.toContain("service-role-secret");
+  });
+
+  it("uses the durable revision-fence RPC to requeue stale Supabase work atomically", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async () => Response.json([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const current = await fenceAnalysisJobRevision({
+      id: "123e4567-e89b-42d3-a456-426614174000",
+      claimGeneration: "123e4567-e89b-42d3-a456-426614174001",
+      runningRevision: 1,
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+
+    expect(current).toBe(false);
+    expect(url).toBe("https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_fence_analysis_job_revision");
+    expect(JSON.parse(String(init.body))).toEqual({
+      job_id: "123e4567-e89b-42d3-a456-426614174000",
+      claim_token: "123e4567-e89b-42d3-a456-426614174001",
+      claim_revision: 1,
+      fence_time: "2026-06-30T00:01:00.000Z"
+    });
+    expect(JSON.stringify({ url, body: init.body })).not.toContain("service-role-secret");
   });
 
   it("rechecks tenant repository grants before direct enqueue when tenant control is enabled", async () => {
@@ -165,7 +328,10 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
-    const fetchMock = vi.fn(async () => new Response(null, { status: 201 }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body));
+      return Response.json([payload.job_payload], { status: 200 });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await enqueueAnalysisJob(jobInput());
@@ -179,10 +345,10 @@ describe("analysis job queue", () => {
       durable: true
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/analysis_jobs_test",
+      "https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_enqueue_analysis_job",
       expect.objectContaining({ method: "POST" })
     );
-    expect(body).toMatchObject({
+    expect(body.job_payload).toMatchObject({
       status: "queued",
       tenant_id: "tenant_a",
       idempotency_key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -308,6 +474,7 @@ describe("analysis job queue", () => {
     expect(jobs[0]).toMatchObject({
       id,
       status: "completed",
+      running_revision: null,
       locked_at: null,
       completed_at: "2026-06-30T00:02:00.000Z",
       error_code: null,
@@ -350,10 +517,12 @@ describe("analysis job queue", () => {
       expiresAt: new Date("2026-06-30T00:09:00Z"),
       runAfter: new Date("2026-06-30T00:01:15Z")
     });
+    const parkedRunningRevision = getAnalysisJobsForTests()[0].running_revision;
     const early = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:14Z") });
     const due = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:15Z") });
 
     expect(parked).toBe(true);
+    expect(parkedRunningRevision).toBeNull();
     expect(early.job).toBeNull();
     expect(due.job).toMatchObject({
       id,
@@ -426,7 +595,7 @@ describe("analysis job queue", () => {
       headSha: "def456",
       now: new Date("2026-06-30T00:00:01Z")
     });
-    const claim = await claimAnalysisJobById(requested.id, { now: new Date("2026-06-30T00:00:02Z") });
+    const claim = await claimAnalysisJobById(requested.id, { now: new Date("2026-06-30T00:00:16Z") });
 
     expect(claim.job).toMatchObject({ id: requested.id });
     expect(getAnalysisJobsForTests().find((job) => job.id === first.id)).toMatchObject({ status: "queued" });
@@ -1278,6 +1447,25 @@ describe("analysis job queue", () => {
     expect(retryMigration).toContain("grant select, insert, update, delete on table public.agentproof_analysis_jobs to service_role");
   });
 
+  it("defines canonical revision RPCs and a Vault-backed one-minute recovery trigger", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/202608110001_analysis_jobs_canonical_recovery.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain("canonical_key_hash text");
+    expect(migration).toContain("desired_revision bigint");
+    expect(migration).toContain("running_revision bigint");
+    expect(migration).toContain("create unique index agentproof_analysis_jobs_canonical_key_idx");
+    expect(migration).toContain("function public.agentproof_enqueue_analysis_job(job_payload jsonb)");
+    expect(migration).toContain("function public.agentproof_fence_analysis_job_revision(");
+    expect(migration).toContain("from vault.decrypted_secrets");
+    expect(migration).toContain("cron.schedule(");
+    expect(migration).toContain("'* * * * *'");
+    expect(migration).toContain("net.http_get(");
+    expect(migration).not.toMatch(/Bearer\s+[A-Za-z0-9_-]{20,}/);
+  });
+
   it("lists tenant analysis jobs as summary-only projections", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
@@ -1326,7 +1514,7 @@ describe("analysis job queue", () => {
         headShaPrefix: "abc123",
         action: "opened",
         attempts: 1,
-        runAfter: "2026-06-30T00:00:00.000Z",
+        runAfter: "2026-06-30T00:00:15.000Z",
         completedAt: "2026-06-30T00:02:00.000Z",
         errorCode: undefined,
         errorSummary: undefined,
@@ -1802,6 +1990,7 @@ describe("analysis job queue", () => {
     expect(retryable).toBe(true);
     expect(afterRetryable).toMatchObject({
       status: "failed_retryable",
+      running_revision: null,
       locked_at: null,
       run_after: "2026-06-30T00:04:00.000Z",
       error_code: "github_fetch_failed"

@@ -936,10 +936,11 @@ describe("POST /api/github/webhook", () => {
       saveReportsEnabled: false,
       commentEnabled: false
     });
-    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url);
-      if (href === "https://agentproof-test.supabase.co/rest/v1/analysis_jobs_test") {
-        return new Response(null, { status: 201 });
+      if (href === "https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_enqueue_analysis_job") {
+        const payload = JSON.parse(String(init?.body));
+        return Response.json([payload.job_payload]);
       }
 
       return new Response(JSON.stringify({ message: `Unexpected fetch ${href}` }), { status: 500 });
@@ -986,7 +987,7 @@ describe("POST /api/github/webhook", () => {
       "https://api.github.com/app/installations/321/access_tokens",
       expect.anything()
     );
-    expect(queuedBody).toMatchObject({
+    expect(queuedBody.job_payload).toMatchObject({
       status: "queued",
       tenant_id: "tenant_test",
       idempotency_key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -1013,12 +1014,9 @@ describe("POST /api/github/webhook", () => {
       }
     });
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
-    expect(deferredWebhookTasks).toHaveLength(1);
-    await Promise.all(deferredWebhookTasks);
-    expect(mockedClaimAnalysisJobById).toHaveBeenCalledWith(json.analysis.jobId);
-    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledWith({ id: "claimed-job" }, {
-      requestUrl: "http://localhost/api/github/webhook",
-    });
+    expect(deferredWebhookTasks).toHaveLength(0);
+    expect(mockedClaimAnalysisJobById).not.toHaveBeenCalled();
+    expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
   });
 
   it("clamps queued side effects to the tenant plan before Slack config or token fetch", async () => {
@@ -1051,10 +1049,11 @@ describe("POST /api/github/webhook", () => {
       commentEnabled: true,
       slackNotificationsEnabled: true
     });
-    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url);
-      if (href === "https://agentproof-test.supabase.co/rest/v1/analysis_jobs_test") {
-        return new Response(null, { status: 201 });
+      if (href === "https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_enqueue_analysis_job") {
+        const payload = JSON.parse(String(init?.body));
+        return Response.json([payload.job_payload]);
       }
 
       return new Response(JSON.stringify({ message: `Unexpected fetch ${href}` }), { status: 500 });
@@ -1088,7 +1087,7 @@ describe("POST /api/github/webhook", () => {
       "https://api.github.com/app/installations/321/access_tokens",
       expect.anything()
     );
-    expect(queuedBody).toMatchObject({
+    expect(queuedBody.job_payload).toMatchObject({
       tenant_id: "tenant_test",
       save_report: false,
       comment: false,
@@ -1194,7 +1193,7 @@ describe("POST /api/github/webhook", () => {
         return new Response(null, { status: 204 });
       }
 
-      if (href === "https://jobs.supabase.co/rest/v1/analysis_jobs_test" && method === "POST") {
+      if (href === "https://jobs.supabase.co/rest/v1/rpc/agentproof_enqueue_analysis_job" && method === "POST") {
         return new Response("queue down", { status: 500 });
       }
 
@@ -1221,7 +1220,7 @@ describe("POST /api/github/webhook", () => {
     });
     expect(urls).toEqual(expect.arrayContaining([
       "https://webhooks.supabase.co/rest/v1/deliveries_test",
-      "https://jobs.supabase.co/rest/v1/analysis_jobs_test"
+      "https://jobs.supabase.co/rest/v1/rpc/agentproof_enqueue_analysis_job"
     ]));
     expect(urls.some((url) => url === "https://api.github.com/app/installations/321/access_tokens")).toBe(false);
     expect(getAnalysisJobsForTests()).toEqual([]);
@@ -2204,7 +2203,7 @@ describe("POST /api/github/webhook", () => {
     expectAuditEventIsSummaryOnly(auditBody);
   });
 
-  it("skips duplicate pull_request automation for the same PR head SHA and action", async () => {
+  it("skips an exact replay of the same GitHub delivery", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_ALLOWED_REPOS", "RengGyu/AgentProof");
@@ -2222,7 +2221,7 @@ describe("POST /api/github/webhook", () => {
     const callCount = fetchMock.mock.calls.length;
     const second = await POST(signedRequest(body, {
       event: "pull_request",
-      delivery: "delivery-duplicate-2",
+      delivery: "delivery-duplicate-1",
       secret: "secret"
     }));
     const json = await second.json();
