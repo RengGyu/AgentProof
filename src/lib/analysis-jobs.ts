@@ -19,6 +19,20 @@ export const MAX_PROVIDER_CONTINUATION_MS = 10 * 60 * 1000;
 
 export type AnalysisJobStatus = "queued" | "processing" | "completed" | "failed_retryable" | "failed_terminal";
 export type AnalysisJobStatusFilter = "all" | "active" | "failed" | "completed";
+export type AnalysisJobFreshnessState = "current" | "refreshing" | "refresh_failed" | "superseded" | "stale" | "unknown";
+
+export interface AnalysisJobFreshness {
+  freshness: AnalysisJobFreshnessState;
+  copyEligible: boolean;
+}
+
+export interface ResolveAnalysisJobFreshnessInput {
+  tenantId?: unknown;
+  repositoryId?: unknown;
+  pullRequestNumber?: unknown;
+  reportHeadSha?: unknown;
+  staleAt?: unknown;
+}
 
 export interface AnalysisJobQueueStatus {
   enabled: boolean;
@@ -396,6 +410,8 @@ const TENANT_ANALYSIS_JOB_SELECT = [
   "error_summary",
   "result_summary"
 ].join(",");
+
+const FRESHNESS_ANALYSIS_JOB_SELECT = ["status", "head_sha", "created_at"].join(",");
 
 const FORBIDDEN_JOB_KEYS = [
   "access_token",
@@ -1041,6 +1057,42 @@ export async function listTenantAnalysisJobs(
   return rows.map(toTenantAnalysisJobSummary);
 }
 
+/**
+ * Resolves a saved report against the newest canonical job for exactly one
+ * tenant/repository/PR. The result deliberately contains no job identifier,
+ * provider metadata, or newer head SHA.
+ */
+export async function resolveAnalysisJobFreshness(
+  input: ResolveAnalysisJobFreshnessInput,
+  env = process.env
+): Promise<AnalysisJobFreshness> {
+  const tenantId = typeof input.tenantId === "string" ? safeTenantId(input.tenantId) : null;
+  const repositoryId = typeof input.repositoryId === "number" ? safePositiveInteger(input.repositoryId) : null;
+  const pullRequestNumber = typeof input.pullRequestNumber === "number" ? safePositiveInteger(input.pullRequestNumber) : null;
+  const reportHeadSha = typeof input.reportHeadSha === "string" ? safeHeadSha(input.reportHeadSha) : null;
+  if (!tenantId || !repositoryId || !pullRequestNumber || !reportHeadSha) {
+    throw new AnalysisJobQueueError("Analysis job freshness lookup is invalid.");
+  }
+
+  const legacy = typeof input.staleAt === "string" && input.staleAt ? "stale" as const : "current" as const;
+  if (!analysisJobQueueEnabled(env)) return { freshness: legacy, copyEligible: legacy === "current" };
+
+  const config = getAnalysisJobStoreConfig(env);
+  const lookup = config
+    ? await getSupabaseLatestAnalysisJobForFreshness(config, { tenantId, repositoryId, pullRequestNumber })
+    : getMemoryLatestAnalysisJobForFreshness({ tenantId, repositoryId, pullRequestNumber });
+  if (lookup.ambiguous) return { freshness: "unknown", copyEligible: false };
+  const latest = lookup.latest;
+
+  if (!latest) return { freshness: legacy, copyEligible: legacy === "current" };
+  if (latest.status === "queued" || latest.status === "processing") return { freshness: "refreshing", copyEligible: false };
+  if (latest.status === "failed_retryable" || latest.status === "failed_terminal") return { freshness: "refresh_failed", copyEligible: false };
+  if (latest.status !== "completed") return { freshness: "unknown", copyEligible: false };
+  return latest.head_sha === reportHeadSha
+    ? { freshness: "current", copyEligible: true }
+    : { freshness: "superseded", copyEligible: false };
+}
+
 export async function countTenantAnalysisJobs(
   input: { tenantId?: unknown },
   env = process.env
@@ -1634,6 +1686,69 @@ async function listSupabaseTenantAnalysisJobs(
   return rows
     .filter((row): row is AnalysisJobRow => Boolean(row) && typeof row === "object" && !Array.isArray(row))
     .slice(0, limit);
+}
+
+type FreshnessAnalysisJobRow = Pick<AnalysisJobRow, "status" | "head_sha" | "created_at">;
+
+async function getSupabaseLatestAnalysisJobForFreshness(
+  config: AnalysisJobStoreConfig,
+  input: { tenantId: string; repositoryId: number; pullRequestNumber: number }
+): Promise<FreshnessAnalysisJobLookup> {
+  const params = new URLSearchParams([
+    ["tenant_id", `eq.${input.tenantId}`],
+    ["repository_id", `eq.${input.repositoryId}`],
+    ["pull_request_number", `eq.${input.pullRequestNumber}`],
+    ["select", FRESHNESS_ANALYSIS_JOB_SELECT],
+    ["order", "created_at.desc"],
+    ["limit", "2"]
+  ]);
+  const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: supabaseAnalysisJobHeaders(config)
+  });
+
+  if (!response.ok) throw new AnalysisJobQueueError(`Analysis job freshness lookup failed with HTTP ${response.status}.`);
+  const rows = await response.json().catch(() => null) as unknown;
+  if (!Array.isArray(rows) || rows.length === 0) return { latest: null, ambiguous: false };
+  const candidates = rows.slice(0, 2);
+  if (!candidates.every(isFreshnessAnalysisJobRow)) throw new AnalysisJobQueueError("Analysis job freshness lookup returned an incomplete row.");
+  return freshnessAnalysisJobLookup(candidates);
+}
+
+function getMemoryLatestAnalysisJobForFreshness(
+  input: { tenantId: string; repositoryId: number; pullRequestNumber: number }
+): FreshnessAnalysisJobLookup {
+  const rows = analysisJobStore()
+    .filter((job) => job.tenant_id === input.tenantId && job.repository_id === input.repositoryId && job.pull_request_number === input.pullRequestNumber)
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .slice(0, 2);
+  if (rows.length === 0) return { latest: null, ambiguous: false };
+  if (!rows.every(isFreshnessAnalysisJobRow)) throw new AnalysisJobQueueError("Analysis job freshness lookup returned an incomplete row.");
+  return freshnessAnalysisJobLookup(rows);
+}
+
+interface FreshnessAnalysisJobLookup {
+  latest: FreshnessAnalysisJobRow | null;
+  ambiguous: boolean;
+}
+
+function freshnessAnalysisJobLookup(rows: FreshnessAnalysisJobRow[]): FreshnessAnalysisJobLookup {
+  const latest = rows[0];
+  const next = rows[1];
+  if (!latest) return { latest: null, ambiguous: false };
+  // UUIDv4 cannot establish chronological order. A same-millisecond second
+  // head is therefore unsafe to treat as current, regardless of lexical ID.
+  if (next && next.created_at === latest.created_at) return { latest: null, ambiguous: true };
+  return { latest, ambiguous: false };
+}
+
+function isFreshnessAnalysisJobRow(value: unknown): value is FreshnessAnalysisJobRow {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Partial<FreshnessAnalysisJobRow>;
+  return safeAnalysisJobStatus(row.status) !== null &&
+    typeof row.head_sha === "string" && safeHeadSha(row.head_sha) !== null &&
+    typeof row.created_at === "string" && Number.isFinite(new Date(row.created_at).getTime());
 }
 
 async function countSupabaseTenantAnalysisJobs(

@@ -51,6 +51,28 @@ describe("github dashboard view model", () => {
     });
   });
 
+  it("uses bounded server-resolved freshness instead of treating a saved report as current", () => {
+    expect(toQuickSummary({
+      repositoryFullName: "RengGyu/dongo",
+      pullRequestNumber: 14,
+      freshness: "refresh_failed",
+      copyEligible: false,
+      report: { requirements: [] }
+    }).freshness).toBe("REFRESH FAILED");
+    expect(toQuickSummary({
+      repositoryFullName: "RengGyu/dongo",
+      pullRequestNumber: 14,
+      freshness: "superseded",
+      copyEligible: false,
+      report: { requirements: [] }
+    }).freshness).toBe("SUPERSEDED");
+  });
+
+  it("keeps explicit current freshness ahead of an out-of-order legacy stale marker and fails closed without a state", () => {
+    expect(toQuickSummary({ freshness: "current", copyEligible: true, staleAt: "2026-08-06T00:00:00.000Z", report: { requirements: [] } }).freshness).toBe("CURRENT");
+    expect(toQuickSummary({ report: { requirements: [] } }).freshness).toBe("UNKNOWN");
+  });
+
   it("uses the deterministic evidence gap as the quick-summary explanation when semantic prose differs", () => {
     const summary = toQuickSummary({
       repositoryFullName: "RengGyu/dongo",

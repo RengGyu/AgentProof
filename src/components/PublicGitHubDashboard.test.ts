@@ -17,7 +17,8 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("PR #");
     expect(source).toContain("formatCreatedAt(report.createdAt)");
     expect(source).toContain("headPrefix(report.headSha)");
-    expect(source).toContain("!report.staleAt");
+    expect(source).toContain('report.freshness === "current"');
+    expect(source).toContain("report.copyEligible === true");
     expect(source).toContain('event.kind === "report_stale"');
     expect(source).toContain("Previous result");
     expect(source).toContain("Priority:");
@@ -37,10 +38,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("repositoryId=${encodeURIComponent(String(repositoryId))}");
     expect(source).toContain("scope=current");
     expect(source).toContain("AbortController");
-    expect(source).toContain("Tap Copy all reports again");
+    expect(source).toContain("prepareCurrentDashboardBundleForCopy");
+    expect(source).toContain("copyRevalidatedDashboardDetail");
+    expect(source).not.toContain("preparedBulkCopy");
     expect(source).not.toContain("Promise.all(selectedReports.map");
     expect(source).toContain("disabled={selectedReports.length === 0 || bulkCopyState === \"copying\"}");
-    expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setPreparedBulkCopy\(null\); setBulkCopyCount\(0\); setBulkCopyState\("idle"\);/);
+    expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setBulkCopyCount\(0\); setBulkCopyState\("idle"\);/);
   });
 
   it("renders only the agreed sanitized detail categories", () => {

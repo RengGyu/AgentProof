@@ -11,10 +11,12 @@ type DashboardExportDetail = DashboardReportDetail & { repositoryFullName?: stri
  * detail. This is an allowlist, not a serialization of the stored report.
  */
 export function dashboardReportToJson(detail: DashboardExportDetail): string {
+  assertCopyEligible(detail);
   return JSON.stringify(toDashboardReportExport(detail), null, 2);
 }
 
 export function dashboardReportToMarkdown(detail: DashboardExportDetail): string {
+  assertCopyEligible(detail);
   const exported = toDashboardReportExport(detail);
   const requirementCards = toDashboardRequirementViewModels({
     requirements: detail.report?.requirements,
@@ -56,6 +58,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
 }
 
 export function dashboardReportsToMarkdown(details: DashboardExportDetail[]): string {
+  details.forEach(assertCopyEligible);
   const ordered = [...details].sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
   if (ordered.length === 0) return "";
   const repository = safeText(ordered[0]?.repositoryFullName) ?? "Unavailable";
@@ -121,7 +124,7 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       analyzed_at: safeText(detail.createdAt),
       evidence_captured_at: safeText(detail.evidenceCapturedAt) ?? null,
       priority: safeText(detail.priority),
-      state: detail.staleAt ? "STALE" : "CURRENT"
+      state: "CURRENT"
     },
     analysis_context: detail.analysisContext ?? "provided_requirement",
     requirements: (report?.requirements ?? []).map((item) => ({
@@ -204,6 +207,12 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       }))
     } : null
   };
+}
+
+function assertCopyEligible(detail: DashboardExportDetail): void {
+  if (detail.freshness !== "current" || detail.copyEligible !== true) {
+    throw new Error("Dashboard report is not current and copy eligible.");
+  }
 }
 
 function safeText(value: string | undefined): string | undefined {

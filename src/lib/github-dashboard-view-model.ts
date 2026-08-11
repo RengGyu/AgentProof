@@ -19,9 +19,14 @@ export interface DashboardSavedReport {
   priority: string;
   createdAt: string;
   staleAt?: string;
+  freshness?: DashboardReportFreshness;
+  copyEligible?: boolean;
 }
 
+export type DashboardReportFreshness = "current" | "refreshing" | "refresh_failed" | "superseded" | "stale" | "unknown";
+
 export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" | "priority" | "createdAt"> {
+  id?: string;
   createdAt?: string;
   priority?: string;
   evidenceCapturedAt?: string;
@@ -45,7 +50,7 @@ export interface RepositoryWorkspaceRow extends DashboardRepositoryGrant {
 }
 
 export interface QuickSummary {
-  freshness: "CURRENT" | "STALE";
+  freshness: "CURRENT" | "REFRESHING" | "REFRESH FAILED" | "SUPERSEDED" | "STALE" | "UNKNOWN";
   checkState: "Success" | "Check failed" | "Pending" | "Unknown" | "Unavailable";
   primaryEvidenceState: "Evidence found" | "Evidence missing" | "Needs attention" | "Unknown" | "Unavailable";
   primaryEvidenceDetail?: string;
@@ -84,7 +89,7 @@ export function toRepositoryWorkspaceRows(
     return {
       ...repository,
       reportCount: scoped.length,
-      currentReportCount: scoped.filter((report) => !report.staleAt).length,
+      currentReportCount: scoped.filter((report) => report.copyEligible === true && report.freshness === "current").length,
       ...(scoped[0] ? { latestReport: scoped[0] } : {}),
       commentsEnabled: repository.commentEnabled
     };
@@ -104,7 +109,7 @@ export function toQuickSummary(detail: DashboardReportDetail & { repositoryFullN
         : "No explicit requirement or PR objective was found.");
 
   return {
-    freshness: detail.staleAt ? "STALE" : "CURRENT",
+    freshness: freshnessLabel(detail.freshness, detail.staleAt),
     checkState: toCheckState(detail.report?.testing),
     primaryEvidenceState: toEvidenceState(firstRequirement?.status, firstRequirement?.gaps.length ?? 0),
     primaryEvidenceDetail,
@@ -112,6 +117,17 @@ export function toQuickSummary(detail: DashboardReportDetail & { repositoryFullN
     inspectFirst: firstPriorityPath ?? firstEvidencePath ?? "Unavailable",
     githubUrl: buildGitHubPullUrl(detail.repositoryFullName, detail.pullRequestNumber)
   };
+}
+
+function freshnessLabel(freshness: DashboardReportFreshness | undefined, staleAt: string | undefined): QuickSummary["freshness"] {
+  if (freshness === "current") return "CURRENT";
+  if (freshness === "refreshing") return "REFRESHING";
+  if (freshness === "refresh_failed") return "REFRESH FAILED";
+  if (freshness === "superseded") return "SUPERSEDED";
+  if (freshness === "stale") return "STALE";
+  if (freshness === "unknown") return "UNKNOWN";
+  if (staleAt) return "STALE";
+  return "UNKNOWN";
 }
 
 function toAiEvidenceState(report: DashboardReportDetail["report"]): QuickSummary["aiEvidenceState"] {

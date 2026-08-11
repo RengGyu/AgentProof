@@ -8,6 +8,8 @@ const detail = {
   headSha: "a".repeat(40),
   priority: "high",
   createdAt: "2026-08-09T00:00:00.000Z",
+  freshness: "current" as const,
+  copyEligible: true,
   report: {
     requirements: [{ requirementId: "req_1", status: "partial", evidenceRefs: ["ev_1"], gaps: ["Focused test evidence is missing."] }],
     testing: { ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "pending" },
@@ -18,6 +20,11 @@ const detail = {
 } satisfies DashboardReportDetail & { repositoryFullName: string };
 
 describe("dashboard report export", () => {
+  it("fails closed when a detail is not revalidated as current and copy eligible", () => {
+    expect(() => dashboardReportToMarkdown({ ...detail, freshness: "refreshing", copyEligible: false })).toThrow("not current");
+    expect(() => dashboardReportsToMarkdown([{ ...detail, freshness: "unknown", copyEligible: false }])).toThrow("not current");
+  });
+
   it("exports the reviewer-visible bounded report as structured JSON without unapproved raw fields", () => {
     const unsafeDetail = {
       ...detail,

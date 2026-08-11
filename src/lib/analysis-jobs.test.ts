@@ -21,6 +21,7 @@ import {
   markAnalysisJobSemanticRetrySubmission,
   parkAnalysisJobForProvider,
   purgeTenantAnalysisJobsForDeletion,
+  resolveAnalysisJobFreshness,
   sealAnalysisJobRevision
 } from "./analysis-jobs";
 import {
@@ -172,6 +173,119 @@ describe("analysis job queue", () => {
     expect(nextHead.id).not.toBe(first.id);
     expect(getAnalysisJobsForTests()).toHaveLength(2);
     expect(new Set(getAnalysisJobsForTests().map((job) => job.canonical_key_hash)).size).toBe(2);
+  });
+
+  it("resolves saved-report freshness from the newest exact PR-head job without returning job details", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    const oldHead = "a".repeat(40);
+    const newHead = "b".repeat(40);
+    await enqueueAnalysisJob({ ...jobInput(), headSha: oldHead, now: new Date("2026-06-30T00:00:00Z") });
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "new-head",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174399",
+      headSha: newHead,
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    await expect(resolveAnalysisJobFreshness({
+      tenantId: "tenant_a",
+      repositoryId: 100,
+      pullRequestNumber: 7,
+      reportHeadSha: oldHead
+    })).resolves.toEqual({ freshness: "refreshing", copyEligible: false });
+  });
+
+  it("fails closed for both UUID lexical orderings when distinct PR heads share one millisecond", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    for (const [oldId, newId] of [
+      ["00000000-0000-4000-8000-000000000001", "ffffffff-ffff-4fff-8fff-ffffffffffff"],
+      ["ffffffff-ffff-4fff-8fff-ffffffffffff", "00000000-0000-4000-8000-000000000001"]
+    ]) {
+      clearAnalysisJobsForTests();
+      const oldHead = "a".repeat(40);
+      const newHead = "b".repeat(40);
+      await enqueueAnalysisJob({ ...jobInput(), headSha: oldHead, now: new Date("2026-06-30T00:00:00.000Z") });
+      await enqueueAnalysisJob({ ...jobInput(), idempotencyKey: `same-ms-new-${newId}`, deliveryId: "123e4567-e89b-12d3-a456-426614174397", headSha: newHead, now: new Date("2026-06-30T00:00:00.000Z") });
+      const [oldJob, newJob] = getAnalysisJobsForTests();
+      oldJob.id = oldId;
+      newJob.id = newId;
+      oldJob.status = "completed";
+      newJob.status = "queued";
+
+      await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: oldHead }))
+        .resolves.toEqual({ freshness: "unknown", copyEligible: false });
+    }
+  });
+
+  it("requests the top timestamp cohort from Supabase and fails closed when its heads or states differ", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async () => Response.json([
+      { status: "completed", head_sha: "a".repeat(40), created_at: "2026-06-30T00:00:00.000Z" },
+      { status: "queued", head_sha: "b".repeat(40), created_at: "2026-06-30T00:00:00.000Z" }
+    ]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: "a".repeat(40) }))
+      .resolves.toEqual({ freshness: "unknown", copyEligible: false });
+    const [requestUrl] = fetchMock.mock.calls[0] as unknown as [string];
+    const url = new URL(requestUrl);
+    expect(url.searchParams.get("order")).toBe("created_at.desc");
+    expect(url.searchParams.get("limit")).toBe("2");
+    expect(url.searchParams.get("select")).toBe("status,head_sha,created_at");
+  });
+
+  it("keeps freshness anchored to creation order when an older job completes out of order", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const oldHead = "a".repeat(40);
+    const newHead = "b".repeat(40);
+    const old = await enqueueAnalysisJob({ ...jobInput(), headSha: oldHead, now: new Date("2026-06-30T00:00:00Z") });
+    const oldClaim = await claimAnalysisJobById(old.id, { now: new Date("2026-06-30T00:00:15Z") });
+    await enqueueAnalysisJob({
+      ...jobInput(), idempotencyKey: "freshness-new-head", deliveryId: "123e4567-e89b-12d3-a456-426614174398", headSha: newHead, now: new Date("2026-06-30T00:01:00Z")
+    });
+    await completeAnalysisJob({ id: old.id, claimGeneration: oldClaim.job!.claim_generation!, now: new Date("2026-06-30T00:02:00Z") });
+
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: oldHead }))
+      .resolves.toEqual({ freshness: "refreshing", copyEligible: false });
+  });
+
+  it("maps failed, completed, and no-job legacy records to bounded freshness states", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const head = "c".repeat(40);
+    const failed = await enqueueAnalysisJob({ ...jobInput(), headSha: head, now: new Date("2026-06-30T00:00:00Z") });
+    const claim = await claimAnalysisJobById(failed.id, { now: new Date("2026-06-30T00:00:15Z") });
+    await failAnalysisJob({ id: failed.id, claimGeneration: claim.job!.claim_generation!, retryable: false, code: "failed", summary: "bounded", now: new Date("2026-06-30T00:00:16Z") });
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: head }))
+      .resolves.toEqual({ freshness: "refresh_failed", copyEligible: false });
+
+    clearAnalysisJobsForTests();
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "false");
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: head }))
+      .resolves.toEqual({ freshness: "current", copyEligible: true });
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: head, staleAt: "2026-06-30T00:00:00Z" }))
+      .resolves.toEqual({ freshness: "stale", copyEligible: false });
+  });
+
+  it("marks only the completed matching head current", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const currentHead = "d".repeat(40);
+    const completed = await enqueueAnalysisJob({ ...jobInput(), headSha: currentHead, now: new Date("2026-06-30T00:00:00Z") });
+    const claim = await claimAnalysisJobById(completed.id, { now: new Date("2026-06-30T00:00:15Z") });
+    await completeAnalysisJob({ id: completed.id, claimGeneration: claim.job!.claim_generation!, now: new Date("2026-06-30T00:00:16Z") });
+
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: currentHead }))
+      .resolves.toEqual({ freshness: "current", copyEligible: true });
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: "e".repeat(40) }))
+      .resolves.toEqual({ freshness: "superseded", copyEligible: false });
   });
 
   it("requeues a processing canonical row when its running revision becomes stale", async () => {

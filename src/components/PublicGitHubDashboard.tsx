@@ -43,6 +43,7 @@ import {
   type RepositorySelectionLoadResult
 } from "@/lib/repository-selection-state";
 import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "@/lib/dashboard-report-export";
+import { copyRevalidatedDashboardDetail, prepareCurrentDashboardBundleForCopy } from "@/lib/dashboard-copy-revalidation";
 
 interface Repository { id: number; fullName: string; private: boolean; }
 interface ExistingInstallation { installationId: number; accountLogin: string; }
@@ -66,7 +67,9 @@ const PREVIEW_DEMO_REPORTS: DashboardSavedReport[] = [{
   pullRequestNumber: 42,
   headSha: "7cf2a98bf1d4c2508a0668da80c45151fca856d1",
   priority: "medium",
-  createdAt: "2026-08-06T07:00:00.000Z"
+  createdAt: "2026-08-06T07:00:00.000Z",
+  freshness: "current",
+  copyEligible: true
 }, {
   id: "preview-report-stale",
   repositoryId: 101,
@@ -74,7 +77,9 @@ const PREVIEW_DEMO_REPORTS: DashboardSavedReport[] = [{
   headSha: "1b7a6e35b3ac00d94a7e7ea9d8e4bb178d5c7bd2",
   priority: "medium",
   createdAt: "2026-08-05T20:00:00.000Z",
-  staleAt: "2026-08-06T07:00:00.000Z"
+  staleAt: "2026-08-06T07:00:00.000Z",
+  freshness: "stale",
+  copyEligible: false
 }];
 
 const PREVIEW_DEMO_DETAIL: DashboardReportDetail = {
@@ -139,9 +144,8 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const [inboxSeenAt, setInboxSeenAt] = useState<string | null>(null);
   const [settingsPending, setSettingsPending] = useState<string | null>(null);
   const [logoutPending, setLogoutPending] = useState(false);
-  const [bulkCopyState, setBulkCopyState] = useState<"idle" | "copying" | "ready" | "copied" | "error">("idle");
+  const [bulkCopyState, setBulkCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const [bulkCopyCount, setBulkCopyCount] = useState(0);
-  const [preparedBulkCopy, setPreparedBulkCopy] = useState<{ repositoryId: number; markdown: string; count: number } | null>(null);
   const repositorySelectionGate = useRef(createRepositorySelectionGate());
 
   const repositoryRows = useMemo(
@@ -150,7 +154,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   );
   const selectedRepository = repositoryRows.find((repository) => repository.repositoryId === selectedRepositoryId) ?? repositoryRows[0];
   const selectedReports = reports
-    .filter((report) => report.repositoryId === selectedRepository?.repositoryId && !report.staleAt)
+    .filter((report) => report.repositoryId === selectedRepository?.repositoryId && report.freshness === "current" && report.copyEligible === true)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const selectedRepositoryName = selectedRepository?.repositoryFullName;
   const quickSummary = detail
@@ -435,7 +439,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     const response = await fetch(`/api/dashboard/reports?id=${encodeURIComponent(id)}`, { cache: "no-store" });
     const body = await response.json().catch(() => null);
     if (response.ok) {
-      setDetail(body);
+      setDetail({ ...body, id });
       setShowDetailedEvidence(false);
       return;
     }
@@ -445,49 +449,33 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   async function copySelectedRepositoryReports() {
     const repositoryId = selectedRepository?.repositoryId;
     if (!selectedRepository || !repositoryId || selectedReports.length === 0 || bulkCopyState === "copying") return;
-    const prepared = preparedBulkCopy?.repositoryId === repositoryId ? preparedBulkCopy : null;
-    if (prepared) {
-      try {
-        await navigator.clipboard.writeText(prepared.markdown);
-        setBulkCopyCount(prepared.count);
-        setPreparedBulkCopy(null);
-        setBulkCopyState("copied");
-        setMessage(`Copied ${prepared.count} current report${prepared.count === 1 ? "" : "s"} from ${selectedRepository.repositoryFullName}.`);
-      } catch {
-        setBulkCopyState("error");
-        setMessage("Copy is blocked in this browser. Keep this page open and try again.");
-      }
-      return;
-    }
     setBulkCopyState("copying");
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 15_000);
     try {
       const details = demoMode
         ? selectedReports.map((report) => ({ ...PREVIEW_DEMO_DETAIL, ...report, repositoryFullName: selectedRepository.repositoryFullName }))
-        : await (async () => {
-          const response = await fetch(`/api/dashboard/reports?repositoryId=${encodeURIComponent(String(repositoryId))}&scope=current`, { cache: "no-store", signal: controller.signal });
-          const body = await response.json().catch(() => null);
-          if (!response.ok || !Array.isArray(body?.reports)) throw new Error("dashboard_reports_unavailable");
-          const reports = body.reports.filter((report: DashboardReportDetail) => report?.report && report.repositoryId === repositoryId && !report.staleAt);
-          if (reports.length === 0) throw new Error("dashboard_reports_empty");
-          return reports.map((report: DashboardReportDetail) => ({ ...report, repositoryFullName: selectedRepository.repositoryFullName }));
-        })();
+        : await prepareCurrentDashboardBundleForCopy({
+          repositoryId,
+          repositoryFullName: selectedRepository.repositoryFullName,
+          fetchBundle: async () => {
+            const response = await fetch(`/api/dashboard/reports?repositoryId=${encodeURIComponent(String(repositoryId))}&scope=current`, { cache: "no-store", signal: controller.signal });
+            if (!response.ok) throw new Error("dashboard_reports_unavailable");
+            return response.json().catch(() => null);
+          }
+        });
       const markdown = dashboardReportsToMarkdown(details);
       setBulkCopyCount(details.length);
       try {
         await navigator.clipboard.writeText(markdown);
       } catch {
-        setPreparedBulkCopy({ repositoryId, markdown, count: details.length });
-        setBulkCopyState("ready");
-        setMessage("Reports are ready. Tap Copy all reports again to copy them.");
+        setBulkCopyState("error");
+        setMessage("Copy is blocked in this browser. Try again to revalidate the current reports.");
         return;
       }
-      setPreparedBulkCopy(null);
       setBulkCopyState("copied");
       setMessage(`Copied ${details.length} current report${details.length === 1 ? "" : "s"} from ${selectedRepository.repositoryFullName}.`);
     } catch {
-      setPreparedBulkCopy(null);
       setBulkCopyState("error");
       setMessage("Reports could not be prepared in time. Try copy again.");
     } finally {
@@ -589,7 +577,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       {screen === "repositories" ? <>
         <section className="dashboard-section dashboard-repository-strip" aria-labelledby="connected-repositories-title">
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">CONNECTIONS</p><h3 id="connected-repositories-title">Connected repositories</h3></div>{signedIn && !activeInstallationId ? <button className="dashboard-text-action" onClick={install}><Link2 size={15} /> {demoMode ? "Sample repository" : "Connect repository"}</button> : null}</div>
-          {!connectionsLoaded ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading connected repositories</p> : repositoryRows.length > 0 ? <div className="repository-tabs">{repositoryRows.map((repository) => <button key={`${repository.installationId}:${repository.repositoryId ?? repository.repositoryFullName}`} className={repository.repositoryId === selectedRepository?.repositoryId ? "repository-tab active" : "repository-tab"} onClick={() => { setSelectedRepositoryId(repository.repositoryId); setDetail(null); setPreparedBulkCopy(null); setBulkCopyCount(0); setBulkCopyState("idle"); }}><span>{repository.repositoryFullName}</span><small>{repository.analysisEnabled ? "Analysis on" : "Analysis off"} · {repository.commentsEnabled ? "Comments on" : "Comments off"}</small></button>)}</div> : <p className="dashboard-empty">No repository is connected yet.</p>}
+          {!connectionsLoaded ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading connected repositories</p> : repositoryRows.length > 0 ? <div className="repository-tabs">{repositoryRows.map((repository) => <button key={`${repository.installationId}:${repository.repositoryId ?? repository.repositoryFullName}`} className={repository.repositoryId === selectedRepository?.repositoryId ? "repository-tab active" : "repository-tab"} onClick={() => { setSelectedRepositoryId(repository.repositoryId); setDetail(null); setBulkCopyCount(0); setBulkCopyState("idle"); }}><span>{repository.repositoryFullName}</span><small>{repository.analysisEnabled ? "Analysis on" : "Analysis off"} · {repository.commentsEnabled ? "Comments on" : "Comments off"}</small></button>)}</div> : <p className="dashboard-empty">No repository is connected yet.</p>}
         </section>
 
         {existingInstallations.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">GITHUB APP</p><h3>Choose an installation</h3></div></div><div className="installation-list">{existingInstallations.map((installation) => <button key={installation.installationId} className="dashboard-list-row" onClick={() => { void activateExistingInstallation(installation.installationId); }}><Github size={17} /> {installation.accountLogin}<ChevronRight size={16} /></button>)}</div></section> : null}
@@ -598,10 +586,10 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
          {privateRepositoryChoice ? <section className="analysis-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-choice-title"><div><p className="dashboard-eyebrow">PRIVATE REPOSITORY</p><h3 id="analysis-choice-title">Choose analysis detail</h3><p>Enhanced analysis uses selected changed-code excerpts and evidence summaries to add a concise evidence reading.</p></div><div className="analysis-choice-actions"><button className="dashboard-secondary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "essential"); }}>Use essential analysis</button><button className="dashboard-primary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "enhanced"); }}>Enable enhanced analysis</button></div></section> : null}
 
         <section className="dashboard-workspace">
-          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div><button className="dashboard-text-action" disabled={selectedReports.length === 0 || bulkCopyState === "copying"} onClick={() => { void copySelectedRepositoryReports(); }}><Clipboard size={15} /> {bulkCopyState === "copying" ? "Preparing reports…" : bulkCopyState === "ready" ? `Copy ${bulkCopyCount} prepared reports` : bulkCopyState === "copied" ? `Copied ${bulkCopyCount} reports` : bulkCopyState === "error" ? "Try copy again" : "Copy all reports"}</button></div>
+          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div><button className="dashboard-text-action" disabled={selectedReports.length === 0 || bulkCopyState === "copying"} onClick={() => { void copySelectedRepositoryReports(); }}><Clipboard size={15} /> {bulkCopyState === "copying" ? "Preparing reports…" : bulkCopyState === "copied" ? `Copied ${bulkCopyCount} reports` : bulkCopyState === "error" ? "Try copy again" : "Copy all reports"}</button></div>
           {!selectedRepository ? <p className="dashboard-empty">Connect a GitHub repository to review saved evidence reports.</p> : selectedReports.length === 0 ? <p className="dashboard-empty"><FileCheck2 size={20} /> No reports yet<br /><small>New PR events will appear here after analysis.</small></p> : <div className="dashboard-report-layout">
             <div className="report-list" aria-label="Current analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label="CURRENT" title="Current report" /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
-            {detail?.report && quickSummary ? <QuickSummaryPanel detail={{ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) }} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
+            {detail?.report && quickSummary ? <QuickSummaryPanel detail={{ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) }} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} demoMode={demoMode} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
           </div>}
         </section>
       </> : <SettingsPanel repository={selectedRepository} pending={settingsPending} onUpdate={updateRepositorySetting} onLogout={logout} logoutPending={logoutPending} />}
@@ -610,7 +598,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   </section>;
 }
 
-function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvidence }: { detail: DashboardReportDetail & { repositoryFullName?: string }; quickSummary: ReturnType<typeof toQuickSummary>; onShowDetail: () => void; showDetailedEvidence: boolean }) {
+function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvidence, demoMode }: { detail: DashboardReportDetail & { repositoryFullName?: string }; quickSummary: ReturnType<typeof toQuickSummary>; onShowDetail: () => void; showDetailedEvidence: boolean; demoMode: boolean }) {
   const report = detail.report;
   const firstRequirement = report?.requirements?.find((item) => item.gaps.length > 0) ?? report?.requirements?.[0];
   const githubUrl = quickSummary.githubUrl;
@@ -620,12 +608,12 @@ function QuickSummaryPanel({ detail, quickSummary, onShowDetail, showDetailedEvi
     <section className="summary-callout"><CircleAlert size={19} /><div><p className="dashboard-eyebrow">MOST IMPORTANT EVIDENCE GAP</p><strong>{quickSummary.primaryEvidenceState}</strong><p>{quickSummary.primaryEvidenceDetail ?? (firstRequirement ? `Requirement ${firstRequirement.requirementId} is ${toRequirementCoverageLabel(firstRequirement.status).toLowerCase()}. More proof is needed before it is fully supported.` : "No requirement evidence is available in this saved report.")}</p></div></section>
     {report?.semanticAnalysis?.status === "unavailable" ? <p className="dashboard-boundary"><Info size={15} /> Some supporting details are unavailable. Available evidence is still shown.</p> : null}
     <div className="summary-actions">{githubUrl ? <a className="dashboard-secondary-action" href={githubUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Open in GitHub</a> : <span className="dashboard-disabled-action">GitHub link unavailable</span>}<button className="dashboard-primary-action" onClick={onShowDetail}>{showDetailedEvidence ? "Hide detailed evidence" : "View detailed evidence"}</button></div>
-    {showDetailedEvidence ? <DetailedEvidence detail={detail} /> : null}
+    {showDetailedEvidence ? <DetailedEvidence detail={detail} demoMode={demoMode} /> : null}
     <p className="dashboard-boundary"><ShieldCheck size={15} /> This report organizes available evidence. It does not establish correctness, safety, requirement satisfaction, or merge readiness.</p>
   </article>;
 }
 
-function DetailedEvidence({ detail }: { detail: DashboardReportDetail & { repositoryFullName?: string } }) {
+function DetailedEvidence({ detail, demoMode }: { detail: DashboardReportDetail & { repositoryFullName?: string }; demoMode: boolean }) {
   const report = detail.report;
   const semantic = report?.semantic;
   const requirementCards = toDashboardRequirementViewModels({
@@ -638,7 +626,18 @@ function DetailedEvidence({ detail }: { detail: DashboardReportDetail & { reposi
 
   async function copyReport(format: "markdown" | "json") {
     try {
-      await navigator.clipboard.writeText(format === "markdown" ? dashboardReportToMarkdown(detail) : dashboardReportToJson(detail));
+      if (demoMode) {
+        await navigator.clipboard.writeText(format === "markdown" ? dashboardReportToMarkdown(detail) : dashboardReportToJson(detail));
+      } else {
+        if (!detail.id || !detail.repositoryFullName) throw new Error("dashboard_report_copy_identity_missing");
+        await copyRevalidatedDashboardDetail({
+          id: detail.id,
+          repositoryFullName: detail.repositoryFullName,
+          fetchDetail: fetchDashboardCopyDetail,
+          writeText: (value) => navigator.clipboard.writeText(value),
+          toText: (currentDetail) => format === "markdown" ? dashboardReportToMarkdown(currentDetail) : dashboardReportToJson(currentDetail)
+        });
+      }
       setCopyError(false);
       setCopiedFormat(format);
       window.setTimeout(() => setCopiedFormat(null), 1_600);
@@ -649,6 +648,12 @@ function DetailedEvidence({ detail }: { detail: DashboardReportDetail & { reposi
   }
 
   return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirement coverage and supporting evidence</h4></div><div className="detailed-evidence-actions"><button className="dashboard-secondary-action" onClick={() => { void copyReport("markdown"); }}><Clipboard size={15} /> {copiedFormat === "markdown" ? "Copied" : "Copy report"}</button><button className="dashboard-secondary-action" onClick={() => { void copyReport("json"); }}><Clipboard size={15} /> {copiedFormat === "json" ? "Copied" : "Copy JSON"}</button></div></div>{copyError ? <p className="dashboard-boundary"><Info size={15} /> Copy failed in this browser. Select the report text manually.</p> : null}<div className="detail-grid"><section className="requirement-evidence-section"><h5>Requirements and PR objectives</h5>{requirementCards.length > 0 ? <RequirementEvidenceList requirements={requirementCards} /> : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div></section>;
+}
+
+async function fetchDashboardCopyDetail(id: string): Promise<DashboardReportDetail | null> {
+  const response = await fetch(`/api/dashboard/reports?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+  const detail = await response.json().catch(() => null);
+  return response.ok ? detail : null;
 }
 
 function SettingsPanel({ repository, pending, onUpdate, onLogout, logoutPending }: { repository: ReturnType<typeof toRepositoryWorkspaceRows>[number] | undefined; pending: string | null; onUpdate: (setting: RepositorySetting, nextValue: boolean) => Promise<void>; onLogout: () => Promise<void>; logoutPending: boolean }) {

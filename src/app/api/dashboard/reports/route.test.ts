@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearSavedReportsForTests, createVerifiedSavedReport } from "@/lib/server-report-store";
+import * as savedReportStore from "@/lib/server-report-store";
 import { clearTenantAuthSessionsForTests, createTenantAuthSessionForMember } from "@/lib/tenant-auth";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
+import { claimAnalysisJobById, clearAnalysisJobsForTests, completeAnalysisJob, enqueueAnalysisJob, resolveAnalysisJobFreshness } from "@/lib/analysis-jobs";
 import { GET } from "./route";
 
 describe("/api/dashboard/reports", () => {
@@ -17,7 +19,9 @@ describe("/api/dashboard/reports", () => {
 
   afterEach(() => {
     clearSavedReportsForTests();
+    clearAnalysisJobsForTests();
     clearTenantAuthSessionsForTests();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
@@ -164,6 +168,93 @@ describe("/api/dashboard/reports", () => {
     expect(serialized).not.toContain("access_token");
     expect(serialized).not.toContain("rawDiff");
     expect(serialized).not.toContain("rawLog");
+  });
+
+  it("never returns an older saved report as copy eligible while a newer exact PR analysis is refreshing", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const oldHead = "a".repeat(40);
+    const newerHead = "b".repeat(40);
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 10, headSha: oldHead
+    });
+    await enqueueAnalysisJob({
+      tenantId: "tenant_a",
+      idempotencyKey: "dashboard-newer-head",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174388",
+      event: "pull_request",
+      action: "synchronize",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      pullRequestNumber: 10,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/10",
+      headSha: newerHead,
+      saveReport: true,
+      comment: false
+    });
+    await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 10, reportHeadSha: oldHead })).resolves.toEqual({ freshness: "refreshing", copyEligible: false });
+
+    const detailResponse = await GET(new Request(`http://localhost/api/dashboard/reports?id=${saved.id}`, { headers: { cookie: session.sessionCookie } }));
+    const bundleResponse = await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=100&scope=current", { headers: { cookie: session.sessionCookie } }));
+    const detail = await detailResponse.json();
+    const bundle = await bundleResponse.json();
+
+    expect(detail).toMatchObject({ freshness: "refreshing", copyEligible: false });
+    expect(bundle).toMatchObject({ reports: [], bundle: { complete: true, truncated: false, excluded: 1 } });
+    const serialized = JSON.stringify({ detail, bundle });
+    expect(serialized).not.toContain(newerHead);
+    expect(serialized).not.toContain("provider_status");
+    expect(serialized).not.toContain("canonical_key_hash");
+  });
+
+  it("keeps the newer completed head current across list, detail, and bundle when an older report saves last", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const oldHead = "a".repeat(40);
+    const newHead = "b".repeat(40);
+    const old = await enqueueAnalysisJob({ tenantId: "tenant_a", idempotencyKey: "out-of-order-old", deliveryId: "123e4567-e89b-12d3-a456-426614174396", event: "pull_request", installationId: 321, repositoryId: 100, repositoryFullName: "RengGyu/AgentProof", pullRequestNumber: 10, pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/10", headSha: oldHead, saveReport: true, comment: false, now: new Date("2026-06-30T00:00:00Z") });
+    const oldClaim = await claimAnalysisJobById(old.id, { now: new Date("2026-06-30T00:00:15Z") });
+    const newer = await enqueueAnalysisJob({ tenantId: "tenant_a", idempotencyKey: "out-of-order-new", deliveryId: "123e4567-e89b-12d3-a456-426614174395", event: "pull_request", installationId: 321, repositoryId: 100, repositoryFullName: "RengGyu/AgentProof", pullRequestNumber: 10, pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/10", headSha: newHead, saveReport: true, comment: false, now: new Date("2026-06-30T00:01:00Z") });
+    const newClaim = await claimAnalysisJobById(newer.id, { now: new Date("2026-06-30T00:01:15Z") });
+    await completeAnalysisJob({ id: newer.id, claimGeneration: newClaim.job!.claim_generation!, now: new Date("2026-06-30T00:01:16Z") });
+    const savedNew = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), { tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 10, headSha: newHead });
+    await completeAnalysisJob({ id: old.id, claimGeneration: oldClaim.job!.claim_generation!, now: new Date("2026-06-30T00:02:00Z") });
+    await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), { tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 10, headSha: oldHead });
+
+    const list = await (await GET(new Request("http://localhost/api/dashboard/reports", { headers: { cookie: session.sessionCookie } }))).json();
+    const detail = await (await GET(new Request(`http://localhost/api/dashboard/reports?id=${savedNew.id}`, { headers: { cookie: session.sessionCookie } }))).json();
+    const bundle = await (await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=100&scope=current", { headers: { cookie: session.sessionCookie } }))).json();
+
+    expect(list.reports.find((report: { id: string }) => report.id === savedNew.id)).toMatchObject({ freshness: "current", copyEligible: true });
+    expect(detail).toMatchObject({ headSha: newHead, staleAt: expect.any(String), freshness: "current", copyEligible: true });
+    expect(bundle).toMatchObject({ bundle: { complete: true, truncated: false }, reports: [{ headSha: newHead, freshness: "current", copyEligible: true }] });
+  });
+
+  it("fails closed to unknown when the exact job lookup is unavailable", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unavailable", { status: 503 })));
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), { tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 10, headSha: "a".repeat(40) });
+
+    const detail = await (await GET(new Request(`http://localhost/api/dashboard/reports?id=${saved.id}`, { headers: { cookie: session.sessionCookie } }))).json();
+    const bundle = await (await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=100&scope=current", { headers: { cookie: session.sessionCookie } }))).json();
+
+    expect(detail).toMatchObject({ freshness: "unknown", copyEligible: false });
+    expect(bundle).toMatchObject({ reports: [], bundle: { complete: false, truncated: false } });
+  });
+
+  it("marks candidate-limit bundles truncated and supplies no copy payload", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), { tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 10, headSha: "a".repeat(40) });
+    vi.spyOn(savedReportStore, "listTenantSavedReportDetails").mockResolvedValue(Array.from({ length: 101 }, () => saved));
+
+    const response = await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=100&scope=current", { headers: { cookie: session.sessionCookie } }));
+    await expect(response.json()).resolves.toMatchObject({ reports: [], bundle: { complete: false, truncated: true } });
   });
 
   it("rejects an invalid repository bundle selector", async () => {
