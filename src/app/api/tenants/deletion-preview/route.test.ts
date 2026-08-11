@@ -215,7 +215,7 @@ describe("GET /api/tenants/deletion-preview", () => {
             ? 4
             : href.includes("webhook_deliveries_test")
               ? 5
-              : href.includes("analysis_jobs_test")
+                : href.includes("agentproof_analysis_jobs")
                 ? 6
                 : href.includes("audit_events_test")
                   ? 7
@@ -416,7 +416,6 @@ function stubSupabaseStores() {
   vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
   vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://jobs.supabase.co");
   vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-  vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
   vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_URL", "https://audit.supabase.co");
   vi.stubEnv("AGENTPROOF_AUDIT_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
   vi.stubEnv("AGENTPROOF_AUDIT_EVENTS_TABLE", "audit_events_test");

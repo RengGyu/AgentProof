@@ -84,7 +84,6 @@ describe("POST /api/ops/analysis-jobs/preflight", () => {
   it("runs metadata-only preflight without exposing repo names, env values, or secrets", async () => {
     stubReadyWorkerEnv();
     vi.stubEnv("AGENTPROOF_OPS_TOKEN", "ops-secret-value");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "private_jobs_table");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const { id } = await enqueueAnalysisJob(jobInput());
@@ -121,7 +120,6 @@ describe("POST /api/ops/analysis-jobs/preflight", () => {
     expect(serialized).not.toContain("webhook-secret-value");
     expect(serialized).not.toContain("BEGIN PRIVATE KEY");
     expect(serialized).not.toContain("RengGyu/AgentProof");
-    expect(serialized).not.toContain("private_jobs_table");
     expect(serialized).not.toContain("raw");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");

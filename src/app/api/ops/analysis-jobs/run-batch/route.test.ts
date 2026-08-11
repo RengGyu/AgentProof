@@ -89,11 +89,13 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
     const first = await enqueueAnalysisJob(jobInput({ idempotencyKey: "first-batch-job" }));
     const second = await enqueueAnalysisJob(jobInput({
       idempotencyKey: "second-batch-job",
-      deliveryId: "123e4567-e89b-12d3-a456-426614174301"
+      deliveryId: "123e4567-e89b-12d3-a456-426614174301",
+      pullRequestNumber: 8
     }));
     await enqueueAnalysisJob(jobInput({
       idempotencyKey: "third-batch-job",
-      deliveryId: "123e4567-e89b-12d3-a456-426614174302"
+      deliveryId: "123e4567-e89b-12d3-a456-426614174302",
+      pullRequestNumber: 9
     }));
 
     const response = await POST(new Request("http://localhost/api/ops/analysis-jobs/run-batch?limit=2", {
@@ -141,8 +143,8 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
           status: "completed",
           job: {
             id: second.id,
-            pullRequestNumber: 7,
-            headShaPrefix: "aaaaaaaaaaaa",
+            pullRequestNumber: 8,
+            headShaPrefix: headShaForPullRequest(8).slice(0, 12),
             attempts: 1
           },
           result: {
@@ -182,7 +184,8 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
     for (let index = 0; index < 6; index += 1) {
       await enqueueAnalysisJob(jobInput({
         idempotencyKey: `batch-job-${index}`,
-        deliveryId: `123e4567-e89b-12d3-a456-42661417430${index}`
+        deliveryId: `123e4567-e89b-12d3-a456-42661417430${index}`,
+        pullRequestNumber: index + 7
       }));
     }
 
@@ -222,7 +225,8 @@ describe("POST /api/ops/analysis-jobs/run-batch", () => {
     await enqueueAnalysisJob(jobInput({ idempotencyKey: "retryable-batch-job" }));
     await enqueueAnalysisJob(jobInput({
       idempotencyKey: "untouched-batch-job",
-      deliveryId: "123e4567-e89b-12d3-a456-426614174301"
+      deliveryId: "123e4567-e89b-12d3-a456-426614174301",
+      pullRequestNumber: 8
     }));
 
     const response = await POST(new Request("http://localhost/api/ops/analysis-jobs/run-batch?limit=5", {
@@ -285,7 +289,10 @@ function stubReadyWorkerEnv() {
 function jobInput(overrides: Partial<{
   idempotencyKey: string;
   deliveryId: string;
+  pullRequestNumber: number;
 }> = {}) {
+  const pullRequestNumber = overrides.pullRequestNumber ?? 7;
+
   return {
     tenantId: "tenant_a",
     idempotencyKey: overrides.idempotencyKey ?? "raw-idempotency-key-should-not-store",
@@ -295,9 +302,9 @@ function jobInput(overrides: Partial<{
     installationId: 321,
     repositoryId: 100,
     repositoryFullName: "RengGyu/AgentProof",
-    pullRequestNumber: 7,
-    pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/7",
-    headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    pullRequestNumber,
+    pullRequestUrl: `https://github.com/RengGyu/AgentProof/pull/${pullRequestNumber}`,
+    headSha: headShaForPullRequest(pullRequestNumber),
     saveReport: false,
     comment: false,
     now: new Date("2026-06-30T00:00:00Z")
@@ -318,18 +325,21 @@ function mockWorkerFetch() {
       return Response.json({ token: "installation-token" });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+    const pullRequestMatch = href.match(/^https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/pulls\/(\d+)$/);
+    if (pullRequestMatch) {
+      const pullRequestNumber = Number(pullRequestMatch[1]);
+      const headSha = headShaForPullRequest(pullRequestNumber);
       return Response.json({
         title: "Fetched PR title",
         body: "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
-        url: "https://api.github.com/repos/RengGyu/AgentProof/pulls/7",
+        url: `https://api.github.com/repos/RengGyu/AgentProof/pulls/${pullRequestNumber}`,
         user: { login: "agent-author" },
         base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
-        head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+        head: { ref: "feature/app-automation", sha: headSha }
       });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7/files?per_page=100&page=1") {
+    if (/^https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/pulls\/\d+\/files\?per_page=100&page=1$/.test(href)) {
       return Response.json([
         {
           filename: "src/app/api/github/webhook/route.ts",
@@ -341,17 +351,21 @@ function mockWorkerFetch() {
       ]);
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1") {
+    if (/^https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/commits\/[a-f0-9]{40}\/check-runs\?per_page=100&page=1$/.test(href)) {
       return Response.json({
         total_count: 0,
         check_runs: []
       });
     }
 
-    if (href === "https://api.github.com/repos/RengGyu/AgentProof/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/status") {
+    if (/^https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/commits\/[a-f0-9]{40}\/status$/.test(href)) {
       return Response.json({ statuses: [] });
     }
 
     return new Response(`unexpected url: ${href}`, { status: 500 });
   });
+}
+
+function headShaForPullRequest(pullRequestNumber: number): string {
+  return `${"a".repeat(39)}${pullRequestNumber.toString(16)}`;
 }

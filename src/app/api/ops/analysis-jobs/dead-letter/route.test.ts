@@ -211,7 +211,6 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
     const fetchMock = vi.fn(async () => Response.json([
       { error_code: "grant_denied", updated_at: "2026-06-30T00:00:00.000Z" }
     ]));
@@ -243,7 +242,7 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     expect(url).not.toContain("pull_request");
     expect(url).not.toContain("error_summary");
     expect(serialized).not.toContain("service-role-secret");
-    expect(serialized).not.toContain("analysis_jobs_test");
+    expect(serialized).not.toContain("agentproof_analysis_jobs");
   });
 
   it("reports truncated dead-letter ops status without exposing durable store internals", async () => {
@@ -251,7 +250,6 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
     const recentTerminalAt = new Date().toISOString();
     const fetchMock = vi.fn(async () => Response.json([
       { error_code: "github_fetch_failed", updated_at: recentTerminalAt },
@@ -304,7 +302,7 @@ describe("GET /api/ops/analysis-jobs/dead-letter", () => {
     expect(url).toContain("select=error_code%2Cupdated_at");
     expect(url).toContain("limit=2");
     expect(serialized).not.toContain("service-role-secret");
-    expect(serialized).not.toContain("analysis_jobs_test");
+    expect(serialized).not.toContain("agentproof_analysis_jobs");
     expect(serialized).not.toContain("agentproof-test.supabase.co");
   });
 

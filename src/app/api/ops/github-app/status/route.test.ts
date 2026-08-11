@@ -434,7 +434,7 @@ describe("GET /api/ops/github-app/status", () => {
       headSha: "a1b2c3",
       saveReport: true,
       comment: false,
-      now: new Date()
+      now: new Date(Date.now() - 60_000)
     });
 
     const response = await GET(new Request("http://localhost/api/ops/github-app/status", {

@@ -93,7 +93,7 @@ describe("GET /api/tenants/analysis-jobs", () => {
           headShaPrefix: "abc123def456",
           action: "synchronize",
           attempts: 1,
-          runAfter: "2026-06-30T00:00:00.000Z",
+          runAfter: "2026-06-30T00:00:15.000Z",
           completedAt: "2026-06-30T00:02:00.000Z",
           sideEffects: {
             saveReport: true,
@@ -192,7 +192,8 @@ describe("GET /api/tenants/analysis-jobs", () => {
       await enqueueAnalysisJob({
         ...jobInput(),
         idempotencyKey: `tenant-a-job-${index}`,
-        deliveryId: `123e4567-e89b-12d3-a456-42661417430${index}`
+        deliveryId: `123e4567-e89b-12d3-a456-42661417430${index}`,
+        headSha: `abc123def45${index}`
       });
     }
 
@@ -370,6 +371,7 @@ function jobInput(overrides: Partial<{
   idempotencyKey: string;
   deliveryId: string;
   pullRequestNumber: number;
+  headSha: string;
 }> = {}) {
   const pullRequestNumber = overrides.pullRequestNumber ?? 7;
 
@@ -384,7 +386,7 @@ function jobInput(overrides: Partial<{
     repositoryFullName: "RengGyu/AgentProof",
     pullRequestNumber,
     pullRequestUrl: `https://github.com/RengGyu/AgentProof/pull/${pullRequestNumber}`,
-    headSha: "abc123def456",
+    headSha: overrides.headSha ?? "abc123def456",
     saveReport: true,
     comment: true,
     now: new Date("2026-06-30T00:00:00Z")

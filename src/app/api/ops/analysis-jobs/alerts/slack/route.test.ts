@@ -165,7 +165,7 @@ describe("POST /api/ops/analysis-jobs/alerts/slack", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    await enqueueAnalysisJob(jobInput({ now: new Date() }));
+    await enqueueAnalysisJob(jobInput({ now: new Date(Date.now() - 60_000) }));
 
     const response = await POST(new Request("http://localhost/api/ops/analysis-jobs/alerts/slack", {
       method: "POST",
@@ -196,7 +196,7 @@ describe("POST /api/ops/analysis-jobs/alerts/slack", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
     const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    await enqueueAnalysisJob(jobInput({ now: new Date() }));
+    await enqueueAnalysisJob(jobInput({ now: new Date(Date.now() - 60_000) }));
 
     const response = await POST(new Request("http://localhost/api/ops/analysis-jobs/alerts/slack?includeInfo=true", {
       method: "POST",
