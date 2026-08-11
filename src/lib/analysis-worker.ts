@@ -460,7 +460,7 @@ async function runPreflightedAnalysisJob(
     ) {
       const finalizationClaim = await fenceAnalysisJobSemanticRetryFinalization({
         id: job.id,
-        claimGeneration: job.claim_generation ?? undefined,
+        claimGeneration: job.claim_generation ?? "",
         now: options.now
       }, env);
       if (!finalizationClaim) throw new AnalysisWorkerLeaseLostError();
@@ -1014,7 +1014,7 @@ async function parkSemanticResponse(
   try {
     parked = await parkAnalysisJobForProvider({
       id: job.id,
-      claimGeneration: job.claim_generation ?? undefined,
+      claimGeneration: job.claim_generation ?? "",
       responseId: result.responseId,
       providerStatus: result.providerStatus,
       submittedAt,

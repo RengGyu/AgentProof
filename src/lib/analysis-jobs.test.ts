@@ -311,6 +311,72 @@ describe("analysis job queue", () => {
     });
   });
 
+  it("exposes the sealed publication plan from a durable abandoned-work claim without overwriting successor inputs", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const sealedRow = {
+      ...jobRow({
+        id: "123e4567-e89b-42d3-a456-426614174020",
+        status: "processing",
+        attempts: 1
+      }),
+      delivery_id: "123e4567-e89b-12d3-a456-426614174321",
+      event: "check_suite",
+      action: "completed",
+      save_report: true,
+      comment: true,
+      slack_summary: true,
+      desired_revision: 2,
+      running_revision: 1,
+      sealed_revision: 1,
+      publication_sealed_at: "2026-06-30T00:00:15.000Z",
+      sealed_delivery_id: "123e4567-e89b-12d3-a456-426614174320",
+      sealed_event: "pull_request",
+      sealed_action: "opened",
+      sealed_save_report: false,
+      sealed_comment: false,
+      sealed_slack_summary: false,
+      claim_generation: "123e4567-e89b-42d3-a456-426614174021",
+      updated_at: "2026-06-30T00:00:16.000Z",
+      locked_at: "2026-06-30T00:00:15.000Z"
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Response.json([{ ...sealedRow, ...JSON.parse(String(init.body)) }]);
+      }
+      const href = decodeURIComponent(String(url));
+      if (href.includes("locked_at=lt.")) return Response.json([sealedRow]);
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const recovered = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:03:00Z"),
+      leaseMs: 60_000
+    });
+    const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
+    const patchBody = JSON.parse(String(patchCall?.[1]?.body));
+
+    expect(recovered.job).toMatchObject({
+      delivery_id: "123e4567-e89b-12d3-a456-426614174320",
+      event: "pull_request",
+      action: "opened",
+      save_report: false,
+      comment: false,
+      slack_summary: false,
+      desired_revision: 2,
+      running_revision: 1,
+      sealed_revision: 1
+    });
+    expect(patchBody).not.toHaveProperty("delivery_id");
+    expect(patchBody).not.toHaveProperty("event");
+    expect(patchBody).not.toHaveProperty("action");
+    expect(patchBody).not.toHaveProperty("save_report");
+    expect(patchBody).not.toHaveProperty("comment");
+    expect(patchBody).not.toHaveProperty("slack_summary");
+  });
+
   it("does not let sealed completion consume a refresh ordered after publication", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
@@ -411,10 +477,17 @@ describe("analysis job queue", () => {
     });
   });
 
-  it("recovers a sealed publication on its sealed revision even when a later revision is desired", async () => {
+  it("recovers a sealed revision with its snapshotted publication plan while retaining successor inputs", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
-    const { id } = await enqueueAnalysisJob(jobInput());
+    const { id } = await enqueueAnalysisJob({
+      ...jobInput(),
+      event: "pull_request",
+      action: "opened",
+      saveReport: false,
+      comment: false,
+      slackSummary: false
+    });
     const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
     await sealAnalysisJobRevision({
       id,
@@ -426,6 +499,11 @@ describe("analysis job queue", () => {
       ...jobInput(),
       idempotencyKey: "refresh-after-seal-before-recovery",
       deliveryId: "123e4567-e89b-12d3-a456-426614174309",
+      event: "check_suite",
+      action: "completed",
+      saveReport: true,
+      comment: true,
+      slackSummary: true,
       now: new Date("2026-06-30T00:00:17Z")
     });
 
@@ -440,7 +518,27 @@ describe("analysis job queue", () => {
       desired_revision: 2,
       running_revision: 1,
       sealed_revision: 1,
-      publication_sealed_at: "2026-06-30T00:00:16.000Z"
+      publication_sealed_at: "2026-06-30T00:00:16.000Z",
+      delivery_id: "123e4567-e89b-12d3-a456-426614174300",
+      event: "pull_request",
+      action: "opened",
+      save_report: false,
+      comment: false,
+      slack_summary: false
+    });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      delivery_id: "123e4567-e89b-12d3-a456-426614174309",
+      event: "check_suite",
+      action: "completed",
+      save_report: true,
+      comment: true,
+      slack_summary: true,
+      sealed_delivery_id: "123e4567-e89b-12d3-a456-426614174300",
+      sealed_event: "pull_request",
+      sealed_action: "opened",
+      sealed_save_report: false,
+      sealed_comment: false,
+      sealed_slack_summary: false
     });
   });
 
@@ -1631,12 +1729,24 @@ describe("analysis job queue", () => {
     expect(migration).toContain("desired_revision bigint");
     expect(migration).toContain("running_revision bigint");
     expect(migration).toContain("sealed_revision bigint");
+    expect(migration).toContain("sealed_delivery_id text");
+    expect(migration).toContain("sealed_event text");
+    expect(migration).toContain("sealed_action text");
+    expect(migration).toContain("sealed_save_report boolean");
+    expect(migration).toContain("sealed_comment boolean");
+    expect(migration).toContain("sealed_slack_summary boolean");
     expect(migration).toContain("create unique index agentproof_analysis_jobs_canonical_key_idx");
     expect(migration).toContain("function public.agentproof_enqueue_analysis_job(job_payload jsonb)");
     expect(migration).toContain("function public.agentproof_fence_analysis_job_revision(");
     expect(migration).toContain("function public.agentproof_seal_analysis_job_revision(");
     expect(migration).toContain("function public.agentproof_complete_analysis_job(");
     expect(migration).toContain("function public.agentproof_fail_analysis_job(");
+    expect(migration).toContain("sealed_delivery_id = delivery_id");
+    expect(migration).toContain("sealed_save_report = save_report");
+    expect(migration).toContain("sealed_comment = comment");
+    expect(migration).toContain("sealed_slack_summary = slack_summary");
+    expect(migration).toContain("where sealed_revision is not null and sealed_event is null");
+    expect(migration.match(/sealed_save_report = null/g)?.length).toBeGreaterThanOrEqual(6);
     expect(migration).toContain("from vault.decrypted_secrets");
     expect(migration).toContain("cron.schedule(");
     expect(migration).toContain("'* * * * *'");
@@ -1736,6 +1846,7 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("OtherRepo");
     expect(serialized).not.toContain("idempotency_key_hash");
     expect(serialized).not.toContain("delivery_id");
+    expect(serialized).not.toContain("sealed_");
     expect(serialized).not.toContain("raw-idempotency-key");
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");

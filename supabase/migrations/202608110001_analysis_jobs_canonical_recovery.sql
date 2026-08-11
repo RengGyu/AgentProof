@@ -13,7 +13,13 @@ alter table public.agentproof_analysis_jobs
   add column if not exists desired_revision bigint,
   add column if not exists running_revision bigint,
   add column if not exists sealed_revision bigint,
-  add column if not exists publication_sealed_at timestamptz;
+  add column if not exists publication_sealed_at timestamptz,
+  add column if not exists sealed_delivery_id text,
+  add column if not exists sealed_event text,
+  add column if not exists sealed_action text,
+  add column if not exists sealed_save_report boolean,
+  add column if not exists sealed_comment boolean,
+  add column if not exists sealed_slack_summary boolean;
 
 update public.agentproof_analysis_jobs
 set
@@ -39,6 +45,25 @@ set
 where canonical_key_hash is null
    or desired_revision is null
    or (status = 'processing' and running_revision is null);
+
+-- A seal created by an earlier application revision has no trustworthy plan
+-- snapshot. Recover it to the latest desired revision instead of guessing from
+-- mutable successor fields.
+update public.agentproof_analysis_jobs
+set
+  status = 'queued', attempts = 0, locked_at = null, completed_at = null,
+  error_code = null, error_summary = null, result_summary = null,
+  claim_generation = null, running_revision = null, sealed_revision = null,
+  publication_sealed_at = null, sealed_delivery_id = null,
+  sealed_event = null, sealed_action = null, sealed_save_report = null,
+  sealed_comment = null, sealed_slack_summary = null,
+  provider_response_id = null, provider_status = null,
+  provider_poll_attempts = 0, provider_submitted_at = null,
+  provider_expires_at = null, provider_webhook_id_hash = null,
+  provider_webhook_received_at = null, semantic_retry_attempts = 0,
+  prior_provider_response_id = null, prior_provider_submitted_at = null,
+  prior_provider_expires_at = null
+where sealed_revision is not null and sealed_event is null;
 
 -- Preserve every older delivery-specific row. The freshest row retains the
 -- canonical identity; material history and active continuations receive a
@@ -83,7 +108,20 @@ alter table public.agentproof_analysis_jobs
     ),
   drop constraint if exists agentproof_analysis_jobs_publication_seal_check,
   add constraint agentproof_analysis_jobs_publication_seal_check
-    check ((sealed_revision is null) = (publication_sealed_at is null));
+    check ((sealed_revision is null) = (publication_sealed_at is null)),
+  drop constraint if exists agentproof_analysis_jobs_sealed_plan_check,
+  add constraint agentproof_analysis_jobs_sealed_plan_check check (
+    (
+      sealed_revision is null
+      and sealed_delivery_id is null and sealed_event is null
+      and sealed_action is null and sealed_save_report is null
+      and sealed_comment is null and sealed_slack_summary is null
+    ) or (
+      sealed_revision is not null
+      and sealed_event is not null and sealed_save_report is not null
+      and sealed_comment is not null and sealed_slack_summary is not null
+    )
+  );
 
 create unique index agentproof_analysis_jobs_canonical_key_idx
   on public.agentproof_analysis_jobs (canonical_key_hash);
@@ -101,6 +139,8 @@ begin
     installation_id, repository_id, repository_full_name, pull_request_number,
     pull_request_url, head_sha, canonical_key_hash, desired_revision,
     running_revision, sealed_revision, publication_sealed_at,
+    sealed_delivery_id, sealed_event, sealed_action, sealed_save_report,
+    sealed_comment, sealed_slack_summary,
     save_report, comment, slack_summary, attempts, created_at,
     updated_at, run_after, locked_at, completed_at, error_code, error_summary,
     result_summary, claim_generation, provider_response_id, provider_status,
@@ -118,6 +158,7 @@ begin
     (job_payload->>'pull_request_number')::integer,
     job_payload->>'pull_request_url', job_payload->>'head_sha',
     job_payload->>'canonical_key_hash', 1, null, null, null,
+    null, null, null, null, null, null,
     coalesce((job_payload->>'save_report')::boolean, false),
     coalesce((job_payload->>'comment')::boolean, false),
     coalesce((job_payload->>'slack_summary')::boolean, false),
@@ -150,6 +191,12 @@ begin
     end,
     sealed_revision = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.sealed_revision else null end,
     publication_sealed_at = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.publication_sealed_at else null end,
+    sealed_delivery_id = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.sealed_delivery_id else null end,
+    sealed_event = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.sealed_event else null end,
+    sealed_action = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.sealed_action else null end,
+    sealed_save_report = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.sealed_save_report else null end,
+    sealed_comment = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.sealed_comment else null end,
+    sealed_slack_summary = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.sealed_slack_summary else null end,
     attempts = case when agentproof_analysis_jobs.status = 'processing' then agentproof_analysis_jobs.attempts else 0 end,
     updated_at = excluded.updated_at,
     run_after = excluded.run_after,
@@ -211,7 +258,10 @@ begin
       locked_at = null, completed_at = null, error_code = null,
       error_summary = null, result_summary = null, claim_generation = null,
       running_revision = null, sealed_revision = null,
-      publication_sealed_at = null, provider_response_id = null,
+      publication_sealed_at = null, sealed_delivery_id = null,
+      sealed_event = null, sealed_action = null, sealed_save_report = null,
+      sealed_comment = null, sealed_slack_summary = null,
+      provider_response_id = null,
       provider_status = null, provider_poll_attempts = 0,
       provider_submitted_at = null, provider_expires_at = null,
       provider_webhook_id_hash = null, provider_webhook_received_at = null,
@@ -259,7 +309,10 @@ begin
         locked_at = null, completed_at = null, error_code = null,
         error_summary = null, result_summary = null, claim_generation = null,
         running_revision = null, sealed_revision = null,
-        publication_sealed_at = null, provider_response_id = null,
+        publication_sealed_at = null, sealed_delivery_id = null,
+        sealed_event = null, sealed_action = null, sealed_save_report = null,
+        sealed_comment = null, sealed_slack_summary = null,
+        provider_response_id = null,
         provider_status = null, provider_poll_attempts = 0,
         provider_submitted_at = null, provider_expires_at = null,
         provider_webhook_id_hash = null, provider_webhook_received_at = null,
@@ -273,6 +326,12 @@ begin
   update public.agentproof_analysis_jobs set
     sealed_revision = claim_revision,
     publication_sealed_at = seal_time,
+    sealed_delivery_id = delivery_id,
+    sealed_event = event,
+    sealed_action = action,
+    sealed_save_report = save_report,
+    sealed_comment = comment,
+    sealed_slack_summary = slack_summary,
     updated_at = seal_time,
     locked_at = seal_time
   where id = job_id
@@ -312,7 +371,10 @@ begin
       locked_at = null, completed_at = null, error_code = null,
       error_summary = null, result_summary = null, claim_generation = null,
       running_revision = null, sealed_revision = null,
-      publication_sealed_at = null, provider_response_id = null,
+      publication_sealed_at = null, sealed_delivery_id = null,
+      sealed_event = null, sealed_action = null, sealed_save_report = null,
+      sealed_comment = null, sealed_slack_summary = null,
+      provider_response_id = null,
       provider_status = null, provider_poll_attempts = 0,
       provider_submitted_at = null, provider_expires_at = null,
       provider_webhook_id_hash = null, provider_webhook_received_at = null,
@@ -328,7 +390,10 @@ begin
     locked_at = null, error_code = null, error_summary = null,
     result_summary = result_payload, claim_generation = null,
     running_revision = null, sealed_revision = null,
-    publication_sealed_at = null, provider_response_id = null,
+    publication_sealed_at = null, sealed_delivery_id = null,
+    sealed_event = null, sealed_action = null, sealed_save_report = null,
+    sealed_comment = null, sealed_slack_summary = null,
+    provider_response_id = null,
     provider_status = null, provider_poll_attempts = 0,
     provider_submitted_at = null, provider_expires_at = null,
     provider_webhook_id_hash = null, provider_webhook_received_at = null,
@@ -373,7 +438,10 @@ begin
       locked_at = null, completed_at = null, error_code = null,
       error_summary = null, result_summary = null, claim_generation = null,
       running_revision = null, sealed_revision = null,
-      publication_sealed_at = null, provider_response_id = null,
+      publication_sealed_at = null, sealed_delivery_id = null,
+      sealed_event = null, sealed_action = null, sealed_save_report = null,
+      sealed_comment = null, sealed_slack_summary = null,
+      provider_response_id = null,
       provider_status = null, provider_poll_attempts = 0,
       provider_submitted_at = null, provider_expires_at = null,
       provider_webhook_id_hash = null, provider_webhook_received_at = null,
@@ -392,6 +460,8 @@ begin
     locked_at = null, error_code = failure_code, error_summary = failure_summary,
     result_summary = null, claim_generation = null, running_revision = null,
     sealed_revision = null, publication_sealed_at = null,
+    sealed_delivery_id = null, sealed_event = null, sealed_action = null,
+    sealed_save_report = null, sealed_comment = null, sealed_slack_summary = null,
     provider_response_id = case when should_retry then provider_response_id else null end,
     provider_status = case when should_retry then provider_status else null end,
     provider_poll_attempts = case when should_retry then provider_poll_attempts else 0 end,

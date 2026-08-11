@@ -194,6 +194,12 @@ export interface AnalysisJobRow {
   running_revision?: number | null;
   sealed_revision?: number | null;
   publication_sealed_at?: string | null;
+  sealed_delivery_id?: string | null;
+  sealed_event?: string | null;
+  sealed_action?: string | null;
+  sealed_save_report?: boolean | null;
+  sealed_comment?: boolean | null;
+  sealed_slack_summary?: boolean | null;
   save_report: boolean;
   comment: boolean;
   slack_summary?: boolean;
@@ -339,6 +345,12 @@ const ANALYSIS_JOB_SELECT = [
   "running_revision",
   "sealed_revision",
   "publication_sealed_at",
+  "sealed_delivery_id",
+  "sealed_event",
+  "sealed_action",
+  "sealed_save_report",
+  "sealed_comment",
+  "sealed_slack_summary",
   "save_report",
   "comment",
   "slack_summary",
@@ -519,6 +531,7 @@ export async function fenceAnalysisJobRevision(
     running_revision: null,
     sealed_revision: null,
     publication_sealed_at: null,
+    ...clearedSealedPublicationPlan(),
     ...clearedProviderContinuation()
   });
   assertAnalysisJobIsPrivate(row);
@@ -562,6 +575,7 @@ export async function sealAnalysisJobRevision(
   }
   row.sealed_revision = runningRevision;
   row.publication_sealed_at = now.toISOString();
+  Object.assign(row, sealedPublicationPlan(row));
   row.updated_at = now.toISOString();
   row.locked_at = now.toISOString();
   assertAnalysisJobIsPrivate(row);
@@ -715,6 +729,7 @@ export async function completeAnalysisJob(
     running_revision: null,
     sealed_revision: null,
     publication_sealed_at: null,
+    ...clearedSealedPublicationPlan(),
     ...clearedProviderContinuation()
   };
 
@@ -911,6 +926,7 @@ export async function parkAnalysisJobForProvider(
       running_revision: null,
       sealed_revision: null,
       publication_sealed_at: null,
+      ...clearedSealedPublicationPlan(),
       provider_response_id: continuation.provider_response_id,
       provider_status: continuation.provider_status,
       provider_poll_attempts: Math.min(100, Math.max(0, row.provider_poll_attempts ?? 0) + 1),
@@ -950,6 +966,7 @@ export async function parkAnalysisJobForProvider(
     running_revision: null,
     sealed_revision: null,
     publication_sealed_at: null,
+    ...clearedSealedPublicationPlan(),
     provider_response_id: continuation.provider_response_id,
     provider_status: continuation.provider_status,
     provider_poll_attempts: Math.min(100, Math.max(0, row.provider_poll_attempts ?? 0) + 1),
@@ -1356,6 +1373,7 @@ function toAnalysisJobRow(input: EnqueueAnalysisJobInput): AnalysisJobRow {
     running_revision: null,
     sealed_revision: null,
     publication_sealed_at: null,
+    ...clearedSealedPublicationPlan(),
     ...clearedProviderContinuation()
   };
 }
@@ -1437,6 +1455,7 @@ function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow 
         running_revision: null,
         sealed_revision: null,
         publication_sealed_at: null,
+        ...clearedSealedPublicationPlan(),
         ...clearedProviderContinuation()
       })
     });
@@ -1574,6 +1593,7 @@ function requeueMemoryAnalysisJobRevision(row: AnalysisJobRow, now: Date): void 
     running_revision: null,
     sealed_revision: null,
     publication_sealed_at: null,
+    ...clearedSealedPublicationPlan(),
     ...clearedProviderContinuation()
   });
   assertAnalysisJobIsPrivate(row);
@@ -1901,7 +1921,7 @@ async function claimSupabaseAnalysisJob(
       returnRepresentation: true
     });
 
-    if (claimed) return claimed;
+    if (claimed) return publicationPlanForClaim(claimed);
   }
 
   const semanticRetryStaleBefore = new Date(now.getTime() - SEMANTIC_RETRY_SUBMISSION_RECLAIM_MS);
@@ -1911,11 +1931,12 @@ async function claimSupabaseAnalysisJob(
     semanticRetryStaleBefore
   );
   if (uncertainRetry) {
-    return patchSupabaseAnalysisJob(config, uncertainRetry.id, toRecoveredSemanticRetryClaimUpdate(uncertainRetry, now), {
+    const claimed = await patchSupabaseAnalysisJob(config, uncertainRetry.id, toRecoveredSemanticRetryClaimUpdate(uncertainRetry, now), {
       currentStatus: "processing",
       currentUpdatedAt: uncertainRetry.updated_at,
       returnRepresentation: true
     });
+    return claimed ? publicationPlanForClaim(claimed) : null;
   }
 
   const staleBefore = new Date(now.getTime() - leaseMs);
@@ -1929,11 +1950,12 @@ async function claimSupabaseAnalysisJob(
 
   if (!stale) return null;
 
-  return patchSupabaseAnalysisJob(config, stale.id, toClaimedAnalysisJobUpdate(stale, now), {
+  const claimed = await patchSupabaseAnalysisJob(config, stale.id, toClaimedAnalysisJobUpdate(stale, now), {
     currentStatus: "processing",
     currentUpdatedAt: stale.updated_at,
     returnRepresentation: true
   });
+  return claimed ? publicationPlanForClaim(claimed) : null;
 }
 
 async function claimSupabaseAnalysisJobForProviderResponse(
@@ -1955,7 +1977,7 @@ async function claimSupabaseAnalysisJobForProviderResponse(
     currentUpdatedAt: candidate.updated_at,
     returnRepresentation: true
   });
-  return job ? { job, disposition: "claimed" } : { job: null, disposition: "busy" };
+  return job ? { job: publicationPlanForClaim(job), disposition: "claimed" } : { job: null, disposition: "busy" };
 }
 
 async function claimSupabaseAnalysisJobById(
@@ -1966,11 +1988,12 @@ async function claimSupabaseAnalysisJobById(
   const candidate = await getSupabaseAnalysisJobById(config, jobId);
   if (!candidate || !isDueQueuedJob(candidate, now)) return null;
 
-  return patchSupabaseAnalysisJob(config, candidate.id, toClaimedAnalysisJobUpdate(candidate, now), {
+  const claimed = await patchSupabaseAnalysisJob(config, candidate.id, toClaimedAnalysisJobUpdate(candidate, now), {
     currentStatus: candidate.status,
     currentUpdatedAt: candidate.updated_at,
     returnRepresentation: true
   });
+  return claimed ? publicationPlanForClaim(claimed) : null;
 }
 
 function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | null {
@@ -1979,7 +2002,7 @@ function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | nu
   if (due) {
     Object.assign(due, toClaimedAnalysisJobUpdate(due, now));
     assertAnalysisJobIsPrivate(due);
-    return { ...due };
+    return publicationPlanForClaim(due);
   }
 
   const semanticRetryStaleBefore = now.getTime() - SEMANTIC_RETRY_SUBMISSION_RECLAIM_MS;
@@ -1989,7 +2012,7 @@ function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | nu
   if (uncertainRetry) {
     Object.assign(uncertainRetry, toRecoveredSemanticRetryClaimUpdate(uncertainRetry, now));
     assertAnalysisJobIsPrivate(uncertainRetry);
-    return { ...uncertainRetry };
+    return publicationPlanForClaim(uncertainRetry);
   }
 
   const staleBefore = now.getTime() - leaseMs;
@@ -2000,7 +2023,7 @@ function claimMemoryAnalysisJob(now: Date, leaseMs: number): AnalysisJobRow | nu
   Object.assign(stale, toClaimedAnalysisJobUpdate(stale, now));
   assertAnalysisJobIsPrivate(stale);
 
-  return { ...stale };
+  return publicationPlanForClaim(stale);
 }
 
 function claimMemoryAnalysisJobById(jobId: string, now: Date): AnalysisJobRow | null {
@@ -2009,7 +2032,7 @@ function claimMemoryAnalysisJobById(jobId: string, now: Date): AnalysisJobRow | 
 
   Object.assign(candidate, toClaimedAnalysisJobUpdate(candidate, now));
   assertAnalysisJobIsPrivate(candidate);
-  return { ...candidate };
+  return publicationPlanForClaim(candidate);
 }
 
 function claimMemoryAnalysisJobForProviderResponse(
@@ -2026,7 +2049,7 @@ function claimMemoryAnalysisJobForProviderResponse(
 
   Object.assign(candidate, toClaimedAnalysisJobUpdate(candidate, now, webhookIdHash));
   assertAnalysisJobIsPrivate(candidate);
-  return { job: { ...candidate }, disposition: "claimed" };
+  return { job: publicationPlanForClaim(candidate), disposition: "claimed" };
 }
 
 async function getSupabaseAnalysisJobsByProviderResponse(
@@ -2320,6 +2343,7 @@ function toAnalysisJobFailureUpdate(
     running_revision: null,
     sealed_revision: null,
     publication_sealed_at: null,
+    ...clearedSealedPublicationPlan(),
     ...(shouldRetry ? {} : clearedProviderContinuation())
   };
 
@@ -2715,6 +2739,52 @@ function clearedProviderContinuation() {
     prior_provider_submitted_at: null,
     prior_provider_expires_at: null
   };
+}
+
+function sealedPublicationPlan(row: AnalysisJobRow) {
+  return {
+    sealed_delivery_id: row.delivery_id ?? null,
+    sealed_event: row.event,
+    sealed_action: row.action ?? null,
+    sealed_save_report: row.save_report,
+    sealed_comment: row.comment,
+    sealed_slack_summary: row.slack_summary === true
+  };
+}
+
+function clearedSealedPublicationPlan() {
+  return {
+    sealed_delivery_id: null,
+    sealed_event: null,
+    sealed_action: null,
+    sealed_save_report: null,
+    sealed_comment: null,
+    sealed_slack_summary: null
+  };
+}
+
+function publicationPlanForClaim(row: AnalysisJobRow): AnalysisJobRow {
+  if (row.sealed_revision == null) return { ...row };
+  if (
+    row.running_revision !== row.sealed_revision ||
+    typeof row.sealed_event !== "string" ||
+    typeof row.sealed_save_report !== "boolean" ||
+    typeof row.sealed_comment !== "boolean" ||
+    typeof row.sealed_slack_summary !== "boolean"
+  ) {
+    throw new AnalysisJobQueueError("Analysis job sealed publication plan is invalid.");
+  }
+  const claimed = {
+    ...row,
+    delivery_id: row.sealed_delivery_id ?? null,
+    event: row.sealed_event,
+    action: row.sealed_action ?? null,
+    save_report: row.sealed_save_report,
+    comment: row.sealed_comment,
+    slack_summary: row.sealed_slack_summary
+  };
+  assertAnalysisJobIsPrivate(claimed);
+  return claimed;
 }
 
 function safeClaimGeneration(value: unknown): string | null {

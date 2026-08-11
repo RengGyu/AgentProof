@@ -1818,6 +1818,133 @@ describe("analysis worker preflight", () => {
     });
   });
 
+  it.each([
+    { direction: "disabled to enabled", revisionOne: false, revisionTwo: true },
+    { direction: "enabled to disabled", revisionOne: true, revisionTwo: false }
+  ])("recovers a sealed publication plan with opposite successor flags: $direction", async ({
+    revisionOne,
+    revisionTwo
+  }) => {
+    stubReadyWorkerEnv({ grant: {
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    } });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const baseFetch = mockWorkerFetch();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+        ? Response.json({ ok: true })
+        : baseFetch(url, init)
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const revisionOneDelivery = "123e4567-e89b-12d3-a456-426614174310";
+    const revisionTwoDelivery = "123e4567-e89b-12d3-a456-426614174311";
+    const { id } = await enqueueAnalysisJob({
+      ...jobInput({
+        deliveryId: revisionOneDelivery,
+        saveReport: revisionOne,
+        comment: revisionOne,
+        slackSummary: revisionOne
+      }),
+      action: "opened"
+    });
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    await sealAnalysisJobRevision({
+      id,
+      claimGeneration: firstClaim.job!.claim_generation!,
+      runningRevision: firstClaim.job!.running_revision!,
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    await enqueueAnalysisJob({
+      ...jobInput({
+        idempotencyKey: `sealed-plan-successor-${revisionTwo}`,
+        deliveryId: revisionTwoDelivery,
+        saveReport: revisionTwo,
+        comment: revisionTwo,
+        slackSummary: revisionTwo
+      }),
+      action: "completed",
+      now: new Date("2026-06-30T00:01:01Z")
+    });
+
+    const recovered = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:03:00Z"),
+      leaseMs: 60_000
+    });
+    expect(recovered.job).toMatchObject({
+      delivery_id: revisionOneDelivery,
+      action: "opened",
+      save_report: revisionOne,
+      comment: revisionOne,
+      slack_summary: revisionOne,
+      running_revision: 1,
+      sealed_revision: 1
+    });
+
+    await expect(runClaimedAnalysisJob(recovered.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:03:00Z")
+    })).resolves.toMatchObject({ status: "completed" });
+
+    const afterRecoveredSave = (await countTenantSavedReports({ tenantId: "tenant_a" })).count;
+    const afterRecoveredComments = fetchMock.mock.calls.filter(([url, init]) =>
+      String(url).endsWith("/issues/7/comments") && init?.method === "POST"
+    ).length;
+    const afterRecoveredSlack = fetchMock.mock.calls.filter(([url]) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+    ).length;
+    expect([afterRecoveredSave, afterRecoveredComments, afterRecoveredSlack]).toEqual([
+      Number(revisionOne),
+      Number(revisionOne),
+      Number(revisionOne)
+    ]);
+    expect(getAuditEventsForTests().find((event) =>
+      event.action === "github_app_analysis_completed"
+    )).toMatchObject({
+      request_id: revisionOneDelivery,
+      metadata: { webhookAction: "opened" }
+    });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      delivery_id: revisionTwoDelivery,
+      action: "completed",
+      save_report: revisionTwo,
+      comment: revisionTwo,
+      slack_summary: revisionTwo,
+      sealed_revision: null,
+      sealed_delivery_id: null,
+      sealed_action: null,
+      sealed_save_report: null,
+      sealed_comment: null,
+      sealed_slack_summary: null
+    });
+
+    await expect(runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:03:01Z")
+    })).resolves.toMatchObject({ status: "completed" });
+    expect((await countTenantSavedReports({ tenantId: "tenant_a" })).count).toBe(1);
+    expect(fetchMock.mock.calls.filter(([url, init]) =>
+      String(url).endsWith("/issues/7/comments") && init?.method === "POST"
+    )).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+    )).toHaveLength(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "completed",
+      sealed_revision: null,
+      publication_sealed_at: null,
+      sealed_delivery_id: null,
+      sealed_event: null,
+      sealed_action: null,
+      sealed_save_report: null,
+      sealed_comment: null,
+      sealed_slack_summary: null
+    });
+  });
+
   it("finishes the sealed save, comment, and Slack publication when a refresh arrives between effects", async () => {
     stubReadyWorkerEnv({ grant: {
       saveReportsEnabled: true,
