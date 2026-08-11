@@ -204,6 +204,7 @@ export interface AnalysisJobRow {
   pull_request_url: string;
   head_sha: string;
   canonical_key_hash?: string;
+  is_historical?: boolean;
   desired_revision?: number;
   running_revision?: number | null;
   sealed_revision?: number | null;
@@ -355,6 +356,7 @@ const ANALYSIS_JOB_SELECT = [
   "pull_request_url",
   "head_sha",
   "canonical_key_hash",
+  "is_historical",
   "desired_revision",
   "running_revision",
   "sealed_revision",
@@ -526,6 +528,7 @@ export async function fenceAnalysisJobRevision(
 
   const row = analysisJobStore().find((job) =>
     job.id === input.id &&
+    job.is_historical !== true &&
     job.status === "processing" &&
     job.claim_generation === claimGeneration &&
     job.running_revision === runningRevision
@@ -581,6 +584,7 @@ export async function sealAnalysisJobRevision(
   }
   const row = analysisJobStore().find((job) =>
     job.id === input.id && job.status === "processing" &&
+    job.is_historical !== true &&
     job.claim_generation === claimGeneration && job.running_revision === runningRevision
   );
   if (!row) return false;
@@ -762,6 +766,7 @@ export async function completeAnalysisJob(
 
   const row = analysisJobStore().find((job) =>
     job.id === input.id && job.status === "processing" &&
+    job.is_historical !== true &&
     (!claimGeneration || job.claim_generation === claimGeneration)
   );
   if (!row || !row.running_revision) return false;
@@ -812,7 +817,7 @@ export async function fenceAnalysisJobSemanticRetryFinalization(
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  const row = analysisJobStore().find((job) => job.id === input.id);
+  const row = analysisJobStore().find((job) => job.id === input.id && job.is_historical !== true);
   if (!canFenceAnalysisJobSemanticRetryFinalization(row, claimGeneration)) return null;
   Object.assign(row, analysisJobSemanticRetryFinalizationFenceUpdate(now));
   assertAnalysisJobIsPrivate(row);
@@ -905,7 +910,7 @@ export async function markAnalysisJobSemanticRetrySubmission(
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  const row = analysisJobStore().find((job) => job.id === input.id);
+  const row = analysisJobStore().find((job) => job.id === input.id && job.is_historical !== true);
   if (!row || !isUnsealedCurrentRevision(row, transition.claim_generation) ||
       !canStartSemanticRetry(row, transition, input.claimGeneration)) return null;
   Object.assign(row, semanticRetrySubmissionUpdate(transition, now));
@@ -1018,7 +1023,9 @@ export async function failAnalysisJob(
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  const row = analysisJobStore().find((job) => job.id === input.id);
+  const row = analysisJobStore().find((job) =>
+    job.id === input.id && job.is_historical !== true
+  );
   if (!row || row.status !== "processing" || !row.running_revision ||
       (claimGeneration && row.claim_generation !== claimGeneration)) return false;
 
@@ -1408,6 +1415,7 @@ function toAnalysisJobRow(input: EnqueueAnalysisJobInput): AnalysisJobRow {
       pullRequestNumber,
       headSha
     }),
+    is_historical: false,
     desired_revision: 1,
     save_report: input.saveReport === true,
     comment: input.comment === true,
@@ -1474,7 +1482,9 @@ async function enqueueOrRefreshSupabaseAnalysisJob(
 }
 
 function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow {
-  const existing = analysisJobStore().find((job) => job.canonical_key_hash === row.canonical_key_hash);
+  const existing = analysisJobStore().find((job) =>
+    job.canonical_key_hash === row.canonical_key_hash && job.is_historical !== true
+  );
   if (existing) {
     const processing = existing.status === "processing";
     Object.assign(existing, {
@@ -1698,6 +1708,7 @@ async function getSupabaseLatestAnalysisJobForFreshness(
     ["tenant_id", `eq.${input.tenantId}`],
     ["repository_id", `eq.${input.repositoryId}`],
     ["pull_request_number", `eq.${input.pullRequestNumber}`],
+    ["is_historical", "eq.false"],
     ["select", FRESHNESS_ANALYSIS_JOB_SELECT],
     ["order", "created_at.desc"],
     ["limit", "2"]
@@ -1720,7 +1731,8 @@ function getMemoryLatestAnalysisJobForFreshness(
   input: { tenantId: string; repositoryId: number; pullRequestNumber: number }
 ): FreshnessAnalysisJobLookup {
   const rows = analysisJobStore()
-    .filter((job) => job.tenant_id === input.tenantId && job.repository_id === input.repositoryId && job.pull_request_number === input.pullRequestNumber)
+    .filter((job) => job.is_historical !== true && job.tenant_id === input.tenantId &&
+      job.repository_id === input.repositoryId && job.pull_request_number === input.pullRequestNumber)
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
     .slice(0, 2);
   if (rows.length === 0) return { latest: null, ambiguous: false };
@@ -2157,7 +2169,9 @@ function claimMemoryAnalysisJobForProviderResponse(
   leaseMs: number
 ): Pick<AnalysisJobProviderResponseClaimResult, "job" | "disposition"> {
   const staleBefore = now.getTime() - leaseMs;
-  const candidate = analysisJobStore().find((job) => job.provider_response_id === responseId);
+  const candidate = analysisJobStore().find((job) =>
+    job.is_historical !== true && job.provider_response_id === responseId
+  );
   if (!candidate) return { job: null, disposition: "not_found" };
   const disposition = providerContinuationClaimDisposition(candidate, webhookIdHash, now, staleBefore);
   if (disposition !== "claimed") return { job: null, disposition };
@@ -2174,6 +2188,7 @@ async function getSupabaseAnalysisJobsByProviderResponse(
   const params = new URLSearchParams([
     ["provider_response_id", `eq.${responseId}`],
     ["status", "in.(queued,failed_retryable,processing)"],
+    ["is_historical", "eq.false"],
     ["select", ANALYSIS_JOB_SELECT],
     ["limit", "2"]
   ]);
@@ -2214,6 +2229,7 @@ async function getSupabaseAnalysisJobCandidate(
 ): Promise<AnalysisJobRow | null> {
   const params = new URLSearchParams([
     ["status", options.statusFilter],
+    ["is_historical", "eq.false"],
     [options.timestampColumn, `${options.timestampOperator}.${options.timestampValue}`],
     ["select", ANALYSIS_JOB_SELECT],
     ["order", options.order],
@@ -2246,6 +2262,7 @@ async function getSupabaseSemanticRetrySubmissionCandidate(
 ): Promise<AnalysisJobRow | null> {
   const params = new URLSearchParams([
     ["status", "eq.processing"],
+    ["is_historical", "eq.false"],
     ["semantic_retry_attempts", "eq.1"],
     ["provider_status", "eq.submitting"],
     ["provider_response_id", "is.null"],
@@ -2321,6 +2338,7 @@ async function patchSupabaseAnalysisJob(
 
   const params = new URLSearchParams([
     ["id", `eq.${id}`],
+    ["is_historical", "eq.false"],
     ["select", ANALYSIS_JOB_SELECT]
   ]);
 
@@ -2925,12 +2943,13 @@ function oldestAgeSeconds(current: number | undefined, startedAtMs: number | nul
 }
 
 function isDueQueuedJob(job: AnalysisJobRow, now: Date): boolean {
-  return (job.status === "queued" || job.status === "failed_retryable") &&
+  return job.is_historical !== true &&
+    (job.status === "queued" || job.status === "failed_retryable") &&
     new Date(job.run_after).getTime() <= now.getTime();
 }
 
 function isStaleProcessingJob(job: AnalysisJobRow, staleBeforeMs: number): boolean {
-  if (job.status !== "processing" || !job.locked_at) return false;
+  if (job.is_historical === true || job.status !== "processing" || !job.locked_at) return false;
   return new Date(job.locked_at).getTime() < staleBeforeMs;
 }
 
@@ -2940,7 +2959,8 @@ function isStaleSemanticRetrySubmissionJob(
   staleBeforeMs: number
 ): boolean {
   const priorExpiresAt = safeTimeMs(job.prior_provider_expires_at);
-  return isSemanticRetrySubmissionUncertaintyState(job) &&
+  return job.is_historical !== true &&
+    isSemanticRetrySubmissionUncertaintyState(job) &&
     job.sealed_revision == null &&
     job.running_revision != null &&
     job.desired_revision === job.running_revision &&
@@ -2960,7 +2980,7 @@ function canFenceAnalysisJobSemanticRetryFinalization(
 }
 
 function isUnsealedCurrentRevision(job: AnalysisJobRow, claimGeneration: string): boolean {
-  return job.status === "processing" &&
+  return job.is_historical !== true && job.status === "processing" &&
     job.claim_generation === claimGeneration &&
     job.sealed_revision == null &&
     job.running_revision != null &&
@@ -3013,7 +3033,8 @@ function providerContinuationClaimDisposition(
   now: Date,
   staleBeforeMs: number
 ): AnalysisJobProviderResponseClaimDisposition {
-  if (!job.provider_response_id || (job.provider_status !== "queued" && job.provider_status !== "in_progress")) {
+  if (job.is_historical === true || !job.provider_response_id ||
+      (job.provider_status !== "queued" && job.provider_status !== "in_progress")) {
     return "not_found";
   }
 

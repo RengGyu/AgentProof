@@ -175,6 +175,91 @@ describe("analysis job queue", () => {
     expect(new Set(getAnalysisJobsForTests().map((job) => job.canonical_key_hash)).size).toBe(2);
   });
 
+  it("keeps migrated duplicates readable but excludes historical rows from claims and freshness", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const head = "a".repeat(40);
+    await enqueueAnalysisJob({ ...jobInput(), headSha: head, now: new Date("2026-06-30T00:00:00Z") });
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "active-historical-duplicate",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174370",
+      headSha: "b".repeat(40),
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "completed-historical-duplicate",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174371",
+      headSha: "c".repeat(40),
+      now: new Date("2026-06-30T00:02:00Z")
+    });
+    const [canonical, activeHistorical, completedHistorical] = getAnalysisJobsForTests();
+    Object.assign(canonical, {
+      head_sha: head,
+      status: "queued",
+      created_at: "2026-06-30T00:00:00.000Z",
+      updated_at: "2026-06-30T00:03:00.000Z",
+      run_after: "2026-06-30T00:00:15.000Z",
+      is_historical: false
+    });
+    Object.assign(activeHistorical, {
+      head_sha: head,
+      canonical_key_hash: "d".repeat(64),
+      status: "processing",
+      created_at: "2026-06-30T00:01:00.000Z",
+      updated_at: "2026-06-30T00:02:00.000Z",
+      locked_at: "2026-06-30T00:02:00.000Z",
+      desired_revision: 1,
+      running_revision: 1,
+      claim_generation: "123e4567-e89b-42d3-a456-426614174372",
+      is_historical: true
+    });
+    Object.assign(completedHistorical, {
+      head_sha: head,
+      canonical_key_hash: "e".repeat(64),
+      status: "completed",
+      created_at: "2026-06-30T00:02:00.000Z",
+      updated_at: "2026-06-30T00:02:30.000Z",
+      completed_at: "2026-06-30T00:02:30.000Z",
+      is_historical: true
+    });
+
+    const refreshed = await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "canonical-refresh",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174373",
+      headSha: head,
+      now: new Date("2026-06-30T00:03:30Z")
+    });
+
+    await expect(resolveAnalysisJobFreshness({
+      tenantId: "tenant_a",
+      repositoryId: 100,
+      pullRequestNumber: 7,
+      reportHeadSha: head
+    })).resolves.toEqual({ freshness: "refreshing", copyEligible: false });
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:04:00Z"), leaseMs: 60_000 });
+    const secondClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:04:01Z"), leaseMs: 60_000 });
+    const readable = await listTenantAnalysisJobs({ tenantId: "tenant_a", limit: 10 });
+
+    expect(refreshed).toMatchObject({ id: canonical.id, store: "memory" });
+    expect(firstClaim.job).toMatchObject({
+      id: canonical.id,
+      desired_revision: 2,
+      running_revision: 2,
+      is_historical: false
+    });
+    expect(secondClaim.job).toBeNull();
+    expect(getAnalysisJobsForTests()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: activeHistorical.id, is_historical: true, status: "processing" }),
+      expect.objectContaining({ id: completedHistorical.id, is_historical: true, status: "completed" })
+    ]));
+    expect(activeHistorical).toMatchObject({ desired_revision: 1, status: "processing" });
+    expect(readable).toHaveLength(3);
+    expect(JSON.stringify(readable)).not.toContain("is_historical");
+  });
+
   it("resolves saved-report freshness from the newest exact PR-head job without returning job details", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
@@ -238,6 +323,7 @@ describe("analysis job queue", () => {
     expect(url.searchParams.get("order")).toBe("created_at.desc");
     expect(url.searchParams.get("limit")).toBe("2");
     expect(url.searchParams.get("select")).toBe("status,head_sha,created_at");
+    expect(url.searchParams.get("is_historical")).toBe("eq.false");
   });
 
   it("keeps freshness anchored to creation order when an older job completes out of order", async () => {
@@ -1849,6 +1935,12 @@ describe("analysis job queue", () => {
     expect(migration).toContain("sealed_save_report boolean");
     expect(migration).toContain("sealed_comment boolean");
     expect(migration).toContain("sealed_slack_summary boolean");
+    expect(migration).toContain("is_historical boolean not null default false");
+    expect(migration).toMatch(/set\s+canonical_key_hash = encode\(extensions\.digest\(/);
+    expect(migration).toContain("is_historical = true");
+    expect(migration).toContain("order by updated_at desc, created_at desc, id desc");
+    expect(migration).toContain("where is_historical = false");
+    expect(migration).toContain("on conflict (canonical_key_hash) where is_historical = false");
     expect(migration).toContain("create unique index agentproof_analysis_jobs_canonical_key_idx");
     expect(migration).toContain("function public.agentproof_enqueue_analysis_job(job_payload jsonb)");
     expect(migration).toContain("function public.agentproof_fence_analysis_job_revision(");
@@ -1877,10 +1969,11 @@ describe("analysis job queue", () => {
       "utf8"
     );
     const legacyRewrite = migration.match(/with ranked as \([\s\S]*?where jobs\.id = ranked\.id and ranked\.position > 1;/)?.[0];
-    const rewrittenColumns = legacyRewrite?.match(/set ([\s\S]*?)from ranked/)?.[1] ?? "";
+    const rewrittenColumns = legacyRewrite?.match(/set\s+([\s\S]*?)from ranked/)?.[1] ?? "";
 
     expect(legacyRewrite).toBeDefined();
     expect(rewrittenColumns).toContain("canonical_key_hash =");
+    expect(rewrittenColumns).toContain("is_historical = true");
     expect(rewrittenColumns).not.toMatch(/\b(?:status|result_summary|claim_generation|provider_[a-z_]+)\s*=/);
     expect(migration).not.toMatch(/delete\s+from\s+public\.agentproof_analysis_jobs/i);
   });
@@ -2470,6 +2563,9 @@ describe("analysis job queue", () => {
 
     const result = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
     const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    const claimGet = fetchMock.mock.calls.find((call) =>
+      call[1]?.method === "GET" && String(call[0]).includes("queued%2Cfailed_retryable")
+    );
     const patchBody = JSON.parse(String(patchCall?.[1]?.body));
     const serializedBody = JSON.stringify(patchBody);
 
@@ -2485,6 +2581,7 @@ describe("analysis job queue", () => {
     expect(String(patchCall?.[0])).toContain("id=eq.job_1");
     expect(String(patchCall?.[0])).toContain("status=eq.queued");
     expect(String(patchCall?.[0])).toContain("updated_at=eq.");
+    expect(decodeURIComponent(String(claimGet?.[0]))).toContain("is_historical=eq.false");
     expect(patchBody).toMatchObject({
       status: "processing",
       attempts: 1,

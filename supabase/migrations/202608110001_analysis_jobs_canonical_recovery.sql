@@ -19,7 +19,8 @@ alter table public.agentproof_analysis_jobs
   add column if not exists sealed_action text,
   add column if not exists sealed_save_report boolean,
   add column if not exists sealed_comment boolean,
-  add column if not exists sealed_slack_summary boolean;
+  add column if not exists sealed_slack_summary boolean,
+  add column if not exists is_historical boolean not null default false;
 
 update public.agentproof_analysis_jobs
 set
@@ -77,10 +78,12 @@ with ranked as (
   from public.agentproof_analysis_jobs
 )
 update public.agentproof_analysis_jobs jobs
-set canonical_key_hash = encode(extensions.digest(
-  concat_ws(chr(31), 'legacy', ranked.canonical_key_hash, jobs.id),
-  'sha256'
-), 'hex')
+set
+  canonical_key_hash = encode(extensions.digest(
+    concat_ws(chr(31), 'legacy', ranked.canonical_key_hash, jobs.id),
+    'sha256'
+  ), 'hex'),
+  is_historical = true
 from ranked
 where jobs.id = ranked.id and ranked.position > 1;
 
@@ -123,8 +126,10 @@ alter table public.agentproof_analysis_jobs
     )
   );
 
+drop index if exists public.agentproof_analysis_jobs_canonical_key_idx;
 create unique index agentproof_analysis_jobs_canonical_key_idx
-  on public.agentproof_analysis_jobs (canonical_key_hash);
+  on public.agentproof_analysis_jobs (canonical_key_hash)
+  where is_historical = false;
 
 create or replace function public.agentproof_enqueue_analysis_job(job_payload jsonb)
 returns setof public.agentproof_analysis_jobs
@@ -137,7 +142,7 @@ begin
   insert into public.agentproof_analysis_jobs (
     id, status, tenant_id, idempotency_key_hash, delivery_id, event, action,
     installation_id, repository_id, repository_full_name, pull_request_number,
-    pull_request_url, head_sha, canonical_key_hash, desired_revision,
+    pull_request_url, head_sha, canonical_key_hash, is_historical, desired_revision,
     running_revision, sealed_revision, publication_sealed_at,
     sealed_delivery_id, sealed_event, sealed_action, sealed_save_report,
     sealed_comment, sealed_slack_summary,
@@ -157,7 +162,7 @@ begin
     job_payload->>'repository_full_name',
     (job_payload->>'pull_request_number')::integer,
     job_payload->>'pull_request_url', job_payload->>'head_sha',
-    job_payload->>'canonical_key_hash', 1, null, null, null,
+    job_payload->>'canonical_key_hash', false, 1, null, null, null,
     null, null, null, null, null, null,
     coalesce((job_payload->>'save_report')::boolean, false),
     coalesce((job_payload->>'comment')::boolean, false),
@@ -168,7 +173,7 @@ begin
     null, null, null, null, null, null, null, null, 0, null, null, null, null,
     0, null, null, null
   )
-  on conflict (canonical_key_hash) do update set
+  on conflict (canonical_key_hash) where is_historical = false do update set
     status = case
       when agentproof_analysis_jobs.status = 'processing' then 'processing'
       else 'queued'
@@ -237,7 +242,7 @@ declare
 begin
   select * into current_job
   from public.agentproof_analysis_jobs
-  where id = job_id
+  where id = job_id and is_historical = false
   for update;
 
   if not found
@@ -290,7 +295,7 @@ declare
   current_job public.agentproof_analysis_jobs%rowtype;
 begin
   select * into current_job from public.agentproof_analysis_jobs
-  where id = job_id for update;
+  where id = job_id and is_historical = false for update;
 
   if not found or current_job.status <> 'processing'
      or current_job.claim_generation is distinct from claim_token
@@ -356,7 +361,7 @@ declare
   was_sealed boolean;
 begin
   select * into current_job from public.agentproof_analysis_jobs
-  where id = job_id for update;
+  where id = job_id and is_historical = false for update;
   if not found or current_job.status <> 'processing'
      or current_job.claim_generation is distinct from claim_token
      or current_job.running_revision is null then
@@ -425,7 +430,7 @@ declare
   should_retry boolean;
 begin
   select * into current_job from public.agentproof_analysis_jobs
-  where id = job_id for update;
+  where id = job_id and is_historical = false for update;
   if not found or current_job.status <> 'processing'
      or current_job.claim_generation is distinct from claim_token
      or current_job.running_revision is null then return; end if;
