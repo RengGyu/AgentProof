@@ -2614,6 +2614,59 @@ describe("generateVerificationReport", () => {
     expect(report.requirements[0]?.status).not.toBe("met");
   });
 
+  it("does not turn a context-only failed execution check into a requirement blocker", () => {
+    const report = generateVerificationReport({
+      title: "Add settings-panel tests",
+      description: "Payments test output is attached as external context.",
+      taskText: [
+        "Acceptance criteria: add settings panel tests.",
+        "External reference: payments test output is available."
+      ].join("\n"),
+      changedFiles: [{ path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }],
+      checks: [{ name: "Payments tests", status: "failed", summary: "Payments tests failed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "execution", state: "incomplete", evidenceRefs: [] })
+    ]));
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("failed_execution");
+  });
+
+  it("violates execution only for a canonical or opaque failed check", () => {
+    const canonical = generateVerificationReport({
+      title: "Add settings-panel tests",
+      description: "Adds settings-panel coverage.",
+      taskText: "Acceptance criteria: add settings panel tests.",
+      changedFiles: [{ path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }],
+      checks: [{ name: "Settings panel tests", status: "failed", summary: "Settings panel tests failed." }],
+      logs: []
+    } satisfies PullRequestInput);
+    const opaque = generateVerificationReport({
+      title: "Add settings-panel tests",
+      description: "Adds settings-panel coverage.",
+      taskText: "Acceptance criteria: add settings panel tests.",
+      changedFiles: [{ path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }],
+      checks: [{
+        name: "PANDAS_FUTURE_INFER_STRING=0",
+        status: "failed",
+        summary: "Matrix job failed on the head commit.",
+        url: "https://github.com/example/project/actions/runs/100/job/201"
+      }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    for (const report of [canonical, opaque]) {
+      expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ subject: "execution", state: "violated", collectionBasis: "failed_execution" })
+      ]));
+      expect(report.proofGraph.nodes[0]?.gapSignals).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "failed_execution", severity: "blocker" })
+      ]));
+      expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    }
+  });
+
   it("keeps visual proof matched to its own requirement", () => {
     const report = generateVerificationReport({
       title: "Verify two responsive surfaces",

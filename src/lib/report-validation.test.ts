@@ -427,6 +427,47 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("incompatible evidence");
   });
 
+  it("rejects forged violated execution axes while accepting canonical and opaque failures", () => {
+    const canonical = generateVerificationReport({
+      title: "Add settings-panel tests",
+      description: "Adds settings-panel coverage.",
+      taskText: "Acceptance criteria: add settings panel tests.",
+      changedFiles: [{ path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }],
+      checks: [{ name: "Settings panel tests", status: "failed", summary: "Settings panel tests failed." }],
+      logs: []
+    });
+    const executionAxis = canonical.requirements[0]!.proofAxes!.find((axis) => axis.subject === "execution")!;
+    const executionNode = canonical.proofGraph.nodes[0]!;
+    const failedRef = executionAxis.evidenceRefs[0]!;
+
+    expect(executionAxis).toMatchObject({ state: "violated", collectionBasis: "failed_execution" });
+    expect(validateVerificationReport(canonical, { mode: "full" })).toEqual({ valid: true, errors: [] });
+
+    const wrongStatus = structuredClone(canonical);
+    wrongStatus.evidenceIndex.find((item) => item.id === failedRef)!.summary = "Status: passed. Settings panel tests passed.";
+    expect(validateVerificationReport(wrongStatus, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
+
+    const wrongBasis = structuredClone(canonical);
+    wrongBasis.requirements[0]!.proofAxes!.find((axis) => axis.subject === "execution")!.collectionBasis = "passing_execution";
+    expect(validateVerificationReport(wrongBasis, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
+
+    const missingNodeRef = structuredClone(canonical);
+    missingNodeRef.proofGraph.nodes[0]!.executionEvidenceRefs = [];
+    expect(validateVerificationReport(missingNodeRef, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
+
+    const wrongRelevance = structuredClone(canonical);
+    wrongRelevance.evidenceIndex.find((item) => item.id === failedRef)!.label = "Payments tests";
+    wrongRelevance.evidenceIndex.find((item) => item.id === failedRef)!.summary = "Status: failed. Payments tests failed.";
+    expect(validateVerificationReport(wrongRelevance, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
+
+    const opaque = structuredClone(canonical);
+    opaque.evidenceIndex.find((item) => item.id === failedRef)!.label = "PANDAS_FUTURE_INFER_STRING=0";
+    opaque.evidenceIndex.find((item) => item.id === failedRef)!.summary = "Status: failed. Matrix job failed on the head commit.";
+    opaque.evidenceIndex.find((item) => item.id === failedRef)!.locator = "https://github.com/example/project/actions/runs/100/job/201";
+    expect(validateVerificationReport(opaque, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(executionNode.executionEvidenceRefs).toEqual([failedRef]);
+  });
+
   it("allows fully evidenced author-claim axes to remain partial when duplicate text and status match", () => {
     const report = generateVerificationReport({
       title: "Preserve URL params",

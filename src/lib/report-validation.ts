@@ -1108,6 +1108,16 @@ function validateFullRequirementProofAxes(
       continue;
     }
 
+    if (state === "violated" && subject === "execution") {
+      if (axis.collectionBasis !== "failed_execution" || refs.length === 0 || refs.some((ref) => {
+        const evidence = evidenceById.get(ref);
+        return !evidence || !isViolatedExecutionAxisEvidenceCompatible(evidence, proofNode, requirementText, ref);
+      })) {
+        errors.push(`${axisPath} violated execution has incompatible evidence or collection basis.`);
+      }
+      continue;
+    }
+
     if (state !== "satisfied") continue;
     if (refs.length === 0) {
       errors.push(`${axisPath} satisfied present axis must cite evidence.`);
@@ -1167,6 +1177,29 @@ function isSatisfiedAxisEvidenceCompatible(
     return collectionBasis === "visual_verification" && isVisualVerificationProofEvidence(evidence) && evidenceOverlapsRequirement(requirementText, evidence);
   }
   return false;
+}
+
+function isViolatedExecutionAxisEvidenceCompatible(
+  evidence: RecordValue,
+  proofNode: RecordValue | undefined,
+  requirementText: string,
+  ref: string
+): boolean {
+  const label = typeof evidence.label === "string" ? evidence.label : "";
+  const summary = typeof evidence.summary === "string" ? evidence.summary : "";
+  const locator = typeof evidence.locator === "string" ? evidence.locator : "";
+  const executionRefs = new Set(getStringArray(proofNode?.executionEvidenceRefs));
+  const opaqueMatrixFailure = isFailedAmbiguousActionsExecutionSignal(
+    label,
+    evidenceStatusFromSummary(summary),
+    locator,
+    summary
+  );
+  return (evidence.kind === "check" || evidence.kind === "log") &&
+    evidenceStatusFromSummary(summary) === "failed" &&
+    isExecutionProofEvidence(evidence) &&
+    executionRefs.has(ref) &&
+    (evidenceOverlapsRequirement(requirementText, evidence) || opaqueMatrixFailure);
 }
 
 function isImplementationArtifactEvidence(evidence: RecordValue): boolean {

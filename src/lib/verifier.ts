@@ -2051,12 +2051,11 @@ function requirementFailedExecutionEvidenceRefs(
 ): string[] {
   const failedRefs = new Set(executionFailureEvidenceRefs(input, evidenceIndex));
   return evidenceIndex
-    .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
-    .filter(({ item, match }) =>
+    .filter((item) =>
       failedRefs.has(item.id) &&
-      (isUsefulArtifactMatch(match) || isOpaqueMatrixExecutionFailure(item))
+      (evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary) || isOpaqueMatrixExecutionFailure(item))
     )
-    .map(({ item }) => item.id);
+    .map((item) => item.id);
 }
 
 function statusForCheck(checks: PullRequestInput["checks"], pattern: RegExp): CheckStatus {
