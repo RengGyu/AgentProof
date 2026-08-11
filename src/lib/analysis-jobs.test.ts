@@ -7,6 +7,7 @@ import {
   claimAnalysisJobForProviderResponse,
   claimNextAnalysisJob,
   completeAnalysisJob,
+  countTenantAnalysisJobs,
   countTenantActiveAnalysisJobsForDeletion,
   enqueueAnalysisJob,
   failAnalysisJob,
@@ -16,6 +17,7 @@ import {
   getAnalysisJobQueueSummary,
   getAnalysisJobQueueStatus,
   getAnalysisJobsForTests,
+  getTenantAnalysisJobRollup,
   listTenantAnalysisJobs,
   markAnalysisJobProviderSubmission,
   markAnalysisJobSemanticRetrySubmission,
@@ -24,6 +26,8 @@ import {
   resolveAnalysisJobFreshness,
   sealAnalysisJobRevision
 } from "./analysis-jobs";
+import { toAnalysisQueueAlerts } from "./analysis-job-alerts";
+import { buildTenantSetupWarningRollup } from "./tenant-dashboard-warnings";
 import {
   clearTenantRepositoryGrantsForTests,
   createTenantRepositoryGrant,
@@ -873,6 +877,7 @@ describe("analysis job queue", () => {
     for (const [url, init] of fetchMock.mock.calls as unknown as Array<[string, RequestInit]>) {
       expect(init.method).toBe("HEAD");
       expect(decodeURIComponent(String(url))).toContain("select=id");
+      expect(decodeURIComponent(String(url))).toContain("is_historical=eq.false");
       expect(decodeURIComponent(String(url))).not.toContain("repository_full_name");
       expect(decodeURIComponent(String(url))).not.toContain("pull_request_url");
       expect(decodeURIComponent(String(url))).not.toContain("delivery_id");
@@ -881,6 +886,25 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("agentproof_analysis_jobs");
     expect(serialized).not.toContain("supabase");
     expect(serialized).not.toContain("service-role-secret");
+  });
+
+  it("filters historical rows from durable global and tenant operational samples", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getAnalysisJobQueueSummary({ now: new Date("2026-06-30T00:05:00Z") });
+    await getTenantAnalysisJobRollup({ tenantId: "tenant_a" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url] of fetchMock.mock.calls as unknown as Array<[string, RequestInit]>) {
+      expect(decodeURIComponent(String(url))).toContain("is_historical=eq.false");
+    }
+    expect(decodeURIComponent(String(fetchMock.mock.calls[0]?.[0]))).not.toContain("tenant_id=");
+    expect(decodeURIComponent(String(fetchMock.mock.calls[1]?.[0]))).toContain("tenant_id=eq.tenant_a");
   });
 
   it("rejects unsafe URLs, raw evidence fields, and secret-looking strings", async () => {
@@ -2338,6 +2362,61 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("pull_request_url");
     expect(serialized).not.toContain("idempotency");
     expect(serialized).not.toContain("delivery_id");
+  });
+
+  it("retains historical active-status rows without operational counts or alerts", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    await enqueueAnalysisJob(jobInput());
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "historical-processing",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174374",
+      pullRequestNumber: 8,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/8",
+      headSha: "b".repeat(40)
+    });
+    const [queuedHistorical, processingHistorical] = getAnalysisJobsForTests();
+    Object.assign(queuedHistorical, {
+      is_historical: true,
+      status: "queued",
+      run_after: "2026-06-29T23:00:00.000Z"
+    });
+    Object.assign(processingHistorical, {
+      is_historical: true,
+      status: "processing",
+      locked_at: "2026-06-29T23:00:00.000Z"
+    });
+
+    const retained = await countTenantAnalysisJobs({ tenantId: "tenant_a" });
+    const readable = await listTenantAnalysisJobs({ tenantId: "tenant_a" });
+    const active = await countTenantActiveAnalysisJobsForDeletion({ tenantId: "tenant_a" });
+    const queue = await getAnalysisJobQueueSummary({
+      now: new Date("2026-06-30T00:05:00Z"),
+      staleAfterMs: 10 * 60 * 1000
+    });
+    const tenant = await getTenantAnalysisJobRollup({ tenantId: "tenant_a" });
+
+    expect(retained).toMatchObject({ count: 2, store: "memory" });
+    expect(readable).toHaveLength(2);
+    expect(JSON.stringify(readable)).not.toContain("is_historical");
+    expect(active).toMatchObject({
+      count: 0,
+      statusCounts: { queued: 0, processing: 0, failed_retryable: 0 }
+    });
+    expect(queue).toMatchObject({
+      sampled: 0,
+      counts: { queued: 0, processing: 0, failed_retryable: 0 },
+      due: 0,
+      staleProcessing: 0
+    });
+    expect(toAnalysisQueueAlerts(queue)).toEqual([]);
+    expect(tenant).toMatchObject({
+      sampled: 0,
+      counts: { active: 0, failed: 0, retrying: 0, terminal: 0 }
+    });
+    expect(buildTenantSetupWarningRollup({ analysisJobs: tenant }).warnings
+      .filter((warning) => warning.key.startsWith("analysis_jobs_"))).toEqual([]);
   });
 
   it("summarizes terminal failures as dead-letter aggregate-only metrics", async () => {

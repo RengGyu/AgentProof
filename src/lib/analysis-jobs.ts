@@ -1818,6 +1818,7 @@ async function countSupabaseTenantAnalysisJobsByStatus(
   const params = new URLSearchParams({
     tenant_id: `eq.${tenantId}`,
     status: `eq.${status}`,
+    is_historical: "eq.false",
     select: "id"
   });
   const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
@@ -1873,6 +1874,7 @@ async function listSupabaseTenantAnalysisJobStatusRows(
 ): Promise<AnalysisJobQueueSummaryRow[]> {
   const params = new URLSearchParams([
     ["tenant_id", `eq.${tenantId}`],
+    ["is_historical", "eq.false"],
     ["select", "status"],
     ["order", "created_at.desc"],
     ["limit", String(limit)]
@@ -1921,7 +1923,7 @@ function countMemoryTenantActiveAnalysisJobsByStatus(
   };
 
   for (const job of analysisJobStore()) {
-    if (job.tenant_id !== tenantId) continue;
+    if (job.tenant_id !== tenantId || job.is_historical === true) continue;
     if (job.status === "queued" || job.status === "processing" || job.status === "failed_retryable") {
       statusCounts[job.status] += 1;
     }
@@ -1940,7 +1942,7 @@ function purgeMemoryTenantAnalysisJobs(tenantId: string): number {
 
 function listMemoryTenantAnalysisJobStatusRows(tenantId: string, limit: number): AnalysisJobQueueSummaryRow[] {
   return analysisJobStore()
-    .filter((job) => job.tenant_id === tenantId)
+    .filter((job) => job.tenant_id === tenantId && job.is_historical !== true)
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
     .slice(0, limit)
     .map((job) => ({ status: job.status }));
@@ -1951,6 +1953,7 @@ async function listSupabaseAnalysisJobSummaryRows(
   limit: number
 ): Promise<AnalysisJobQueueSummaryRow[]> {
   const params = new URLSearchParams([
+    ["is_historical", "eq.false"],
     ["select", "status,created_at,updated_at,run_after,locked_at"],
     ["order", "created_at.asc"],
     ["limit", String(limit)]
@@ -2005,7 +2008,7 @@ async function listSupabaseAnalysisJobDeadLetterRows(
 
 function listMemoryAnalysisJobSummaryRows(limit: number): AnalysisJobQueueSummaryRow[] {
   return analysisJobStore()
-    .slice()
+    .filter((job) => job.is_historical !== true)
     .sort((left, right) => left.created_at.localeCompare(right.created_at))
     .slice(0, limit)
     .map((job) => ({

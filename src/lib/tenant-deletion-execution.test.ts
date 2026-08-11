@@ -478,6 +478,36 @@ describe("tenant deletion execution boundary", () => {
     expect(tenantBJobs).toHaveLength(1);
     expectNoPrivateDeletionFields(serialized);
   });
+
+  it("does not let retained historical active-status rows block the final tenant purge", async () => {
+    const env = queueAndDeletionStateEnv();
+    const queued = await enqueueAnalysisJob(jobInput({ headSha: "abc111" }), env);
+    const processing = await enqueueAnalysisJob(jobInput({ headSha: "abc222", pullRequestNumber: 8 }), env);
+    Object.assign(getAnalysisJobsForTests().find((job) => job.id === queued.id) ?? {}, {
+      status: "queued",
+      is_historical: true
+    });
+    Object.assign(getAnalysisJobsForTests().find((job) => job.id === processing.id) ?? {}, {
+      status: "processing",
+      is_historical: true
+    });
+    expect(await listTenantAnalysisJobs({ tenantId: "tenant_a" }, env)).toHaveLength(2);
+    markTenantDeletionStartedIfConfigured({ tenantId: "tenant_a" }, env);
+
+    const result = await purgeTenantDeletionAnalysisJobsWhenSafe({
+      tenantId: "tenant_a",
+      newWorkBlocked: true
+    }, env);
+
+    expect(result).toMatchObject({
+      status: "completed",
+      reason: "analysis_job_purge_completed",
+      deletedCount: 2,
+      next: "continue_deletion_workflow"
+    });
+    expect(await listTenantAnalysisJobs({ tenantId: "tenant_a" }, env)).toEqual([]);
+    expectNoPrivateDeletionFields(JSON.stringify(result));
+  });
 });
 
 function memoryEnv(): NodeJS.ProcessEnv {
