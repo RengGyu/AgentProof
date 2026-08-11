@@ -44,6 +44,8 @@ import {
 } from "@/lib/repository-selection-state";
 import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "@/lib/dashboard-report-export";
 import { copyRevalidatedDashboardDetail, prepareCurrentDashboardBundleForCopy } from "@/lib/dashboard-copy-revalidation";
+import { writeTextWithBrowserFallback } from "@/lib/browser-clipboard";
+import { isCopyEligibleReport, reportWorkspaceStatusLabel, visibleRepositoryReports } from "@/lib/dashboard-report-list";
 
 interface Repository { id: number; fullName: string; private: boolean; }
 interface ExistingInstallation { installationId: number; accountLogin: string; }
@@ -153,9 +155,8 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     [connectedRepositories, reports]
   );
   const selectedRepository = repositoryRows.find((repository) => repository.repositoryId === selectedRepositoryId) ?? repositoryRows[0];
-  const selectedReports = reports
-    .filter((report) => report.repositoryId === selectedRepository?.repositoryId && report.freshness === "current" && report.copyEligible === true)
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const selectedReports = visibleRepositoryReports(reports, selectedRepository?.repositoryId);
+  const copyableSelectedReports = selectedReports.filter(isCopyEligibleReport);
   const selectedRepositoryName = selectedRepository?.repositoryFullName;
   const quickSummary = detail
     ? toQuickSummary({ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) })
@@ -448,13 +449,13 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
 
   async function copySelectedRepositoryReports() {
     const repositoryId = selectedRepository?.repositoryId;
-    if (!selectedRepository || !repositoryId || selectedReports.length === 0 || bulkCopyState === "copying") return;
+    if (!selectedRepository || !repositoryId || copyableSelectedReports.length === 0 || bulkCopyState === "copying") return;
     setBulkCopyState("copying");
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 15_000);
     try {
       const details = demoMode
-        ? selectedReports.map((report) => ({ ...PREVIEW_DEMO_DETAIL, ...report, repositoryFullName: selectedRepository.repositoryFullName }))
+        ? copyableSelectedReports.map((report) => ({ ...PREVIEW_DEMO_DETAIL, ...report, repositoryFullName: selectedRepository.repositoryFullName }))
         : await prepareCurrentDashboardBundleForCopy({
           repositoryId,
           repositoryFullName: selectedRepository.repositoryFullName,
@@ -467,7 +468,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       const markdown = dashboardReportsToMarkdown(details);
       setBulkCopyCount(details.length);
       try {
-        await navigator.clipboard.writeText(markdown);
+        await writeTextWithBrowserFallback(markdown);
       } catch {
         setBulkCopyState("error");
         setMessage("Copy is blocked in this browser. Try again to revalidate the current reports.");
@@ -586,9 +587,10 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
          {privateRepositoryChoice ? <section className="analysis-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-choice-title"><div><p className="dashboard-eyebrow">PRIVATE REPOSITORY</p><h3 id="analysis-choice-title">Choose analysis detail</h3><p>Enhanced analysis uses selected changed-code excerpts and evidence summaries to add a concise evidence reading.</p></div><div className="analysis-choice-actions"><button className="dashboard-secondary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "essential"); }}>Use essential analysis</button><button className="dashboard-primary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "enhanced"); }}>Enable enhanced analysis</button></div></section> : null}
 
         <section className="dashboard-workspace">
-          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div><button className="dashboard-text-action" disabled={selectedReports.length === 0 || bulkCopyState === "copying"} onClick={() => { void copySelectedRepositoryReports(); }}><Clipboard size={15} /> {bulkCopyState === "copying" ? "Preparing reports…" : bulkCopyState === "copied" ? `Copied ${bulkCopyCount} reports` : bulkCopyState === "error" ? "Try copy again" : "Copy all reports"}</button></div>
+          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div><button className="dashboard-text-action" disabled={copyableSelectedReports.length === 0 || bulkCopyState === "copying"} onClick={() => { void copySelectedRepositoryReports(); }}><Clipboard size={15} /> {bulkCopyState === "copying" ? "Preparing reports…" : bulkCopyState === "copied" ? `Copied ${bulkCopyCount} reports` : bulkCopyState === "error" ? "Try copy again" : "Copy all reports"}</button></div>
           {!selectedRepository ? <p className="dashboard-empty">Connect a GitHub repository to review saved evidence reports.</p> : selectedReports.length === 0 ? <p className="dashboard-empty"><FileCheck2 size={20} /> No reports yet<br /><small>New PR events will appear here after analysis.</small></p> : <div className="dashboard-report-layout">
-            <div className="report-list" aria-label="Current analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label="CURRENT" title="Current report" /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
+            <div className="report-list" aria-label="Saved analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} onClick={() => { void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>PR #{report.pullRequestNumber ?? "Unknown"}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label={reportWorkspaceStatusLabel(report.freshness)} title={report.copyEligible ? "Latest saved report" : "A newer analysis is still being prepared"} /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
+            {copyableSelectedReports.length === 0 ? <p className="dashboard-boundary"><Info size={15} /> Reports remain available while an update runs. Copy is enabled when a current report is ready.</p> : null}
             {detail?.report && quickSummary ? <QuickSummaryPanel detail={{ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) }} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} demoMode={demoMode} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
           </div>}
         </section>
@@ -623,18 +625,22 @@ function DetailedEvidence({ detail, demoMode }: { detail: DashboardReportDetail 
   });
   const [copiedFormat, setCopiedFormat] = useState<"markdown" | "json" | null>(null);
   const [copyError, setCopyError] = useState(false);
+  const copyUnavailable = !demoMode && !isCopyEligibleReport(detail);
+  const copyUnavailableMessage = detail.freshness === "refreshing"
+    ? "A newer analysis is updating. This saved report remains readable and can be copied when the update finishes."
+    : "This saved report is not the current copyable version.";
 
   async function copyReport(format: "markdown" | "json") {
     try {
       if (demoMode) {
-        await navigator.clipboard.writeText(format === "markdown" ? dashboardReportToMarkdown(detail) : dashboardReportToJson(detail));
+        await writeTextWithBrowserFallback(format === "markdown" ? dashboardReportToMarkdown(detail) : dashboardReportToJson(detail));
       } else {
         if (!detail.id || !detail.repositoryFullName) throw new Error("dashboard_report_copy_identity_missing");
         await copyRevalidatedDashboardDetail({
           id: detail.id,
           repositoryFullName: detail.repositoryFullName,
           fetchDetail: fetchDashboardCopyDetail,
-          writeText: (value) => navigator.clipboard.writeText(value),
+          writeText: writeTextWithBrowserFallback,
           toText: (currentDetail) => format === "markdown" ? dashboardReportToMarkdown(currentDetail) : dashboardReportToJson(currentDetail)
         });
       }
@@ -647,7 +653,7 @@ function DetailedEvidence({ detail, demoMode }: { detail: DashboardReportDetail 
     }
   }
 
-  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirement coverage and supporting evidence</h4></div><div className="detailed-evidence-actions"><button className="dashboard-secondary-action" onClick={() => { void copyReport("markdown"); }}><Clipboard size={15} /> {copiedFormat === "markdown" ? "Copied" : "Copy report"}</button><button className="dashboard-secondary-action" onClick={() => { void copyReport("json"); }}><Clipboard size={15} /> {copiedFormat === "json" ? "Copied" : "Copy JSON"}</button></div></div>{copyError ? <p className="dashboard-boundary"><Info size={15} /> Copy failed in this browser. Select the report text manually.</p> : null}<div className="detail-grid"><section className="requirement-evidence-section"><h5>Requirements and PR objectives</h5>{requirementCards.length > 0 ? <RequirementEvidenceList requirements={requirementCards} /> : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div></section>;
+  return <section className="detailed-evidence"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">DETAILED EVIDENCE</p><h4>Requirement coverage and supporting evidence</h4></div><div className="detailed-evidence-actions"><button className="dashboard-secondary-action" disabled={copyUnavailable} onClick={() => { void copyReport("markdown"); }}><Clipboard size={15} /> {copiedFormat === "markdown" ? "Copied" : "Copy report"}</button><button className="dashboard-secondary-action" disabled={copyUnavailable} onClick={() => { void copyReport("json"); }}><Clipboard size={15} /> {copiedFormat === "json" ? "Copied" : "Copy JSON"}</button></div></div>{copyUnavailable ? <p className="dashboard-boundary"><Info size={15} /> {copyUnavailableMessage}</p> : null}{copyError ? <p className="dashboard-boundary"><Info size={15} /> Copy failed in this browser. Select the report text manually.</p> : null}<div className="detail-grid"><section className="requirement-evidence-section"><h5>Requirements and PR objectives</h5>{requirementCards.length > 0 ? <RequirementEvidenceList requirements={requirementCards} /> : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Checks & CI</h5><div className="detail-row"><span>CI</span><strong>{report?.testing?.ciStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Lint</span><strong>{report?.testing?.lintStatus ?? "unavailable"}</strong></div><div className="detail-row"><span>Typecheck</span><strong>{report?.testing?.typecheckStatus ?? "unavailable"}</strong></div></section><section><h5>Priority files</h5>{report?.reviewPriority?.length ? report.reviewPriority.map((item) => <div className="detail-row" key={item.path}><code>{item.path}</code><span>{item.priority}</span></div>) : <p className="dashboard-empty">Unavailable</p>}</section><section><h5>Suggested next step</h5><p className="agent-request">{report?.reprompt?.prompt ?? "Unavailable"}</p></section></div></section>;
 }
 
 async function fetchDashboardCopyDetail(id: string): Promise<DashboardReportDetail | null> {
@@ -669,8 +675,8 @@ function SummaryState({ label, value, mono = false }: { label: string; value: st
 }
 
 function StatusToken({ label, title }: { label: string; title?: string }) {
-  const failed = /failed/i.test(label);
-  const pending = /pending/i.test(label);
+  const failed = /failed|attention/i.test(label);
+  const pending = /pending|updating|refresh/i.test(label);
   const stale = /stale/i.test(label);
   const unknown = /unknown|unavailable/i.test(label);
   const Icon = failed ? XCircle : pending || stale ? Clock3 : unknown ? Info : CheckCircle2;

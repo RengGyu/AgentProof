@@ -12,13 +12,15 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain('signedIn && !activeInstallationId');
   });
 
-  it("shows only current reports in the default list and keeps stale state in Inbox", () => {
+  it("keeps current and updating reports visible in the repository list while stale history stays in Inbox", () => {
     expect(source).toContain("Repository #");
     expect(source).toContain("PR #");
     expect(source).toContain("formatCreatedAt(report.createdAt)");
     expect(source).toContain("headPrefix(report.headSha)");
-    expect(source).toContain('report.freshness === "current"');
-    expect(source).toContain("report.copyEligible === true");
+    expect(source).toContain("visibleRepositoryReports");
+    expect(source).toContain("copyableSelectedReports");
+    expect(source).toContain("reportWorkspaceStatusLabel");
+    expect(source).toContain("reportWorkspaceStatusLabel(report.freshness)");
     expect(source).toContain('event.kind === "report_stale"');
     expect(source).toContain("Previous result");
     expect(source).toContain("Priority:");
@@ -42,7 +44,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("copyRevalidatedDashboardDetail");
     expect(source).not.toContain("preparedBulkCopy");
     expect(source).not.toContain("Promise.all(selectedReports.map");
-    expect(source).toContain("disabled={selectedReports.length === 0 || bulkCopyState === \"copying\"}");
+    expect(source).toContain("disabled={copyableSelectedReports.length === 0 || bulkCopyState === \"copying\"}");
     expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setBulkCopyCount\(0\); setBulkCopyState\("idle"\);/);
   });
 
@@ -73,7 +75,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Quick Summary");
     expect(source).toContain("View detailed evidence");
     expect(source).toContain("report_stale");
-    expect(source).toContain("Current analysis reports");
+    expect(source).toContain("Saved analysis reports");
     expect(source).not.toContain("Unlinked PRs");
   });
 
