@@ -5,7 +5,8 @@ import {
   claimAnalysisJobForProviderResponse,
   claimNextAnalysisJob,
   enqueueAnalysisJob,
-  getAnalysisJobsForTests
+  getAnalysisJobsForTests,
+  sealAnalysisJobRevision
 } from "./analysis-jobs";
 import { clearAuditEventsForTests, getAuditEventsForTests } from "./audit-log";
 import { clearSavedReportsForTests, countTenantSavedReports } from "./server-report-store";
@@ -1758,7 +1759,245 @@ describe("analysis worker preflight", () => {
       status: "queued",
       desired_revision: 2,
       running_revision: null,
+      sealed_revision: null,
       claim_generation: null
+    });
+  });
+
+  it("publishes a sealed revision when a refresh arrives after the seal and before its first side effect", async () => {
+    stubReadyWorkerEnv({ grant: {
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    } });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const baseFetch = mockWorkerFetch();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+        ? Response.json({ ok: true })
+        : baseFetch(url, init)
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+
+    await expect(sealAnalysisJobRevision({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      runningRevision: claim.job!.running_revision!,
+      now: new Date("2026-06-30T00:01:00Z")
+    })).resolves.toBe(true);
+    await enqueueAnalysisJob(jobInput({
+      idempotencyKey: "same-head-refresh-after-seal",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174305",
+      saveReport: true,
+      comment: true,
+      slackSummary: true
+    }));
+
+    const result = await runClaimedAnalysisJob(claim.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toMatchObject({ status: "completed" });
+    expect((await countTenantSavedReports({ tenantId: "tenant_a" })).count).toBe(1);
+    expect(fetchMock.mock.calls.filter(([url, init]) =>
+      String(url).endsWith("/issues/7/comments") && init?.method === "POST"
+    )).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+    )).toHaveLength(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      sealed_revision: null,
+      result_summary: null
+    });
+  });
+
+  it("finishes the sealed save, comment, and Slack publication when a refresh arrives between effects", async () => {
+    stubReadyWorkerEnv({ grant: {
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    } });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const baseFetch = mockWorkerFetch();
+    let refreshed = false;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (!refreshed && href.endsWith("/issues/7/comments") && init?.method === "POST") {
+        refreshed = true;
+        await enqueueAnalysisJob(jobInput({
+          idempotencyKey: "same-head-refresh-between-effects",
+          deliveryId: "123e4567-e89b-12d3-a456-426614174306",
+          saveReport: true,
+          comment: true,
+          slackSummary: true
+        }));
+      }
+      if (href === "https://hooks.slack.com/services/T/B/C") return Response.json({ ok: true });
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toMatchObject({ status: "completed" });
+    expect((await countTenantSavedReports({ tenantId: "tenant_a" })).count).toBe(1);
+    expect(fetchMock.mock.calls.filter(([url, init]) =>
+      String(url).endsWith("/issues/7/comments") && init?.method === "POST"
+    )).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+    )).toHaveLength(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      sealed_revision: null
+    });
+  });
+
+  it("rejects parking an old provider submission when a refresh arrives before the park CAS", async () => {
+    stubReadyWorkerEnv({ grant: {
+      llmAnalysisMode: "enhanced",
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    } });
+    vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const baseFetch = mockWorkerFetch();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.openai.com/v1/responses" && init?.method === "POST") {
+        await enqueueAnalysisJob(jobInput({
+          idempotencyKey: "same-head-refresh-during-provider-submit",
+          deliveryId: "123e4567-e89b-12d3-a456-426614174307",
+          saveReport: true,
+          comment: true,
+          slackSummary: true
+        }));
+        return Response.json({ id: "resp_stale_submission_123", status: "queued", output: [] });
+      }
+      if (href === "https://hooks.slack.com/services/T/B/C") return Response.json({ ok: true });
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toMatchObject({ status: "failed_retryable", reason: "analysis_job_claim_lost" });
+    expect((await countTenantSavedReports({ tenantId: "tenant_a" })).count).toBe(0);
+    expect(fetchMock.mock.calls.some(([url, init]) =>
+      String(url).endsWith("/issues/7/comments") && init?.method === "POST"
+    )).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) =>
+      String(url) === "https://hooks.slack.com/services/T/B/C"
+    )).toBe(false);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      sealed_revision: null,
+      provider_response_id: null,
+      provider_status: null
+    });
+  });
+
+  it("queues the next revision when a refresh arrives after the last effect and before completion", async () => {
+    stubReadyWorkerEnv({ grant: {
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    } });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const baseFetch = mockWorkerFetch();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://hooks.slack.com/services/T/B/C") {
+        await enqueueAnalysisJob(jobInput({
+          idempotencyKey: "same-head-refresh-before-complete",
+          deliveryId: "123e4567-e89b-12d3-a456-426614174308",
+          saveReport: true,
+          comment: true,
+          slackSummary: true
+        }));
+        return Response.json({ ok: true });
+      }
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toMatchObject({ status: "completed" });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      sealed_revision: null,
+      result_summary: null
+    });
+  });
+
+  it("queues the next revision when a refresh arrives immediately before sealed publication failure", async () => {
+    stubReadyWorkerEnv({ grant: {
+      saveReportsEnabled: true,
+      commentEnabled: true,
+      slackNotificationsEnabled: true
+    } });
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const baseFetch = mockWorkerFetch();
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://hooks.slack.com/services/T/B/C") {
+        await enqueueAnalysisJob(jobInput({
+          idempotencyKey: "same-head-refresh-before-failure",
+          deliveryId: "123e4567-e89b-12d3-a456-426614174309",
+          saveReport: true,
+          comment: true,
+          slackSummary: true
+        }));
+        return new Response("unavailable", { status: 503 });
+      }
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: true, comment: true, slackSummary: true }));
+
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+
+    expect(result).toMatchObject({ status: "failed_retryable" });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      sealed_revision: null,
+      error_code: null,
+      result_summary: null
     });
   });
 

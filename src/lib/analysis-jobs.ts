@@ -112,6 +112,8 @@ export interface FenceAnalysisJobRevisionInput {
   now?: Date;
 }
 
+export type SealAnalysisJobRevisionInput = FenceAnalysisJobRevisionInput;
+
 export interface FailAnalysisJobInput {
   id: string;
   claimGeneration?: string;
@@ -190,6 +192,8 @@ export interface AnalysisJobRow {
   canonical_key_hash?: string;
   desired_revision?: number;
   running_revision?: number | null;
+  sealed_revision?: number | null;
+  publication_sealed_at?: string | null;
   save_report: boolean;
   comment: boolean;
   slack_summary?: boolean;
@@ -333,6 +337,8 @@ const ANALYSIS_JOB_SELECT = [
   "canonical_key_hash",
   "desired_revision",
   "running_revision",
+  "sealed_revision",
+  "publication_sealed_at",
   "save_report",
   "comment",
   "slack_summary",
@@ -497,6 +503,7 @@ export async function fenceAnalysisJobRevision(
     job.running_revision === runningRevision
   );
   if (!row) return false;
+  if (row.sealed_revision === runningRevision) return true;
   if ((row.desired_revision ?? 1) === runningRevision) return true;
 
   Object.assign(row, {
@@ -510,10 +517,55 @@ export async function fenceAnalysisJobRevision(
     result_summary: null,
     claim_generation: null,
     running_revision: null,
+    sealed_revision: null,
+    publication_sealed_at: null,
     ...clearedProviderContinuation()
   });
   assertAnalysisJobIsPrivate(row);
   return false;
+}
+
+export async function sealAnalysisJobRevision(
+  input: SealAnalysisJobRevisionInput,
+  env = process.env
+): Promise<boolean> {
+  if (!analysisJobQueueEnabled(env)) {
+    throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  }
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  const runningRevision = safeRevision(input.runningRevision);
+  if (!safeAnalysisJobId(input.id) || !claimGeneration || !runningRevision) {
+    throw new AnalysisJobQueueError("Analysis job publication seal is invalid.");
+  }
+  const now = input.now ?? new Date();
+  const config = getAnalysisJobStoreConfig(env);
+  if (config) {
+    return sealSupabaseAnalysisJobRevision(config, {
+      id: input.id,
+      claimGeneration,
+      runningRevision,
+      now
+    });
+  }
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+  const row = analysisJobStore().find((job) =>
+    job.id === input.id && job.status === "processing" &&
+    job.claim_generation === claimGeneration && job.running_revision === runningRevision
+  );
+  if (!row) return false;
+  if (row.sealed_revision === runningRevision) return true;
+  if (row.sealed_revision != null || (row.desired_revision ?? 1) !== runningRevision) {
+    if (row.sealed_revision == null) requeueMemoryAnalysisJobRevision(row, now);
+    return false;
+  }
+  row.sealed_revision = runningRevision;
+  row.publication_sealed_at = now.toISOString();
+  row.updated_at = now.toISOString();
+  row.locked_at = now.toISOString();
+  assertAnalysisJobIsPrivate(row);
+  return true;
 }
 
 export async function claimNextAnalysisJob(
@@ -643,9 +695,14 @@ export async function completeAnalysisJob(
   if (!analysisJobQueueEnabled(env)) {
     throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
   }
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  if (input.claimGeneration && !claimGeneration) {
+    throw new AnalysisJobQueueError("Analysis job completion claim is invalid.");
+  }
 
   const config = getAnalysisJobStoreConfig(env);
   const now = input.now ?? new Date();
+  const resultSummary = input.resultSummary ? sanitizeAnalysisJobResultSummary(input.resultSummary) : null;
   const update = {
     status: "completed" as const,
     updated_at: now.toISOString(),
@@ -653,26 +710,43 @@ export async function completeAnalysisJob(
     locked_at: null,
     error_code: null,
     error_summary: null,
-    result_summary: input.resultSummary ? sanitizeAnalysisJobResultSummary(input.resultSummary) : null,
+    result_summary: resultSummary,
     claim_generation: null,
     running_revision: null,
+    sealed_revision: null,
+    publication_sealed_at: null,
     ...clearedProviderContinuation()
   };
 
   assertAnalysisJobIsPrivate(update);
 
   if (config) {
-    return Boolean(await patchSupabaseAnalysisJob(config, input.id, update, {
-      currentStatus: "processing",
-      currentClaimGeneration: input.claimGeneration
-    }));
+    if (!claimGeneration) throw new AnalysisJobQueueError("Analysis job completion claim is invalid.");
+    return completeSupabaseAnalysisJob(config, { ...input, claimGeneration }, resultSummary, now);
   }
 
   if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  return updateMemoryAnalysisJob(input.id, "processing", update, input.claimGeneration);
+  const row = analysisJobStore().find((job) =>
+    job.id === input.id && job.status === "processing" &&
+    (!claimGeneration || job.claim_generation === claimGeneration)
+  );
+  if (!row || !row.running_revision) return false;
+  const sealed = row.sealed_revision === row.running_revision;
+  if ((row.desired_revision ?? 1) !== row.running_revision) {
+    if (sealed) {
+      requeueMemoryAnalysisJobRevision(row, now);
+      return true;
+    }
+    requeueMemoryAnalysisJobRevision(row, now);
+    return false;
+  }
+  if (row.sealed_revision != null && !sealed) return false;
+  Object.assign(row, update);
+  assertAnalysisJobIsPrivate(row);
+  return true;
 }
 
 export async function fenceAnalysisJobSemanticRetryFinalization(
@@ -696,7 +770,10 @@ export async function fenceAnalysisJobSemanticRetryFinalization(
     return patchSupabaseAnalysisJob(config, input.id, analysisJobSemanticRetryFinalizationFenceUpdate(now), {
       currentStatus: "processing",
       currentUpdatedAt: row.updated_at,
-      currentClaimGeneration: claimGeneration
+      currentClaimGeneration: claimGeneration,
+      currentDesiredRevision: row.desired_revision,
+      currentRunningRevision: row.running_revision,
+      requireUnsealed: true
     });
   }
 
@@ -743,9 +820,15 @@ export async function markAnalysisJobProviderSubmission(
   };
   const config = getAnalysisJobStoreConfig(env);
   if (config) {
+    const row = await getSupabaseAnalysisJobById(config, input.id);
+    if (!row || !isUnsealedCurrentRevision(row, claimGeneration)) return null;
     return patchSupabaseAnalysisJob(config, input.id, update, {
       currentStatus: "processing",
-      currentClaimGeneration: claimGeneration
+      currentUpdatedAt: row.updated_at,
+      currentClaimGeneration: claimGeneration,
+      currentDesiredRevision: row.desired_revision,
+      currentRunningRevision: row.running_revision,
+      requireUnsealed: true
     });
   }
 
@@ -754,7 +837,7 @@ export async function markAnalysisJobProviderSubmission(
   }
 
   const row = analysisJobStore().find((job) =>
-    job.id === input.id && job.status === "processing" && job.claim_generation === claimGeneration
+    job.id === input.id && isUnsealedCurrentRevision(job, claimGeneration)
   );
   if (!row) return null;
   Object.assign(row, update);
@@ -775,11 +858,15 @@ export async function markAnalysisJobSemanticRetrySubmission(
   const config = getAnalysisJobStoreConfig(env);
   if (config) {
     const row = await getSupabaseAnalysisJobById(config, input.id);
-    if (!row || !canStartSemanticRetry(row, transition, input.claimGeneration)) return null;
+    if (!row || !isUnsealedCurrentRevision(row, transition.claim_generation) ||
+        !canStartSemanticRetry(row, transition, input.claimGeneration)) return null;
     return patchSupabaseAnalysisJob(config, input.id, semanticRetrySubmissionUpdate(transition, now), {
       currentStatus: "processing",
       currentUpdatedAt: row.updated_at,
-      currentClaimGeneration: transition.claim_generation
+      currentClaimGeneration: transition.claim_generation,
+      currentDesiredRevision: row.desired_revision,
+      currentRunningRevision: row.running_revision,
+      requireUnsealed: true
     });
   }
 
@@ -788,7 +875,8 @@ export async function markAnalysisJobSemanticRetrySubmission(
   }
 
   const row = analysisJobStore().find((job) => job.id === input.id);
-  if (!row || !canStartSemanticRetry(row, transition, input.claimGeneration)) return null;
+  if (!row || !isUnsealedCurrentRevision(row, transition.claim_generation) ||
+      !canStartSemanticRetry(row, transition, input.claimGeneration)) return null;
   Object.assign(row, semanticRetrySubmissionUpdate(transition, now));
   assertAnalysisJobIsPrivate(row);
   return { ...row };
@@ -808,7 +896,7 @@ export async function parkAnalysisJobForProvider(
 
   if (config) {
     const row = await getSupabaseAnalysisJobById(config, input.id);
-    if (!row || row.status !== "processing") return false;
+    if (!row || !isUnsealedCurrentRevision(row, input.claimGeneration)) return false;
     const update = {
       status: "queued" as const,
       attempts: Math.max(0, (row.attempts ?? 1) - 1),
@@ -821,6 +909,8 @@ export async function parkAnalysisJobForProvider(
       result_summary: null,
       claim_generation: null,
       running_revision: null,
+      sealed_revision: null,
+      publication_sealed_at: null,
       provider_response_id: continuation.provider_response_id,
       provider_status: continuation.provider_status,
       provider_poll_attempts: Math.min(100, Math.max(0, row.provider_poll_attempts ?? 0) + 1),
@@ -831,7 +921,10 @@ export async function parkAnalysisJobForProvider(
     return Boolean(await patchSupabaseAnalysisJob(config, input.id, update, {
       currentStatus: "processing",
       currentUpdatedAt: row.updated_at,
-      currentClaimGeneration: input.claimGeneration
+      currentClaimGeneration: input.claimGeneration,
+      currentDesiredRevision: row.desired_revision,
+      currentRunningRevision: row.running_revision,
+      requireUnsealed: true
     }));
   }
 
@@ -839,7 +932,9 @@ export async function parkAnalysisJobForProvider(
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  const row = analysisJobStore().find((job) => job.id === input.id && job.status === "processing");
+  const row = analysisJobStore().find((job) =>
+    job.id === input.id && isUnsealedCurrentRevision(job, input.claimGeneration)
+  );
   if (!row) return false;
   const update = {
     status: "queued" as const,
@@ -853,6 +948,8 @@ export async function parkAnalysisJobForProvider(
     result_summary: null,
     claim_generation: null,
     running_revision: null,
+    sealed_revision: null,
+    publication_sealed_at: null,
     provider_response_id: continuation.provider_response_id,
     provider_status: continuation.provider_status,
     provider_poll_attempts: Math.min(100, Math.max(0, row.provider_poll_attempts ?? 0) + 1),
@@ -869,6 +966,10 @@ export async function failAnalysisJob(
   if (!analysisJobQueueEnabled(env)) {
     throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
   }
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  if (input.claimGeneration && !claimGeneration) {
+    throw new AnalysisJobQueueError("Analysis job failure claim is invalid.");
+  }
 
   const config = getAnalysisJobStoreConfig(env);
   const now = input.now ?? new Date();
@@ -876,13 +977,8 @@ export async function failAnalysisJob(
   const maxAttempts = Math.max(1, Math.min(20, input.maxAttempts ?? DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS));
 
   if (config) {
-    const row = await getSupabaseAnalysisJobById(config, input.id);
-    if (!row || row.status !== "processing") return false;
-    const update = toAnalysisJobFailureUpdate(input, row.attempts, maxAttempts, now, retryAfterMs);
-    return Boolean(await patchSupabaseAnalysisJob(config, input.id, update, {
-      currentStatus: "processing",
-      currentClaimGeneration: input.claimGeneration
-    }));
+    if (!claimGeneration) throw new AnalysisJobQueueError("Analysis job failure claim is invalid.");
+    return failSupabaseAnalysisJob(config, { ...input, claimGeneration }, now, retryAfterMs, maxAttempts);
   }
 
   if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
@@ -890,10 +986,20 @@ export async function failAnalysisJob(
   }
 
   const row = analysisJobStore().find((job) => job.id === input.id);
-  if (!row || row.status !== "processing") return false;
+  if (!row || row.status !== "processing" || !row.running_revision ||
+      (claimGeneration && row.claim_generation !== claimGeneration)) return false;
+
+  const sealed = row.sealed_revision === row.running_revision;
+  if ((row.desired_revision ?? 1) !== row.running_revision) {
+    requeueMemoryAnalysisJobRevision(row, now);
+    return sealed;
+  }
+  if (row.sealed_revision != null && !sealed) return false;
 
   const update = toAnalysisJobFailureUpdate(input, row.attempts, maxAttempts, now, retryAfterMs);
-  return updateMemoryAnalysisJob(input.id, "processing", update, input.claimGeneration);
+  Object.assign(row, update);
+  assertAnalysisJobIsPrivate(row);
+  return true;
 }
 
 export async function listTenantAnalysisJobs(
@@ -1113,6 +1219,7 @@ export async function getAnalysisJobDeadLetterSummary(
 export function getAnalysisJobQueueStatus(env = process.env): AnalysisJobQueueStatus {
   const enabled = analysisJobQueueEnabled(env);
   const read = readAnalysisJobStoreEnv(env);
+  const canonicalTableConfigured = read.table === DEFAULT_ANALYSIS_JOBS_TABLE;
 
   if (!enabled) {
     return {
@@ -1125,7 +1232,7 @@ export function getAnalysisJobQueueStatus(env = process.env): AnalysisJobQueueSt
     };
   }
 
-  if (read.url && read.serviceRoleKey) {
+  if (read.url && read.serviceRoleKey && canonicalTableConfigured) {
     return {
       enabled: true,
       mode: "supabase",
@@ -1137,6 +1244,9 @@ export function getAnalysisJobQueueStatus(env = process.env): AnalysisJobQueueSt
   }
 
   const missingEnv: string[] = [];
+  if (!canonicalTableConfigured) {
+    missingEnv.push(`AGENTPROOF_ANALYSIS_JOBS_TABLE must be ${DEFAULT_ANALYSIS_JOBS_TABLE}`);
+  }
   if (read.url || read.serviceRoleKey) {
     if (!read.url) missingEnv.push("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL or SUPABASE_URL");
     if (!read.serviceRoleKey) {
@@ -1144,7 +1254,7 @@ export function getAnalysisJobQueueStatus(env = process.env): AnalysisJobQueueSt
     }
   }
 
-  if (truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+  if (canonicalTableConfigured && truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
     return {
       enabled: true,
       mode: "memory",
@@ -1244,6 +1354,8 @@ function toAnalysisJobRow(input: EnqueueAnalysisJobInput): AnalysisJobRow {
     result_summary: null,
     claim_generation: null,
     running_revision: null,
+    sealed_revision: null,
+    publication_sealed_at: null,
     ...clearedProviderContinuation()
   };
 }
@@ -1323,6 +1435,8 @@ function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow 
         locked_at: null,
         claim_generation: null,
         running_revision: null,
+        sealed_revision: null,
+        publication_sealed_at: null,
         ...clearedProviderContinuation()
       })
     });
@@ -1363,6 +1477,106 @@ async function fenceSupabaseAnalysisJobRevision(
   if (!row) return false;
   assertAnalysisJobIsPrivate(row);
   return true;
+}
+
+async function sealSupabaseAnalysisJobRevision(
+  config: AnalysisJobStoreConfig,
+  input: Required<Omit<SealAnalysisJobRevisionInput, "now">> & { now: Date }
+): Promise<boolean> {
+  const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_seal_analysis_job_revision`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      ...supabaseAnalysisJobHeaders(config),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      job_id: input.id,
+      claim_token: input.claimGeneration,
+      claim_revision: input.runningRevision,
+      seal_time: input.now.toISOString()
+    })
+  });
+  if (!response.ok) throw new AnalysisJobQueueError(`Analysis job store failed with HTTP ${response.status}.`);
+  const rows = await response.json().catch(() => []) as unknown;
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return false;
+  assertAnalysisJobIsPrivate(row);
+  return true;
+}
+
+async function completeSupabaseAnalysisJob(
+  config: AnalysisJobStoreConfig,
+  input: CompleteAnalysisJobInput,
+  resultSummary: AnalysisJobResultSummary | null,
+  now: Date
+): Promise<boolean> {
+  const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_complete_analysis_job`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { ...supabaseAnalysisJobHeaders(config), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_id: input.id,
+      claim_token: input.claimGeneration ?? null,
+      result_payload: resultSummary,
+      finish_time: now.toISOString()
+    })
+  });
+  if (!response.ok) throw new AnalysisJobQueueError(`Analysis job store failed with HTTP ${response.status}.`);
+  const rows = await response.json().catch(() => []) as unknown;
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return false;
+  assertAnalysisJobIsPrivate(row);
+  return true;
+}
+
+async function failSupabaseAnalysisJob(
+  config: AnalysisJobStoreConfig,
+  input: FailAnalysisJobInput,
+  now: Date,
+  retryAfterMs: number,
+  maxAttempts: number
+): Promise<boolean> {
+  const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_fail_analysis_job`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { ...supabaseAnalysisJobHeaders(config), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_id: input.id,
+      claim_token: input.claimGeneration ?? null,
+      retryable_failure: input.retryable,
+      failure_code: safeJobErrorCode(input.code),
+      failure_summary: safeJobErrorSummary(input.summary),
+      fail_time: now.toISOString(),
+      retry_after_ms: retryAfterMs,
+      maximum_attempts: maxAttempts
+    })
+  });
+  if (!response.ok) throw new AnalysisJobQueueError(`Analysis job store failed with HTTP ${response.status}.`);
+  const rows = await response.json().catch(() => []) as unknown;
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return false;
+  assertAnalysisJobIsPrivate(row);
+  return true;
+}
+
+function requeueMemoryAnalysisJobRevision(row: AnalysisJobRow, now: Date): void {
+  Object.assign(row, {
+    status: "queued" as const,
+    attempts: 0,
+    updated_at: now.toISOString(),
+    locked_at: null,
+    completed_at: null,
+    error_code: null,
+    error_summary: null,
+    result_summary: null,
+    claim_generation: null,
+    running_revision: null,
+    sealed_revision: null,
+    publication_sealed_at: null,
+    ...clearedProviderContinuation()
+  });
+  assertAnalysisJobIsPrivate(row);
 }
 
 async function listSupabaseTenantAnalysisJobs(
@@ -1959,6 +2173,9 @@ async function patchSupabaseAnalysisJob(
     currentStatus?: AnalysisJobStatus;
     currentUpdatedAt?: string;
     currentClaimGeneration?: string;
+    currentDesiredRevision?: number;
+    currentRunningRevision?: number | null;
+    requireUnsealed?: boolean;
     returnRepresentation?: boolean;
   } = {}
 ): Promise<AnalysisJobRow | null> {
@@ -1979,6 +2196,15 @@ async function patchSupabaseAnalysisJob(
 
   if (options.currentClaimGeneration) {
     params.append("claim_generation", `eq.${options.currentClaimGeneration}`);
+  }
+  if (options.currentDesiredRevision != null) {
+    params.append("desired_revision", `eq.${options.currentDesiredRevision}`);
+  }
+  if (options.currentRunningRevision != null) {
+    params.append("running_revision", `eq.${options.currentRunningRevision}`);
+  }
+  if (options.requireUnsealed) {
+    params.append("sealed_revision", "is.null");
   }
 
   const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
@@ -2027,10 +2253,14 @@ function toClaimedAnalysisJobUpdate(
   now: Date,
   providerWebhookIdHash?: string
 ): Partial<AnalysisJobRow> {
+  const desiredRevision = row.desired_revision ?? 1;
+  const recoverLatestUnsealedRevision = row.status === "processing" &&
+    row.sealed_revision == null && row.running_revision != null &&
+    row.running_revision !== desiredRevision;
   return {
     status: "processing",
     claim_generation: randomUUID(),
-    running_revision: row.desired_revision ?? 1,
+    running_revision: row.sealed_revision ?? desiredRevision,
     attempts: Math.max(0, Number(row.attempts) || 0) + 1,
     updated_at: now.toISOString(),
     locked_at: now.toISOString(),
@@ -2038,6 +2268,7 @@ function toClaimedAnalysisJobUpdate(
     error_code: null,
     error_summary: null,
     result_summary: null,
+    ...(recoverLatestUnsealedRevision ? clearedProviderContinuation() : {}),
     ...(providerWebhookIdHash ? {
       provider_webhook_id_hash: providerWebhookIdHash,
       provider_webhook_received_at: now.toISOString()
@@ -2087,6 +2318,8 @@ function toAnalysisJobFailureUpdate(
     result_summary: null,
     claim_generation: null,
     running_revision: null,
+    sealed_revision: null,
+    publication_sealed_at: null,
     ...(shouldRetry ? {} : clearedProviderContinuation())
   };
 
@@ -2523,6 +2756,9 @@ function isStaleSemanticRetrySubmissionJob(
 ): boolean {
   const priorExpiresAt = safeTimeMs(job.prior_provider_expires_at);
   return isSemanticRetrySubmissionUncertaintyState(job) &&
+    job.sealed_revision == null &&
+    job.running_revision != null &&
+    job.desired_revision === job.running_revision &&
     priorExpiresAt !== null &&
     priorExpiresAt > now.getTime() &&
     Boolean(job.locked_at) &&
@@ -2534,8 +2770,16 @@ function canFenceAnalysisJobSemanticRetryFinalization(
   claimGeneration: string
 ): job is AnalysisJobRow {
   if (!job) return false;
-  return job.claim_generation === claimGeneration &&
+  return isUnsealedCurrentRevision(job, claimGeneration) &&
     isSemanticRetryFinalizationState(job);
+}
+
+function isUnsealedCurrentRevision(job: AnalysisJobRow, claimGeneration: string): boolean {
+  return job.status === "processing" &&
+    job.claim_generation === claimGeneration &&
+    job.sealed_revision == null &&
+    job.running_revision != null &&
+    job.desired_revision === job.running_revision;
 }
 
 function analysisJobSemanticRetryFinalizationFenceUpdate(
@@ -2624,6 +2868,9 @@ function supabaseAnalysisJobHeaders(config: AnalysisJobStoreConfig): HeadersInit
 
 function getAnalysisJobStoreConfig(env = process.env): AnalysisJobStoreConfig | null {
   const status = getAnalysisJobQueueStatus(env);
+  if (status.table !== DEFAULT_ANALYSIS_JOBS_TABLE) {
+    throw new AnalysisJobQueueError("Analysis job canonical table configuration is invalid.");
+  }
   if (status.missingEnv.length > 0 && !status.configured) {
     throw new AnalysisJobQueueError("Analysis job Supabase env is incomplete.");
   }

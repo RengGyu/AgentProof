@@ -20,7 +20,8 @@ import {
   markAnalysisJobProviderSubmission,
   markAnalysisJobSemanticRetrySubmission,
   parkAnalysisJobForProvider,
-  purgeTenantAnalysisJobsForDeletion
+  purgeTenantAnalysisJobsForDeletion,
+  sealAnalysisJobRevision
 } from "./analysis-jobs";
 import {
   clearTenantRepositoryGrantsForTests,
@@ -62,6 +63,23 @@ describe("analysis job queue", () => {
       ]
     });
     await expect(enqueueAnalysisJob(jobInput())).rejects.toThrow("Analysis job Supabase env is incomplete");
+  });
+
+  it("fails closed when canonical RPC mode is configured with a non-canonical table", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+
+    expect(getAnalysisJobQueueStatus()).toMatchObject({
+      enabled: true,
+      configured: false,
+      durable: false,
+      table: "analysis_jobs_test",
+      missingEnv: ["AGENTPROOF_ANALYSIS_JOBS_TABLE must be agentproof_analysis_jobs"]
+    });
+    await expect(enqueueAnalysisJob(jobInput())).rejects.toThrow("canonical table");
   });
 
   it("enqueues bounded memory jobs without raw idempotency keys or evidence fields", async () => {
@@ -268,6 +286,164 @@ describe("analysis job queue", () => {
     expect(JSON.stringify({ url, body: init.body })).not.toContain("service-role-secret");
   });
 
+  it("uses the durable publication-seal RPC as the revision linearization point", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    const fetchMock = vi.fn(async () => Response.json([{ id: "sealed-job" }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const sealed = await sealAnalysisJobRevision({
+      id: "123e4567-e89b-42d3-a456-426614174000",
+      claimGeneration: "123e4567-e89b-42d3-a456-426614174001",
+      runningRevision: 3,
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+
+    expect(sealed).toBe(true);
+    expect(url).toBe("https://agentproof-test.supabase.co/rest/v1/rpc/agentproof_seal_analysis_job_revision");
+    expect(JSON.parse(String(init.body))).toEqual({
+      job_id: "123e4567-e89b-42d3-a456-426614174000",
+      claim_token: "123e4567-e89b-42d3-a456-426614174001",
+      claim_revision: 3,
+      seal_time: "2026-06-30T00:01:00.000Z"
+    });
+  });
+
+  it("does not let sealed completion consume a refresh ordered after publication", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
+    await sealAnalysisJobRevision({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      runningRevision: claim.job!.running_revision!,
+      now: new Date("2026-06-30T00:00:16Z")
+    });
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "refresh-after-seal-before-complete",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174306",
+      now: new Date("2026-06-30T00:00:17Z")
+    });
+
+    await expect(completeAnalysisJob({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      now: new Date("2026-06-30T00:00:18Z")
+    })).resolves.toBe(true);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      sealed_revision: null,
+      result_summary: null
+    });
+  });
+
+  it("does not let sealed failure consume a refresh ordered after publication", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
+    await sealAnalysisJobRevision({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      runningRevision: claim.job!.running_revision!,
+      now: new Date("2026-06-30T00:00:16Z")
+    });
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "refresh-after-seal-before-fail",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174307",
+      now: new Date("2026-06-30T00:00:17Z")
+    });
+
+    await expect(failAnalysisJob({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      retryable: true,
+      code: "temporary_failure",
+      summary: "Temporary publication failure.",
+      now: new Date("2026-06-30T00:00:18Z")
+    })).resolves.toBe(true);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      status: "queued",
+      desired_revision: 2,
+      running_revision: null,
+      sealed_revision: null,
+      error_code: null
+    });
+  });
+
+  it("recovers the latest unsealed revision without reusing an older provider continuation", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const { id } = await enqueueAnalysisJob(jobInput());
+    await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
+    const stored = getAnalysisJobsForTests()[0];
+    stored.provider_response_id = "resp_old_revision_123";
+    stored.provider_status = "in_progress";
+    stored.provider_submitted_at = "2026-06-30T00:00:15.000Z";
+    stored.provider_expires_at = "2026-06-30T00:09:00.000Z";
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "refresh-before-unsealed-recovery",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174308",
+      now: new Date("2026-06-30T00:00:16Z")
+    });
+
+    const recovered = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:03:00Z"),
+      leaseMs: 60_000
+    });
+
+    expect(recovered.job).toMatchObject({
+      id,
+      status: "processing",
+      desired_revision: 2,
+      running_revision: 2,
+      sealed_revision: null,
+      provider_response_id: null,
+      provider_status: null
+    });
+  });
+
+  it("recovers a sealed publication on its sealed revision even when a later revision is desired", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const { id } = await enqueueAnalysisJob(jobInput());
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
+    await sealAnalysisJobRevision({
+      id,
+      claimGeneration: claim.job!.claim_generation!,
+      runningRevision: claim.job!.running_revision!,
+      now: new Date("2026-06-30T00:00:16Z")
+    });
+    await enqueueAnalysisJob({
+      ...jobInput(),
+      idempotencyKey: "refresh-after-seal-before-recovery",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174309",
+      now: new Date("2026-06-30T00:00:17Z")
+    });
+
+    const recovered = await claimNextAnalysisJob({
+      now: new Date("2026-06-30T00:03:00Z"),
+      leaseMs: 60_000
+    });
+
+    expect(recovered.job).toMatchObject({
+      id,
+      status: "processing",
+      desired_revision: 2,
+      running_revision: 1,
+      sealed_revision: 1,
+      publication_sealed_at: "2026-06-30T00:00:16.000Z"
+    });
+  });
+
   it("rechecks tenant repository grants before direct enqueue when tenant control is enabled", async () => {
     const env = {
       AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "true",
@@ -327,7 +503,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const payload = JSON.parse(String(init?.body));
       return Response.json([payload.job_payload], { status: 200 });
@@ -363,7 +539,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = decodeURIComponent(String(input));
       const count = url.includes("status=eq.queued")
@@ -404,7 +580,7 @@ describe("analysis job queue", () => {
       expect(decodeURIComponent(String(url))).not.toContain("delivery_id");
     }
     expect(serialized).not.toContain("tenant_a");
-    expect(serialized).not.toContain("analysis_jobs_test");
+    expect(serialized).not.toContain("agentproof_analysis_jobs");
     expect(serialized).not.toContain("supabase");
     expect(serialized).not.toContain("service-role-secret");
   });
@@ -439,6 +615,7 @@ describe("analysis job queue", () => {
     const secondClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:30Z") });
     const completed = await completeAnalysisJob({
       id,
+      claimGeneration: claim.job!.claim_generation!,
       now: new Date("2026-06-30T00:02:00Z"),
       resultSummary: {
         status: "completed",
@@ -662,7 +839,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const queuedRow = {
       id: "job_123",
       status: "queued",
@@ -1043,7 +1220,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const processingRow = {
       ...jobRow({ id: "job_retry_backoff_123", status: "processing", attempts: 2 }),
       claim_generation: "123e4567-e89b-42d3-a456-426614174000",
@@ -1056,12 +1233,7 @@ describe("analysis job queue", () => {
       provider_submitted_at: "2026-06-30T00:01:20.000Z",
       provider_expires_at: "2026-06-30T00:09:00.000Z"
     };
-    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      if (init?.method === "PATCH") {
-        return Response.json([{ ...processingRow, ...JSON.parse(String(init.body)) }]);
-      }
-      return Response.json([processingRow]);
-    });
+    const fetchMock = vi.fn(async () => Response.json([processingRow]));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await failAnalysisJob({
@@ -1073,24 +1245,26 @@ describe("analysis job queue", () => {
       now: new Date("2026-06-30T00:01:36Z"),
       maxAttempts: 20
     });
-    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
-    const patchBody = JSON.parse(String(patchCall?.[1]?.body));
+    const [rpcUrl, rpcInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const rpcBody = JSON.parse(String(rpcInit.body));
 
     expect(result).toBe(true);
-    expect(patchBody).toMatchObject({
-      status: "failed_retryable",
-      run_after: "2026-06-30T00:03:36.000Z"
+    expect(rpcUrl).toContain("/rpc/agentproof_fail_analysis_job");
+    expect(rpcBody).toMatchObject({
+      retryable_failure: true,
+      retry_after_ms: 120000,
+      maximum_attempts: 20
     });
-    expect(patchBody).not.toHaveProperty("semantic_retry_attempts");
-    expect(patchBody).not.toHaveProperty("prior_provider_response_id");
-    expect(patchBody).not.toHaveProperty("provider_response_id");
+    expect(rpcBody).not.toHaveProperty("semantic_retry_attempts");
+    expect(rpcBody).not.toHaveProperty("prior_provider_response_id");
+    expect(rpcBody).not.toHaveProperty("provider_response_id");
   });
 
   it("uses claim and updated-at fencing for the Supabase semantic retry transition", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const processingRow = {
       ...jobRow({ id: "job_semantic_retry_123", status: "processing", attempts: 1 }),
       status: "processing",
@@ -1141,7 +1315,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const processingRow = {
       ...jobRow({ id: "job_semantic_finalization_123", status: "processing", attempts: 2 }),
       updated_at: "2026-06-30T00:01:20.000Z",
@@ -1199,7 +1373,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const processingRow = {
       ...jobRow({ id: "job_semantic_finalization_loser_123", status: "processing", attempts: 2 }),
       updated_at: "2026-06-30T00:01:20.000Z",
@@ -1233,7 +1407,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const uncertainRow = {
       ...jobRow({ id: "job_retry_reclaim_123", status: "processing", attempts: 1 }),
       updated_at: "2026-06-30T00:01:20.000Z",
@@ -1285,7 +1459,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const uncertainRow = {
       ...jobRow({ id: "job_retry_reclaim_loser_123", status: "processing", attempts: 1 }),
       updated_at: "2026-06-30T00:01:20.000Z",
@@ -1456,14 +1630,35 @@ describe("analysis job queue", () => {
     expect(migration).toContain("canonical_key_hash text");
     expect(migration).toContain("desired_revision bigint");
     expect(migration).toContain("running_revision bigint");
+    expect(migration).toContain("sealed_revision bigint");
     expect(migration).toContain("create unique index agentproof_analysis_jobs_canonical_key_idx");
     expect(migration).toContain("function public.agentproof_enqueue_analysis_job(job_payload jsonb)");
     expect(migration).toContain("function public.agentproof_fence_analysis_job_revision(");
+    expect(migration).toContain("function public.agentproof_seal_analysis_job_revision(");
+    expect(migration).toContain("function public.agentproof_complete_analysis_job(");
+    expect(migration).toContain("function public.agentproof_fail_analysis_job(");
     expect(migration).toContain("from vault.decrypted_secrets");
     expect(migration).toContain("cron.schedule(");
     expect(migration).toContain("'* * * * *'");
     expect(migration).toContain("net.http_get(");
+    expect(migration).not.toContain("delete from public.agentproof_analysis_jobs");
+    expect(migration).toContain("'legacy'");
+    expect(migration).toContain("ranked.position > 1");
     expect(migration).not.toMatch(/Bearer\s+[A-Za-z0-9_-]{20,}/);
+  });
+
+  it("preserves duplicate upgrade rows while assigning only non-conflicting legacy identities", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/202608110001_analysis_jobs_canonical_recovery.sql", import.meta.url),
+      "utf8"
+    );
+    const legacyRewrite = migration.match(/with ranked as \([\s\S]*?where jobs\.id = ranked\.id and ranked\.position > 1;/)?.[0];
+    const rewrittenColumns = legacyRewrite?.match(/set ([\s\S]*?)from ranked/)?.[1] ?? "";
+
+    expect(legacyRewrite).toBeDefined();
+    expect(rewrittenColumns).toContain("canonical_key_hash =");
+    expect(rewrittenColumns).not.toMatch(/\b(?:status|result_summary|claim_generation|provider_[a-z_]+)\s*=/);
+    expect(migration).not.toMatch(/delete\s+from\s+public\.agentproof_analysis_jobs/i);
   });
 
   it("lists tenant analysis jobs as summary-only projections", async () => {
@@ -1471,9 +1666,10 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
 
     const tenantA = await enqueueAnalysisJob(jobInput());
-    await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
     await completeAnalysisJob({
       id: tenantA.id,
+      claimGeneration: claim.job!.claim_generation!,
       now: new Date("2026-06-30T00:02:00Z"),
       resultSummary: {
         status: "completed",
@@ -1705,7 +1901,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (init?.method === "HEAD") {
         return new Response(null, {
@@ -1738,21 +1934,21 @@ describe("analysis job queue", () => {
       configured: true
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(countUrl).toBe("https://agentproof-test.supabase.co/rest/v1/analysis_jobs_test?tenant_id=eq.tenant_a&select=id");
+    expect(countUrl).toBe("https://agentproof-test.supabase.co/rest/v1/agentproof_analysis_jobs?tenant_id=eq.tenant_a&select=id");
     expect(countInit.method).toBe("HEAD");
     expect(countInit.body).toBeUndefined();
     expect(countInit.headers).toMatchObject({
       Prefer: "count=exact",
       Range: "0-0"
     });
-    expect(deleteUrl).toBe("https://agentproof-test.supabase.co/rest/v1/analysis_jobs_test?tenant_id=eq.tenant_a");
+    expect(deleteUrl).toBe("https://agentproof-test.supabase.co/rest/v1/agentproof_analysis_jobs?tenant_id=eq.tenant_a");
     expect(deleteInit.method).toBe("DELETE");
     expect(deleteInit.body).toBeUndefined();
     expect(deleteInit.headers).toMatchObject({
       Prefer: "return=minimal"
     });
     expect(serializedResult).not.toContain("tenant_a");
-    expect(serializedResult).not.toContain("analysis_jobs_test");
+    expect(serializedResult).not.toContain("agentproof_analysis_jobs");
     expect(serializedResult).not.toContain("service-role-secret");
   });
 
@@ -1912,7 +2108,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const fetchMock = vi.fn(async () => Response.json([
       { error_code: "grant_denied", updated_at: "2026-06-30T00:00:00.000Z" },
       { error_code: "github_fetch_failed", updated_at: "2026-06-30T00:01:00.000Z" },
@@ -1946,7 +2142,7 @@ describe("analysis job queue", () => {
     expect(url).not.toContain("pull_request_url");
     expect(init.method).toBe("GET");
     expect(serialized).not.toContain("service-role-secret");
-    expect(serialized).not.toContain("analysis_jobs_test");
+    expect(serialized).not.toContain("agentproof_analysis_jobs");
   });
 
   it("reclaims stale processing memory jobs only after the lease expires", async () => {
@@ -1973,9 +2169,10 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
 
     const { id } = await enqueueAnalysisJob(jobInput());
-    await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    const firstClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
     const retryable = await failAnalysisJob({
       id,
+      claimGeneration: firstClaim.job!.claim_generation!,
       retryable: true,
       code: "github_fetch_failed",
       summary: "GET https://api.github.com/repos/RengGyu/AgentProof/pulls/7?token=github_pat_abcdefghijklmnopqrstuvwxyz1234567890 failed with Authorization: Bearer sk-secretsecret",
@@ -2000,9 +2197,10 @@ describe("analysis job queue", () => {
     expect(serializedRetryable).not.toContain("?token=");
     expect(serializedRetryable).not.toContain("Authorization");
 
-    await claimNextAnalysisJob({ now: new Date("2026-06-30T00:04:01Z") });
+    const secondClaim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:04:01Z") });
     const terminal = await failAnalysisJob({
       id,
+      claimGeneration: secondClaim.job!.claim_generation!,
       retryable: true,
       code: "github_fetch_failed",
       summary: "Still unavailable",
@@ -2024,7 +2222,7 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     const queuedRow = jobRow({ id: "job_1", status: "queued", attempts: 0 });
     const claimedRow = {
       ...queuedRow,
@@ -2079,8 +2277,11 @@ describe("analysis job queue", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
-    const processingRow = jobRow({ id: "job_2", status: "processing", attempts: 5 });
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
+    const processingRow = {
+      ...jobRow({ id: "job_2", status: "processing", attempts: 5 }),
+      claim_generation: "123e4567-e89b-42d3-a456-426614174000"
+    };
     const failedRow = {
       ...processingRow,
       status: "failed_terminal",
@@ -2089,36 +2290,29 @@ describe("analysis job queue", () => {
       error_code: "grant_denied",
       error_summary: "Grant denied for https://api.github.com/repos/RengGyu/AgentProof"
     };
-    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const href = String(url);
-      if (init?.method === "GET" && href.includes("id=eq.job_2")) {
-        return Response.json([processingRow]);
-      }
-      if (init?.method === "PATCH" && href.includes("id=eq.job_2") && href.includes("status=eq.processing")) {
-        return Response.json([failedRow]);
-      }
-      return Response.json([]);
-    });
+    const fetchMock = vi.fn(async () => Response.json([failedRow]));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await failAnalysisJob({
       id: "job_2",
+      claimGeneration: processingRow.claim_generation,
       retryable: true,
       code: "grant_denied",
       summary: "Grant denied for https://api.github.com/repos/RengGyu/AgentProof?access_token=github_pat_abcdefghijklmnopqrstuvwxyz1234567890",
       now: new Date("2026-06-30T00:02:00Z"),
       maxAttempts: 5
     });
-    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
-    const patchBody = JSON.parse(String(patchCall?.[1]?.body));
-    const serializedBody = JSON.stringify(patchBody);
+    const [rpcUrl, rpcInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const rpcBody = JSON.parse(String(rpcInit.body));
+    const serializedBody = JSON.stringify(rpcBody);
 
     expect(result).toBe(true);
-    expect(patchBody).toMatchObject({
-      status: "failed_terminal",
-      run_after: "2026-06-30T00:02:00.000Z",
-      locked_at: null,
-      error_code: "grant_denied"
+    expect(rpcUrl).toContain("/rpc/agentproof_fail_analysis_job");
+    expect(rpcBody).toMatchObject({
+      retryable_failure: true,
+      failure_code: "grant_denied",
+      fail_time: "2026-06-30T00:02:00.000Z",
+      maximum_attempts: 5
     });
     expect(serializedBody).not.toContain("github_pat_");
     expect(serializedBody).not.toContain("access_token=");
@@ -2165,6 +2359,11 @@ function jobRow(overrides: Partial<ReturnType<typeof jobInput>> & {
     pull_request_number: input.pullRequestNumber,
     pull_request_url: input.pullRequestUrl,
     head_sha: input.headSha,
+    canonical_key_hash: "e".repeat(64),
+    desired_revision: 1,
+    running_revision: overrides.status === "processing" ? 1 : null,
+    sealed_revision: null,
+    publication_sealed_at: null,
     save_report: input.saveReport,
     comment: input.comment,
     attempts: overrides.attempts,

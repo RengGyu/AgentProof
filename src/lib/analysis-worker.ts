@@ -9,6 +9,7 @@ import {
   markAnalysisJobProviderSubmission,
   markAnalysisJobSemanticRetrySubmission,
   parkAnalysisJobForProvider,
+  sealAnalysisJobRevision,
   type AnalysisJobResultSummary,
   type AnalysisJobClaimOptions,
   type AnalysisJobRow
@@ -459,7 +460,7 @@ async function runPreflightedAnalysisJob(
     ) {
       const finalizationClaim = await fenceAnalysisJobSemanticRetryFinalization({
         id: job.id,
-        claimGeneration: job.claim_generation ?? "",
+        claimGeneration: job.claim_generation ?? undefined,
         now: options.now
       }, env);
       if (!finalizationClaim) throw new AnalysisWorkerLeaseLostError();
@@ -498,11 +499,10 @@ async function runPreflightedAnalysisJob(
       );
     }
 
-    await assertCurrentAnalysisJobRevision(job, env, options.now);
     const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, sideEffects, env);
+    await sealCurrentAnalysisJobRevision(job, env, options.now);
     let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
     if (sideEffectsBeforeSave.saveReport) {
-      await assertCurrentAnalysisJobRevision(job, env, options.now);
       await assertWorkerTenantDeletionNotActive(job, env);
       saved = await createAutomationSavedReport(report, {
         requestUrl: options.requestUrl,
@@ -537,7 +537,6 @@ async function runPreflightedAnalysisJob(
     };
     let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
     if (completedSideEffects.comment) {
-      await assertCurrentAnalysisJobRevision(job, env, options.now);
       await assertWorkerTenantDeletionNotActive(job, env);
       comment = await postGitHubAppMarkerComment({
         repositoryFullName: job.repository_full_name,
@@ -547,7 +546,6 @@ async function runPreflightedAnalysisJob(
     }
     let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
     if (completedSideEffects.slackSummary) {
-      await assertCurrentAnalysisJobRevision(job, env, options.now);
       await assertWorkerTenantDeletionNotActive(job, env);
       slack = await sendSlackReportSummary(report, {}, env);
     }
@@ -606,7 +604,7 @@ async function runPreflightedAnalysisJob(
         sideEffects
       };
     }
-    await failAnalysisJob({
+    const failed = await failAnalysisJob({
       id: job.id,
       claimGeneration: job.claim_generation ?? undefined,
       retryable: failure.retryable,
@@ -614,6 +612,14 @@ async function runPreflightedAnalysisJob(
       summary: failure.summary,
       now: options.now
     }, env);
+    if (!failed) {
+      return {
+        status: "failed_retryable",
+        job,
+        reason: "analysis_job_claim_lost",
+        sideEffects
+      };
+    }
     await recordWorkerAudit("github_app_analysis_failed", "failed", job, {
       statusCode: failure.retryable ? 503 : 422,
       code: failure.code
@@ -1008,7 +1014,7 @@ async function parkSemanticResponse(
   try {
     parked = await parkAnalysisJobForProvider({
       id: job.id,
-      claimGeneration: job.claim_generation ?? "",
+      claimGeneration: job.claim_generation ?? undefined,
       responseId: result.responseId,
       providerStatus: result.providerStatus,
       submittedAt,
@@ -1023,7 +1029,17 @@ async function parkSemanticResponse(
       "OpenAI background submission could not be reconciled safely."
     );
   }
-  if (!parked) throw new AnalysisWorkerLeaseLostError();
+  if (!parked) {
+    if (job.claim_generation && job.running_revision) {
+      await fenceAnalysisJobRevision({
+        id: job.id,
+        claimGeneration: job.claim_generation,
+        runningRevision: job.running_revision,
+        now
+      }, env).catch(() => false);
+    }
+    throw new AnalysisWorkerLeaseLostError();
+  }
 }
 
 function includedSemanticReport(
@@ -1118,14 +1134,14 @@ function isSystemicRetryableFailure(reason: string | undefined): boolean {
     reason === "github_app_durable_audit_required";
 }
 
-async function assertCurrentAnalysisJobRevision(
+async function sealCurrentAnalysisJobRevision(
   job: AnalysisJobRow,
   env: NodeJS.ProcessEnv,
   now?: Date
 ): Promise<void> {
   const runningRevision = job.running_revision;
   if (!job.claim_generation || !runningRevision) throw new AnalysisWorkerLeaseLostError();
-  const current = await fenceAnalysisJobRevision({
+  const current = await sealAnalysisJobRevision({
     id: job.id,
     claimGeneration: job.claim_generation,
     runningRevision,

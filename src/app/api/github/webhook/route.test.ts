@@ -923,7 +923,7 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
     vi.stubEnv("GITHUB_APP_ID", "123");
@@ -1027,7 +1027,7 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
     vi.stubEnv("AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED", "true");
@@ -1158,7 +1158,7 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://jobs.supabase.co");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "jobs-service-role-secret");
-    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "analysis_jobs_test");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_URL", "https://webhooks.supabase.co");
     vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY", "webhook-service-role-secret");
     vi.stubEnv("AGENTPROOF_GITHUB_WEBHOOK_DELIVERIES_TABLE", "deliveries_test");
