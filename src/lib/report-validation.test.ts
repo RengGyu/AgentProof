@@ -246,7 +246,8 @@ describe("validateVerificationReport", () => {
       taskText: "Acceptance criteria: do not change implementation code.",
       changedFiles: [{ path: "docs/retry.md", status: "modified", patch: "+ Retry guide" }],
       checks: [],
-      logs: []
+      logs: [],
+      sourceProvenance: githubInventoryProvenance()
     });
 
     expect(report.requirements[0]?.status).toBe("met");
@@ -261,6 +262,157 @@ describe("validateVerificationReport", () => {
     const legacyPassing = generateVerificationReport(demoScenarios.clean);
     for (const requirement of legacyPassing.requirements) delete requirement.proofAxes;
     expect(validateVerificationReport(legacyPassing, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects invented, incomplete, incompatible, or proof-node-divergent axes", () => {
+    const invented = generateVerificationReport(demoScenarios["missing-tests"]);
+    const target = invented.requirements[0]!;
+    target.status = "met";
+    target.gaps = [];
+    target.proofAxes = [{
+      subject: "documentation",
+      polarity: "present",
+      state: "satisfied",
+      evidenceRefs: [],
+      collectionBasis: "matching_artifact_evidence"
+    }];
+    invented.proofGraph.nodes.find((node) => node.requirementId === target.requirementId)!.status = "met";
+    const inventedResult = validateVerificationReport(invented, { mode: "full" });
+    expect(inventedResult.valid).toBe(false);
+    expect(inventedResult.errors.join("\n")).toContain("required proof axis set");
+
+    const incomplete = generateVerificationReport(demoScenarios.clean);
+    const incompleteRequirement = incomplete.requirements.find((item) =>
+      item.proofAxes?.some((axis) => axis.subject === "execution")
+    )!;
+    incompleteRequirement.proofAxes = incompleteRequirement.proofAxes!.filter((axis) => axis.subject !== "execution");
+    const incompleteResult = validateVerificationReport(incomplete, { mode: "full" });
+    expect(incompleteResult.valid).toBe(false);
+    expect(incompleteResult.errors.join("\n")).toContain("required proof axis set");
+
+    const unsupported = generateVerificationReport(demoScenarios.clean);
+    const unsupportedAxis = unsupported.requirements[0]!.proofAxes!.find((axis) =>
+      axis.subject === "implementation" && axis.polarity === "present"
+    )!;
+    unsupportedAxis.collectionBasis = "passing_execution";
+    const unsupportedResult = validateVerificationReport(unsupported, { mode: "full" });
+    expect(unsupportedResult.valid).toBe(false);
+    expect(unsupportedResult.errors.join("\n")).toContain("incompatible evidence or collection basis");
+
+    const empty = generateVerificationReport(demoScenarios.clean);
+    const emptyAxis = empty.requirements[0]!.proofAxes!.find((axis) =>
+      axis.subject === "implementation" && axis.polarity === "present"
+    )!;
+    emptyAxis.evidenceRefs = [];
+    const emptyResult = validateVerificationReport(empty, { mode: "full" });
+    expect(emptyResult.valid).toBe(false);
+    expect(emptyResult.errors.join("\n")).toContain("satisfied present axis must cite evidence");
+
+    const incompatible = generateVerificationReport(demoScenarios.clean);
+    const requirement = incompatible.requirements[0]!;
+    const implementationAxis = requirement.proofAxes!.find((axis) => axis.subject === "implementation" && axis.polarity === "present")!;
+    implementationAxis.evidenceRefs = [incompatible.evidenceIndex.find((item) => item.kind === "test")!.id];
+    const incompatibleResult = validateVerificationReport(incompatible, { mode: "full" });
+    expect(incompatibleResult.valid).toBe(false);
+    expect(incompatibleResult.errors.join("\n")).toContain("incompatible evidence");
+
+    const nodeMismatch = generateVerificationReport(demoScenarios.clean);
+    nodeMismatch.proofGraph.nodes[0]!.status = "partial";
+    const mismatchResult = validateVerificationReport(nodeMismatch, { mode: "full" });
+    expect(mismatchResult.valid).toBe(false);
+    expect(mismatchResult.errors.join("\n")).toContain("must match proofGraph node status");
+
+    const unrelatedExecution = generateVerificationReport(demoScenarios.clean);
+    const executionRequirement = unrelatedExecution.requirements.find((item) =>
+      item.proofAxes?.some((axis) => axis.subject === "execution")
+    )!;
+    const executionAxis = executionRequirement.proofAxes!.find((axis) => axis.subject === "execution")!;
+    const executionNode = unrelatedExecution.proofGraph.nodes.find((node) =>
+      node.requirementId === executionRequirement.requirementId
+    )!;
+    unrelatedExecution.evidenceIndex.push({
+      id: "ev_unrelated_global_execution",
+      kind: "check",
+      label: "Payments service tests",
+      summary: "Status: passed. Payments service tests completed successfully.",
+      locator: "ci://payments",
+      confidence: 0.99
+    });
+    executionAxis.evidenceRefs = ["ev_unrelated_global_execution"];
+    executionNode.executionEvidenceRefs = ["ev_unrelated_global_execution"];
+    const unrelatedResult = validateVerificationReport(unrelatedExecution, { mode: "full" });
+    expect(unrelatedResult.valid).toBe(false);
+    expect(unrelatedResult.errors.join("\n")).toContain("incompatible evidence");
+  });
+
+  it("rejects a satisfied absence axis without matching authoritative GitHub inventory provenance", () => {
+    const report = generateVerificationReport({
+      title: "Keep implementation unchanged",
+      description: "Changes documentation only.",
+      taskText: "Acceptance criteria: do not change implementation code.",
+      changedFiles: [{ path: "docs/retry.md", status: "modified", patch: "+ Retry guide" }],
+      checks: [],
+      logs: []
+    });
+    const requirement = report.requirements[0]!;
+    const axis = requirement.proofAxes![0]!;
+    requirement.status = "met";
+    requirement.gaps = [];
+    axis.state = "satisfied";
+    axis.collectionBasis = "complete_changed_file_inventory";
+    report.proofGraph.nodes[0]!.status = "met";
+
+    const result = validateVerificationReport(report, { mode: "full" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("head-anchored authoritative GitHub inventory");
+  });
+
+  it.each([
+    {
+      name: "pasted provenance",
+      mutate: (report: ReturnType<typeof generateVerificationReport>) => {
+        report.source.provenance = {
+          ...githubInventoryProvenance(),
+          origin: "pasted_evidence",
+          headSha: undefined,
+          baseSha: undefined,
+          inputFingerprint: { ...githubInventoryProvenance().inputFingerprint, coverage: "pasted_metadata" }
+        };
+      }
+    },
+    {
+      name: "wrong inventory head",
+      mutate: (report: ReturnType<typeof generateVerificationReport>) => {
+        report.source.provenance!.changedFileInventory!.headSha = "d".repeat(40);
+      }
+    },
+    {
+      name: "capped inventory",
+      mutate: (report: ReturnType<typeof generateVerificationReport>) => {
+        report.limitations.push("GitHub changed-file evidence was capped at 120 files.");
+      }
+    },
+    {
+      name: "unavailable inventory",
+      mutate: (report: ReturnType<typeof generateVerificationReport>) => {
+        report.limitations.push("GitHub changed-file evidence unavailable: request timed out or network failed.");
+      }
+    }
+  ])("rejects a forged satisfied absence axis with $name", ({ mutate }) => {
+    const report = generateVerificationReport({
+      title: "Keep implementation unchanged",
+      description: "Changes documentation only.",
+      taskText: "Acceptance criteria: do not change implementation code.",
+      changedFiles: [{ path: "docs/retry.md", status: "modified", patch: "+ Retry guide" }],
+      checks: [],
+      logs: [],
+      sourceProvenance: githubInventoryProvenance()
+    });
+    mutate(report);
+
+    const result = validateVerificationReport(report, { mode: "full" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("head-anchored authoritative GitHub inventory");
   });
 
   it("rejects malformed axes and disagreement between axes and requirement status", () => {
@@ -443,3 +595,15 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("evidenceIndex[0] must be an object");
   });
 });
+
+function githubInventoryProvenance(): NonNullable<ReturnType<typeof generateVerificationReport>["source"]["provenance"]> {
+  return {
+    version: 1,
+    origin: "github_snapshot",
+    headSha: "a".repeat(40),
+    baseSha: "b".repeat(40),
+    evidenceCapturedAt: "2026-08-11T00:00:00.000Z",
+    changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) },
+    inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+  };
+}

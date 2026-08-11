@@ -32,3 +32,14 @@ export function requirementProofExpectations(text: string): RequirementProofExpe
     execution: implementation || ci || targetedTest
   };
 }
+
+/** Adds deterministic risk-triggered targeted proof used by proof-axis construction and validation. */
+export function requirementProofAxisExpectations(text: string): RequirementProofExpectations {
+  const expectations = requirementProofExpectations(text);
+  const targetedTest = expectations.targetedTest || /\b(?:crash|segfault|data loss|mutat(?:e|ion)|security|auth|permission|billing|payment)\b|(?:보안|권한|결제|데이터 손실)/i.test(text);
+  return {
+    ...expectations,
+    targetedTest,
+    execution: expectations.execution || targetedTest
+  };
+}

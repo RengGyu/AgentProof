@@ -87,6 +87,12 @@ export interface SourceProvenance {
   origin: "github_snapshot" | "pasted_evidence" | "demo";
   headSha?: string;
   baseSha?: string;
+  /** Deterministic inventory authority for absence proof. Optional for v1 compatibility. */
+  changedFileInventory?: {
+    version: 1;
+    completeness: "complete" | "incomplete";
+    headSha?: string;
+  };
   evidenceCapturedAt: string;
   inputFingerprint: {
     version: 1;

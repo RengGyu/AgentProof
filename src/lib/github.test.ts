@@ -126,6 +126,8 @@ describe("buildPullRequestInput", () => {
   });
 
   it("does not send an Authorization header for public PR fetches without a token", async () => {
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -134,16 +136,16 @@ describe("buildPullRequestInput", () => {
           body: "Adds validation.",
           url: "https://api.github.com/repos/acme/repo/pulls/12",
           user: { login: "ai-agent" },
-          base: { ref: "main", sha: "def456" },
-          head: { ref: "agent/validation", sha: "abc123" }
+          base: { ref: "main", sha: baseSha },
+          head: { ref: "agent/validation", sha: headSha }
         })
       )
       .mockResolvedValueOnce(Response.json([]))
       .mockResolvedValueOnce(Response.json({ total_count: 0, check_runs: [] }))
       .mockResolvedValueOnce(Response.json({ statuses: [] }))
       .mockResolvedValue(Response.json({
-        base: { sha: "def456" },
-        head: { sha: "abc123" }
+        base: { sha: baseSha },
+        head: { sha: headSha }
       }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -155,6 +157,11 @@ describe("buildPullRequestInput", () => {
 
     expect(input.title).toBe("Example PR");
     expect(firstFetchOptions?.headers?.Authorization).toBeUndefined();
+    expect(input.sourceProvenance?.changedFileInventory).toEqual({
+      version: 1,
+      completeness: "complete",
+      headSha
+    });
   });
 
   it.each([
@@ -849,6 +856,7 @@ describe("buildPullRequestInput", () => {
     expect(input.changedFiles.at(100)?.path).toBe("src/generated/file-101.ts");
     expect(input.changedFiles.at(119)?.path).toBe("src/generated/file-120.ts");
     expect(input.limitations?.join(" ")).toContain("GitHub changed-file evidence was capped at 120 files.");
+    expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe("incomplete");
   });
 
   it("keeps legacy commit statuses when execution check-run evidence is available", async () => {
@@ -2458,6 +2466,7 @@ describe("buildPullRequestInput", () => {
     expect(input.title).toBe("Partial PR");
     expect(input.changedFiles).toHaveLength(0);
     expect(input.limitations?.join(" ")).toContain("changed-file evidence unavailable");
+    expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe("incomplete");
     expect(JSON.stringify(input)).not.toContain("github_pat_1234567890abcdef1234567890");
   });
 });

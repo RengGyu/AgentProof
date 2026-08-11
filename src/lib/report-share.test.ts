@@ -147,6 +147,11 @@ describe("report share", () => {
       version: 1,
       origin: "github_snapshot",
       headSha: "a".repeat(40),
+      changedFileInventory: {
+        version: 1,
+        completeness: "complete",
+        headSha: "a".repeat(40)
+      },
       evidenceCapturedAt: "2026-07-12T00:00:00.000Z",
       inputFingerprint: {
         version: 1,
@@ -164,6 +169,7 @@ describe("report share", () => {
       reasons: ["Changed file is unrelated to the declared requirement."]
     });
     expect(shared.source.provenance).toEqual(report.source.provenance);
+    expect(Object.hasOwn(sanitizeReportForShare(report).source.provenance!, "baseSha")).toBe(false);
     expect(shared.authenticity?.trust).toBe("portable_unverified");
     expect(shared.limitations.join("\n")).toContain("unverified");
   });

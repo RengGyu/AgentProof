@@ -520,6 +520,7 @@ export async function fetchGitHubPullRequestAnchor(
 }
 
 function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseSha }: { origin: SourceProvenance["origin"]; input: PullRequestInput; capturedAt: string; headSha?: string; baseSha?: string }): SourceProvenance {
+  const hasFullHeadSha = typeof headSha === "string" && /^[a-f0-9]{40,64}$/.test(headSha);
   const coverage = origin === "github_snapshot" ? "github_metadata" : origin === "demo" ? "demo_fixture" : "pasted_metadata";
   const canonical = JSON.stringify({
     version: 1, origin, url: normalizeGitHubPullUrl(input.url ?? "") ?? undefined, headSha, baseSha,
@@ -535,6 +536,13 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseS
     origin,
     ...(headSha ? { headSha } : {}),
     ...(baseSha ? { baseSha } : {}),
+    changedFileInventory: {
+      version: 1,
+      completeness: origin === "github_snapshot" && hasFullHeadSha && !hasIncompleteChangedFileInventory(input.limitations)
+        ? "complete"
+        : "incomplete",
+      ...(hasFullHeadSha ? { headSha } : {})
+    },
     evidenceCapturedAt: capturedAt,
     inputFingerprint: {
       version: 1,
@@ -543,6 +551,12 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseS
       coverage
     }
   };
+}
+
+function hasIncompleteChangedFileInventory(limitations: string[] | undefined): boolean {
+  return (limitations ?? []).some((limitation) =>
+    /changed-file evidence (?:unavailable|was capped)|changed-file fetch failed|file evidence may be incomplete|patch text|diff evidence is unavailable/i.test(limitation)
+  );
 }
 
 function safeUrlHost(value: string | undefined): string | undefined {

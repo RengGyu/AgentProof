@@ -5,6 +5,8 @@ import {
   isExecutionEvidenceSignal,
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
+import { extractKeywords } from "./extractors";
+import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
@@ -263,7 +265,7 @@ function validateSource(value: unknown, errors: string[], requireSourceProvenanc
 
 function validateSourceProvenance(value: unknown, errors: string[], requireFullHeadSha: boolean) {
   if (!isRecord(value)) { errors.push("source.provenance must be an object."); return; }
-  requireKeys(value, ["version", "origin", "evidenceCapturedAt", "inputFingerprint"], "source.provenance", errors, ["headSha", "baseSha"]);
+  requireKeys(value, ["version", "origin", "evidenceCapturedAt", "inputFingerprint"], "source.provenance", errors, ["headSha", "baseSha", "changedFileInventory"]);
   if (value.version !== 1) errors.push("source.provenance.version must be 1.");
   const origin = value.origin;
   if (origin !== "github_snapshot" && origin !== "pasted_evidence" && origin !== "demo") errors.push("source.provenance.origin is invalid.");
@@ -281,6 +283,9 @@ function validateSourceProvenance(value: unknown, errors: string[], requireFullH
     if (value.headSha !== undefined) errors.push("source.provenance.headSha is allowed only for github_snapshot.");
     if (value.baseSha !== undefined) errors.push("source.provenance.baseSha is allowed only for github_snapshot.");
   }
+  if (value.changedFileInventory !== undefined) {
+    validateChangedFileInventoryProvenance(value.changedFileInventory, origin, value.headSha, errors);
+  }
   if (!isRecord(value.inputFingerprint)) { errors.push("source.provenance.inputFingerprint must be an object."); return; }
   requireKeys(value.inputFingerprint, ["version", "algorithm", "value", "coverage"], "source.provenance.inputFingerprint", errors);
   if (value.inputFingerprint.version !== 1) errors.push("source.provenance.inputFingerprint.version must be 1.");
@@ -288,6 +293,28 @@ function validateSourceProvenance(value: unknown, errors: string[], requireFullH
   if (typeof value.inputFingerprint.value !== "string" || !/^[a-f0-9]{64}$/.test(value.inputFingerprint.value)) errors.push("source.provenance.inputFingerprint.value must be a lowercase SHA-256 digest.");
   const expectedCoverage = origin === "github_snapshot" ? "github_metadata" : origin === "pasted_evidence" ? "pasted_metadata" : "demo_fixture";
   if (value.inputFingerprint.coverage !== expectedCoverage) errors.push("source.provenance.inputFingerprint.coverage does not match source.provenance.origin.");
+}
+
+function validateChangedFileInventoryProvenance(value: unknown, origin: unknown, provenanceHeadSha: unknown, errors: string[]) {
+  if (!isRecord(value)) {
+    errors.push("source.provenance.changedFileInventory must be an object.");
+    return;
+  }
+  requireKeys(value, ["version", "completeness"], "source.provenance.changedFileInventory", errors, ["headSha"]);
+  if (value.version !== 1) errors.push("source.provenance.changedFileInventory.version must be 1.");
+  if (value.completeness !== "complete" && value.completeness !== "incomplete") {
+    errors.push("source.provenance.changedFileInventory.completeness is invalid.");
+  }
+  if (value.headSha !== undefined && (typeof value.headSha !== "string" || !/^[a-f0-9]{40,64}$/.test(value.headSha))) {
+    errors.push("source.provenance.changedFileInventory.headSha must be a full lowercase Git commit SHA.");
+  }
+  if (value.completeness === "complete" && (
+    origin !== "github_snapshot" ||
+    typeof provenanceHeadSha !== "string" ||
+    value.headSha !== provenanceHeadSha
+  )) {
+    errors.push("source.provenance.changedFileInventory complete state must match the GitHub snapshot head.");
+  }
 }
 
 function validateSummary(value: unknown, errors: string[]) {
@@ -896,7 +923,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
   const testing = isRecord(report.testing) ? report.testing : null;
   const scope = isRecord(report.scope) ? report.scope : null;
   const evidenceById = new Map<string, RecordValue>();
-  const proofSourceQualityByRequirement = new Map<string, unknown>();
+  const proofNodeByRequirement = new Map<string, RecordValue>();
 
   if (Array.isArray(report.evidenceIndex)) {
     for (const item of report.evidenceIndex) {
@@ -908,7 +935,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
   if (isRecord(report.proofGraph) && Array.isArray(report.proofGraph.nodes)) {
     for (const node of report.proofGraph.nodes) {
       if (isRecord(node) && typeof node.requirementId === "string") {
-        proofSourceQualityByRequirement.set(node.requirementId, node.sourceQuality);
+        proofNodeByRequirement.set(node.requirementId, node);
       }
     }
   }
@@ -952,13 +979,20 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     if (!isRecord(item)) return;
 
     const axes = Array.isArray(item.proofAxes) ? item.proofAxes.filter(isRecord) : null;
+    const proofNode = proofNodeByRequirement.get(typeof item.requirementId === "string" ? item.requirementId : "");
+
+    if (axes && proofNode && item.status !== proofNode.status) {
+      errors.push(`requirements[${index}].status must match proofGraph node status.`);
+    }
+    if (axes) {
+      validateFullRequirementProofAxes(report, item, proofNode, axes, evidenceById, index, errors);
+    }
 
     if (
       axes &&
       axes.length > 0 &&
       axes.every((axis) => axis.state === "satisfied") &&
-      item.status !== "met" &&
-      proofSourceQualityByRequirement.get(typeof item.requirementId === "string" ? item.requirementId : "") !== "author_claim"
+      item.status !== "met"
     ) {
       errors.push(`requirements[${index}] status must agree with proofAxes; every satisfied authoritative axis requires met.`);
     }
@@ -1017,6 +1051,161 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`claims[${index}] execution claim cannot be supported without passing test or CI execution evidence.`);
     }
   });
+}
+
+function validateFullRequirementProofAxes(
+  report: RecordValue,
+  requirement: RecordValue,
+  proofNode: RecordValue | undefined,
+  axes: RecordValue[],
+  evidenceById: Map<string, RecordValue>,
+  requirementIndex: number,
+  errors: string[]
+) {
+  const path = `requirements[${requirementIndex}].proofAxes`;
+  const text = typeof proofNode?.requirementText === "string"
+    ? proofNode.requirementText
+    : typeof requirement.requirementText === "string"
+      ? requirement.requirementText
+      : "";
+  const expectedKeys = expectedProofAxisKeys(text);
+  const actualKeys = new Set(axes.flatMap((axis) =>
+    typeof axis.subject === "string" && typeof axis.polarity === "string" ? [`${axis.subject}:${axis.polarity}`] : []
+  ));
+  if (expectedKeys.size !== actualKeys.size || [...expectedKeys].some((key) => !actualKeys.has(key))) {
+    errors.push(`${path} must match the complete required proof axis set.`);
+  }
+
+  for (const [axisIndex, axis] of axes.entries()) {
+    const axisPath = `${path}[${axisIndex}]`;
+    const subject = typeof axis.subject === "string" ? axis.subject : "";
+    const polarity = typeof axis.polarity === "string" ? axis.polarity : "";
+    const state = typeof axis.state === "string" ? axis.state : "";
+    const refs = getStringArray(axis.evidenceRefs);
+
+    if (polarity === "absent") {
+      if (state === "satisfied" && !hasAuthoritativeReportChangedFileInventory(report)) {
+        errors.push(`${axisPath} cannot satisfy absence without a head-anchored authoritative GitHub inventory.`);
+      }
+      if (state === "satisfied" && refs.length > 0) {
+        errors.push(`${axisPath} satisfied absence must not cite present implementation evidence.`);
+      }
+      if (state === "violated") {
+        if (axis.collectionBasis !== "matching_artifact_evidence" || refs.length === 0 || refs.some((ref) => {
+          const evidence = evidenceById.get(ref);
+          return !evidence || !isImplementationArtifactEvidence(evidence);
+        })) {
+          errors.push(`${axisPath} violated absence has incompatible evidence or collection basis.`);
+        }
+      }
+      continue;
+    }
+
+    if (state !== "satisfied") continue;
+    if (refs.length === 0) {
+      errors.push(`${axisPath} satisfied present axis must cite evidence.`);
+      continue;
+    }
+    if (!refs.every((ref) => {
+      const evidence = evidenceById.get(ref);
+      return evidence ? isSatisfiedAxisEvidenceCompatible(subject, axis.collectionBasis, evidence, proofNode, text, ref) : false;
+    })) {
+      errors.push(`${axisPath} cites incompatible evidence or collection basis.`);
+    }
+  }
+}
+
+function expectedProofAxisKeys(text: string): Set<string> {
+  const expectations = requirementProofAxisExpectations(text);
+  const keys: string[] = [];
+  if (expectations.implementation) keys.push("implementation:present");
+  if (expectations.documentation) keys.push("documentation:present");
+  if (expectations.ci) keys.push("ci_configuration:present");
+  if (expectations.targetedTest) keys.push("targeted_test:present");
+  if (expectations.execution) keys.push("execution:present");
+  if (expectations.visual) keys.push("visual:present");
+  if (expectations.noImplementationChanges) keys.push("implementation:absent");
+  return new Set(keys);
+}
+
+function isSatisfiedAxisEvidenceCompatible(
+  subject: string,
+  collectionBasis: unknown,
+  evidence: RecordValue,
+  proofNode: RecordValue | undefined,
+  requirementText: string,
+  ref: string
+): boolean {
+  const implementationRefs = new Set(getStringArray(proofNode?.implementationEvidenceRefs));
+  const targetedTestRefs = new Set(getStringArray(proofNode?.targetedTestEvidenceRefs));
+  const executionRefs = new Set(getStringArray(proofNode?.executionEvidenceRefs));
+  const path = typeof evidence.locator === "string" ? evidence.locator : typeof evidence.label === "string" ? evidence.label : "";
+
+  if (subject === "implementation") {
+    return collectionBasis === "matching_artifact_evidence" && evidence.kind === "diff" && implementationRefs.has(ref);
+  }
+  if (subject === "documentation") {
+    return collectionBasis === "matching_artifact_evidence" && isImplementationProofEvidence(evidence) && isDocumentationEvidencePath(path) && implementationRefs.has(ref);
+  }
+  if (subject === "ci_configuration") {
+    return collectionBasis === "matching_artifact_evidence" && isImplementationProofEvidence(evidence) && isCiEvidencePath(path) && implementationRefs.has(ref);
+  }
+  if (subject === "targeted_test") {
+    return collectionBasis === "matching_artifact_evidence" && evidence.kind === "test" && targetedTestRefs.has(ref);
+  }
+  if (subject === "execution") {
+    return collectionBasis === "passing_execution" && isPassingTestExecutionEvidence(evidence) && executionRefs.has(ref) && evidenceOverlapsRequirement(requirementText, evidence);
+  }
+  if (subject === "visual") {
+    return collectionBasis === "visual_verification" && isVisualVerificationProofEvidence(evidence) && evidenceOverlapsRequirement(requirementText, evidence);
+  }
+  return false;
+}
+
+function isImplementationArtifactEvidence(evidence: RecordValue): boolean {
+  if (!isImplementationProofEvidence(evidence)) return false;
+  const path = typeof evidence.locator === "string" ? evidence.locator : typeof evidence.label === "string" ? evidence.label : "";
+  return !isDocumentationEvidencePath(path) && !isCiEvidencePath(path) && !/(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/|test_|_test\.)/i.test(path);
+}
+
+function isDocumentationEvidencePath(path: string): boolean {
+  return /(?:^|\/)(?:docs?\/|readme(?:\.|$))|\.md$/i.test(path);
+}
+
+function isCiEvidencePath(path: string): boolean {
+  return /(?:^|\/)(?:\.github\/workflows\/|workflows?\/)|(?:ci|pipeline)[^/]*\.(?:ya?ml|json)$/i.test(path);
+}
+
+function isVisualVerificationProofEvidence(evidence: RecordValue): boolean {
+  const kind = evidence.kind;
+  const label = typeof evidence.label === "string" ? evidence.label : "";
+  const summary = typeof evidence.summary === "string" ? evidence.summary : "";
+  const locator = typeof evidence.locator === "string" ? evidence.locator : "";
+  if ((kind !== "check" && kind !== "log") || !hasPassingEvidenceStatusPrefix(summary)) return false;
+  const combined = `${label} ${summary} ${locator}`;
+  const visual = /\b(browser qa|browser|desktop|mobile|overflow|playwright|cypress|screenshot|visual|viewport)\b/i;
+  const nonProof = /\b(preview|deploy|deployment|security|scan|sast|policy|provenance|attestation|code owners?|review|report)\b/i;
+  const trusted = /\b(browser qa|playwright|cypress)\b/i.test(label) && !nonProof.test(label);
+  return visual.test(combined) && (!nonProof.test(combined) || trusted);
+}
+
+function evidenceOverlapsRequirement(requirementText: string, evidence: RecordValue): boolean {
+  const weak = new Set(["api", "app", "auth", "code", "data", "edge", "file", "node", "page", "pages", "route", "test", "tests", "user"]);
+  const meaningfulKeywords = extractKeywords(requirementText)
+    .filter((keyword) => keyword.length >= 4 && !weak.has(keyword));
+  const evidenceText = `${String(evidence.label ?? "")} ${String(evidence.summary ?? "")}`.toLowerCase();
+  return meaningfulKeywords.some((keyword) => evidenceText.includes(keyword));
+}
+
+function hasAuthoritativeReportChangedFileInventory(report: RecordValue): boolean {
+  const source = isRecord(report.source) ? report.source : null;
+  const provenance = source && isRecord(source.provenance) ? source.provenance : null;
+  const inventory = provenance && isRecord(provenance.changedFileInventory) ? provenance.changedFileInventory : null;
+  const limitations = getStringArray(report.limitations);
+  return provenance?.origin === "github_snapshot" &&
+    typeof provenance.headSha === "string" && /^[a-f0-9]{40,64}$/.test(provenance.headSha) &&
+    inventory?.version === 1 && inventory.completeness === "complete" && inventory.headSha === provenance.headSha &&
+    !limitations.some((limitation) => /changed-file evidence (?:unavailable|was capped)|changed-file fetch failed|file evidence may be incomplete|patch text|diff evidence is unavailable/i.test(limitation));
 }
 
 function isExecutionClaim(text: string): boolean {

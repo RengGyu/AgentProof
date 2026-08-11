@@ -173,8 +173,17 @@ function parseShareableReport(value: unknown): ShareableReport {
 function sanitizeSourceProvenance(provenance: SourceProvenance | undefined): SourceProvenance | undefined {
   if (!provenance) return undefined;
   return {
-    ...provenance,
-    headSha: provenance.headSha ? redactSecrets(provenance.headSha) : undefined,
+    version: provenance.version,
+    origin: provenance.origin,
+    ...(provenance.headSha ? { headSha: redactSecrets(provenance.headSha) } : {}),
+    ...(provenance.baseSha ? { baseSha: redactSecrets(provenance.baseSha) } : {}),
+    ...(provenance.changedFileInventory ? {
+      changedFileInventory: {
+        version: provenance.changedFileInventory.version,
+        completeness: provenance.changedFileInventory.completeness,
+        ...(provenance.changedFileInventory.headSha ? { headSha: redactSecrets(provenance.changedFileInventory.headSha) } : {})
+      }
+    } : {}),
     evidenceCapturedAt: redactSecrets(provenance.evidenceCapturedAt),
     inputFingerprint: {
       ...provenance.inputFingerprint,

@@ -2437,13 +2437,15 @@ describe("generateVerificationReport", () => {
   });
 
   it("proves an absence-only requirement from a complete changed-file inventory without execution", () => {
+    const sourceProvenance = githubInventoryProvenance();
     const report = generateVerificationReport({
       title: "Keep the change test-only",
       description: "Adds test coverage only.",
       taskText: "Acceptance criteria: do not change implementation code.",
       changedFiles: [{ path: "src/queues/retry-queue.test.ts", status: "modified", patch: "+ it('retries', () => {})" }],
       checks: [],
-      logs: []
+      logs: [],
+      sourceProvenance
     } satisfies PullRequestInput);
 
     expect(report.requirements[0]).toMatchObject({
@@ -2502,13 +2504,15 @@ describe("generateVerificationReport", () => {
   });
 
   it("requires every test and absence axis in a mixed requirement", () => {
+    const sourceProvenance = githubInventoryProvenance();
     const passing = generateVerificationReport({
       title: "Add retry coverage only",
       description: "Adds retry coverage only.",
       taskText: "Acceptance criteria: add regression tests for retry queue without changing implementation code.",
       changedFiles: [{ path: "src/queues/retry-queue.test.ts", status: "modified", patch: "+ it('retries failed jobs', () => {})" }],
       checks: [{ name: "Test", status: "passed", summary: "Retry queue regression tests passed." }],
-      logs: []
+      logs: [],
+      sourceProvenance
     } satisfies PullRequestInput);
     const violated = generateVerificationReport({
       title: "Add retry coverage only",
@@ -2519,7 +2523,8 @@ describe("generateVerificationReport", () => {
         { path: "src/queues/retry-queue.ts", status: "modified", patch: "+ export const retry = true" }
       ],
       checks: [{ name: "Test", status: "passed", summary: "Retry queue regression tests passed." }],
-      logs: []
+      logs: [],
+      sourceProvenance
     } satisfies PullRequestInput);
 
     expect(passing.requirements[0]?.status).toBe("met");
@@ -2554,12 +2559,82 @@ describe("generateVerificationReport", () => {
       taskText: `Acceptance criteria: ${text}`,
       changedFiles: [file],
       checks,
-      logs: []
+      logs: [],
+      sourceProvenance: githubInventoryProvenance()
     } satisfies PullRequestInput);
 
     expect(report.requirements[0]?.status).toBe("met");
     expect(report.requirements[0]?.proofAxes?.map((axis) => axis.subject)).toEqual(subjects);
     expect(report.requirements[0]?.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+  });
+
+  it.each([
+    { name: "missing provenance", sourceProvenance: undefined },
+    {
+      name: "pasted provenance",
+      sourceProvenance: {
+        ...githubInventoryProvenance(),
+        origin: "pasted_evidence" as const,
+        headSha: undefined,
+        baseSha: undefined,
+        inputFingerprint: { ...githubInventoryProvenance().inputFingerprint, coverage: "pasted_metadata" as const }
+      }
+    },
+    { name: "wrong inventory head", sourceProvenance: githubInventoryProvenance("a".repeat(40), "b".repeat(40)) }
+  ])("does not prove absence from $name", ({ sourceProvenance }) => {
+    const report = generateVerificationReport({
+      title: "Keep the change test-only",
+      description: "Adds test coverage only.",
+      taskText: "Acceptance criteria: do not change implementation code.",
+      changedFiles: [{ path: "src/queues/retry-queue.test.ts", status: "modified", patch: "+ it('retries', () => {})" }],
+      checks: [],
+      logs: [],
+      ...(sourceProvenance ? { sourceProvenance } : {})
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.status).toBe("unclear");
+    expect(report.requirements[0]?.proofAxes).toEqual([
+      expect.objectContaining({ polarity: "absent", state: "incomplete", collectionBasis: "incomplete_changed_file_inventory" })
+    ]);
+  });
+
+  it("does not satisfy execution from an unrelated repository-global passing check", () => {
+    const report = generateVerificationReport({
+      title: "Add retry queue behavior",
+      description: "Adds retry queue behavior.",
+      taskText: "Acceptance criteria: retry failed synchronization jobs.",
+      changedFiles: [{ path: "src/queues/retry.ts", status: "modified", patch: "+ export function retryFailedSynchronization() {}" }],
+      checks: [{ name: "Payments tests", status: "passed", summary: "Payments checkout tests passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "execution", state: "incomplete", evidenceRefs: [] })
+    ]));
+    expect(report.requirements[0]?.status).not.toBe("met");
+  });
+
+  it("keeps visual proof matched to its own requirement", () => {
+    const report = generateVerificationReport({
+      title: "Verify two responsive surfaces",
+      description: "Updates settings and billing surfaces.",
+      taskText: [
+        "Acceptance criteria: keep the settings panel readable at 375px.",
+        "Acceptance criteria: keep the billing card readable at 375px."
+      ].join("\n"),
+      changedFiles: [
+        { path: "src/settings/Panel.tsx", status: "modified", patch: "+ return <section>settings panel</section>" },
+        { path: "src/billing/Card.tsx", status: "modified", patch: "+ return <section>billing card</section>" }
+      ],
+      checks: [{ name: "Browser QA settings panel", status: "passed", summary: "Status: passed. Settings panel visual viewport check passed." }],
+      logs: []
+    } satisfies PullRequestInput);
+
+    const settings = report.requirements.find((item) => /settings panel/i.test(item.requirementText));
+    const billing = report.requirements.find((item) => /billing card/i.test(item.requirementText));
+    expect(settings?.proofAxes?.find((axis) => axis.subject === "visual")?.state).toBe("satisfied");
+    expect(billing?.proofAxes?.find((axis) => axis.subject === "visual")?.state).toBe("incomplete");
+    expect(billing?.proofAxes?.find((axis) => axis.subject === "visual")?.evidenceRefs).toEqual([]);
   });
 
   it("keeps docs-only static proof met and ignores unrelated failed execution", () => {
@@ -2741,7 +2816,8 @@ describe("generateVerificationReport", () => {
       taskText: "Acceptance criteria:\n- Add a regression test for connectionLabel.\n- Do not change implementation code.",
       changedFiles: [{ path: "test/connection-label.test.js", additions: 8, deletions: 0, status: "modified", patch: "+ expect(connectionLabel(false)).toBe('Connected');" }],
       checks: [{ name: "unit-tests", status: "passed", summary: "Connection label tests passed." }],
-      logs: []
+      logs: [],
+      sourceProvenance: githubInventoryProvenance()
     } satisfies PullRequestInput);
 
     const noChange = report.proofGraph.nodes.find((node) => /Do not change implementation/i.test(node.requirementText));
@@ -2769,4 +2845,25 @@ function refsToEvidence(report: VerificationReport, refs: string[]) {
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
 
   return refs.map((ref) => evidenceById.get(ref)).filter((item): item is VerificationReport["evidenceIndex"][number] => Boolean(item));
+}
+
+function githubInventoryProvenance(headSha = "a".repeat(40), inventoryHeadSha = headSha): NonNullable<PullRequestInput["sourceProvenance"]> {
+  return {
+    version: 1,
+    origin: "github_snapshot",
+    headSha,
+    baseSha: "b".repeat(40),
+    evidenceCapturedAt: "2026-08-11T00:00:00.000Z",
+    changedFileInventory: {
+      version: 1,
+      completeness: "complete",
+      headSha: inventoryHeadSha
+    },
+    inputFingerprint: {
+      version: 1,
+      algorithm: "sha256",
+      value: "c".repeat(64),
+      coverage: "github_metadata"
+    }
+  };
 }

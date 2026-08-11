@@ -48,10 +48,12 @@ describe("LLM semantic analysis package", () => {
       collectionBasis: axis.collectionBasis
     })));
     expect(evidenceId).toBeTruthy();
-    validateLlmSemanticPackageCandidate({
+    const validation = validateLlmSemanticPackageCandidate({
       ...semanticCandidate(requirement!.id, evidenceId!, "Semantic text cannot change deterministic axes."),
       proof_axes: [{ subject: "implementation", polarity: "present", state: "satisfied", evidenceRefs: [] }]
     }, llmPackage);
+    expect(validation.disposition).toBe("discarded");
+    expect(validation.candidate).toBeNull();
     expect(report.requirements.map((item) => item.proofAxes)).toEqual(before);
   });
 
