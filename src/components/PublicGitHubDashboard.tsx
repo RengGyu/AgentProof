@@ -43,8 +43,8 @@ import {
   type RepositorySelectionLoadResult
 } from "@/lib/repository-selection-state";
 import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "@/lib/dashboard-report-export";
-import { copyRevalidatedDashboardDetail, prepareCurrentDashboardBundleForCopy } from "@/lib/dashboard-copy-revalidation";
-import { writeTextWithBrowserFallback } from "@/lib/browser-clipboard";
+import { prepareCurrentDashboardDetailForCopy, prepareCurrentDashboardBundleForCopy } from "@/lib/dashboard-copy-revalidation";
+import { writeDeferredTextWithBrowserFallback, writeTextWithBrowserFallback } from "@/lib/browser-clipboard";
 import { isCopyEligibleReport, reportWorkspaceStatusLabel, visibleRepositoryReports } from "@/lib/dashboard-report-list";
 
 interface Repository { id: number; fullName: string; private: boolean; }
@@ -638,12 +638,16 @@ function DetailedEvidence({ detail, demoMode }: { detail: DashboardReportDetail 
         await writeTextWithBrowserFallback(format === "markdown" ? dashboardReportToMarkdown(detail) : dashboardReportToJson(detail));
       } else {
         if (!detail.id || !detail.repositoryFullName) throw new Error("dashboard_report_copy_identity_missing");
-        await copyRevalidatedDashboardDetail({
-          id: detail.id,
-          repositoryFullName: detail.repositoryFullName,
-          fetchDetail: fetchDashboardCopyDetail,
-          writeText: writeTextWithBrowserFallback,
-          toText: (currentDetail) => format === "markdown" ? dashboardReportToMarkdown(currentDetail) : dashboardReportToJson(currentDetail)
+        const toText = (currentDetail: DashboardReportDetail & { repositoryFullName?: string }) => format === "markdown"
+          ? dashboardReportToMarkdown(currentDetail)
+          : dashboardReportToJson(currentDetail);
+        await writeDeferredTextWithBrowserFallback({
+          fallbackText: toText({ ...detail, repositoryFullName: detail.repositoryFullName }),
+          loadText: async () => toText(await prepareCurrentDashboardDetailForCopy({
+            id: detail.id!,
+            repositoryFullName: detail.repositoryFullName!,
+            fetchDetail: fetchDashboardCopyDetail
+          }))
         });
       }
       setCopyError(false);

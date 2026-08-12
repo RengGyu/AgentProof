@@ -50,7 +50,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("scope=current");
     expect(source).toContain("AbortController");
     expect(source).toContain("prepareCurrentDashboardBundleForCopy");
-    expect(source).toContain("copyRevalidatedDashboardDetail");
+    expect(source).toContain("prepareCurrentDashboardDetailForCopy");
     expect(source).not.toContain("preparedBulkCopy");
     expect(source).not.toContain("Promise.all(selectedReports.map");
     expect(source).toContain("disabled={copyableSelectedReports.length === 0 || hasUnavailableSelectedReport || bulkCopyState === \"copying\"}");
@@ -76,6 +76,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("AI explanation");
     expect(source).not.toContain("AI guidance");
     expect(source).not.toContain("provider response must not persist");
+  });
+
+  it("reserves the browser clipboard gesture before waiting for a detail revalidation", () => {
+    expect(source).toContain("writeDeferredTextWithBrowserFallback");
+    expect(source).toContain("prepareCurrentDashboardDetailForCopy");
+    expect(source).not.toContain("copyRevalidatedDashboardDetail");
   });
 
   it("renders the evidence workspace without inventing issue grouping", () => {
