@@ -60,6 +60,10 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
           { type: "plain_text", text: `Missing tests: ${safeReport.testing.missingTests.length}` }
         ]
       },
+      ...(safeReport.planner ? [{
+        type: "context",
+        elements: [{ type: "plain_text", text: "Enhanced planning policy" }]
+      }] : []),
       {
         type: "section",
         text: {

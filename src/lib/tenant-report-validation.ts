@@ -15,7 +15,7 @@ import {
   isProofAxisCollectionBasisAllowed,
   isProofAxisSubject
 } from "./proof-contract";
-import type { CheckStatus, EvidenceKind, PriorityLevel, RequirementProofAxis, RequirementStatus, VerificationReport } from "./types";
+import type { CheckStatus, EvidenceKind, HybridPlannerProvenance, PriorityLevel, RequirementProofAxis, RequirementStatus, VerificationReport } from "./types";
 
 const TENANT_REPORT_MAX_BYTES = 256 * 1024;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9_.:@#-]{1,160}$/;
@@ -31,8 +31,9 @@ const MAX_TENANT_OBJECTIVE_LABEL = 160;
 export interface TenantPersistedReport {
   version: 1;
   analysisContext?: TenantReportAnalysisContext;
+  planner?: HybridPlannerProvenance;
   priority: PriorityLevel;
-  requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[] }>;
+  requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
   testing: { ciStatus: CheckStatus; lintStatus: CheckStatus; typecheckStatus: CheckStatus };
   reviewPriority: Array<{ path: string; priority: PriorityLevel; evidenceRefs: string[] }>;
   evidenceIndex: Array<{ id: string; kind?: EvidenceKind; locator?: string }>;
@@ -144,8 +145,9 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
   const unsigned = {
     version: 1 as const,
     analysisContext: tenantReportAnalysisContext(report),
+    ...(report.planner ? { planner: copyTenantPlannerProvenance(report.planner) } : {}),
     priority: report.summary.priority,
-    requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceRefs, gaps, proofAxes }) => {
+    requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceRefs, gaps, proofAxes, classificationBasis, plannerAxisSubjects }) => {
       const objectiveLabel = tenantObjectiveLabel(requirementText);
       return {
         requirementId,
@@ -153,7 +155,9 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
         status,
         evidenceRefs: [...evidenceRefs],
         gaps: [...gaps],
-        ...(proofAxes ? { proofAxes: copyProofAxes(proofAxes) } : {})
+        ...(proofAxes ? { proofAxes: copyProofAxes(proofAxes) } : {}),
+        ...(classificationBasis ? { classificationBasis } : {}),
+        ...(plannerAxisSubjects ? { plannerAxisSubjects: [...plannerAxisSubjects] } : {})
       };
     }),
     testing: {
@@ -183,10 +187,11 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const errors: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return { valid: false, errors: ["Tenant persisted report must be an object."] };
   const report = value as Partial<TenantPersistedReport> & Record<string, unknown>;
-  const allowed = new Set(["version", "analysisContext", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
+  const allowed = new Set(["version", "analysisContext", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
   for (const key of Object.keys(report)) if (!allowed.has(key)) errors.push(`tenant persisted report contains disallowed field: ${key}.`);
   if (report.version !== 1) errors.push("tenant persisted report version must be 1.");
   if (report.analysisContext !== undefined && !isAnalysisContext(report.analysisContext)) errors.push("tenant persisted report analysis context is invalid.");
+  if (report.planner !== undefined) validateTenantPlannerProvenance(report.planner, errors);
   if (!isPriority(report.priority)) errors.push("tenant persisted report priority is invalid.");
   if (!Array.isArray(report.requirements) || report.requirements.length > MAX_TENANT_REQUIREMENTS) errors.push("tenant persisted report requirements are invalid.");
   if (!Array.isArray(report.evidenceIndex) || report.evidenceIndex.length > MAX_TENANT_EVIDENCE) errors.push("tenant persisted report evidence index is invalid.");
@@ -203,11 +208,13 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   for (const requirement of report.requirements ?? []) {
     if (!requirement || typeof requirement !== "object" || Array.isArray(requirement)) { errors.push("tenant persisted requirement is invalid."); continue; }
-    const item = requirement as { requirementId?: unknown; objectiveLabel?: unknown; status?: unknown; evidenceRefs?: unknown; gaps?: unknown; proofAxes?: unknown } & Record<string, unknown>;
-    if (Object.keys(item).some((key) => !["requirementId", "objectiveLabel", "status", "evidenceRefs", "gaps", "proofAxes"].includes(key))) errors.push("tenant persisted requirement has disallowed fields.");
+    const item = requirement as { requirementId?: unknown; objectiveLabel?: unknown; status?: unknown; evidenceRefs?: unknown; gaps?: unknown; proofAxes?: unknown; classificationBasis?: unknown; plannerAxisSubjects?: unknown } & Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["requirementId", "objectiveLabel", "status", "evidenceRefs", "gaps", "proofAxes", "classificationBasis", "plannerAxisSubjects"].includes(key))) errors.push("tenant persisted requirement has disallowed fields.");
     if (typeof item.requirementId !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.requirementId)) errors.push("tenant persisted requirement id is invalid.");
     if (item.objectiveLabel !== undefined && (typeof item.objectiveLabel !== "string" || tenantObjectiveLabel(item.objectiveLabel) !== item.objectiveLabel)) errors.push("tenant persisted objective label is invalid.");
     if (!isRequirementStatus(item.status)) errors.push("tenant persisted requirement status is invalid.");
+    if (item.classificationBasis !== undefined && item.classificationBasis !== "deterministic" && item.classificationBasis !== "enhanced_plan") errors.push("tenant persisted requirement classification basis is invalid.");
+    validateTenantPlannerAxisSubjects(item.plannerAxisSubjects, item.proofAxes, errors);
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
     if (item.proofAxes !== undefined) validatePersistedProofAxes(item.proofAxes, evidenceIds, errors);
     if (!Array.isArray(item.gaps) || item.gaps.length > MAX_TENANT_GAPS || item.gaps.some((gap) => typeof gap !== "string" || !ALLOWED_TENANT_GAP_TEXTS.has(gap))) errors.push("tenant persisted requirement gaps are invalid.");
@@ -241,7 +248,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   const integrity = report.integrity as Record<string, unknown> | undefined;
-  const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
+  const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
   const payload = stableJson(unsigned);
   if (!integrity || Object.keys(integrity).some((key) => !["version", "algorithm", "canonicalDigest", "signature"].includes(key)) || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > TENANT_REPORT_MAX_BYTES) errors.push(`report exceeds ${TENANT_REPORT_MAX_BYTES} bytes.`);
@@ -318,7 +325,8 @@ function hydrateTenantPersistedReport(
     targetedTestEvidenceRefs: [],
     executionEvidenceRefs: [],
     gapSignals: item.gaps.map((message) => ({ kind: tenantGapKind(message), severity: report.priority, message, evidenceRefs: [] })),
-    firstFiles: []
+    firstFiles: [],
+    ...(item.classificationBasis ? { classificationBasis: item.classificationBasis } : {})
   }));
   const hydrated: VerificationReport = {
     analysisId: "tenant-saved-report",
@@ -335,6 +343,8 @@ function hydrateTenantPersistedReport(
       reviewerNote: FIXED.reviewerNote,
       confidence: 0,
       ...(item.proofAxes ? { proofAxes: copyProofAxes(item.proofAxes) } : {})
+      ,...(item.classificationBasis ? { classificationBasis: item.classificationBasis } : {})
+      ,...(item.plannerAxisSubjects ? { plannerAxisSubjects: [...item.plannerAxisSubjects] } : {})
     })),
     claims: [],
     scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
@@ -363,11 +373,58 @@ function hydrateTenantPersistedReport(
       ...(item.locator ? { locator: item.locator } : {})
     })),
     limitations: [FIXED.limitation],
+    ...(report.planner ? { planner: copyTenantPlannerProvenance(report.planner) } : {}),
     ...(report.semantic ? { semantic: report.semantic } : {}),
     ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, input.signingSecret);
   return hydrated;
+}
+
+function validateTenantPlannerProvenance(value: unknown, errors: string[]) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    errors.push("tenant persisted planner is invalid.");
+    return;
+  }
+  const planner = value as Record<string, unknown>;
+  if (Object.keys(planner).some((key) => !["version", "contractVersion", "schemaVersion", "promptVersion", "model", "inputHash"].includes(key)) ||
+    planner.version !== 1 ||
+    planner.contractVersion !== "hybrid_requirement_planner.v1" ||
+    planner.schemaVersion !== "agentproof_requirement_span_plan_v1" ||
+    planner.promptVersion !== "2026-08-12.v1" ||
+    planner.model !== "gpt-5-mini" ||
+    typeof planner.inputHash !== "string" || !/^[a-f0-9]{64}$/.test(planner.inputHash)) {
+    errors.push("tenant persisted planner is invalid.");
+  }
+}
+
+function copyTenantPlannerProvenance(value: HybridPlannerProvenance): HybridPlannerProvenance {
+  return {
+    version: value.version,
+    contractVersion: value.contractVersion,
+    schemaVersion: value.schemaVersion,
+    promptVersion: value.promptVersion,
+    model: value.model,
+    inputHash: value.inputHash
+  };
+}
+
+function validateTenantPlannerAxisSubjects(value: unknown, proofAxes: unknown, errors: string[]) {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length > 4) {
+    errors.push("tenant persisted planner axis subjects are invalid.");
+    return;
+  }
+  const axes = Array.isArray(proofAxes) ? proofAxes : [];
+  const axisSubjects = new Set(axes.flatMap((axis) => axis && typeof axis === "object" && typeof (axis as { subject?: unknown }).subject === "string" ? [(axis as { subject: string }).subject] : []));
+  const seen = new Set<string>();
+  for (const subject of value) {
+    if (typeof subject !== "string" || !isProofAxisSubject(subject) || seen.has(subject) || !axisSubjects.has(subject)) {
+      errors.push("tenant persisted planner axis subjects are invalid.");
+      return;
+    }
+    seen.add(subject);
+  }
 }
 
 export function isSafeTenantLocator(value: string): boolean {

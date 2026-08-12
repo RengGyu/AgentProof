@@ -1,5 +1,5 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
-import type { RequirementProofAxis } from "./types";
+import type { HybridPlannerProvenance, RequirementProofAxis } from "./types";
 
 export interface DashboardRepositoryGrant {
   installationId: number;
@@ -10,6 +10,8 @@ export interface DashboardRepositoryGrant {
   saveReportsEnabled: boolean;
   commentEnabled: boolean;
   llmAnalysisMode?: "essential" | "enhanced";
+  hybridPlannerConsentVersion?: "2026-08-12.v1" | null;
+  repositoryPrivate?: boolean;
 }
 
 export interface DashboardSavedReport {
@@ -41,6 +43,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     reprompt?: { prompt: string };
     semantic?: LlmSemanticOutput;
     semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
+    planner?: HybridPlannerProvenance;
   };
 }
 

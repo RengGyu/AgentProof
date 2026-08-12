@@ -2,10 +2,131 @@ import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
 import { buildEvidenceIndex } from "./extractors";
 import { validateVerificationReport } from "./report-validation";
-import { generateVerificationReport } from "./verifier";
-import type { PullRequestInput, VerificationReport } from "./types";
+import {
+  buildRequirementEvidenceRelevanceIndex,
+  buildVerifierEvidenceLookup,
+  generateVerificationReport
+} from "./verifier";
+import type { EvidenceItem, PullRequestInput, Requirement, VerificationReport } from "./types";
 
 describe("generateVerificationReport", () => {
+  it("indexes requirement/evidence relevance with one source-text scan per evidence item", () => {
+    const requirements = Array.from({ length: 12 }, (_, index): Requirement => ({
+      id: `req_${index}`,
+      text: `Add bounded cache behavior ${index}.`,
+      source: "task",
+      sourceQuality: "requirement_language",
+      keywords: ["bounded", "cache", `behavior-${index}`],
+      priority: "must",
+      role: "core_requirement",
+      sourceSection: null,
+      contextRoles: []
+    }));
+    const evidence = Array.from({ length: 200 }, (_, index): EvidenceItem => ({
+      id: `ev_${index}`,
+      kind: "diff",
+      label: `src/cache-${index}.ts`,
+      summary: `Patch excerpt: bounded cache behavior-${index}`,
+      confidence: 0.9
+    }));
+
+    const index = buildRequirementEvidenceRelevanceIndex(requirements, evidence, {
+      checks: [],
+      logs: []
+    });
+    expect(index.evidenceTextScanCount).toBe(evidence.length);
+    for (const requirement of requirements) {
+      const first = index.forRequirement(requirement);
+      const second = index.forRequirement(requirement);
+      expect(second).toBe(first);
+    }
+    expect(index.evidenceTextScanCount).toBe(evidence.length);
+  });
+
+  it("preserves exact substring match order, strength, and canonical overlap in the relevance index", () => {
+    const requirement: Requirement = {
+      id: "req_equivalence",
+      text: "Add bounded cache invalidation tests.",
+      source: "task",
+      sourceQuality: "requirement_language",
+      keywords: ["bounded", "cache", "invalidation", "test"],
+      priority: "must",
+      role: "core_requirement",
+      sourceSection: null,
+      contextRoles: []
+    };
+    const evidence: EvidenceItem[] = [
+      { id: "ev_1", kind: "task", label: "Original task", summary: requirement.text, confidence: 0.95 },
+      { id: "ev_2", kind: "diff", label: "src/cache.ts", summary: "bounded invalidation implementation", confidence: 0.85 },
+      { id: "ev_3", kind: "test", label: "src/cache.test.ts", summary: "cache test", confidence: 0.85 },
+      { id: "ev_4", kind: "check", label: "tests", summary: "Status: passed. unrelated suite", confidence: 0.9 },
+      { id: "ev_5", kind: "diff", label: "src/theme.ts", summary: "unrelated color work", confidence: 0.85 }
+    ];
+
+    const relevance = buildRequirementEvidenceRelevanceIndex([requirement], evidence, {
+      checks: [{ name: "tests", status: "passed", summary: "unrelated suite" }],
+      logs: []
+    }).forRequirement(requirement);
+    const naive = evidence.flatMap((item) => {
+      const text = `${item.label} ${item.summary}`.toLowerCase();
+      const hits = requirement.keywords.filter((keyword) => text.includes(keyword));
+      if (hits.length === 0) return [];
+      const meaningful = hits.filter((keyword) => keyword.length >= 4 && keyword !== "test");
+      const canProve = ["diff", "test", "log", "check"].includes(item.kind);
+      return [{
+        item,
+        match: {
+          score: hits.length,
+          meaningfulScore: meaningful.length,
+          strong: canProve && (meaningful.length >= 2 || meaningful.some((keyword) => keyword.length >= 8))
+        }
+      }];
+    });
+
+    expect(relevance.matches).toEqual(naive);
+    expect(evidence.map((item) => relevance.canonicalOverlap(item))).toEqual([true, true, true, false, false]);
+
+    const legacyCaseSensitiveKeyword = { ...requirement, id: "req_upper", keywords: ["CACHE"] };
+    expect(buildRequirementEvidenceRelevanceIndex([legacyCaseSensitiveKeyword], evidence, {
+      checks: [],
+      logs: []
+    }).forRequirement(legacyCaseSensitiveKeyword).matches).toEqual([]);
+  });
+
+  it("builds path and provenance lookup once without rescanning evidence for each changed file", () => {
+    const size = 2_048;
+    let numericReads = 0;
+    const evidence = new Proxy(
+      Array.from({ length: size }, (_, index): EvidenceItem => ({
+        id: `ev_${index}`,
+        kind: "diff",
+        label: `src/file-${index}.ts`,
+        locator: `src/file-${index}.ts`,
+        summary: `Patch excerpt for file ${index}`,
+        confidence: 0.9
+      })),
+      {
+        get(target, property, receiver) {
+          if (typeof property === "string" && /^\d+$/.test(property)) numericReads += 1;
+          return Reflect.get(target, property, receiver);
+        }
+      }
+    );
+
+    const lookup = buildVerifierEvidenceLookup(evidence);
+    const readsAfterBuild = numericReads;
+    for (let index = 0; index < size; index += 1) {
+      const refs = lookup.refsForPath(`src/file-${index}.ts`);
+      expect(refs).toEqual([`ev_${index}`]);
+      expect(lookup.provenanceForRefs(refs)).toEqual([
+        expect.objectContaining({ evidenceRef: `ev_${index}`, sourceType: "diff" })
+      ]);
+    }
+
+    expect(readsAfterBuild).toBeLessThanOrEqual(size + 1);
+    expect(numericReads).toBe(readsAfterBuild);
+  });
+
   it("redacts source metadata and strips URL query data before report surfaces", () => {
     const report = generateVerificationReport({
       title: "Fix auth token=super-secret-value",

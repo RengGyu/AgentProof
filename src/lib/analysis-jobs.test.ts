@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertAnalysisJobIsPrivate,
+  bindAnalysisJobPlannerSeed,
   claimAnalysisJobById,
   clearAnalysisJobsForTests,
   claimAnalysisJobForProviderResponse,
@@ -24,6 +25,7 @@ import {
   parkAnalysisJobForProvider,
   purgeTenantAnalysisJobsForDeletion,
   resolveAnalysisJobFreshness,
+  resolveHybridPlannerJobBinding,
   sealAnalysisJobRevision
 } from "./analysis-jobs";
 import { toAnalysisDeadLetterOpsStatus, toAnalysisQueueAlerts } from "./analysis-job-alerts";
@@ -130,6 +132,251 @@ describe("analysis job queue", () => {
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
     expect(serialized).not.toContain("github_pat_secret");
+  });
+
+  it("binds the complete hybrid planner pair to the claimed revision without exposing it in tenant summaries", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const queued = await enqueueAnalysisJob({ ...jobInput(), hybridPlannerRequested: true });
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date("2026-06-30T00:01:00Z") });
+    const job = claim.job!;
+
+    const bound = await bindAnalysisJobPlannerSeed({
+      id: job.id,
+      claimGeneration: job.claim_generation!,
+      contractVersion: "hybrid_requirement_planner.v1",
+      inputHash: "a".repeat(64),
+      now: new Date("2026-06-30T00:01:01Z")
+    });
+
+    expect(bound).toMatchObject({ planner_contract_version: "hybrid_requirement_planner.v1", planner_input_hash: "a".repeat(64) });
+    const tenantRows = await listTenantAnalysisJobs({ tenantId: "tenant_a", limit: 10 });
+    expect(JSON.stringify(tenantRows)).not.toContain("planner_input_hash");
+    expect(JSON.stringify(tenantRows)).not.toContain("a".repeat(64));
+
+    await enqueueAnalysisJob({ ...jobInput(), deliveryId: "123e4567-e89b-12d3-a456-426614174399", now: new Date("2026-06-30T00:01:02Z") });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ planner_contract_version: null, planner_input_hash: null });
+  });
+
+  it("requires the complete current seed pair before a hybrid submit or response boundary without provider traffic", () => {
+    const base = {
+      id: "123e4567-e89b-42d3-a456-426614174310",
+      status: "processing" as const,
+      desired_revision: 1,
+      running_revision: 1,
+      hybrid_planner_requested: true,
+      planner_contract_version: "hybrid_requirement_planner.v1" as const,
+      planner_input_hash: "a".repeat(64)
+    };
+
+    expect(resolveHybridPlannerJobBinding({ ...base, hybrid_planner_requested: false, planner_contract_version: null, planner_input_hash: null }, { phase: "submit", rebuiltInputHash: "a".repeat(64) })).toEqual({ disposition: "legacy" });
+    expect(resolveHybridPlannerJobBinding(base, { phase: "submit", rebuiltInputHash: "a".repeat(64) })).toEqual({ disposition: "ready", inputHash: "a".repeat(64) });
+    for (const candidate of [
+      { ...base, planner_contract_version: null },
+      { ...base, planner_input_hash: null },
+      { ...base, planner_input_hash: "b".repeat(64) },
+      { ...base, planner_contract_version: "other" as never }
+    ]) {
+      expect(resolveHybridPlannerJobBinding(candidate, { phase: "submit", rebuiltInputHash: "a".repeat(64) })).toEqual({ disposition: "fallback" });
+    }
+    expect(resolveHybridPlannerJobBinding(base, { phase: "response", rebuiltInputHash: "a".repeat(64), responseInputHash: "b".repeat(64) })).toEqual({ disposition: "fallback" });
+    expect(resolveHybridPlannerJobBinding(base, { phase: "response", rebuiltInputHash: "a".repeat(64), responseInputHash: "a".repeat(64) })).toEqual({ disposition: "ready", inputHash: "a".repeat(64) });
+  });
+
+  it("does not cross the existing provider submit marker with a partial hybrid binding", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const queued = await enqueueAnalysisJob(jobInput());
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date("2026-06-30T00:01:00Z") });
+    const job = claim.job!;
+    getAnalysisJobsForTests()[0]!.planner_contract_version = "hybrid_requirement_planner.v1";
+    getAnalysisJobsForTests()[0]!.planner_input_hash = null;
+
+    await expect(markAnalysisJobProviderSubmission({
+      id: job.id,
+      claimGeneration: job.claim_generation!,
+      submittedAt: new Date("2026-06-30T00:01:01Z"),
+      expiresAt: new Date("2026-06-30T00:09:01Z")
+    })).resolves.toBeNull();
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ provider_status: null, planner_input_hash: null });
+  });
+
+  it("treats only own explicit null seed fields as legacy and fails closed for missing or undefined fields", async () => {
+    const base = {
+      status: "processing" as const,
+      desired_revision: 1,
+      running_revision: 1,
+      hybrid_planner_requested: false,
+      planner_contract_version: null,
+      planner_input_hash: null
+    };
+    expect(resolveHybridPlannerJobBinding(base, { phase: "submit", rebuiltInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "legacy" });
+    const missingHash = { ...base } as Record<string, unknown>;
+    delete missingHash.planner_input_hash;
+    const undefinedHash = { ...base, planner_input_hash: undefined };
+    expect(resolveHybridPlannerJobBinding(missingHash as never, { phase: "submit", rebuiltInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "fallback" });
+    expect(resolveHybridPlannerJobBinding(undefinedHash as never, { phase: "submit", rebuiltInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "fallback" });
+
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const queued = await enqueueAnalysisJob({ ...jobInput(), hybridPlannerRequested: true });
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date("2026-06-30T00:01:00Z") });
+    delete (getAnalysisJobsForTests()[0] as unknown as Record<string, unknown>).planner_input_hash;
+    await expect(markAnalysisJobProviderSubmission({
+      id: queued.id,
+      claimGeneration: claim.job!.claim_generation!,
+      submittedAt: new Date("2026-06-30T00:01:01Z"),
+      expiresAt: new Date("2026-06-30T00:09:01Z")
+    })).resolves.toBeNull();
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ provider_status: null });
+    const malformed = getAnalysisJobsForTests()[0] as unknown as Record<string, unknown>;
+    malformed.planner_contract_version = null;
+    malformed.planner_input_hash = null;
+    delete malformed.hybrid_planner_requested;
+    await expect(markAnalysisJobProviderSubmission({
+      id: queued.id,
+      claimGeneration: claim.job!.claim_generation!,
+      submittedAt: new Date("2026-06-30T00:01:01Z"),
+      expiresAt: new Date("2026-06-30T00:09:01Z")
+    })).resolves.toBeNull();
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ provider_status: null });
+  });
+
+  it.each([
+    ["missing", Symbol("missing")],
+    ["undefined", undefined],
+    ["null", null],
+    ["string", "false"],
+    ["number", 0]
+  ])("fails closed for %s hybrid intent at the normalized job boundary", (_name, intent) => {
+    const candidate = {
+      status: "processing" as const,
+      desired_revision: 1,
+      running_revision: 1,
+      hybrid_planner_requested: intent,
+      planner_contract_version: null,
+      planner_input_hash: null,
+      provider_status: null,
+      provider_response_id: null,
+      provider_poll_attempts: 0,
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      provider_webhook_id_hash: null,
+      provider_webhook_received_at: null,
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      prior_provider_submitted_at: null,
+      prior_provider_expires_at: null
+    };
+    if (typeof intent === "symbol") delete (candidate as Record<string, unknown>).hybrid_planner_requested;
+    expect(resolveHybridPlannerJobBinding(candidate as never, {
+      phase: "submit",
+      rebuiltInputHash: "a".repeat(64)
+    })).toEqual({ disposition: "fallback" });
+  });
+
+  it("binds a seed once per unsealed revision and refuses rebinding after the submit boundary", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const queued = await enqueueAnalysisJob({ ...jobInput(), hybridPlannerRequested: true });
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date("2026-06-30T00:01:00Z") });
+    const input = { id: queued.id, claimGeneration: claim.job!.claim_generation!, contractVersion: "hybrid_requirement_planner.v1" as const };
+
+    await expect(bindAnalysisJobPlannerSeed({ ...input, inputHash: "a".repeat(64) })).resolves.toMatchObject({ planner_input_hash: "a".repeat(64) });
+    await expect(bindAnalysisJobPlannerSeed({ ...input, inputHash: "b".repeat(64) })).resolves.toBeNull();
+    await expect(bindAnalysisJobPlannerSeed({ ...input, inputHash: "a".repeat(64) })).resolves.toMatchObject({ planner_input_hash: "a".repeat(64) });
+    await markAnalysisJobProviderSubmission({
+      id: queued.id,
+      claimGeneration: input.claimGeneration,
+      submittedAt: new Date("2026-06-30T00:01:01Z"),
+      expiresAt: new Date("2026-06-30T00:09:01Z")
+    });
+    await expect(bindAnalysisJobPlannerSeed({ ...input, inputHash: "a".repeat(64) })).resolves.toBeNull();
+    await expect(bindAnalysisJobPlannerSeed({ ...input, inputHash: "b".repeat(64) })).resolves.toBeNull();
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ planner_input_hash: "a".repeat(64), provider_status: "submitting" });
+  });
+
+  it("clears every hybrid and provider continuation field on a processing successor before it can look legacy", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const queued = await enqueueAnalysisJob(jobInput());
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date("2026-06-30T00:01:00Z") });
+    await bindAnalysisJobPlannerSeed({ id: queued.id, claimGeneration: claim.job!.claim_generation!, contractVersion: "hybrid_requirement_planner.v1", inputHash: "a".repeat(64) });
+    await markAnalysisJobProviderSubmission({
+      id: queued.id,
+      claimGeneration: claim.job!.claim_generation!,
+      submittedAt: new Date("2026-06-30T00:01:01Z"),
+      expiresAt: new Date("2026-06-30T00:09:01Z")
+    });
+
+    await enqueueAnalysisJob({ ...jobInput(), deliveryId: "123e4567-e89b-12d3-a456-426614174399", now: new Date("2026-06-30T00:01:02Z") });
+    const successor = getAnalysisJobsForTests()[0]!;
+    expect(successor).toMatchObject({
+      status: "processing",
+      desired_revision: 2,
+      running_revision: 1,
+      planner_contract_version: null,
+      planner_input_hash: null,
+      provider_status: null,
+      provider_response_id: null,
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      provider_poll_attempts: 0,
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null
+    });
+    expect(resolveHybridPlannerJobBinding({ ...successor, provider_status: "submitting" }, { phase: "submit", rebuiltInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "fallback" });
+  });
+
+  it("preserves true legacy null/null rows while clearing their successor provider continuation", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const queued = await enqueueAnalysisJob(jobInput());
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date("2026-06-30T00:01:00Z") });
+    await markAnalysisJobProviderSubmission({
+      id: queued.id,
+      claimGeneration: claim.job!.claim_generation!,
+      submittedAt: new Date("2026-06-30T00:01:01Z"),
+      expiresAt: new Date("2026-06-30T00:09:01Z")
+    });
+    await enqueueAnalysisJob({ ...jobInput(), deliveryId: "123e4567-e89b-12d3-a456-426614174398", now: new Date("2026-06-30T00:01:02Z") });
+    const successor = getAnalysisJobsForTests()[0]!;
+    expect(successor).toMatchObject({ planner_contract_version: null, planner_input_hash: null, provider_status: null });
+    expect(resolveHybridPlannerJobBinding(successor, { phase: "submit", rebuiltInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "fallback" });
+  });
+
+  it("fails closed for a cleared successor revision in memory or a normalized durable row, while a current legacy row remains legacy", () => {
+    const legacy = {
+      status: "processing" as const,
+      desired_revision: 4,
+      running_revision: 4,
+      hybrid_planner_requested: false,
+      planner_contract_version: null,
+      planner_input_hash: null,
+      provider_status: null,
+      provider_response_id: null,
+      provider_poll_attempts: 0,
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      provider_webhook_id_hash: null,
+      provider_webhook_received_at: null,
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      prior_provider_submitted_at: null,
+      prior_provider_expires_at: null
+    };
+    expect(resolveHybridPlannerJobBinding(legacy, { phase: "submit", rebuiltInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "legacy" });
+    expect(resolveHybridPlannerJobBinding({ ...legacy, desired_revision: 5, running_revision: 4 }, { phase: "submit", rebuiltInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "fallback" });
+    const normalizedDurableRow = JSON.parse(JSON.stringify({ ...legacy, desired_revision: 5, running_revision: 4 }));
+    expect(resolveHybridPlannerJobBinding(normalizedDurableRow, { phase: "response", rebuiltInputHash: "a".repeat(64), responseInputHash: "a".repeat(64) }))
+      .toEqual({ disposition: "fallback" });
   });
 
   it("coalesces same-head events into one debounced canonical memory revision", async () => {
@@ -1941,6 +2188,28 @@ describe("analysis job queue", () => {
     expect(retryMigration).toContain("prior_provider_expires_at <= prior_provider_submitted_at + interval '10 minutes'");
     expect(retryMigration).toContain("revoke all on table public.agentproof_analysis_jobs from anon, authenticated");
     expect(retryMigration).toContain("grant select, insert, update, delete on table public.agentproof_analysis_jobs to service_role");
+
+    const plannerMigration = readFileSync(
+      new URL("../../supabase/migrations/202608120001_hybrid_planner_pilot.sql", import.meta.url),
+      "utf8"
+    );
+    expect(plannerMigration).toContain("planner_contract_version text");
+    expect(plannerMigration).toContain("planner_input_hash text");
+    expect(plannerMigration).toContain("hybrid_planner_requested boolean not null default false");
+    expect(plannerMigration).toContain("hybrid_planner_requested = false");
+    expect(plannerMigration).toContain("hybrid_planner_requested = true");
+    expect(plannerMigration).toContain("hybrid_planner_requested = excluded.hybrid_planner_requested");
+    expect(plannerMigration).toContain("create or replace function public.agentproof_enqueue_analysis_job(job_payload jsonb)");
+    expect(plannerMigration).toContain("planner_contract_version = 'hybrid_requirement_planner.v1'");
+    expect(plannerMigration).toContain("planner_input_hash ~ '^[a-f0-9]{64}$'");
+    expect(plannerMigration).toContain("planner_contract_version is null and planner_input_hash is null");
+    expect(plannerMigration).toContain("agentproof_clear_hybrid_planner_binding_on_revision");
+    expect(plannerMigration).toContain("if new.desired_revision is distinct from old.desired_revision then");
+    expect(plannerMigration).toContain("new.provider_status := null");
+    expect(plannerMigration).toContain("new.provider_submitted_at := null");
+    expect(plannerMigration).toContain("new.provider_response_id := null");
+    expect(plannerMigration).toContain("new.semantic_retry_attempts := 0");
+    expect(plannerMigration).not.toMatch(/(?:prompt|response|source|span|decision)_text/i);
   });
 
   it("defines canonical revision RPCs and a Vault-backed one-minute recovery trigger", () => {
@@ -2874,6 +3143,53 @@ describe("analysis job queue", () => {
     expect(serializedBody).not.toContain("raw");
     expect(serializedBody).not.toContain("claims");
     expect(serializedBody).not.toContain("reprompt");
+  });
+
+  it("uses durable CAS guards for an initial seed binding and does not patch an already-bound row", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
+    const claimGeneration = "123e4567-e89b-42d3-a456-426614174000";
+    const current = {
+      ...jobRow({ id: "123e4567-e89b-42d3-a456-426614174333", status: "processing", attempts: 1 }),
+      claim_generation: claimGeneration,
+      hybrid_planner_requested: true,
+      planner_contract_version: null,
+      planner_input_hash: null,
+      provider_status: null,
+      provider_response_id: null,
+      provider_poll_attempts: 0,
+      provider_submitted_at: null,
+      provider_expires_at: null,
+      provider_webhook_id_hash: null,
+      provider_webhook_received_at: null,
+      semantic_retry_attempts: 0,
+      prior_provider_response_id: null,
+      prior_provider_submitted_at: null,
+      prior_provider_expires_at: null
+    };
+    const bound = { ...current, planner_contract_version: "hybrid_requirement_planner.v1" as const, planner_input_hash: "a".repeat(64) };
+    let reads = 0;
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "GET") return Response.json([reads++ === 0 ? current : bound]);
+      return Response.json([bound]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(bindAnalysisJobPlannerSeed({ id: current.id, claimGeneration, contractVersion: "hybrid_requirement_planner.v1", inputHash: "a".repeat(64) }))
+      .resolves.toMatchObject({ planner_input_hash: "a".repeat(64) });
+    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    const patchUrl = decodeURIComponent(String(patchCall?.[0]));
+    expect(patchUrl).toContain("planner_contract_version=is.null");
+    expect(patchUrl).toContain("planner_input_hash=is.null");
+    expect(patchUrl).toContain("provider_status=is.null");
+    expect(patchUrl).toContain("provider_submitted_at=is.null");
+    expect(patchUrl).toContain("provider_response_id=is.null");
+
+    await expect(bindAnalysisJobPlannerSeed({ id: current.id, claimGeneration, contractVersion: "hybrid_requirement_planner.v1", inputHash: "a".repeat(64) }))
+      .resolves.toMatchObject({ planner_input_hash: "a".repeat(64) });
+    expect(fetchMock.mock.calls.filter((call) => call[1]?.method === "PATCH")).toHaveLength(1);
   });
 
   it("fails durable Supabase jobs with redacted summaries and terminal max-attempt handling", async () => {

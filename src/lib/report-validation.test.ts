@@ -1,10 +1,134 @@
 import { describe, expect, it } from "vitest";
+import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport } from "./report-validation";
-import { decodeSharedReport, encodeReportForShare } from "./report-share";
+import { decodeSharedReport, encodeReportForShare, sanitizeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
+const HYBRID_PLANNER_PROVENANCE = {
+  version: 1,
+  contractVersion: "hybrid_requirement_planner.v1",
+  schemaVersion: "agentproof_requirement_span_plan_v1",
+  promptVersion: "2026-08-12.v1",
+  model: "gpt-5-mini",
+  inputHash: "a".repeat(64)
+} as const;
+
 describe("validateVerificationReport", () => {
+  it("allows hashless planner provenance only on public summaries", () => {
+    const fullReport = generateVerificationReport(demoScenarios.clean);
+    fullReport.planner = { ...HYBRID_PLANNER_PROVENANCE };
+    for (const requirement of fullReport.requirements) requirement.classificationBasis = "enhanced_plan";
+    for (const node of fullReport.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+    const report = sanitizeReportForShare(fullReport) as unknown as Record<string, unknown>;
+    delete (report.planner as Record<string, unknown>).inputHash;
+    report.authenticity = createUnverifiedAuthenticity("portable_unverified");
+
+    expect(validateVerificationReport(report, { mode: "summary" })).toEqual({ valid: true, errors: [] });
+
+    const full = validateVerificationReport(report, { mode: "full" });
+    expect(full.valid).toBe(false);
+    expect(full.errors.join("\n")).toContain("planner.inputHash");
+
+    const hashfulPortable = structuredClone(report) as Record<string, unknown>;
+    (hashfulPortable.planner as Record<string, unknown>).inputHash = "a".repeat(64);
+    const leaked = validateVerificationReport(hashfulPortable, { mode: "summary" });
+    expect(leaked.valid).toBe(false);
+    expect(leaked.errors.join("\n")).toContain("public summary planner provenance must omit planner.inputHash");
+
+    const verified = structuredClone(report) as Record<string, unknown>;
+    verified.authenticity = {
+      version: 1,
+      trust: "verified_agentproof",
+      generator: {
+        reportSchemaVersion: "verification-report.v1",
+        deterministicEngineVersion: "agentproof-deterministic.v1"
+      },
+      canonicalDigest: "b".repeat(64),
+      signingKeyId: "agentproof-report-hmac-v1",
+      signature: "c".repeat(64)
+    };
+    expect(validateVerificationReport(verified, { mode: "summary" })).toEqual({ valid: true, errors: [] });
+
+    const unsigned = structuredClone(report) as Record<string, unknown>;
+    delete unsigned.authenticity;
+    const untrusted = validateVerificationReport(unsigned, { mode: "summary" });
+    expect(untrusted.valid).toBe(false);
+    expect(untrusted.errors.join("\n")).toContain("hashless planner provenance requires public-summary authenticity");
+  });
+
+  it("accepts only neutral enhanced-planning provenance and matching axis subjects", () => {
+    const report = generateVerificationReport(demoScenarios.clean) as unknown as Record<string, unknown>;
+    const requirements = report.requirements as Array<Record<string, unknown>>;
+    const nodes = (report.proofGraph as { nodes: Array<Record<string, unknown>> }).nodes;
+    report.planner = { ...HYBRID_PLANNER_PROVENANCE };
+    for (const requirement of requirements) requirement.classificationBasis = "enhanced_plan";
+    requirements[0]!.plannerAxisSubjects = ["documentation"];
+    requirements[0]!.proofAxes = [{ subject: "documentation", polarity: "present", state: "incomplete", evidenceRefs: [] }];
+    for (const node of nodes) node.classificationBasis = "enhanced_plan";
+
+    expect(validateVerificationReport(report)).toEqual({ valid: true, errors: [] });
+
+    (report.planner as Record<string, unknown>).inputHash = "UPPER";
+    requirements[0]!.plannerAxisSubjects = ["implementation", "implementation"];
+    nodes[0]!.classificationBasis = "deterministic";
+    const invalid = validateVerificationReport(report);
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join("\n")).toContain("planner.inputHash");
+    expect(invalid.errors.join("\n")).toContain("plannerAxisSubjects");
+    expect(invalid.errors.join("\n")).toContain("classificationBasis must match");
+  });
+
+  it("requires a complete planner provenance tuple for enhanced findings and proof nodes", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    for (const requirement of report.requirements) requirement.classificationBasis = "enhanced_plan";
+    report.requirements[0]!.plannerAxisSubjects = ["documentation"];
+    report.requirements[0]!.proofAxes = [{ subject: "documentation", polarity: "present", state: "incomplete", evidenceRefs: [] }];
+    for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+
+    expect(validateVerificationReport(report).valid).toBe(false);
+    report.planner = { ...HYBRID_PLANNER_PROVENANCE };
+    expect(validateVerificationReport(report)).toEqual({ valid: true, errors: [] });
+
+    delete report.requirements[0]!.classificationBasis;
+    expect(validateVerificationReport(report).valid).toBe(false);
+    report.requirements[0]!.classificationBasis = "enhanced_plan";
+    delete report.proofGraph.nodes[0]!.classificationBasis;
+    expect(validateVerificationReport(report).valid).toBe(false);
+    delete report.requirements[0]!.plannerAxisSubjects;
+    delete report.requirements[0]!.classificationBasis;
+    report.proofGraph.nodes[0]!.classificationBasis = "deterministic";
+    expect(validateVerificationReport(report).valid).toBe(false);
+  });
+
+  it("rejects a mixed four-requirement planner tuple instead of accepting one enhanced pair", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    const originalRequirement = report.requirements[0]!;
+    const originalNode = report.proofGraph.nodes[0]!;
+    report.requirements = Array.from({ length: 4 }, (_, index) => ({
+      ...structuredClone(originalRequirement),
+      requirementId: `mixed_requirement_${index}`,
+      classificationBasis: index === 0 ? "enhanced_plan" as const : "deterministic" as const
+    }));
+    report.proofGraph.nodes = Array.from({ length: 4 }, (_, index) => ({
+      ...structuredClone(originalNode),
+      requirementId: `mixed_requirement_${index}`,
+      classificationBasis: index === 0 ? "enhanced_plan" as const : "deterministic" as const
+    }));
+    report.proofGraph.summary = {
+      requirementCount: 4,
+      requirementsWithImplementation: report.proofGraph.nodes.filter((node) => node.implementationEvidenceRefs.length > 0).length,
+      requirementsWithTargetedTests: report.proofGraph.nodes.filter((node) => node.targetedTestEvidenceRefs.length > 0).length,
+      requirementsWithExecution: report.proofGraph.nodes.filter((node) => node.executionEvidenceRefs.length > 0).length,
+      requirementsWithGaps: report.proofGraph.nodes.filter((node) => node.gapSignals.length > 0).length,
+      gapCount: report.proofGraph.nodes.reduce((count, node) => count + node.gapSignals.length, 0)
+    };
+    report.planner = { ...HYBRID_PLANNER_PROVENANCE };
+
+    const result = validateVerificationReport(report);
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("planner provenance requires every materialized requirement");
+  });
   it("accepts a generated deterministic report", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
 
@@ -382,6 +506,42 @@ describe("validateVerificationReport", () => {
     const unrelatedResult = validateVerificationReport(unrelatedExecution, { mode: "full" });
     expect(unrelatedResult.valid).toBe(false);
     expect(unrelatedResult.errors.join("\n")).toContain("incompatible evidence");
+  });
+
+  it("rejects a forged manual-check ambiguity on an all-satisfied authoritative requirement", () => {
+    const report = generateVerificationReport({
+      title: "Retry report",
+      description: "Adds retry behavior and reports the test result.",
+      taskText: "Add retry handling.",
+      taskSource: "issue",
+      changedFiles: [
+        { path: "src/retry.ts", status: "modified", patch: "+ export function retryRequest() {}" },
+        { path: "src/retry.test.ts", status: "modified", patch: "+ test retry request" }
+      ],
+      checks: [{ name: "retry tests", status: "passed", summary: "Retry request tests passed." }],
+      logs: [{ source: "retry tests", status: "passed", text: "npm test retry: passed" }]
+    });
+    const finding = report.requirements[0]!;
+    const node = report.proofGraph.nodes[0]!;
+    expect(finding.status).toBe("met");
+    expect(finding.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+
+    finding.status = "unclear";
+    finding.gaps = ["Requirement needs human interpretation before trusting the report."];
+    node.status = "unclear";
+    node.sourceQuality = "manual_check";
+    node.gapSignals = [{
+      kind: "ambiguous_requirement",
+      severity: "medium",
+      message: "Requirement needs human interpretation before trusting the report.",
+      evidenceRefs: finding.evidenceRefs.slice(0, 1)
+    }];
+    report.proofGraph.summary.requirementsWithGaps = 1;
+    report.proofGraph.summary.gapCount = 1;
+
+    const result = validateVerificationReport(report, { mode: "full" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("every satisfied authoritative axis requires met");
   });
 
   it("rejects axes derived from proof-node text that diverges from the matched requirement", () => {

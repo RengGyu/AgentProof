@@ -24,6 +24,7 @@ const PROOF_COLLECTION_BASES = new Set<string>(PROOF_AXIS_COLLECTION_BASES);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
 const EVIDENCE_KINDS = new Set(["task", "pr_description", "diff", "changed_file", "check", "log", "test", "inference"]);
 const TARGET_AGENTS = new Set(["codex", "claude_code", "cursor", "copilot"]);
+const CLASSIFICATION_BASES = new Set(["deterministic", "enhanced_plan"]);
 const REQUIREMENT_CONTEXT_ROLES = new Set([
   "problem_context",
   "reproduction_context",
@@ -131,7 +132,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["analysisContext", "authenticity", "semantic", "semanticAnalysis"]
+    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner"]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -155,6 +156,8 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
   validateSemanticAnalysis(report.semantic, requirementIds, report.evidenceIndex, errors);
   validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
+  validatePlannerProvenance(report.planner, mode, report.authenticity, errors);
+  validatePlanningFieldConsistency(report, errors);
   validateAuthenticity(report.authenticity, errors);
   if (mode === "summary") {
     validateSummaryOnlyReport(report, errors);
@@ -165,6 +168,115 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+function validatePlannerProvenance(
+  value: unknown,
+  mode: NonNullable<ReportValidationOptions["mode"]>,
+  authenticity: unknown,
+  errors: string[]
+) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push("planner must be an object.");
+    return;
+  }
+  const trust = isRecord(authenticity) ? authenticity.trust : undefined;
+  const hashlessSummary = mode === "summary" &&
+    (trust === "portable_unverified" || trust === "verified_agentproof" || trust === "imported_unverified");
+  const hasInputHash = Object.hasOwn(value, "inputHash");
+  const neutralKeys = ["version", "contractVersion", "schemaVersion", "promptVersion", "model"];
+
+  if (hashlessSummary) {
+    requireKeys(value, neutralKeys, "planner", errors);
+    if (hasInputHash) errors.push("public summary planner provenance must omit planner.inputHash.");
+  } else {
+    requireKeys(value, [...neutralKeys, "inputHash"], "planner", errors);
+    if (mode === "summary" && !hasInputHash) {
+      errors.push("hashless planner provenance requires public-summary authenticity.");
+    }
+  }
+  if (value.version !== 1) errors.push("planner.version must be 1.");
+  if (value.contractVersion !== "hybrid_requirement_planner.v1") errors.push("planner.contractVersion is invalid.");
+  if (value.schemaVersion !== "agentproof_requirement_span_plan_v1") errors.push("planner.schemaVersion is invalid.");
+  if (value.promptVersion !== "2026-08-12.v1") errors.push("planner.promptVersion is invalid.");
+  if (value.model !== "gpt-5-mini") errors.push("planner.model is invalid.");
+  if (!hashlessSummary && (typeof value.inputHash !== "string" || !/^[a-f0-9]{64}$/.test(value.inputHash))) {
+    errors.push("planner.inputHash must be a lowercase SHA-256 digest.");
+  }
+}
+
+function validatePlanningFieldConsistency(report: RecordValue, errors: string[]) {
+  const nodes = new Map<string, RecordValue>();
+  let enhancedNodeCount = 0;
+  let proofNodeCount = 0;
+  if (isRecord(report.proofGraph) && Array.isArray(report.proofGraph.nodes)) {
+    for (const node of report.proofGraph.nodes) {
+      if (!isRecord(node)) continue;
+      proofNodeCount += 1;
+      if (node.classificationBasis !== undefined) validateEnum(node.classificationBasis, "proofGraph node classificationBasis", CLASSIFICATION_BASES, errors);
+      if (node.classificationBasis === "enhanced_plan") enhancedNodeCount += 1;
+      if (typeof node.requirementId === "string") nodes.set(node.requirementId, node);
+    }
+  }
+  if (!Array.isArray(report.requirements)) return;
+  const requirementCount = report.requirements.filter(isRecord).length;
+  const requirementsById = new Map<string, RecordValue>();
+  let enhancedRequirementCount = 0;
+  for (const [index, requirement] of report.requirements.entries()) {
+    if (!isRecord(requirement)) continue;
+    const path = `requirements[${index}]`;
+    if (typeof requirement.requirementId === "string") requirementsById.set(requirement.requirementId, requirement);
+    if (requirement.classificationBasis !== undefined) validateEnum(requirement.classificationBasis, `${path}.classificationBasis`, CLASSIFICATION_BASES, errors);
+    if (requirement.classificationBasis === "enhanced_plan") enhancedRequirementCount += 1;
+    if (requirement.plannerAxisSubjects !== undefined) {
+      if (requirement.classificationBasis !== "enhanced_plan") errors.push(`${path}.plannerAxisSubjects requires enhanced_plan classificationBasis.`);
+      if (report.planner === undefined) errors.push(`${path}.plannerAxisSubjects requires planner provenance.`);
+      const subjects = validateArray(requirement.plannerAxisSubjects, `${path}.plannerAxisSubjects`, 4, errors);
+      const axes = Array.isArray(requirement.proofAxes) ? requirement.proofAxes : [];
+      const axisSubjects = new Set(axes.flatMap((axis) => isRecord(axis) && typeof axis.subject === "string" ? [axis.subject] : []));
+      const seen = new Set<string>();
+      for (const [subjectIndex, subject] of (subjects ?? []).entries()) {
+        if (typeof subject !== "string" || !PROOF_AXIS_SUBJECT_SET.has(subject)) {
+          errors.push(`${path}.plannerAxisSubjects[${subjectIndex}] is invalid.`);
+          continue;
+        }
+        if (seen.has(subject)) errors.push(`${path}.plannerAxisSubjects must be unique.`);
+        seen.add(subject);
+        if (!axisSubjects.has(subject)) errors.push(`${path}.plannerAxisSubjects must be a subset of proofAxes subjects.`);
+      }
+    }
+    const node = typeof requirement.requirementId === "string" ? nodes.get(requirement.requirementId) : undefined;
+    if (node && requirement.classificationBasis !== node.classificationBasis) {
+      errors.push(`${path}.classificationBasis must match proofGraph node classificationBasis.`);
+    }
+  }
+  if ((enhancedRequirementCount > 0 || enhancedNodeCount > 0) && report.planner === undefined) {
+    errors.push("enhanced planning classifications require planner provenance.");
+  }
+  // A valid Task 3 exclusion may intentionally materialize no requirements at
+  // all. Otherwise a planner marker must be backed by matching enhanced pairs.
+  if (report.planner !== undefined && (requirementCount > 0 || proofNodeCount > 0) &&
+      (enhancedRequirementCount === 0 || enhancedNodeCount === 0 || enhancedRequirementCount !== enhancedNodeCount)) {
+    errors.push("planner provenance requires matching enhanced requirement and proof-node classifications.");
+  }
+  if (report.planner !== undefined && requirementCount > 0) {
+    for (const [index, requirement] of report.requirements.entries()) {
+      if (!isRecord(requirement)) continue;
+      if (requirement.classificationBasis !== "enhanced_plan") {
+        errors.push(`planner provenance requires every materialized requirement to use enhanced_plan classificationBasis (requirements[${index}]).`);
+      }
+      const node = typeof requirement.requirementId === "string" ? nodes.get(requirement.requirementId) : undefined;
+      if (!node || node.classificationBasis !== "enhanced_plan") {
+        errors.push(`planner provenance requires matching enhanced_plan proof node for requirements[${index}].`);
+      }
+    }
+    for (const [requirementId, node] of nodes.entries()) {
+      if (requirementsById.has(requirementId) && node.classificationBasis !== "enhanced_plan") {
+        errors.push(`planner provenance requires every materialized proof node to use enhanced_plan classificationBasis (${requirementId}).`);
+      }
+    }
+  }
 }
 
 function validateSemanticAnalysis(
@@ -370,7 +482,7 @@ function validateRequirements(value: unknown, evidenceIds: Set<string>, errors: 
       continue;
     }
 
-    requireKeys(item, ["requirementId", "requirementText", "status", "evidenceRefs", "gaps", "reviewerNote", "confidence"], path, errors, ["proofAxes"]);
+    requireKeys(item, ["requirementId", "requirementText", "status", "evidenceRefs", "gaps", "reviewerNote", "confidence"], path, errors, ["proofAxes", "classificationBasis", "plannerAxisSubjects"]);
     validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
     validateString(item.requirementText, `${path}.requirementText`, LIMITS.requirementText, errors);
     validateEnum(item.status, `${path}.status`, REQUIREMENT_STATUSES, errors);
@@ -387,6 +499,7 @@ function validateRequirementProofAxes(value: unknown, path: string, evidenceIds:
   if (!axes) return;
   if (axes.length === 0) errors.push(`${path} must contain at least one axis when present.`);
   const seen = new Set<string>();
+  const seenSubjects = new Set<string>();
 
   for (const [index, item] of axes.entries()) {
     const itemPath = `${path}[${index}]`;
@@ -409,6 +522,11 @@ function validateRequirementProofAxes(value: unknown, path: string, evidenceIds:
       const key = `${item.subject}:${item.polarity}`;
       if (seen.has(key)) errors.push(`${itemPath} duplicates proof axis ${key}.`);
       seen.add(key);
+      if (seenSubjects.has(item.subject)) errors.push(`${itemPath} duplicates proof axis subject ${item.subject}.`);
+      seenSubjects.add(item.subject);
+      if (item.polarity === "absent" && item.subject !== "implementation") {
+        errors.push(`${itemPath} uses an unsupported absent polarity.`);
+      }
     }
     if (item.polarity === "absent" && item.state === "satisfied" && item.collectionBasis !== "complete_changed_file_inventory") {
       errors.push(`${itemPath} cannot satisfy absence without a complete changed-file inventory.`);
@@ -554,7 +672,8 @@ function validateProofGraph(
           "firstFiles"
         ],
         path,
-        errors
+        errors,
+        ["classificationBasis"]
       );
       validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
       if (typeof item.requirementId === "string" && requirementIds.size > 0 && !requirementIds.has(item.requirementId)) {
@@ -1110,8 +1229,17 @@ function validateFullRequirementProofAxes(
   const actualKeys = new Set(axes.flatMap((axis) =>
     typeof axis.subject === "string" && typeof axis.polarity === "string" ? [`${axis.subject}:${axis.polarity}`] : []
   ));
-  if (expectedKeys.size !== actualKeys.size || [...expectedKeys].some((key) => !actualKeys.has(key))) {
-    errors.push(`${path} must match the complete required proof axis set.`);
+  if ([...expectedKeys].some((key) => !actualKeys.has(key))) {
+    errors.push(`${path} must include the complete required proof axis set as its deterministic floor.`);
+  }
+  if (actualKeys.has("implementation:absent") && !expectedKeys.has("implementation:absent")) {
+    errors.push(`${path} can require implementation absence only for an exact deterministic no-implementation policy.`);
+  }
+  if (
+    ["implementation:present", "ci_configuration:present", "targeted_test:present"].some((key) => actualKeys.has(key)) &&
+    !actualKeys.has("execution:present")
+  ) {
+    errors.push(`${path} must include the deterministic execution companion.`);
   }
 
   for (const [axisIndex, axis] of axes.entries()) {

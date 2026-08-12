@@ -34,7 +34,9 @@ export async function GET(request: Request) {
         analysisEnabled: repository.analysisEnabled,
         saveReportsEnabled: repository.saveReportsEnabled,
         commentEnabled: repository.commentEnabled,
-        llmAnalysisMode: repository.llmAnalysisMode ?? "essential"
+        llmAnalysisMode: repository.llmAnalysisMode ?? "essential",
+        hybridPlannerConsentVersion: repository.hybridPlannerConsentVersion ?? null,
+        repositoryPrivate: repository.repositoryPrivate === true
       })),
       privacy: "grant-metadata-only"
     });

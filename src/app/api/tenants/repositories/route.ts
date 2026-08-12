@@ -18,7 +18,8 @@ const SETTINGS_KEYS = new Set([
   "commentEnabled",
   "saveReportsEnabled",
   "slackNotificationsEnabled",
-  "llmAnalysisMode"
+  "llmAnalysisMode",
+  "hybridPlannerConsent"
 ]);
 
 interface RepositorySettingsPatchRequest {
@@ -32,6 +33,7 @@ interface RepositorySettingsPatchRequest {
     saveReportsEnabled?: unknown;
     slackNotificationsEnabled?: unknown;
     llmAnalysisMode?: unknown;
+    hybridPlannerConsent?: unknown;
   };
 }
 
@@ -191,6 +193,12 @@ export async function PATCH(request: Request) {
     }
 
     if (error instanceof TenantControlPlaneStoreError) {
+      if (error.message.includes("consent is invalid")) {
+        return noStoreJson({
+          error: "Repository settings cannot grant private enhanced planning consent for this repository.",
+          code: "tenant_repository_settings_invalid"
+        }, { status: 422 });
+      }
       if (error.message.includes("not found")) {
         return noStoreJson({
           error: "Tenant repository grant was not found.",
@@ -229,7 +237,8 @@ function toPublicRepositorySettings(grant: TenantRepositoryGrant) {
     saveReportsEnabled: grant.saveReportsEnabled,
     commentEnabled: grant.commentEnabled,
     slackNotificationsEnabled: grant.slackNotificationsEnabled,
-    llmAnalysisMode: grant.llmAnalysisMode ?? "essential"
+    llmAnalysisMode: grant.llmAnalysisMode ?? "essential",
+    hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion ?? null
   };
 }
 
@@ -254,6 +263,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     saveReportsEnabled?: boolean;
     slackNotificationsEnabled?: boolean;
     llmAnalysisMode?: "essential" | "enhanced";
+    hybridPlannerConsent?: boolean;
   };
 } {
   const entries = Object.entries(value);
@@ -266,6 +276,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     saveReportsEnabled?: boolean;
     slackNotificationsEnabled?: boolean;
     llmAnalysisMode?: "essential" | "enhanced";
+    hybridPlannerConsent?: boolean;
   } = {};
 
   for (const [key, setting] of entries) {
@@ -278,5 +289,14 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     settings[key as keyof typeof settings] = setting as never;
   }
 
-  return { valid: true, settings };
+  const hybridPlannerConsentVersion = settings.llmAnalysisMode === "essential"
+    ? null
+    : settings.hybridPlannerConsent === true
+      ? "2026-08-12.v1" as const
+      : settings.hybridPlannerConsent === false
+        ? null
+        : undefined;
+  delete settings.hybridPlannerConsent;
+
+  return { valid: true, settings: { ...settings, ...(hybridPlannerConsentVersion !== undefined ? { hybridPlannerConsentVersion } : {}) } };
 }

@@ -20,6 +20,23 @@ const detail = {
 } satisfies DashboardReportDetail & { repositoryFullName: string };
 
 describe("dashboard report export", () => {
+  it("projects enhanced planning as neutral policy copy without internal provenance", () => {
+    const plannerDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    plannerDetail.report!.planner = {
+      version: 1,
+      contractVersion: "hybrid_requirement_planner.v1",
+      schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1",
+      model: "gpt-5-mini",
+      inputHash: "a".repeat(64)
+    };
+    const output = `${dashboardReportToJson(plannerDetail)}\n${dashboardReportToMarkdown(plannerDetail)}`;
+
+    expect(output).toContain("Enhanced planning policy");
+    expect(output).not.toContain("hybrid_requirement_planner");
+    expect(output).not.toContain("gpt-5-mini");
+    expect(output).not.toContain("a".repeat(64));
+  });
   it("fails closed when a detail is not revalidated as current and copy eligible", () => {
     expect(() => dashboardReportToMarkdown({ ...detail, freshness: "refreshing", copyEligible: false })).toThrow("not current");
     expect(() => dashboardReportsToMarkdown([{ ...detail, freshness: "unknown", copyEligible: false }])).toThrow("not current");

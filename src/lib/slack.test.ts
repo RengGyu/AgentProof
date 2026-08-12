@@ -9,6 +9,23 @@ import {
 import { generateVerificationReport } from "./verifier";
 
 describe("slack helpers", () => {
+  it("renders enhanced planning as neutral policy copy only", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.planner = {
+      version: 1,
+      contractVersion: "hybrid_requirement_planner.v1",
+      schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1",
+      model: "gpt-5-mini",
+      inputHash: "a".repeat(64)
+    };
+    const payload = JSON.stringify(reportToSlackPayload(report));
+
+    expect(payload).toContain("Enhanced planning policy");
+    expect(payload).not.toContain("hybrid_requirement_planner");
+    expect(payload).not.toContain("gpt-5-mini");
+    expect(payload).not.toContain("a".repeat(64));
+  });
   it("formats summary-only payloads", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     report.summary.oneLine = "@channel verify github_pat_secret_should_not_leak_1234567890";

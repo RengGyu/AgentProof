@@ -112,7 +112,8 @@ describe("/api/tenants/repositories", () => {
           saveReportsEnabled: true,
           commentEnabled: false,
           slackNotificationsEnabled: true,
-          llmAnalysisMode: "essential"
+          llmAnalysisMode: "essential",
+          hybridPlannerConsentVersion: null
         }
       ],
       privacy: "grant-metadata-only",
@@ -235,7 +236,8 @@ describe("/api/tenants/repositories", () => {
         saveReportsEnabled: false,
         commentEnabled: false,
         slackNotificationsEnabled: false,
-        llmAnalysisMode: "enhanced"
+        llmAnalysisMode: "enhanced",
+        hybridPlannerConsentVersion: null
       },
       privacy: "grant-metadata-only",
       next: "repository_settings_saved"
@@ -249,6 +251,51 @@ describe("/api/tenants/repositories", () => {
       llmAnalysisMode: "enhanced"
     });
     expect(serialized).not.toContain("Patch excerpt");
+  });
+
+  it("exposes only exact consent metadata and clears it atomically on essential mode", async () => {
+    stubSettingsEnv();
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, repositoryFullName: "RengGyu/AgentProof",
+      repositoryPrivate: true,
+      llmAnalysisMode: "enhanced", hybridPlannerConsentVersion: "2026-08-12.v1"
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ tenantId: "tenant_a", installationId: 321, repositoryId: 100, settings: { llmAnalysisMode: "essential" } })
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ repository: { llmAnalysisMode: "essential", hybridPlannerConsentVersion: null } });
+    await expect(listTenantRepositoryGrants({ tenantId: "tenant_a" })).resolves.toEqual([
+      expect.not.objectContaining({ hybridPlannerConsentVersion: expect.anything() })
+    ]);
+  });
+
+  it("rejects consent-only settings writes while the current repository mode is essential", async () => {
+    stubSettingsEnv();
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof", repositoryPrivate: true,
+      llmAnalysisMode: "essential"
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ tenantId: "tenant_a", installationId: 321, repositoryId: 100, settings: { hybridPlannerConsent: true } })
+    }));
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: "Repository settings cannot grant private enhanced planning consent for this repository.",
+      code: "tenant_repository_settings_invalid"
+    });
+    await expect(listTenantRepositoryGrants({ tenantId: "tenant_a" })).resolves.toEqual([
+      expect.not.objectContaining({ hybridPlannerConsentVersion: expect.anything() })
+    ]);
   });
 
   it("rejects cross-origin repository setting mutations before changing a grant", async () => {

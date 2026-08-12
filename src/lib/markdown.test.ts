@@ -4,6 +4,23 @@ import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
 describe("reportToGitHubComment", () => {
+  it("renders enhanced planning as neutral policy copy only", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.planner = {
+      version: 1,
+      contractVersion: "hybrid_requirement_planner.v1",
+      schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1",
+      model: "gpt-5-mini",
+      inputHash: "a".repeat(64)
+    };
+    const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
+
+    expect(output).toContain("Enhanced planning policy");
+    expect(output).not.toContain("hybrid_requirement_planner");
+    expect(output).not.toContain("gpt-5-mini");
+    expect(output).not.toContain("a".repeat(64));
+  });
   it("creates a concise PR comment with a marker and no re-prompt by default", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     const comment = reportToGitHubComment(report);

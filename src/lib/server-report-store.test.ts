@@ -89,6 +89,103 @@ describe("server report store", () => {
     expect(saved.report.authenticity?.trust).toBe("imported_unverified");
   });
 
+  it("projects and hydrates only allowlisted neutral planning provenance", () => {
+    const secret = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.planner = {
+      version: 1,
+      contractVersion: "hybrid_requirement_planner.v1",
+      schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1",
+      model: "gpt-5-mini",
+      inputHash: "a".repeat(64)
+    };
+    for (const requirement of report.requirements) requirement.classificationBasis = "enhanced_plan";
+    report.requirements[0]!.plannerAxisSubjects = ["documentation"];
+    report.requirements[0]!.proofAxes = [{ subject: "documentation", polarity: "present", state: "incomplete", evidenceRefs: [] }];
+    for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+    report.reprompt.prompt = "Review the linked evidence.";
+    (report.planner as unknown as Record<string, unknown>).rawPlan = "must-not-persist";
+    const persisted = projectTenantPersistedReport(report, secret);
+
+    expect(JSON.stringify(persisted)).toContain("planner");
+    expect(JSON.stringify(persisted)).not.toContain("must-not-persist");
+    expect(validateTenantPersistedReport(persisted, secret)).toEqual({ valid: true, errors: [] });
+    const decoded = decodeTenantPersistedReport(persisted, { signingSecret: secret, createdAt: report.createdAt });
+    expect(decoded.status).toBe("valid");
+    if (decoded.status === "invalid") throw new Error("Expected valid tenant report.");
+    expect(decoded.report.planner).toMatchObject({ inputHash: "a".repeat(64) });
+    expect(decoded.report.requirements[0]).toMatchObject({ classificationBasis: "enhanced_plan", plannerAxisSubjects: ["documentation"] });
+    expect(decoded.report.proofGraph.nodes[0]).toMatchObject({ classificationBasis: "enhanced_plan" });
+
+    const tampered = structuredClone(persisted) as unknown as Record<string, unknown>;
+    (tampered.planner as Record<string, unknown>).rawPlan = "must-not-persist";
+    expect(validateTenantPersistedReport(tampered, secret).valid).toBe(false);
+  });
+
+  it("keeps the private planner hash in verified tenant storage but omits it from signed public summaries", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.planner = {
+      version: 1,
+      contractVersion: "hybrid_requirement_planner.v1",
+      schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1",
+      model: "gpt-5-mini",
+      inputHash: "a".repeat(64)
+    };
+    for (const requirement of report.requirements) requirement.classificationBasis = "enhanced_plan";
+    report.requirements[0]!.plannerAxisSubjects = ["documentation"];
+    report.requirements[0]!.proofAxes = [{ subject: "documentation", polarity: "present", state: "incomplete", evidenceRefs: [] }];
+    for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+
+    const [tenant, summary] = await Promise.all([
+      createVerifiedSavedReport(report, { tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "a".repeat(40) }),
+      createVerifiedSavedReport(report)
+    ]);
+
+    expect(tenant.report.planner).toMatchObject({ inputHash: "a".repeat(64) });
+    expect(JSON.stringify(tenant.report)).toContain("a".repeat(64));
+    expect(Object.hasOwn(summary.report.planner!, "inputHash")).toBe(false);
+    expect(JSON.stringify(summary.report)).not.toContain("a".repeat(64));
+    expect(summary.report.authenticity?.trust).toBe("verified_agentproof");
+    for (const saved of [tenant, summary]) {
+      expect(saved.report.requirements[0]).toMatchObject({ classificationBasis: "enhanced_plan", plannerAxisSubjects: ["documentation"] });
+      expect(saved.report.proofGraph.nodes[0]).toMatchObject({ classificationBasis: "enhanced_plan" });
+    }
+  });
+
+  it("rejects a mixed planner tuple at tenant and public storage entrypoints", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReport(demoScenarios.clean);
+    const requirement = report.requirements[0]!;
+    const node = report.proofGraph.nodes[0]!;
+    report.requirements = Array.from({ length: 4 }, (_, index) => ({
+      ...structuredClone(requirement), requirementId: `mixed_storage_requirement_${index}`,
+      classificationBasis: index === 0 ? "enhanced_plan" as const : "deterministic" as const
+    }));
+    report.proofGraph.nodes = Array.from({ length: 4 }, (_, index) => ({
+      ...structuredClone(node), requirementId: `mixed_storage_requirement_${index}`,
+      classificationBasis: index === 0 ? "enhanced_plan" as const : "deterministic" as const
+    }));
+    report.proofGraph.summary = {
+      requirementCount: 4,
+      requirementsWithImplementation: report.proofGraph.nodes.filter((item) => item.implementationEvidenceRefs.length > 0).length,
+      requirementsWithTargetedTests: report.proofGraph.nodes.filter((item) => item.targetedTestEvidenceRefs.length > 0).length,
+      requirementsWithExecution: report.proofGraph.nodes.filter((item) => item.executionEvidenceRefs.length > 0).length,
+      requirementsWithGaps: report.proofGraph.nodes.filter((item) => item.gapSignals.length > 0).length,
+      gapCount: report.proofGraph.nodes.reduce((count, item) => count + item.gapSignals.length, 0)
+    };
+    report.planner = {
+      version: 1, contractVersion: "hybrid_requirement_planner.v1", schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1", model: "gpt-5-mini", inputHash: "a".repeat(64)
+    };
+
+    await expect(createVerifiedSavedReport(report)).rejects.toThrow("planner provenance requires every materialized requirement");
+    await expect(createVerifiedSavedReport(report, { tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 9, headSha: "a".repeat(40) }))
+      .rejects.toThrow("planner provenance requires every materialized requirement");
+  });
+
   it("rejects a tampered server-verified summary instead of rendering it as verified", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean));

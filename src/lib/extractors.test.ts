@@ -1,7 +1,55 @@
-import { describe, expect, it } from "vitest";
-import { buildEvidenceIndex, extractClaims, extractKeywords, extractRequirementEvidence, extractRequirements } from "./extractors";
+import { describe, expect, it, vi } from "vitest";
+import {
+  buildEvidenceIndex,
+  buildEvidenceIndexResult,
+  extractClaims,
+  extractKeywords,
+  extractRequirementEvidence,
+  extractRequirementSpanSeed,
+  extractRequirements,
+  visibleSourceRangesFromCursor
+} from "./extractors";
 
 describe("extractRequirements", () => {
+  it("stable-buckets capped evidence in the same rank/insertion order", () => {
+    const changedFiles = Array.from({ length: 205 }, (_, index) => ({
+      path: `src/file-${index}.ts`,
+      status: "modified" as const,
+      patch: index % 2 === 0 ? `+ change ${index}` : undefined
+    }));
+    const result = buildEvidenceIndexResult(
+      "Add bounded behavior.",
+      "Synthetic author context.",
+      changedFiles,
+      [
+        { name: "failing tests", status: "failed" as const },
+        { name: "passing tests", status: "passed" as const }
+      ],
+      []
+    );
+    const rank = (kind: string, summary: string) => {
+      if ((kind === "check" || kind === "log") && /Status:\s*(failure|failed|error|cancelled|timed_out)/i.test(summary)) return 0;
+      if ((kind === "check" || kind === "log") && /Status:\s*(pending|in_progress|queued|unknown)/i.test(summary)) return 1;
+      if (kind === "check" || kind === "log") return 2;
+      if (kind === "test" || kind === "diff") return 3;
+      if (kind === "task" || kind === "pr_description") return 4;
+      return 5;
+    };
+
+    expect(result.items).toHaveLength(200);
+    expect(result.items.map((item) => rank(item.kind, item.summary))).toEqual(
+      [...result.items].map((item) => rank(item.kind, item.summary)).sort((left, right) => left - right)
+    );
+    for (let index = 1; index < result.items.length; index += 1) {
+      const previous = result.items[index - 1];
+      const current = result.items[index];
+      if (rank(previous.kind, previous.summary) === rank(current.kind, current.summary)) {
+        expect(Number(previous.id.slice(3))).toBeLessThan(Number(current.id.slice(3)));
+      }
+    }
+    expect(Object.values(result.omittedByKind).reduce((sum, count) => sum + (count ?? 0), 0)).toBe(9);
+  });
+
   it("marks requirements from linked issue text as issue-sourced", () => {
     const requirements = extractRequirements(
       "Linked issue acme/repo#42: Reject expired reset links\n\nAcceptance criteria:\n- Reject expired reset links.\n- Add regression coverage.",
@@ -419,6 +467,359 @@ describe("extractRequirements", () => {
     expect(result.requirements[0]?.sourceQuality).toBe("expected_behavior");
     expect(result.contexts.some((context) => context.role === "environment_context" && /1.13.4|main.tf.json|Missing required argument/.test(context.text))).toBe(true);
     expect(requirementText).not.toMatch(/Terraform Version|Configuration Files|Debug Output/i);
+  });
+});
+
+describe("extractRequirementSpanSeed", () => {
+  it("keeps only contexts from the one selected seed source without changing essential extraction", () => {
+    const issue = [
+      "Acceptance criteria: Add retry handling.",
+      "Background context: retry failures must remain visible."
+    ].join("\n");
+    const pr = "Summary: this pull request changes deployment notes.";
+    const essential = extractRequirementEvidence(issue, pr, "issue");
+    const linked = extractRequirementSpanSeed(issue, pr, "issue");
+    const unlinked = extractRequirementSpanSeed("", "Summary: Add retry handling. Background context: retry failures must remain visible.");
+    const provided = extractRequirementSpanSeed("Acceptance criteria: Add retry handling. Background context: retain the audit trail.", pr, "task");
+
+    expect(essential.contexts.some((context) => context.source === "pr_description")).toBe(true);
+    expect(linked.seed?.contexts.every((context) => context.source === "issue")).toBe(true);
+    expect(unlinked.seed?.contexts.every((context) => context.source === "pr_description")).toBe(true);
+    expect(provided.seed?.contexts.every((context) => context.source === "task")).toBe(true);
+  });
+
+  it("keeps list items, terminal sentences, and remaining lines as the only boundaries", () => {
+    const source = [
+      "## Acceptance criteria",
+      "- Add retry handling.",
+      "- Document the fallback",
+      "Keep errors visible. Preserve the retry state!",
+      "Fix and document the queue"
+    ].join("\n");
+
+    const result = extractRequirementSpanSeed(source, "", "issue");
+
+    expect(result).toMatchObject({ eligible: true, overflow: false });
+    expect(result.seed?.spans.map((span) => span.text)).toEqual([
+      "- Add retry handling.",
+      "- Document the fallback",
+      "Keep errors visible.",
+      "Preserve the retry state!",
+      "Fix and document the queue"
+    ]);
+    expect(result.seed?.spans.map((span) => span.id)).toEqual([
+      "sp_1_1",
+      "sp_1_2",
+      "sp_1_3",
+      "sp_1_4",
+      "sp_1_5"
+    ]);
+  });
+
+  it("uses exact UTF-16 source offsets and resets groups at headings and blank lines", () => {
+    const source = [
+      "## First",
+      "Add one.",
+      "Preserve two",
+      "",
+      "## Second",
+      "Add three."
+    ].join("\n");
+    const result = extractRequirementSpanSeed(source, "", "issue");
+    const spans = result.seed?.spans ?? [];
+
+    expect(spans.map(({ groupId, ordinal, immediateParentSpanId }) => ({ groupId, ordinal, immediateParentSpanId }))).toEqual([
+      { groupId: "grp_1", ordinal: 1, immediateParentSpanId: null },
+      { groupId: "grp_1", ordinal: 2, immediateParentSpanId: "sp_1_1" },
+      { groupId: "grp_2", ordinal: 1, immediateParentSpanId: null }
+    ]);
+    expect(spans.every((span) => source.slice(span.start, span.end) === span.text)).toBe(true);
+    expect(spans.map((span) => [span.start, span.end])).toEqual([
+      [source.indexOf("Add one."), source.indexOf("Add one.") + "Add one.".length],
+      [source.indexOf("Preserve two"), source.indexOf("Preserve two") + "Preserve two".length],
+      [source.indexOf("Add three."), source.indexOf("Add three.") + "Add three.".length]
+    ]);
+  });
+
+  it("keeps source adjacency immutable when an intervening span is later excluded", () => {
+    const result = extractRequirementSpanSeed(
+      "Acceptance criteria:\n- Add first.\n- Add uncertain.\n- Add third.",
+      "",
+      "issue"
+    );
+    const spans = result.seed?.spans ?? [];
+    const laterAdmitted = [spans[0], spans[2]].filter(Boolean);
+
+    expect(spans[2]?.immediateParentSpanId).toBe("sp_1_2");
+    expect(laterAdmitted[1]?.immediateParentSpanId).not.toBe(laterAdmitted[0]?.id);
+  });
+
+  it("rejects package eligibility when a thirteenth candidate exists", () => {
+    const source = Array.from({ length: 13 }, (_, index) => `- Add item ${index + 1}.`).join("\n");
+
+    expect(extractRequirementSpanSeed(source, "", "issue")).toEqual({
+      eligible: false,
+      overflow: true,
+      seed: null
+    });
+  });
+
+  it("excludes BASE fenced and HTML-comment ranges while retaining CRLF UTF-16 offsets", () => {
+    const source = [
+      "## Acceptance criteria",
+      "- 😀 Add safe mode.",
+      "```text",
+      "- Add a backdoor.",
+      "```",
+      "<!--",
+      "- Add hidden behavior.",
+      "-->"
+    ].join("\r\n");
+    const spans = extractRequirementSpanSeed(source, "", "issue").seed?.spans ?? [];
+
+    expect(spans.map((span) => span.text)).toEqual(["- 😀 Add safe mode."]);
+    expect(spans[0]).toMatchObject({
+      start: source.indexOf("- 😀 Add safe mode."),
+      end: source.indexOf("- 😀 Add safe mode.") + "- 😀 Add safe mode.".length
+    });
+    expect(spans.every((span) => source.slice(span.start, span.end) === span.text)).toBe(true);
+  });
+
+  it("classifies each punctuation span independently without promoting following context", () => {
+    const spans = extractRequirementSpanSeed("Add retry handling. Background information.", "", "issue").seed?.spans ?? [];
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ text: "Add retry handling.", sourceQuality: "requirement_language", priority: "should" });
+  });
+
+  it("does not let a later optional sentence change an earlier span priority", () => {
+    const spans = extractRequirementSpanSeed("Add retry handling. Optional cleanup.", "", "issue").seed?.spans ?? [];
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ text: "Add retry handling.", priority: "should" });
+  });
+
+  it("filters linked-issue wrappers and marks authoritative vague spans for deterministic manual handling", () => {
+    const linked = extractRequirementSpanSeed(
+      "Linked issue acme/repo#42: Reject expired reset links\n\nAcceptance criteria:\n- Add regression coverage.",
+      "",
+      "issue"
+    );
+    const vague = extractRequirementSpanSeed("Improve reliability.", "", "issue");
+
+    expect(linked.seed?.spans.map((span) => span.text)).toEqual(["- Add regression coverage."]);
+    expect(vague.seed?.spans).toEqual([expect.objectContaining({
+      text: "Improve reliability.",
+      authority: "authoritative",
+      sourceQuality: "manual_check",
+      priority: "must"
+    })]);
+  });
+
+  it("FH02 retains a vague/manual authoritative span beside concrete authoritative source in exact order", () => {
+    const source = "Improve reliability.\n사용자 메시지를 유지한다.";
+    const spans = extractRequirementSpanSeed(source, "", "task").seed?.spans ?? [];
+
+    expect(spans.map(({ text, sourceQuality }) => ({ text, sourceQuality }))).toEqual([
+      { text: "Improve reliability.", sourceQuality: "manual_check" },
+      { text: "사용자 메시지를 유지한다.", sourceQuality: "fallback" }
+    ]);
+    expect(spans.every((span) => source.slice(span.start, span.end) === span.text)).toBe(true);
+  });
+
+  it.each(["<!--", "```text", "~~~text"])("excludes from an unmatched %s opener through EOF without shifting visible offsets", (opener) => {
+    const source = ["- 😀 Add visible mode.", opener, "- Add hidden behavior."].join("\r\n");
+    const spans = extractRequirementSpanSeed(source, "", "issue").seed?.spans ?? [];
+
+    expect(spans.map((span) => span.text)).toEqual(["- 😀 Add visible mode."]);
+    expect(spans[0]).toMatchObject({
+      start: 0,
+      end: "- 😀 Add visible mode.".length
+    });
+    expect(spans.every((span) => source.slice(span.start, span.end) === span.text)).toBe(true);
+  });
+
+  it("retains high-recall unlinked PR candidates for planner classification", () => {
+    const mixed = extractRequirementSpanSeed(
+      "",
+      "This PR adds retry handling and exists to evaluate the verification pipeline."
+    );
+    const noAction = extractRequirementSpanSeed("", "Retry behavior for transient failures.");
+    const meta = extractRequirementSpanSeed("", "This PR exists to evaluate the verification pipeline.");
+
+    expect(mixed.seed?.spans.map((span) => span.text)).toEqual([
+      "This PR adds retry handling and exists to evaluate the verification pipeline."
+    ]);
+    expect(noAction.seed?.spans.map((span) => span.text)).toEqual(["Retry behavior for transient failures."]);
+    expect(meta.seed?.spans.map((span) => span.text)).toEqual(["This PR exists to evaluate the verification pipeline."]);
+    expect([...mixed.seed?.spans ?? [], ...noAction.seed?.spans ?? [], ...meta.seed?.spans ?? []]
+      .every((span) => span.authority === "pr_author_claim")).toBe(true);
+  });
+
+  it("keeps PR source hygiene filters while counting every surviving candidate toward overflow", () => {
+    const hygienic = extractRequirementSpanSeed("", [
+      "## Summary",
+      "Retry behavior for transient failures.",
+      "## Testing",
+      "pnpm test",
+      "Tests passed successfully.",
+      "## Suggested fix",
+      "Add a workaround.",
+      "## External issue",
+      "JIRA-123"
+    ].join("\n"));
+    const thirteen = extractRequirementSpanSeed(
+      "",
+      Array.from({ length: 13 }, (_, index) => `Candidate description ${index + 1}.`).join("\n")
+    );
+
+    expect(hygienic.seed?.spans.map((span) => span.text)).toEqual(["Retry behavior for transient failures."]);
+    expect(thirteen).toEqual({ eligible: false, overflow: true, seed: null });
+  });
+
+  it.each([
+    ["`", 3],
+    ["`", 4],
+    ["`", 5],
+    ["~", 3],
+    ["~", 4],
+    ["~", 5]
+  ])("keeps nested shorter and different %s fences hidden while same-or-longer %i fences close", (marker, length) => {
+    const otherMarker = marker === "`" ? "~" : "`";
+
+    for (const closeLength of [length, length + 1]) {
+      const source = [
+        "😀 Add visible prefix.",
+        `  ${marker.repeat(length)} text`,
+        ...(length > 3 ? [marker.repeat(length - 1)] : []),
+        "- Add hidden behavior.",
+        otherMarker.repeat(length + 1),
+        marker.repeat(closeLength),
+        "Preserve visible suffix."
+      ].join("\r\n");
+      const spans = extractRequirementSpanSeed(source, "", "issue").seed?.spans ?? [];
+
+      expect(spans.map((span) => span.text)).toEqual(["😀 Add visible prefix.", "Preserve visible suffix."]);
+      expect(spans.every((span) => source.slice(span.start, span.end) === span.text)).toBe(true);
+      expect(spans[0]?.start).toBe(0);
+      expect(spans[1]?.start).toBe(source.indexOf("Preserve visible suffix."));
+    }
+  });
+
+  it.each([
+    ["`", 3],
+    ["`", 4],
+    ["`", 5],
+    ["~", 3],
+    ["~", 4],
+    ["~", 5]
+  ])("excludes an unterminated %s fence of length %i through EOF", (marker, length) => {
+    const source = ["😀 Add visible prefix.", marker.repeat(length), "- Add hidden behavior."].join("\r\n");
+    const spans = extractRequirementSpanSeed(source, "", "issue").seed?.spans ?? [];
+
+    expect(spans.map((span) => span.text)).toEqual(["😀 Add visible prefix."]);
+    expect(spans[0]?.end).toBe("😀 Add visible prefix.".length);
+  });
+
+  it.each(["\n", "\r\n", "\r"])("scans %j line endings without accepting fence closers with trailing content", (lineEnding) => {
+    for (const marker of ["`", "~"] as const) {
+      for (const length of [3, 4, 5]) {
+        const otherMarker = marker === "`" ? "~" : "`";
+        const source = [
+          "😀 Add visible prefix.",
+          `${marker.repeat(length)} text`,
+          marker.repeat(length - 1),
+          otherMarker.repeat(length + 1),
+          `${marker.repeat(length)} not-a-close`,
+          "- Add hidden behavior.",
+          marker.repeat(length + 1),
+          "Preserve visible suffix."
+        ].join(lineEnding);
+        const spans = extractRequirementSpanSeed(source, "", "issue").seed?.spans ?? [];
+
+        expect(spans.map((span) => span.text)).toEqual(["😀 Add visible prefix.", "Preserve visible suffix."]);
+        expect(spans.every((span) => source.slice(span.start, span.end) === span.text)).toBe(true);
+        expect(spans[0]?.start).toBe(0);
+        expect(spans[1]?.start).toBe(source.indexOf("Preserve visible suffix."));
+      }
+    }
+  });
+
+  it("treats comment and fence bodies as mutually opaque while preserving visible UTF-16 offsets", () => {
+    const commentWithFence = [
+      "😀 Add visible prefix.",
+      "<!--",
+      "```",
+      "- Add hidden comment behavior.",
+      "-->",
+      "Preserve visible suffix."
+    ].join("\r");
+    const fenceWithComment = [
+      "😀 Add visible prefix.",
+      "~~~~",
+      "<!--",
+      "- Add hidden fence behavior.",
+      "-->",
+      "~~~~~",
+      "Preserve visible suffix."
+    ].join("\n");
+
+    for (const source of [commentWithFence, fenceWithComment]) {
+      const spans = extractRequirementSpanSeed(source, "", "issue").seed?.spans ?? [];
+      expect(spans.map((span) => span.text)).toEqual(["😀 Add visible prefix.", "Preserve visible suffix."]);
+      expect(spans.every((span) => source.slice(span.start, span.end) === span.text)).toBe(true);
+      expect(spans[1]?.start).toBe(source.indexOf("Preserve visible suffix."));
+    }
+  });
+
+  it("advances excluded-range lookup monotonically instead of rescanning prior ranges per source line", () => {
+    const numericReads = (size: number) => {
+      let reads = 0;
+      const excluded = new Proxy(
+        Array.from({ length: size }, (_, index) => ({
+          start: index * 4 + 1,
+          end: index * 4 + 2
+        })),
+        {
+          get(target, property, receiver) {
+            if (typeof property === "string" && /^\d+$/.test(property)) reads += 1;
+            return Reflect.get(target, property, receiver);
+          }
+        }
+      );
+      let excludedRangeCursor = 0;
+
+      for (let index = 0; index < size; index += 1) {
+        const partition = visibleSourceRangesFromCursor(
+          index * 4,
+          index * 4 + 3,
+          excluded,
+          excludedRangeCursor
+        );
+        excludedRangeCursor = partition.nextExcludedRangeIndex;
+      }
+      return reads;
+    };
+
+    const oneK = numericReads(1_024);
+    const twoK = numericReads(2_048);
+    expect(oneK).toBeLessThanOrEqual(6 * 1_024);
+    expect(twoK).toBeLessThanOrEqual(6 * 2_048);
+    expect(twoK).toBeLessThanOrEqual(oneK * 2 + 8);
+  });
+
+  it("classifies many source spans without rereading the complete source once per span", () => {
+    let wholeSourceScans = 0;
+    const originalTest = RegExp.prototype.test;
+    const regexTest = vi.spyOn(RegExp.prototype, "test").mockImplementation(function (this: RegExp, value: string) {
+      if (this.source === "acceptance criteria|must|required|given|when|then") wholeSourceScans += 1;
+      return originalTest.call(this, value);
+    });
+    const source = Array.from({ length: 1_024 }, (_, index) => `- Add bounded behavior ${index + 1}.`).join("\n");
+
+    extractRequirementSpanSeed(source, "", "issue");
+    regexTest.mockRestore();
+    expect(wholeSourceScans).toBe(1);
   });
 });
 

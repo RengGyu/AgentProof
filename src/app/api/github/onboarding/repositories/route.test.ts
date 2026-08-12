@@ -109,7 +109,8 @@ describe("/api/github/onboarding/repositories", () => {
         analysisEnabled: true,
         saveReportsEnabled: true,
         commentEnabled: false,
-        llmAnalysisMode: "essential"
+        llmAnalysisMode: "essential",
+        hybridPlannerConsentVersion: null
       },
       privacy: "grant-metadata-only",
       next: "webhook_analysis_enabled_for_repository"
@@ -126,6 +127,25 @@ describe("/api/github/onboarding/repositories", () => {
         repositoryFullName: "RengGyu/AgentProof"
       }
     });
+  });
+
+  it("requires explicit private enhanced consent during onboarding and returns only the approved consent metadata", async () => {
+    stubOnboardingEnv();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubGlobal("fetch", mockRepositoryFetch());
+    const activationCookie = await createActivationCookie();
+
+    const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
+      method: "POST",
+      headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ installationId: 321, repositoryId: 100, llmAnalysisMode: "enhanced", hybridPlannerConsent: true })
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ settings: { llmAnalysisMode: "enhanced", hybridPlannerConsentVersion: "2026-08-12.v1" } });
   });
 
   it("automatically enables enhanced analysis for a selected public repository", async () => {
@@ -145,7 +165,7 @@ describe("/api/github/onboarding/repositories", () => {
 
     await expect(response.json()).resolves.toMatchObject({
       repositoryId: 101,
-      settings: { llmAnalysisMode: "enhanced" }
+      settings: { llmAnalysisMode: "enhanced", hybridPlannerConsentVersion: null }
     });
   });
 

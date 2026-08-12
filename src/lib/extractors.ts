@@ -7,8 +7,11 @@ import type {
   PullRequestInput,
   Requirement,
   RequirementContextSignal,
+  RequirementSourceSpan,
   RequirementSourceQuality,
-  RequirementSourceRole
+  RequirementSourceRole,
+  RequirementSpanId,
+  RequirementSpanSeedExtractionResult
 } from "./types";
 import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText } from "./redact";
@@ -95,6 +98,10 @@ export interface RequirementExtractionResult {
 }
 export interface EvidenceIndexResult { items: EvidenceItem[]; omittedByKind: Partial<Record<EvidenceItem["kind"], number>>; }
 
+const MAX_REQUIREMENT_SOURCE_SPANS = 12;
+const MAX_REQUIREMENT_SPAN_CONTEXTS = 8;
+const MAX_REQUIREMENT_SPAN_CONTEXT_TEXT_LENGTH = 160;
+
 interface ClassifiedRequirementLine {
   text: string;
   source: Requirement["source"];
@@ -119,6 +126,405 @@ export function extractRequirementContexts(
   return extractRequirementEvidence(taskText, prDescription, taskSource).contexts;
 }
 
+/**
+ * Builds the transient source-span seed for enhanced planning. It intentionally
+ * does not alter the BASE requirement extraction path above.
+ */
+export function extractRequirementSpanSeed(
+  taskText: string,
+  prDescription: string,
+  taskSource: PullRequestInput["taskSource"] = "task"
+): RequirementSpanSeedExtractionResult {
+  const redactedTask = redactSecrets(taskText);
+  const redactedPr = redactSecrets(prDescription);
+  const hasTaskSource = redactedTask.trim().length > 0;
+  const sourceText = hasTaskSource ? redactedTask : redactedPr;
+  const source: Requirement["source"] = hasTaskSource ? taskSource : "pr_description";
+  const isPrBody = !hasTaskSource;
+  const analysisContext = source === "issue"
+    ? "linked_issue"
+    : source === "pr_description"
+      ? "unlinked_pr"
+      : "provided_requirement";
+  const candidates = spanCandidatesFromSource(sourceText, source, isPrBody);
+  const selectedCandidates = selectSpanCandidates(candidates, isPrBody);
+
+  if (selectedCandidates.length > MAX_REQUIREMENT_SOURCE_SPANS) {
+    return { eligible: false, overflow: true, seed: null };
+  }
+
+  const spans = toRequirementSourceSpans(selectedCandidates, sourceText, isPrBody);
+  const contexts = extractRequirementEvidence(taskText, prDescription, taskSource).contexts
+    .filter((context) => context.source === source)
+    .slice(0, MAX_REQUIREMENT_SPAN_CONTEXTS)
+    .map((context) => ({
+      ...context,
+      text: context.text.slice(0, MAX_REQUIREMENT_SPAN_CONTEXT_TEXT_LENGTH)
+    }));
+
+  return {
+    eligible: spans.length > 0,
+    overflow: false,
+    seed: {
+      version: 1,
+      analysisContext,
+      spans,
+      contexts,
+      seedHash: ""
+    }
+  };
+}
+
+interface SpanCandidate {
+  start: number;
+  end: number;
+  text: string;
+  source: Requirement["source"];
+  role: RequirementSourceRole;
+  sourceQuality: RequirementSourceQuality;
+  sourceSection: string | null;
+  priority: Requirement["priority"];
+  group: number;
+}
+
+function spanCandidatesFromSource(
+  sourceText: string,
+  source: Requirement["source"],
+  isPrBody: boolean
+): SpanCandidate[] {
+  const candidates: SpanCandidate[] = [];
+  const excludedRanges = baseExcludedSourceRanges(sourceText);
+  const cleanedSourceText = cleanRequirementSourceText(sourceText);
+  const sourceHasAcceptanceLanguage = /acceptance criteria|must|required|given|when|then/i.test(cleanedSourceText);
+  let section: string | undefined;
+  let group = 0;
+  let needsNewGroup = true;
+  let lineStart = 0;
+  let excludedRangeCursor = 0;
+
+  for (const rawLine of sourceText.split(/\r\n|\n|\r/)) {
+    const lineEnd = lineStart + rawLine.length;
+    const trimmed = normalizeSourceLine(rawLine);
+    if (!trimmed) {
+      needsNewGroup = true;
+      lineStart = lineEnd + lineBreakLengthAt(sourceText, lineEnd);
+      continue;
+    }
+
+    const isLinkedIssueTitle = /^\s*Linked issue\s+(?:[\w.-]+\/[\w.-]+)?#\d+:/i.test(rawLine);
+    const heading = sectionHeading(trimmed);
+    if (heading) {
+      section = heading;
+      needsNewGroup = true;
+      lineStart = lineEnd + lineBreakLengthAt(sourceText, lineEnd);
+      continue;
+    }
+
+    const inline = inlineSection(trimmed);
+    if (inline) {
+      if (section !== inline.section) needsNewGroup = true;
+      section = inline.section;
+      if (!inline.text) {
+        lineStart = lineEnd + lineBreakLengthAt(sourceText, lineEnd);
+        continue;
+      }
+    }
+
+    const sourceSection = isLinkedIssueTitle ? "linked_issue_title" : section ?? null;
+    const contentStart = inline?.text
+      ? lineStart + rawLine.indexOf(inline.text)
+      : lineStart + firstNonWhitespaceIndex(rawLine);
+    const contentEnd = lineStart + lastNonWhitespaceEnd(rawLine);
+    const visiblePartition = visibleSourceRangesFromCursor(
+      contentStart,
+      contentEnd,
+      excludedRanges,
+      excludedRangeCursor
+    );
+    const visibleRanges = visiblePartition.ranges;
+    excludedRangeCursor = visiblePartition.nextExcludedRangeIndex;
+
+    if (visibleRanges.length === 0) {
+      needsNewGroup = true;
+      lineStart = lineEnd + lineBreakLengthAt(sourceText, lineEnd);
+      continue;
+    }
+
+    for (const visibleRange of visibleRanges) {
+      const fragmentStart = trimSourceRangeStart(sourceText, visibleRange.start, visibleRange.end);
+      const fragmentEnd = trimSourceRangeEnd(sourceText, fragmentStart, visibleRange.end);
+      if (fragmentStart === fragmentEnd) continue;
+
+      const isListItem = /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(sourceText.slice(fragmentStart, fragmentEnd));
+      const boundaries = isListItem
+        ? [{ start: fragmentStart, end: fragmentEnd }]
+        : sourceSpanBoundaries(sourceText, fragmentStart, fragmentEnd);
+
+      for (const boundary of boundaries) {
+        const text = sourceText.slice(boundary.start, boundary.end);
+        const classificationText = normalizeSourceLine(text);
+        if (!classificationText) continue;
+        const classifiedRole = classifyLineRole(classificationText, sourceSection ?? undefined, source, isPrBody);
+        const classifiedPriority = priorityForRequirement(classificationText);
+        const vagueAuthoritativeSpan = !isPrBody && classifiedPriority !== "could" &&
+          isVagueRequirementLine(classificationText, sourceHasAcceptanceLanguage);
+        const role = classifiedRole;
+
+        if (
+          sourceSection === "linked_issue_title" ||
+          role === "template_noise" ||
+          role === "external_reference" ||
+          role === "solution_hint"
+        ) {
+          continue;
+        }
+
+        if (needsNewGroup) {
+          group += 1;
+          needsNewGroup = false;
+        }
+
+        candidates.push({
+          start: boundary.start,
+          end: boundary.end,
+          text,
+          source,
+          role,
+          sourceQuality: vagueAuthoritativeSpan
+            ? "manual_check"
+            : sourceQualityForLine(classificationText, sourceSection ?? undefined, role, source, isPrBody),
+          sourceSection,
+          priority: vagueAuthoritativeSpan ? "must" : classifiedPriority,
+          group
+        });
+      }
+
+      if (visibleRange.end < contentEnd) needsNewGroup = true;
+    }
+
+    lineStart = lineEnd + lineBreakLengthAt(sourceText, lineEnd);
+  }
+
+  return candidates;
+}
+
+function selectSpanCandidates(candidates: SpanCandidate[], isPrBody: boolean): SpanCandidate[] {
+  if (isPrBody) {
+    return candidates
+      .filter((candidate) => candidate.role === "author_claim")
+      .filter((candidate) => !AUTHOR_EVIDENCE_SECTION_PATTERN.test(candidate.sourceSection ?? ""));
+  }
+
+  const core = candidates.filter((candidate) => candidate.role === "core_requirement");
+  return core.length > 0
+    ? candidates.filter((candidate) =>
+      candidate.role === "core_requirement" ||
+        (candidate.sourceQuality === "manual_check" && candidate.priority !== "could")
+    )
+    : candidates.filter((candidate) =>
+      candidate.role === "problem_context" || candidate.sourceQuality === "manual_check"
+    );
+}
+
+function baseExcludedSourceRanges(sourceText: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  let lineStart = 0;
+  let state:
+    | { kind: "outside" }
+    | { kind: "html_comment"; start: number }
+    | { kind: "markdown_fence"; start: number; marker: "`" | "~"; length: number } = { kind: "outside" };
+
+  while (lineStart < sourceText.length) {
+    const contentEnd = lineContentEnd(sourceText, lineStart);
+    const nextLineStart = contentEnd + lineBreakLengthAt(sourceText, contentEnd);
+    const line = sourceText.slice(lineStart, contentEnd);
+
+    if (state.kind === "markdown_fence") {
+      if (isMarkdownFenceCloser(line, state)) {
+        ranges.push({ start: state.start, end: nextLineStart });
+        state = { kind: "outside" };
+      }
+    } else if (state.kind === "html_comment") {
+      const closingStart = sourceText.indexOf("-->", lineStart);
+      if (closingStart >= 0 && closingStart + "-->".length <= contentEnd) {
+        ranges.push({ start: state.start, end: closingStart + "-->".length });
+        const nextCommentStart = closedHtmlCommentStartOnLine(sourceText, closingStart + "-->".length, contentEnd, ranges);
+        state = nextCommentStart === null
+          ? { kind: "outside" }
+          : { kind: "html_comment", start: nextCommentStart };
+      }
+    } else {
+      const fence = markdownFenceOnLine(line);
+      const commentStart = sourceText.indexOf("<!--", lineStart);
+      const commentIsOnLine = commentStart >= lineStart && commentStart < contentEnd;
+
+      if (fence && (!commentIsOnLine || lineStart + fence.start < commentStart)) {
+        state = { kind: "markdown_fence", start: lineStart, marker: fence.marker, length: fence.length };
+      } else if (commentIsOnLine) {
+        const nextCommentStart = closedHtmlCommentStartOnLine(sourceText, commentStart, contentEnd, ranges);
+        if (nextCommentStart !== null) state = { kind: "html_comment", start: nextCommentStart };
+      }
+    }
+
+    lineStart = nextLineStart;
+  }
+
+  if (state.kind !== "outside") ranges.push({ start: state.start, end: sourceText.length });
+  return ranges;
+}
+
+function lineContentEnd(sourceText: string, lineStart: number): number {
+  let cursor = lineStart;
+  while (cursor < sourceText.length && sourceText[cursor] !== "\r" && sourceText[cursor] !== "\n") cursor += 1;
+  return cursor;
+}
+
+function closedHtmlCommentStartOnLine(
+  sourceText: string,
+  start: number,
+  contentEnd: number,
+  ranges: Array<{ start: number; end: number }>
+): number | null {
+  let commentStart = sourceText.indexOf("<!--", start);
+  while (commentStart >= start && commentStart < contentEnd) {
+    const closingStart = sourceText.indexOf("-->", commentStart + "<!--".length);
+    if (closingStart < 0 || closingStart + "-->".length > contentEnd) return commentStart;
+    ranges.push({ start: commentStart, end: closingStart + "-->".length });
+    commentStart = sourceText.indexOf("<!--", closingStart + "-->".length);
+  }
+  return null;
+}
+
+function markdownFenceOnLine(line: string): { start: number; marker: "`" | "~"; length: number } | null {
+  let markerStart = 0;
+  while (markerStart < line.length && line[markerStart] === " " && markerStart < 3) markerStart += 1;
+  const marker = line[markerStart];
+  if (marker !== "`" && marker !== "~") return null;
+
+  let end = markerStart;
+  while (line[end] === marker) end += 1;
+  const length = end - markerStart;
+  return length >= 3 ? { start: markerStart, marker, length } : null;
+}
+
+function isMarkdownFenceCloser(
+  line: string,
+  openFence: { marker: "`" | "~"; length: number }
+): boolean {
+  const fence = markdownFenceOnLine(line);
+  return Boolean(
+    fence &&
+    fence.marker === openFence.marker &&
+    fence.length >= openFence.length &&
+    line.slice(fence.start + fence.length).trim().length === 0
+  );
+}
+
+export function visibleSourceRangesFromCursor(
+  start: number,
+  end: number,
+  excludedRanges: readonly { start: number; end: number }[],
+  excludedRangeIndex: number
+): {
+  ranges: Array<{ start: number; end: number }>;
+  nextExcludedRangeIndex: number;
+} {
+  const visible: Array<{ start: number; end: number }> = [];
+  let cursor = start;
+  let index = excludedRangeIndex;
+
+  while (index < excludedRanges.length && excludedRanges[index]!.end <= start) index += 1;
+
+  for (let scan = index; scan < excludedRanges.length; scan += 1) {
+    const excluded = excludedRanges[scan]!;
+    if (excluded.end <= cursor) continue;
+    if (excluded.start >= end) break;
+    if (excluded.start > cursor) visible.push({ start: cursor, end: Math.min(excluded.start, end) });
+    cursor = Math.max(cursor, excluded.end);
+    if (cursor >= end) break;
+  }
+
+  if (cursor < end) visible.push({ start: cursor, end });
+  while (index < excludedRanges.length && excludedRanges[index]!.end <= end) index += 1;
+  return { ranges: visible, nextExcludedRangeIndex: index };
+}
+
+function trimSourceRangeStart(sourceText: string, start: number, end: number): number {
+  let cursor = start;
+  while (cursor < end && /\s/.test(sourceText[cursor] ?? "")) cursor += 1;
+  return cursor;
+}
+
+function trimSourceRangeEnd(sourceText: string, start: number, end: number): number {
+  let cursor = end;
+  while (cursor > start && /\s/.test(sourceText[cursor - 1] ?? "")) cursor -= 1;
+  return cursor;
+}
+
+function toRequirementSourceSpans(
+  candidates: SpanCandidate[],
+  sourceText: string,
+  isPrBody: boolean
+): RequirementSourceSpan[] {
+  const ordinalByGroup = new Map<number, number>();
+  const parentByGroup = new Map<number, RequirementSpanId>();
+
+  return candidates.map((candidate) => {
+    const ordinal = (ordinalByGroup.get(candidate.group) ?? 0) + 1;
+    const id = `sp_${candidate.group}_${ordinal}` as RequirementSpanId;
+    const parent = parentByGroup.get(candidate.group) ?? null;
+    ordinalByGroup.set(candidate.group, ordinal);
+    parentByGroup.set(candidate.group, id);
+
+    return {
+      id,
+      groupId: `grp_${candidate.group}`,
+      ordinal,
+      immediateParentSpanId: parent,
+      source: candidate.source,
+      authority: isPrBody ? "pr_author_claim" : "authoritative",
+      sourceQuality: candidate.sourceQuality,
+      sourceSection: candidate.sourceSection,
+      start: candidate.start,
+      end: candidate.end,
+      text: sourceText.slice(candidate.start, candidate.end),
+      priority: candidate.priority
+    };
+  });
+}
+
+function sourceSpanBoundaries(sourceText: string, start: number, end: number): Array<{ start: number; end: number }> {
+  const boundaries: Array<{ start: number; end: number }> = [];
+  const text = sourceText.slice(start, end);
+  const terminal = /[.!?](?=\s|$)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = terminal.exec(text))) {
+    const boundaryEnd = (match.index ?? 0) + 1;
+    boundaries.push({ start: start + cursor, end: start + boundaryEnd });
+    cursor = boundaryEnd;
+    while (cursor < text.length && /\s/.test(text[cursor] ?? "")) cursor += 1;
+  }
+
+  if (cursor < text.length) boundaries.push({ start: start + cursor, end });
+  return boundaries;
+}
+
+function firstNonWhitespaceIndex(value: string): number {
+  const match = value.match(/\S/);
+  return match?.index ?? value.length;
+}
+
+function lastNonWhitespaceEnd(value: string): number {
+  const match = value.match(/\S\s*$/);
+  return match ? (match.index ?? 0) + match[0].trimEnd().length : 0;
+}
+
+function lineBreakLengthAt(sourceText: string, index: number): number {
+  return sourceText[index] === "\r" && sourceText[index + 1] === "\n" ? 2 : sourceText[index] ? 1 : 0;
+}
+
 export function extractRequirementEvidence(
   taskText: string,
   prDescription: string,
@@ -131,6 +537,7 @@ export function extractRequirementEvidence(
   const prLines = prRaw ? classifyRequirementSource(prRaw, "pr_description", true) : [];
   const sourceOfTruthLines = taskLines.length > 0 ? taskLines : [];
   const sourceText = cleanRequirementSourceText(taskRaw || prRaw);
+  const sourceHasAcceptanceLanguage = /acceptance criteria|must|required|given|when|then/i.test(sourceText);
   const contexts = toContextSignals([...taskLines, ...prLines]);
   const coreCandidates = sourceOfTruthLines.filter((line) => line.role === "core_requirement");
   const promotedProblemCandidates = coreCandidates.length === 0 && taskLines.length > 0
@@ -150,7 +557,7 @@ export function extractRequirementEvidence(
       ? promotedProblemCandidates
       : authorIntentCandidates)
     .filter((line) => line.text.length > 12)
-    .filter((line) => !isVagueRequirementLine(line.text, sourceText))
+    .filter((line) => !isVagueRequirementLine(line.text, sourceHasAcceptanceLanguage))
   const requirementCandidates = allRequirementCandidates.slice(0, 8);
   const fencedContextKeywords = extractKeywords(collectUsefulFencedContent(taskRaw || prRaw));
 
@@ -607,8 +1014,8 @@ function isExecutionClaim(text: string): boolean {
     /\b(tests?|spec|unit|integration|e2e|ci|build|coverage).{0,80}\b(pass|passed|verified|validated|succeeded|green)\b/i.test(text);
 }
 
-function isVagueRequirementLine(line: string, sourceText: string): boolean {
-  if (/acceptance criteria|must|required|given|when|then/i.test(sourceText)) {
+function isVagueRequirementLine(line: string, sourceHasAcceptanceLanguage: boolean): boolean {
+  if (sourceHasAcceptanceLanguage) {
     return false;
   }
 
@@ -711,12 +1118,14 @@ export function buildEvidenceIndexResult(
     });
   }
 
-  const ranked = items.map((item, index) => ({ item, index })).sort((left, right) => evidenceRank(left.item) - evidenceRank(right.item) || left.index - right.index);
+  const buckets: EvidenceItem[][] = Array.from({ length: 6 }, () => []);
+  for (const item of items) buckets[evidenceRank(item)].push(item);
+  const ranked = buckets.flat();
   // Retain original IDs so existing evidence references remain stable even
   // when lower-priority items are omitted.
-  const kept = ranked.slice(0, MAX_REPORT_EVIDENCE_ITEMS).map(({ item }) => item);
+  const kept = ranked.slice(0, MAX_REPORT_EVIDENCE_ITEMS);
   const omittedByKind: EvidenceIndexResult["omittedByKind"] = {};
-  for (const { item } of ranked.slice(MAX_REPORT_EVIDENCE_ITEMS)) omittedByKind[item.kind] = (omittedByKind[item.kind] ?? 0) + 1;
+  for (const item of ranked.slice(MAX_REPORT_EVIDENCE_ITEMS)) omittedByKind[item.kind] = (omittedByKind[item.kind] ?? 0) + 1;
   return { items: kept, omittedByKind };
 }
 

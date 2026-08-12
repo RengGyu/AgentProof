@@ -19,4 +19,13 @@ describe("requirementProofExpectations", () => {
   ])("classifies %s without collapsing behavior and tests", (text, expected) => {
     expect(requirementProofExpectations(text)).toMatchObject(expected);
   });
+
+  it("FH01 treats Markdown list markers as presentation while preserving behavior modality", () => {
+    const plain = requirementProofExpectations("Prevent stale session renewal and add regression coverage.");
+
+    expect(requirementProofExpectations("- Prevent stale session renewal and add regression coverage.")).toEqual(plain);
+    expect(requirementProofExpectations("* Prevent stale session renewal and add regression coverage.")).toEqual(plain);
+    expect(requirementProofExpectations("7. Prevent stale session renewal and add regression coverage.")).toEqual(plain);
+    expect(plain).toMatchObject({ implementation: true, targetedTest: true, execution: true });
+  });
 });

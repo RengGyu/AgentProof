@@ -1,6 +1,6 @@
 import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport } from "./report-validation";
-import type { SourceProvenance, VerificationReport } from "./types";
+import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, SourceProvenance, VerificationReport } from "./types";
 import { redactSecrets } from "./redact";
 
 export const MAX_SHARE_PAYLOAD_LENGTH = 18_000;
@@ -13,7 +13,7 @@ interface ShareableReportV1 {
   createdAt: string;
   source: VerificationReport["source"];
   summary: VerificationReport["summary"];
-  requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "gaps" | "reviewerNote" | "confidence" | "proofAxes">>;
+  requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "gaps" | "reviewerNote" | "confidence" | "proofAxes" | "classificationBasis" | "plannerAxisSubjects">>;
   testing: VerificationReport["testing"];
   reviewPriority: VerificationReport["reviewPriority"];
   proofGraph: VerificationReport["proofGraph"];
@@ -31,9 +31,15 @@ interface ShareableReportV2 extends Omit<ShareableReportV1, "version" | "source"
     provenance?: SourceProvenance;
   };
   scope: Pick<VerificationReport["scope"], "suspected" | "outOfScopeFiles" | "reasons">;
+  planner?: HybridPlannerProvenance;
 }
 
-type ShareableReport = ShareableReportV1 | ShareableReportV2;
+interface ShareableReportV3 extends Omit<ShareableReportV2, "version" | "planner"> {
+  version: 3;
+  planner?: PortableHybridPlannerProvenance;
+}
+
+type ShareableReport = ShareableReportV1 | ShareableReportV2 | ShareableReportV3;
 
 export function encodeReportForShare(report: VerificationReport): string {
   return encodeBase64Url(JSON.stringify(toShareableReport(report)));
@@ -63,9 +69,9 @@ export function buildShareUrl(report: VerificationReport, origin: string): strin
   return `${origin}/reports/share#report=${payload}`;
 }
 
-function toShareableReport(report: VerificationReport): ShareableReport {
+function toShareableReport(report: VerificationReport): ShareableReportV3 {
   return {
-    version: 2,
+    version: 3,
     createdAt: redactSecrets(report.createdAt),
     source: {
       title: redactSecrets(report.source.title),
@@ -89,6 +95,8 @@ function toShareableReport(report: VerificationReport): ShareableReport {
       gaps: requirement.gaps.map(redactSecrets),
       reviewerNote: redactSecrets(requirement.reviewerNote),
       confidence: requirement.confidence,
+      ...(requirement.classificationBasis ? { classificationBasis: requirement.classificationBasis } : {}),
+      ...(requirement.plannerAxisSubjects ? { plannerAxisSubjects: [...requirement.plannerAxisSubjects] } : {}),
       ...(requirement.proofAxes ? {
         proofAxes: requirement.proofAxes.map((axis) => ({
           subject: axis.subject,
@@ -118,12 +126,13 @@ function toShareableReport(report: VerificationReport): ShareableReport {
       outOfScopeFiles: report.scope.outOfScopeFiles.map(redactSecrets),
       reasons: report.scope.reasons.map(redactSecrets)
     },
+    ...(report.planner ? { planner: copyPortablePlannerProvenance(report.planner) } : {}),
     limitations: appendSummaryOnlyLimitation(report.limitations.map(redactSecrets))
   };
 }
 
 function shareableToReport(shared: ShareableReport): VerificationReport {
-  const scope = shared.version === 2
+  const scope = shared.version !== 1
     ? shared.scope
     : {
       // Version 1 links omitted the deterministic field. Keep only a clearly
@@ -158,16 +167,81 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
     },
     evidenceIndex: [],
     limitations: appendPortableTrustLimitation(shared.limitations, shared.version),
-    authenticity: createUnverifiedAuthenticity(shared.version === 2 ? "portable_unverified" : "legacy_unverified")
+    ...(shared.version !== 1 && shared.planner ? {
+      // VerificationReport intentionally keeps the private planner tuple strict.
+      // Runtime summary validation is the boundary that admits this hashless
+      // portable projection only under portable_unverified authenticity.
+      planner: copyPortablePlannerProvenance(shared.planner) as HybridPlannerProvenance
+    } : {}),
+    authenticity: createUnverifiedAuthenticity(shared.version === 1 ? "legacy_unverified" : "portable_unverified")
   };
 }
 
 function parseShareableReport(value: unknown): ShareableReport {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Shared report payload is invalid.");
-  const version = (value as { version?: unknown }).version;
-  if (version !== 1 && version !== 2) throw new Error("Shared report version is not supported.");
-  if (version === 2 && !("scope" in value)) throw new Error("Shared report is missing deterministic scope state.");
-  return value as ShareableReport;
+  if (!isPlainRecord(value)) throw new Error("Shared report payload is invalid.");
+  const version = value.version;
+  if (version !== 1 && version !== 2 && version !== 3) throw new Error("Shared report version is not supported.");
+  assertOnlyShareableKeys(value, version === 2 || version === 3
+    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations"]
+    : ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "limitations"], "report");
+  if (!Array.isArray(value.requirements) || !isPlainRecord(value.proofGraph) || !Array.isArray(value.reviewPriority) ||
+      !isPlainRecord(value.testing) || !Array.isArray(value.testing.missingTests) || !Array.isArray(value.limitations) ||
+      !isPlainRecord(value.source) || !isPlainRecord(value.summary)) {
+    throw new Error("Shared report payload is invalid.");
+  }
+  if ((version === 2 || version === 3) && !isPlainRecord(value.scope)) throw new Error("Shared report is missing deterministic scope state.");
+  for (const requirement of value.requirements) validateShareableRequirement(requirement);
+  validateShareableProofGraph(value.proofGraph);
+  if (value.planner !== undefined) validateShareablePlanner(value.planner, version);
+  return value as unknown as ShareableReport;
+}
+
+function validateShareableRequirement(value: unknown) {
+  if (!isPlainRecord(value)) throw new Error("Shared report requirement is invalid.");
+  assertOnlyShareableKeys(value, ["requirementId", "requirementText", "status", "gaps", "reviewerNote", "confidence", "proofAxes", "classificationBasis", "plannerAxisSubjects"], "requirement");
+}
+
+function validateShareableProofGraph(value: Record<string, unknown>) {
+  assertOnlyShareableKeys(value, ["version", "nodes", "context", "summary"], "proofGraph");
+  if (!Array.isArray(value.nodes) || !Array.isArray(value.context) || !isPlainRecord(value.summary)) {
+    throw new Error("Shared report proofGraph is invalid.");
+  }
+  for (const node of value.nodes) {
+    if (!isPlainRecord(node)) throw new Error("Shared report proof node is invalid.");
+    assertOnlyShareableKeys(node, ["requirementId", "requirementText", "sourceRole", "sourceQuality", "sourceSection", "contextRoles", "status", "confidence", "implementationEvidenceRefs", "targetedTestEvidenceRefs", "executionEvidenceRefs", "gapSignals", "firstFiles", "classificationBasis"], "proofGraph node");
+    if (!Array.isArray(node.contextRoles) || !Array.isArray(node.implementationEvidenceRefs) ||
+        !Array.isArray(node.targetedTestEvidenceRefs) || !Array.isArray(node.executionEvidenceRefs) ||
+        !Array.isArray(node.gapSignals) || !Array.isArray(node.firstFiles)) {
+      throw new Error("Shared report proof node is invalid.");
+    }
+  }
+}
+
+function validateShareablePlanner(value: unknown, version: 1 | 2 | 3) {
+  if (!isPlainRecord(value)) throw new Error("Shared report planner is invalid.");
+  if (version === 1) throw new Error("Shared report planner is invalid.");
+  const requiredKeys = version === 2
+    ? ["version", "contractVersion", "schemaVersion", "promptVersion", "model", "inputHash"]
+    : ["version", "contractVersion", "schemaVersion", "promptVersion", "model"];
+  assertOnlyShareableKeys(value, requiredKeys, "planner");
+  if (requiredKeys.some((key) => !(key in value)) ||
+      value.version !== 1 ||
+      value.contractVersion !== "hybrid_requirement_planner.v1" ||
+      value.schemaVersion !== "agentproof_requirement_span_plan_v1" ||
+      value.promptVersion !== "2026-08-12.v1" ||
+      value.model !== "gpt-5-mini" ||
+      (version === 2 && (typeof value.inputHash !== "string" || !/^[a-f0-9]{64}$/.test(value.inputHash)))) {
+    throw new Error("Shared report planner is invalid.");
+  }
+}
+
+function assertOnlyShareableKeys(value: Record<string, unknown>, allowed: readonly string[], context: string) {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) throw new Error(`Shared report ${context} has unknown fields.`);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function sanitizeSourceProvenance(provenance: SourceProvenance | undefined): SourceProvenance | undefined {
@@ -192,10 +266,20 @@ function sanitizeSourceProvenance(provenance: SourceProvenance | undefined): Sou
   };
 }
 
-function appendPortableTrustLimitation(limitations: string[], version: 1 | 2): string[] {
-  const limitation = version === 2
-    ? "Portable share links are imported, unverified summaries. Do not treat them as server-verified AgentProof artifacts."
-    : "Legacy portable share links are unverified summaries; deterministic scope state was not preserved by the legacy envelope.";
+function copyPortablePlannerProvenance(planner: PortableHybridPlannerProvenance): PortableHybridPlannerProvenance {
+  return {
+    version: planner.version,
+    contractVersion: planner.contractVersion,
+    schemaVersion: planner.schemaVersion,
+    promptVersion: planner.promptVersion,
+    model: planner.model
+  };
+}
+
+function appendPortableTrustLimitation(limitations: string[], version: 1 | 2 | 3): string[] {
+  const limitation = version === 1
+    ? "Legacy portable share links are unverified summaries; deterministic scope state was not preserved by the legacy envelope."
+    : "Portable share links are imported, unverified summaries. Do not treat them as server-verified AgentProof artifacts.";
   return limitations.includes(limitation) ? limitations : [...limitations, limitation];
 }
 
@@ -218,7 +302,8 @@ function sanitizeProofGraphForShare(proofGraph: VerificationReport["proofGraph"]
       message: summaryProofText(gap.message, "Proof gap detail omitted from summary view."),
       evidenceRefs: []
     })),
-    firstFiles: node.firstFiles.map((path) => summaryProofText(path, "redacted-path")).slice(0, 5)
+    firstFiles: node.firstFiles.map((path) => summaryProofText(path, "redacted-path")).slice(0, 5),
+    ...(node.classificationBasis ? { classificationBasis: node.classificationBasis } : {})
   }));
 
   return {

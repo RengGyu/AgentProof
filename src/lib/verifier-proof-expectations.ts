@@ -11,7 +11,7 @@ export interface RequirementProofExpectations {
 
 /** Classifies explicit objective modalities independently. */
 export function requirementProofExpectations(text: string): RequirementProofExpectations {
-  const normalized = text.trim();
+  const normalized = text.trim().replace(/^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)/, "");
   const documentation = /\b(?:document|documentation|readme|docs?)\b|(?:문서|설명서)|\b(?:documentar|documentaci[oó]n|gu[ií]a)\b/i.test(normalized);
   const ci = /\b(?:ci|continuous integration|workflow|pipeline)\b|(?:지속적 통합|워크플로|파이프라인)/i.test(normalized);
   const noImplementationChanges = /\b(?:do not|don't|must not)\s+(?:add|chang(?:e|ing)|modify(?:ing)?|touch(?:ing)?)\s+(?:the\s+)?(?:implementation|production|source)\s+code\b|\bwithout\s+(?:(?:chang(?:e|ing)|modify(?:ing)?|touch(?:ing)?)\s+(?:the\s+)?(?:implementation|production|source)\s+code|(?:implementation|production|source)(?:\s+code)?\s+changes?)\b|(?:구현|프로덕션|소스)\s*코드(?:를|는)?\s*(?:변경|수정|건드리)하지\s*(?:않|마)/i.test(normalized);

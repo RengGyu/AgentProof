@@ -70,6 +70,8 @@ export interface EnqueueAnalysisJobInput {
   saveReport: boolean;
   comment: boolean;
   slackSummary?: boolean;
+  /** Explicit protocol intent; false preserves the legacy null/null path. */
+  hybridPlannerRequested?: boolean;
   now?: Date;
 }
 
@@ -158,6 +160,23 @@ export interface MarkAnalysisJobProviderSubmissionInput {
   now?: Date;
 }
 
+/**
+ * Task 4 storage-only boundary. Task 5 may call this immediately before its
+ * single submit seam; this helper never invokes a provider.
+ */
+export interface BindAnalysisJobPlannerSeedInput {
+  id: string;
+  claimGeneration: string;
+  contractVersion: "hybrid_requirement_planner.v1";
+  inputHash: string;
+  now?: Date;
+}
+
+export type HybridPlannerJobBindingResolution =
+  | { disposition: "legacy" }
+  | { disposition: "ready"; inputHash: string }
+  | { disposition: "fallback" };
+
 export interface MarkAnalysisJobSemanticRetrySubmissionInput {
   id: string;
   claimGeneration: string;
@@ -239,6 +258,10 @@ export interface AnalysisJobRow {
   prior_provider_response_id?: string | null;
   prior_provider_submitted_at?: string | null;
   prior_provider_expires_at?: string | null;
+  /** Internal-only hash pair for a currently bound hybrid planner seed. */
+  hybrid_planner_requested?: boolean;
+  planner_contract_version?: "hybrid_requirement_planner.v1" | null;
+  planner_input_hash?: string | null;
 }
 
 export interface TenantAnalysisJobSummary {
@@ -390,7 +413,10 @@ const ANALYSIS_JOB_SELECT = [
   "semantic_retry_attempts",
   "prior_provider_response_id",
   "prior_provider_submitted_at",
-  "prior_provider_expires_at"
+  "prior_provider_expires_at",
+  "hybrid_planner_requested",
+  "planner_contract_version",
+  "planner_input_hash"
 ].join(",");
 
 const TENANT_ANALYSIS_JOB_SELECT = [
@@ -551,7 +577,8 @@ export async function fenceAnalysisJobRevision(
     sealed_revision: null,
     publication_sealed_at: null,
     ...clearedSealedPublicationPlan(),
-    ...clearedProviderContinuation()
+    ...clearedProviderContinuation(),
+    ...clearedHybridPlannerBinding()
   });
   assertAnalysisJobIsPrivate(row);
   return false;
@@ -857,7 +884,7 @@ export async function markAnalysisJobProviderSubmission(
   const config = getAnalysisJobStoreConfig(env);
   if (config) {
     const row = await getSupabaseAnalysisJobById(config, input.id);
-    if (!row || !isUnsealedCurrentRevision(row, claimGeneration)) return null;
+    if (!row || !isUnsealedCurrentRevision(row, claimGeneration) || hasInvalidHybridPlannerBinding(row)) return null;
     return patchSupabaseAnalysisJob(config, input.id, update, {
       currentStatus: "processing",
       currentUpdatedAt: row.updated_at,
@@ -875,10 +902,90 @@ export async function markAnalysisJobProviderSubmission(
   const row = analysisJobStore().find((job) =>
     job.id === input.id && isUnsealedCurrentRevision(job, claimGeneration)
   );
-  if (!row) return null;
+  if (!row || hasInvalidHybridPlannerBinding(row)) return null;
   Object.assign(row, update);
   assertAnalysisJobIsPrivate(row);
   return { ...row };
+}
+
+export async function bindAnalysisJobPlannerSeed(
+  input: BindAnalysisJobPlannerSeedInput,
+  env = process.env
+): Promise<AnalysisJobRow | null> {
+  if (!analysisJobQueueEnabled(env)) throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  const binding = safeHybridPlannerBinding(input.contractVersion, input.inputHash);
+  if (!safeAnalysisJobId(input.id) || !claimGeneration || !binding) {
+    throw new AnalysisJobQueueError("Analysis job planner seed binding is invalid.");
+  }
+  const now = input.now ?? new Date();
+  const update = {
+    updated_at: now.toISOString(),
+    planner_contract_version: binding.contractVersion,
+    planner_input_hash: binding.inputHash
+  };
+  assertAnalysisJobIsPrivate(update);
+  const config = getAnalysisJobStoreConfig(env);
+  if (config) {
+    const row = await getSupabaseAnalysisJobById(config, input.id);
+    if (!row || !isUnsealedCurrentRevision(row, claimGeneration) || !canBindHybridPlannerSeed(row, binding)) return null;
+    if (hasExactHybridPlannerBinding(row, binding)) return { ...row };
+    return patchSupabaseAnalysisJob(config, input.id, update, {
+      currentStatus: "processing",
+      currentUpdatedAt: row.updated_at,
+      currentClaimGeneration: claimGeneration,
+      currentDesiredRevision: row.desired_revision,
+      currentRunningRevision: row.running_revision,
+      requireUnsealed: true,
+      requireNoProviderContinuation: true,
+      requireEmptyHybridPlannerBinding: true
+    });
+  }
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+  const row = analysisJobStore().find((job) => job.id === input.id && isUnsealedCurrentRevision(job, claimGeneration));
+  if (!row || !canBindHybridPlannerSeed(row, binding)) return null;
+  if (hasExactHybridPlannerBinding(row, binding)) return { ...row };
+  Object.assign(row, update);
+  assertAnalysisJobIsPrivate(row);
+  return { ...row };
+}
+
+/**
+ * Pure transport guard for Task 5. It makes no provider or storage call: a
+ * caller must obtain `ready` before its sole submit/retrieve boundary.
+ */
+export function resolveHybridPlannerJobBinding(
+  job: Pick<AnalysisJobRow,
+    "status" | "desired_revision" | "running_revision" |
+    "hybrid_planner_requested" | "planner_contract_version" | "planner_input_hash" |
+    "provider_response_id" | "provider_status" | "provider_poll_attempts" |
+    "provider_submitted_at" | "provider_expires_at" | "provider_webhook_id_hash" |
+    "provider_webhook_received_at" | "semantic_retry_attempts" |
+    "prior_provider_response_id" | "prior_provider_submitted_at" | "prior_provider_expires_at">,
+  input: { phase: "submit" | "response"; rebuiltInputHash: unknown; responseInputHash?: unknown }
+): HybridPlannerJobBindingResolution {
+  if (!hasCurrentAnalysisJobRevision(job)) return { disposition: "fallback" };
+  const state = hybridPlannerBindingState(job);
+  if (!Object.hasOwn(job, "hybrid_planner_requested") || typeof job.hybrid_planner_requested !== "boolean") {
+    return { disposition: "fallback" };
+  }
+  if (job.hybrid_planner_requested === false) {
+    return state.kind === "legacy" && !hasProviderContinuation(job)
+      ? { disposition: "legacy" }
+      : { disposition: "fallback" };
+  }
+  if (state.kind === "legacy") {
+    return { disposition: "fallback" };
+  }
+  if (state.kind !== "bound" || typeof input.rebuiltInputHash !== "string" || state.binding.inputHash !== input.rebuiltInputHash) {
+    return { disposition: "fallback" };
+  }
+  if (input.phase === "response" && input.responseInputHash !== state.binding.inputHash) {
+    return { disposition: "fallback" };
+  }
+  return { disposition: "ready", inputHash: state.binding.inputHash };
 }
 
 export async function markAnalysisJobSemanticRetrySubmission(
@@ -1380,6 +1487,16 @@ export function assertAnalysisJobIsPrivate(value: unknown): void {
   }
 }
 
+// Preserve missing database columns as missing so the seed guard can fail
+// closed; coercing them to null would incorrectly turn a malformed row into a
+// legacy continuation.
+function normalizeAnalysisJobRow(value: unknown): AnalysisJobRow | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = { ...(value as Record<string, unknown>) } as unknown as AnalysisJobRow;
+  assertAnalysisJobIsPrivate(row);
+  return row;
+}
+
 function toAnalysisJobRow(input: EnqueueAnalysisJobInput): AnalysisJobRow {
   const now = input.now ?? new Date();
   const repositoryFullName = safeRepositoryFullName(input.repositoryFullName);
@@ -1434,7 +1551,9 @@ function toAnalysisJobRow(input: EnqueueAnalysisJobInput): AnalysisJobRow {
     sealed_revision: null,
     publication_sealed_at: null,
     ...clearedSealedPublicationPlan(),
-    ...clearedProviderContinuation()
+    ...clearedProviderContinuation(),
+    hybrid_planner_requested: input.hybridPlannerRequested === true,
+    ...clearedHybridPlannerBinding()
   };
 }
 
@@ -1502,6 +1621,7 @@ function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow 
       save_report: row.save_report,
       comment: row.comment,
       slack_summary: row.slack_summary,
+      hybrid_planner_requested: row.hybrid_planner_requested,
       desired_revision: (existing.desired_revision ?? 1) + 1,
       updated_at: row.updated_at,
       run_after: row.run_after,
@@ -1509,7 +1629,10 @@ function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow 
       error_code: null,
       error_summary: null,
       result_summary: null,
-      ...(processing ? {} : {
+      ...(processing ? {
+        ...clearedProviderContinuation(),
+        ...clearedHybridPlannerBinding()
+      } : {
         status: "queued" as const,
         attempts: 0,
         locked_at: null,
@@ -1518,7 +1641,8 @@ function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow 
         sealed_revision: null,
         publication_sealed_at: null,
         ...clearedSealedPublicationPlan(),
-        ...clearedProviderContinuation()
+        ...clearedProviderContinuation(),
+        ...clearedHybridPlannerBinding()
       })
     });
     assertAnalysisJobIsPrivate(existing);
@@ -1656,7 +1780,8 @@ function requeueMemoryAnalysisJobRevision(row: AnalysisJobRow, now: Date): void 
     sealed_revision: null,
     publication_sealed_at: null,
     ...clearedSealedPublicationPlan(),
-    ...clearedProviderContinuation()
+    ...clearedProviderContinuation(),
+    ...clearedHybridPlannerBinding()
   });
   assertAnalysisJobIsPrivate(row);
 }
@@ -2279,9 +2404,7 @@ async function getSupabaseAnalysisJobCandidate(
   const row = Array.isArray(rows) ? rows[0] : null;
   if (!row || typeof row !== "object") return null;
 
-  const job = row as AnalysisJobRow;
-  assertAnalysisJobIsPrivate(job);
-  return job;
+  return normalizeAnalysisJobRow(row);
 }
 
 async function getSupabaseSemanticRetrySubmissionCandidate(
@@ -2315,8 +2438,8 @@ async function getSupabaseSemanticRetrySubmissionCandidate(
   const rows = await response.json() as unknown;
   const row = Array.isArray(rows) ? rows[0] : null;
   if (!row || typeof row !== "object") return null;
-  const job = row as AnalysisJobRow;
-  assertAnalysisJobIsPrivate(job);
+  const job = normalizeAnalysisJobRow(row);
+  if (!job) return null;
   return isStaleSemanticRetrySubmissionJob(job, now, staleBefore.getTime()) ? job : null;
 }
 
@@ -2352,8 +2475,8 @@ async function getSupabaseExpiredProviderProcessingCandidate(
   const rows = await response.json() as unknown;
   const row = Array.isArray(rows) ? rows[0] : null;
   if (!row || typeof row !== "object") return null;
-  const job = row as AnalysisJobRow;
-  assertAnalysisJobIsPrivate(job);
+  const job = normalizeAnalysisJobRow(row);
+  if (!job) return null;
   return isExpiredProviderProcessingJob(job, now) ? job : null;
 }
 
@@ -2381,9 +2504,7 @@ async function getSupabaseAnalysisJobById(
   const row = Array.isArray(rows) ? rows[0] : null;
   if (!row || typeof row !== "object") return null;
 
-  const job = row as AnalysisJobRow;
-  assertAnalysisJobIsPrivate(job);
-  return job;
+  return normalizeAnalysisJobRow(row);
 }
 
 async function patchSupabaseAnalysisJob(
@@ -2397,6 +2518,8 @@ async function patchSupabaseAnalysisJob(
     currentDesiredRevision?: number;
     currentRunningRevision?: number | null;
     requireUnsealed?: boolean;
+    requireNoProviderContinuation?: boolean;
+    requireEmptyHybridPlannerBinding?: boolean;
     returnRepresentation?: boolean;
   } = {}
 ): Promise<AnalysisJobRow | null> {
@@ -2428,6 +2551,22 @@ async function patchSupabaseAnalysisJob(
   if (options.requireUnsealed) {
     params.append("sealed_revision", "is.null");
   }
+  if (options.requireNoProviderContinuation) {
+    params.append("provider_status", "is.null");
+    params.append("provider_response_id", "is.null");
+    params.append("provider_submitted_at", "is.null");
+    params.append("provider_expires_at", "is.null");
+    params.append("provider_webhook_id_hash", "is.null");
+    params.append("provider_webhook_received_at", "is.null");
+    params.append("semantic_retry_attempts", "eq.0");
+    params.append("prior_provider_response_id", "is.null");
+    params.append("prior_provider_submitted_at", "is.null");
+    params.append("prior_provider_expires_at", "is.null");
+  }
+  if (options.requireEmptyHybridPlannerBinding) {
+    params.append("planner_contract_version", "is.null");
+    params.append("planner_input_hash", "is.null");
+  }
 
   const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params.toString()}`, {
     method: "PATCH",
@@ -2448,9 +2587,7 @@ async function patchSupabaseAnalysisJob(
   const row = Array.isArray(rows) ? rows[0] : null;
   if (!row || typeof row !== "object") return null;
 
-  const job = row as AnalysisJobRow;
-  assertAnalysisJobIsPrivate(job);
-  return job;
+  return normalizeAnalysisJobRow(row);
 }
 
 function updateMemoryAnalysisJob(
@@ -2950,6 +3087,86 @@ function clearedProviderContinuation() {
     prior_provider_submitted_at: null,
     prior_provider_expires_at: null
   };
+}
+
+function clearedHybridPlannerBinding() {
+  return {
+    planner_contract_version: null,
+    planner_input_hash: null
+  };
+}
+
+function safeHybridPlannerBinding(contractVersion: unknown, inputHash: unknown): {
+  contractVersion: "hybrid_requirement_planner.v1";
+  inputHash: string;
+} | null {
+  if (contractVersion !== "hybrid_requirement_planner.v1" || typeof inputHash !== "string" || !/^[a-f0-9]{64}$/.test(inputHash)) return null;
+  return { contractVersion, inputHash };
+}
+
+function hybridPlannerBindingState(job: Pick<AnalysisJobRow, "planner_contract_version" | "planner_input_hash">):
+  | { kind: "legacy" }
+  | { kind: "bound"; binding: NonNullable<ReturnType<typeof safeHybridPlannerBinding>> }
+  | { kind: "malformed" } {
+  if (!Object.hasOwn(job, "planner_contract_version") || !Object.hasOwn(job, "planner_input_hash")) {
+    return { kind: "malformed" };
+  }
+  const version = job.planner_contract_version;
+  const hash = job.planner_input_hash;
+  if (version === null && hash === null) return { kind: "legacy" };
+  const binding = safeHybridPlannerBinding(version, hash);
+  return binding ? { kind: "bound", binding } : { kind: "malformed" };
+}
+
+function hasInvalidHybridPlannerBinding(job: Pick<AnalysisJobRow,
+  "hybrid_planner_requested" | "planner_contract_version" | "planner_input_hash">): boolean {
+  if (!Object.hasOwn(job, "hybrid_planner_requested") || typeof job.hybrid_planner_requested !== "boolean") return true;
+  const state = hybridPlannerBindingState(job);
+  if (job.hybrid_planner_requested === false) return state.kind !== "legacy";
+  return state.kind !== "bound";
+}
+
+function hasExactHybridPlannerBinding(
+  job: Pick<AnalysisJobRow, "planner_contract_version" | "planner_input_hash">,
+  binding: NonNullable<ReturnType<typeof safeHybridPlannerBinding>>
+): boolean {
+  const state = hybridPlannerBindingState(job);
+  return state.kind === "bound" && state.binding.contractVersion === binding.contractVersion && state.binding.inputHash === binding.inputHash;
+}
+
+function canBindHybridPlannerSeed(
+  job: Pick<AnalysisJobRow,
+    "hybrid_planner_requested" | "planner_contract_version" | "planner_input_hash" |
+    "provider_response_id" | "provider_status" | "provider_poll_attempts" |
+    "provider_submitted_at" | "provider_expires_at" | "provider_webhook_id_hash" |
+    "provider_webhook_received_at" | "semantic_retry_attempts" |
+    "prior_provider_response_id" | "prior_provider_submitted_at" | "prior_provider_expires_at">,
+  binding: NonNullable<ReturnType<typeof safeHybridPlannerBinding>>
+): boolean {
+  if (job.hybrid_planner_requested !== true) return false;
+  const state = hybridPlannerBindingState(job);
+  return !hasProviderContinuation(job) && (state.kind === "legacy" || hasExactHybridPlannerBinding(job, binding));
+}
+
+function hasProviderContinuation(job: Pick<AnalysisJobRow,
+  "provider_response_id" | "provider_status" | "provider_poll_attempts" |
+  "provider_submitted_at" | "provider_expires_at" | "provider_webhook_id_hash" |
+  "provider_webhook_received_at" | "semantic_retry_attempts" |
+  "prior_provider_response_id" | "prior_provider_submitted_at" | "prior_provider_expires_at">): boolean {
+  return job.provider_response_id != null || job.provider_status != null ||
+    job.provider_submitted_at != null || job.provider_expires_at != null ||
+    job.provider_webhook_id_hash != null || job.provider_webhook_received_at != null ||
+    job.prior_provider_response_id != null || job.prior_provider_submitted_at != null ||
+    job.prior_provider_expires_at != null ||
+    (typeof job.provider_poll_attempts === "number" && job.provider_poll_attempts > 0) ||
+    (typeof job.semantic_retry_attempts === "number" && job.semantic_retry_attempts > 0);
+}
+
+function hasCurrentAnalysisJobRevision(job: Pick<AnalysisJobRow, "status" | "desired_revision" | "running_revision">): boolean {
+  return job.status === "processing" &&
+    typeof job.desired_revision === "number" && Number.isSafeInteger(job.desired_revision) && job.desired_revision > 0 &&
+    typeof job.running_revision === "number" && Number.isSafeInteger(job.running_revision) &&
+    job.running_revision === job.desired_revision;
 }
 
 function sealedPublicationPlan(row: AnalysisJobRow) {

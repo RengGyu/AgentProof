@@ -156,6 +156,7 @@ describe("buildPullRequestInput", () => {
     const firstFetchOptions = fetchMock.mock.calls[0]?.[1] as { headers?: Record<string, string> } | undefined;
 
     expect(input.title).toBe("Example PR");
+    expect(input.requirementSourceIdentityHash).toBe("e18db433eecb9b75f83ca8b6702dec388f020188aa49b99c15f4fe206ebe722c");
     expect(firstFetchOptions?.headers?.Authorization).toBeUndefined();
     expect(input.sourceProvenance?.changedFileInventory).toEqual({
       version: 1,
@@ -303,11 +304,46 @@ describe("buildPullRequestInput", () => {
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
 
     expect(input.taskSource).toBe("issue");
+    expect(input.requirementSourceIdentityHash).toBe("ae85626be4db3b2a46ca6dc258a047f4098c84fb27214c829740086bd629f23c");
     expect(input.taskText).toContain("Linked issue acme/repo#42: Reject expired password reset links");
     expect(input.taskText).toContain("Reject expired reset links");
     expect(input.description).toBe("Fixes #42");
     expect(input.limitations?.join(" ") ?? "").not.toContain("No original task text");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/42"))).toBe(true);
+    expect(JSON.stringify(input.requirementSourceIdentityHash)).not.toContain("42");
+  });
+
+  it("changes only the opaque authority identity hash when an identical linked Issue is relinked", async () => {
+    let linkedNumber = 1;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Same content relink",
+        body: `Fixes #${linkedNumber}`,
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        user: { login: "coding-agent" },
+        base: { ref: "main", sha: "b".repeat(40) },
+        head: { ref: "agent/relink", sha: "a".repeat(40) }
+      }));
+      if (/\/issues\/[12]$/.test(url)) return Promise.resolve(Response.json({
+        title: "Identical issue",
+        body: "Acceptance criteria:\n- Preserve identity fencing."
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const issueOne = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+    linkedNumber = 2;
+    const issueTwo = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(issueOne.taskText.replace("#1", "#2")).toBe(issueTwo.taskText);
+    expect(issueOne.requirementSourceIdentityHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(issueTwo.requirementSourceIdentityHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(issueOne.requirementSourceIdentityHash).not.toBe(issueTwo.requirementSourceIdentityHash);
+    expect(JSON.stringify({ issueOne, issueTwo })).not.toContain("github_issue:");
   });
 
   it("keeps pasted task text ahead of linked issue text", async () => {
@@ -380,6 +416,7 @@ describe("buildPullRequestInput", () => {
 
     expect(input.taskText).toBe("");
     expect(input.taskSource).toBeUndefined();
+    expect(input.requirementSourceIdentityHash).toBe("23acfef206191405faa4cd9977e412f0a3f3c4f8a07110a4887c073d9531c2aa");
     expect(limitations).toContain("Multiple supported issue references found");
     expect(limitations).toContain("acme/repo#1, acme/repo#2, owner/other#3");
     expect(limitations).toContain("capped at 3");
