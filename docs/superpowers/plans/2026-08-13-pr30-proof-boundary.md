@@ -4,7 +4,7 @@
 
 **Goal:** Keep enhanced planning advisory for proof requirements and report GitHub patch collection failures accurately.
 
-**Architecture:** The verifier retains sole authority over required proof axes. Hybrid finalization retains planner suggestions only as bounded metadata. Evidence indexing carries a non-sensitive patch collection state so a missing patch is classified as unavailable evidence rather than missing implementation.
+**Architecture:** The verifier retains sole authority over required proof axes. Hybrid finalization validates planner suggestions but does not materialize them into the report contract. Evidence indexing carries a non-sensitive patch collection state so a missing patch is classified as unavailable evidence rather than missing implementation.
 
 **Tech Stack:** Next.js, TypeScript, Vitest.
 
@@ -24,7 +24,7 @@
 
 **Interfaces:**
 - Consumes: `HybridPlannerPlanValidation` and deterministic `RequirementProofExpectations`.
-- Produces: requirements with deterministic proof axes and optional planner suggestion metadata.
+- Produces: requirements with deterministic proof axes only.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -43,7 +43,7 @@ Run: `pnpm vitest run src/lib/hybrid-report-finalizer.test.ts`
 
 Keep `requirementProofAxisExpectations(span.text)` as the effective contract.
 Do not union planner axis suggestions into the expectations passed to the
-verifier; retain suggestions only in existing bounded metadata if applicable.
+verifier or persist them as per-requirement proof metadata.
 
 - [ ] **Step 4: Run test to verify it passes**
 

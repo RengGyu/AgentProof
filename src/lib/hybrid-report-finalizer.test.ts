@@ -326,7 +326,7 @@ describe("valid hybrid finalization", () => {
     expect(validateVerificationReport(result.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("unions floor, planner axes, and deterministic execution companions", () => {
+  it("keeps the deterministic floor when the planner suggests an extra axis", () => {
     const seed = extractedBoundSeed(input);
     const result = finalizeHybridVerificationReport({
       input, seed, provenance,
@@ -335,17 +335,18 @@ describe("valid hybrid finalization", () => {
     const axes = result.report.requirements[0]?.proofAxes ?? [];
 
     expect(axes.map((axis) => `${axis.subject}:${axis.polarity}`)).toEqual([
-      "implementation:present", "documentation:present", "execution:present"
+      "implementation:present", "execution:present"
     ]);
-    expect(axes.find((axis) => axis.subject === "documentation")?.state).toBe("violated");
-    expect(result.report.requirements[0]?.gaps.join(" ")).toContain("documentation artifact");
+    expect(axes.some((axis) => axis.subject === "documentation")).toBe(false);
+    expect(result.report.requirements[0]?.gaps.join(" ")).not.toContain("documentation artifact");
     expect(result.report.planner).toMatchObject({ inputHash: seed.seedHash, version: 1 });
-    expect(result.report.requirements[0]).toMatchObject({ classificationBasis: "enhanced_plan", plannerAxisSubjects: ["documentation"] });
+    expect(result.report.requirements[0]).toMatchObject({ classificationBasis: "enhanced_plan" });
+    expect(result.report.requirements[0]?.plannerAxisSubjects).toBeUndefined();
     expect(result.report.proofGraph.nodes[0]).toMatchObject({ classificationBasis: "enhanced_plan" });
     expect(validateVerificationReport(result.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("adds execution for a planner-selected targeted-test axis without inventing implementation", () => {
+  it("does not add a targeted-test axis solely from a planner suggestion", () => {
     const text = "Document retry behavior.";
     const documentInput: PullRequestInput = { ...input, taskText: text, changedFiles: [], checks: [], logs: [] };
     const seed = extractedBoundSeed(documentInput);
@@ -359,14 +360,47 @@ describe("valid hybrid finalization", () => {
     });
     const subjects = result.report.requirements[0]?.proofAxes?.map((axis) => axis.subject);
 
-    expect(subjects).toEqual(["documentation", "targeted_test", "execution"]);
-    expect(result.report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("missing_targeted_test");
+    expect(subjects).toEqual(["documentation"]);
+    expect(result.report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
     expect(result.report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("visual_proof_missing");
     expect(result.report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("interaction_proof_missing");
     expect(validateVerificationReport(result.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("inherits only the exact direct admitted parent's own axes", () => {
+  it("does not let a planner implementation suggestion change a test-only proof contract", () => {
+    const testOnlyInput: PullRequestInput = {
+      ...input,
+      taskText: "Add focused automated tests for both boolean paths.",
+      changedFiles: [{
+        path: "test/repository-visibility.test.js",
+        status: "added",
+        patch: "+ test('both boolean paths', () => {})"
+      }],
+      checks: [],
+      logs: []
+    };
+    const seed = extractedBoundSeed(testOnlyInput);
+    const result = finalizeHybridVerificationReport({
+      input: testOnlyInput,
+      seed,
+      provenance,
+      planValidation: validation(seed, [{
+        disposition: "admit",
+        classification: "requirement",
+        expected_axes: [{ subject: "implementation", polarity: "present" }]
+      }])
+    });
+    const finding = result.report.requirements[0];
+
+    expect(finding?.proofAxes?.map((axis) => axis.subject)).toEqual([
+      "targeted_test",
+      "execution"
+    ]);
+    expect(result.report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind))
+      .not.toContain("missing_implementation");
+  });
+
+  it("does not inherit planner-only axes through an admitted parent", () => {
     const parentInput: PullRequestInput = {
       ...input,
       taskText: "Acceptance criteria:\n- Add retry documentation.\n  - Show retry status in the UI.\n    - Add retry handling."
@@ -383,7 +417,7 @@ describe("valid hybrid finalization", () => {
     });
 
     expect(result.report.requirements[1]?.proofAxes?.some((axis) => axis.subject === "documentation")).toBe(true);
-    expect(result.report.requirements[2]?.proofAxes?.some((axis) => axis.subject === "visual")).toBe(true);
+    expect(result.report.requirements[2]?.proofAxes?.some((axis) => axis.subject === "visual")).toBe(false);
     expect(result.report.requirements[2]?.proofAxes?.some((axis) => axis.subject === "documentation")).toBe(false);
   });
 
@@ -412,7 +446,7 @@ describe("valid hybrid finalization", () => {
   it.each([
     ["Add retry handling.", { subject: "implementation", polarity: "absent" }],
     ["Do not change implementation code.", { subject: "implementation", polarity: "present" }]
-  ] as const)("rejects floor/plan polarity conflict for %s as whole-plan fallback", (text, axis) => {
+  ] as const)("ignores a planner polarity conflict for %s", (text, axis) => {
     const conflictInput = { ...input, taskText: text };
     const seed = extractedBoundSeed(conflictInput);
     const result = finalizeHybridVerificationReport({
@@ -420,7 +454,9 @@ describe("valid hybrid finalization", () => {
       planValidation: validation(seed, [{ disposition: "admit", classification: "requirement", expected_axes: [axis] }])
     });
 
-    expect(result.disposition).toBe("fallback");
-    expect(result.report).toEqual(generateHybridFallbackReport(conflictInput, "post_call_failure"));
+    expect(result.disposition).toBe("hybrid");
+    expect(result.report.requirements[0]?.proofAxes?.some((item) =>
+      item.subject === axis.subject && item.polarity === axis.polarity
+    )).toBe(false);
   });
 });

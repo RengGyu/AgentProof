@@ -1136,6 +1136,27 @@ describe("generateVerificationReport", () => {
     expect(report.summary.topRisks.join(" ")).toContain("implementation proof is unavailable");
   });
 
+  it("treats a requirement-matched source file without a patch as unavailable evidence", () => {
+    const report = generateVerificationReport({
+      title: "Add repository visibility label",
+      description: "",
+      taskText: "Add repository visibility labels.",
+      changedFiles: [{
+        path: "src/repositories/repository-visibility.js",
+        status: "added"
+      }],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+    const node = report.proofGraph.nodes[0];
+    const requirement = report.requirements[0];
+
+    expect(requirement?.proofAxes?.find((axis) => axis.subject === "implementation"))
+      .toMatchObject({ state: "incomplete", collectionBasis: "incomplete_changed_file_inventory" });
+    expect(node?.gapSignals.map((gap) => gap.kind)).toContain("evidence_unavailable");
+    expect(node?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
+  });
+
   it("keeps normal bug proof gaps at medium when CI passes", () => {
     const report = generateVerificationReport({
       title: "Fix stale cache output",

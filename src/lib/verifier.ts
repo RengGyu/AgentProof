@@ -1053,6 +1053,13 @@ function buildProofGraph(
       relevance,
       evidenceLookup
     );
+    const implementationPatchEvidenceUnavailable = expectations.implementation &&
+      (artifactRefs.implementation ?? []).some((ref) =>
+        evidenceLookup.evidenceForRef(ref)?.kind === "changed_file"
+      ) &&
+      !(artifactRefs.implementation ?? []).some((ref) =>
+        evidenceLookup.evidenceForRef(ref)?.kind === "diff"
+      );
     const expectedArtifactRefs = uniqueRefs(Object.values(artifactRefs).flat());
     const forbiddenImplementationRefs = expectations.noImplementationChanges
       ? [...evidenceLookup.implementationArtifactRefs]
@@ -1070,11 +1077,19 @@ function buildProofGraph(
       evidenceLookup,
       changedFileEvidenceUnavailable,
       diffEvidenceUnavailable,
+      implementationPatchEvidenceUnavailable,
       authoritativeChangedFileInventory
     });
     proofAxesByRequirement.set(requirement.id, proofAxes);
 
-    if (Object.keys(artifactRefs).length > 0 && expectedArtifactRefs.length === 0 && changedFileEvidenceUnavailable) {
+    if (implementationPatchEvidenceUnavailable) {
+      gapSignals.push({
+        kind: "evidence_unavailable",
+        severity: "medium",
+        message: "Changed-file metadata matched this requirement, but its patch text was unavailable; implementation proof is inconclusive rather than absent.",
+        evidenceRefs: artifactRefs.implementation ?? []
+      });
+    } else if (Object.keys(artifactRefs).length > 0 && expectedArtifactRefs.length === 0 && changedFileEvidenceUnavailable) {
       gapSignals.push({
         kind: "evidence_unavailable",
         severity: "medium",
@@ -1288,6 +1303,7 @@ interface RequirementProofAxisBuildInput {
   evidenceLookup: VerifierEvidenceLookup;
   changedFileEvidenceUnavailable: boolean;
   diffEvidenceUnavailable: boolean;
+  implementationPatchEvidenceUnavailable: boolean;
   authoritativeChangedFileInventory: boolean;
 }
 
@@ -1301,7 +1317,8 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
     const usableRefs = requiresDiff
       ? refs.filter((ref) => input.evidenceLookup.evidenceForRef(ref)?.kind === "diff")
       : refs;
-    const inventoryIncomplete = input.changedFileEvidenceUnavailable || (requiresDiff && refs.length > 0 && input.diffEvidenceUnavailable);
+    const inventoryIncomplete = input.changedFileEvidenceUnavailable ||
+      (requiresDiff && refs.length > 0 && (input.diffEvidenceUnavailable || input.implementationPatchEvidenceUnavailable));
     axes.push({
       subject,
       polarity: "present",

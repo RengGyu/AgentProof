@@ -239,6 +239,46 @@ describe("requirement relation regression matrix", () => {
     });
   });
 
+  it("keeps PR30 behavior and test-only proof contracts deterministic when the planner suggests implementation", () => {
+    const report = finalizeAllAuthoritative(linkedInput({
+      taskText: [
+        "## Requirements",
+        "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when isPrivate is true.",
+        "- Return Public repository when isPrivate is false.",
+        "- Add focused automated tests for both boolean paths."
+      ].join("\n"),
+      changedFiles: [
+        {
+          path: "src/repositories/repository-visibility.js",
+          status: "added",
+          patch: "+ export function repositoryVisibilityLabel(isPrivate) { return isPrivate ? 'Private repository' : 'Public repository'; }"
+        },
+        {
+          path: "test/repository-visibility.test.js",
+          status: "added",
+          patch: "+ test('returns both repository visibility labels', () => {})"
+        }
+      ],
+      checks: [{ name: "repository visibility tests", status: "passed", summary: "repository visibility tests passed." }],
+      logs: [{ source: "repository visibility tests", status: "passed", text: "repository visibility tests passed." }]
+    }), [
+      { disposition: "admit", classification: "requirement", expected_axes: [] },
+      { disposition: "admit", classification: "requirement", expected_axes: [] },
+      {
+        disposition: "admit",
+        classification: "requirement",
+        expected_axes: [{ subject: "implementation", polarity: "present" }]
+      }
+    ]);
+    const [privateLabel, publicLabel, focusedTests] = report.requirements;
+
+    expect(axis(privateLabel, "implementation")).toMatchObject({ state: "satisfied" });
+    expect(axis(publicLabel, "implementation")).toMatchObject({ state: "satisfied" });
+    expect(focusedTests?.proofAxes?.map((item) => item.subject)).toEqual(["targeted_test", "execution"]);
+    expect(axis(focusedTests, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(focusedTests?.gaps.join(" ")).not.toMatch(/implementation evidence/i);
+  });
+
   it("keeps an explicit-subject test-only objective independent from implementation proof", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
@@ -299,7 +339,7 @@ describe("requirement relation regression matrix", () => {
     expect(validateVerificationReport(ci, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("records only planner-added axes in planner provenance", () => {
+  it("does not materialize planner-suggested axes in report provenance", () => {
     const report = finalizeAllAuthoritative(linkedInput({
       taskText: "Acceptance criteria: document the retry status.",
       changedFiles: []
@@ -310,20 +350,17 @@ describe("requirement relation regression matrix", () => {
     }]);
     const finding = report.requirements[0];
 
-    expect(finding?.proofAxes?.map((item) => item.subject)).toEqual([
-      "documentation",
-      "visual"
-    ]);
+    expect(finding?.proofAxes?.map((item) => item.subject)).toEqual(["documentation"]);
     expect(finding).toMatchObject({
-      classificationBasis: "enhanced_plan",
-      plannerAxisSubjects: ["visual"]
+      classificationBasis: "enhanced_plan"
     });
+    expect(finding?.plannerAxisSubjects).toBeUndefined();
     expect(report.proofGraph.nodes[0]).toMatchObject({
       classificationBasis: "enhanced_plan"
     });
   });
 
-  it("does not report a planner axis inherited from a real parent as the child's own addition", () => {
+  it("does not let planner suggestions alter a parent or child proof contract", () => {
     const report = finalizeAllAuthoritative(linkedInput({
       taskText: [
         "Acceptance criteria:",
@@ -346,10 +383,9 @@ describe("requirement relation regression matrix", () => {
     const parent = report.requirements[0];
     const child = report.requirements[1];
 
-    expect(parent?.plannerAxisSubjects).toEqual(["documentation"]);
+    expect(parent?.plannerAxisSubjects).toBeUndefined();
     expect(child?.proofAxes?.map((item) => item.subject)).toEqual([
       "implementation",
-      "documentation",
       "targeted_test",
       "execution"
     ]);

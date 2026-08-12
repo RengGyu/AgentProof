@@ -203,8 +203,7 @@ function materializeRequirements(
     const span = seed.spans[index];
     const decision = plan.span_decisions[`d_${index}`];
     if (!span || !decision) return null;
-    const plannerAxes = decodeHybridPlannerExpectedAxes(decision.expected_axes);
-    if (!plannerAxes) return null;
+    if (!decodeHybridPlannerExpectedAxes(decision.expected_axes)) return null;
 
     const admitted = span.authority === "authoritative" ||
       (decision.disposition === "admit" && decision.classification === "requirement");
@@ -213,12 +212,10 @@ function materializeRequirements(
       continue;
     }
 
-    const floor = expectationAxes(requirementProofAxisExpectations(span.text));
-    const ownPlannerSubjects = [...new Set(plannerAxes
-      .filter((axis) => floor.get(axis.subject) !== axis.polarity)
-      .map((axis) => axis.subject))];
-    const ownAxes = unionAxes(floor, plannerAxes);
-    if (!ownAxes || !plannerAbsentPolicyIsValid(plannerAxes, floor)) return null;
+    // The planner may classify a span, but cannot strengthen or weaken the
+    // deterministic proof contract. Its axis suggestions are deliberately
+    // not materialized as required report axes or report gaps.
+    const ownAxes = expectationAxes(requirementProofAxisExpectations(span.text));
     addExecutionCompanion(ownAxes);
     ownAxesBySpan.set(span.id, ownAxes);
     admittedIds.add(span.id);
@@ -242,7 +239,6 @@ function materializeRequirements(
     };
     requirements.push(requirement);
     expectations.set(requirement.id, axesToExpectations(effectiveAxes));
-    if (ownPlannerSubjects.length > 0) plannerAxisSubjects.set(requirement.id, ownPlannerSubjects);
     if (ownAxes.get("targeted_test") === "present" && ownAxes.get("implementation") !== "present") {
       const contextIds = span.immediateParentSpanId && admittedIds.has(span.immediateParentSpanId)
         ? [span.immediateParentSpanId]
@@ -282,16 +278,6 @@ function expectationAxes(expectations: RequirementProofExpectations): AxisMap {
   return axes;
 }
 
-function unionAxes(floor: AxisMap, additions: readonly PlannerAxis[]): AxisMap | null {
-  const result = new Map(floor);
-  for (const axis of additions) {
-    const existing = result.get(axis.subject);
-    if (existing && existing !== axis.polarity) return null;
-    result.set(axis.subject, axis.polarity);
-  }
-  return result;
-}
-
 function mergeAxes(target: AxisMap, additions: AxisMap): boolean {
   for (const [subject, polarity] of additions) {
     const existing = target.get(subject);
@@ -299,11 +285,6 @@ function mergeAxes(target: AxisMap, additions: AxisMap): boolean {
     target.set(subject, polarity);
   }
   return true;
-}
-
-function plannerAbsentPolicyIsValid(plannerAxes: readonly PlannerAxis[], floor: AxisMap): boolean {
-  return !plannerAxes.some((axis) => axis.subject === "implementation" && axis.polarity === "absent") ||
-    floor.get("implementation") === "absent";
 }
 
 function addExecutionCompanion(axes: AxisMap) {
