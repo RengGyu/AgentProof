@@ -64,7 +64,9 @@ describe("GET /api/dashboard/repositories", () => {
         analysisEnabled: true,
         saveReportsEnabled: true,
         commentEnabled: false,
-        llmAnalysisMode: "essential"
+        llmAnalysisMode: "essential",
+        hybridPlannerConsentVersion: null,
+        repositoryPrivate: false
       }],
       privacy: "grant-metadata-only"
     });

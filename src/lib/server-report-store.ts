@@ -841,7 +841,9 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
         gaps: gaps.slice(0, 10),
         reviewerNote: "Review the linked evidence and safe locations.",
         confidence: item.confidence,
-        ...(item.proofAxes ? { proofAxes: copyProofAxes(item.proofAxes) } : {})
+        ...(item.proofAxes ? { proofAxes: copyProofAxes(item.proofAxes) } : {}),
+        ...(item.classificationBasis ? { classificationBasis: item.classificationBasis } : {}),
+        ...(item.plannerAxisSubjects ? { plannerAxisSubjects: [...item.plannerAxisSubjects] } : {})
       };
     }),
     claims: [],
@@ -873,7 +875,8 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
         targetedTestEvidenceRefs: node.targetedTestEvidenceRefs,
         executionEvidenceRefs: node.executionEvidenceRefs,
         gapSignals: node.gapSignals.map((gap) => ({ kind: gap.kind, severity: gap.severity, message: tenantGapText(gap.kind), evidenceRefs: gap.evidenceRefs })),
-        firstFiles: node.firstFiles.map(safeLocator).filter((value): value is string => Boolean(value)).slice(0, 20)
+        firstFiles: node.firstFiles.map(safeLocator).filter((value): value is string => Boolean(value)).slice(0, 20),
+        ...(node.classificationBasis ? { classificationBasis: node.classificationBasis } : {})
       })),
       context: [],
       summary: report.proofGraph.summary
@@ -884,6 +887,7 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
       return { id: item.id, kind: item.kind, label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", ...(locator ? { locator } : {}), confidence: item.confidence };
     }),
     limitations: report.limitations.map(() => "Some evidence was unavailable or intentionally omitted for privacy.").slice(0, 20),
+    ...(report.planner ? { planner: copyPlannerProvenance(report.planner) } : {}),
     ...(report.semantic ? { semantic: report.semantic } : {}),
     ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
@@ -893,6 +897,17 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
     throw new SavedReportStoreError(`Tenant saved report failed validation: ${validation.errors.join("; ")}`);
   }
   return safe;
+}
+
+function copyPlannerProvenance(planner: NonNullable<VerificationReport["planner"]>): NonNullable<VerificationReport["planner"]> {
+  return {
+    version: planner.version,
+    contractVersion: planner.contractVersion,
+    schemaVersion: planner.schemaVersion,
+    promptVersion: planner.promptVersion,
+    model: planner.model,
+    inputHash: planner.inputHash
+  };
 }
 
 function safeLocator(value: string | undefined): string | null {

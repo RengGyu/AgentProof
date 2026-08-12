@@ -1336,6 +1336,167 @@ describe("analysis worker preflight", () => {
     });
   });
 
+  it("binds an explicit hybrid intent before one uncertain POST and never converts a legacy row", async () => {
+    stubReadyWorkerEnv({
+      grant: {
+        llmAnalysisMode: "enhanced",
+        hybridPlannerConsentVersion: "2026-08-12.v1",
+        repositoryPrivate: true,
+        saveReportsEnabled: false,
+        commentEnabled: false
+      }
+    });
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_TENANT_ALLOWLIST", "tenant_a");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const githubFetch = mockWorkerFetch();
+    let submitCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.github.com/repos/RengGyu/AgentProof") {
+        return Response.json({ private: true });
+      }
+      if (href === "https://api.openai.com/v1/responses") {
+        submitCount += 1;
+        throw new TypeError("network failed after request dispatch");
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({
+      saveReport: false,
+      comment: false,
+      hybridPlannerRequested: true
+    }));
+
+    const first = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const second = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:05:00Z")
+    });
+
+    expect(first).toMatchObject({ status: "completed", job: { id } });
+    expect(second).toEqual({ status: "idle" });
+    expect(submitCount).toBe(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({
+      hybrid_planner_requested: true,
+      planner_contract_version: "hybrid_requirement_planner.v1",
+      planner_input_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      provider_response_id: null,
+      provider_status: null
+    });
+  });
+
+  it("uses one POST then GET-only retrieval and suppresses publication when the PR relinks to an identical-content Issue", async () => {
+    stubReadyWorkerEnv({
+      grant: {
+        llmAnalysisMode: "enhanced",
+        hybridPlannerConsentVersion: "2026-08-12.v1",
+        repositoryPrivate: true,
+        saveReportsEnabled: true,
+        commentEnabled: true,
+        slackNotificationsEnabled: true
+      }
+    });
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_TENANT_ALLOWLIST", "tenant_a");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("AGENTPROOF_SAVED_REPORTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    const githubFetch = mockWorkerFetch();
+    let relinked = false;
+    let postCount = 0;
+    let retrieveCount = 0;
+    let plan: unknown;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (/\/repos\/RengGyu\/AgentProof\/pulls\/7$/.test(href)) {
+        return mockWorkerFetch({ pullRequestBody: relinked ? "Fixes #2" : "Fixes #1" })(url, init);
+      }
+      if (/\/repos\/RengGyu\/AgentProof\/issues\/[12]$/.test(href)) {
+        return Response.json({
+          number: relinked ? 2 : 1,
+          title: "Identical requirement authority",
+          body: "Acceptance criteria:\n- Add retry handling.",
+          html_url: `https://github.com/RengGyu/AgentProof/issues/${relinked ? 2 : 1}`,
+          state: "open"
+        });
+      }
+      if (href === "https://api.github.com/repos/RengGyu/AgentProof") {
+        return Response.json({ private: true });
+      }
+      if (href === "https://api.openai.com/v1/responses") {
+        postCount += 1;
+        const requestBody = JSON.parse(String(init?.body)) as {
+          text: { format: { schema: Record<string, unknown> } };
+        };
+        plan = exampleFromJsonSchema(
+          requestBody.text.format.schema,
+          requestBody.text.format.schema
+        );
+        return Response.json({
+          id: "resp_hybrid_relink_123",
+          status: "queued",
+          output: []
+        });
+      }
+      if (href === "https://api.openai.com/v1/responses/resp_hybrid_relink_123") {
+        retrieveCount += 1;
+        relinked = true;
+        return Response.json({
+          id: "resp_hybrid_relink_123",
+          status: "completed",
+          output_text: JSON.stringify(plan),
+          usage: { output_tokens: 100 }
+        });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { id } = await enqueueAnalysisJob(jobInput({
+      saveReport: true,
+      comment: true,
+      slackSummary: true,
+      hybridPlannerRequested: true
+    }));
+
+    const submitted = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    const claimed = await claimAnalysisJobForProviderResponse("resp_hybrid_relink_123", {
+      now: new Date("2026-06-30T00:01:20Z"),
+      webhookId: "wh_hybrid_relink_123"
+    });
+    const result = await runClaimedAnalysisJob(claimed.job!, {
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:20Z")
+    });
+
+    expect(submitted).toMatchObject({ status: "waiting_provider", job: { id } });
+    expect(result).toMatchObject({
+      status: "completed",
+      job: { id },
+      sideEffects: { saveReport: false, comment: false }
+    });
+    expect(result.sideEffects).not.toHaveProperty("slackSummary");
+    expect(postCount).toBe(1);
+    expect(retrieveCount).toBe(1);
+    expect(getAuditEventsForTests().find((event) => event.action === "hybrid_planner_analysis" &&
+      (event.metadata as { plannerTelemetry?: { outcomeCode?: string } }).plannerTelemetry?.outcomeCode === "stale_source"
+    )).toMatchObject({
+      metadata: { plannerTelemetry: { outcomeCode: "stale_source", postCount: 0 } }
+    });
+    expect((await countTenantSavedReports({ tenantId: "tenant_a" })).count).toBe(0);
+    expect(fetchMock.mock.calls.some(([url, init]) =>
+      /\/issues\/7\/comments$/.test(String(url)) && init?.method === "POST"
+    )).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === "https://slack.com/api/chat.postMessage")).toBe(false);
+  });
+
   it("completes deterministic fallback when a parked provider response expires", async () => {
     stubReadyWorkerEnv({ grant: { llmAnalysisMode: "enhanced", saveReportsEnabled: false, commentEnabled: false } });
     vi.stubEnv("AGENTPROOF_LLM_SEMANTIC_ENABLED", "true");
@@ -2676,6 +2837,8 @@ type WorkerGrantRecord = {
   saveReportsEnabled: boolean;
   slackNotificationsEnabled: boolean;
   llmAnalysisMode: "essential" | "enhanced";
+  hybridPlannerConsentVersion?: "2026-08-12.v1";
+  repositoryPrivate?: boolean;
 };
 
 function stubReadyWorkerEnv(options: {
@@ -2720,6 +2883,7 @@ function jobInput(overrides: Partial<{
   deliveryId: string;
   pullRequestNumber: number;
   headSha: string;
+  hybridPlannerRequested: boolean;
 }> = {}) {
   const pullRequestNumber = overrides.pullRequestNumber ?? 7;
 
@@ -2738,6 +2902,7 @@ function jobInput(overrides: Partial<{
     saveReport: overrides.saveReport ?? true,
     comment: overrides.comment ?? true,
     slackSummary: overrides.slackSummary ?? false,
+    hybridPlannerRequested: overrides.hybridPlannerRequested ?? false,
     now: new Date("2026-06-30T00:00:00Z")
   };
 }
@@ -2761,6 +2926,31 @@ function testPrivateKey(): string {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 
   return privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+}
+
+function exampleFromJsonSchema(schema: Record<string, unknown>, root: Record<string, unknown>): unknown {
+  if (typeof schema.$ref === "string") {
+    const path = schema.$ref.replace(/^#\//, "").split("/");
+    let current: unknown = root;
+    for (const segment of path) {
+      current = current && typeof current === "object" && !Array.isArray(current)
+        ? (current as Record<string, unknown>)[segment]
+        : undefined;
+    }
+    return exampleFromJsonSchema(current as Record<string, unknown>, root);
+  }
+  if (Array.isArray(schema.enum)) return schema.enum[0];
+  if (Array.isArray(schema.anyOf)) {
+    return exampleFromJsonSchema(schema.anyOf[0] as Record<string, unknown>, root);
+  }
+  if (schema.type === "object") {
+    const properties = schema.properties as Record<string, Record<string, unknown>>;
+    const required = Array.isArray(schema.required) ? schema.required : Object.keys(properties ?? {});
+    return Object.fromEntries(required.map((key) => [key, exampleFromJsonSchema(properties[key]!, root)]));
+  }
+  if (schema.type === "array") return [];
+  if (schema.type === "null") return null;
+  throw new Error("Test schema did not provide a deterministic example value.");
 }
 
 function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {

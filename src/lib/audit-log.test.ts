@@ -7,7 +7,8 @@ import {
   getAuditEventsForTests,
   getAuditLogStoreStatus,
   listTenantAuditEvents,
-  recordAuditEvent
+  recordAuditEvent,
+  recordHybridPlannerTelemetry
 } from "./audit-log";
 
 describe("audit log", () => {
@@ -18,6 +19,50 @@ describe("audit log", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     global.fetch = originalFetch;
+  });
+
+  it("records hybrid planner telemetry through an exact aggregate-only allowlist", async () => {
+    const telemetry = {
+      contractVersion: "hybrid_requirement_planner.v1" as const,
+      schemaVersion: "agentproof_requirement_span_plan_v1" as const,
+      promptVersion: "2026-08-12.v1" as const,
+      model: "gpt-5-mini" as const,
+      inputBytes: 1200,
+      outputBytes: 512,
+      outputTokens: 123,
+      elapsedMs: 2400,
+      postCount: 1 as const,
+      outcomeCode: "completed" as const
+    };
+
+    const row = await recordHybridPlannerTelemetry(telemetry);
+
+    expect(row).toMatchObject({ action: "hybrid_planner_analysis", result: "completed", actor: "system" });
+    expect(row.repository_full_name).toBeNull();
+    expect(row.head_sha_prefix).toBeNull();
+    expect(row.metadata).toEqual({ plannerTelemetry: telemetry });
+    expect(Object.keys((row.metadata as { plannerTelemetry: object }).plannerTelemetry).sort()).toEqual(Object.keys(telemetry).sort());
+  });
+
+  it("rejects raw/private/provider fields before planner telemetry can enter audit storage", async () => {
+    const base = {
+      contractVersion: "hybrid_requirement_planner.v1",
+      schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1",
+      model: "gpt-5-mini",
+      inputBytes: 1200,
+      outputBytes: 512,
+      outputTokens: 123,
+      elapsedMs: 2400,
+      postCount: 1,
+      outcomeCode: "completed"
+    };
+
+    await expect(recordHybridPlannerTelemetry({ ...base, inputHash: "a".repeat(64) } as never)).rejects.toThrow(AuditPrivacyError);
+    await expect(recordHybridPlannerTelemetry({ ...base, responseId: "resp_private_123" } as never)).rejects.toThrow(AuditPrivacyError);
+    await expect(recordHybridPlannerTelemetry({ ...base, prompt: "private source" } as never)).rejects.toThrow(AuditPrivacyError);
+    await expect(recordHybridPlannerTelemetry({ ...base, outputBytes: 16_385 } as never)).rejects.toThrow(AuditPrivacyError);
+    await expect(recordHybridPlannerTelemetry({ ...base, elapsedMs: 3_600_001 } as never)).rejects.toThrow(AuditPrivacyError);
   });
 
   it("records bounded in-memory audit metadata without raw evidence fields", async () => {

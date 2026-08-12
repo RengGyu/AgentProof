@@ -35,6 +35,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     `**State:** ${exported.pull_request.state}`,
     `**Priority:** ${exported.pull_request.priority ?? "Unavailable"}`,
     `**Analysis context:** ${readableAnalysisContext(exported.analysis_context)}`,
+    ...(exported.planning_policy ? [`**Policy:** ${exported.planning_policy}`] : []),
     "",
     "## Requirements",
     "",
@@ -127,6 +128,7 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       state: "CURRENT"
     },
     analysis_context: detail.analysisContext ?? "provided_requirement",
+    ...(report?.planner ? { planning_policy: "Enhanced planning policy" } : {}),
     requirements: (report?.requirements ?? []).map((item) => ({
       id: safeText(item.requirementId) ?? "Unavailable",
       coverage: safeText(item.status) ?? "unclear",

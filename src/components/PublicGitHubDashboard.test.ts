@@ -78,6 +78,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("provider response must not persist");
   });
 
+  it("labels planner-enabled reports with neutral policy copy only", () => {
+    expect(source).toContain("Enhanced planning policy");
+    expect(source).not.toContain("hybrid_requirement_planner");
+    expect(source).not.toContain("gpt-5-mini");
+  });
+
   it("reserves the browser clipboard gesture before waiting for a detail revalidation", () => {
     expect(source).toContain("writeDeferredTextWithBrowserFallback");
     expect(source).toContain("prepareCurrentDashboardDetailForCopy");
@@ -144,5 +150,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Enable enhanced analysis");
     expect(source).toContain("selected changed-code excerpts and evidence summaries");
     expect(source).toContain("repository.private ?");
+  });
+
+  it("requires an explicit private enhanced-planning consent checkbox with the approved disclosure", () => {
+    expect(source).toContain("Allow AgentProof to send bounded redacted private Issue and pull-request source spans to the configured provider for enhanced planning.");
+    expect(source).toContain("hybridPlannerConsent");
+    expect(source).toContain("Private enhanced planning consent");
+    expect(source).toContain('repository.repositoryPrivate === true && repository.llmAnalysisMode === "enhanced"');
   });
 });

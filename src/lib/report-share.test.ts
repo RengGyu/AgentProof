@@ -1,10 +1,48 @@
 import { describe, expect, it } from "vitest";
+import { reportToMarkdown } from "./markdown";
 import { buildShareUrl, decodeSharedReport, encodeReportForShare, sanitizeReportForShare, SUMMARY_ONLY_LIMITATION } from "./report-share";
 import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
+const PLANNER_INPUT_HASH = "0123456789abcdef".repeat(4);
+
 describe("report share", () => {
+  it("emits an exact version-3 envelope with neutral hashless planning provenance", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.planner = { version: 1, contractVersion: "hybrid_requirement_planner.v1", schemaVersion: "agentproof_requirement_span_plan_v1", promptVersion: "2026-08-12.v1", model: "gpt-5-mini", inputHash: PLANNER_INPUT_HASH };
+    for (const requirement of report.requirements) requirement.classificationBasis = "enhanced_plan";
+    report.requirements[0]!.plannerAxisSubjects = ["documentation"];
+    report.requirements[0]!.proofAxes = [{ subject: "documentation", polarity: "present", state: "incomplete", evidenceRefs: [] }];
+    for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+
+    const payload = encodeReportForShare(report);
+    const envelope = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+    const shared = decodeSharedReport(payload);
+    const sanitized = sanitizeReportForShare(report);
+
+    expect(envelope.version).toBe(3);
+    expect(Object.keys(envelope).sort()).toEqual([
+      "createdAt", "limitations", "planner", "proofGraph", "requirements", "reviewPriority", "scope", "source", "summary", "testing", "version"
+    ]);
+    expect(envelope.planner).toEqual({
+      version: 1,
+      contractVersion: "hybrid_requirement_planner.v1",
+      schemaVersion: "agentproof_requirement_span_plan_v1",
+      promptVersion: "2026-08-12.v1",
+      model: "gpt-5-mini"
+    });
+    expect(JSON.stringify(envelope)).not.toContain("inputHash");
+    expect(JSON.stringify(envelope)).not.toContain(PLANNER_INPUT_HASH);
+    expect(Object.hasOwn(shared.planner!, "inputHash")).toBe(false);
+    expect(Object.hasOwn(sanitized.planner!, "inputHash")).toBe(false);
+    expect(JSON.stringify(shared)).not.toContain(PLANNER_INPUT_HASH);
+    expect(JSON.stringify(sanitized)).not.toContain(PLANNER_INPUT_HASH);
+    expect(reportToMarkdown(shared)).toContain("Enhanced planning policy");
+    expect(shared.authenticity?.trust).toBe("portable_unverified");
+    expect(shared.requirements[0]).toMatchObject({ classificationBasis: "enhanced_plan", plannerAxisSubjects: ["documentation"] });
+    expect(shared.proofGraph.nodes[0]).toMatchObject({ classificationBasis: "enhanced_plan" });
+  });
   it("round-trips a summary-only report without raw evidence or re-prompt text", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     report.evidenceIndex.push({
@@ -178,6 +216,61 @@ describe("report share", () => {
     const payload = Buffer.from(JSON.stringify({ version: 2 }), "utf8").toString("base64url");
 
     expect(() => decodeSharedReport(payload)).toThrow("Shared report");
+  });
+
+  it("rejects unknown planner, finding, and proof-node fields before portable sanitization", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.planner = { version: 1, contractVersion: "hybrid_requirement_planner.v1", schemaVersion: "agentproof_requirement_span_plan_v1", promptVersion: "2026-08-12.v1", model: "gpt-5-mini", inputHash: PLANNER_INPUT_HASH };
+    for (const requirement of report.requirements) requirement.classificationBasis = "enhanced_plan";
+    for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+    const envelope = JSON.parse(Buffer.from(encodeReportForShare(report), "base64url").toString("utf8")) as Record<string, unknown>;
+
+    const injections: Array<[Record<string, unknown>, string]> = [
+      [envelope.planner as Record<string, unknown>, "rawPlan"],
+      [(envelope.requirements as Array<Record<string, unknown>>)[0]!, "rawFinding"],
+      [((envelope.proofGraph as { nodes: Array<Record<string, unknown>> }).nodes)[0]!, "rawNode"]
+    ];
+    for (const [target, key] of injections) {
+      target[key] = "must-reject";
+      const payload = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+      expect(() => decodeSharedReport(payload)).toThrow("Shared report");
+      delete target[key];
+    }
+    (envelope.planner as Record<string, unknown>).inputHash = PLANNER_INPUT_HASH;
+    expect(() => decodeSharedReport(Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url"))).toThrow("Shared report");
+    delete (envelope.planner as Record<string, unknown>).inputHash;
+    expect(() => decodeSharedReport(encodeReportForShare(report))).not.toThrow();
+  });
+
+  it("decodes historical version-2 planner provenance safely and re-shares without its input hash", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.planner = { version: 1, contractVersion: "hybrid_requirement_planner.v1", schemaVersion: "agentproof_requirement_span_plan_v1", promptVersion: "2026-08-12.v1", model: "gpt-5-mini", inputHash: PLANNER_INPUT_HASH };
+    for (const requirement of report.requirements) requirement.classificationBasis = "enhanced_plan";
+    for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+    const historical = JSON.parse(Buffer.from(encodeReportForShare(report), "base64url").toString("utf8")) as Record<string, unknown>;
+    historical.version = 2;
+    (historical.planner as Record<string, unknown>).inputHash = PLANNER_INPUT_HASH;
+
+    const decoded = decodeSharedReport(Buffer.from(JSON.stringify(historical), "utf8").toString("base64url"));
+    const reshared = JSON.parse(Buffer.from(encodeReportForShare(decoded), "base64url").toString("utf8")) as Record<string, unknown>;
+
+    expect(decoded.authenticity?.trust).toBe("portable_unverified");
+    expect(decoded.planner).toBeDefined();
+    expect(Object.hasOwn(decoded.planner!, "inputHash")).toBe(false);
+    expect(JSON.stringify(decoded)).not.toContain(PLANNER_INPUT_HASH);
+    expect(reshared.version).toBe(3);
+    expect(JSON.stringify(reshared)).not.toContain("inputHash");
+    expect(JSON.stringify(reshared)).not.toContain(PLANNER_INPUT_HASH);
+  });
+
+  it("continues to decode the legacy version-1 portable envelope", () => {
+    const envelope = JSON.parse(Buffer.from(encodeReportForShare(generateVerificationReport(demoScenarios.clean)), "base64url").toString("utf8")) as Record<string, unknown>;
+    envelope.version = 1;
+    delete envelope.scope;
+    delete envelope.planner;
+    const legacyPayload = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+
+    expect(decodeSharedReport(legacyPayload).authenticity?.trust).toBe("legacy_unverified");
   });
 
   it("does not retain raw linked issue body evidence in share summaries", () => {

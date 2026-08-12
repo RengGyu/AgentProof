@@ -1,4 +1,9 @@
 import { analyzeSemanticsWithOpenAI, type OpenAISemanticOptions, type OpenAISemanticResult } from "./openai-semantic";
+import {
+  runHybridPlannerAnalysis,
+  type HybridPlannerTelemetry,
+  type RunHybridPlannerAnalysisOptions
+} from "./hybrid-orchestrator";
 import type { LlmAnalysisMode } from "./tenant-control-plane";
 import type { PullRequestInput, VerificationReport } from "./types";
 
@@ -18,6 +23,34 @@ export interface EnrichReportWithOpenAISemanticsOptions {
     report: VerificationReport,
     options: OpenAISemanticOptions
   ) => Promise<OpenAISemanticResult>;
+}
+
+export interface HybridPlanningRuntimeResult {
+  report: VerificationReport;
+  status: "included" | "fallback";
+  telemetry: HybridPlannerTelemetry;
+  publicationSuppressed: boolean;
+}
+
+/** Synchronous entry point for the shared hybrid state machine. */
+export async function enrichReportWithHybridPlanning(
+  input: PullRequestInput,
+  options: Omit<RunHybridPlannerAnalysisOptions, "phase" | "input" | "responseId" | "bindBeforeSubmit" | "checkBinding">
+): Promise<HybridPlanningRuntimeResult> {
+  const result = await runHybridPlannerAnalysis({
+    ...options,
+    phase: "sync",
+    input
+  });
+  if (result.status !== "ready") {
+    throw new Error("Synchronous hybrid planning returned a background continuation.");
+  }
+  return {
+    report: result.report,
+    status: result.report.planner ? "included" : "fallback",
+    telemetry: result.telemetry,
+    publicationSuppressed: result.publicationSuppressed === true
+  };
 }
 
 /**

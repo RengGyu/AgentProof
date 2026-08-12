@@ -113,6 +113,7 @@ export async function POST(request: Request) {
     saveReportsEnabled?: unknown;
     commentEnabled?: unknown;
     llmAnalysisMode?: unknown;
+    hybridPlannerConsent?: unknown;
   }>(await request.text());
 
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -235,11 +236,15 @@ export async function POST(request: Request) {
       installationId,
       repositoryId: selected.id,
       repositoryFullName: selected.fullName,
+      repositoryPrivate: selected.private,
       enabled: true,
       analysisEnabled: true,
       saveReportsEnabled: body.saveReportsEnabled === true,
       commentEnabled: body.commentEnabled === true,
-      llmAnalysisMode
+      llmAnalysisMode,
+      hybridPlannerConsentVersion: selected.private && body.hybridPlannerConsent === true && llmAnalysisMode === "enhanced"
+        ? "2026-08-12.v1"
+        : undefined
     });
 
     return noStoreJson({
@@ -252,7 +257,8 @@ export async function POST(request: Request) {
         analysisEnabled: grant.analysisEnabled,
         saveReportsEnabled: grant.saveReportsEnabled,
         commentEnabled: grant.commentEnabled,
-        llmAnalysisMode: resolveTenantRepositoryLlmAnalysisMode(grant)
+        llmAnalysisMode: resolveTenantRepositoryLlmAnalysisMode(grant),
+        hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion ?? null
       },
       privacy: "grant-metadata-only",
       next: "webhook_analysis_enabled_for_repository"

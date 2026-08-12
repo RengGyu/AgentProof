@@ -1,6 +1,7 @@
 import {
   buildEvidenceIndexResult,
   extractClaims,
+  extractKeywords,
   extractRequirementEvidence,
   fileKeywords,
   isRiskFile,
@@ -12,7 +13,6 @@ import {
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import { redactSecrets } from "./redact";
-import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckStatus,
@@ -39,6 +39,302 @@ const MAX_EVIDENCE_REFS_PER_FIELD = 50;
 const MAX_SCOPE_FINDINGS = 100;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
+  const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+  return generateVerificationReportFromRequirements(input, {
+    requirements: requirementEvidence.requirements,
+    contexts: requirementEvidence.contexts,
+    omittedRequirementCount: requirementEvidence.omittedRequirementCount
+  });
+}
+
+export interface DeterministicRequirementReportSelection {
+  requirements: Requirement[];
+  contexts: RequirementContextSignal[];
+  omittedRequirementCount?: number;
+  proofExpectationsByRequirement?: ReadonlyMap<string, RequirementProofExpectations>;
+}
+
+export interface VerifierEvidenceLookup {
+  readonly testEvidenceRefs: readonly string[];
+  readonly testEvidenceItems: readonly EvidenceItem[];
+  readonly implementationArtifactRefs: readonly string[];
+  refsForPath(path: string): string[];
+  pathsForRefs(refs: readonly string[]): string[];
+  evidenceForRef(ref: string): EvidenceItem | undefined;
+  passingExecutionForLabel(label: string): EvidenceItem | undefined;
+  firstFilesForRefs(refs: readonly string[]): string[];
+  singleArtifactFallbackRefs(kind: "documentation" | "ci"): string[];
+  provenanceForRefs(refs: string[]): FindingProvenance[];
+}
+
+type RequirementEvidenceMatch = ReturnType<typeof requirementEvidenceMatch>;
+type MatchedRequirementEvidence = { item: EvidenceItem; match: RequirementEvidenceMatch };
+
+export interface RequirementEvidenceRelevance {
+  readonly matches: readonly MatchedRequirementEvidence[];
+  readonly failedExecutionRefs: readonly string[];
+  readonly passingExecutionRefs: readonly string[];
+  canonicalOverlap(item: EvidenceItem): boolean;
+  refsWhere(predicate: (item: EvidenceItem, match: RequirementEvidenceMatch) => boolean): string[];
+}
+
+export interface RequirementEvidenceRelevanceIndex {
+  /** Deterministic instrumentation: normalized label/summary is read once per evidence item. */
+  readonly evidenceTextScanCount: number;
+  readonly passingExecutionRefs: readonly string[];
+  forRequirement(requirement: Requirement): RequirementEvidenceRelevance;
+}
+
+interface KeywordTrieNode {
+  next: Map<string, number>;
+  fail: number;
+  outputs: string[];
+}
+
+/**
+ * Builds exact substring relevance with one multi-pattern scan per evidence item.
+ * Work is O(keyword characters + evidence text characters + emitted matches).
+ */
+export function buildRequirementEvidenceRelevanceIndex(
+  requirements: readonly Requirement[],
+  evidenceIndex: readonly EvidenceItem[],
+  input: Pick<PullRequestInput, "checks" | "logs">
+): RequirementEvidenceRelevanceIndex {
+  const canonicalKeywordsByRequirement = new Map<string, string[]>();
+  const allKeywords = new Set<string>();
+  for (const requirement of requirements) {
+    for (const keyword of requirement.keywords) allKeywords.add(keyword);
+    const canonicalKeywords = extractKeywords(requirement.text)
+      .filter((keyword) => keyword.length >= 4 && !WEAK_SINGLE_MATCH_KEYWORDS.has(keyword));
+    canonicalKeywordsByRequirement.set(requirement.id, canonicalKeywords);
+    for (const keyword of canonicalKeywords) allKeywords.add(keyword);
+  }
+
+  const trie = buildKeywordTrie(allKeywords);
+  const keywordHitsByEvidence = new Map<number, Set<string>>();
+  const evidenceIndexesByKeyword = new Map<string, number[]>();
+  const evidenceIndexByItem = new Map<EvidenceItem, number>();
+  let evidenceTextScanCount = 0;
+  for (let index = 0; index < evidenceIndex.length; index += 1) {
+    const item = evidenceIndex[index];
+    evidenceIndexByItem.set(item, index);
+    const hits = scanKeywordTrie(trie, `${item.label} ${item.summary}`.toLowerCase());
+    evidenceTextScanCount += 1;
+    keywordHitsByEvidence.set(index, hits);
+    for (const keyword of hits) {
+      const indexes = evidenceIndexesByKeyword.get(keyword);
+      if (indexes) indexes.push(index);
+      else evidenceIndexesByKeyword.set(keyword, [index]);
+    }
+  }
+
+  const failedRefs = new Set(executionFailureEvidenceRefs(input, evidenceIndex));
+  const failedEvidenceIndexes = new Set<number>();
+  const opaqueFailedEvidenceIndexes: number[] = [];
+  for (let index = 0; index < evidenceIndex.length; index += 1) {
+    const item = evidenceIndex[index];
+    if (!failedRefs.has(item.id)) continue;
+    failedEvidenceIndexes.add(index);
+    if (isOpaqueMatrixExecutionFailure(item)) opaqueFailedEvidenceIndexes.push(index);
+  }
+  const passingExecutionRefs = evidenceIndex.filter(isPassingTestExecutionEvidence).map((item) => item.id);
+  const relevanceByRequirement = new Map<string, RequirementEvidenceRelevance>();
+  for (const requirement of requirements) {
+    const candidateIndexes = evidenceIndexesForKeywords(requirement.keywords, evidenceIndexesByKeyword);
+    const matches = candidateIndexes.map((index): MatchedRequirementEvidence => {
+      const item = evidenceIndex[index];
+      const hits = keywordHitsByEvidence.get(index) ?? new Set<string>();
+      const matchedKeywords = requirement.keywords.filter((keyword) => hits.has(keyword));
+      const meaningfulHits = matchedKeywords.filter((keyword) => keyword.length >= 4 && !WEAK_SINGLE_MATCH_KEYWORDS.has(keyword));
+      const canProve = item.kind === "diff" || item.kind === "test" || item.kind === "log" || item.kind === "check";
+      return {
+        item,
+        match: {
+          score: matchedKeywords.length,
+          strong: canProve && (meaningfulHits.length >= 2 || meaningfulHits.some((keyword) => keyword.length >= 8)),
+          meaningfulScore: meaningfulHits.length
+        }
+      };
+    });
+    const canonicalKeywords = canonicalKeywordsByRequirement.get(requirement.id) ?? [];
+    const canonicalOverlap = (item: EvidenceItem) => {
+      const index = evidenceIndexByItem.get(item);
+      if (index === undefined) return false;
+      const hits = keywordHitsByEvidence.get(index);
+      return Boolean(hits && canonicalKeywords.some((keyword) => hits.has(keyword)));
+    };
+    const failedCandidateIndexes = new Set([
+      ...evidenceIndexesForKeywords(canonicalKeywords, evidenceIndexesByKeyword),
+      ...opaqueFailedEvidenceIndexes
+    ]);
+    const failedExecutionRefs = [...failedCandidateIndexes]
+      .filter((index) => failedEvidenceIndexes.has(index))
+      .sort((left, right) => left - right)
+      .map((index) => evidenceIndex[index].id);
+    relevanceByRequirement.set(requirement.id, {
+      matches,
+      failedExecutionRefs,
+      passingExecutionRefs,
+      canonicalOverlap,
+      refsWhere(predicate) {
+        return matches.filter(({ item, match }) => predicate(item, match)).map(({ item }) => item.id);
+      }
+    });
+  }
+
+  return {
+    evidenceTextScanCount,
+    passingExecutionRefs,
+    forRequirement(requirement) {
+      const relevance = relevanceByRequirement.get(requirement.id);
+      if (!relevance) throw new Error(`Requirement relevance was not indexed: ${requirement.id}`);
+      return relevance;
+    }
+  };
+}
+
+function buildKeywordTrie(keywords: ReadonlySet<string>): KeywordTrieNode[] {
+  const nodes: KeywordTrieNode[] = [{ next: new Map(), fail: 0, outputs: [] }];
+  for (const keyword of keywords) {
+    if (!keyword) continue;
+    let state = 0;
+    for (const character of keyword) {
+      const existing = nodes[state].next.get(character);
+      if (existing !== undefined) {
+        state = existing;
+      } else {
+        const parent = state;
+        state = nodes.length;
+        nodes[parent].next.set(character, state);
+        nodes.push({ next: new Map(), fail: 0, outputs: [] });
+      }
+    }
+    nodes[state].outputs.push(keyword);
+  }
+  const queue = [...nodes[0].next.values()];
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const state = queue[cursor];
+    for (const [character, nextState] of nodes[state].next) {
+      queue.push(nextState);
+      let fallback = nodes[state].fail;
+      while (fallback !== 0 && !nodes[fallback].next.has(character)) fallback = nodes[fallback].fail;
+      nodes[nextState].fail = nodes[fallback].next.get(character) ?? 0;
+      nodes[nextState].outputs.push(...nodes[nodes[nextState].fail].outputs);
+    }
+  }
+  return nodes;
+}
+
+function scanKeywordTrie(nodes: readonly KeywordTrieNode[], text: string): Set<string> {
+  const hits = new Set<string>();
+  let state = 0;
+  for (const character of text) {
+    while (state !== 0 && !nodes[state].next.has(character)) state = nodes[state].fail;
+    state = nodes[state].next.get(character) ?? 0;
+    for (const keyword of nodes[state].outputs) hits.add(keyword);
+  }
+  return hits;
+}
+
+function evidenceIndexesForKeywords(
+  keywords: readonly string[],
+  evidenceIndexesByKeyword: ReadonlyMap<string, readonly number[]>
+): number[] {
+  const indexes = new Set<number>();
+  for (const keyword of keywords) {
+    for (const index of evidenceIndexesByKeyword.get(keyword) ?? []) indexes.add(index);
+  }
+  return [...indexes].sort((left, right) => left - right);
+}
+
+/** Builds the path/ID views once so per-file report construction stays linear. */
+export function buildVerifierEvidenceLookup(evidenceIndex: readonly EvidenceItem[]): VerifierEvidenceLookup {
+  const evidenceById = new Map<string, EvidenceItem>();
+  const refsByPath = new Map<string, string[]>();
+  const testEvidenceRefs: string[] = [];
+  const testEvidenceItems: EvidenceItem[] = [];
+  const implementationArtifactRefs: string[] = [];
+  const documentationArtifactItems: EvidenceItem[] = [];
+  const ciArtifactItems: EvidenceItem[] = [];
+  const passingExecutionByLabel = new Map<string, EvidenceItem>();
+
+  for (const item of evidenceIndex) {
+    evidenceById.set(item.id, item);
+    if (isPassingTestExecutionEvidence(item)) passingExecutionByLabel.set(item.label, item);
+    if (item.kind === "test") testEvidenceItems.push(item);
+    if (item.kind === "diff" || item.kind === "changed_file") {
+      const path = item.locator ?? item.label;
+      if (!isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path)) {
+        implementationArtifactRefs.push(item.id);
+      }
+      if (isDocumentationPath(path)) documentationArtifactItems.push(item);
+      if (isCiPath(path)) ciArtifactItems.push(item);
+    }
+    if (item.kind === "test" || /test/i.test(item.summary)) testEvidenceRefs.push(item.id);
+    const rawPaths = [item.locator, item.label].filter((value): value is string => Boolean(value));
+    const keys = new Set(rawPaths.flatMap((value) => [value, safeReportPath(value)]));
+    for (const key of keys) {
+      const refs = refsByPath.get(key);
+      if (refs) refs.push(item.id);
+      else refsByPath.set(key, [item.id]);
+    }
+  }
+
+  return {
+    testEvidenceRefs,
+    testEvidenceItems,
+    implementationArtifactRefs,
+    refsForPath(path) {
+      return [...(refsByPath.get(path) ?? refsByPath.get(safeReportPath(path)) ?? [])];
+    },
+    pathsForRefs(refs) {
+      return refs
+        .map((ref) => evidenceById.get(ref))
+        .map((item) => item?.locator ?? item?.label ?? "")
+        .filter(Boolean);
+    },
+    evidenceForRef(ref) {
+      return evidenceById.get(ref);
+    },
+    passingExecutionForLabel(label) {
+      return passingExecutionByLabel.get(label);
+    },
+    firstFilesForRefs(refs) {
+      return uniqueRefs(refs
+        .map((ref) => evidenceById.get(ref))
+        .map((item) => item?.locator ?? item?.label ?? "")
+        .filter((value) => isConcreteFilePath(value))
+        .map(safeReportPath));
+    },
+    singleArtifactFallbackRefs(kind) {
+      const candidates = kind === "documentation" ? documentationArtifactItems : ciArtifactItems;
+      const paths = new Set(candidates.map((item) => item.locator ?? item.label));
+      return paths.size === 1 ? candidates.map((item) => item.id) : [];
+    },
+    provenanceForRefs(refs) {
+      const provenance: FindingProvenance[] = [];
+      for (const ref of uniqueRefs(refs)) {
+        const evidence = evidenceById.get(ref);
+        if (!evidence) continue;
+        provenance.push({
+          evidenceRef: ref,
+          sourceType: evidence.kind,
+          locator: evidence.locator ?? evidence.label,
+          confidence: evidence.confidence,
+          evidenceText: shortEvidenceText(evidence.summary)
+        });
+        if (provenance.length >= MAX_FINDING_PROVENANCE_ITEMS) break;
+      }
+      return provenance;
+    }
+  };
+}
+
+/** Reuses the deterministic evidence engine for a server-authorized requirement set. */
+export function generateVerificationReportFromRequirements(
+  input: PullRequestInput,
+  selection: DeterministicRequirementReportSelection
+): VerificationReport {
   const evidenceBuild = buildEvidenceIndexResult(
     input.taskText,
     input.description,
@@ -48,29 +344,47 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     input.taskSource
   );
   const evidenceIndex = evidenceBuild.items;
-  const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
-  const requirements = requirementEvidence.requirements;
+  const evidenceLookup = buildVerifierEvidenceLookup(evidenceIndex);
+  const requirements = selection.requirements;
+  const relevanceIndex = buildRequirementEvidenceRelevanceIndex(requirements, evidenceIndex, input);
   const ciStatus = aggregateStatus(input.checks, input.logs);
   const rawRequirementFindings = requirements.map((requirement) =>
-    constrainAuthorIntentFinding(requirement, evaluateRequirement(requirement, evidenceIndex, input))
+    constrainAuthorIntentFinding(requirement, evaluateRequirement(
+      requirement,
+      evidenceIndex,
+      input,
+      relevanceIndex.forRequirement(requirement),
+      evidenceLookup
+    ))
   );
-  const missingTests = detectMissingTests(input, evidenceIndex);
-  const proofBuild = buildProofGraph(requirements, rawRequirementFindings, input, evidenceIndex, missingTests, ciStatus, requirementEvidence.contexts);
+  const missingTests = detectMissingTests(input, evidenceIndex, evidenceLookup);
+  const proofBuild = buildProofGraph(
+    requirements,
+    rawRequirementFindings,
+    input,
+    evidenceIndex,
+    missingTests,
+    ciStatus,
+    selection.contexts,
+    selection.proofExpectationsByRequirement,
+    evidenceLookup,
+    relevanceIndex
+  );
   const proofGraph = proofBuild.proofGraph;
   const proofAdjustedRequirementFindings = applyProofGraphToRequirements(rawRequirementFindings, proofGraph, proofBuild.proofAxesByRequirement);
   const cappedRequirements = capRequirementFindingRefs(proofAdjustedRequirementFindings, requirements, evidenceIndex);
   const requirementFindings = cappedRequirements.findings;
-  const rawScope = detectScopeCreep(requirements, input.changedFiles, evidenceIndex);
-  const cappedScope = capScopeFindingRefs(rawScope, evidenceIndex);
+  const rawScope = detectScopeCreep(requirements, input.changedFiles, evidenceLookup);
+  const cappedScope = capScopeFindingRefs(rawScope, evidenceIndex, evidenceLookup);
   const scope = cappedScope.scope;
   const lintStatus = statusForCheck(input.checks, /lint/i);
   const typecheckStatus = statusForCheck(input.checks, /type(check|script)/i);
   const failedNonExecutionChecks = nonExecutionFailures(input);
-  const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex, proofGraph);
+  const reviewPriority = buildReviewPriority(input, requirementFindings, scope.outOfScopeFiles, missingTests, ciStatus, evidenceIndex, proofGraph, evidenceLookup);
   const priority = highestPriority(reviewPriority);
-  const evidenceRefsCapped = cappedRequirements.capped || cappedScope.capped || hasRequirementEvidenceRefPressure(requirements, evidenceIndex);
+  const evidenceRefsCapped = cappedRequirements.capped || cappedScope.capped || hasRequirementEvidenceRefPressure(requirements, relevanceIndex);
   const hasExecutionEvidence = hasTestBuildExecutionEvidence(input);
-  const limitations = buildLimitations(input, requirementFindings, ciStatus, hasExecutionEvidence, evidenceRefsCapped, evidenceBuild.omittedByKind, requirementEvidence.omittedRequirementCount, scope.omittedCount);
+  const limitations = buildLimitations(input, requirementFindings, ciStatus, hasExecutionEvidence, evidenceRefsCapped, evidenceBuild.omittedByKind, selection.omittedRequirementCount ?? 0, scope.omittedCount);
   const evidenceCoverage = computeEvidenceCoverage(
     requirementFindings,
     input.changedFiles.length,
@@ -180,7 +494,9 @@ function sanitizeSourceUrl(value: string | undefined): string | undefined {
 function evaluateRequirement(
   requirement: Requirement,
   evidenceIndex: EvidenceItem[],
-  input: PullRequestInput
+  input: PullRequestInput,
+  relevance: RequirementEvidenceRelevance,
+  evidenceLookup: VerifierEvidenceLookup
 ): RequirementFinding {
   if (isUntrustedPrDescriptionRequirementSource(requirement, input)) {
     const refs = sourceEvidenceRefs(evidenceIndex);
@@ -213,9 +529,7 @@ function evaluateRequirement(
     };
   }
 
-  const matches = evidenceIndex
-    .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
-    .filter(({ match }) => match.score > 0);
+  const matches = relevance.matches;
   const refs = matches.map(({ item }) => item.id);
 
   const implementationMatches = matches.filter(({ item }) =>
@@ -240,7 +554,7 @@ function evaluateRequirement(
     .filter(({ item, match }) => match.strong && isVisualVerificationEvidence(item))
     .map(({ item }) => item.id);
   const hasMatchingVisualEvidence = matchingVisualEvidenceRefs.length > 0;
-  const matchingFailedExecutionRefs = requirementFailedExecutionEvidenceRefs(requirement, input, evidenceIndex);
+  const matchingFailedExecutionRefs = relevance.failedExecutionRefs;
   const failedCheck = matchingFailedExecutionRefs.length > 0;
 
   if (failedCheck && expectations.execution) {
@@ -261,20 +575,22 @@ function evaluateRequirement(
     evidenceIndex,
     input,
     implementationEvidenceRefs,
-    expectations
+    expectations,
+    relevance,
+    evidenceLookup
   );
   const artifactRefs = artifactEvidenceRefsByExpectation(
     requirement,
     evidenceIndex,
     implementationEvidenceRefs,
     targetedProofRefs,
-    expectations
+    expectations,
+    relevance,
+    evidenceLookup
   );
   const expectedArtifactGroups = Object.values(artifactRefs);
   const hasExpectedArtifacts = expectedArtifactGroups.length > 0 && expectedArtifactGroups.every((items) => items.length > 0);
-  const anyPassingExecutionRefs = executionEvidenceRefs(input, evidenceIndex).filter((ref) =>
-    refsToEvidence(evidenceIndex, [ref]).some(isPassingTestExecutionEvidence)
-  );
+  const anyPassingExecutionRefs = relevance.passingExecutionRefs;
 
   if (!expectations.implementation && hasExplicitArtifactObjective && hasExpectedArtifacts) {
     if (expectations.execution && anyPassingExecutionRefs.length === 0) {
@@ -478,7 +794,8 @@ function capRequirementFindingRefs(
 
 function capScopeFindingRefs(
   scope: ReturnType<typeof detectScopeCreep>,
-  evidenceIndex: EvidenceItem[]
+  evidenceIndex: EvidenceItem[],
+  evidenceLookup: VerifierEvidenceLookup
 ): { scope: ReturnType<typeof detectScopeCreep>; capped: boolean } {
   const evidenceRefs = capEvidenceRefs(scope.evidenceRefs ?? [], evidenceIndex, (item) =>
     item.kind === "diff" || item.kind === "changed_file" ? 0 : item.kind === "task" || item.kind === "pr_description" ? 1 : 2
@@ -493,7 +810,7 @@ function capScopeFindingRefs(
     scope: {
       ...scope,
       evidenceRefs,
-      provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs)
+      provenance: evidenceLookup.provenanceForRefs(evidenceRefs)
     },
     capped: true
   };
@@ -565,7 +882,7 @@ function isUsefulArtifactMatch(match: { score: number; strong: boolean; meaningf
 }
 
 function refsForReport(
-  matches: Array<{ item: EvidenceItem; match: { score: number; strong: boolean } }>,
+  matches: ReadonlyArray<{ item: EvidenceItem; match: { score: number; strong: boolean } }>,
   preferredRefs: string[]
 ): string[] {
   return Array.from(new Set([
@@ -605,7 +922,7 @@ function isPassingTestExecutionEvidence(item: EvidenceItem): boolean {
  */
 function verifiedSuiteExecutionEvidenceRefs(
   input: PullRequestInput,
-  evidenceIndex: EvidenceItem[],
+  evidenceLookup: VerifierEvidenceLookup,
   targetedTestEvidenceRefs: string[]
 ): string[] {
   const headSha = input.sourceProvenance?.origin === "github_snapshot"
@@ -613,14 +930,9 @@ function verifiedSuiteExecutionEvidenceRefs(
     : undefined;
   if (!headSha || targetedTestEvidenceRefs.length === 0) return [];
 
-  const targetedPaths = new Set(targetedTestEvidenceRefs
-    .flatMap((ref) => refsToPaths(evidenceIndex, [ref]))
+  const targetedPaths = new Set(evidenceLookup.pathsForRefs(targetedTestEvidenceRefs)
     .map((path) => path.toLowerCase()));
   if (targetedPaths.size === 0) return [];
-
-  const evidenceByLabel = new Map(evidenceIndex
-    .filter(isPassingTestExecutionEvidence)
-    .map((item) => [item.label, item]));
 
   return uniqueRefs((input.executionSuites ?? [])
     .filter((suite) =>
@@ -629,7 +941,7 @@ function verifiedSuiteExecutionEvidenceRefs(
         suite.scope === "repository_discovery" &&
         suite.testPaths.some((path) => targetedPaths.has(path.toLowerCase()))
     )
-    .map((suite) => evidenceByLabel.get(suite.executionSource)?.id)
+    .map((suite) => evidenceLookup.passingExecutionForLabel(suite.executionSource)?.id)
     .filter((ref): ref is string => Boolean(ref)));
 }
 
@@ -659,7 +971,10 @@ function buildProofGraph(
   evidenceIndex: EvidenceItem[],
   missingTests: MissingTestFinding[],
   ciStatus: CheckStatus,
-  contexts: RequirementContextSignal[]
+  contexts: RequirementContextSignal[],
+  proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined,
+  evidenceLookup: VerifierEvidenceLookup,
+  relevanceIndex: RequirementEvidenceRelevanceIndex
 ): { proofGraph: ProofGraph; proofAxesByRequirement: Map<string, RequirementProofAxis[]> } {
   const findingByRequirement = new Map(findings.map((finding) => [finding.requirementId, finding]));
   const selfReportedTestGapRefs = selfReportedTestGapEvidenceRefs(evidenceIndex);
@@ -669,9 +984,10 @@ function buildProofGraph(
 
   const proofAxesByRequirement = new Map<string, RequirementProofAxis[]>();
   const nodes = requirements.map((requirement): RequirementProofNode => {
+    const relevance = relevanceIndex.forRequirement(requirement);
     const finding = findingByRequirement.get(requirement.id);
-    const expectations = requirementProofAxisExpectations(requirement.text);
-    const implementationEvidenceRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+    const expectations = proofExpectationsByRequirement?.get(requirement.id) ?? requirementProofAxisExpectations(requirement.text);
+    const implementationEvidenceRefs = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "diff" || item.kind === "changed_file") && match.score > 0
     );
     const targetedTestEvidenceRefs = targetedTestEvidenceRefsForRequirement(
@@ -679,21 +995,23 @@ function buildProofGraph(
       evidenceIndex,
       input,
       implementationEvidenceRefs,
-      expectations
+      expectations,
+      relevance,
+      evidenceLookup
     );
-    const directlyMatchingExecutionRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+    const directlyMatchingExecutionRefs = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "check" || item.kind === "log") &&
       isEvidenceExecutionSignal(item) &&
-      (evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary) || isOpaqueMatrixExecutionFailure(item))
+      (relevance.canonicalOverlap(item) || isOpaqueMatrixExecutionFailure(item))
     );
-    const verifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceIndex, targetedTestEvidenceRefs);
+    const verifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, targetedTestEvidenceRefs);
     const matchingExecutionRefs = uniqueRefs([
       ...directlyMatchingExecutionRefs,
       ...verifiedSuiteExecutionRefs
     ]);
-    const matchingFailedExecutionRefs = requirementFailedExecutionEvidenceRefs(requirement, input, evidenceIndex);
-    const matchingVisualRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
-      isVisualVerificationEvidence(item) && evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary)
+    const matchingFailedExecutionRefs = [...relevance.failedExecutionRefs];
+    const matchingVisualRefs = requirementEvidenceRefs(relevance, (item, match) =>
+      isVisualVerificationEvidence(item) && relevance.canonicalOverlap(item)
     );
     const matchingInteractionRefs = matchingVisualRefs;
     const executionEvidenceRefs = uniqueRefs([
@@ -701,7 +1019,7 @@ function buildProofGraph(
       ...matchingFailedExecutionRefs
     ]).slice(0, 8);
     const relatedMissingTests = missingTests.filter((missing) =>
-      implementationEvidenceRefs.some((ref) => evidenceRefsForPath(evidenceIndex, missing.path).includes(ref)) ||
+      implementationEvidenceRefs.some((ref) => evidenceLookup.refsForPath(missing.path).includes(ref)) ||
       missing.evidenceRefs.some((ref) => implementationEvidenceRefs.includes(ref))
     );
     const gapSignals: RequirementProofNode["gapSignals"] = [];
@@ -710,11 +1028,13 @@ function buildProofGraph(
       evidenceIndex,
       implementationEvidenceRefs,
       targetedTestEvidenceRefs,
-      expectations
+      expectations,
+      relevance,
+      evidenceLookup
     );
     const expectedArtifactRefs = uniqueRefs(Object.values(artifactRefs).flat());
     const forbiddenImplementationRefs = expectations.noImplementationChanges
-      ? allImplementationArtifactEvidenceRefs(evidenceIndex)
+      ? [...evidenceLookup.implementationArtifactRefs]
       : [];
 
     const proofAxes = buildRequirementProofAxes({
@@ -726,7 +1046,7 @@ function buildProofGraph(
       matchingFailedExecutionRefs,
       matchingVisualRefs,
       matchingInteractionRefs,
-      evidenceIndex,
+      evidenceLookup,
       changedFileEvidenceUnavailable,
       diffEvidenceUnavailable,
       authoritativeChangedFileInventory
@@ -786,7 +1106,7 @@ function buildProofGraph(
       implementationEvidenceRefs.length > 0 &&
       diffEvidenceUnavailable &&
       implementationEvidenceRefs.every((ref) =>
-        refsToEvidence(evidenceIndex, [ref]).every((item) => item.kind !== "diff")
+        evidenceLookup.evidenceForRef(ref)?.kind !== "diff"
       )
     ) {
       gapSignals.push({
@@ -798,7 +1118,7 @@ function buildProofGraph(
     }
 
     const matchingPassingExecutionRefs = matchingExecutionRefs.filter((ref) =>
-      refsToEvidence(evidenceIndex, [ref]).some(isPassingTestExecutionEvidence)
+      Boolean(evidenceLookup.evidenceForRef(ref) && isPassingTestExecutionEvidence(evidenceLookup.evidenceForRef(ref)!))
     );
     if (matchingFailedExecutionRefs.length > 0 && expectations.execution) {
       gapSignals.push({
@@ -852,15 +1172,21 @@ function buildProofGraph(
       sourceQuality: requirement.sourceQuality,
       sourceSection: requirement.sourceSection,
       contextRoles: requirement.contextRoles,
-      status: requirement.sourceQuality === "author_claim" && finding?.status !== "met"
+      status: requirement.sourceQuality === "manual_check" && finding?.status === "unclear"
+        ? "unclear"
+        : requirement.sourceQuality === "author_claim" && finding?.status !== "met"
         ? finding?.status ?? "unclear"
         : aggregateProofAxisStatus(proofAxes, finding?.status ?? "unclear"),
       confidence: finding?.confidence ?? 0.2,
-      implementationEvidenceRefs: implementationEvidenceRefs.slice(0, 8),
+      implementationEvidenceRefs: uniqueRefs([
+        ...implementationEvidenceRefs,
+        ...(artifactRefs.documentation ?? []),
+        ...(artifactRefs.ci ?? [])
+      ]).slice(0, 8),
       targetedTestEvidenceRefs: targetedTestEvidenceRefs.slice(0, 8),
       executionEvidenceRefs,
       gapSignals: dedupeGapSignals(gapSignals),
-      firstFiles: firstProofFiles(evidenceIndex, uniqueRefs([
+      firstFiles: evidenceLookup.firstFilesForRefs(uniqueRefs([
         ...implementationEvidenceRefs,
         ...targetedTestEvidenceRefs,
         ...relatedMissingTests.flatMap((item) => item.evidenceRefs)
@@ -936,7 +1262,7 @@ interface RequirementProofAxisBuildInput {
   matchingFailedExecutionRefs: string[];
   matchingVisualRefs: string[];
   matchingInteractionRefs: string[];
-  evidenceIndex: EvidenceItem[];
+  evidenceLookup: VerifierEvidenceLookup;
   changedFileEvidenceUnavailable: boolean;
   diffEvidenceUnavailable: boolean;
   authoritativeChangedFileInventory: boolean;
@@ -950,7 +1276,7 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
     requiresDiff = false
   ) => {
     const usableRefs = requiresDiff
-      ? refs.filter((ref) => refsToEvidence(input.evidenceIndex, [ref]).some((item) => item.kind === "diff"))
+      ? refs.filter((ref) => input.evidenceLookup.evidenceForRef(ref)?.kind === "diff")
       : refs;
     const inventoryIncomplete = input.changedFileEvidenceUnavailable || (requiresDiff && refs.length > 0 && input.diffEvidenceUnavailable);
     axes.push({
@@ -973,7 +1299,10 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
 
   if (input.expectations.execution) {
     const passingRefs = uniqueRefs(input.matchingExecutionRefs)
-      .filter((ref) => refsToEvidence(input.evidenceIndex, [ref]).some(isPassingTestExecutionEvidence));
+      .filter((ref) => {
+        const evidence = input.evidenceLookup.evidenceForRef(ref);
+        return Boolean(evidence && isPassingTestExecutionEvidence(evidence));
+      });
     const failedRefs = uniqueRefs(input.matchingFailedExecutionRefs);
     const directPassingRefs = passingRefs.filter((ref) => !input.verifiedSuiteExecutionRefs.includes(ref));
     axes.push({
@@ -1045,31 +1374,20 @@ function aggregateProofAxisStatus(axes: RequirementProofAxis[], fallback: Requir
   return "met";
 }
 
-function allImplementationArtifactEvidenceRefs(evidenceIndex: EvidenceItem[]): string[] {
-  return uniqueRefs(evidenceIndex
-    .filter((item) => item.kind === "changed_file" || item.kind === "diff")
-    .filter((item) => {
-      const path = item.locator ?? item.label;
-      return !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path);
-    })
-    .map((item) => item.id));
-}
-
-function hasRequirementEvidenceRefPressure(requirements: Requirement[], evidenceIndex: EvidenceItem[]): boolean {
+function hasRequirementEvidenceRefPressure(
+  requirements: Requirement[],
+  relevanceIndex: RequirementEvidenceRelevanceIndex
+): boolean {
   return requirements.some((requirement) =>
-    evidenceIndex.filter((item) => requirementEvidenceMatch(requirement, item).score > 0).length > MAX_EVIDENCE_REFS_PER_FIELD
+    relevanceIndex.forRequirement(requirement).matches.length > MAX_EVIDENCE_REFS_PER_FIELD
   );
 }
 
 function requirementEvidenceRefs(
-  requirement: Requirement,
-  evidenceIndex: EvidenceItem[],
+  relevance: RequirementEvidenceRelevance,
   predicate: (item: EvidenceItem, match: ReturnType<typeof requirementEvidenceMatch>) => boolean
 ): string[] {
-  return evidenceIndex
-    .map((item) => ({ item, match: requirementEvidenceMatch(requirement, item) }))
-    .filter(({ item, match }) => predicate(item, match))
-    .map(({ item }) => item.id);
+  return relevance.refsWhere(predicate);
 }
 
 function isOpaqueMatrixExecutionFailure(item: EvidenceItem): boolean {
@@ -1082,22 +1400,22 @@ function targetedTestEvidenceRefsForRequirement(
   evidenceIndex: EvidenceItem[],
   input: PullRequestInput,
   implementationEvidenceRefs: string[],
-  expectations: RequirementProofExpectations
+  expectations: RequirementProofExpectations,
+  relevance: RequirementEvidenceRelevance,
+  evidenceLookup: VerifierEvidenceLookup
 ): string[] {
-  const directRefs = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+  const directRefs = requirementEvidenceRefs(relevance, (item, match) =>
     item.kind === "test" && isUsefulArtifactMatch(match)
   );
   const implementationPaths = new Set(
-    implementationEvidenceRefs
-      .flatMap((ref) => refsToPaths(evidenceIndex, [ref]))
+    evidenceLookup.pathsForRefs(implementationEvidenceRefs)
       .map((path) => path.toLowerCase())
   );
   const implementationFiles = input.changedFiles.filter((file) =>
     implementationPaths.has(file.path.toLowerCase())
   );
   const testFiles = input.changedFiles.filter((file) => isTestFile(file.path));
-  const relatedRefs = evidenceIndex
-    .filter((item) => item.kind === "test")
+  const relatedRefs = evidenceLookup.testEvidenceItems
     .filter((item) => {
       const testFile = testFiles.find((file) => file.path === item.locator || file.path === item.label);
       if (!testFile) return false;
@@ -1111,46 +1429,12 @@ function targetedTestEvidenceRefsForRequirement(
     requirement.keywords.length === 0 &&
     expectations.targetedTest &&
     testFiles.length === 1
-    ? evidenceIndex
-      .filter((item) => item.kind === "test")
+    ? evidenceLookup.testEvidenceItems
       .filter((item) => testFiles.some((file) => file.path === item.locator || file.path === item.label))
       .map((item) => item.id)
     : [];
 
   return uniqueRefs([...directRefs, ...relatedRefs, ...singleArtifactFallbackRefs]);
-}
-
-function refsToPaths(evidenceIndex: EvidenceItem[], refs: string[]): string[] {
-  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
-
-  return refs
-    .map((ref) => evidenceById.get(ref))
-    .map((item) => item?.locator ?? item?.label ?? "")
-    .filter(Boolean);
-}
-
-function refsToEvidence(evidenceIndex: EvidenceItem[], refs: string[]): EvidenceItem[] {
-  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
-
-  return refs
-    .map((ref) => evidenceById.get(ref))
-    .filter((item): item is EvidenceItem => Boolean(item));
-}
-
-function executionEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
-  const checkLabels = new Set(input.checks
-    .filter((check) => isCheckExecutionSignal(check))
-    .map((check) => redactSecrets(check.name)));
-  const logLabels = new Set(input.logs
-    .filter((log) => isLogExecutionSignal(log))
-    .map((log) => redactSecrets(log.source)));
-
-  return evidenceIndex
-    .filter((item) =>
-      (item.kind === "check" && checkLabels.has(item.label)) ||
-      (item.kind === "log" && logLabels.has(item.label))
-    )
-    .map((item) => item.id);
 }
 
 function selfReportedTestGapEvidenceRefs(evidenceIndex: EvidenceItem[]): string[] {
@@ -1167,28 +1451,26 @@ function artifactEvidenceRefsByExpectation(
   evidenceIndex: EvidenceItem[],
   implementationEvidenceRefs: string[],
   targetedTestEvidenceRefs: string[],
-  expectations: RequirementProofExpectations
+  expectations: RequirementProofExpectations,
+  relevance: RequirementEvidenceRelevance,
+  evidenceLookup: VerifierEvidenceLookup
 ): Partial<Record<"implementation" | "documentation" | "ci" | "targetedTest", string[]>> {
-  const artifactRefs = (pathPattern: RegExp) => {
-    const matched = requirementEvidenceRefs(requirement, evidenceIndex, (item, match) =>
+  const artifactRefs = (kind: "documentation" | "ci", pathPattern: RegExp) => {
+    const matched = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "diff" || item.kind === "changed_file") &&
       isUsefulArtifactMatch(match) &&
       pathPattern.test(item.locator ?? item.label)
     );
     if (matched.length > 0 || requirement.keywords.length > 0) return matched;
-    const candidates = evidenceIndex.filter((item) =>
-      (item.kind === "diff" || item.kind === "changed_file") && pathPattern.test(item.locator ?? item.label)
-    );
-    const paths = new Set(candidates.map((item) => item.locator ?? item.label));
-    return paths.size === 1 ? candidates.map((item) => item.id) : [];
+    return evidenceLookup.singleArtifactFallbackRefs(kind);
   };
   const result: Partial<Record<"implementation" | "documentation" | "ci" | "targetedTest", string[]>> = {};
   if (expectations.implementation) result.implementation = implementationEvidenceRefs.filter((ref) => {
-    const path = refsToPaths(evidenceIndex, [ref])[0] ?? "";
+    const path = evidenceLookup.pathsForRefs([ref])[0] ?? "";
     return !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path);
   });
-  if (expectations.documentation) result.documentation = artifactRefs(/(?:^|\/)(?:docs?\/|readme(?:\.|$))|\.md$/i);
-  if (expectations.ci) result.ci = artifactRefs(/(?:^|\/)(?:\.github\/workflows\/|workflows?\/)|(?:ci|pipeline)[^/]*\.(?:ya?ml|json)$/i);
+  if (expectations.documentation) result.documentation = artifactRefs("documentation", /(?:^|\/)(?:docs?\/|readme(?:\.|$))|\.md$/i);
+  if (expectations.ci) result.ci = artifactRefs("ci", /(?:^|\/)(?:\.github\/workflows\/|workflows?\/)|(?:ci|pipeline)[^/]*\.(?:ya?ml|json)$/i);
   if (expectations.targetedTest) result.targetedTest = targetedTestEvidenceRefs;
   return result;
 }
@@ -1273,16 +1555,6 @@ function hasAuthoritativeChangedFileInventory(input: PullRequestInput): boolean 
     !hasDiffEvidenceUnavailable(input);
 }
 
-function firstProofFiles(evidenceIndex: EvidenceItem[], refs: string[]): string[] {
-  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
-
-  return uniqueRefs(refs
-    .map((ref) => evidenceById.get(ref))
-    .map((item) => item?.locator ?? item?.label ?? "")
-    .filter((value) => isConcreteFilePath(value))
-    .map(safeReportPath));
-}
-
 function dedupeGapSignals(signals: RequirementProofNode["gapSignals"]): RequirementProofNode["gapSignals"] {
   const seen = new Set<string>();
   const result: RequirementProofNode["gapSignals"] = [];
@@ -1303,7 +1575,7 @@ function dedupeGapSignals(signals: RequirementProofNode["gapSignals"]): Requirem
 function detectScopeCreep(
   requirements: Requirement[],
   files: PullRequestInput["changedFiles"],
-  evidenceIndex: EvidenceItem[]
+  evidenceLookup: VerifierEvidenceLookup
 ) {
   const requirementKeywords = new Set(requirements.flatMap((requirement) => requirement.keywords));
 
@@ -1332,12 +1604,12 @@ function detectScopeCreep(
     })
     .map((file) => file.path);
   const outOfScopeFiles = candidateOutOfScopeFiles.slice(0, MAX_SCOPE_FINDINGS);
-  const evidenceRefs = uniqueRefs(outOfScopeFiles.flatMap((path) => evidenceRefsForPath(evidenceIndex, path)));
+  const evidenceRefs = uniqueRefs(outOfScopeFiles.flatMap((path) => evidenceLookup.refsForPath(path)));
 
   return {
     outOfScopeFiles: outOfScopeFiles.map(safeReportPath),
     evidenceRefs,
-    provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs),
+    provenance: evidenceLookup.provenanceForRefs(evidenceRefs),
     reasons: outOfScopeFiles.map((path) =>
       isRiskFile(path)
         ? `${safeReportPath(path)} is risk-sensitive and does not clearly map to the stated criteria.`
@@ -1347,7 +1619,11 @@ function detectScopeCreep(
   };
 }
 
-function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem[]): MissingTestFinding[] {
+function detectMissingTests(
+  input: PullRequestInput,
+  evidenceIndex: EvidenceItem[],
+  evidenceLookup: VerifierEvidenceLookup
+): MissingTestFinding[] {
   const testFiles = input.changedFiles.filter((file) => isTestFile(file.path));
   const hasTestFileChange = testFiles.length > 0;
   const hasPassingTestSignal =
@@ -1362,7 +1638,7 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
     return [];
   }
 
-  const testEvidenceRefs = evidenceIndex.filter((item) => item.kind === "test" || /test/i.test(item.summary)).map((item) => item.id);
+  const testEvidenceRefs = evidenceLookup.testEvidenceRefs;
 
   return changedImplementationFiles
     .filter((file) =>
@@ -1372,39 +1648,15 @@ function detectMissingTests(input: PullRequestInput, evidenceIndex: EvidenceItem
     .slice(0, MAX_MISSING_TEST_FINDINGS)
     .map((file) => {
       const hasRelatedTestFile = testFiles.some((testFile) => testEvidenceLooksRelated(file, testFile));
-      const evidenceRefs = uniqueRefs([...evidenceRefsForPath(evidenceIndex, file.path), ...testEvidenceRefs]).slice(0, 5);
+      const evidenceRefs = uniqueRefs([...evidenceLookup.refsForPath(file.path), ...testEvidenceRefs]).slice(0, 5);
 
       return {
         path: safeReportPath(file.path),
         why: missingTestReason(hasRelatedTestFile, hasTestFileChange, hasPassingTestSignal),
         evidenceRefs,
-        provenance: findingProvenanceForRefs(evidenceIndex, evidenceRefs)
+        provenance: evidenceLookup.provenanceForRefs(evidenceRefs)
       };
     });
-}
-
-function findingProvenanceForRefs(evidenceIndex: EvidenceItem[], refs: string[]): FindingProvenance[] {
-  const evidenceById = new Map(evidenceIndex.map((item) => [item.id, item]));
-  const provenance: FindingProvenance[] = [];
-
-  for (const ref of uniqueRefs(refs)) {
-    const evidence = evidenceById.get(ref);
-    if (!evidence) continue;
-
-    provenance.push({
-      evidenceRef: ref,
-      sourceType: evidence.kind,
-      locator: evidence.locator ?? evidence.label,
-      confidence: evidence.confidence,
-      evidenceText: shortEvidenceText(evidence.summary)
-    });
-
-    if (provenance.length >= MAX_FINDING_PROVENANCE_ITEMS) {
-      break;
-    }
-  }
-
-  return provenance;
 }
 
 function shortEvidenceText(value: string): string {
@@ -1737,7 +1989,8 @@ function buildReviewPriority(
   missingTests: MissingTestFinding[],
   ciStatus: CheckStatus,
   evidenceIndex: EvidenceItem[],
-  proofGraph: ProofGraph
+  proofGraph: ProofGraph,
+  evidenceLookup: VerifierEvidenceLookup
 ): ReviewPriorityItem[] {
   const items: ReviewPriorityItem[] = [];
   const sourceRefs = sourceEvidenceRefs(evidenceIndex);
@@ -1802,7 +2055,7 @@ function buildReviewPriority(
         ? "Risk-sensitive file appears outside the stated requirement."
         : "Changed file does not clearly map to acceptance criteria.",
       priority: isRiskFile(path) ? "high" : "medium",
-      evidenceRefs: evidenceRefsForPath(evidenceIndex, path)
+      evidenceRefs: evidenceLookup.refsForPath(path)
     });
   }
 
@@ -1844,7 +2097,7 @@ function buildReviewPriority(
         path: safePath,
         reason: "Risk-sensitive path changed; verify manually even if other evidence passes.",
         priority: hasSpecificRisk ? "high" : "low",
-        evidenceRefs: evidenceRefsForPath(evidenceIndex, file.path)
+        evidenceRefs: evidenceLookup.refsForPath(file.path)
       });
     }
   }
@@ -1896,14 +2149,6 @@ function dedupeReviewPriorityItems(items: ReviewPriorityItem[]): ReviewPriorityI
   }
 
   return deduped;
-}
-
-function evidenceRefsForPath(evidenceIndex: EvidenceItem[], path: string): string[] {
-  const safePath = safeReportPath(path);
-
-  return evidenceIndex
-    .filter((item) => item.locator === path || item.label === path || item.locator === safePath || item.label === safePath)
-    .map((item) => item.id);
 }
 
 function sourceEvidenceRefs(evidenceIndex: EvidenceItem[]): string[] {
@@ -2115,7 +2360,10 @@ function nonExecutionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex:
     .map((item) => item.id);
 }
 
-function executionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: EvidenceItem[]): string[] {
+function executionFailureEvidenceRefs(
+  input: Pick<PullRequestInput, "checks" | "logs">,
+  evidenceIndex: readonly EvidenceItem[]
+): string[] {
   const failedCheckLabels = new Set(input.checks
     .filter((check) => check.status === "failed" && isCheckExecutionSignal(check))
     .map((check) => redactSecrets(check.name)));
@@ -2127,20 +2375,6 @@ function executionFailureEvidenceRefs(input: PullRequestInput, evidenceIndex: Ev
     .filter((item) =>
       (item.kind === "check" && failedCheckLabels.has(item.label)) ||
       (item.kind === "log" && failedLogLabels.has(item.label))
-    )
-    .map((item) => item.id);
-}
-
-function requirementFailedExecutionEvidenceRefs(
-  requirement: Requirement,
-  input: PullRequestInput,
-  evidenceIndex: EvidenceItem[]
-): string[] {
-  const failedRefs = new Set(executionFailureEvidenceRefs(input, evidenceIndex));
-  return evidenceIndex
-    .filter((item) =>
-      failedRefs.has(item.id) &&
-      (evidenceOverlapsCanonicalRequirement(requirement.text, item.label, item.summary) || isOpaqueMatrixExecutionFailure(item))
     )
     .map((item) => item.id);
 }

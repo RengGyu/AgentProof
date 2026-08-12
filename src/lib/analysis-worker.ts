@@ -1,5 +1,6 @@
 import {
   completeAnalysisJob,
+  bindAnalysisJobPlannerSeed,
   fenceAnalysisJobSemanticRetryFinalization,
   claimNextAnalysisJob,
   DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS,
@@ -9,6 +10,7 @@ import {
   markAnalysisJobProviderSubmission,
   markAnalysisJobSemanticRetrySubmission,
   parkAnalysisJobForProvider,
+  resolveHybridPlannerJobBinding,
   sealAnalysisJobRevision,
   type AnalysisJobResultSummary,
   type AnalysisJobClaimOptions,
@@ -17,6 +19,7 @@ import {
 import {
   getAuditLogStoreStatus,
   recordAuditEvent,
+  recordHybridPlannerTelemetry,
   AuditLogError,
   type AuditSemanticDiagnostics
 } from "./audit-log";
@@ -70,13 +73,18 @@ import { generateVerificationReport } from "./verifier";
 import {
   OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS,
   OpenAISemanticError,
+  retrieveHybridPlannerWithOpenAI,
   retrieveMissingSemanticsWithOpenAIBackground,
   retrieveSemanticsWithOpenAIBackground,
+  submitHybridPlannerWithOpenAI,
   submitMissingSemanticsWithOpenAIBackground,
   submitSemanticsWithOpenAIBackground
 } from "./openai-semantic";
 import type { LlmSemanticValidationResult } from "./llm-semantic-output";
-import { isGitHubRepositoryPublic } from "./github-repository-visibility";
+import { isGitHubRepositoryPublic, readGitHubRepositoryPrivate } from "./github-repository-visibility";
+import { createHybridPlannerGateReader } from "./hybrid-planner-runtime";
+import { runHybridPlannerAnalysis } from "./hybrid-orchestrator";
+import { resolveHybridWorkerProtocol } from "./hybrid-worker-routing";
 import type { PullRequestInput, VerificationReport } from "./types";
 
 export const DEFAULT_ANALYSIS_WORKER_BATCH_LIMIT = 1;
@@ -103,6 +111,7 @@ export interface AnalysisWorkerPreflightResult {
     slackSummary?: boolean;
   };
   llmAnalysisMode?: "essential" | "enhanced";
+  hybridPilotControlled?: boolean;
 }
 
 export interface RunAnalysisJobOptions extends AnalysisJobClaimOptions {
@@ -305,7 +314,8 @@ export async function preflightClaimedAnalysisJob(
         status: "ready",
         job,
         sideEffects,
-        llmAnalysisMode: grant.grant.llmAnalysisMode
+        llmAnalysisMode: grant.grant.llmAnalysisMode,
+        hybridPilotControlled: true
       };
     }
   } catch (error) {
@@ -384,7 +394,8 @@ export async function preflightClaimedAnalysisJob(
       saveReport: job.save_report && settings.saveReportsEnabled,
       comment: job.comment && settings.commentEnabled
     },
-    llmAnalysisMode: undefined
+    llmAnalysisMode: undefined,
+    hybridPilotControlled: false
   };
 }
 
@@ -437,15 +448,26 @@ async function runPreflightedAnalysisJob(
     }
 
     const deterministicReport = generateVerificationReport(input);
-    const semanticResult = await advanceQueuedSemanticAnalysis(
-      job,
-      input,
-      deterministicReport,
-      llmAnalysisMode,
-      options.now ?? new Date(),
-      options.clock ?? (() => options.now ?? new Date()),
-      env
-    );
+    const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
+    const semanticResult = protocol === "legacy"
+      ? await advanceQueuedSemanticAnalysis(
+        job,
+        input,
+        deterministicReport,
+        llmAnalysisMode,
+        options.now ?? new Date(),
+        options.clock ?? (() => options.now ?? new Date()),
+        env
+      )
+      : await advanceQueuedHybridPlanning(
+        job,
+        input,
+        protocol,
+        token,
+        options.now ?? new Date(),
+        options.clock ?? (() => options.now ?? new Date()),
+        env
+      );
     if (semanticResult.status === "waiting_provider") {
       return {
         status: "waiting_provider",
@@ -499,7 +521,10 @@ async function runPreflightedAnalysisJob(
       );
     }
 
-    const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, sideEffects, env);
+    const publishableSideEffects = "publicationSuppressed" in semanticResult && semanticResult.publicationSuppressed === true
+      ? { saveReport: false, comment: false, slackSummary: false }
+      : sideEffects;
+    const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, publishableSideEffects, env);
     await sealCurrentAnalysisJobRevision(job, env, options.now);
     let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
     if (sideEffectsBeforeSave.saveReport) {
@@ -674,6 +699,113 @@ export async function runAnalysisJobBatch(
     idle,
     stoppedReason,
     items
+  };
+}
+
+async function advanceQueuedHybridPlanning(
+  job: AnalysisJobRow,
+  input: PullRequestInput,
+  protocol: "hybrid_submit" | "hybrid_retrieve" | "hybrid_fallback",
+  installationToken: string,
+  now: Date,
+  clock: () => Date,
+  env: NodeJS.ProcessEnv
+): Promise<
+  | {
+      status: "ready";
+      report: VerificationReport;
+      semanticDiagnostics?: AuditSemanticDiagnostics;
+      publicationSuppressed?: true;
+    }
+  | { status: "waiting_provider" }
+> {
+  const providerOptions = { apiKey: env.OPENAI_API_KEY ?? "" };
+  const readGate = createHybridPlannerGateReader({
+    env,
+    readRepositoryPrivate: () => readGitHubRepositoryPrivate(job.repository_full_name, installationToken),
+    readGrant: async () => {
+      try {
+        const decision = await authorizeTenantRepositoryGrantAsync({
+          installationId: job.installation_id,
+          repositoryId: job.repository_id ?? undefined,
+          repositoryFullName: job.repository_full_name
+        }, env);
+        return decision.grant;
+      } catch {
+        return undefined;
+      }
+    }
+  });
+  const submittedAt = parseProviderTime(job.provider_submitted_at) ?? now;
+  const expiresAt = parseProviderTime(job.provider_expires_at) ??
+    new Date(submittedAt.getTime() + OPENAI_BACKGROUND_TTL_MS);
+  const result = await runHybridPlannerAnalysis({
+    phase: protocol === "hybrid_submit" ? "background_submit" : "background_retrieve",
+    ...(job.provider_response_id ? { responseId: job.provider_response_id } : {}),
+    input,
+    readCurrentInput: () => buildGitHubPullRequestInput(
+      job.pull_request_url,
+      installationToken,
+      "",
+      undefined,
+      {
+        expectedHeadSha: job.head_sha,
+        now: clock
+      }
+    ),
+    readGate: async () => env.OPENAI_API_KEY
+      ? readGate()
+      : { enabled: false, reason: "pilot-disabled" },
+    bindBeforeSubmit: async (binding) => {
+      if (!job.claim_generation) return false;
+      const bound = await bindAnalysisJobPlannerSeed({
+        id: job.id,
+        claimGeneration: job.claim_generation,
+        contractVersion: binding.contractVersion,
+        inputHash: binding.inputHash,
+        now
+      }, env);
+      if (!bound) return false;
+      Object.assign(job, bound);
+      return true;
+    },
+    beforePost: async () => {
+      if (!job.claim_generation) return false;
+      const marked = await markAnalysisJobProviderSubmission({
+        id: job.id,
+        claimGeneration: job.claim_generation,
+        submittedAt,
+        expiresAt,
+        now
+      }, env);
+      if (!marked) return false;
+      Object.assign(job, marked);
+      return true;
+    },
+    checkBinding: (binding) => resolveHybridPlannerJobBinding(job, binding),
+    transport: {
+      submit: (request) => submitHybridPlannerWithOpenAI(request, providerOptions),
+      retrieve: (responseId, request) => retrieveHybridPlannerWithOpenAI(responseId, request, providerOptions)
+    },
+    telemetry: (value) => recordHybridPlannerTelemetry(value, env).then(() => undefined).catch(() => undefined),
+    clock
+  });
+  if (result.status === "pending") {
+    await parkSemanticResponse(
+      job,
+      result,
+      submittedAt,
+      expiresAt,
+      clock(),
+      env,
+      false
+    );
+    return { status: "waiting_provider" };
+  }
+  return {
+    status: "ready",
+    report: result.report,
+    ...(result.publicationSuppressed === true ? { publicationSuppressed: true as const } : {})
   };
 }
 

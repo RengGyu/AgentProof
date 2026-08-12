@@ -5,11 +5,13 @@ import {
   isTenantDeletionActive,
   isTenantDeletionActiveAsync
 } from "./tenant-deletion-state";
+import { HYBRID_PLANNER_CONSENT_VERSION } from "./hybrid-planner-consent";
 
 export const TENANT_CONTROL_PLANE_GRANTS_ENV = "AGENTPROOF_TENANT_REPOSITORY_GRANTS";
 export const DEFAULT_TENANT_REPOSITORY_GRANTS_TABLE = "agentproof_tenant_repository_grants";
 
 export type LlmAnalysisMode = "essential" | "enhanced";
+export type HybridPlannerConsentVersion = typeof HYBRID_PLANNER_CONSENT_VERSION;
 
 export interface TenantControlPlaneSettings {
   enabled: boolean;
@@ -26,6 +28,8 @@ export interface TenantRepositoryGrant {
   saveReportsEnabled: boolean;
   slackNotificationsEnabled: boolean;
   llmAnalysisMode?: LlmAnalysisMode;
+  hybridPlannerConsentVersion?: HybridPlannerConsentVersion;
+  repositoryPrivate?: boolean;
 }
 
 export interface TenantRepositoryGrantDecision {
@@ -45,6 +49,8 @@ export interface TenantRepositoryGrantSettingsInput {
   saveReportsEnabled?: unknown;
   slackNotificationsEnabled?: unknown;
   llmAnalysisMode?: unknown;
+  hybridPlannerConsentVersion?: unknown;
+  repositoryPrivate?: unknown;
 }
 
 export interface TenantRepositoryGrantDisableResult {
@@ -80,6 +86,8 @@ interface TenantRepositoryGrantInput {
   saveReportsEnabled?: unknown;
   slackNotificationsEnabled?: unknown;
   llmAnalysisMode?: unknown;
+  hybridPlannerConsentVersion?: unknown;
+  repositoryPrivate?: unknown;
 }
 
 interface TenantRepositoryGrantRow {
@@ -93,6 +101,8 @@ interface TenantRepositoryGrantRow {
   save_reports_enabled: boolean;
   slack_notifications_enabled: boolean;
   llm_analysis_mode?: LlmAnalysisMode | null;
+  hybrid_planner_consent_version?: HybridPlannerConsentVersion | null;
+  repository_is_private?: boolean | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -108,7 +118,7 @@ type GlobalWithTenantGrants = typeof globalThis & {
 };
 
 const TENANT_REPOSITORY_GRANT_SELECT =
-  "select=tenant_id,installation_id,repository_id,repository_full_name,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode";
+  "select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version";
 
 export class TenantControlPlaneStoreError extends Error {
   constructor(message: string) {
@@ -389,10 +399,10 @@ export async function updateTenantRepositoryGrantSettings(
     throw new TenantControlPlaneStoreError("Tenant repository grant was not found.");
   }
 
-  const updated = {
-    ...existing,
-    ...normalized.settings
-  };
+  const updated = applyTenantRepositoryGrantSettings(existing, normalized.settings);
+  if (!updated) {
+    throw new TenantControlPlaneStoreError("Tenant repository grant consent is invalid for this repository mode.");
+  }
   tenantGrantMemoryStore().set(tenantGrantKey(updated.installationId, updated.repositoryFullName, updated.repositoryId), updated);
 
   return updated;
@@ -524,10 +534,13 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
   const repositoryId = normalizeOptionalRepositoryId(input.repositoryId);
   const repositoryFullName = normalizeRepositoryFullName(input.repositoryFullName);
   const llmAnalysisMode = normalizeOptionalLlmAnalysisMode(input.llmAnalysisMode);
+  const hybridPlannerConsentVersion = normalizeOptionalHybridPlannerConsentVersion(input.hybridPlannerConsentVersion);
+  const repositoryPrivate = normalizeOptionalRepositoryPrivate(input.repositoryPrivate);
 
-  if (!tenantId || !installationId || !repositoryFullName || llmAnalysisMode === null) {
+  if (!tenantId || !installationId || !repositoryFullName || llmAnalysisMode === null || hybridPlannerConsentVersion === null || repositoryPrivate === null) {
     return null;
   }
+  if (hybridPlannerConsentVersion && (llmAnalysisMode !== "enhanced" || repositoryPrivate !== true)) return null;
 
   return {
     tenantId,
@@ -539,7 +552,9 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
     commentEnabled: input.commentEnabled === true,
     saveReportsEnabled: input.saveReportsEnabled === true,
     slackNotificationsEnabled: input.slackNotificationsEnabled === true,
-    ...(llmAnalysisMode ? { llmAnalysisMode } : {})
+    ...(llmAnalysisMode ? { llmAnalysisMode } : {}),
+    ...(hybridPlannerConsentVersion ? { hybridPlannerConsentVersion } : {}),
+    ...(repositoryPrivate !== undefined ? { repositoryPrivate } : {})
   };
 }
 
@@ -707,30 +722,28 @@ async function updateSupabaseTenantRepositoryGrantSettings(
     tenantId: string;
     installationId: number;
     repositoryId: number;
-    settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">>;
+    settings: TenantRepositoryGrantSettings;
   }
 ): Promise<TenantRepositoryGrant> {
-  const body = toTenantRepositoryGrantSettingsRow(input.settings);
-  const response = await supabaseTenantGrantFetch(
-    config,
-    [
-      `?tenant_id=eq.${encodeURIComponent(input.tenantId)}`,
-      `installation_id=eq.${encodeURIComponent(String(input.installationId))}`,
-      `repository_id=eq.${encodeURIComponent(String(input.repositoryId))}`,
-      TENANT_REPOSITORY_GRANT_SELECT
-    ].join("&"),
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "return=representation"
-      },
-      body: JSON.stringify({
-        ...body,
-        updated_at: new Date().toISOString()
-      })
-    }
-  );
+  if (config.table !== DEFAULT_TENANT_REPOSITORY_GRANTS_TABLE) {
+    throw new TenantControlPlaneStoreError("Atomic tenant repository grant settings require the canonical grant table.");
+  }
+  const response = await supabaseTenantGrantRpc(config, "agentproof_update_tenant_repository_grant_settings", {
+    p_tenant_id: input.tenantId,
+    p_installation_id: input.installationId,
+    p_repository_id: input.repositoryId,
+    p_enabled: input.settings.enabled ?? null,
+    p_analysis_enabled: input.settings.analysisEnabled ?? null,
+    p_comment_enabled: input.settings.commentEnabled ?? null,
+    p_save_reports_enabled: input.settings.saveReportsEnabled ?? null,
+    p_slack_notifications_enabled: input.settings.slackNotificationsEnabled ?? null,
+    p_llm_analysis_mode: input.settings.llmAnalysisMode ?? null,
+    p_hybrid_planner_consent_requested: input.settings.hybridPlannerConsentVersion === HYBRID_PLANNER_CONSENT_VERSION
+      ? true
+      : input.settings.hybridPlannerConsentVersion === null
+        ? false
+        : null
+  });
 
   if (!response.ok) {
     throw new TenantControlPlaneStoreError(`Tenant repository grant update failed with HTTP ${response.status}.`);
@@ -830,6 +843,19 @@ async function supabaseTenantGrantFetch(config: TenantGrantStoreConfig, query: s
   });
 }
 
+async function supabaseTenantGrantRpc(config: TenantGrantStoreConfig, functionName: string, body: Record<string, unknown>) {
+  return fetch(`${config.url}/rest/v1/rpc/${encodeURIComponent(functionName)}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+}
+
 function getTenantGrantStoreConfig(env = process.env): TenantGrantStoreConfig | null {
   const shared = getControlPlaneSupabaseEnv(env);
   const url = env.AGENTPROOF_TENANT_GRANTS_SUPABASE_URL || shared.url;
@@ -857,20 +883,24 @@ function toTenantRepositoryGrantRow(grant: TenantRepositoryGrant, now: string): 
     installation_id: grant.installationId,
     repository_id: grant.repositoryId ?? null,
     repository_full_name: grant.repositoryFullName,
+    repository_is_private: grant.repositoryPrivate ?? null,
     enabled: grant.enabled,
     analysis_enabled: grant.analysisEnabled,
     comment_enabled: grant.commentEnabled,
     save_reports_enabled: grant.saveReportsEnabled,
     slack_notifications_enabled: grant.slackNotificationsEnabled,
     ...(grant.llmAnalysisMode ? { llm_analysis_mode: grant.llmAnalysisMode } : {}),
+    ...(grant.hybridPlannerConsentVersion ? { hybrid_planner_consent_version: grant.hybridPlannerConsentVersion } : {}),
     created_at: now,
     updated_at: now
   };
 }
 
-function toTenantRepositoryGrantSettingsRow(
-  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">>
-) {
+type TenantRepositoryGrantSettings = Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">> & {
+  hybridPlannerConsentVersion?: HybridPlannerConsentVersion | null;
+};
+
+function toTenantRepositoryGrantSettingsRow(settings: TenantRepositoryGrantSettings) {
   const row: Partial<TenantRepositoryGrantRow> = {};
 
   if (settings.enabled !== undefined) row.enabled = settings.enabled;
@@ -879,6 +909,7 @@ function toTenantRepositoryGrantSettingsRow(
   if (settings.saveReportsEnabled !== undefined) row.save_reports_enabled = settings.saveReportsEnabled;
   if (settings.slackNotificationsEnabled !== undefined) row.slack_notifications_enabled = settings.slackNotificationsEnabled;
   if (settings.llmAnalysisMode !== undefined) row.llm_analysis_mode = settings.llmAnalysisMode;
+  if (settings.hybridPlannerConsentVersion !== undefined) row.hybrid_planner_consent_version = settings.hybridPlannerConsentVersion;
 
   return row;
 }
@@ -892,12 +923,14 @@ function rowToTenantRepositoryGrant(row: unknown): TenantRepositoryGrant | undef
     installationId: value.installation_id,
     repositoryId: value.repository_id,
     repositoryFullName: value.repository_full_name,
+    repositoryPrivate: value.repository_is_private,
     enabled: value.enabled,
     analysisEnabled: value.analysis_enabled,
     commentEnabled: value.comment_enabled,
     saveReportsEnabled: value.save_reports_enabled,
     slackNotificationsEnabled: value.slack_notifications_enabled,
     llmAnalysisMode: value.llm_analysis_mode
+    ,hybridPlannerConsentVersion: value.hybrid_planner_consent_version
   }) ?? undefined;
 }
 
@@ -905,20 +938,27 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
   tenantId: string;
   installationId: number;
   repositoryId: number;
-  settings: Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">>;
+  settings: TenantRepositoryGrantSettings;
 } | null {
   const tenantId = normalizeId(input.tenantId);
   const installationId = normalizeInstallationId(input.installationId);
   const repositoryId = normalizeOptionalRepositoryId(input.repositoryId);
   const llmAnalysisMode = normalizeOptionalLlmAnalysisMode(input.llmAnalysisMode);
+  const hybridPlannerConsentVersion = normalizeOptionalHybridPlannerConsentVersion(input.hybridPlannerConsentVersion);
   if (input.llmAnalysisMode !== undefined && llmAnalysisMode === null) return null;
+  if (input.hybridPlannerConsentVersion !== undefined && input.hybridPlannerConsentVersion !== null && hybridPlannerConsentVersion === null) return null;
   const settings = {
     ...(typeof input.enabled === "boolean" ? { enabled: input.enabled } : {}),
     ...(typeof input.analysisEnabled === "boolean" ? { analysisEnabled: input.analysisEnabled } : {}),
     ...(typeof input.commentEnabled === "boolean" ? { commentEnabled: input.commentEnabled } : {}),
     ...(typeof input.saveReportsEnabled === "boolean" ? { saveReportsEnabled: input.saveReportsEnabled } : {}),
     ...(typeof input.slackNotificationsEnabled === "boolean" ? { slackNotificationsEnabled: input.slackNotificationsEnabled } : {}),
-    ...(llmAnalysisMode ? { llmAnalysisMode } : {})
+    ...(llmAnalysisMode ? { llmAnalysisMode } : {}),
+    ...(input.llmAnalysisMode === "essential" || input.hybridPlannerConsentVersion === null
+      ? { hybridPlannerConsentVersion: null }
+      : hybridPlannerConsentVersion !== undefined
+        ? { hybridPlannerConsentVersion }
+        : {})
   };
 
   if (!tenantId || !installationId || !repositoryId || Object.keys(settings).length === 0) {
@@ -937,6 +977,39 @@ function normalizeOptionalLlmAnalysisMode(value: unknown): LlmAnalysisMode | und
   if (value === undefined) return undefined;
   if (value === "essential" || value === "enhanced") return value;
   return null;
+}
+
+function normalizeOptionalHybridPlannerConsentVersion(value: unknown): HybridPlannerConsentVersion | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  return value === HYBRID_PLANNER_CONSENT_VERSION ? value : null;
+}
+
+function normalizeOptionalRepositoryPrivate(value: unknown): boolean | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === "boolean" ? value : null;
+}
+
+function applyTenantRepositoryGrantSettings(
+  grant: TenantRepositoryGrant,
+  settings: TenantRepositoryGrantSettings
+): TenantRepositoryGrant | null {
+  const effectiveMode = settings.llmAnalysisMode ?? grant.llmAnalysisMode ?? "essential";
+  const requestedConsent = settings.hybridPlannerConsentVersion;
+  if (requestedConsent === HYBRID_PLANNER_CONSENT_VERSION && (effectiveMode !== "enhanced" || grant.repositoryPrivate !== true)) {
+    return null;
+  }
+  const { hybridPlannerConsentVersion: _ignored, ...withoutConsent } = { ...grant, ...settings };
+  if (effectiveMode !== "enhanced") return withoutConsent;
+  if (settings.llmAnalysisMode === "enhanced") {
+    return requestedConsent === HYBRID_PLANNER_CONSENT_VERSION
+      ? { ...withoutConsent, hybridPlannerConsentVersion: HYBRID_PLANNER_CONSENT_VERSION }
+      : withoutConsent;
+  }
+  if (requestedConsent === HYBRID_PLANNER_CONSENT_VERSION) {
+    return { ...withoutConsent, hybridPlannerConsentVersion: HYBRID_PLANNER_CONSENT_VERSION };
+  }
+  if (requestedConsent === null) return withoutConsent;
+  return grant.hybridPlannerConsentVersion ? { ...withoutConsent, hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion } : withoutConsent;
 }
 
 function decisionForGrant(grant: TenantRepositoryGrant, env: NodeJS.ProcessEnv): TenantRepositoryGrantDecision {

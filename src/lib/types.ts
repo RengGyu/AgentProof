@@ -73,6 +73,8 @@ export interface PullRequestInput {
   baseBranch?: string;
   headBranch?: string;
   taskSource?: "task" | "issue";
+  /** Transient SHA-256 identity for the selected requirement-authority object. */
+  requirementSourceIdentityHash?: string;
   changedFiles: ChangedFile[];
   checks: CheckRun[];
   logs: LogSnippet[];
@@ -182,6 +184,38 @@ export interface RequirementContextSignal {
   text: string;
 }
 
+export type HybridAnalysisContext = "linked_issue" | "unlinked_pr" | "provided_requirement";
+export type RequirementSpanId = `sp_${number}_${number}`;
+
+export interface RequirementSourceSpan {
+  id: RequirementSpanId;
+  groupId: `grp_${number}`;
+  ordinal: number;
+  immediateParentSpanId: RequirementSpanId | null;
+  source: Requirement["source"];
+  authority: "authoritative" | "pr_author_claim";
+  sourceQuality: RequirementSourceQuality;
+  sourceSection: string | null;
+  start: number;
+  end: number;
+  text: string;
+  priority: Requirement["priority"];
+}
+
+export interface RequirementSpanSeed {
+  version: 1;
+  analysisContext: HybridAnalysisContext;
+  spans: RequirementSourceSpan[];
+  contexts: RequirementContextSignal[];
+  seedHash: string;
+}
+
+export interface RequirementSpanSeedExtractionResult {
+  eligible: boolean;
+  overflow: boolean;
+  seed: RequirementSpanSeed | null;
+}
+
 export interface AgentClaim {
   id: string;
   text: string;
@@ -216,6 +250,10 @@ export interface RequirementFinding {
   confidence: number;
   /** Deterministic, independently evaluated proof obligations. Optional for v1 compatibility. */
   proofAxes?: RequirementProofAxis[];
+  /** Optional neutral classification provenance for the enhanced-planning pilot. */
+  classificationBasis?: "deterministic" | "enhanced_plan";
+  /** Subjects added by the neutral enhanced-planning policy, never source text. */
+  plannerAxisSubjects?: RequirementProofSubject[];
 }
 
 export type RequirementProofPolarity = "present" | "absent";
@@ -286,6 +324,8 @@ export interface RequirementProofNode {
   executionEvidenceRefs: string[];
   gapSignals: ProofGapSignal[];
   firstFiles: string[];
+  /** Mirrors the requirement classification basis when enhanced planning applied. */
+  classificationBasis?: "deterministic" | "enhanced_plan";
 }
 
 export interface ProofGraph {
@@ -346,5 +386,20 @@ export interface VerificationReport {
     status: "included" | "unavailable";
     attempts: 1 | 2;
   };
+  /** Signed, bounded planner metadata only; it contains no plan or source content. */
+  planner?: HybridPlannerProvenance;
   authenticity?: ReportAuthenticity;
 }
+
+export interface HybridPlannerProvenance {
+  version: 1;
+  contractVersion: "hybrid_requirement_planner.v1";
+  schemaVersion: "agentproof_requirement_span_plan_v1";
+  promptVersion: "2026-08-12.v1";
+  model: "gpt-5-mini";
+  /** Required for full/private reports; public summaries deliberately omit it. */
+  inputHash?: string;
+}
+
+/** Public summary provenance. It deliberately cannot carry the private seed binding. */
+export type PortableHybridPlannerProvenance = Omit<HybridPlannerProvenance, "inputHash">;

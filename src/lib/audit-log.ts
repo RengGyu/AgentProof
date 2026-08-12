@@ -5,6 +5,12 @@ import type {
   LlmSemanticOutput,
   LlmSemanticRejectReason
 } from "./llm-semantic-output";
+import type { HybridPlannerTelemetry } from "./hybrid-orchestrator";
+import {
+  HYBRID_PLANNER_MAX_INPUT_BYTES,
+  HYBRID_PLANNER_MAX_OUTPUT_BYTES,
+  HYBRID_PLANNER_MAX_OUTPUT_TOKENS
+} from "./hybrid-planner";
 
 export const DEFAULT_AUDIT_EVENTS_TABLE = "agentproof_audit_events";
 export const MAX_MEMORY_AUDIT_EVENTS = 1000;
@@ -25,6 +31,7 @@ export interface AuditSemanticDiagnostics {
 }
 
 export type AuditEventAction =
+  | "hybrid_planner_analysis"
   | "github_app_analysis_completed"
   | "github_app_analysis_failed"
   | "github_app_analysis_queue_unavailable"
@@ -76,6 +83,7 @@ export interface AuditEventInput {
     privacy?: string;
   };
   semanticDiagnostics?: AuditSemanticDiagnostics;
+  plannerTelemetry?: HybridPlannerTelemetry;
 }
 
 export interface AuditEventRow {
@@ -221,6 +229,23 @@ export async function recordAuditEvent(input: AuditEventInput, env = process.env
   return row;
 }
 
+/** Stores one bounded planner aggregate without repository or response identity. */
+export async function recordHybridPlannerTelemetry(
+  value: HybridPlannerTelemetry,
+  env = process.env
+): Promise<AuditEventRow> {
+  const plannerTelemetry = sanitizeHybridPlannerTelemetry(value);
+  if (!plannerTelemetry) {
+    throw new AuditPrivacyError("Hybrid planner telemetry contains unsupported or invalid fields.");
+  }
+  return recordAuditEvent({
+    action: "hybrid_planner_analysis",
+    result: plannerTelemetry.outcomeCode === "completed" ? "completed" : "skipped",
+    actor: "system",
+    plannerTelemetry
+  }, env);
+}
+
 export function getAuditLogStoreStatus(env = process.env): AuditLogStoreStatus {
   const read = readAuditLogStoreEnv(env);
 
@@ -297,12 +322,16 @@ export async function countTenantAuditEvents(
 }
 
 export function assertAuditEventIsPrivate(value: unknown): void {
-  const serialized = JSON.stringify(value, (key, nested) =>
-    key === "secret_detected" && typeof nested === "number" &&
-      Number.isInteger(nested) && nested >= 0 && nested <= MAX_SEMANTIC_AUDIT_REQUIREMENT_COUNT
+  const serialized = JSON.stringify(value, (key, nested) => {
+    const allowedNumericTokenCount =
+      key === "outputTokens" && typeof nested === "number" && nested <= 1_000_000;
+    const allowedSecretDiagnosticCount =
+      key === "secret_detected" && typeof nested === "number" && nested <= MAX_SEMANTIC_AUDIT_REQUIREMENT_COUNT;
+    return (allowedNumericTokenCount || allowedSecretDiagnosticCount) &&
+      Number.isInteger(nested) && nested >= 0
       ? undefined
-      : nested
-  );
+      : nested;
+  });
   if (containsSecretPattern(serialized)) {
     throw new AuditPrivacyError("Audit event contains a secret-like value.");
   }
@@ -343,7 +372,10 @@ function toAuditEventRow(input: AuditEventInput): AuditEventRow {
       action: safeSlug(input.slack.action),
       privacy: safeSlug(input.slack.privacy)
     } : undefined,
-    semanticDiagnostics: sanitizeSemanticDiagnostics(input.semanticDiagnostics)
+    semanticDiagnostics: sanitizeSemanticDiagnostics(input.semanticDiagnostics),
+    plannerTelemetry: input.plannerTelemetry
+      ? sanitizeHybridPlannerTelemetry(input.plannerTelemetry) ?? undefined
+      : undefined
   };
 
   return {
@@ -697,6 +729,76 @@ function sanitizeSemanticDiagnostics(
   };
 }
 
+const HYBRID_TELEMETRY_KEYS = [
+  "contractVersion",
+  "schemaVersion",
+  "promptVersion",
+  "model",
+  "inputBytes",
+  "outputBytes",
+  "outputTokens",
+  "elapsedMs",
+  "postCount",
+  "outcomeCode"
+] as const;
+
+function sanitizeHybridPlannerTelemetry(value: unknown): HybridPlannerTelemetry | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const actualKeys = Object.keys(record).sort();
+  const expectedKeys = [...HYBRID_TELEMETRY_KEYS].sort();
+  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) return null;
+  if (
+    record.contractVersion !== "hybrid_requirement_planner.v1" ||
+    record.schemaVersion !== "agentproof_requirement_span_plan_v1" ||
+    record.promptVersion !== "2026-08-12.v1" ||
+    record.model !== "gpt-5-mini" ||
+    !isHybridTelemetryCount(record.inputBytes, HYBRID_PLANNER_MAX_INPUT_BYTES) ||
+    !isHybridTelemetryCount(record.outputBytes, HYBRID_PLANNER_MAX_OUTPUT_BYTES) ||
+    !isHybridTelemetryCount(record.outputTokens, HYBRID_PLANNER_MAX_OUTPUT_TOKENS) ||
+    !isHybridTelemetryCount(record.elapsedMs, 3_600_000) ||
+    (record.postCount !== 0 && record.postCount !== 1) ||
+    !isHybridPlannerOutcome(record.outcomeCode)
+  ) return null;
+  return {
+    contractVersion: record.contractVersion,
+    schemaVersion: record.schemaVersion,
+    promptVersion: record.promptVersion,
+    model: record.model,
+    inputBytes: record.inputBytes,
+    outputBytes: record.outputBytes,
+    outputTokens: record.outputTokens,
+    elapsedMs: record.elapsedMs,
+    postCount: record.postCount,
+    outcomeCode: record.outcomeCode
+  };
+}
+
+function isHybridTelemetryCount(value: unknown, maximum: number): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+}
+
+function isHybridPlannerOutcome(value: unknown): value is HybridPlannerTelemetry["outcomeCode"] {
+  return typeof value === "string" && [
+    "repository-not-private",
+    "analysis-mode-not-enhanced",
+    "consent-not-granted",
+    "tenant-not-allowlisted",
+    "pilot-disabled",
+    "no_spans",
+    "overflow",
+    "package_overflow",
+    "binding_failed",
+    "submission_uncertain",
+    "provider_failed",
+    "invalid_output",
+    "stale_source",
+    "stale_binding",
+    "pending",
+    "completed"
+  ].includes(value);
+}
+
 function sanitizeSemanticSectionCounts(
   value: Record<keyof LlmSemanticOutput, number> | undefined
 ): Record<keyof LlmSemanticOutput, number> {
@@ -761,6 +863,7 @@ function countFromContentRange(value: string | null): number | null {
 
 function isAuditEventAction(value: unknown): value is AuditEventAction {
   return typeof value === "string" && [
+    "hybrid_planner_analysis",
     "github_app_analysis_completed",
     "github_app_analysis_failed",
     "github_app_analysis_queue_unavailable",

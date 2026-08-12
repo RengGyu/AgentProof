@@ -399,7 +399,11 @@ async function fetchGitHubPullRequest(
     baseBranch: pr.base?.ref,
     headBranch: pr.head?.ref,
     taskSource: taskText.trim() ? "task" : linkedIssueTask ? "issue" : undefined,
-    taskText: taskText.trim() ? redactSecrets(taskText) : linkedIssueTask ?? "",
+    taskText: taskText.trim() ? redactSecrets(taskText) : linkedIssueTask?.taskText ?? "",
+    requirementSourceIdentityHash: taskText.trim()
+      ? requirementSourceIdentityHash(`github_task:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`)
+      : linkedIssueTask?.identityHash ??
+        requirementSourceIdentityHash(`github_pr_description:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`),
     changedFiles: files.map((file) => ({
       path: file.filename,
       additions: file.additions,
@@ -801,7 +805,7 @@ async function resolveLinkedIssueTaskText(input: {
   headers: Record<string, string>;
   limitations: string[];
   hasToken: boolean;
-}): Promise<string | null> {
+}): Promise<{ taskText: string; identityHash: string } | null> {
   const extraction = extractSupportedIssueReferences(input.prBody, input.repository);
 
   if (extraction.totalSupportedReferences === 0) {
@@ -828,7 +832,16 @@ async function resolveLinkedIssueTaskText(input: {
     return null;
   }
 
-  return result.taskText;
+  return {
+    taskText: result.taskText,
+    identityHash: requirementSourceIdentityHash(
+      `github_issue:${reference.owner.toLowerCase()}/${reference.repo.toLowerCase()}#${reference.number}`
+    )
+  };
+}
+
+function requirementSourceIdentityHash(canonicalIdentity: string): string {
+  return createHash("sha256").update(canonicalIdentity, "utf8").digest("hex");
 }
 
 async function fetchLinkedIssue(

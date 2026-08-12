@@ -7,7 +7,12 @@ import {
   type LlmSemanticPackage
 } from "./llm-semantic-package";
 import { extractOpenAIResponseText } from "./openai-verifier";
+import { HYBRID_PLANNER_MAX_OUTPUT_BYTES } from "./hybrid-planner";
 import { redactSecrets } from "./redact";
+import type {
+  HybridPlannerTransportRequest,
+  HybridPlannerTransportResult
+} from "./hybrid-orchestrator";
 import type { LlmSemanticOutput, LlmSemanticValidationResult } from "./llm-semantic-output";
 import type { PullRequestInput, VerificationReport } from "./types";
 
@@ -53,6 +58,40 @@ export interface OpenAISemanticOptions {
 export interface OpenAISemanticResult {
   output: LlmSemanticOutput;
   validation: LlmSemanticValidationResult;
+}
+
+/** One-shot hybrid planner POST. Validation/finalization stay in the shared orchestrator. */
+export async function submitHybridPlannerWithOpenAI(
+  request: HybridPlannerTransportRequest,
+  options: OpenAISemanticOptions
+): Promise<HybridPlannerTransportResult> {
+  const response = await fetchOpenAIResponse(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: openAIHeaders(options.apiKey),
+    body: JSON.stringify(hybridPlannerRequestBody(request)),
+    signal: AbortSignal.timeout(request.background ? OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS : OPENAI_TIMEOUT_MS)
+  }, options.fetchFn);
+  return parseHybridPlannerPayload(await parseOpenAIResponseJson(response), request.background);
+}
+
+/** Background continuation performs only a same-ID GET; it can never submit. */
+export async function retrieveHybridPlannerWithOpenAI(
+  responseId: string,
+  request: HybridPlannerTransportRequest,
+  options: OpenAISemanticOptions
+): Promise<HybridPlannerTransportResult> {
+  const safeResponseId = normalizeOpenAIResponseId(responseId);
+  const response = await fetchOpenAIResponse(
+    `${OPENAI_RESPONSES_URL}/${encodeURIComponent(safeResponseId)}`,
+    {
+      method: "GET",
+      headers: openAIHeaders(options.apiKey),
+      signal: AbortSignal.timeout(OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS)
+    },
+    options.fetchFn,
+    { retrieving: true }
+  );
+  return parseHybridPlannerPayload(await parseOpenAIResponseJson(response), true, safeResponseId);
 }
 
 export type OpenAIBackgroundSemanticResult =
@@ -297,6 +336,28 @@ function openAIRequestBody(
   };
 }
 
+function hybridPlannerRequestBody(request: HybridPlannerTransportRequest) {
+  const plannerPackage = request.package;
+  return {
+    model: plannerPackage.request.model,
+    input: [
+      { role: "system", content: [{ type: "input_text", text: plannerPackage.system }] },
+      { role: "user", content: [{ type: "input_text", text: JSON.stringify(plannerPackage.input) }] }
+    ],
+    text: {
+      format: {
+        type: plannerPackage.request.response_format.type,
+        name: plannerPackage.request.response_format.json_schema.name,
+        schema: plannerPackage.request.response_format.json_schema.schema,
+        strict: plannerPackage.request.response_format.json_schema.strict
+      }
+    },
+    store: plannerPackage.request.store,
+    max_output_tokens: plannerPackage.request.max_output_tokens,
+    ...(request.background ? { background: true } : {})
+  };
+}
+
 function openAIHeaders(apiKey: string): HeadersInit {
   return {
     Authorization: `Bearer ${apiKey}`,
@@ -400,6 +461,75 @@ function parseBackgroundSemanticPayload(
     responseId,
     validation
   };
+}
+
+function parseHybridPlannerPayload(
+  payload: unknown,
+  background: boolean,
+  expectedResponseId?: string
+): HybridPlannerTransportResult {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new OpenAISemanticError("openai_response_invalid", false, "OpenAI hybrid planner response was malformed.");
+  }
+  const record = payload as Record<string, unknown>;
+  const responseId = normalizeOpenAIResponseId(record.id);
+  if (expectedResponseId && responseId !== expectedResponseId) {
+    throw new OpenAISemanticError("openai_response_invalid", false, "OpenAI hybrid planner response id did not match the requested response.");
+  }
+  if (record.status === "queued" || record.status === "in_progress") {
+    if (!background) {
+      throw new OpenAISemanticError("openai_response_invalid", false, "OpenAI synchronous hybrid planner response was not complete.");
+    }
+    return {
+      status: "pending",
+      responseId,
+      providerStatus: record.status,
+      outputBytes: 0,
+      outputTokens: 0
+    };
+  }
+  if (record.status === "failed") {
+    throw new OpenAISemanticError("openai_background_failed", false, "OpenAI hybrid planner response failed.");
+  }
+  if (record.status === "cancelled") {
+    throw new OpenAISemanticError("openai_background_cancelled", false, "OpenAI hybrid planner response was cancelled.");
+  }
+  if (record.status === "incomplete") {
+    throw new OpenAISemanticError("openai_background_incomplete", false, "OpenAI hybrid planner response was incomplete.");
+  }
+  if (record.status !== "completed") {
+    throw new OpenAISemanticError("openai_response_invalid", false, "OpenAI hybrid planner response returned an unknown status.");
+  }
+  const text = extractOpenAIResponseText(payload);
+  if (!text) {
+    throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI hybrid planner response did not contain JSON output.");
+  }
+  const outputBytes = Buffer.byteLength(text, "utf8");
+  if (outputBytes > HYBRID_PLANNER_MAX_OUTPUT_BYTES) {
+    throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI hybrid planner output exceeded the byte limit.");
+  }
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(text);
+  } catch {
+    throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI hybrid planner response was not valid JSON.");
+  }
+  const outputTokens = safeProviderOutputTokens(record.usage);
+  return {
+    status: "completed",
+    ...(background ? { responseId } : {}),
+    candidate,
+    outputBytes,
+    outputTokens
+  };
+}
+
+function safeProviderOutputTokens(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  const tokens = (value as { output_tokens?: unknown }).output_tokens;
+  return typeof tokens === "number" && Number.isSafeInteger(tokens) && tokens >= 0
+    ? Math.min(tokens, 1_000_000)
+    : 0;
 }
 
 function normalizeOpenAIResponseId(value: unknown): string {

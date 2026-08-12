@@ -926,6 +926,8 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_TABLE", "agentproof_analysis_jobs");
     vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_TENANT_ALLOWLIST", "tenant_test");
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
     await createTenantRepositoryGrant({
@@ -934,7 +936,10 @@ describe("POST /api/github/webhook", () => {
       repositoryId: 100,
       repositoryFullName: "RengGyu/AgentProof",
       saveReportsEnabled: false,
-      commentEnabled: false
+      commentEnabled: false,
+      llmAnalysisMode: "enhanced",
+      hybridPlannerConsentVersion: "2026-08-12.v1",
+      repositoryPrivate: true
     });
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url);
@@ -949,7 +954,9 @@ describe("POST /api/github/webhook", () => {
 
     const response = await POST(
       signedRequest(JSON.stringify({
-        ...automationPayload(),
+        ...automationPayload({
+          repository: { id: 100, full_name: "RengGyu/AgentProof", private: true }
+        }),
         rawDiff: "Patch excerpt: + token = 'github_pat_secret_should_not_leak_1234567890'"
       }), {
         event: "pull_request",
@@ -997,7 +1004,10 @@ describe("POST /api/github/webhook", () => {
       pull_request_url: "https://github.com/RengGyu/AgentProof/pull/7",
       head_sha: "abc123",
       save_report: false,
-      comment: false
+      comment: false,
+      hybrid_planner_requested: true,
+      planner_contract_version: null,
+      planner_input_hash: null
     });
     expect(serialized).not.toContain("Patch excerpt");
     expect(serialized).not.toContain("github_pat_secret");
@@ -1835,6 +1845,115 @@ describe("POST /api/github/webhook", () => {
       }
     });
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
+  it("suppresses external side effects when a same-head PR relinks to an identical-content Issue during sync finalization", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_HYBRID_PROOF_PILOT_TENANT_ALLOWLIST", "tenant_test");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      repositoryId: 100,
+      repositoryPrivate: true,
+      llmAnalysisMode: "enhanced",
+      hybridPlannerConsentVersion: "2026-08-12.v1",
+      saveReportsEnabled: true,
+      commentEnabled: true
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const oldBody = "Fixes #1";
+    const newBody = "Fixes #2";
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const baseFetch = mockAutomationFetch();
+    let pullReads = 0;
+    let postCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+        pullReads += 1;
+        const response = await baseFetch(url, init);
+        const payload = await response.json();
+        return jsonResponse({
+          ...payload,
+          body: pullReads >= 5 ? newBody : oldBody,
+          base: { ...(payload.base as object), sha: baseSha },
+          head: { ...(payload.head as object), sha: headSha }
+        });
+      }
+      if (/https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/issues\/[12]$/.test(href)) {
+        return jsonResponse({
+          title: "Identical requirement authority",
+          body: "Acceptance criteria:\n- Add retry handling."
+        });
+      }
+      if (href === `https://api.github.com/repos/RengGyu/AgentProof/commits/${headSha}/check-runs?per_page=100&page=1`) {
+        return baseFetch("https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/check-runs?per_page=100&page=1", init);
+      }
+      if (href === `https://api.github.com/repos/RengGyu/AgentProof/commits/${headSha}/status`) {
+        return baseFetch("https://api.github.com/repos/RengGyu/AgentProof/commits/abc123/status", init);
+      }
+      if (href === "https://api.github.com/repos/RengGyu/AgentProof") {
+        return jsonResponse({ private: true });
+      }
+      if (href === "https://api.openai.com/v1/responses") {
+        postCount += 1;
+        const requestBody = JSON.parse(String(init?.body)) as {
+          text: { format: { schema: Record<string, unknown> } };
+        };
+        const plan = exampleFromJsonSchema(
+          requestBody.text.format.schema,
+          requestBody.text.format.schema
+        );
+        return jsonResponse({
+          id: "resp_hybrid_sync_stale_123",
+          status: "completed",
+          output_text: JSON.stringify(plan),
+          usage: { output_tokens: 100 }
+        });
+      }
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(signedRequest(JSON.stringify(automationPayload({
+      repository: { id: 100, full_name: "RengGyu/AgentProof", private: true },
+      pull_request: {
+        number: 7,
+        html_url: "https://github.com/RengGyu/AgentProof/pull/7",
+        title: "Webhook title should not be trusted",
+        head: { sha: headSha }
+      }
+    })), {
+      event: "pull_request",
+      delivery: "delivery-hybrid-stale-source",
+      secret: "secret"
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.analysis.status).toBe("completed");
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(json.analysis).not.toHaveProperty("slack");
+    expect(postCount).toBe(1);
+    expect(pullReads).toBeGreaterThanOrEqual(7);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/1"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/2"))).toBe(true);
+    expect(getAuditEventsForTests().find((event) => event.action === "hybrid_planner_analysis"))
+      .toMatchObject({
+        metadata: {
+          plannerTelemetry: { outcomeCode: "stale_source", postCount: 1 }
+        }
+      });
+    expect(fetchMock.mock.calls.some(([url, init]) =>
+      /\/issues\/7\/comments$/.test(String(url)) && init?.method === "POST"
+    )).toBe(false);
   });
 
   it("creates tenant-scoped saved reports for tenant-granted webhook automation", async () => {
@@ -2792,6 +2911,31 @@ function mockAutomationFetch() {
 
     return new Response(JSON.stringify({ message: `Unhandled ${method} ${href}` }), { status: 404 });
   });
+}
+
+function exampleFromJsonSchema(schema: Record<string, unknown>, root: Record<string, unknown>): unknown {
+  if (typeof schema.$ref === "string") {
+    const path = schema.$ref.replace(/^#\//, "").split("/");
+    let current: unknown = root;
+    for (const segment of path) {
+      current = current && typeof current === "object" && !Array.isArray(current)
+        ? (current as Record<string, unknown>)[segment]
+        : undefined;
+    }
+    return exampleFromJsonSchema(current as Record<string, unknown>, root);
+  }
+  if (Array.isArray(schema.enum)) return schema.enum[0];
+  if (Array.isArray(schema.anyOf)) {
+    return exampleFromJsonSchema(schema.anyOf[0] as Record<string, unknown>, root);
+  }
+  if (schema.type === "object") {
+    const properties = schema.properties as Record<string, Record<string, unknown>>;
+    const required = Array.isArray(schema.required) ? schema.required : Object.keys(properties ?? {});
+    return Object.fromEntries(required.map((key) => [key, exampleFromJsonSchema(properties[key]!, root)]));
+  }
+  if (schema.type === "array") return [];
+  if (schema.type === "null") return null;
+  throw new Error("Test schema did not provide a deterministic example value.");
 }
 
 function tenantGrantJson(overrides: Record<string, unknown> = {}) {

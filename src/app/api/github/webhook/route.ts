@@ -4,7 +4,13 @@ import {
   enqueueAnalysisJob,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
-import { getAuditLogStoreStatus, recordAuditEvent, type AuditEventAction, type AuditEventResult } from "@/lib/audit-log";
+import {
+  getAuditLogStoreStatus,
+  recordAuditEvent,
+  recordHybridPlannerTelemetry,
+  type AuditEventAction,
+  type AuditEventResult
+} from "@/lib/audit-log";
 import {
   completeGitHubWebhookDelivery,
   createGitHubInstallationAccessToken,
@@ -58,7 +64,17 @@ import {
   type UsageQuotaReservation
 } from "@/lib/usage-quota";
 import { generateVerificationReport } from "@/lib/verifier";
-import { enrichReportWithOpenAISemantics } from "@/lib/llm-semantic-runtime";
+import {
+  enrichReportWithHybridPlanning,
+  enrichReportWithOpenAISemantics
+} from "@/lib/llm-semantic-runtime";
+import { evaluateHybridPlannerGate } from "@/lib/hybrid-planner-consent";
+import {
+  createHybridPlannerGateReader,
+  readHybridPlannerTenantAllowlist
+} from "@/lib/hybrid-planner-runtime";
+import { readGitHubRepositoryPrivate } from "@/lib/github-repository-visibility";
+import { submitHybridPlannerWithOpenAI } from "@/lib/openai-semantic";
 import { after } from "next/server";
 
 const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
@@ -741,7 +757,16 @@ async function handlePullRequestAutomation(
         headSha: automation.headSha,
         saveReport: plannedSideEffects.saveReport,
         comment: plannedSideEffects.comment,
-        slackSummary: plannedSideEffects.slackSummary
+        slackSummary: plannedSideEffects.slackSummary,
+        hybridPlannerRequested: evaluateHybridPlannerGate({
+          repositoryPrivate: automation.repositoryPrivate === true,
+          grant: tenantGrant.grant,
+          tenantAllowlist: readHybridPlannerTenantAllowlist(),
+          env: {
+            AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED:
+              process.env.AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED
+          }
+        }).enabled
       });
 
       await recordWebhookAuditEvent("github_app_analysis_queued", "completed", automation, context, {
@@ -809,10 +834,53 @@ async function handlePullRequestAutomation(
     }
 
     const deterministicReport = generateVerificationReport(input);
-    const semanticResult = await enrichReportWithOpenAISemantics(input, deterministicReport, {
-      mode: tenantGrant.grant?.llmAnalysisMode
-        ?? (automation.repositoryPrivate === false ? "enhanced" : "essential")
-    });
+    const semanticResult = tenantGrant.enabled
+      ? await enrichReportWithHybridPlanning(input, {
+        readCurrentInput: () => buildGitHubPullRequestInput(
+          automation.pullRequestUrl,
+          token,
+          "",
+          undefined,
+          { expectedHeadSha: automation.headSha }
+        ),
+        readGate: process.env.OPENAI_API_KEY
+          ? createHybridPlannerGateReader({
+            env: process.env,
+            readRepositoryPrivate: () => readGitHubRepositoryPrivate(
+              automation.repositoryFullName,
+              token
+            ),
+            readGrant: async () => {
+              try {
+                return (await authorizeTenantRepositoryGrantAsync({
+                  installationId: automation.installationId,
+                  repositoryId: automation.repositoryId,
+                  repositoryFullName: automation.repositoryFullName
+                })).grant;
+              } catch {
+                return undefined;
+              }
+            }
+          })
+          : async () => ({ enabled: false as const, reason: "pilot-disabled" as const }),
+        transport: {
+          submit: (request) => submitHybridPlannerWithOpenAI(request, {
+            apiKey: process.env.OPENAI_API_KEY ?? ""
+          }),
+          retrieve: async () => {
+            throw new Error("Synchronous hybrid planning cannot retrieve a background response.");
+          }
+        },
+        ...(tenantGrant.grant?.hybridPlannerConsentVersion === "2026-08-12.v1"
+          ? {
+            telemetry: (value: Parameters<typeof recordHybridPlannerTelemetry>[0]) =>
+              recordHybridPlannerTelemetry(value).then(() => undefined).catch(() => undefined)
+          }
+          : {})
+      })
+      : await enrichReportWithOpenAISemantics(input, deterministicReport, {
+        mode: automation.repositoryPrivate === false ? "enhanced" : "essential"
+      });
     const report = semanticResult.report;
     const validation = validateVerificationReport(report, { mode: "full" });
 
@@ -830,8 +898,10 @@ async function handlePullRequestAutomation(
       throw new Error("GitHub pull request head or base changed during evidence collection; AgentProof did not save or publish a report.");
     }
 
-    const canSaveReport = plannedSideEffects.saveReport;
-    const canPostComment = plannedSideEffects.comment;
+    const publicationSuppressed = "publicationSuppressed" in semanticResult &&
+      semanticResult.publicationSuppressed === true;
+    const canSaveReport = !publicationSuppressed && plannedSideEffects.saveReport;
+    const canPostComment = !publicationSuppressed && plannedSideEffects.comment;
     const saved = canSaveReport
       ? await createAutomationSavedReport(report, {
         requestUrl: context.requestUrl,
@@ -847,7 +917,7 @@ async function handlePullRequestAutomation(
     const comment = canPostComment
       ? await postGitHubAppMarkerComment(automation, token, report)
       : undefined;
-    const slack = plannedSideEffects.slackSummary
+    const slack = !publicationSuppressed && plannedSideEffects.slackSummary
       ? await sendSlackReportSummary(report)
       : undefined;
     const analysis = {

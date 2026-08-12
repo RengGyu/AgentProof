@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   analyzeSemanticsWithOpenAI,
+  retrieveHybridPlannerWithOpenAI,
   retrieveMissingSemanticsWithOpenAIBackground,
   retrieveSemanticsWithOpenAIBackground,
+  submitHybridPlannerWithOpenAI,
   submitMissingSemanticsWithOpenAIBackground,
   submitSemanticsWithOpenAIBackground
 } from "./openai-semantic";
+import { extractRequirementSpanSeed } from "./extractors";
+import { bindHybridPlannerSeedHash, buildHybridPlannerPackage, buildHybridPlannerPlan } from "./hybrid-planner";
 import {
   buildLlmSemanticPackage,
   validateLlmSemanticPackageCandidate
@@ -14,6 +18,79 @@ import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
 describe("OpenAI semantic adapter", () => {
+  it("submits one strict hybrid planner response with store false and no repair request", async () => {
+    const { input, seed, plannerPackage, plan } = hybridFixture();
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "resp_hybrid_sync_123",
+      status: "completed",
+      output_text: JSON.stringify(plan),
+      usage: { output_tokens: 88 }
+    }));
+
+    const result = await submitHybridPlannerWithOpenAI({ package: plannerPackage, seed, background: false }, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+
+    expect(result).toMatchObject({ status: "completed", candidate: plan, outputTokens: 88 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    const body = JSON.parse(String(init?.body));
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(init?.method).toBe("POST");
+    expect(body).toMatchObject({ model: "gpt-5-mini", store: false, max_output_tokens: 3200 });
+    expect(body).not.toHaveProperty("background");
+    expect(body.text.format).toMatchObject({ type: "json_schema", strict: true, name: "agentproof_requirement_span_plan_v1" });
+    expect(JSON.parse(body.input[1].content[0].text)).toEqual(plannerPackage.input);
+    expect(JSON.stringify(result)).not.toContain(input.taskText);
+  });
+
+  it("uses one background POST followed only by same-ID GET retrieval", async () => {
+    const { seed, plannerPackage, plan } = hybridFixture();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ id: "resp_hybrid_bg_123", status: "queued", output: [] }))
+      .mockResolvedValueOnce(Response.json({
+        id: "resp_hybrid_bg_123",
+        status: "completed",
+        output_text: JSON.stringify(plan),
+        usage: { output_tokens: 91 }
+      }));
+    const options = { apiKey: "test-key", fetchFn: fetchMock as unknown as typeof fetch };
+
+    const pending = await submitHybridPlannerWithOpenAI({ package: plannerPackage, seed, background: true }, options);
+    const completed = await retrieveHybridPlannerWithOpenAI("resp_hybrid_bg_123", { package: plannerPackage, seed, background: true }, options);
+
+    expect(pending).toEqual({
+      status: "pending",
+      responseId: "resp_hybrid_bg_123",
+      providerStatus: "queued",
+      outputBytes: 0,
+      outputTokens: 0
+    });
+    expect(completed).toMatchObject({ status: "completed", responseId: "resp_hybrid_bg_123", candidate: plan, outputTokens: 91 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(["POST", "GET"]);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/responses/resp_hybrid_bg_123");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({ background: true, store: false });
+  });
+
+  it("rejects oversized or mismatched hybrid retrieval output without another POST", async () => {
+    const { seed, plannerPackage, plan } = hybridFixture();
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      id: "resp_other_123",
+      status: "completed",
+      output_text: JSON.stringify({ ...plan, extra: "x".repeat(17_000) })
+    }));
+
+    await expect(retrieveHybridPlannerWithOpenAI(
+      "resp_hybrid_bg_123",
+      { package: plannerPackage, seed, background: true },
+      { apiKey: "test-key", fetchFn: fetchMock as unknown as typeof fetch }
+    )).rejects.toMatchObject({ code: "openai_response_invalid" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("GET");
+  });
+
   it("submits semantic analysis in background mode without storing provider output", async () => {
     const input = demoScenarios.clean;
     const report = generateVerificationReport(input);
@@ -529,6 +606,38 @@ describe("OpenAI semantic adapter", () => {
     45_000
   );
 });
+
+function hybridFixture() {
+  const input = {
+    title: "Retry transient requests",
+    description: "Implements retry handling.",
+    taskText: "Acceptance criteria:\n- Add retry handling.",
+    taskSource: "issue" as const,
+    changedFiles: [],
+    checks: [],
+    logs: [],
+    sourceProvenance: {
+      version: 1 as const,
+      origin: "github_snapshot" as const,
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
+      evidenceCapturedAt: "2026-08-12T00:00:00.000Z",
+      inputFingerprint: { version: 1 as const, algorithm: "sha256" as const, value: "c".repeat(64), coverage: "github_metadata" as const }
+    }
+  };
+  const extracted = extractRequirementSpanSeed(input.taskText, input.description, input.taskSource);
+  if (!extracted.seed) throw new Error("expected hybrid seed");
+  const seed = bindHybridPlannerSeedHash(extracted.seed, input.sourceProvenance);
+  if (!seed) throw new Error("expected bound seed");
+  const plannerPackage = buildHybridPlannerPackage(seed, input.sourceProvenance);
+  if (!plannerPackage) throw new Error("expected planner package");
+  const plan = buildHybridPlannerPlan(seed, input.sourceProvenance, seed.spans.map(() => ({
+    disposition: "admit" as const,
+    classification: "requirement" as const,
+    expected_axes: []
+  })))!;
+  return { input, seed, plannerPackage, plan };
+}
 
 function semanticOutput(requirementId: string, evidenceId: string) {
   return {
