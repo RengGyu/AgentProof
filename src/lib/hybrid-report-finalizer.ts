@@ -111,7 +111,8 @@ export function finalizeHybridVerificationReport(
   const report = generateVerificationReportFromRequirements(reportInput, {
     requirements: materialized.requirements,
     contexts: currentSeed.contexts,
-    proofExpectationsByRequirement: materialized.expectations
+    proofExpectationsByRequirement: materialized.expectations,
+    evidenceContextRequirementIdsByRequirement: materialized.evidenceContextRequirementIds
   });
   report.analysisContext = currentSeed.analysisContext;
   report.planner = {
@@ -187,12 +188,14 @@ function materializeRequirements(
   requirements: Requirement[];
   expectations: Map<string, RequirementProofExpectations>;
   plannerAxisSubjects: Map<string, RequirementProofSubject[]>;
+  evidenceContextRequirementIds: Map<string, string[]>;
   omittedPrCandidate: boolean;
 } | null {
   const requirements: Requirement[] = [];
   const expectations = new Map<string, RequirementProofExpectations>();
   const ownAxesBySpan = new Map<string, AxisMap>();
   const plannerAxisSubjects = new Map<string, RequirementProofSubject[]>();
+  const evidenceContextRequirementIds = new Map<string, string[]>();
   const admittedIds = new Set<string>();
   let omittedPrCandidate = false;
 
@@ -240,9 +243,28 @@ function materializeRequirements(
     requirements.push(requirement);
     expectations.set(requirement.id, axesToExpectations(effectiveAxes));
     if (ownPlannerSubjects.length > 0) plannerAxisSubjects.set(requirement.id, ownPlannerSubjects);
+    if (ownAxes.get("targeted_test") === "present" && ownAxes.get("implementation") !== "present") {
+      const contextIds = span.immediateParentSpanId && admittedIds.has(span.immediateParentSpanId)
+        ? [span.immediateParentSpanId]
+        : seed.spans
+          .slice(0, index)
+          .filter((candidate) =>
+            candidate.groupId === span.groupId &&
+            candidate.immediateParentSpanId === null &&
+            admittedIds.has(candidate.id)
+          )
+          .map((candidate) => candidate.id);
+      if (contextIds.length > 0) evidenceContextRequirementIds.set(requirement.id, contextIds);
+    }
   }
 
-  return { requirements, expectations, plannerAxisSubjects, omittedPrCandidate };
+  return {
+    requirements,
+    expectations,
+    plannerAxisSubjects,
+    evidenceContextRequirementIds,
+    omittedPrCandidate
+  };
 }
 
 type AxisMap = Map<RequirementProofSubject, PlannerAxis["polarity"]>;

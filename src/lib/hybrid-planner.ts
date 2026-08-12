@@ -363,18 +363,26 @@ function isValidSeed(value: unknown, allowUnbound: boolean): value is Requiremen
   let priorEnd = -1;
   let group = 1;
   let ordinal = 0;
-  let priorId: RequirementSpanId | null = null;
+  let earlierIdsInGroup = new Set<RequirementSpanId>();
   for (const span of value.spans) {
     if (!isValidSpan(span)) return false;
     const groupMatch = /^grp_([1-9][0-9]*)$/.exec(span.groupId);
     if (!groupMatch) return false;
     const spanGroup = Number(groupMatch[1]);
-    if (spanGroup === group + 1) { group = spanGroup; ordinal = 0; priorId = null; }
+    if (spanGroup === group + 1) {
+      group = spanGroup;
+      ordinal = 0;
+      earlierIdsInGroup = new Set<RequirementSpanId>();
+    }
     else if (spanGroup !== group) return false;
     ordinal += 1;
-    if (span.id !== `sp_${group}_${ordinal}` || span.immediateParentSpanId !== priorId || span.start < priorEnd) return false;
+    if (
+      span.id !== `sp_${group}_${ordinal}` ||
+      (span.immediateParentSpanId !== null && !earlierIdsInGroup.has(span.immediateParentSpanId)) ||
+      span.start < priorEnd
+    ) return false;
     priorEnd = span.end;
-    priorId = span.id;
+    earlierIdsInGroup.add(span.id);
   }
   const policy = SEED_SOURCE_POLICY[value.analysisContext as HybridAnalysisContext];
   return value.spans.every((span) => span.source === policy.source && span.authority === policy.authority)

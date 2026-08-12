@@ -506,6 +506,47 @@ describe("validateVerificationReport", () => {
     const unrelatedResult = validateVerificationReport(unrelatedExecution, { mode: "full" });
     expect(unrelatedResult.valid).toBe(false);
     expect(unrelatedResult.errors.join("\n")).toContain("incompatible evidence");
+
+    const pairedForgery = generateVerificationReport({
+      title: "Add retry queue tests",
+      description: "Adds retry queue synchronization tests.",
+      taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
+      taskSource: "issue",
+      changedFiles: [
+        { path: "test/retry-queue.test.ts", status: "added", patch: "+ test('retry queue synchronization', () => {})" },
+        { path: "test/customer-export.test.ts", status: "added", patch: "+ test('customer export', () => {})" }
+      ],
+      checks: [
+        { name: "retry queue tests", status: "passed", summary: "Retry queue synchronization tests passed." },
+        { name: "customer export tests", status: "passed", summary: "Customer export tests passed." }
+      ],
+      logs: []
+    });
+    const pairedRequirement = pairedForgery.requirements[0]!;
+    const pairedNode = pairedForgery.proofGraph.nodes[0]!;
+    const unrelatedTestRef = pairedForgery.evidenceIndex.find((item) =>
+      item.kind === "test" && item.locator === "test/customer-export.test.ts"
+    )!.id;
+    const unrelatedCheckRef = pairedForgery.evidenceIndex.find((item) =>
+      item.kind === "check" && item.label === "customer export tests"
+    )!.id;
+    pairedRequirement.status = "met";
+    pairedRequirement.gaps = [];
+    pairedRequirement.proofAxes = pairedRequirement.proofAxes!.map((axis) =>
+      axis.subject === "targeted_test"
+        ? { ...axis, state: "satisfied", evidenceRefs: [unrelatedTestRef], collectionBasis: "matching_artifact_evidence" }
+        : axis.subject === "execution"
+          ? { ...axis, state: "satisfied", evidenceRefs: [unrelatedCheckRef], collectionBasis: "passing_execution" }
+          : axis
+    );
+    pairedNode.status = "met";
+    pairedNode.targetedTestEvidenceRefs = [unrelatedTestRef];
+    pairedNode.executionEvidenceRefs = [unrelatedCheckRef];
+    pairedNode.gapSignals = [];
+
+    const pairedForgeryResult = validateVerificationReport(pairedForgery, { mode: "full" });
+    expect(pairedForgeryResult.valid).toBe(false);
+    expect(pairedForgeryResult.errors.join("\n")).toContain("incompatible evidence");
   });
 
   it("rejects a forged manual-check ambiguity on an all-satisfied authoritative requirement", () => {

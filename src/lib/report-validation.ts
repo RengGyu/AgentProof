@@ -5,6 +5,10 @@ import {
   isExecutionEvidenceSignal,
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
+import {
+  artifactEvidenceMatchesAnyPath,
+  executionEvidenceMatchesAnyTestPath
+} from "./evidence-relation";
 import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
 import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
 import {
@@ -1329,11 +1333,19 @@ function isSatisfiedAxisEvidenceCompatible(
     return collectionBasis === "matching_artifact_evidence" && isImplementationProofEvidence(evidence) && isCiEvidencePath(path) && implementationRefs.has(ref);
   }
   if (subject === "targeted_test") {
-    return collectionBasis === "matching_artifact_evidence" && evidence.kind === "test" && targetedTestRefs.has(ref);
+    return collectionBasis === "matching_artifact_evidence" &&
+      evidence.kind === "test" &&
+      targetedTestRefs.has(ref) &&
+      targetedTestEvidenceMatchesRequirement(report, proofNode, requirementText, evidence);
   }
   if (subject === "execution") {
     if (collectionBasis === "passing_execution") {
-      return isPassingTestExecutionEvidence(evidence) && executionRefs.has(ref) && evidenceOverlapsRequirement(requirementText, evidence);
+      return isPassingTestExecutionEvidence(evidence) &&
+        executionRefs.has(ref) &&
+        (
+          evidenceOverlapsRequirement(requirementText, evidence) ||
+          executionEvidenceMatchesTargetedTests(report, proofNode, evidence)
+        );
     }
     if (collectionBasis === "passing_suite_execution") {
       return isVerifiedSuiteExecutionEvidenceCompatible(report, evidence, proofNode, ref);
@@ -1347,6 +1359,48 @@ function isSatisfiedAxisEvidenceCompatible(
     return collectionBasis === "interaction_verification" && isVisualVerificationProofEvidence(evidence) && evidenceOverlapsRequirement(requirementText, evidence);
   }
   return false;
+}
+
+function targetedTestEvidenceMatchesRequirement(
+  report: RecordValue,
+  proofNode: RecordValue | undefined,
+  requirementText: string,
+  evidence: RecordValue
+): boolean {
+  if (evidenceOverlapsRequirement(requirementText, evidence)) return true;
+  if (!Array.isArray(report.evidenceIndex)) return false;
+
+  const implementationRefs = new Set(getStringArray(proofNode?.implementationEvidenceRefs));
+  const implementationPaths = report.evidenceIndex
+    .filter(isRecord)
+    .filter((item) => typeof item.id === "string" && implementationRefs.has(item.id))
+    .map((item) => typeof item.locator === "string" ? item.locator : typeof item.label === "string" ? item.label : "")
+    .filter(Boolean);
+  const label = typeof evidence.label === "string" ? evidence.label : "";
+  const summary = typeof evidence.summary === "string" ? evidence.summary : "";
+  const locator = typeof evidence.locator === "string" ? evidence.locator : "";
+  if (artifactEvidenceMatchesAnyPath([requirementText], label, summary, locator)) return true;
+  if (artifactEvidenceMatchesAnyPath(implementationPaths, label, summary, locator)) return true;
+  return false;
+}
+
+function executionEvidenceMatchesTargetedTests(
+  report: RecordValue,
+  proofNode: RecordValue | undefined,
+  evidence: RecordValue
+): boolean {
+  const targetedTestRefs = new Set(getStringArray(proofNode?.targetedTestEvidenceRefs));
+  if (targetedTestRefs.size === 0 || !Array.isArray(report.evidenceIndex)) return false;
+  const testPaths = report.evidenceIndex
+    .filter(isRecord)
+    .filter((item) => typeof item.id === "string" && targetedTestRefs.has(item.id) && item.kind === "test")
+    .map((item) => typeof item.locator === "string" ? item.locator : typeof item.label === "string" ? item.label : "")
+    .filter(Boolean);
+  const label = typeof evidence.label === "string" ? evidence.label : "";
+  const summary = typeof evidence.summary === "string" ? evidence.summary : "";
+  const locator = typeof evidence.locator === "string" ? evidence.locator : "";
+
+  return executionEvidenceMatchesAnyTestPath(testPaths, label, summary, locator);
 }
 
 function isVerifiedSuiteExecutionEvidenceCompatible(

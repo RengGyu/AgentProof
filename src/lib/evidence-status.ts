@@ -1,5 +1,5 @@
 export const STRONG_EXECUTION_EVIDENCE_PATTERN =
-  /\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|pytest|tox)\b/i;
+  /(?:\b(test|tests|spec|unit|integration|e2e|vitest|jest|playwright|cypress|pytest|tox)\b|테스트|시험)/i;
 export const WEAK_EXECUTION_EVIDENCE_PATTERN = /\bbuild\b/i;
 export const NON_EXECUTION_GATE_PATTERN =
   /\b(ai[- ]?review|allowed failure|allow failure|backport|changelog|change log|code[- ]owners?|codecov|coverage (?:gate|policy|report|threshold|upload)|coveralls|dependency|dependencies|deprecation|deploy|deployment|docs?|documentation|do not merge|label|license|licenses|merge[- ]?gate|non[- ]?blocking|optional|owners|patch coverage|policies|policy|preview|prevent merging|project coverage|provenance|readthedocs|read the docs|release notes?|required checks?|report|review|sast|scan|secret|secrets|security|semver|stats?|towncrier)\b/i;
