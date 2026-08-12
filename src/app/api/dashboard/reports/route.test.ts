@@ -170,6 +170,34 @@ describe("/api/dashboard/reports", () => {
     expect(serialized).not.toContain("rawLog");
   });
 
+  it("does not let a historical unavailable report block a current copy bundle", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const current = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 10,
+      headSha: "b".repeat(40)
+    });
+    const historicalUnavailable = {
+      ...current,
+      id: "report_historical_unavailable",
+      availability: "unavailable" as const,
+      staleAt: "2026-08-12T00:00:00.000Z"
+    };
+    vi.spyOn(savedReportStore, "listTenantSavedReportDetails").mockResolvedValue([historicalUnavailable, current]);
+
+    const response = await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=100&scope=current", {
+      headers: { cookie: session.sessionCookie }
+    }));
+    const body = await response.json();
+
+    expect(body).toMatchObject({
+      bundle: { complete: true, truncated: false },
+      reports: [{ headSha: current.headSha, copyEligible: true }]
+    });
+  });
+
   it("never returns an older saved report as copy eligible while a newer exact PR analysis is refreshing", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");

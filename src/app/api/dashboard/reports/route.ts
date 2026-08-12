@@ -30,14 +30,18 @@ export async function GET(request: Request) {
       const truncated = savedReports.length > TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT;
       const candidates = savedReports.slice(0, TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT);
       const details = await Promise.all(candidates.map((saved) => toDashboardReportDetail(saved, tenantId)));
-      const complete = !truncated && details.every((detail) => detail.availability !== "unavailable" && detail.freshness !== "unknown");
+      const currentDetails = details.filter((detail, index) => {
+        const saved = candidates[index];
+        return detail.freshness !== "stale" && !(detail.freshness === "unknown" && saved?.staleAt);
+      });
+      const complete = !truncated && currentDetails.every((detail) => detail.availability !== "unavailable" && detail.freshness !== "unknown");
       return noStoreJson({
         ok: true,
-        reports: complete ? details.filter((detail) => detail.copyEligible) : [],
+        reports: complete ? currentDetails.filter((detail) => detail.copyEligible) : [],
         bundle: {
           complete,
           truncated,
-          excluded: candidates.filter((saved, index) => !details[index]?.copyEligible).length
+          excluded: currentDetails.filter((detail) => !detail.copyEligible).length
         },
         privacy: "tenant-sanitized-detail-bundle"
       });
