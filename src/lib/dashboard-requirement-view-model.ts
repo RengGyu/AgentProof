@@ -1,5 +1,7 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
 import { toRequirementCoverageLabel } from "./github-dashboard-view-model";
+import { proofAxisEvidenceLabel } from "./proof-contract";
+import type { RequirementProofAxis } from "./types";
 import { tenantRemediationTextForGap } from "./tenant-report-language";
 import { isProhibitedEvidenceRequestText } from "./semantic-text-policy";
 
@@ -12,6 +14,7 @@ export interface DashboardRequirementViewModel {
   coverageLabel: string;
   coverageMeaning: string;
   evidenceRefs: string[];
+  proofEvidence?: string[];
   deterministicGaps: string[];
   explanation: { state: RequirementExplanationState; text: string };
   primaryGap?: string;
@@ -28,6 +31,7 @@ interface RequirementInput {
   status: string;
   evidenceRefs: string[];
   gaps: string[];
+  proofAxes?: RequirementProofAxis[];
 }
 
 interface RequirementViewModelInput {
@@ -75,6 +79,10 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       coverageLabel: toRequirementCoverageLabel(requirement.status),
       coverageMeaning: toCoverageMeaning(requirement.status),
       evidenceRefs: requirement.evidenceRefs,
+      proofEvidence: unique(requirement.proofAxes?.flatMap((axis) => {
+        const label = proofAxisEvidenceLabel(axis);
+        return label ? [label] : [];
+      }) ?? []),
       deterministicGaps: requirement.gaps.flatMap((gap) => usableCompactText(gap) ?? []),
       explanation,
       ...(primaryGap ? { primaryGap } : {}),

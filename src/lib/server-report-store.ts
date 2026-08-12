@@ -9,8 +9,15 @@ import {
 import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
 import { validateVerificationReport } from "./report-validation";
-import { isSafeTenantLocator, isTenantPersistedReport, projectTenantPersistedReport, tenantObjectiveLabel, type TenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
-import { tenantGapKind, tenantGapText, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
+import {
+  decodeTenantPersistedReport,
+  isSafeTenantLocator,
+  projectTenantPersistedReport,
+  tenantObjectiveLabel,
+  type TenantPersistedReport,
+  validateTenantStoredReport
+} from "./tenant-report-validation";
+import { tenantGapText, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
 import type { RequirementProofAxis, VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -40,6 +47,8 @@ export interface StoredServerReport {
   pullRequestNumber?: number;
   headSha?: string;
   staleAt?: string;
+  /** Invalid tenant payloads keep only this metadata-only state. */
+  availability?: "available" | "unavailable";
 }
 
 export interface SavedReportAccessContext {
@@ -96,6 +105,7 @@ export interface TenantSavedReportSummary {
   reviewPriorityCount: number;
   scopeCreepSuspected: boolean;
   staleAt?: string;
+  availability?: "available" | "unavailable";
   privacy: "summary-only";
 }
 
@@ -915,6 +925,26 @@ function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
 }
 
 function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedReportSummary | null {
+  if (saved.availability === "unavailable") {
+    return {
+      id: saved.id,
+      createdAt: saved.createdAt,
+      expiresAt: saved.expiresAt,
+      ...(saved.repositoryId ? { repositoryId: saved.repositoryId } : {}),
+      ...(saved.pullRequestNumber ? { pullRequestNumber: saved.pullRequestNumber } : {}),
+      ...(saved.headSha ? { headSha: saved.headSha } : {}),
+      sourceTitle: "Saved report unavailable",
+      priority: "low",
+      evidenceCoverage: 0,
+      requirementCounts: { met: 0, partial: 0, missing: 0, unclear: 0 },
+      testing: { ciStatus: "unknown", lintStatus: "unknown", typecheckStatus: "unknown", missingTestCount: 0 },
+      reviewPriorityCount: 0,
+      scopeCreepSuspected: false,
+      ...(saved.staleAt ? { staleAt: saved.staleAt } : {}),
+      availability: "unavailable",
+      privacy: "summary-only"
+    };
+  }
   const validation = saved.tenantId && saved.report.authenticity?.trust === "verified_agentproof"
     ? validateTenantStoredReport(saved.report, requireReportSigningSecret())
     : validateVerificationReport(saved.report, { mode: "summary" });
@@ -947,6 +977,7 @@ function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedRepor
     reviewPriorityCount: report.reviewPriority.length,
     scopeCreepSuspected: report.scope.suspected,
     ...(saved.staleAt ? { staleAt: saved.staleAt } : {}),
+    availability: "available",
     privacy: "summary-only"
   };
 }
@@ -1020,12 +1051,10 @@ function toSupabaseTenantReportRpc(saved: StoredServerReport) {
 
 function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerReport | null {
   if (!row) return null;
-
-  return sanitizeStoredReport({
+  const saved = {
     id: row.id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
-    report: hydratePersistedTenantReport(row.report, row.created_at),
     tenantId: row.tenant_id ?? undefined,
     accessTokenHash: row.access_token_hash ?? undefined,
     installationId: row.installation_id ?? undefined,
@@ -1033,7 +1062,18 @@ function rowToStoredReport(row: SupabaseReportRow | undefined): StoredServerRepo
     pullRequestNumber: row.pull_request_number ?? undefined,
     headSha: row.head_sha ?? undefined,
     staleAt: row.stale_at ?? undefined
-  });
+  } satisfies Omit<StoredServerReport, "report">;
+
+  if (saved.tenantId && looksLikeTenantPersistedCandidate(row.report)) {
+    const decoded = decodeTenantPersistedReport(row.report, {
+      signingSecret: requireReportSigningSecret(),
+      createdAt: saved.createdAt
+    });
+    if (decoded.status === "invalid") return unavailableStoredReport(saved);
+    return sanitizeStoredReport({ ...saved, report: decoded.report, availability: "available" });
+  }
+
+  return sanitizeStoredReport({ ...saved, report: row.report as VerificationReport });
 }
 
 function reportForPersistence(saved: StoredServerReport): VerificationReport | TenantPersistedReport {
@@ -1043,59 +1083,32 @@ function reportForPersistence(saved: StoredServerReport): VerificationReport | T
   return saved.report;
 }
 
-function hydratePersistedTenantReport(report: VerificationReport | TenantPersistedReport, createdAt: string): VerificationReport {
-  if (!looksLikeTenantPersistedReport(report)) return report as VerificationReport;
-  const secret = requireReportSigningSecret();
-  if (!isTenantPersistedReport(report, secret)) return report as VerificationReport;
-  const hydratedSourceQuality = report.analysisContext === "unlinked_pr"
-    ? "author_claim" as const
-    : report.analysisContext === "linked_issue"
-      ? "linked_issue" as const
-      : "fallback" as const;
-  const proofNodes = report.requirements.map((item) => ({
-    requirementId: item.requirementId,
-    requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`,
-    sourceRole: "core_requirement" as const,
-    sourceQuality: hydratedSourceQuality,
-    sourceSection: null,
-    contextRoles: [],
-    status: item.status,
-    confidence: 0,
-    implementationEvidenceRefs: [],
-    targetedTestEvidenceRefs: [],
-    executionEvidenceRefs: [],
-    gapSignals: item.gaps.map((message) => ({ kind: tenantGapKind(message), severity: report.priority, message, evidenceRefs: [] })),
-    firstFiles: []
-  }));
-  const hydrated: VerificationReport = {
-    analysisId: "tenant-saved-report",
-    createdAt,
-    analysisContext: report.analysisContext,
-    source: { title: "GitHub pull request evidence report" },
-    summary: { oneLine: "Grounded verification result; review structured evidence.", confidence: 0, priority: report.priority, evidenceCoverage: 0, topRisks: [] },
-    requirements: report.requirements.map((item) => ({
-      requirementId: item.requirementId,
-      requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`,
-      status: item.status,
-      evidenceRefs: item.evidenceRefs,
-      gaps: item.gaps,
-      reviewerNote: "Review the linked evidence and safe locations.",
-      confidence: 0,
-      ...(item.proofAxes ? { proofAxes: copyProofAxes(item.proofAxes) } : {})
-    })),
-    claims: [],
-    scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
-    testing: { ...report.testing, missingTests: [] },
-    reviewPriority: report.reviewPriority.map((item) => ({ path: item.path, priority: item.priority, evidenceRefs: item.evidenceRefs, reason: "Review priority based on grounded evidence." })),
-    proofGraph: { version: 1, nodes: proofNodes, context: [], summary: { requirementCount: proofNodes.length, requirementsWithImplementation: 0, requirementsWithTargetedTests: 0, requirementsWithExecution: 0, requirementsWithGaps: proofNodes.filter((node) => node.gapSignals.length > 0).length, gapCount: proofNodes.reduce((count, node) => count + node.gapSignals.length, 0) } },
-    reprompt: { targetAgent: "codex", prompt: report.reprompt.prompt },
-    evidenceIndex: report.evidenceIndex.map((item) => ({ id: item.id, kind: item.kind ?? "inference", label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", confidence: 0, ...(item.locator ? { locator: item.locator } : {}) })),
-    limitations: ["Some evidence was unavailable or intentionally omitted for privacy."],
-    ...(report.semantic ? { semantic: report.semantic } : {}),
-    ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
+function unavailableStoredReport(saved: Omit<StoredServerReport, "report">): StoredServerReport {
+  return {
+    ...saved,
+    availability: "unavailable",
+    report: {
+      analysisId: "tenant-report-unavailable",
+      createdAt: saved.createdAt,
+      source: { title: "Saved report unavailable" },
+      summary: { oneLine: "Saved report unavailable.", confidence: 0, priority: "low", evidenceCoverage: 0, topRisks: [] },
+      requirements: [],
+      claims: [],
+      scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
+      testing: { ciStatus: "unknown", lintStatus: "unknown", typecheckStatus: "unknown", missingTests: [] },
+      reviewPriority: [],
+      proofGraph: {
+        version: 1,
+        nodes: [],
+        context: [],
+        summary: { requirementCount: 0, requirementsWithImplementation: 0, requirementsWithTargetedTests: 0, requirementsWithExecution: 0, requirementsWithGaps: 0, gapCount: 0 }
+      },
+      reprompt: { targetAgent: "codex", prompt: "Review the linked evidence." },
+      evidenceIndex: [],
+      limitations: ["Some evidence was unavailable or intentionally omitted for privacy."],
+      authenticity: createUnverifiedAuthenticity("imported_unverified")
+    }
   };
-  hydrated.authenticity = createVerifiedAuthenticity(hydrated, secret);
-  return hydrated;
 }
 
 function copyProofAxes(axes: RequirementProofAxis[]): RequirementProofAxis[] {
@@ -1108,8 +1121,13 @@ function copyProofAxes(axes: RequirementProofAxis[]): RequirementProofAxis[] {
   }));
 }
 
-function looksLikeTenantPersistedReport(report: unknown): report is TenantPersistedReport {
-  return Boolean(report && typeof report === "object" && !Array.isArray(report) && "integrity" in report && "version" in report);
+function looksLikeTenantPersistedCandidate(report: unknown): report is TenantPersistedReport {
+  return Boolean(
+    report &&
+      typeof report === "object" &&
+      !Array.isArray(report) &&
+      ("integrity" in report || "version" in report)
+  );
 }
 
 function sanitizeStoredReport(saved: StoredServerReport): StoredServerReport | null {

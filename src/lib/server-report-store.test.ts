@@ -18,7 +18,7 @@ import {
   SavedReportStoreError
 } from "./server-report-store";
 import { createVerifiedAuthenticity } from "./report-authenticity";
-import { projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
+import { decodeTenantPersistedReport, projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
 import type { VerificationReport } from "./types";
 import { generateVerificationReport } from "./verifier";
 
@@ -291,6 +291,68 @@ describe("server report store", () => {
     expect(validateTenantPersistedReport(unsignedNestedField, signingSecret).errors).toContain(
       "tenant persisted priority file has disallowed fields."
     );
+  });
+
+  it("keeps historical v1 interaction and suite-execution proof values readable after JSON round-trip", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    const headSha = "b".repeat(40);
+    const report = generateVerificationReport(demoScenarios.clean);
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 5,
+      headSha
+    });
+    const requirement = saved.report.requirements[0]!;
+    const interactionEvidence = saved.report.evidenceIndex.find((item) => item.kind === "check")!;
+    requirement.proofAxes = [
+      ...(requirement.proofAxes ?? []).filter((axis) => axis.subject !== "interaction" && axis.subject !== "execution"),
+      {
+        subject: "execution",
+        polarity: "present",
+        state: "satisfied",
+        evidenceRefs: [interactionEvidence.id],
+        collectionBasis: "passing_suite_execution"
+      },
+      {
+        subject: "interaction",
+        polarity: "present",
+        state: "satisfied",
+        evidenceRefs: [interactionEvidence.id],
+        collectionBasis: "interaction_verification"
+      }
+    ];
+
+    const persisted = JSON.parse(JSON.stringify(projectTenantPersistedReport(saved.report, signingSecret)));
+
+    expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(decodeTenantPersistedReport(persisted, { signingSecret, createdAt: saved.createdAt })).toMatchObject({
+      status: "valid",
+      contractVersion: 1,
+      report: { requirements: expect.any(Array) }
+    });
+  });
+
+  it("returns only a bounded reason when a signed persisted proof contract is unknown", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 8, headSha: "c".repeat(40)
+    });
+    saved.report.requirements[0]!.proofAxes = [{
+      subject: "unknown_subject" as never,
+      polarity: "present",
+      state: "incomplete",
+      evidenceRefs: []
+    }];
+    const persisted = projectTenantPersistedReport(saved.report, signingSecret);
+
+    expect(decodeTenantPersistedReport(persisted, { signingSecret, createdAt: saved.createdAt })).toEqual({
+      status: "invalid",
+      reasonCode: "invalid_proof_contract"
+    });
   });
 
   it("rejects unsafe objective-label source text instead of persisting raw source details", async () => {
@@ -955,6 +1017,75 @@ describe("server report store", () => {
     expect(serialized).not.toContain("evidenceIndex");
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
+  });
+
+  it("keeps an invalid signed tenant payload visible as metadata only", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 5, headSha: "d".repeat(40)
+    });
+    saved.report.requirements[0]!.proofAxes = [{
+      subject: "unknown_subject" as never,
+      polarity: "present",
+      state: "incomplete",
+      evidenceRefs: []
+    }];
+    const row = {
+      id: saved.id,
+      created_at: saved.createdAt,
+      expires_at: saved.expiresAt,
+      tenant_id: "tenant_a",
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 5,
+      head_sha: "d".repeat(40),
+      report: projectTenantPersistedReport(saved.report, signingSecret)
+    };
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    global.fetch = vi.fn(async () => Response.json([row])) as typeof fetch;
+
+    await expect(listTenantSavedReports({ tenantId: "tenant_a", limit: 25 })).resolves.toEqual([
+      expect.objectContaining({
+        id: saved.id,
+        repositoryId: 100,
+        pullRequestNumber: 5,
+        availability: "unavailable",
+        privacy: "summary-only"
+      })
+    ]);
+    await expect(listTenantSavedReportDetails({ tenantId: "tenant_a", repositoryId: 100, limit: 25 })).resolves.toEqual([
+      expect.objectContaining({ id: saved.id, availability: "unavailable" })
+    ]);
+  });
+
+  it("keeps a tenant payload with a missing contract version visible as metadata only", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 6, headSha: "e".repeat(40)
+    });
+    const report = projectTenantPersistedReport(saved.report, signingSecret) as unknown as Record<string, unknown>;
+    delete report.version;
+    const row = {
+      id: saved.id,
+      created_at: saved.createdAt,
+      expires_at: saved.expiresAt,
+      tenant_id: "tenant_a",
+      installation_id: 321,
+      repository_id: 100,
+      pull_request_number: 6,
+      head_sha: "e".repeat(40),
+      report
+    };
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    global.fetch = vi.fn(async () => Response.json([row])) as typeof fetch;
+
+    await expect(listTenantSavedReports({ tenantId: "tenant_a", limit: 25 })).resolves.toEqual([
+      expect.objectContaining({ id: saved.id, availability: "unavailable" })
+    ]);
   });
 
   it("filters a Supabase detail bundle by repository and current state at the query boundary", async () => {

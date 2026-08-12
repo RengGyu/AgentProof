@@ -7,22 +7,20 @@ import {
 } from "./evidence-status";
 import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
 import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
+import {
+  PROOF_AXIS_COLLECTION_BASES,
+  PROOF_AXIS_SUBJECTS,
+  isProofAxisCollectionBasis,
+  isProofAxisCollectionBasisAllowed,
+  isProofAxisSubject,
+} from "./proof-contract";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
-const PROOF_AXIS_SUBJECTS = new Set(["implementation", "documentation", "ci_configuration", "targeted_test", "execution", "interaction", "visual"]);
 const PROOF_AXIS_POLARITIES = new Set(["present", "absent"]);
 const PROOF_AXIS_STATES = new Set(["satisfied", "violated", "incomplete"]);
-const PROOF_COLLECTION_BASES = new Set([
-  "complete_changed_file_inventory",
-  "incomplete_changed_file_inventory",
-  "matching_artifact_evidence",
-  "passing_execution",
-  "passing_suite_execution",
-  "failed_execution",
-  "interaction_verification",
-  "visual_verification"
-]);
+const PROOF_AXIS_SUBJECT_SET = new Set<string>(PROOF_AXIS_SUBJECTS);
+const PROOF_COLLECTION_BASES = new Set<string>(PROOF_AXIS_COLLECTION_BASES);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
 const EVIDENCE_KINDS = new Set(["task", "pr_description", "diff", "changed_file", "check", "log", "test", "inference"]);
 const TARGET_AGENTS = new Set(["codex", "claude_code", "cursor", "copilot"]);
@@ -397,12 +395,15 @@ function validateRequirementProofAxes(value: unknown, path: string, evidenceIds:
       continue;
     }
     requireKeys(item, ["subject", "polarity", "state", "evidenceRefs"], itemPath, errors, ["collectionBasis"]);
-    validateEnum(item.subject, `${itemPath}.subject`, PROOF_AXIS_SUBJECTS, errors);
+    validateEnum(item.subject, `${itemPath}.subject`, PROOF_AXIS_SUBJECT_SET, errors);
     validateEnum(item.polarity, `${itemPath}.polarity`, PROOF_AXIS_POLARITIES, errors);
     validateEnum(item.state, `${itemPath}.state`, PROOF_AXIS_STATES, errors);
     validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
     if ("collectionBasis" in item) {
       validateEnum(item.collectionBasis, `${itemPath}.collectionBasis`, PROOF_COLLECTION_BASES, errors);
+    }
+    if (isProofAxisSubject(item.subject) && isProofAxisCollectionBasis(item.collectionBasis) && !isProofAxisCollectionBasisAllowed(item.subject, item.collectionBasis)) {
+      errors.push(`${itemPath}.collectionBasis is incompatible with its proof axis subject.`);
     }
     if (typeof item.subject === "string" && typeof item.polarity === "string") {
       const key = `${item.subject}:${item.polarity}`;

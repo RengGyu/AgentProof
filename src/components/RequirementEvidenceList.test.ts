@@ -19,6 +19,7 @@ describe("RequirementEvidenceList", () => {
       nextAction: "Add focused edge-case coverage.",
       inspectFirst: "Inspect the retry transition.",
       actionIncluded: false,
+      proofEvidence: ["The repository test suite ran successfully for this PR."],
       semanticEvidenceIds: ["ev_1"],
       uncertainties: ["medium"]
     }] }));
@@ -35,6 +36,7 @@ describe("RequirementEvidenceList", () => {
     expect(markup).toMatch(/<details\b[^>]*name="requirement-evidence"/);
     expect(markup).not.toMatch(/<details\b[^>]*\bopen(?:=|\s|>)/);
     expect(markup).toContain("Coverage is based on deterministic evidence captured for this requirement.");
+    expect(markup).toContain("The repository test suite ran successfully for this PR.");
     expect(markup).toContain("Deterministic evidence references only partially support this requirement.");
     expect(markup).toContain("2 evidence references");
     expect(markup).toContain("ev_1, ev_2");

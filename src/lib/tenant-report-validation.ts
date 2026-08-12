@@ -1,14 +1,20 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { containsSecretPattern } from "./redact";
-import { verifyVerifiedAuthenticity } from "./report-authenticity";
+import { createVerifiedAuthenticity, verifyVerifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport, type ReportValidationResult } from "./report-validation";
 import { validateLlmSemanticCandidate, type LlmSemanticOutput } from "./llm-semantic-output";
 import {
   ALLOWED_TENANT_GAP_TEXTS,
   ALLOWED_TENANT_REMEDIATION_TEXTS,
+  tenantGapKind,
   tenantReportAnalysisContext,
   type TenantReportAnalysisContext
 } from "./tenant-report-language";
+import {
+  isProofAxisCollectionBasis,
+  isProofAxisCollectionBasisAllowed,
+  isProofAxisSubject
+} from "./proof-contract";
 import type { CheckStatus, EvidenceKind, PriorityLevel, RequirementProofAxis, RequirementStatus, VerificationReport } from "./types";
 
 const TENANT_REPORT_MAX_BYTES = 256 * 1024;
@@ -35,6 +41,18 @@ export interface TenantPersistedReport {
   semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
   integrity: { version: 1; algorithm: "hmac-sha256"; canonicalDigest: string; signature: string };
 }
+
+export type TenantReportDecodeReason =
+  | "unsupported_report_version"
+  | "invalid_report_signature"
+  | "invalid_report_shape"
+  | "invalid_proof_contract"
+  | "invalid_evidence_reference"
+  | "invalid_semantic_output";
+
+export type TenantReportDecodeResult =
+  | { status: "valid"; report: VerificationReport; contractVersion: 1 }
+  | { status: "invalid"; reasonCode: TenantReportDecodeReason };
 
 const FIXED = {
   sourceTitle: "GitHub pull request evidence report",
@@ -248,6 +266,110 @@ export function isTenantPersistedReport(value: unknown, signingSecret: string): 
   return validateTenantPersistedReport(value, signingSecret).valid;
 }
 
+/**
+ * The only persisted tenant-report read boundary. It intentionally emits a
+ * fixed reason code, never validation prose or a partially hydrated report.
+ */
+export function decodeTenantPersistedReport(
+  value: unknown,
+  input: { signingSecret: string; createdAt: string }
+): TenantReportDecodeResult {
+  const validation = validateTenantPersistedReport(value, input.signingSecret);
+  if (!validation.valid) return { status: "invalid", reasonCode: tenantReportDecodeReason(value, validation.errors) };
+
+  const report = value as TenantPersistedReport;
+  return {
+    status: "valid",
+    contractVersion: report.version,
+    report: hydrateTenantPersistedReport(report, input)
+  };
+}
+
+function tenantReportDecodeReason(value: unknown, errors: readonly string[]): TenantReportDecodeReason {
+  if (value && typeof value === "object" && !Array.isArray(value) && (value as { version?: unknown }).version !== 1) {
+    return "unsupported_report_version";
+  }
+  if (errors.some((error) => error.includes("signature"))) return "invalid_report_signature";
+  if (errors.some((error) => error.includes("proof axis"))) return "invalid_proof_contract";
+  if (errors.some((error) => error.includes("evidence"))) return "invalid_evidence_reference";
+  if (errors.some((error) => error.includes("semantic"))) return "invalid_semantic_output";
+  return "invalid_report_shape";
+}
+
+function hydrateTenantPersistedReport(
+  report: TenantPersistedReport,
+  input: { signingSecret: string; createdAt: string }
+): VerificationReport {
+  const sourceQuality = report.analysisContext === "unlinked_pr"
+    ? "author_claim" as const
+    : report.analysisContext === "linked_issue"
+      ? "linked_issue" as const
+      : "fallback" as const;
+  const proofNodes = report.requirements.map((item) => ({
+    requirementId: item.requirementId,
+    requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`,
+    sourceRole: "core_requirement" as const,
+    sourceQuality,
+    sourceSection: null,
+    contextRoles: [],
+    status: item.status,
+    confidence: 0,
+    implementationEvidenceRefs: [],
+    targetedTestEvidenceRefs: [],
+    executionEvidenceRefs: [],
+    gapSignals: item.gaps.map((message) => ({ kind: tenantGapKind(message), severity: report.priority, message, evidenceRefs: [] })),
+    firstFiles: []
+  }));
+  const hydrated: VerificationReport = {
+    analysisId: "tenant-saved-report",
+    createdAt: input.createdAt,
+    analysisContext: report.analysisContext,
+    source: { title: FIXED.sourceTitle },
+    summary: { oneLine: FIXED.summary, confidence: 0, priority: report.priority, evidenceCoverage: 0, topRisks: [] },
+    requirements: report.requirements.map((item) => ({
+      requirementId: item.requirementId,
+      requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`,
+      status: item.status,
+      evidenceRefs: [...item.evidenceRefs],
+      gaps: [...item.gaps],
+      reviewerNote: FIXED.reviewerNote,
+      confidence: 0,
+      ...(item.proofAxes ? { proofAxes: copyProofAxes(item.proofAxes) } : {})
+    })),
+    claims: [],
+    scope: { suspected: false, outOfScopeFiles: [], reasons: [] },
+    testing: { ...report.testing, missingTests: [] },
+    reviewPriority: report.reviewPriority.map((item) => ({ path: item.path, priority: item.priority, evidenceRefs: [...item.evidenceRefs], reason: FIXED.priorityReason })),
+    proofGraph: {
+      version: 1,
+      nodes: proofNodes,
+      context: [],
+      summary: {
+        requirementCount: proofNodes.length,
+        requirementsWithImplementation: 0,
+        requirementsWithTargetedTests: 0,
+        requirementsWithExecution: 0,
+        requirementsWithGaps: proofNodes.filter((node) => node.gapSignals.length > 0).length,
+        gapCount: proofNodes.reduce((count, node) => count + node.gapSignals.length, 0)
+      }
+    },
+    reprompt: { targetAgent: "codex", prompt: report.reprompt.prompt },
+    evidenceIndex: report.evidenceIndex.map((item) => ({
+      id: item.id,
+      kind: item.kind ?? "inference",
+      label: `Evidence ${item.id}`,
+      summary: FIXED.evidenceSummary,
+      confidence: 0,
+      ...(item.locator ? { locator: item.locator } : {})
+    })),
+    limitations: [FIXED.limitation],
+    ...(report.semantic ? { semantic: report.semantic } : {}),
+    ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
+  };
+  hydrated.authenticity = createVerifiedAuthenticity(hydrated, input.signingSecret);
+  return hydrated;
+}
+
 export function isSafeTenantLocator(value: string): boolean {
   if (!SAFE_LOCATOR_PATTERN.test(value) || value.startsWith("/") || value.includes("://") || value.includes("\\")) return false;
   return !value.split("/").some((segment) => segment === "..");
@@ -294,10 +416,13 @@ function validatePersistedProofAxes(value: unknown, evidenceIds: Set<string>, er
     }
     const item = axis as Record<string, unknown>;
     if (Object.keys(item).some((key) => !["subject", "polarity", "state", "evidenceRefs", "collectionBasis"].includes(key))) errors.push("tenant persisted proof axis has disallowed fields.");
-    if (!["implementation", "documentation", "ci_configuration", "targeted_test", "execution", "visual"].includes(String(item.subject))) errors.push("tenant persisted proof axis subject is invalid.");
+    if (!isProofAxisSubject(item.subject)) errors.push("tenant persisted proof axis subject is invalid.");
     if (item.polarity !== "present" && item.polarity !== "absent") errors.push("tenant persisted proof axis polarity is invalid.");
     if (item.state !== "satisfied" && item.state !== "violated" && item.state !== "incomplete") errors.push("tenant persisted proof axis state is invalid.");
-    if ("collectionBasis" in item && !["complete_changed_file_inventory", "incomplete_changed_file_inventory", "matching_artifact_evidence", "passing_execution", "failed_execution", "visual_verification"].includes(String(item.collectionBasis))) errors.push("tenant persisted proof axis collection basis is invalid.");
+    if ("collectionBasis" in item && !isProofAxisCollectionBasis(item.collectionBasis)) errors.push("tenant persisted proof axis collection basis is invalid.");
+    if (isProofAxisSubject(item.subject) && isProofAxisCollectionBasis(item.collectionBasis) && !isProofAxisCollectionBasisAllowed(item.subject, item.collectionBasis)) {
+      errors.push("tenant persisted proof axis collection basis is incompatible with its subject.");
+    }
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
     const key = `${String(item.subject)}:${String(item.polarity)}`;
     if (seen.has(key)) errors.push("tenant persisted proof axis is duplicated.");

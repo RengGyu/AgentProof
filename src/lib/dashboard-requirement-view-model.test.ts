@@ -135,6 +135,26 @@ describe("toDashboardRequirementViewModels", () => {
     });
   });
 
+  it("turns satisfied proof axes into short evidence statements without exposing internal enum values", () => {
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{
+        requirementId: "req_execution",
+        status: "partial",
+        evidenceRefs: ["ev_check"],
+        gaps: [],
+        proofAxes: [{
+          subject: "execution",
+          polarity: "present",
+          state: "satisfied",
+          evidenceRefs: ["ev_check"],
+          collectionBasis: "passing_suite_execution"
+        }]
+      }]
+    });
+
+    expect(card?.proofEvidence).toEqual(["The repository test suite ran successfully for this PR."]);
+  });
+
   it("shows a deterministic-only gap once and omits overlong semantic text instead of manufacturing a sentence", () => {
     const longSentence = `${"A bounded evidence reading remains concise ".repeat(12)}without cutting the final word.`;
     const [card] = toDashboardRequirementViewModels({

@@ -26,6 +26,15 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Priority:");
   });
 
+  it("keeps an undecodable saved-report row visible without allowing it to open or copy", () => {
+    expect(source).toContain("REPORT UNAVAILABLE");
+    expect(source).toContain("This saved report cannot be opened right now. Run the analysis again if the state does not recover.");
+    expect(source).toContain('disabled={report.availability === "unavailable"}');
+    expect(source).toContain('report.availability === "unavailable" ? "REPORT UNAVAILABLE"');
+    expect(source).toContain("hasUnavailableSelectedReport");
+    expect(source).toContain("copyableSelectedReports.length === 0 || hasUnavailableSelectedReport || bulkCopyState === \"copying\"");
+  });
+
   it("separates connected repositories from previously saved reports and disables a pending selection", () => {
     expect(source).toContain("Connected repositories");
     expect(source).toContain("Repository reports");
@@ -44,7 +53,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("copyRevalidatedDashboardDetail");
     expect(source).not.toContain("preparedBulkCopy");
     expect(source).not.toContain("Promise.all(selectedReports.map");
-    expect(source).toContain("disabled={copyableSelectedReports.length === 0 || bulkCopyState === \"copying\"}");
+    expect(source).toContain("disabled={copyableSelectedReports.length === 0 || hasUnavailableSelectedReport || bulkCopyState === \"copying\"}");
     expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setBulkCopyCount\(0\); setBulkCopyState\("idle"\);/);
   });
 

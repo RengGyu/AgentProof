@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       const truncated = savedReports.length > TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT;
       const candidates = savedReports.slice(0, TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT);
       const details = await Promise.all(candidates.map((saved) => toDashboardReportDetail(saved, tenantId)));
-      const complete = !truncated && details.every((detail) => detail.freshness !== "unknown");
+      const complete = !truncated && details.every((detail) => detail.availability !== "unavailable" && detail.freshness !== "unknown");
       return noStoreJson({
         ok: true,
         reports: complete ? details.filter((detail) => detail.copyEligible) : [],
@@ -45,7 +45,12 @@ export async function GET(request: Request) {
     const reports = await listTenantSavedReports({ tenantId, limit: 25 });
     return noStoreJson({
       ok: true,
-      reports: await Promise.all(reports.map(async (report) => ({ ...report, ...await resolveSavedReportFreshness(report, tenantId) }))),
+      reports: await Promise.all(reports.map(async (report) => ({
+        ...report,
+        ...(report.availability === "unavailable"
+          ? { freshness: "unknown" as const, copyEligible: false }
+          : await resolveSavedReportFreshness(report, tenantId))
+      }))),
       privacy: "tenant-report-metadata-only"
     });
   } catch (error) {
@@ -55,7 +60,23 @@ export async function GET(request: Request) {
 }
 
 async function toDashboardReportDetail(saved: StoredServerReport, tenantId: string) {
+  const freshness = saved.availability === "unavailable"
+    ? { freshness: "unknown" as const, copyEligible: false }
+    : await resolveSavedReportFreshness(saved, tenantId);
+  if (saved.availability === "unavailable") {
+    return {
+      availability: "unavailable" as const,
+      createdAt: saved.createdAt,
+      priority: "low",
+      repositoryId: saved.repositoryId,
+      pullRequestNumber: saved.pullRequestNumber,
+      headSha: saved.headSha,
+      staleAt: saved.staleAt,
+      ...freshness
+    };
+  }
   return {
+    availability: "available" as const,
     report: saved.report,
     createdAt: saved.createdAt,
     priority: saved.report.summary.priority,
@@ -65,7 +86,7 @@ async function toDashboardReportDetail(saved: StoredServerReport, tenantId: stri
     pullRequestNumber: saved.pullRequestNumber,
     headSha: saved.headSha,
     staleAt: saved.staleAt,
-    ...await resolveSavedReportFreshness(saved, tenantId)
+    ...freshness
   };
 }
 

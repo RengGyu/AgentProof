@@ -17,6 +17,9 @@ export function RequirementEvidenceList({ requirements }: { requirements: Dashbo
           createElement("p", null, requirement.coverageMeaning),
           createElement("p", null, `${requirement.evidenceRefs.length} evidence reference${requirement.evidenceRefs.length === 1 ? "" : "s"}`),
           createElement("p", null, `Evidence IDs: ${requirement.evidenceRefs.join(", ") || "Unavailable"}`),
+          requirement.proofEvidence && requirement.proofEvidence.length > 0
+            ? createElement("div", null, createElement("strong", null, "Captured proof"), createElement("ul", null, requirement.proofEvidence.map((item, index) => createElement("li", { key: `${requirement.requirementId}:proof:${index}` }, item))))
+            : null,
           requirement.deterministicGaps.length > 0
             ? createElement("div", null, createElement("strong", null, "Deterministic gaps"), createElement("ul", null, requirement.deterministicGaps.map((gap, index) => createElement("li", { key: `${requirement.requirementId}:gap:${index}` }, gap))))
             : createElement("p", null, "No deterministic gap recorded."),

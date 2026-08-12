@@ -1,3 +1,6 @@
+import type { RequirementProofCollectionBasis, RequirementProofSubject } from "./proof-contract";
+export type { RequirementProofCollectionBasis, RequirementProofSubject } from "./proof-contract";
+
 export type CheckStatus = "passed" | "failed" | "pending" | "unknown";
 export type RequirementStatus = "met" | "partial" | "missing" | "unclear";
 export type PriorityLevel = "low" | "medium" | "high" | "blocker";
@@ -215,25 +218,8 @@ export interface RequirementFinding {
   proofAxes?: RequirementProofAxis[];
 }
 
-export type RequirementProofSubject =
-  | "implementation"
-  | "documentation"
-  | "ci_configuration"
-  | "targeted_test"
-  | "execution"
-  | "interaction"
-  | "visual";
 export type RequirementProofPolarity = "present" | "absent";
 export type RequirementProofState = "satisfied" | "violated" | "incomplete";
-export type RequirementProofCollectionBasis =
-  | "complete_changed_file_inventory"
-  | "incomplete_changed_file_inventory"
-  | "matching_artifact_evidence"
-  | "passing_execution"
-  | "passing_suite_execution"
-  | "failed_execution"
-  | "interaction_verification"
-  | "visual_verification";
 
 export interface RequirementProofAxis {
   subject: RequirementProofSubject;

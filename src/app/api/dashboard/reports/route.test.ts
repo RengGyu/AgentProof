@@ -209,6 +209,50 @@ describe("/api/dashboard/reports", () => {
     expect(serialized).not.toContain("canonical_key_hash");
   });
 
+  it("keeps an unavailable report visible while blocking its detail content and copy bundle", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const unavailable = {
+      id: "report_unavailable",
+      createdAt: "2026-08-12T00:00:00.000Z",
+      expiresAt: "2026-08-13T00:00:00.000Z",
+      tenantId: "tenant_a",
+      repositoryId: 100,
+      pullRequestNumber: 5,
+      headSha: "a".repeat(40),
+      availability: "unavailable" as const,
+      report: generateVerificationReport(demoScenarios.clean)
+    };
+    vi.spyOn(savedReportStore, "listTenantSavedReports").mockResolvedValue([{
+      id: unavailable.id,
+      createdAt: unavailable.createdAt,
+      expiresAt: unavailable.expiresAt,
+      repositoryId: 100,
+      pullRequestNumber: 5,
+      headSha: unavailable.headSha,
+      sourceTitle: "Saved report unavailable",
+      priority: "low",
+      evidenceCoverage: 0,
+      requirementCounts: { met: 0, partial: 0, missing: 0, unclear: 0 },
+      testing: { ciStatus: "unknown", lintStatus: "unknown", typecheckStatus: "unknown", missingTestCount: 0 },
+      reviewPriorityCount: 0,
+      scopeCreepSuspected: false,
+      availability: "unavailable",
+      privacy: "summary-only"
+    }]);
+    vi.spyOn(savedReportStore, "getSavedReport").mockResolvedValue(unavailable);
+    vi.spyOn(savedReportStore, "listTenantSavedReportDetails").mockResolvedValue([unavailable]);
+
+    const headers = { cookie: session.sessionCookie };
+    const list = await (await GET(new Request("http://localhost/api/dashboard/reports", { headers }))).json();
+    const detail = await (await GET(new Request(`http://localhost/api/dashboard/reports?id=${unavailable.id}`, { headers }))).json();
+    const bundle = await (await GET(new Request("http://localhost/api/dashboard/reports?repositoryId=100&scope=current", { headers }))).json();
+
+    expect(list.reports).toEqual([expect.objectContaining({ id: unavailable.id, availability: "unavailable", copyEligible: false })]);
+    expect(detail).toMatchObject({ ok: true, availability: "unavailable" });
+    expect(detail).not.toHaveProperty("report");
+    expect(bundle).toMatchObject({ reports: [], bundle: { complete: false, excluded: 1 } });
+  });
+
   it("keeps the newer completed head current across list, detail, and bundle when an older report saves last", async () => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");

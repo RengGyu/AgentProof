@@ -1,4 +1,5 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
+import type { RequirementProofAxis } from "./types";
 
 export interface DashboardRepositoryGrant {
   installationId: number;
@@ -21,6 +22,7 @@ export interface DashboardSavedReport {
   staleAt?: string;
   freshness?: DashboardReportFreshness;
   copyEligible?: boolean;
+  availability?: "available" | "unavailable";
 }
 
 export type DashboardReportFreshness = "current" | "refreshing" | "refresh_failed" | "superseded" | "stale" | "unknown";
@@ -32,7 +34,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
   evidenceCapturedAt?: string;
   analysisContext?: "linked_issue" | "unlinked_pr" | "provided_requirement";
   report?: {
-    requirements?: Array<{ requirementId: string; requirementText?: string; status: string; evidenceRefs: string[]; gaps: string[] }>;
+    requirements?: Array<{ requirementId: string; requirementText?: string; status: string; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[] }>;
     testing?: { ciStatus: string; lintStatus: string; typecheckStatus: string };
     reviewPriority?: Array<{ path: string; priority: string }>;
     evidenceIndex?: Array<{ id: string; locator?: string }>;
