@@ -12,6 +12,7 @@ import {
   isExecutionEvidenceSignal,
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
+import { executionEvidenceMatchesAnyTestPath } from "./evidence-relation";
 import { redactSecrets } from "./redact";
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
@@ -52,6 +53,7 @@ export interface DeterministicRequirementReportSelection {
   contexts: RequirementContextSignal[];
   omittedRequirementCount?: number;
   proofExpectationsByRequirement?: ReadonlyMap<string, RequirementProofExpectations>;
+  evidenceContextRequirementIdsByRequirement?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface VerifierEvidenceLookup {
@@ -367,6 +369,7 @@ export function generateVerificationReportFromRequirements(
     ciStatus,
     selection.contexts,
     selection.proofExpectationsByRequirement,
+    selection.evidenceContextRequirementIdsByRequirement,
     evidenceLookup,
     relevanceIndex
   );
@@ -973,6 +976,7 @@ function buildProofGraph(
   ciStatus: CheckStatus,
   contexts: RequirementContextSignal[],
   proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined,
+  evidenceContextRequirementIdsByRequirement: ReadonlyMap<string, readonly string[]> | undefined,
   evidenceLookup: VerifierEvidenceLookup,
   relevanceIndex: RequirementEvidenceRelevanceIndex
 ): { proofGraph: ProofGraph; proofAxesByRequirement: Map<string, RequirementProofAxis[]> } {
@@ -981,6 +985,8 @@ function buildProofGraph(
   const changedFileEvidenceUnavailable = hasChangedFileEvidenceUnavailable(input);
   const diffEvidenceUnavailable = hasDiffEvidenceUnavailable(input);
   const authoritativeChangedFileInventory = hasAuthoritativeChangedFileInventory(input);
+  const requirementById = new Map(requirements.map((requirement) => [requirement.id, requirement]));
+  const implementationArtifactRefs = new Set(evidenceLookup.implementationArtifactRefs);
 
   const proofAxesByRequirement = new Map<string, RequirementProofAxis[]>();
   const nodes = requirements.map((requirement): RequirementProofNode => {
@@ -990,14 +996,23 @@ function buildProofGraph(
     const implementationEvidenceRefs = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "diff" || item.kind === "changed_file") && match.score > 0
     );
+    const contextualImplementationRefs = contextualImplementationEvidenceRefs(
+      requirement.id,
+      evidenceContextRequirementIdsByRequirement,
+      requirementById,
+      relevanceIndex,
+      evidenceLookup,
+      implementationArtifactRefs
+    );
     const targetedTestEvidenceRefs = targetedTestEvidenceRefsForRequirement(
       requirement,
       evidenceIndex,
       input,
-      implementationEvidenceRefs,
+      uniqueRefs([...implementationEvidenceRefs, ...contextualImplementationRefs]),
       expectations,
       relevance,
-      evidenceLookup
+      evidenceLookup,
+      contextualImplementationRefs.length > 0 || evidenceContextRequirementIdsByRequirement?.has(requirement.id) === true
     );
     const directlyMatchingExecutionRefs = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "check" || item.kind === "log") &&
@@ -1005,9 +1020,15 @@ function buildProofGraph(
       (relevance.canonicalOverlap(item) || isOpaqueMatrixExecutionFailure(item))
     );
     const verifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, targetedTestEvidenceRefs);
+    const testLinkedExecutionRefs = passingExecutionEvidenceRefsForTargetedTests(
+      targetedTestEvidenceRefs,
+      evidenceIndex,
+      evidenceLookup
+    );
     const matchingExecutionRefs = uniqueRefs([
       ...directlyMatchingExecutionRefs,
-      ...verifiedSuiteExecutionRefs
+      ...verifiedSuiteExecutionRefs,
+      ...testLinkedExecutionRefs
     ]);
     const matchingFailedExecutionRefs = [...relevance.failedExecutionRefs];
     const matchingVisualRefs = requirementEvidenceRefs(relevance, (item, match) =>
@@ -1180,6 +1201,7 @@ function buildProofGraph(
       confidence: finding?.confidence ?? 0.2,
       implementationEvidenceRefs: uniqueRefs([
         ...implementationEvidenceRefs,
+        ...contextualImplementationRefs,
         ...(artifactRefs.documentation ?? []),
         ...(artifactRefs.ci ?? [])
       ]).slice(0, 8),
@@ -1188,6 +1210,7 @@ function buildProofGraph(
       gapSignals: dedupeGapSignals(gapSignals),
       firstFiles: evidenceLookup.firstFilesForRefs(uniqueRefs([
         ...implementationEvidenceRefs,
+        ...contextualImplementationRefs,
         ...targetedTestEvidenceRefs,
         ...relatedMissingTests.flatMap((item) => item.evidenceRefs)
       ])).slice(0, 5)
@@ -1402,11 +1425,14 @@ function targetedTestEvidenceRefsForRequirement(
   implementationEvidenceRefs: string[],
   expectations: RequirementProofExpectations,
   relevance: RequirementEvidenceRelevance,
-  evidenceLookup: VerifierEvidenceLookup
+  evidenceLookup: VerifierEvidenceLookup,
+  contextualOnly = false
 ): string[] {
-  const directRefs = requirementEvidenceRefs(relevance, (item, match) =>
-    item.kind === "test" && isUsefulArtifactMatch(match)
-  );
+  const directRefs = contextualOnly
+    ? []
+    : requirementEvidenceRefs(relevance, (item, match) =>
+      item.kind === "test" && isUsefulArtifactMatch(match)
+    );
   const implementationPaths = new Set(
     evidenceLookup.pathsForRefs(implementationEvidenceRefs)
       .map((path) => path.toLowerCase())
@@ -1435,6 +1461,50 @@ function targetedTestEvidenceRefsForRequirement(
     : [];
 
   return uniqueRefs([...directRefs, ...relatedRefs, ...singleArtifactFallbackRefs]);
+}
+
+function contextualImplementationEvidenceRefs(
+  requirementId: string,
+  contextIdsByRequirement: ReadonlyMap<string, readonly string[]> | undefined,
+  requirementById: ReadonlyMap<string, Requirement>,
+  relevanceIndex: RequirementEvidenceRelevanceIndex,
+  evidenceLookup: VerifierEvidenceLookup,
+  implementationArtifactRefs: ReadonlySet<string>
+): string[] {
+  const contextIds = contextIdsByRequirement?.get(requirementId) ?? [];
+  if (contextIds.length === 0) return [];
+
+  const refs = uniqueRefs(contextIds.flatMap((contextId) => {
+    const context = requirementById.get(contextId);
+    if (!context) return [];
+    return requirementEvidenceRefs(relevanceIndex.forRequirement(context), (item, match) =>
+      (item.kind === "diff" || item.kind === "changed_file") &&
+      implementationArtifactRefs.has(item.id) &&
+      match.score > 0
+    );
+  }));
+  const paths = new Set(evidenceLookup.pathsForRefs(refs).map((path) => path.toLowerCase()));
+
+  return paths.size === 1 ? refs : [];
+}
+
+function passingExecutionEvidenceRefsForTargetedTests(
+  targetedTestEvidenceRefs: readonly string[],
+  evidenceIndex: readonly EvidenceItem[],
+  evidenceLookup: VerifierEvidenceLookup
+): string[] {
+  const testPaths = evidenceLookup.pathsForRefs(targetedTestEvidenceRefs);
+  if (testPaths.length === 0) return [];
+
+  return evidenceIndex
+    .filter(isPassingTestExecutionEvidence)
+    .filter((item) => executionEvidenceMatchesAnyTestPath(
+      testPaths,
+      item.label,
+      item.summary,
+      item.locator
+    ))
+    .map((item) => item.id);
 }
 
 function selfReportedTestGapEvidenceRefs(evidenceIndex: EvidenceItem[]): string[] {

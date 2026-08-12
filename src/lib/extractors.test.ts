@@ -541,7 +541,7 @@ describe("extractRequirementSpanSeed", () => {
     ]);
   });
 
-  it("keeps source adjacency immutable when an intervening span is later excluded", () => {
+  it("keeps flat siblings independent when an intervening span is later excluded", () => {
     const result = extractRequirementSpanSeed(
       "Acceptance criteria:\n- Add first.\n- Add uncertain.\n- Add third.",
       "",
@@ -550,7 +550,7 @@ describe("extractRequirementSpanSeed", () => {
     const spans = result.seed?.spans ?? [];
     const laterAdmitted = [spans[0], spans[2]].filter(Boolean);
 
-    expect(spans[2]?.immediateParentSpanId).toBe("sp_1_2");
+    expect(spans[2]?.immediateParentSpanId).toBeNull();
     expect(laterAdmitted[1]?.immediateParentSpanId).not.toBe(laterAdmitted[0]?.id);
   });
 

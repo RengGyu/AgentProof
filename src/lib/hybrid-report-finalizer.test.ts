@@ -369,7 +369,7 @@ describe("valid hybrid finalization", () => {
   it("inherits only the exact direct admitted parent's own axes", () => {
     const parentInput: PullRequestInput = {
       ...input,
-      taskText: "Acceptance criteria:\n- Add retry documentation.\n- Show retry status in the UI.\n- Add retry handling."
+      taskText: "Acceptance criteria:\n- Add retry documentation.\n  - Show retry status in the UI.\n    - Add retry handling."
     };
     const seed = extractedBoundSeed(parentInput);
     expect(seed.spans).toHaveLength(3);

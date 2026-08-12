@@ -185,6 +185,7 @@ interface SpanCandidate {
   sourceSection: string | null;
   priority: Requirement["priority"];
   group: number;
+  listIndent: number | null;
 }
 
 function spanCandidatesFromSource(
@@ -256,6 +257,9 @@ function spanCandidatesFromSource(
       if (fragmentStart === fragmentEnd) continue;
 
       const isListItem = /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(sourceText.slice(fragmentStart, fragmentEnd));
+      const listIndent = isListItem
+        ? indentationColumns(sourceText.slice(lineStart, fragmentStart))
+        : null;
       const boundaries = isListItem
         ? [{ start: fragmentStart, end: fragmentEnd }]
         : sourceSpanBoundaries(sourceText, fragmentStart, fragmentEnd);
@@ -295,7 +299,8 @@ function spanCandidatesFromSource(
             : sourceQualityForLine(classificationText, sourceSection ?? undefined, role, source, isPrBody),
           sourceSection,
           priority: vagueAuthoritativeSpan ? "must" : classifiedPriority,
-          group
+          group,
+          listIndent
         });
       }
 
@@ -467,14 +472,26 @@ function toRequirementSourceSpans(
   isPrBody: boolean
 ): RequirementSourceSpan[] {
   const ordinalByGroup = new Map<number, number>();
-  const parentByGroup = new Map<number, RequirementSpanId>();
+  const previousByGroup = new Map<number, RequirementSpanId>();
+  const listAncestorsByGroup = new Map<number, Array<{ indent: number; id: RequirementSpanId }>>();
 
   return candidates.map((candidate) => {
     const ordinal = (ordinalByGroup.get(candidate.group) ?? 0) + 1;
     const id = `sp_${candidate.group}_${ordinal}` as RequirementSpanId;
-    const parent = parentByGroup.get(candidate.group) ?? null;
+    let parent: RequirementSpanId | null;
+    if (candidate.listIndent === null) {
+      parent = previousByGroup.get(candidate.group) ?? null;
+    } else {
+      const ancestors = listAncestorsByGroup.get(candidate.group) ?? [];
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1]!.indent >= candidate.listIndent) {
+        ancestors.pop();
+      }
+      parent = ancestors[ancestors.length - 1]?.id ?? null;
+      ancestors.push({ indent: candidate.listIndent, id });
+      listAncestorsByGroup.set(candidate.group, ancestors);
+    }
     ordinalByGroup.set(candidate.group, ordinal);
-    parentByGroup.set(candidate.group, id);
+    previousByGroup.set(candidate.group, id);
 
     return {
       id,
@@ -491,6 +508,12 @@ function toRequirementSourceSpans(
       priority: candidate.priority
     };
   });
+}
+
+function indentationColumns(prefix: string): number {
+  let columns = 0;
+  for (const character of prefix) columns += character === "\t" ? 4 : 1;
+  return columns;
 }
 
 function sourceSpanBoundaries(sourceText: string, start: number, end: number): Array<{ start: number; end: number }> {
