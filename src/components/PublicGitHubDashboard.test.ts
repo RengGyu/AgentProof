@@ -26,6 +26,14 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Priority:");
   });
 
+  it("keeps the report list compact until the reviewer expands it", () => {
+    expect(source).toContain("const DASHBOARD_REPORT_LIST_LIMIT = 5");
+    expect(source).toContain("const [reportListExpanded, setReportListExpanded] = useState(false)");
+    expect(source).toContain("selectedReports.slice(0, DASHBOARD_REPORT_LIST_LIMIT)");
+    expect(source).toContain("Show all");
+    expect(source).toContain("Show fewer");
+  });
+
   it("keeps an undecodable saved-report row visible without allowing it to open or copy", () => {
     expect(source).toContain("REPORT UNAVAILABLE");
     expect(source).toContain("This saved report cannot be opened right now. Run the analysis again if the state does not recover.");

@@ -52,6 +52,7 @@ interface ExistingInstallation { installationId: number; accountLogin: string; }
 type WorkspaceScreen = "repositories" | "settings";
 type RepositorySetting = "analysisEnabled" | "saveReportsEnabled" | "commentEnabled" | "hybridPlannerConsent";
 const DASHBOARD_REFRESH_INTERVAL_MS = 60_000;
+const DASHBOARD_REPORT_LIST_LIMIT = 5;
 
 const PREVIEW_DEMO_REPOSITORIES: DashboardRepositoryGrant[] = [{
   installationId: 999,
@@ -149,6 +150,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const [logoutPending, setLogoutPending] = useState(false);
   const [bulkCopyState, setBulkCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const [bulkCopyCount, setBulkCopyCount] = useState(0);
+  const [reportListExpanded, setReportListExpanded] = useState(false);
   const repositorySelectionGate = useRef(createRepositorySelectionGate());
 
   const repositoryRows = useMemo(
@@ -157,6 +159,9 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   );
   const selectedRepository = repositoryRows.find((repository) => repository.repositoryId === selectedRepositoryId) ?? repositoryRows[0];
   const selectedReports = visibleRepositoryReports(reports, selectedRepository?.repositoryId);
+  const displayedReports = reportListExpanded
+    ? selectedReports
+    : selectedReports.slice(0, DASHBOARD_REPORT_LIST_LIMIT);
   const copyableSelectedReports = selectedReports.filter(isCopyEligibleReport);
   const hasUnavailableSelectedReport = selectedReports.some((report) => report.availability === "unavailable");
   const selectedRepositoryName = selectedRepository?.repositoryFullName;
@@ -164,6 +169,10 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     ? toQuickSummary({ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) })
     : null;
   const unreadActivityCount = activity.filter((event) => !inboxSeenAt || event.occurredAt > inboxSeenAt).length;
+
+  useEffect(() => {
+    setReportListExpanded(false);
+  }, [selectedRepository?.repositoryId]);
 
   useEffect(() => {
     if (demoMode) {
@@ -590,7 +599,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       {screen === "repositories" ? <>
         <section className="dashboard-section dashboard-repository-strip" aria-labelledby="connected-repositories-title">
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">CONNECTIONS</p><h3 id="connected-repositories-title">Connected repositories</h3></div>{signedIn && !activeInstallationId ? <button className="dashboard-text-action" onClick={install}><Link2 size={15} /> {demoMode ? "Sample repository" : "Connect repository"}</button> : null}</div>
-          {!connectionsLoaded ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading connected repositories</p> : repositoryRows.length > 0 ? <div className="repository-tabs">{repositoryRows.map((repository) => <button key={`${repository.installationId}:${repository.repositoryId ?? repository.repositoryFullName}`} className={repository.repositoryId === selectedRepository?.repositoryId ? "repository-tab active" : "repository-tab"} onClick={() => { setSelectedRepositoryId(repository.repositoryId); setDetail(null); setBulkCopyCount(0); setBulkCopyState("idle"); }}><span>{repository.repositoryFullName}</span><small>{repository.analysisEnabled ? "Analysis on" : "Analysis off"} · {repository.commentsEnabled ? "Comments on" : "Comments off"}</small></button>)}</div> : <p className="dashboard-empty">No repository is connected yet.</p>}
+          {!connectionsLoaded ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading connected repositories</p> : repositoryRows.length > 0 ? <div className="repository-tabs">{repositoryRows.map((repository) => <button key={`${repository.installationId}:${repository.repositoryId ?? repository.repositoryFullName}`} className={repository.repositoryId === selectedRepository?.repositoryId ? "repository-tab active" : "repository-tab"} onClick={() => { setSelectedRepositoryId(repository.repositoryId); setDetail(null); setBulkCopyCount(0); setBulkCopyState("idle"); setReportListExpanded(false); }}><span>{repository.repositoryFullName}</span><small>{repository.analysisEnabled ? "Analysis on" : "Analysis off"} · {repository.commentsEnabled ? "Comments on" : "Comments off"}</small></button>)}</div> : <p className="dashboard-empty">No repository is connected yet.</p>}
         </section>
 
         {existingInstallations.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">GITHUB APP</p><h3>Choose an installation</h3></div></div><div className="installation-list">{existingInstallations.map((installation) => <button key={installation.installationId} className="dashboard-list-row" onClick={() => { void activateExistingInstallation(installation.installationId); }}><Github size={17} /> {installation.accountLogin}<ChevronRight size={16} /></button>)}</div></section> : null}
@@ -601,7 +610,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
         <section className="dashboard-workspace">
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div><button className="dashboard-text-action" disabled={copyableSelectedReports.length === 0 || hasUnavailableSelectedReport || bulkCopyState === "copying"} onClick={() => { void copySelectedRepositoryReports(); }}><Clipboard size={15} /> {bulkCopyState === "copying" ? "Preparing reports…" : bulkCopyState === "copied" ? `Copied ${bulkCopyCount} reports` : bulkCopyState === "error" ? "Try copy again" : "Copy all reports"}</button></div>
           {!selectedRepository ? <p className="dashboard-empty">Connect a GitHub repository to review saved evidence reports.</p> : selectedReports.length === 0 ? <p className="dashboard-empty"><FileCheck2 size={20} /> No reports yet<br /><small>New PR events will appear here after analysis.</small></p> : <div className="dashboard-report-layout">
-            <div className="report-list" aria-label="Saved analysis reports">{selectedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} disabled={report.availability === "unavailable"} title={report.availability === "unavailable" ? "This saved report cannot be opened right now. Run the analysis again if the state does not recover." : undefined} onClick={() => { void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>{report.availability === "unavailable" ? "REPORT UNAVAILABLE" : `PR #${report.pullRequestNumber ?? "Unknown"}`}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label={report.availability === "unavailable" ? "REPORT UNAVAILABLE" : reportWorkspaceStatusLabel(report.freshness)} title={report.availability === "unavailable" ? "This saved report cannot be opened right now. Run the analysis again if the state does not recover." : report.copyEligible ? "Latest saved report" : "A newer analysis is still being prepared"} /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}</div>
+            <div className="report-list" aria-label="Saved analysis reports">{displayedReports.map((report) => <button key={report.id} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} disabled={report.availability === "unavailable"} title={report.availability === "unavailable" ? "This saved report cannot be opened right now. Run the analysis again if the state does not recover." : undefined} onClick={() => { void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>{report.availability === "unavailable" ? "REPORT UNAVAILABLE" : `PR #${report.pullRequestNumber ?? "Unknown"}`}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><StatusToken label={report.availability === "unavailable" ? "REPORT UNAVAILABLE" : reportWorkspaceStatusLabel(report.freshness)} title={report.availability === "unavailable" ? "This saved report cannot be opened right now. Run the analysis again if the state does not recover." : report.copyEligible ? "Latest saved report" : "A newer analysis is still being prepared"} /><small><strong>Priority:</strong> {report.priority}</small></span></button>)}{selectedReports.length > DASHBOARD_REPORT_LIST_LIMIT ? <button className="dashboard-secondary-action" aria-expanded={reportListExpanded} onClick={() => setReportListExpanded((current) => !current)}>{reportListExpanded ? "Show fewer reports" : `Show all ${selectedReports.length} reports`}</button> : null}</div>
             {selectedReports.some((report) => report.availability === "unavailable") ? <p className="dashboard-boundary"><Info size={15} /> This saved report cannot be opened right now. Run the analysis again if the state does not recover.</p> : null}
             {copyableSelectedReports.length === 0 ? <p className="dashboard-boundary"><Info size={15} /> Reports remain available while an update runs. Copy is enabled when a current report is ready.</p> : null}
             {detail?.report && quickSummary ? <QuickSummaryPanel detail={{ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) }} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} demoMode={demoMode} /> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
