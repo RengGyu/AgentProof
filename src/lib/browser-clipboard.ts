@@ -25,7 +25,7 @@ export async function writeTextWithBrowserFallback(
  * network revalidation.
  */
 export async function writeDeferredTextWithBrowserFallback(input: {
-  fallbackText: string;
+  fallbackText?: string;
   loadText: () => Promise<string>;
   dependencies?: {
     clipboard?: Partial<Pick<Clipboard, "write" | "writeText">>;
@@ -44,12 +44,13 @@ export async function writeDeferredTextWithBrowserFallback(input: {
   }
 
   const document = dependencies.document ?? (typeof window === "undefined" ? undefined : window.document);
+  const fallbackText = input.fallbackText ?? await input.loadText();
   if (document?.body && typeof document.execCommand === "function") {
-    copyTextWithDocumentFallback(input.fallbackText, document);
+    copyTextWithDocumentFallback(fallbackText, document);
     return;
   }
 
-  await writeTextWithBrowserFallback(input.fallbackText, {
+  await writeTextWithBrowserFallback(fallbackText, {
     ...(clipboard?.writeText ? { clipboard: { writeText: clipboard.writeText } } : {}),
     document: dependencies.document
   });

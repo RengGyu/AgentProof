@@ -455,34 +455,42 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 15_000);
     try {
-      const details = demoMode
-        ? copyableSelectedReports.map((report) => ({ ...PREVIEW_DEMO_DETAIL, ...report, repositoryFullName: selectedRepository.repositoryFullName }))
-        : await prepareCurrentDashboardBundleForCopy({
-          repositoryId,
-          repositoryFullName: selectedRepository.repositoryFullName,
-          fetchBundle: async () => {
-            const response = await fetch(`/api/dashboard/reports?repositoryId=${encodeURIComponent(String(repositoryId))}&scope=current`, { cache: "no-store", signal: controller.signal });
-            if (!response.ok) throw new Error("dashboard_reports_unavailable");
-            return response.json().catch(() => null);
-          }
-        });
-      const markdown = dashboardReportsToMarkdown(details);
-      setBulkCopyCount(details.length);
-      try {
-        await writeTextWithBrowserFallback(markdown);
-      } catch {
-        setBulkCopyState("error");
-        setMessage("Copy is blocked in this browser. Try again to revalidate the current reports.");
-        return;
-      }
+      let copiedCount = 0;
+      await writeDeferredTextWithBrowserFallback({
+        loadText: async () => {
+          const details = demoMode
+            ? copyableSelectedReports.map((report) => ({ ...PREVIEW_DEMO_DETAIL, ...report, repositoryFullName: selectedRepository.repositoryFullName }))
+            : await prepareCurrentDashboardBundleForCopy({
+              repositoryId,
+              repositoryFullName: selectedRepository.repositoryFullName,
+              fetchBundle: async () => {
+                const response = await fetch(`/api/dashboard/reports?repositoryId=${encodeURIComponent(String(repositoryId))}&scope=current`, { cache: "no-store", signal: controller.signal });
+                if (!response.ok) throw new Error("dashboard_reports_unavailable");
+                return response.json().catch(() => null);
+              }
+            });
+          copiedCount = details.length;
+          return dashboardReportsToMarkdown(details);
+        }
+      });
+      setBulkCopyCount(copiedCount);
       setBulkCopyState("copied");
-      setMessage(`Copied ${details.length} current report${details.length === 1 ? "" : "s"} from ${selectedRepository.repositoryFullName}.`);
-    } catch {
+      setMessage(`Copied ${copiedCount} current report${copiedCount === 1 ? "" : "s"} from ${selectedRepository.repositoryFullName}.`);
+    } catch (error) {
       setBulkCopyState("error");
-      setMessage("Reports could not be prepared in time. Try copy again.");
+      if (isBulkCopyPreparationError(error)) {
+        setMessage("Current reports could not be prepared. Refresh reports and try again.");
+      } else {
+        setMessage("Copy is blocked in this browser. Try again after refreshing the page.");
+      }
     } finally {
       window.clearTimeout(timeoutId);
     }
+  }
+
+  function isBulkCopyPreparationError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    return error.name === "AbortError" || error.message === "dashboard_reports_unavailable" || error.message.startsWith("Dashboard report bundle");
   }
 
   async function updateRepositorySetting(setting: RepositorySetting, nextValue: boolean) {

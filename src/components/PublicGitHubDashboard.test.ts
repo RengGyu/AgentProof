@@ -84,6 +84,17 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("copyRevalidatedDashboardDetail");
   });
 
+  it("reserves the browser clipboard gesture before preparing a bulk report bundle", () => {
+    const bulkCopy = source.slice(
+      source.indexOf("async function copySelectedRepositoryReports"),
+      source.indexOf("async function updateRepositorySetting")
+    );
+
+    expect(bulkCopy).toContain("writeDeferredTextWithBrowserFallback");
+    expect(bulkCopy).toContain("loadText: async () =>");
+    expect(bulkCopy).not.toContain("await writeTextWithBrowserFallback(markdown)");
+  });
+
   it("renders the evidence workspace without inventing issue grouping", () => {
     expect(source).toContain("Repository reports");
     expect(source).toContain("No reports yet");

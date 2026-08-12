@@ -97,4 +97,29 @@ describe("browser clipboard fallback", () => {
     expect(document.execCommand).toHaveBeenCalledWith("copy");
     expect(writeText).not.toHaveBeenCalled();
   });
+
+  it("loads the actual text before a legacy fallback when no ready preview exists", async () => {
+    const textarea = {
+      value: "",
+      style: {},
+      setAttribute: vi.fn(),
+      focus: vi.fn(),
+      select: vi.fn(),
+      remove: vi.fn()
+    };
+    const document = {
+      createElement: vi.fn(() => textarea),
+      body: { appendChild: vi.fn() },
+      execCommand: vi.fn(() => true)
+    };
+    const loadText = vi.fn(async () => "fresh bulk report text");
+
+    await writeDeferredTextWithBrowserFallback({
+      loadText,
+      dependencies: { document: document as unknown as Document }
+    });
+
+    expect(loadText).toHaveBeenCalledOnce();
+    expect(textarea.value).toBe("fresh bulk report text");
+  });
 });
