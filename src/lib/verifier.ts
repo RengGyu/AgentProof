@@ -1053,6 +1053,15 @@ function buildProofGraph(
       relevance,
       evidenceLookup
     );
+    // The full-report validator checks satisfied artifact axes against the
+    // corresponding proof-node references. Keep the exact axis candidates
+    // ahead of broader relevance matches, which may otherwise consume the
+    // bounded proof-node reference budget on large PRs.
+    const proofArtifactRefs = uniqueRefs([
+      ...(artifactRefs.implementation ?? []),
+      ...(artifactRefs.documentation ?? []),
+      ...(artifactRefs.ci ?? [])
+    ]);
     const implementationPatchEvidenceUnavailable = expectations.implementation &&
       (artifactRefs.implementation ?? []).some((ref) =>
         evidenceLookup.evidenceForRef(ref)?.kind === "changed_file"
@@ -1215,10 +1224,9 @@ function buildProofGraph(
         : aggregateProofAxisStatus(proofAxes, finding?.status ?? "unclear"),
       confidence: finding?.confidence ?? 0.2,
       implementationEvidenceRefs: uniqueRefs([
+        ...proofArtifactRefs,
         ...implementationEvidenceRefs,
         ...contextualImplementationRefs,
-        ...(artifactRefs.documentation ?? []),
-        ...(artifactRefs.ci ?? [])
       ]).slice(0, 8),
       targetedTestEvidenceRefs: targetedTestEvidenceRefs.slice(0, 8),
       executionEvidenceRefs,

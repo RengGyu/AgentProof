@@ -1201,6 +1201,35 @@ describe("generateVerificationReport", () => {
     expect(validation).toEqual({ valid: true, errors: [] });
   });
 
+  it("keeps every capped implementation-axis reference on its proof node", () => {
+    const report = generateVerificationReport({
+      title: "Add retry policy handling",
+      description: "",
+      taskText: "Acceptance criteria: add retry policy handling.",
+      changedFiles: [
+        ...Array.from({ length: 4 }, (_value, index) => ({
+          path: `docs/retry-policy-${index}.md`,
+          status: "modified" as const,
+          patch: "+ retry policy handling"
+        })),
+        ...Array.from({ length: 8 }, (_value, index) => ({
+          path: `src/retry-policy-${index}.ts`,
+          status: "modified" as const,
+          patch: "+ export function retryPolicyHandling() {}"
+        }))
+      ],
+      checks: [],
+      logs: []
+    } satisfies PullRequestInput);
+    const finding = report.requirements[0];
+    const node = report.proofGraph.nodes[0];
+    const implementationAxis = finding?.proofAxes?.find((axis) => axis.subject === "implementation");
+
+    expect(implementationAxis?.state).toBe("satisfied");
+    expect(implementationAxis?.evidenceRefs.every((ref) => node?.implementationEvidenceRefs.includes(ref))).toBe(true);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("keeps passing execution evidence on met requirements when diff refs hit the cap", () => {
     const report = generateVerificationReport({
       title: "Validate export evidence report",
