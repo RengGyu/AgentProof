@@ -23,6 +23,10 @@ import {
   type VerificationBindingInputV2,
   type VerificationContractSourceInputV2
 } from "./verification-contract-v2";
+import {
+  evaluateVerificationCriterionV2,
+  type VerificationCriterionEvidenceV2
+} from "./verification-criterion-evaluator-v2";
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckStatus,
@@ -87,7 +91,14 @@ export function generateVerificationReportV2(args: VerificationReportV2Generatio
       })),
       contexts: []
     });
-    const contract = toVerificationContractReportV2(parsed, args.binding.sourceKind, materialized);
+    const evidence = verificationCriterionEvidenceForInput(args.input, report.evidenceIndex);
+    const results = materialized.objectives.flatMap((objective) =>
+      objective.criteria.map((criterion) => ({
+        ...evaluateVerificationCriterionV2(criterion.source, evidence),
+        criterionId: criterion.criterionId
+      }))
+    );
+    const contract = toVerificationContractReportV2(parsed, args.binding.sourceKind, materialized, results);
     return applyStrictContractOutcomeV2(report, contract);
   }
 
@@ -96,6 +107,33 @@ export function generateVerificationReportV2(args: VerificationReportV2Generatio
     report,
     toVerificationContractReportV2(parsed, null)
   );
+}
+
+function verificationCriterionEvidenceForInput(
+  input: PullRequestInput,
+  evidenceIndex: readonly EvidenceItem[]
+): VerificationCriterionEvidenceV2 {
+  const provenance = input.sourceProvenance;
+  const inventory = provenance?.changedFileInventory;
+  const headSha = provenance?.headSha ?? "";
+  const completeInventory = provenance?.origin === "github_snapshot" &&
+    inventory?.version === 1 && inventory.completeness === "complete" &&
+    inventory.headSha === headSha && Boolean(headSha);
+  const evidenceRefsByPath: Record<string, string[]> = {};
+  for (const evidence of evidenceIndex) {
+    const path = evidence.locator;
+    if (!path) continue;
+    evidenceRefsByPath[path] = [...(evidenceRefsByPath[path] ?? []), evidence.id];
+  }
+  return {
+    headSha,
+    artifactBlobs: input.verificationCriterionEvidenceV2?.artifactBlobs ?? [],
+    changedFileInventory: {
+      completeness: completeInventory ? "complete" : "incomplete",
+      paths: input.changedFiles.map((file) => file.path)
+    },
+    evidenceRefsByPath
+  };
 }
 
 /** Production entrypoint: raw contract source and binding remain transient on the input. */

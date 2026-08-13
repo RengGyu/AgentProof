@@ -182,13 +182,13 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     validateFullReportSemantics(report, evidenceIds, errors);
   }
   if (isV2) {
-    validateVerificationContractV2(report, errors);
+    validateVerificationContractV2(report, evidenceIds, errors);
   }
 
   return { valid: errors.length === 0, errors };
 }
 
-function validateVerificationContractV2(report: RecordValue, errors: string[]): void {
+function validateVerificationContractV2(report: RecordValue, evidenceIds: Set<string>, errors: string[]): void {
   if (report.reportSchemaVersion !== "verification-report.v2") {
     errors.push("report.reportSchemaVersion must be verification-report.v2.");
     return;
@@ -268,7 +268,7 @@ function validateVerificationContractV2(report: RecordValue, errors: string[]): 
         errors.push(`${criterionPath} and its result must be objects.`);
         continue;
       }
-      requireKeys(criterion, ["criterionId", "required", "approval", "label", "type", "requiredEvidence"], criterionPath, errors);
+      requireKeys(criterion, ["criterionId", "required", "approval", "label", "type", "requiredEvidence"], criterionPath, errors, ["artifactKind", "absenceKind"]);
       requireKeys(result, ["criterionId", "state", "proofAxisRefs", "evidenceRefs", "gapKinds"], `${path}.criterionResults[${criterionIndex}]`, errors);
       const expectedCriterionId = `${objective.requirementId}_c${criterionIndex + 1}`;
       if (criterion.criterionId !== expectedCriterionId || result.criterionId !== expectedCriterionId || criterionIds.has(expectedCriterionId)) {
@@ -282,6 +282,16 @@ function validateVerificationContractV2(report: RecordValue, errors: string[]): 
       if (criterion.type !== "return_value" && criterion.type !== "artifact" && criterion.type !== "absence") {
         errors.push(`${criterionPath}.type is invalid.`);
       }
+      if (criterion.type === "artifact" &&
+        criterion.artifactKind !== "documentation_literal" && criterion.artifactKind !== "workflow_job" && criterion.artifactKind !== "test_case") {
+        errors.push(`${criterionPath}.artifactKind is invalid.`);
+      }
+      if (criterion.type === "absence" && criterion.absenceKind !== "path_change") {
+        errors.push(`${criterionPath}.absenceKind is invalid.`);
+      }
+      if (criterion.type === "return_value" && (criterion.artifactKind !== undefined || criterion.absenceKind !== undefined)) {
+        errors.push(`${criterionPath} return-value criterion must not include static kind fields.`);
+      }
       if (!Array.isArray(criterion.requiredEvidence) || criterion.requiredEvidence.length === 0) {
         errors.push(`${criterionPath}.requiredEvidence must be nonempty.`);
       }
@@ -291,7 +301,30 @@ function validateVerificationContractV2(report: RecordValue, errors: string[]): 
         states.push(result.state);
       }
       if (result.state === "satisfied") {
-        errors.push(`${path}.criterionResults[${criterionIndex}] cannot be satisfied until an attested v2 evaluator is configured.`);
+        if (criterion.type === "return_value") {
+          errors.push(`${path}.criterionResults[${criterionIndex}] return-value satisfied state requires an attested executor result.`);
+        }
+        if (criterion.type === "artifact" && criterion.artifactKind !== "documentation_literal") {
+          errors.push(`${path}.criterionResults[${criterionIndex}] artifact kind cannot be satisfied until its immutable evaluator is configured.`);
+        }
+        if (criterion.type === "absence" && !hasAuthoritativeReportChangedFileInventory(report)) {
+          errors.push(`${path}.criterionResults[${criterionIndex}] absence satisfied state requires a complete exact-head changed-file inventory.`);
+        }
+        if (!Array.isArray(result.evidenceRefs) || result.evidenceRefs.length === 0) {
+          errors.push(`${path}.criterionResults[${criterionIndex}] satisfied state requires deterministic evidence references.`);
+        } else {
+          validateEvidenceRefs(result.evidenceRefs, `${path}.criterionResults[${criterionIndex}].evidenceRefs`, evidenceIds, errors);
+          const requirement = requirements.find((item) => item.requirementId === objective.requirementId);
+          const requirementEvidenceRefs = Array.isArray(requirement?.evidenceRefs)
+            ? requirement.evidenceRefs.filter((ref): ref is string => typeof ref === "string")
+            : [];
+          if (result.evidenceRefs.some((ref) => !requirementEvidenceRefs.includes(ref))) {
+            errors.push(`${path}.criterionResults[${criterionIndex}] satisfied evidence must also support its requirement.`);
+          }
+        }
+        if (!Array.isArray(result.gapKinds) || result.gapKinds.length !== 0) {
+          errors.push(`${path}.criterionResults[${criterionIndex}] satisfied state cannot include gaps.`);
+        }
       }
     }
     const expectedStatus = aggregateVerificationCriteriaV2(state, states);

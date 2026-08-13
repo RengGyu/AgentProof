@@ -157,6 +157,10 @@ export interface VerificationContractReportV2 {
       approval: "source_explicit" | "author_claim";
       label: string;
       type: VerificationCriterionV2["type"];
+      /** Neutral discriminator required to validate the closed static evaluator path. */
+      artifactKind?: ArtifactCriterionV2["artifact"]["kind"];
+      /** Only path_change exists in v2; retained as a structural validator input. */
+      absenceKind?: "path_change";
       requiredEvidence: RequirementProofSubject[];
     }>;
     criterionResults: VerificationCriterionEvaluationV2[];
@@ -381,6 +385,8 @@ export function toVerificationContractReportV2(
         approval: criterion.approval,
         label: criterion.label,
         type: criterion.source.type,
+        ...(criterion.source.type === "artifact" ? { artifactKind: criterion.source.artifact.kind } : {}),
+        ...(criterion.source.type === "absence" ? { absenceKind: criterion.source.prohibitedKind } : {}),
         requiredEvidence: criterion.requiredEvidence
       })),
       criterionResults: objective.criteria.map((criterion) => resultByCriterionId.get(criterion.criterionId) ?? {

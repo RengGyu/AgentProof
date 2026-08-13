@@ -99,6 +99,76 @@ describe("generateVerificationReport", () => {
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
   });
 
+  it("produces met for an authoritative documentation contract with exact head evidence", () => {
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "reset_doc",
+        objective: "Document the local reset command.",
+        criteria: [{
+          id: "reset_literal",
+          type: "artifact",
+          label: "The reset document includes the exact test command.",
+          paths: ["docs/reset.md"],
+          artifact: { kind: "documentation_literal", literal: "Run npm test." }
+        }]
+      }]
+    };
+    const headSha = "a".repeat(40);
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Document reset",
+        description: "Documents the reset command.",
+        taskText: "Document the local reset command.",
+        taskSource: "issue",
+        changedFiles: [{
+          path: "docs/reset.md",
+          status: "modified",
+          patch: "+Run npm test."
+        }],
+        checks: [],
+        logs: [],
+        verificationCriterionEvidenceV2: {
+          artifactBlobs: [{ path: "docs/reset.md", content: "Stop the server.\nRun npm test." }]
+        },
+        sourceProvenance: {
+          version: 1,
+          origin: "github_snapshot",
+          headSha,
+          baseSha: "b".repeat(40),
+          changedFileInventory: { version: 1, completeness: "complete", headSha },
+          evidenceCapturedAt: "2026-08-13T00:00:00.000Z",
+          inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+        }
+      },
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:verification-contract:documentation",
+        sourceContent: JSON.stringify(contract),
+        headSha,
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    expect(report.requirements[0]).toMatchObject({ status: "met" });
+    expect(report.verificationContract.objectives[0]?.criterionResults).toEqual([
+      expect.objectContaining({ state: "satisfied" })
+    ]);
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    const forged = structuredClone(report);
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.evidenceRefs = [];
+    expect(validateVerificationReport(forged, { mode: "v2_full" }).valid).toBe(false);
+
+    const forgedReturnValue = structuredClone(report);
+    const forgedCriterion = forgedReturnValue.verificationContract.objectives[0]!.criteria[0]!;
+    forgedCriterion.type = "return_value";
+    delete forgedCriterion.artifactKind;
+    expect(validateVerificationReport(forgedReturnValue, { mode: "v2_full" }).valid).toBe(false);
+  });
+
   it("indexes requirement/evidence relevance with one source-text scan per evidence item", () => {
     const requirements = Array.from({ length: 12 }, (_, index): Requirement => ({
       id: `req_${index}`,

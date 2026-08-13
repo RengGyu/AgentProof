@@ -82,6 +82,13 @@ export interface PullRequestInput {
   verificationContractSourceV2?: VerificationContractSourceInputV2;
   /** Transient binding source; only its digest can enter a private v2 report. */
   verificationContractBindingV2?: VerificationBindingInputV2;
+  /**
+   * Exact, bounded v2 criterion evidence collected for the current head. It is
+   * transient: raw artifact content is never included in reports or telemetry.
+   */
+  verificationCriterionEvidenceV2?: {
+    artifactBlobs: Array<{ path: string; content: string }>;
+  };
   changedFiles: ChangedFile[];
   checks: CheckRun[];
   logs: LogSnippet[];
