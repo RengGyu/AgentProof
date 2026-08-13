@@ -55,6 +55,17 @@ describe("server report store", () => {
     expect(saved.report.authenticity?.generator.reportSchemaVersion).toBe("verification-report.v2");
   });
 
+  it("stores a v2 no-contract report as a summary-safe public report", async () => {
+    const saved = await createSavedReport(generateVerificationReportV2FromInput(demoScenarios.clean));
+
+    expect(saved.report).toMatchObject({
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent", source: null },
+      evidenceIndex: []
+    });
+    expect(saved.report.authenticity?.trust).toBe("imported_unverified");
+  });
+
   it("preserves a v2 no-contract discriminator through the private tenant storage boundary", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);

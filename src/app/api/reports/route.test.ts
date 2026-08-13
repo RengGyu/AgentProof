@@ -7,7 +7,7 @@ import {
   SAVED_REPORT_DURABILITY_WARNING
 } from "@/lib/server-report-store";
 import { demoScenarios } from "@/lib/sample-data";
-import { generateVerificationReport } from "@/lib/verifier";
+import { generateVerificationReport, generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { DELETE, GET } from "./[id]/route";
 import { POST } from "./route";
 
@@ -48,6 +48,19 @@ describe("POST /api/reports", () => {
     expect(json.authenticityNotice).toContain("unverified");
     expect(json.durability).toBe(SAVED_REPORT_DURABILITY);
     expect(json.durabilityWarning).toBe(SAVED_REPORT_DURABILITY_WARNING);
+  });
+
+  it("saves a v2 strict-contract report through the matching validation mode", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/reports", {
+        method: "POST",
+        body: JSON.stringify({ report: generateVerificationReportV2FromInput(demoScenarios.clean) })
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.privacy).toBe("summary-only");
   });
 
   it("returns durability metadata when reading a saved report", async () => {

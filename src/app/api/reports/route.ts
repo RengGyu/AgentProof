@@ -61,8 +61,11 @@ export async function POST(request: Request) {
   });
 }
 
-function reportValidationMode(report: unknown): "full" | "summary" {
-  return isRecord(report) && Array.isArray(report.evidenceIndex) && report.evidenceIndex.length === 0 ? "summary" : "full";
+function reportValidationMode(report: unknown): "full" | "summary" | "v2_full" | "v2_summary" {
+  const summaryOnly = isRecord(report) && Array.isArray(report.evidenceIndex) && report.evidenceIndex.length === 0;
+  const v2 = isRecord(report) && report.reportSchemaVersion === "verification-report.v2";
+  if (v2) return summaryOnly ? "v2_summary" : "v2_full";
+  return summaryOnly ? "summary" : "full";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

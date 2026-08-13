@@ -792,7 +792,7 @@ function prepareSummaryReportForStorage(
   const safeReport = sanitizeReportForShare(report);
   safeReport.authenticity = trust === "verified_agentproof"
     ? createVerifiedAuthenticity(safeReport, requireReportSigningSecret())
-    : createUnverifiedAuthenticity("imported_unverified");
+    : createStoredUnverifiedAuthenticity(safeReport, "imported_unverified");
   const validation = validateVerificationReport(safeReport, { mode: storedReportValidationMode(safeReport) });
 
   if (!validation.valid) {
@@ -899,7 +899,9 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
       verificationContract: structuredClone(report.verificationContract)
     });
   }
-  safe.authenticity = trust === "verified_agentproof" ? createVerifiedAuthenticity(safe, requireReportSigningSecret()) : createUnverifiedAuthenticity("imported_unverified");
+  safe.authenticity = trust === "verified_agentproof"
+    ? createVerifiedAuthenticity(safe, requireReportSigningSecret())
+    : createStoredUnverifiedAuthenticity(safe, "imported_unverified");
   const validation = validateTenantStoredReport(safe, requireReportSigningSecret());
   if (!validation.valid) {
     throw new SavedReportStoreError(`Tenant saved report failed validation: ${validation.errors.join("; ")}`);
@@ -912,6 +914,16 @@ function isVerificationReportV2(report: VerificationReport): report is Verificat
   verificationContract: unknown;
 } {
   return (report as { reportSchemaVersion?: unknown }).reportSchemaVersion === "verification-report.v2";
+}
+
+function createStoredUnverifiedAuthenticity(
+  report: VerificationReport,
+  trust: "imported_unverified" | "legacy_unverified" | "portable_unverified"
+) {
+  return createUnverifiedAuthenticity(
+    trust,
+    isVerificationReportV2(report) ? "verification-report.v2" : "verification-report.v1"
+  );
 }
 
 function copyPlannerProvenance(planner: NonNullable<VerificationReport["planner"]>): NonNullable<VerificationReport["planner"]> {
@@ -941,10 +953,10 @@ function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
   safeReport.authenticity = authenticity?.trust === "verified_agentproof"
     ? authenticity
     : authenticity?.trust === "legacy_unverified"
-      ? createUnverifiedAuthenticity("legacy_unverified")
+      ? createStoredUnverifiedAuthenticity(safeReport, "legacy_unverified")
       : authenticity?.trust === "portable_unverified"
-        ? createUnverifiedAuthenticity("portable_unverified")
-        : createUnverifiedAuthenticity("imported_unverified");
+        ? createStoredUnverifiedAuthenticity(safeReport, "portable_unverified")
+        : createStoredUnverifiedAuthenticity(safeReport, "imported_unverified");
   const validation = validateVerificationReport(safeReport, { mode: storedReportValidationMode(safeReport) });
 
   if (!validation.valid) {
