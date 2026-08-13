@@ -25,6 +25,10 @@ export interface DashboardSavedReport {
   freshness?: DashboardReportFreshness;
   copyEligible?: boolean;
   availability?: "available" | "unavailable";
+  failure?: {
+    code?: string;
+    summary?: string;
+  };
 }
 
 export type DashboardReportFreshness = "current" | "refreshing" | "refresh_failed" | "superseded" | "stale" | "unknown";

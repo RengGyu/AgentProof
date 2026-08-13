@@ -4,7 +4,7 @@ import * as savedReportStore from "@/lib/server-report-store";
 import { clearTenantAuthSessionsForTests, createTenantAuthSessionForMember } from "@/lib/tenant-auth";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
-import { claimAnalysisJobById, clearAnalysisJobsForTests, completeAnalysisJob, enqueueAnalysisJob, resolveAnalysisJobFreshness } from "@/lib/analysis-jobs";
+import { claimAnalysisJobById, clearAnalysisJobsForTests, completeAnalysisJob, enqueueAnalysisJob, failAnalysisJob, resolveAnalysisJobFreshness } from "@/lib/analysis-jobs";
 import { GET } from "./route";
 
 describe("/api/dashboard/reports", () => {
@@ -235,6 +235,55 @@ describe("/api/dashboard/reports", () => {
     expect(serialized).not.toContain(newerHead);
     expect(serialized).not.toContain("provider_status");
     expect(serialized).not.toContain("canonical_key_hash");
+  });
+
+  it("returns a bounded refresh-failure explanation for the signed-in tenant's saved report", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const oldHead = "a".repeat(40);
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 10, headSha: oldHead
+    });
+    const queued = await enqueueAnalysisJob({
+      tenantId: "tenant_a",
+      idempotencyKey: "dashboard-failed-refresh",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174389",
+      event: "pull_request",
+      action: "synchronize",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      pullRequestNumber: 10,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/10",
+      headSha: "b".repeat(40),
+      saveReport: true,
+      comment: false
+    });
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date(Date.now() + 60_000) });
+    await failAnalysisJob({
+      id: queued.id,
+      claimGeneration: claim.job!.claim_generation!,
+      retryable: false,
+      code: "github_fetch_failed",
+      summary: "GitHub request could not be completed."
+    });
+
+    const response = await GET(new Request(`http://localhost/api/dashboard/reports?id=${saved.id}`, {
+      headers: { cookie: session.sessionCookie }
+    }));
+    const body = await response.json();
+
+    expect(body).toMatchObject({
+      freshness: "refresh_failed",
+      copyEligible: false,
+      failure: {
+        code: "github_fetch_failed",
+        summary: "GitHub request could not be completed."
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain("provider_response_id");
+    expect(JSON.stringify(body)).not.toContain("tenant_a");
   });
 
   it("keeps an unavailable report visible while blocking its detail content and copy bundle", async () => {

@@ -573,7 +573,7 @@ describe("analysis job queue", () => {
     const url = new URL(requestUrl);
     expect(url.searchParams.get("order")).toBe("created_at.desc");
     expect(url.searchParams.get("limit")).toBe("2");
-    expect(url.searchParams.get("select")).toBe("status,head_sha,created_at");
+    expect(url.searchParams.get("select")).toBe("status,head_sha,created_at,error_code,error_summary");
     expect(url.searchParams.get("is_historical")).toBe("eq.false");
   });
 
@@ -601,7 +601,11 @@ describe("analysis job queue", () => {
     const claim = await claimAnalysisJobById(failed.id, { now: new Date("2026-06-30T00:00:15Z") });
     await failAnalysisJob({ id: failed.id, claimGeneration: claim.job!.claim_generation!, retryable: false, code: "failed", summary: "bounded", now: new Date("2026-06-30T00:00:16Z") });
     await expect(resolveAnalysisJobFreshness({ tenantId: "tenant_a", repositoryId: 100, pullRequestNumber: 7, reportHeadSha: head }))
-      .resolves.toEqual({ freshness: "refresh_failed", copyEligible: false });
+      .resolves.toEqual({
+        freshness: "refresh_failed",
+        copyEligible: false,
+        failure: { code: "failed", summary: "bounded" }
+      });
 
     clearAnalysisJobsForTests();
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "false");

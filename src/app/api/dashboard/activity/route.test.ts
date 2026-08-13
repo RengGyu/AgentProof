@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearAnalysisJobsForTests, enqueueAnalysisJob } from "@/lib/analysis-jobs";
+import { claimAnalysisJobById, clearAnalysisJobsForTests, enqueueAnalysisJob, failAnalysisJob } from "@/lib/analysis-jobs";
 import { clearSavedReportsForTests, createVerifiedSavedReport } from "@/lib/server-report-store";
 import { clearTenantAuthSessionsForTests, createTenantAuthSessionForMember } from "@/lib/tenant-auth";
 import { demoScenarios } from "@/lib/sample-data";
@@ -74,6 +74,41 @@ describe("GET /api/dashboard/activity", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({ code: "dashboard_activity_unauthorized" });
+  });
+
+  it("returns a bounded failure explanation only for the signed-in tenant", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const queued = await enqueueAnalysisJob(jobInput({
+      tenantId: "tenant_a",
+      pullRequestNumber: 30,
+      pullRequestUrl: "https://github.com/RengGyu/dongo/pull/30",
+      headSha: "d".repeat(40)
+    }));
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date(Date.now() + 60_000) });
+    await failAnalysisJob({
+      id: queued.id,
+      claimGeneration: claim.job!.claim_generation!,
+      retryable: false,
+      code: "github_fetch_failed",
+      summary: "GitHub request could not be completed."
+    });
+
+    const response = await GET(new Request("http://localhost/api/dashboard/activity", {
+      headers: { cookie: session.sessionCookie }
+    }));
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    expect(body.activity).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "analysis_needs_attention",
+        pullRequestNumber: 30,
+        failure: { code: "github_fetch_failed", summary: "GitHub request could not be completed." }
+      })
+    ]));
+    expect(serialized).not.toContain("tenant_a");
+    expect(serialized).not.toContain("provider_response_id");
+    expect(serialized).not.toContain("canonical_key_hash");
   });
 });
 

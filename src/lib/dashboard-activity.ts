@@ -18,6 +18,10 @@ export interface DashboardActivityEvent {
   pullRequestNumber?: number;
   headShaPrefix?: string;
   reportId?: string;
+  failure?: {
+    code?: string;
+    summary?: string;
+  };
 }
 
 export function buildDashboardActivity(input: {
@@ -81,7 +85,15 @@ function jobEvent(
     state,
     repositoryFullName: job.repositoryFullName,
     pullRequestNumber: job.pullRequestNumber,
-    headShaPrefix: safeHeadPrefix(job.headShaPrefix)
+    headShaPrefix: safeHeadPrefix(job.headShaPrefix),
+    ...((job.status === "failed_retryable" || job.status === "failed_terminal") && (job.errorCode || job.errorSummary)
+      ? {
+        failure: {
+          ...(job.errorCode ? { code: job.errorCode } : {}),
+          ...(job.errorSummary ? { summary: job.errorSummary } : {})
+        }
+      }
+      : {})
   };
 }
 

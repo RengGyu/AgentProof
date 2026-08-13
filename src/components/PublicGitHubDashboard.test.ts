@@ -127,6 +127,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("Issue grouping and inbox are unavailable");
   });
 
+  it("shows a safe refresh-failure explanation in the existing dashboard workspace", () => {
+    expect(source).toContain("Analysis refresh failed");
+    expect(source).toContain("event.failure?.summary");
+    expect(source).toContain("A newer analysis failed before a report was saved.");
+  });
+
   it("opens the saved previous report when a stale Inbox item is selected", () => {
     expect(source).toMatch(/if \(event\.kind === "report_stale"\) \{\s*if \(event\.reportId\) \{\s*setMessage\("Showing this previous result\."\);\s*await openReport\(event\.reportId\);/);
   });

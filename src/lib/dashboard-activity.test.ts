@@ -59,7 +59,8 @@ describe("dashboard activity", () => {
         kind: "analysis_needs_attention",
         repositoryFullName: "RengGyu/dongo",
         pullRequestNumber: 15,
-        state: "Needs attention"
+        state: "Needs attention",
+        failure: { code: "github_fetch_failed" }
       }),
       expect.objectContaining({
         id: "report:report_current",

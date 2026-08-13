@@ -24,6 +24,11 @@ export type AnalysisJobFreshnessState = "current" | "refreshing" | "refresh_fail
 export interface AnalysisJobFreshness {
   freshness: AnalysisJobFreshnessState;
   copyEligible: boolean;
+  /** Bounded, redacted failure metadata for the already-authorized dashboard. */
+  failure?: {
+    code?: string;
+    summary?: string;
+  };
 }
 
 export interface ResolveAnalysisJobFreshnessInput {
@@ -439,7 +444,7 @@ const TENANT_ANALYSIS_JOB_SELECT = [
   "result_summary"
 ].join(",");
 
-const FRESHNESS_ANALYSIS_JOB_SELECT = ["status", "head_sha", "created_at"].join(",");
+const FRESHNESS_ANALYSIS_JOB_SELECT = ["status", "head_sha", "created_at", "error_code", "error_summary"].join(",");
 
 const FORBIDDEN_JOB_KEYS = [
   "access_token",
@@ -1200,7 +1205,13 @@ export async function resolveAnalysisJobFreshness(
 
   if (!latest) return { freshness: legacy, copyEligible: legacy === "current" };
   if (latest.status === "queued" || latest.status === "processing") return { freshness: "refreshing", copyEligible: false };
-  if (latest.status === "failed_retryable" || latest.status === "failed_terminal") return { freshness: "refresh_failed", copyEligible: false };
+  if (latest.status === "failed_retryable" || latest.status === "failed_terminal") {
+    return {
+      freshness: "refresh_failed",
+      copyEligible: false,
+      failure: toDashboardFailureSummary(latest)
+    };
+  }
   if (latest.status !== "completed") return { freshness: "unknown", copyEligible: false };
   return latest.head_sha === reportHeadSha
     ? { freshness: "current", copyEligible: true }
@@ -1823,7 +1834,7 @@ async function listSupabaseTenantAnalysisJobs(
     .slice(0, limit);
 }
 
-type FreshnessAnalysisJobRow = Pick<AnalysisJobRow, "status" | "head_sha" | "created_at">;
+type FreshnessAnalysisJobRow = Pick<AnalysisJobRow, "status" | "head_sha" | "created_at" | "error_code" | "error_summary">;
 
 async function getSupabaseLatestAnalysisJobForFreshness(
   config: AnalysisJobStoreConfig,
@@ -1886,6 +1897,13 @@ function isFreshnessAnalysisJobRow(value: unknown): value is FreshnessAnalysisJo
   return safeAnalysisJobStatus(row.status) !== null &&
     typeof row.head_sha === "string" && safeHeadSha(row.head_sha) !== null &&
     typeof row.created_at === "string" && Number.isFinite(new Date(row.created_at).getTime());
+}
+
+function toDashboardFailureSummary(row: FreshnessAnalysisJobRow): NonNullable<AnalysisJobFreshness["failure"]> {
+  return {
+    ...(row.error_code ? { code: safeJobErrorCode(row.error_code) } : {}),
+    ...(row.error_summary ? { summary: safePublicErrorSummary(row.error_summary) } : {})
+  };
 }
 
 async function countSupabaseTenantAnalysisJobs(
