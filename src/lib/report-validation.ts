@@ -301,18 +301,19 @@ function validateVerificationContractV2(report: RecordValue, evidenceIds: Set<st
         states.push(result.state);
       }
       if (result.state === "satisfied") {
+        const satisfiedAbsenceInventory = criterion.type === "absence" && hasAuthoritativeReportChangedFileInventory(report);
         if (criterion.type === "return_value") {
           errors.push(`${path}.criterionResults[${criterionIndex}] return-value satisfied state requires an attested executor result.`);
         }
         if (criterion.type === "artifact" && criterion.artifactKind !== "documentation_literal") {
           errors.push(`${path}.criterionResults[${criterionIndex}] artifact kind cannot be satisfied until its immutable evaluator is configured.`);
         }
-        if (criterion.type === "absence" && !hasAuthoritativeReportChangedFileInventory(report)) {
+        if (criterion.type === "absence" && !satisfiedAbsenceInventory) {
           errors.push(`${path}.criterionResults[${criterionIndex}] absence satisfied state requires a complete exact-head changed-file inventory.`);
         }
-        if (!Array.isArray(result.evidenceRefs) || result.evidenceRefs.length === 0) {
+        if (!Array.isArray(result.evidenceRefs) || (result.evidenceRefs.length === 0 && !satisfiedAbsenceInventory)) {
           errors.push(`${path}.criterionResults[${criterionIndex}] satisfied state requires deterministic evidence references.`);
-        } else {
+        } else if (result.evidenceRefs.length > 0) {
           validateEvidenceRefs(result.evidenceRefs, `${path}.criterionResults[${criterionIndex}].evidenceRefs`, evidenceIds, errors);
           const requirement = requirements.find((item) => item.requirementId === objective.requirementId);
           const requirementEvidenceRefs = Array.isArray(requirement?.evidenceRefs)
