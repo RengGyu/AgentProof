@@ -313,6 +313,74 @@ describe("buildPullRequestInput", () => {
     expect(JSON.stringify(input.requirementSourceIdentityHash)).not.toContain("42");
   });
 
+  it("collects only an authoritative contract's documentation path at the exact PR head", async () => {
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "reset",
+        objective: "Document the reset command.",
+        criteria: [{
+          id: "reset_literal",
+          type: "artifact",
+          label: "The reset guide contains the command.",
+          paths: ["docs/reset.md"],
+          artifact: { kind: "documentation_literal", literal: "Run npm test." }
+        }]
+      }]
+    };
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Document reset", body: "Fixes #42", url: "https://api.github.com/repos/acme/repo/pulls/12",
+        user: { login: "coding-agent" }, base: { ref: "main", sha: baseSha }, head: { ref: "agent/reset", sha: headSha }
+      }));
+      if (url.endsWith("/issues/42")) return Promise.resolve(Response.json({
+        title: "AgentProof verification contract",
+        body: `\`\`\`agentproof-verification\n${JSON.stringify(contract)}\n\`\`\``
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([
+        { filename: "docs/reset.md", additions: 1, deletions: 0, status: "modified", patch: "+Run npm test." }
+      ]));
+      if (url.includes("/commits/") && url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/contents/docs/reset.md") && url.includes(`ref=${headSha}`)) return Promise.resolve(Response.json({
+        encoding: "base64", content: Buffer.from("Stop the server.\nRun npm test.", "utf8").toString("base64")
+      }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.verificationCriterionEvidenceV2).toEqual({
+      artifactBlobs: [{ path: "docs/reset.md", content: "Stop the server.\nRun npm test." }]
+    });
+    const contentUrls = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes("/contents/"));
+    expect(contentUrls).toEqual([`https://api.github.com/repos/acme/repo/contents/docs/reset.md?ref=${headSha}`]);
+  });
+
+  it("does not fetch documentation content when the selected source has no valid contract", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "No contract", body: "Fixes #42", url: "https://api.github.com/repos/acme/repo/pulls/12",
+        user: { login: "coding-agent" }, base: { ref: "main", sha: "def456" }, head: { ref: "agent/reset", sha: "abc123" }
+      }));
+      if (url.endsWith("/issues/42")) return Promise.resolve(Response.json({ title: "Ordinary issue", body: "Document the reset command." }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.verificationCriterionEvidenceV2).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/contents/"))).toBe(false);
+  });
+
   it("changes only the opaque authority identity hash when an identical linked Issue is relinked", async () => {
     let linkedNumber = 1;
     const fetchMock = vi.fn((url: string) => {

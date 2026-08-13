@@ -156,6 +156,7 @@ describe("generateVerificationReport", () => {
     expect(report.verificationContract.objectives[0]?.criterionResults).toEqual([
       expect.objectContaining({ state: "satisfied" })
     ]);
+    expect(JSON.stringify(report)).not.toContain("Stop the server.");
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
 
     const forged = structuredClone(report);

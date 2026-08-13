@@ -7,6 +7,7 @@ import {
   type SupportedIssueReference
 } from "./github-linked-issues";
 import { compactText, redactSecrets } from "./redact";
+import { parseVerificationContractV2, type VerificationContractSourceInputV2 } from "./verification-contract-v2";
 
 const GITHUB_FETCH_TIMEOUT_MS = 8000;
 const GITHUB_CHECK_RUNS_TIMEOUT_MS = 5000;
@@ -21,6 +22,8 @@ const GITHUB_MAX_COMMIT_STATUSES = 30;
 const GITHUB_MAX_ACTION_RUNS = 3;
 const GITHUB_MAX_ACTION_JOB_SUMMARIES = 12;
 const GITHUB_MAX_ACTION_STEPS_PER_JOB = 8;
+const GITHUB_MAX_CONTRACT_ARTIFACT_PATHS = 8;
+const GITHUB_MAX_CONTRACT_ARTIFACT_BYTES = 64 * 1024;
 const GITHUB_MAX_ANNOTATED_CHECK_RUNS = 3;
 const GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL = 20;
 const GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN = 10;
@@ -391,6 +394,37 @@ async function fetchGitHubPullRequest(
   assertExpectedAnchor(initialHeadSha, finalAnchor.headSha, "final", "head");
   assertExpectedAnchor(initialBaseSha, finalAnchor.baseSha, "final", "base");
 
+  const verificationContractSourceV2 = taskText.trim()
+    ? undefined
+    : linkedIssueTask?.contractSource ?? {
+      kind: "pr_description" as const,
+      title: pr.title ?? `PR #${parsed.number}`,
+      body: redactSecrets(pr.body ?? "")
+    };
+  const verificationContractBindingV2 = taskText.trim()
+    ? undefined
+    : linkedIssueTask
+      ? {
+        ...linkedIssueTask.contractBinding,
+        headSha: initialHeadSha,
+        baseSha: initialBaseSha
+      }
+      : {
+        sourceKind: "pr_description" as const,
+        sourceIdentity: `github:pr_description:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`,
+        sourceContent: redactSecrets(pr.body ?? ""),
+        headSha: initialHeadSha,
+        baseSha: initialBaseSha
+      };
+  const verificationCriterionEvidenceV2 = await collectVerificationContractArtifactEvidenceV2({
+    source: verificationContractSourceV2,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    headSha: initialHeadSha,
+    headers,
+    limitations
+  });
+
   const input: PullRequestInput = {
     url: safePrUrl,
     title: pr.title ?? `PR #${parsed.number}`,
@@ -404,28 +438,9 @@ async function fetchGitHubPullRequest(
       ? requirementSourceIdentityHash(`github_task:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`)
       : linkedIssueTask?.identityHash ??
         requirementSourceIdentityHash(`github_pr_description:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`),
-    verificationContractSourceV2: taskText.trim()
-      ? undefined
-      : linkedIssueTask?.contractSource ?? {
-        kind: "pr_description" as const,
-        title: pr.title ?? `PR #${parsed.number}`,
-        body: redactSecrets(pr.body ?? "")
-      },
-    verificationContractBindingV2: taskText.trim()
-      ? undefined
-      : linkedIssueTask
-        ? {
-          ...linkedIssueTask.contractBinding,
-          headSha: initialHeadSha,
-          baseSha: initialBaseSha
-        }
-        : {
-          sourceKind: "pr_description" as const,
-          sourceIdentity: `github:pr_description:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`,
-          sourceContent: redactSecrets(pr.body ?? ""),
-          headSha: initialHeadSha,
-          baseSha: initialBaseSha
-        },
+    verificationContractSourceV2,
+    verificationContractBindingV2,
+    ...(verificationCriterionEvidenceV2 ? { verificationCriterionEvidenceV2 } : {}),
     changedFiles: files.map((file) => ({
       path: file.filename,
       additions: file.additions,
@@ -486,6 +501,72 @@ function assertExpectedAnchor(
 ) {
   if (expectedSha?.trim() && expectedSha.trim() !== observedSha) {
     throw new GitHubPullRequestHeadChangedError(expectedSha.trim(), observedSha, phase, anchor);
+  }
+}
+
+async function collectVerificationContractArtifactEvidenceV2(input: {
+  source: VerificationContractSourceInputV2 | undefined;
+  owner: string;
+  repo: string;
+  headSha: string;
+  headers: Record<string, string>;
+  limitations: string[];
+}): Promise<PullRequestInput["verificationCriterionEvidenceV2"] | undefined> {
+  if (!input.source) return undefined;
+  const parsed = parseVerificationContractV2(input.source);
+  if (parsed.state !== "authoritative" && parsed.state !== "author_claim") return undefined;
+
+  const paths = [...new Set(parsed.contract.objectives.flatMap((objective) =>
+    objective.criteria.flatMap((criterion) =>
+      criterion.type === "artifact" && criterion.artifact.kind === "documentation_literal" ? criterion.paths : []
+    )
+  ))];
+  if (paths.length === 0) return undefined;
+  if (paths.length > GITHUB_MAX_CONTRACT_ARTIFACT_PATHS) {
+    input.limitations.push("Contract-declared documentation artifact collection exceeded the bounded path limit; affected criteria are unavailable.");
+    return undefined;
+  }
+
+  const artifactBlobs: Array<{ path: string; content: string }> = [];
+  for (const path of paths) {
+    try {
+      const response = await githubFetch(
+        `https://api.github.com/repos/${input.owner}/${input.repo}/contents/${encodeGitHubContentPath(path)}?ref=${encodeURIComponent(input.headSha)}`,
+        input.headers
+      );
+      if (!response.ok) {
+        input.limitations.push("A contract-declared documentation artifact could not be collected at the analyzed head; affected criteria are unavailable.");
+        continue;
+      }
+      const payload = await response.json();
+      const content = decodeBoundedGitHubTextContent(payload);
+      if (content === null) {
+        input.limitations.push("A contract-declared documentation artifact was unavailable or exceeded the bounded content limit; affected criteria are unavailable.");
+        continue;
+      }
+      artifactBlobs.push({ path, content });
+    } catch {
+      input.limitations.push("A contract-declared documentation artifact could not be collected at the analyzed head; affected criteria are unavailable.");
+    }
+  }
+
+  return artifactBlobs.length > 0 ? { artifactBlobs } : undefined;
+}
+
+function encodeGitHubContentPath(path: string): string {
+  return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+}
+
+function decodeBoundedGitHubTextContent(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as { encoding?: unknown; content?: unknown; type?: unknown };
+  if (payload.type !== undefined && payload.type !== "file") return null;
+  if (payload.encoding !== "base64" || typeof payload.content !== "string") return null;
+  try {
+    const content = Buffer.from(payload.content.replace(/\s/g, ""), "base64").toString("utf8");
+    return Buffer.byteLength(content, "utf8") <= GITHUB_MAX_CONTRACT_ARTIFACT_BYTES ? content : null;
+  } catch {
+    return null;
   }
 }
 
