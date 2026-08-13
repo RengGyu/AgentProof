@@ -1260,6 +1260,49 @@ describe("generateVerificationReport", () => {
     expect(validation).toEqual({ valid: true, errors: [] });
   });
 
+  it("keeps suite-linked execution evidence in a met requirement after artifact references are capped", () => {
+    const headSha = "a".repeat(40);
+    const report = generateVerificationReport({
+      title: "Add export evidence report",
+      description: "",
+      taskText: "Acceptance criteria: add export evidence report.",
+      changedFiles: [
+        {
+          path: "README.md",
+          status: "modified" as const,
+          patch: "+ Export evidence report usage"
+        },
+        ...Array.from({ length: 24 }, (_value, index) => ({
+          path: `src/reports/export-evidence-report-${index}.ts`,
+          status: "modified" as const,
+          patch: "+ export function exportEvidenceReport() {}"
+        })),
+        {
+          path: "test/export-evidence-report.test.ts",
+          status: "added" as const,
+          patch: "+ test('exports evidence report', () => {})"
+        }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "Steps: Run node --test: passed." }],
+      sourceProvenance: githubInventoryProvenance(headSha),
+      executionSuites: [{
+        status: "passed",
+        headSha,
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/export-evidence-report.test.ts"]
+      }]
+    } satisfies PullRequestInput);
+    const finding = report.requirements[0];
+    const evidence = refsToEvidence(report, finding?.evidenceRefs ?? []);
+
+    expect(finding?.status).toBe("met");
+    expect(evidence.some((item) => item.kind === "log" && item.summary.startsWith("Status: passed"))).toBe(true);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("does not trust passing words when execution status is unknown", () => {
     const report = generateVerificationReport({
       title: "Add invoice export",

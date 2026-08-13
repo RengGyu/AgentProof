@@ -1276,6 +1276,16 @@ function applyProofGraphToRequirements(
     const hasEvidenceUnavailable = node.gapSignals.some((gap) => gap.kind === "evidence_unavailable");
     const status = node.status;
     const confidence = hasHardGap ? Math.min(finding.confidence, 0.58) : finding.confidence;
+    // A met requirement with an execution axis must retain a matching
+    // execution reference even when broad artifact evidence fills the bounded
+    // requirement-level evidence list.
+    const evidenceRefs = uniqueRefs([
+      ...(status === "met" ? node.executionEvidenceRefs : []),
+      ...finding.evidenceRefs,
+      ...node.implementationEvidenceRefs,
+      ...node.targetedTestEvidenceRefs,
+      ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
+    ]).slice(0, 12);
 
     return {
       ...finding,
@@ -1283,13 +1293,7 @@ function applyProofGraphToRequirements(
       proofAxes,
       confidence,
       gaps: status === "met" ? [] : uniqueRefs([...finding.gaps, ...gapMessages]).slice(0, 8),
-      evidenceRefs: uniqueRefs([
-        ...finding.evidenceRefs,
-        ...node.implementationEvidenceRefs,
-        ...node.targetedTestEvidenceRefs,
-        ...node.executionEvidenceRefs,
-        ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
-      ]).slice(0, 12),
+      evidenceRefs,
       reviewerNote: hasHardGap
         ? `${finding.reviewerNote} Review implementation, targeted test, and execution proof together before trusting this requirement.`
         : hasEvidenceUnavailable
