@@ -11,6 +11,7 @@ import {
 } from "./evidence-relation";
 import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
 import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
+import { aggregateVerificationCriteriaV2 } from "./verification-contract-v2";
 import {
   PROOF_AXIS_COLLECTION_BASES,
   PROOF_AXIS_SUBJECTS,
@@ -103,7 +104,7 @@ export interface ReportValidationResult {
 }
 
 export interface ReportValidationOptions {
-  mode?: "default" | "full" | "summary" | "tenant";
+  mode?: "default" | "full" | "summary" | "tenant" | "legacy_read" | "v2_full" | "v2_summary" | "v2_tenant";
   requireFullProvenance?: boolean;
   requireSourceProvenance?: boolean;
 }
@@ -116,6 +117,15 @@ export function validateVerificationReport(report: unknown, options: ReportValid
 
   if (!isRecord(report)) {
     return { valid: false, errors: ["Report must be an object."] };
+  }
+
+  const isV2 = report.reportSchemaVersion === "verification-report.v2";
+  const isV2Mode = mode === "v2_full" || mode === "v2_summary" || mode === "v2_tenant";
+  if (isV2 && !isV2Mode) {
+    return { valid: false, errors: ["v2 reports must be validated through a v2 validation mode."] };
+  }
+  if (!isV2 && isV2Mode) {
+    return { valid: false, errors: ["v2 validation requires reportSchemaVersion verification-report.v2."] };
   }
 
   requireKeys(
@@ -137,7 +147,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner"]
+    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "verificationContract"] : [])]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -151,7 +161,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   const requirementIds = collectRequirementIds(report.requirements);
   validateSource(report.source, errors, options.requireSourceProvenance === true);
   validateSummary(report.summary, errors);
-  validateRequirements(report.requirements, evidenceIds, errors);
+  validateRequirements(report.requirements, evidenceIds, errors, isV2);
   validateClaims(report.claims, evidenceIds, errors);
   validateScope(report.scope, evidenceIds, errors);
   validateTesting(report.testing, evidenceIds, errors);
@@ -164,15 +174,141 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validatePlannerProvenance(report.planner, mode, report.authenticity, errors);
   validatePlanningFieldConsistency(report, errors);
   validateAuthenticity(report.authenticity, errors);
-  if (mode === "summary") {
+  if (mode === "summary" || mode === "v2_summary") {
     validateSummaryOnlyReport(report, errors);
   }
   if (mode === "full") {
     validateFullReportProvenance(report, evidenceIds, errors);
     validateFullReportSemantics(report, evidenceIds, errors);
   }
+  if (isV2) {
+    validateVerificationContractV2(report, errors);
+  }
 
   return { valid: errors.length === 0, errors };
+}
+
+function validateVerificationContractV2(report: RecordValue, errors: string[]): void {
+  if (report.reportSchemaVersion !== "verification-report.v2") {
+    errors.push("report.reportSchemaVersion must be verification-report.v2.");
+    return;
+  }
+  if (isRecord(report.authenticity) && isRecord(report.authenticity.generator) &&
+    report.authenticity.generator.reportSchemaVersion !== "verification-report.v2") {
+    errors.push("v2 report authenticity must declare verification-report.v2.");
+  }
+  if (!isRecord(report.verificationContract)) {
+    errors.push("v2 report requires verificationContract.");
+    return;
+  }
+  const contract = report.verificationContract;
+  requireKeys(contract, ["version", "policy", "state", "source", "objectives"], "verificationContract", errors, ["integrity"]);
+  if (contract.version !== 2 || contract.policy !== "strict_typed_contract") {
+    errors.push("verificationContract version or policy is invalid.");
+  }
+  const state = contract.state;
+  if (state !== "authoritative" && state !== "author_claim" && state !== "absent" && state !== "invalid") {
+    errors.push("verificationContract.state is invalid.");
+    return;
+  }
+  if ((state === "absent" || state === "invalid") && contract.source !== null) {
+    errors.push("absent or invalid verification contracts must not expose a source.");
+  }
+  if ((state === "authoritative" || state === "author_claim") && (!isRecord(contract.source) ||
+    (contract.source.kind !== "linked_issue" && contract.source.kind !== "provided_requirement" && contract.source.kind !== "pr_description"))) {
+    errors.push("active verification contracts require a recognized source kind.");
+  }
+  const objectives = Array.isArray(contract.objectives) ? contract.objectives : null;
+  if (!objectives) {
+    errors.push("verificationContract.objectives must be an array.");
+    return;
+  }
+  if ((state === "absent" || state === "invalid") && objectives.length !== 0) {
+    errors.push("absent or invalid verification contracts cannot contain objectives.");
+  }
+  if ((state === "authoritative" || state === "author_claim") && (objectives.length < 1 || objectives.length > 12)) {
+    errors.push("active verification contracts require 1 to 12 objectives.");
+  }
+
+  const requirements = Array.isArray(report.requirements) ? report.requirements.filter(isRecord) : [];
+  const nodes = isRecord(report.proofGraph) && Array.isArray(report.proofGraph.nodes)
+    ? report.proofGraph.nodes.filter(isRecord)
+    : [];
+  const requirementIds = new Set(requirements.map((requirement) => requirement.requirementId).filter((id): id is string => typeof id === "string"));
+  const nodeIds = new Set(nodes.map((node) => node.requirementId).filter((id): id is string => typeof id === "string"));
+  const objectiveIds = new Set<string>();
+
+  for (const [index, objective] of objectives.entries()) {
+    const path = `verificationContract.objectives[${index}]`;
+    if (!isRecord(objective)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(objective, ["requirementId", "state", "criteria", "criterionResults"], path, errors);
+    if (typeof objective.requirementId !== "string" || !/^vc_o[1-9]\d*$/.test(objective.requirementId) || objectiveIds.has(objective.requirementId)) {
+      errors.push(`${path}.requirementId must be a unique canonical v2 ID.`);
+      continue;
+    }
+    objectiveIds.add(objective.requirementId);
+    if (objective.state !== state || !requirementIds.has(objective.requirementId) || !nodeIds.has(objective.requirementId)) {
+      errors.push(`${path} must map one-to-one to the requirement and proof-graph node.`);
+    }
+    const criteria = Array.isArray(objective.criteria) ? objective.criteria : null;
+    const results = Array.isArray(objective.criterionResults) ? objective.criterionResults : null;
+    if (!criteria || !results || criteria.length < 1 || criteria.length > 4 || criteria.length !== results.length) {
+      errors.push(`${path} requires one-to-four criteria and same-order results.`);
+      continue;
+    }
+    const criterionIds = new Set<string>();
+    const states: Array<"satisfied" | "violated" | "incomplete" | "unavailable"> = [];
+    for (const [criterionIndex, criterion] of criteria.entries()) {
+      const criterionPath = `${path}.criteria[${criterionIndex}]`;
+      const result = results[criterionIndex];
+      if (!isRecord(criterion) || !isRecord(result)) {
+        errors.push(`${criterionPath} and its result must be objects.`);
+        continue;
+      }
+      requireKeys(criterion, ["criterionId", "required", "approval", "label", "type", "requiredEvidence"], criterionPath, errors);
+      requireKeys(result, ["criterionId", "state", "proofAxisRefs", "evidenceRefs", "gapKinds"], `${path}.criterionResults[${criterionIndex}]`, errors);
+      const expectedCriterionId = `${objective.requirementId}_c${criterionIndex + 1}`;
+      if (criterion.criterionId !== expectedCriterionId || result.criterionId !== expectedCriterionId || criterionIds.has(expectedCriterionId)) {
+        errors.push(`${criterionPath} has an invalid canonical criterion ID.`);
+      }
+      criterionIds.add(expectedCriterionId);
+      if (criterion.required !== true || (state === "authoritative" && criterion.approval !== "source_explicit") ||
+        (state === "author_claim" && criterion.approval !== "author_claim")) {
+        errors.push(`${criterionPath} has invalid required or approval fields.`);
+      }
+      if (criterion.type !== "return_value" && criterion.type !== "artifact" && criterion.type !== "absence") {
+        errors.push(`${criterionPath}.type is invalid.`);
+      }
+      if (!Array.isArray(criterion.requiredEvidence) || criterion.requiredEvidence.length === 0) {
+        errors.push(`${criterionPath}.requiredEvidence must be nonempty.`);
+      }
+      if (result.state !== "satisfied" && result.state !== "violated" && result.state !== "incomplete" && result.state !== "unavailable") {
+        errors.push(`${path}.criterionResults[${criterionIndex}].state is invalid.`);
+      } else {
+        states.push(result.state);
+      }
+      if (result.state === "satisfied") {
+        errors.push(`${path}.criterionResults[${criterionIndex}] cannot be satisfied until an attested v2 evaluator is configured.`);
+      }
+    }
+    const expectedStatus = aggregateVerificationCriteriaV2(state, states);
+    const requirement = requirements.find((item) => item.requirementId === objective.requirementId);
+    const node = nodes.find((item) => item.requirementId === objective.requirementId);
+    if (requirement?.status !== expectedStatus || node?.status !== expectedStatus) {
+      errors.push(`${path} status must be derived only from its criterion results.`);
+    }
+  }
+
+  if ((state === "authoritative" || state === "author_claim") &&
+    (objectiveIds.size !== requirements.length || objectiveIds.size !== nodes.length)) {
+    errors.push("v2 objectives must cover every requirement and proof-graph node exactly once.");
+  }
+  if ((state === "absent" || state === "invalid") && requirements.some((requirement) => requirement.status === "met")) {
+    errors.push("absent or invalid verification contracts cannot produce met requirements.");
+  }
 }
 
 function validatePlannerProvenance(
@@ -346,7 +482,7 @@ function validateAuthenticity(value: unknown, errors: string[]) {
     errors.push("authenticity.generator must be an object.");
   } else {
     requireKeys(value.generator, ["reportSchemaVersion", "deterministicEngineVersion"], "authenticity.generator", errors);
-    if (value.generator.reportSchemaVersion !== "verification-report.v1") {
+    if (value.generator.reportSchemaVersion !== "verification-report.v1" && value.generator.reportSchemaVersion !== "verification-report.v2") {
       errors.push("authenticity.generator.reportSchemaVersion is invalid.");
     }
     validateString(value.generator.deterministicEngineVersion, "authenticity.generator.deterministicEngineVersion", LIMITS.shortText, errors);
@@ -476,7 +612,7 @@ function validateSummary(value: unknown, errors: string[]) {
   validateStringArray(value.topRisks, "summary.topRisks", LIMITS.summaryTopRisks, LIMITS.shortText, errors);
 }
 
-function validateRequirements(value: unknown, evidenceIds: Set<string>, errors: string[]) {
+function validateRequirements(value: unknown, evidenceIds: Set<string>, errors: string[], allowIndependentEvidenceStatus = false) {
   const requirements = validateArray(value, "requirements", LIMITS.requirementCount, errors);
   if (!requirements) return;
 
@@ -493,7 +629,7 @@ function validateRequirements(value: unknown, evidenceIds: Set<string>, errors: 
     validateEnum(item.status, `${path}.status`, REQUIREMENT_STATUSES, errors);
     if (item.evidenceStatus !== undefined) validateEnum(item.evidenceStatus, `${path}.evidenceStatus`, REQUIREMENT_STATUSES, errors);
     if (item.sourceAuthority !== undefined) validateEnum(item.sourceAuthority, `${path}.sourceAuthority`, REQUIREMENT_AUTHORITIES, errors);
-    if (item.evidenceStatus !== undefined && item.sourceAuthority !== "pr_description") {
+    if (item.evidenceStatus !== undefined && item.sourceAuthority !== "pr_description" && !allowIndependentEvidenceStatus) {
       errors.push(`${path}.evidenceStatus requires pr_description sourceAuthority.`);
     }
     if (item.sourceAuthority === "pr_description" && item.evidenceStatus === undefined) {
@@ -708,7 +844,7 @@ function validateProofGraph(
       validateEvidenceRefs(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceIds, errors);
       validateEvidenceRefs(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceIds, errors);
       validateEvidenceRefs(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceIds, errors);
-      if (mode !== "tenant") {
+      if (mode !== "tenant" && mode !== "v2_tenant") {
         validateProofEvidenceClass(item.implementationEvidenceRefs, `${path}.implementationEvidenceRefs`, evidenceById, isImplementationProofEvidence, errors);
         validateProofEvidenceClass(item.targetedTestEvidenceRefs, `${path}.targetedTestEvidenceRefs`, evidenceById, isTargetedTestProofEvidence, errors);
         validateProofEvidenceClass(item.executionEvidenceRefs, `${path}.executionEvidenceRefs`, evidenceById, isExecutionProofEvidence, errors);
@@ -1147,7 +1283,6 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     const proofNodeText = typeof proofNode?.requirementText === "string" ? proofNode.requirementText : "";
     const duplicateTextMatches = proofNode !== undefined && proofNodeText === requirementText;
     const duplicateStatusMatches = proofNode !== undefined && proofNode.status === item.status;
-
     if (proofNode && !duplicateTextMatches) {
       errors.push(`proofGraph node requirementText must match requirements[${index}].requirementText.`);
     }

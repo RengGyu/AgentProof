@@ -646,7 +646,8 @@ function DetailedEvidence({ detail, demoMode }: { detail: DashboardReportDetail 
   const requirementCards = toDashboardRequirementViewModels({
     requirements: report?.requirements,
     semantic,
-    semanticAnalysis: report?.semanticAnalysis
+    semanticAnalysis: report?.semanticAnalysis,
+    verificationContract: report?.verificationContract
   });
   const [copiedFormat, setCopiedFormat] = useState<"markdown" | "json" | null>(null);
   const [copyError, setCopyError] = useState(false);

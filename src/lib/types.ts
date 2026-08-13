@@ -1,4 +1,5 @@
 import type { RequirementProofCollectionBasis, RequirementProofSubject } from "./proof-contract";
+import type { VerificationBindingInputV2, VerificationContractSourceInputV2 } from "./verification-contract-v2";
 export type { RequirementProofCollectionBasis, RequirementProofSubject } from "./proof-contract";
 
 export type CheckStatus = "passed" | "failed" | "pending" | "unknown";
@@ -77,6 +78,10 @@ export interface PullRequestInput {
   taskSource?: "task" | "issue";
   /** Transient SHA-256 identity for the selected requirement-authority object. */
   requirementSourceIdentityHash?: string;
+  /** Transient authoritative contract source; never persisted in reports or telemetry. */
+  verificationContractSourceV2?: VerificationContractSourceInputV2;
+  /** Transient binding source; only its digest can enter a private v2 report. */
+  verificationContractBindingV2?: VerificationBindingInputV2;
   changedFiles: ChangedFile[];
   checks: CheckRun[];
   logs: LogSnippet[];
@@ -135,7 +140,7 @@ export interface ReportAuthenticity {
   version: 1;
   trust: "verified_agentproof" | "imported_unverified" | "legacy_unverified" | "portable_unverified";
   generator: {
-    reportSchemaVersion: "verification-report.v1";
+    reportSchemaVersion: "verification-report.v1" | "verification-report.v2";
     deterministicEngineVersion: string;
   };
   canonicalDigest?: string;
@@ -396,6 +401,14 @@ export interface VerificationReport {
   planner?: HybridPlannerProvenance;
   authenticity?: ReportAuthenticity;
 }
+
+/** A newly generated strict-contract report. Legacy v1 reports never gain this field. */
+export interface VerificationReportV2 extends VerificationReport {
+  reportSchemaVersion: "verification-report.v2";
+  verificationContract: import("./verification-contract-v2").VerificationContractReportV2;
+}
+
+export type DecodedVerificationReport = VerificationReport | VerificationReportV2;
 
 export interface HybridPlannerProvenance {
   version: 1;

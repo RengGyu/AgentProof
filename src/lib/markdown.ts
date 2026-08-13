@@ -8,6 +8,7 @@ const MAX_GITHUB_COMMENT_LENGTH = 12_000;
 export function reportToMarkdown(report: VerificationReport): string {
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex);
+  const strictContract = strictContractPresentation(report);
   const lines = [
     `# AgentProof Evidence Report`,
     "",
@@ -17,6 +18,9 @@ export function reportToMarkdown(report: VerificationReport): string {
     `**Evidence coverage:** ${report.summary.evidenceCoverage}%`,
     `**Confidence:** ${Math.round(report.summary.confidence * 100)}%`,
     report.planner ? `**Policy:** Enhanced planning policy` : undefined,
+    strictContract ? `**Policy:** Strict verification contract` : undefined,
+    strictContract ? `**Outcome policy:** ${strictContract.outcomePolicy}` : undefined,
+    strictContract ? "**Observed evidence:** implementation, targeted tests, and execution are listed below." : undefined,
     "",
     `## Summary`,
     "",
@@ -25,7 +29,8 @@ export function reportToMarkdown(report: VerificationReport): string {
     `## Requirement Coverage`,
     "",
     ...report.requirements.flatMap((requirement) => [
-      `- **${requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}`,
+      `- **${strictContract ? "OUTCOME: " : ""}${requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}`,
+      strictContract ? `  - Observed evidence status: ${safeInlineText(requirement.evidenceStatus ?? requirement.status).toUpperCase()}` : undefined,
       requirement.reviewerNote ? `  - Evidence note: ${safeInlineText(requirement.reviewerNote)}` : undefined,
       requirement.gaps.length > 0 ? `  - Gaps: ${requirement.gaps.map(safeInlineText).join("; ")}` : undefined,
       ...evidenceLines(requirement.evidenceRefs, evidenceById, "  ")
@@ -118,6 +123,7 @@ export function reportToGitHubComment(
 ): string {
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex, 5);
+  const strictContract = strictContractPresentation(report);
   const requirementLines = report.requirements.slice(0, 8).map((requirement) => {
     const evidence = requirement.evidenceRefs.length > 0
       ? ` Evidence: ${formatEvidenceRefs(requirement.evidenceRefs, evidenceById)}`
@@ -159,6 +165,9 @@ export function reportToGitHubComment(
     "",
     `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **Test/Build:** ${report.testing.ciStatus}`,
     report.planner ? "**Policy:** Enhanced planning policy" : undefined,
+    strictContract ? "**Policy:** Strict verification contract" : undefined,
+    strictContract ? `**Outcome policy:** ${strictContract.outcomePolicy}` : undefined,
+    strictContract ? "**Observed evidence:** implementation, targeted tests, and execution are listed below." : undefined,
     "",
     safeInlineText(report.summary.oneLine),
     "",
@@ -217,6 +226,24 @@ export function reportToGitHubComment(
   ].filter((line): line is string => typeof line === "string");
 
   return truncateComment(neutralizeGitHubMentions(lines.join("\n")));
+}
+
+function strictContractPresentation(report: VerificationReport): { outcomePolicy: string } | undefined {
+  const candidate = report as VerificationReport & {
+    reportSchemaVersion?: string;
+    verificationContract?: { state?: unknown };
+  };
+  if (candidate.reportSchemaVersion !== "verification-report.v2" || !candidate.verificationContract) return undefined;
+  if (candidate.verificationContract.state === "absent") {
+    return { outcomePolicy: "No approved verification contract; observed evidence does not establish the requirement outcome." };
+  }
+  if (candidate.verificationContract.state === "invalid") {
+    return { outcomePolicy: "The supplied verification contract was invalid; observed evidence does not establish the requirement outcome." };
+  }
+  if (candidate.verificationContract.state === "author_claim") {
+    return { outcomePolicy: "PR-description contract; reviewer confirmation is required for the requirement outcome." };
+  }
+  return { outcomePolicy: "Requirement outcomes are evaluated against an approved verification contract." };
 }
 
 function formatExecutionEvidenceLine(

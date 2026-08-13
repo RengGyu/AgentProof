@@ -14,6 +14,15 @@ import {
 } from "./evidence-status";
 import { executionEvidenceMatchesAnyTestPath } from "./evidence-relation";
 import { redactSecrets } from "./redact";
+import {
+  aggregateVerificationCriteriaV2,
+  canonicalVerificationBindingV2,
+  materializeVerificationContractV2,
+  parseVerificationContractV2,
+  toVerificationContractReportV2,
+  type VerificationBindingInputV2,
+  type VerificationContractSourceInputV2
+} from "./verification-contract-v2";
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckStatus,
@@ -29,7 +38,8 @@ import type {
   RequirementProofNode,
   RequirementFinding,
   ReviewPriorityItem,
-  VerificationReport
+  VerificationReport,
+  VerificationReportV2
 } from "./types";
 import { tenantReportAnalysisContext } from "./tenant-report-language";
 
@@ -46,6 +56,115 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     contexts: requirementEvidence.contexts,
     omittedRequirementCount: requirementEvidence.omittedRequirementCount
   });
+}
+
+export interface VerificationReportV2GenerationInput {
+  input: PullRequestInput;
+  contractSource: VerificationContractSourceInputV2;
+  binding: VerificationBindingInputV2;
+}
+
+/**
+ * Strict-contract report generation is deliberately separate from legacy v1.
+ * The v2 evaluator has no ambient Check-name or prose-based path to `met`.
+ */
+export function generateVerificationReportV2(args: VerificationReportV2GenerationInput): VerificationReportV2 {
+  const parsed = parseVerificationContractV2(args.contractSource);
+  if (parsed.state === "authoritative" || parsed.state === "author_claim") {
+    const bindingDigest = canonicalVerificationBindingV2(args.binding, parsed.contract);
+    const materialized = materializeVerificationContractV2(parsed, bindingDigest);
+    const report = generateVerificationReportFromRequirements(args.input, {
+      requirements: materialized.objectives.map((objective) => ({
+        id: objective.requirementId,
+        source: parsed.state === "author_claim" ? "pr_description" : args.binding.sourceKind === "linked_issue" ? "issue" : "task",
+        text: objective.objective,
+        keywords: extractKeywords(objective.objective),
+        priority: "must",
+        role: "core_requirement",
+        sourceQuality: parsed.state === "author_claim" ? "author_claim" : "explicit_acceptance_criteria",
+        sourceSection: "AgentProof verification",
+        contextRoles: []
+      })),
+      contexts: []
+    });
+    const contract = toVerificationContractReportV2(parsed, args.binding.sourceKind, materialized);
+    return applyStrictContractOutcomeV2(report, contract);
+  }
+
+  const report = generateVerificationReport(args.input);
+  return applyStrictContractOutcomeV2(
+    report,
+    toVerificationContractReportV2(parsed, null)
+  );
+}
+
+/** Production entrypoint: raw contract source and binding remain transient on the input. */
+export function generateVerificationReportV2FromInput(input: PullRequestInput): VerificationReportV2 {
+  const source = input.verificationContractSourceV2;
+  const binding = input.verificationContractBindingV2;
+  if (source && binding) {
+    return generateVerificationReportV2({ input, contractSource: source, binding });
+  }
+  return generateVerificationReportV2({
+    input,
+    contractSource: { kind: "provided_requirement", contract: undefined },
+    binding: {
+      sourceKind: "provided_requirement",
+      sourceIdentity: "absent",
+      sourceContent: "",
+      headSha: input.sourceProvenance?.headSha ?? "",
+      baseSha: input.sourceProvenance?.baseSha ?? ""
+    }
+  });
+}
+
+function applyStrictContractOutcomeV2(
+  report: VerificationReport,
+  contract: import("./verification-contract-v2").VerificationContractReportV2
+): VerificationReportV2 {
+  const stateByRequirement = new Map(contract.objectives.map((objective) => [
+    objective.requirementId,
+    aggregateVerificationCriteriaV2(objective.state, objective.criterionResults.map((result) => result.state))
+  ]));
+  const noApprovedContract = contract.state === "absent" || contract.state === "invalid";
+  const gap = noApprovedContract
+    ? "Outcome was not assessed against an approved verification contract."
+    : "A required verification criterion was unavailable, incomplete, or not yet satisfied.";
+  const requirements = report.requirements.map((requirement) => ({
+    ...requirement,
+    evidenceStatus: requirement.evidenceStatus ?? requirement.status,
+    status: stateByRequirement.get(requirement.requirementId) ?? "unclear",
+    gaps: appendOnce(requirement.gaps, gap)
+  }));
+  const nodes = report.proofGraph.nodes.map((node) => ({
+    ...node,
+    status: stateByRequirement.get(node.requirementId) ?? "unclear",
+    gapSignals: node.gapSignals.some((signal) => signal.message === gap)
+      ? node.gapSignals
+      : [...node.gapSignals, {
+        kind: "ambiguous_requirement" as const,
+        severity: "medium" as const,
+        message: gap,
+        evidenceRefs: []
+      }]
+  }));
+  const requirementsWithGaps = nodes.filter((node) => node.gapSignals.length > 0).length;
+  const gapCount = nodes.reduce((count, node) => count + node.gapSignals.length, 0);
+  return {
+    ...report,
+    reportSchemaVersion: "verification-report.v2",
+    verificationContract: contract,
+    requirements,
+    proofGraph: {
+      ...report.proofGraph,
+      nodes,
+      summary: { ...report.proofGraph.summary, requirementsWithGaps, gapCount }
+    }
+  };
+}
+
+function appendOnce(values: readonly string[], value: string): string[] {
+  return values.includes(value) ? [...values] : [...values, value];
 }
 
 export interface DeterministicRequirementReportSelection {

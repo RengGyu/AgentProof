@@ -2,6 +2,7 @@ import type { LlmSemanticOutput } from "./llm-semantic-output";
 import { toRequirementCoverageLabel } from "./github-dashboard-view-model";
 import { proofAxisEvidenceLabel } from "./proof-contract";
 import type { RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
+import type { VerificationContractStateV2 } from "./verification-contract-v2";
 import { tenantRemediationTextForGap } from "./tenant-report-language";
 import { isProhibitedEvidenceRequestText } from "./semantic-text-policy";
 
@@ -13,8 +14,13 @@ export interface DashboardRequirementViewModel {
   status: string;
   /** Evidence-only state for the coverage badge; defaults to the report status for legacy reports. */
   coverageStatus?: string;
+  /** `Observed evidence` for strict-contract reports; `Evidence coverage` for legacy reports. */
+  coverageHeading?: string;
   coverageLabel: string;
   coverageMeaning: string;
+  /** Strict-contract reports separately state whether the objective outcome was assessed. */
+  outcomeLabel?: string;
+  outcomeMeaning?: string;
   sourceAuthorityLabel?: string;
   sourceAuthorityMeaning?: string;
   evidenceRefs: string[];
@@ -44,9 +50,10 @@ interface RequirementViewModelInput {
   requirements?: RequirementInput[];
   semantic?: LlmSemanticOutput;
   semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
+  verificationContract?: { state: VerificationContractStateV2 };
 }
 
-export function toDashboardRequirementViewModels({ requirements = [], semantic, semanticAnalysis }: RequirementViewModelInput): DashboardRequirementViewModel[] {
+export function toDashboardRequirementViewModels({ requirements = [], semantic, semanticAnalysis, verificationContract }: RequirementViewModelInput): DashboardRequirementViewModel[] {
   return requirements.map((requirement) => {
     const assessments = semantic?.requirement_assessments.filter((item) => item.requirement_id === requirement.requirementId) ?? [];
     const gaps = semantic?.evidence_gaps.filter((item) => item.requirement_id === requirement.requirementId) ?? [];
@@ -83,8 +90,10 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       objectiveText: boundedObjectiveText(assessment?.requirement_summary ?? requirement.requirementText, requirement.requirementId),
       status: requirement.status,
       coverageStatus: requirement.evidenceStatus ?? requirement.status,
+      coverageHeading: verificationContract ? "Observed evidence" : "Evidence coverage",
       coverageLabel: toRequirementCoverageLabel(requirement.evidenceStatus ?? requirement.status),
       coverageMeaning: toCoverageMeaning(requirement.evidenceStatus ?? requirement.status),
+      ...strictContractOutcomePresentation(requirement.status, verificationContract),
       ...(requirement.sourceAuthority === "pr_description" ? {
         sourceAuthorityLabel: "PR description",
         sourceAuthorityMeaning: "Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation."
@@ -118,6 +127,31 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       ])
     };
   });
+}
+
+function strictContractOutcomePresentation(
+  status: string,
+  contract: RequirementViewModelInput["verificationContract"]
+): Pick<DashboardRequirementViewModel, "outcomeLabel" | "outcomeMeaning"> {
+  if (!contract) return {};
+  if (contract.state === "absent") {
+    return {
+      outcomeLabel: "Unclear",
+      outcomeMeaning: "No approved verification contract defined how this objective should be evaluated."
+    };
+  }
+  if (contract.state === "invalid") {
+    return {
+      outcomeLabel: "Unclear",
+      outcomeMeaning: "The supplied verification contract was invalid, so this objective was not evaluated."
+    };
+  }
+  return {
+    outcomeLabel: toRequirementCoverageLabel(status),
+    outcomeMeaning: contract.state === "author_claim"
+      ? "This outcome uses a PR-description verification contract and needs reviewer confirmation."
+      : "This outcome is evaluated against an approved verification contract."
+  };
 }
 
 function boundedObjectiveText(value: string | undefined, requirementId: string): string | undefined {

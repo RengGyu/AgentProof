@@ -404,6 +404,28 @@ async function fetchGitHubPullRequest(
       ? requirementSourceIdentityHash(`github_task:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`)
       : linkedIssueTask?.identityHash ??
         requirementSourceIdentityHash(`github_pr_description:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`),
+    verificationContractSourceV2: taskText.trim()
+      ? undefined
+      : linkedIssueTask?.contractSource ?? {
+        kind: "pr_description" as const,
+        title: pr.title ?? `PR #${parsed.number}`,
+        body: redactSecrets(pr.body ?? "")
+      },
+    verificationContractBindingV2: taskText.trim()
+      ? undefined
+      : linkedIssueTask
+        ? {
+          ...linkedIssueTask.contractBinding,
+          headSha: initialHeadSha,
+          baseSha: initialBaseSha
+        }
+        : {
+          sourceKind: "pr_description" as const,
+          sourceIdentity: `github:pr_description:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`,
+          sourceContent: redactSecrets(pr.body ?? ""),
+          headSha: initialHeadSha,
+          baseSha: initialBaseSha
+        },
     changedFiles: files.map((file) => ({
       path: file.filename,
       additions: file.additions,
@@ -805,7 +827,12 @@ async function resolveLinkedIssueTaskText(input: {
   headers: Record<string, string>;
   limitations: string[];
   hasToken: boolean;
-}): Promise<{ taskText: string; identityHash: string } | null> {
+}): Promise<{
+  taskText: string;
+  identityHash: string;
+  contractSource: { kind: "linked_issue"; title: string; body: string };
+  contractBinding: { sourceKind: "linked_issue"; sourceIdentity: string; sourceContent: string; headSha: string; baseSha: string };
+} | null> {
   const extraction = extractSupportedIssueReferences(input.prBody, input.repository);
 
   if (extraction.totalSupportedReferences === 0) {
@@ -836,7 +863,15 @@ async function resolveLinkedIssueTaskText(input: {
     taskText: result.taskText,
     identityHash: requirementSourceIdentityHash(
       `github_issue:${reference.owner.toLowerCase()}/${reference.repo.toLowerCase()}#${reference.number}`
-    )
+    ),
+    contractSource: { kind: "linked_issue", title: result.title, body: result.body },
+    contractBinding: {
+      sourceKind: "linked_issue",
+      sourceIdentity: `github:issue:${reference.owner.toLowerCase()}/${reference.repo.toLowerCase()}#${reference.number}`,
+      sourceContent: `${result.title}\n${result.body}`,
+      headSha: "",
+      baseSha: ""
+    }
   };
 }
 
@@ -848,7 +883,7 @@ async function fetchLinkedIssue(
   reference: SupportedIssueReference,
   headers: Record<string, string>,
   hasToken: boolean
-): Promise<{ status: "ok"; taskText: string } | { status: "failed"; limitation: string }> {
+): Promise<{ status: "ok"; taskText: string; title: string; body: string } | { status: "failed"; limitation: string }> {
   const ref = formatIssueReference(reference);
   let response: Response;
 
@@ -891,7 +926,7 @@ async function fetchLinkedIssue(
     };
   }
 
-  return { status: "ok", taskText };
+  return { status: "ok", taskText, title, body };
 }
 
 function githubLinkedIssueFailureReason(response: Response, hasToken: boolean): string {

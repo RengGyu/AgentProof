@@ -4,6 +4,7 @@ import { validateVerificationReport } from "./report-validation";
 import { decodeSharedReport, encodeReportForShare, sanitizeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
+import { generateVerificationReportV2 } from "./verifier";
 
 const HYBRID_PLANNER_PROVENANCE = {
   version: 1,
@@ -15,6 +16,37 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("accepts a v2 no-contract report only through the v2 full validator and rejects a deleted contract", () => {
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Improve repository overview",
+        description: "Adds a helper.",
+        taskText: "The repository overview should be more useful for reviewers.",
+        taskSource: "issue",
+        changedFiles: [{ path: "src/repositories/OverviewAction.js", status: "modified", patch: "+ export const overviewActionLabel = () => 'Review repository';" }],
+        checks: [{ name: "repository overview tests", status: "passed", summary: "Repository overview tests passed." }],
+        logs: []
+      },
+      contractSource: {
+        kind: "linked_issue",
+        title: "The repository overview should be more useful for reviewers.",
+        body: ""
+      },
+      binding: {
+        sourceKind: "linked_issue",
+        sourceIdentity: "github:repository:42:issue:23",
+        sourceContent: "The repository overview should be more useful for reviewers.",
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    const forged = { ...report } as Record<string, unknown>;
+    delete forged.verificationContract;
+    expect(validateVerificationReport(forged, { mode: "v2_full" }).valid).toBe(false);
+  });
   it("allows hashless planner provenance only on public summaries", () => {
     const fullReport = generateVerificationReport(demoScenarios.clean);
     fullReport.planner = { ...HYBRID_PLANNER_PROVENANCE };

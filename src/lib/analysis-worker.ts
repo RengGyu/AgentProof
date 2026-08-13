@@ -69,7 +69,7 @@ import {
   readUsageQuotaPlanCapabilities,
   UsageQuotaStoreError
 } from "./usage-quota";
-import { generateVerificationReport } from "./verifier";
+import { generateVerificationReportV2FromInput } from "./verifier";
 import {
   OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS,
   OpenAISemanticError,
@@ -447,7 +447,7 @@ async function runPreflightedAnalysisJob(
       );
     }
 
-    const deterministicReport = generateVerificationReport(input);
+    const deterministicReport = generateVerificationReportV2FromInput(input);
     const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
     const semanticResult = protocol === "legacy"
       ? await advanceQueuedSemanticAnalysis(
@@ -495,6 +495,7 @@ async function runPreflightedAnalysisJob(
     const runtimeReport = resolveRuntimeReportValidation({
       input,
       report: semanticResult.report,
+      requireV2: true,
       requireSourceProvenance: true
     });
 

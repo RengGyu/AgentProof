@@ -2,8 +2,18 @@ import { describe, expect, it } from "vitest";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment, reportToMarkdown } from "./markdown";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
+import { generateVerificationReportV2FromInput } from "./verifier";
 
 describe("reportToGitHubComment", () => {
+  it("separates v2 no-contract outcomes from observed implementation and execution evidence", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
+
+    expect(output).toContain("Strict verification contract");
+    expect(output).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
+    expect(output).toContain("**Observed evidence:** implementation, targeted tests, and execution are listed below.");
+  });
+
   it("renders enhanced planning as neutral policy copy only", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     report.planner = {

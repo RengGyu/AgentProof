@@ -22,6 +22,27 @@ describe("toDashboardRequirementViewModels", () => {
     });
   });
 
+  it("labels v2 evidence as observed evidence when a missing contract leaves the requirement outcome unclear", () => {
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{
+        requirementId: "req_contract_absent",
+        requirementText: "Make the repository overview more useful.",
+        status: "unclear",
+        evidenceStatus: "met",
+        evidenceRefs: ["ev_implementation", "ev_test", "ev_execution"],
+        gaps: ["Outcome was not assessed against an approved verification contract."]
+      }],
+      verificationContract: { state: "absent" }
+    });
+
+    expect(card).toMatchObject({
+      coverageHeading: "Observed evidence",
+      coverageLabel: "Supported",
+      outcomeLabel: "Unclear",
+      outcomeMeaning: "No approved verification contract defined how this objective should be evaluated."
+    });
+  });
+
   it("keeps deterministic coverage and joins semantic information only on an exact requirement ID", () => {
     const [card] = toDashboardRequirementViewModels({
       requirements: [{ requirementId: "req_checkout", status: "partial", evidenceRefs: ["ev_1", "ev_2"], gaps: ["A focused edge-case test is not recorded."] }],

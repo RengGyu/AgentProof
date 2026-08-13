@@ -1,6 +1,7 @@
 import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport } from "./report-validation";
-import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, SourceProvenance, VerificationReport } from "./types";
+import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
+import type { VerificationContractReportV2 } from "./verification-contract-v2";
 import { redactSecrets } from "./redact";
 
 export const MAX_SHARE_PAYLOAD_LENGTH = 18_000;
@@ -39,7 +40,13 @@ interface ShareableReportV3 extends Omit<ShareableReportV2, "version" | "planner
   planner?: PortableHybridPlannerProvenance;
 }
 
-type ShareableReport = ShareableReportV1 | ShareableReportV2 | ShareableReportV3;
+interface ShareableReportV4 extends Omit<ShareableReportV3, "version"> {
+  version: 4;
+  reportSchemaVersion: "verification-report.v2";
+  verificationContract: Omit<VerificationContractReportV2, "integrity">;
+}
+
+type ShareableReport = ShareableReportV1 | ShareableReportV2 | ShareableReportV3 | ShareableReportV4;
 
 export function encodeReportForShare(report: VerificationReport): string {
   return encodeBase64Url(JSON.stringify(toShareableReport(report)));
@@ -48,7 +55,7 @@ export function encodeReportForShare(report: VerificationReport): string {
 export function decodeSharedReport(payload: string): VerificationReport {
   const shared = parseShareableReport(JSON.parse(decodeBase64Url(payload)) as unknown);
   const report = shareableToReport(shared);
-  const validation = validateVerificationReport(report, { mode: "summary" });
+  const validation = validateVerificationReport(report, { mode: shared.version === 4 ? "v2_summary" : "summary" });
   if (!validation.valid) {
     throw new Error("Shared report payload failed summary validation.");
   }
@@ -69,8 +76,8 @@ export function buildShareUrl(report: VerificationReport, origin: string): strin
   return `${origin}/reports/share#report=${payload}`;
 }
 
-function toShareableReport(report: VerificationReport): ShareableReportV3 {
-  return {
+function toShareableReport(report: VerificationReport): ShareableReportV3 | ShareableReportV4 {
+  const base: ShareableReportV3 = {
     version: 3,
     createdAt: redactSecrets(report.createdAt),
     source: {
@@ -131,6 +138,13 @@ function toShareableReport(report: VerificationReport): ShareableReportV3 {
     ...(report.planner ? { planner: copyPortablePlannerProvenance(report.planner) } : {}),
     limitations: appendSummaryOnlyLimitation(report.limitations.map(redactSecrets))
   };
+  if (!isVerificationReportV2(report)) return base;
+  return {
+    ...base,
+    version: 4,
+    reportSchemaVersion: "verification-report.v2",
+    verificationContract: portableVerificationContract(report.verificationContract)
+  };
 }
 
 function shareableToReport(shared: ShareableReport): VerificationReport {
@@ -143,7 +157,7 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
       outOfScopeFiles: [],
       reasons: shared.summary.topRisks.filter((risk) => /scope/i.test(risk))
     };
-  return {
+  const report: VerificationReport = {
     analysisId: `shared_${shared.createdAt}`,
     createdAt: shared.createdAt,
     source: shared.source,
@@ -168,22 +182,33 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
       prompt: "Shared summary links omit re-prompt text. Open the original report owner session or copy the full report for re-prompt details."
     },
     evidenceIndex: [],
-    limitations: appendPortableTrustLimitation(shared.limitations, shared.version),
+    limitations: appendPortableTrustLimitation(shared.limitations, shared.version === 4 ? 3 : shared.version),
     ...(shared.version !== 1 && shared.planner ? {
       // VerificationReport intentionally keeps the private planner tuple strict.
       // Runtime summary validation is the boundary that admits this hashless
       // portable projection only under portable_unverified authenticity.
       planner: copyPortablePlannerProvenance(shared.planner) as HybridPlannerProvenance
     } : {}),
-    authenticity: createUnverifiedAuthenticity(shared.version === 1 ? "legacy_unverified" : "portable_unverified")
+    authenticity: createUnverifiedAuthenticity(
+      shared.version === 1 ? "legacy_unverified" : "portable_unverified",
+      shared.version === 4 ? "verification-report.v2" : "verification-report.v1"
+    )
   };
+  if (shared.version !== 4) return report;
+  return {
+    ...report,
+    reportSchemaVersion: "verification-report.v2",
+    verificationContract: shared.verificationContract
+  } as VerificationReportV2;
 }
 
 function parseShareableReport(value: unknown): ShareableReport {
   if (!isPlainRecord(value)) throw new Error("Shared report payload is invalid.");
   const version = value.version;
-  if (version !== 1 && version !== 2 && version !== 3) throw new Error("Shared report version is not supported.");
-  assertOnlyShareableKeys(value, version === 2 || version === 3
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4) throw new Error("Shared report version is not supported.");
+  assertOnlyShareableKeys(value, version === 4
+    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations", "reportSchemaVersion", "verificationContract"]
+    : version === 2 || version === 3
     ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations"]
     : ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "limitations"], "report");
   if (!Array.isArray(value.requirements) || !isPlainRecord(value.proofGraph) || !Array.isArray(value.reviewPriority) ||
@@ -191,11 +216,32 @@ function parseShareableReport(value: unknown): ShareableReport {
       !isPlainRecord(value.source) || !isPlainRecord(value.summary)) {
     throw new Error("Shared report payload is invalid.");
   }
-  if ((version === 2 || version === 3) && !isPlainRecord(value.scope)) throw new Error("Shared report is missing deterministic scope state.");
+  if ((version === 2 || version === 3 || version === 4) && !isPlainRecord(value.scope)) throw new Error("Shared report is missing deterministic scope state.");
   for (const requirement of value.requirements) validateShareableRequirement(requirement);
   validateShareableProofGraph(value.proofGraph);
-  if (value.planner !== undefined) validateShareablePlanner(value.planner, version);
+  if (value.planner !== undefined) validateShareablePlanner(value.planner, version === 4 ? 3 : version);
+  if (version === 4) validateShareableVerificationContract(value);
   return value as unknown as ShareableReport;
+}
+
+function portableVerificationContract(contract: VerificationContractReportV2): Omit<VerificationContractReportV2, "integrity"> {
+  const { integrity: _integrity, ...portable } = contract;
+  return structuredClone(portable);
+}
+
+function isVerificationReportV2(report: VerificationReport): report is VerificationReportV2 {
+  return (report as Partial<VerificationReportV2>).reportSchemaVersion === "verification-report.v2";
+}
+
+function validateShareableVerificationContract(value: Record<string, unknown>): void {
+  if (value.reportSchemaVersion !== "verification-report.v2" || !isPlainRecord(value.verificationContract)) {
+    throw new Error("Shared v2 report contract is invalid.");
+  }
+  assertOnlyShareableKeys(value.verificationContract, ["version", "policy", "state", "source", "objectives"], "verificationContract");
+  if (value.verificationContract.version !== 2 || value.verificationContract.policy !== "strict_typed_contract" ||
+    !Array.isArray(value.verificationContract.objectives)) {
+    throw new Error("Shared v2 report contract is invalid.");
+  }
 }
 
 function validateShareableRequirement(value: unknown) {

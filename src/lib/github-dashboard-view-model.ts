@@ -1,5 +1,6 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
 import type { HybridPlannerProvenance, RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
+import type { VerificationContractStateV2 } from "./verification-contract-v2";
 
 export interface DashboardRepositoryGrant {
   installationId: number;
@@ -48,6 +49,8 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     semantic?: LlmSemanticOutput;
     semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
     planner?: HybridPlannerProvenance;
+    reportSchemaVersion?: "verification-report.v2";
+    verificationContract?: { state: VerificationContractStateV2 };
   };
 }
 

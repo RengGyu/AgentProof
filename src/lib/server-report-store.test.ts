@@ -20,7 +20,7 @@ import {
 import { createVerifiedAuthenticity } from "./report-authenticity";
 import { decodeTenantPersistedReport, projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
 import type { VerificationReport } from "./types";
-import { generateVerificationReport } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
 
@@ -43,6 +43,62 @@ describe("server report store", () => {
     vi.restoreAllMocks();
     process.env = { ...originalEnv };
     global.fetch = originalFetch;
+  });
+
+  it("stores a v2 no-contract report without silently changing it into a verified v1 report", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+
+    const saved = await createVerifiedSavedReport(report);
+
+    expect(saved.report).toMatchObject({ reportSchemaVersion: "verification-report.v2" });
+    expect(saved.report.authenticity?.generator.reportSchemaVersion).toBe("verification-report.v2");
+  });
+
+  it("preserves a v2 no-contract discriminator through the private tenant storage boundary", async () => {
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_v2",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 42,
+      headSha: "a".repeat(40)
+    });
+
+    expect(saved.report).toMatchObject({
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent", source: null }
+    });
+    expect(saved.report.authenticity?.generator.reportSchemaVersion).toBe("verification-report.v2");
+  });
+
+  it("preserves a v2 no-contract outcome through the durable tenant projection and hydration path", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(generateVerificationReportV2FromInput(demoScenarios.clean), {
+      tenantId: "tenant_v2",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 42,
+      headSha: "a".repeat(40)
+    });
+    const persisted = projectTenantPersistedReport(saved.report, signingSecret);
+    const decoded = decodeTenantPersistedReport(persisted, {
+      signingSecret,
+      createdAt: "2026-08-13T00:00:00.000Z"
+    });
+
+    expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
+
+    expect(decoded).toMatchObject({
+      status: "valid",
+      report: {
+        reportSchemaVersion: "verification-report.v2",
+        verificationContract: { state: "absent", source: null }
+      }
+    });
   });
 
   it("stores only the summary-safe report projection", async () => {

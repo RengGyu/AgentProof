@@ -1,19 +1,21 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
-import type { ReportAuthenticity, VerificationReport } from "./types";
+import type { ReportAuthenticity, VerificationReport, VerificationReportV2 } from "./types";
 export const REPORT_SCHEMA_VERSION = "verification-report.v1" as const;
+export const REPORT_SCHEMA_VERSION_V2 = "verification-report.v2" as const;
 export const DETERMINISTIC_ENGINE_VERSION = "agentproof-deterministic.v1";
 export const DEFAULT_REPORT_SIGNING_KEY_ID = "agentproof-report-hmac-v1";
 
 type UnsignedSummaryReport = Omit<VerificationReport, "authenticity">;
 
 export function createUnverifiedAuthenticity(
-  trust: Extract<ReportAuthenticity["trust"], "imported_unverified" | "legacy_unverified" | "portable_unverified">
+  trust: Extract<ReportAuthenticity["trust"], "imported_unverified" | "legacy_unverified" | "portable_unverified">,
+  reportSchemaVersion: ReportAuthenticity["generator"]["reportSchemaVersion"] = REPORT_SCHEMA_VERSION
 ): ReportAuthenticity {
   return {
     version: 1,
     trust,
     generator: {
-      reportSchemaVersion: REPORT_SCHEMA_VERSION,
+      reportSchemaVersion,
       deterministicEngineVersion: DETERMINISTIC_ENGINE_VERSION
     }
   };
@@ -27,13 +29,17 @@ export function createVerifiedAuthenticity(report: VerificationReport, signingSe
     version: 1,
     trust: "verified_agentproof",
     generator: {
-      reportSchemaVersion: REPORT_SCHEMA_VERSION,
+      reportSchemaVersion: isVerificationReportV2(report) ? REPORT_SCHEMA_VERSION_V2 : REPORT_SCHEMA_VERSION,
       deterministicEngineVersion: DETERMINISTIC_ENGINE_VERSION
     },
     canonicalDigest,
     signingKeyId: process.env.AGENTPROOF_REPORT_SIGNING_KEY_ID?.trim() || DEFAULT_REPORT_SIGNING_KEY_ID,
     signature: createHmac("sha256", signingSecret).update(payload).digest("hex")
   };
+}
+
+function isVerificationReportV2(report: VerificationReport): report is VerificationReportV2 {
+  return (report as Partial<VerificationReportV2>).reportSchemaVersion === REPORT_SCHEMA_VERSION_V2;
 }
 
 export function verifyVerifiedAuthenticity(report: VerificationReport, signingSecret: string): boolean {

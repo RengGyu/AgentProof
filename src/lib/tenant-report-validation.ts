@@ -15,7 +15,8 @@ import {
   isProofAxisCollectionBasisAllowed,
   isProofAxisSubject
 } from "./proof-contract";
-import type { CheckStatus, EvidenceKind, HybridPlannerProvenance, PriorityLevel, RequirementAuthority, RequirementProofAxis, RequirementStatus, VerificationReport } from "./types";
+import type { CheckStatus, EvidenceKind, HybridPlannerProvenance, PriorityLevel, RequirementAuthority, RequirementProofAxis, RequirementStatus, VerificationReport, VerificationReportV2 } from "./types";
+import type { VerificationContractReportV2 } from "./verification-contract-v2";
 
 const TENANT_REPORT_MAX_BYTES = 256 * 1024;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9_.:@#-]{1,160}$/;
@@ -31,6 +32,9 @@ const MAX_TENANT_OBJECTIVE_LABEL = 160;
 export interface TenantPersistedReport {
   version: 1;
   analysisContext?: TenantReportAnalysisContext;
+  /** A privacy-safe strict-contract marker. Active contract content is not durably stored until its evaluator is available. */
+  reportSchemaVersion?: "verification-report.v2";
+  verificationContract?: Pick<VerificationContractReportV2, "version" | "policy" | "state" | "source" | "objectives">;
   planner?: HybridPlannerProvenance;
   priority: PriorityLevel;
   requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
@@ -78,7 +82,9 @@ export function validateTenantStoredReport(
   signingSecret: string
 ): ReportValidationResult {
   const errors: string[] = [];
-  const structural = validateVerificationReport(report, { mode: "tenant" });
+  const structural = validateVerificationReport(report, {
+    mode: isVerificationReportV2(report) ? "v2_tenant" : "tenant"
+  });
   errors.push(...structural.errors);
 
   if (!isReport(report)) return { valid: false, errors };
@@ -140,11 +146,21 @@ export function validateTenantStoredReport(
   return { valid: errors.length === 0, errors: [...new Set(errors)] };
 }
 
+function isVerificationReportV2(report: unknown): report is VerificationReportV2 {
+  return Boolean(report) && typeof report === "object" &&
+    (report as { reportSchemaVersion?: unknown }).reportSchemaVersion === "verification-report.v2";
+}
+
 /** The only report object written to tenant Supabase rows. */
 export function projectTenantPersistedReport(report: VerificationReport, signingSecret: string): TenantPersistedReport {
+  const verificationContract = tenantVerificationContract(report);
   const unsigned = {
     version: 1 as const,
     analysisContext: tenantReportAnalysisContext(report),
+    ...(verificationContract ? {
+      reportSchemaVersion: "verification-report.v2" as const,
+      verificationContract
+    } : {}),
     ...(report.planner ? { planner: copyTenantPlannerProvenance(report.planner) } : {}),
     priority: report.summary.priority,
     requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceStatus, sourceAuthority, evidenceRefs, gaps, proofAxes, classificationBasis, plannerAxisSubjects }) => {
@@ -185,14 +201,52 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
   };
 }
 
+function tenantVerificationContract(report: VerificationReport): TenantPersistedReport["verificationContract"] | undefined {
+  if (!isVerificationReportV2(report)) return undefined;
+  const contract = report.verificationContract as VerificationContractReportV2;
+  if (contract.state !== "absent" && contract.state !== "invalid") {
+    throw new Error("Active verification-contract v2 reports cannot be durably persisted before the attested evaluator is available.");
+  }
+  return {
+    version: 2,
+    policy: "strict_typed_contract",
+    state: contract.state,
+    source: null,
+    objectives: []
+  };
+}
+
+function validateTenantVerificationContractMarker(report: Partial<TenantPersistedReport> & Record<string, unknown>, errors: string[]): void {
+  const isV2 = report.reportSchemaVersion === "verification-report.v2";
+  if (!isV2) {
+    if (report.reportSchemaVersion !== undefined || report.verificationContract !== undefined) {
+      errors.push("tenant v2 contract marker is incomplete.");
+    }
+    return;
+  }
+  const contract = report.verificationContract;
+  if (!contract || typeof contract !== "object" || Array.isArray(contract)) {
+    errors.push("tenant v2 contract marker is invalid.");
+    return;
+  }
+  const marker = contract as Record<string, unknown>;
+  if (Object.keys(marker).some((key) => !["version", "policy", "state", "source", "objectives"].includes(key)) ||
+    marker.version !== 2 || marker.policy !== "strict_typed_contract" ||
+    (marker.state !== "absent" && marker.state !== "invalid") || marker.source !== null ||
+    !Array.isArray(marker.objectives) || marker.objectives.length !== 0) {
+    errors.push("tenant v2 contract marker is invalid.");
+  }
+}
+
 export function validateTenantPersistedReport(value: unknown, signingSecret: string): ReportValidationResult {
   const errors: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return { valid: false, errors: ["Tenant persisted report must be an object."] };
   const report = value as Partial<TenantPersistedReport> & Record<string, unknown>;
-  const allowed = new Set(["version", "analysisContext", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
+  const allowed = new Set(["version", "analysisContext", "reportSchemaVersion", "verificationContract", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
   for (const key of Object.keys(report)) if (!allowed.has(key)) errors.push(`tenant persisted report contains disallowed field: ${key}.`);
   if (report.version !== 1) errors.push("tenant persisted report version must be 1.");
   if (report.analysisContext !== undefined && !isAnalysisContext(report.analysisContext)) errors.push("tenant persisted report analysis context is invalid.");
+  validateTenantVerificationContractMarker(report, errors);
   if (report.planner !== undefined) validateTenantPlannerProvenance(report.planner, errors);
   if (!isPriority(report.priority)) errors.push("tenant persisted report priority is invalid.");
   if (!Array.isArray(report.requirements) || report.requirements.length > MAX_TENANT_REQUIREMENTS) errors.push("tenant persisted report requirements are invalid.");
@@ -217,7 +271,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
     if (!isRequirementStatus(item.status)) errors.push("tenant persisted requirement status is invalid.");
     if (item.evidenceStatus !== undefined && !isRequirementStatus(item.evidenceStatus)) errors.push("tenant persisted requirement evidence status is invalid.");
     if (item.sourceAuthority !== undefined && item.sourceAuthority !== "pr_description") errors.push("tenant persisted requirement source authority is invalid.");
-    if ((item.evidenceStatus === undefined) !== (item.sourceAuthority === undefined)) errors.push("tenant persisted requirement authority and evidence status must be paired.");
+    if (item.sourceAuthority !== undefined && item.evidenceStatus === undefined) errors.push("tenant persisted requirement authority requires an evidence status.");
     if (item.classificationBasis !== undefined && item.classificationBasis !== "deterministic" && item.classificationBasis !== "enhanced_plan") errors.push("tenant persisted requirement classification basis is invalid.");
     validateTenantPlannerAxisSubjects(item.plannerAxisSubjects, item.proofAxes, errors);
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
@@ -253,7 +307,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   const integrity = report.integrity as Record<string, unknown> | undefined;
-  const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
+  const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.reportSchemaVersion !== undefined ? { reportSchemaVersion: report.reportSchemaVersion } : {}), ...(report.verificationContract !== undefined ? { verificationContract: report.verificationContract } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
   const payload = stableJson(unsigned);
   if (!integrity || Object.keys(integrity).some((key) => !["version", "algorithm", "canonicalDigest", "signature"].includes(key)) || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > TENANT_REPORT_MAX_BYTES) errors.push(`report exceeds ${TENANT_REPORT_MAX_BYTES} bytes.`);
@@ -384,6 +438,12 @@ function hydrateTenantPersistedReport(
     ...(report.semantic ? { semantic: report.semantic } : {}),
     ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
+  if (report.reportSchemaVersion === "verification-report.v2" && report.verificationContract) {
+    Object.assign(hydrated, {
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: structuredClone(report.verificationContract)
+    });
+  }
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, input.signingSecret);
   return hydrated;
 }

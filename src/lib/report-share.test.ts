@@ -3,11 +3,26 @@ import { reportToMarkdown } from "./markdown";
 import { buildShareUrl, decodeSharedReport, encodeReportForShare, sanitizeReportForShare, SUMMARY_ONLY_LIMITATION } from "./report-share";
 import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
-import { generateVerificationReport } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 
 const PLANNER_INPUT_HASH = "0123456789abcdef".repeat(4);
 
 describe("report share", () => {
+  it("round-trips a v2 no-contract report without leaking a private integrity digest", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    const sanitized = sanitizeReportForShare(report);
+
+    expect(validateVerificationReport(sanitized, { mode: "v2_summary" })).toEqual({ valid: true, errors: [] });
+    const decoded = decodeSharedReport(encodeReportForShare(report));
+
+    expect(decoded).toMatchObject({
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent" }
+    });
+    expect(JSON.stringify(decoded)).not.toContain("verificationBindingDigest");
+    expect(validateVerificationReport(decoded, { mode: "v2_summary" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("emits an exact version-3 envelope with neutral hashless planning provenance", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     report.planner = { version: 1, contractVersion: "hybrid_requirement_planner.v1", schemaVersion: "agentproof_requirement_span_plan_v1", promptVersion: "2026-08-12.v1", model: "gpt-5-mini", inputHash: PLANNER_INPUT_HASH };

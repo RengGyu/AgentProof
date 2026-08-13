@@ -21,7 +21,8 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
   const requirementCards = toDashboardRequirementViewModels({
     requirements: detail.report?.requirements,
     semantic: detail.report?.semantic,
-    semanticAnalysis: detail.report?.semanticAnalysis
+    semanticAnalysis: detail.report?.semanticAnalysis,
+    verificationContract: detail.report?.verificationContract
   });
   const locationsByEvidenceId = new Map(exported.evidence_locations.map((item) => [item.id, item.safe_location]));
   const lines = [
@@ -36,6 +37,8 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     `**Priority:** ${exported.pull_request.priority ?? "Unavailable"}`,
     `**Analysis context:** ${readableAnalysisContext(exported.analysis_context)}`,
     ...(exported.planning_policy ? [`**Policy:** ${exported.planning_policy}`] : []),
+    ...(exported.verification_policy ? [`**Policy:** ${exported.verification_policy}`] : []),
+    ...(exported.verification_outcome_note ? [`**Outcome policy:** ${exported.verification_outcome_note}`] : []),
     "",
     "## Requirements",
     "",
@@ -90,7 +93,8 @@ function conciseRequirementMarkdown(
   const inspectFirst = item.nextAction ? undefined : item.inspectFirst ?? fallbackInspectFirst;
   return [
     `- **${item.objectiveText ?? `Requirement ${item.requirementId}`}**`,
-    `  - Evidence coverage: ${item.coverageLabel}`,
+    `  - ${item.coverageHeading ?? "Evidence coverage"}: ${item.coverageLabel}`,
+    ...(item.outcomeLabel && item.outcomeMeaning ? [`  - Requirement outcome: ${item.outcomeLabel}`, `  - Outcome basis: ${item.outcomeMeaning}`] : []),
     ...(item.sourceAuthorityLabel ? [`  - Requirement source: ${item.sourceAuthorityLabel}`] : []),
     ...(item.sourceAuthorityMeaning ? [`  - Source authority: ${item.sourceAuthorityMeaning}`] : []),
     `  - What the evidence shows: ${item.explanation.text}`,
@@ -131,6 +135,10 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
     },
     analysis_context: detail.analysisContext ?? "provided_requirement",
     ...(report?.planner ? { planning_policy: "Enhanced planning policy" } : {}),
+    ...(report?.verificationContract ? {
+      verification_policy: "Strict verification contract",
+      verification_outcome_note: verificationOutcomeNote(report.verificationContract.state)
+    } : {}),
     requirements: (report?.requirements ?? []).map((item) => ({
       id: safeText(item.requirementId) ?? "Unavailable",
       coverage: safeText(item.evidenceStatus ?? item.status) ?? "unclear",
@@ -212,6 +220,13 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       }))
     } : null
   };
+}
+
+function verificationOutcomeNote(state: "authoritative" | "author_claim" | "absent" | "invalid"): string {
+  if (state === "absent") return "No approved verification contract; observed evidence does not establish the requirement outcome.";
+  if (state === "invalid") return "The supplied verification contract was invalid; observed evidence does not establish the requirement outcome.";
+  if (state === "author_claim") return "PR-description contract; reviewer confirmation is required for the requirement outcome.";
+  return "Requirement outcomes are evaluated against an approved verification contract.";
 }
 
 function assertCopyEligible(detail: DashboardExportDetail): void {

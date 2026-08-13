@@ -85,7 +85,7 @@ describe("POST /api/analyze", () => {
     const serverTiming = expectServerTiming(response, ["input", "evidence", "report", "validation"]);
 
     expect(response.status).toBe(200);
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expectNoGitHubEvidenceTiming(response);
     expect(json).not.toHaveProperty("timing");
     expect(serverTiming).not.toContain(token);
@@ -352,7 +352,7 @@ describe("POST /api/analyze", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.source.url).toBe("https://github.com/acme/app/pull/42");
     expect(json.report.evidenceIndex.some((item) => item.kind === "diff" && item.label === "src/features/auth/reset.ts")).toBe(true);
     expect(json.report.evidenceIndex.some((item) => item.kind === "test" && item.label === "src/features/auth/reset.test.ts")).toBe(true);
@@ -450,7 +450,7 @@ describe("POST /api/analyze", () => {
     const json = await response.json() as { report: VerificationReport };
 
     expect(response.status).toBe(200);
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.testing.ciStatus).toBe("unknown");
     expect(json.report.limitations.join(" ")).toContain("No public test/build workflow run, check, or raw CI log was available from the collected metadata.");
     expect(json.report.evidenceIndex.filter((item) => item.kind === "check")).toHaveLength(3);
@@ -522,7 +522,7 @@ describe("POST /api/analyze", () => {
     const taskEvidence = json.report.evidenceIndex.find((item) => item.kind === "task");
 
     expect(response.status).toBe(200);
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(taskEvidence?.label).toBe("Linked issue");
     expect(taskEvidence?.summary).toContain("Expired reset links should be rejected");
     expect(json.report.requirements.some((requirement) =>
@@ -610,7 +610,7 @@ describe("POST /api/analyze", () => {
     ]);
 
     expect(response.status).toBe(200);
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.testing.ciStatus).toBe("failed");
     expect(json.report.evidenceIndex.some((item) =>
       item.kind === "check" &&
@@ -692,7 +692,7 @@ describe("POST /api/analyze", () => {
     ]);
 
     expect(response.status).toBe(200);
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.testing.ciStatus).toBe("passed");
     expect(json.report.summary.confidence).toBeLessThanOrEqual(0.85);
     expect(json.report.limitations.join(" ")).toContain("GitHub check-run evidence unavailable: request timed out after 5000 ms or network failed.");
@@ -736,7 +736,7 @@ describe("POST /api/analyze", () => {
     const githubEvidenceTiming = expectGitHubEvidenceTiming(response, ["github_pr"]);
 
     expect(response.status).toBe(200);
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.limitations.join(" ")).toContain("Live GitHub evidence could not be collected");
     expect(json.report.limitations.join(" ")).toContain("pasted evidence only");
     expect(json.report.evidenceIndex.some((item) => item.kind === "check" && item.summary.includes("passed"))).toBe(true);
@@ -796,7 +796,7 @@ describe("POST /api/analyze", () => {
     const json = await response.json() as { report: VerificationReport };
 
     expect(response.status).toBe(200);
-    expect(validateVerificationReport(json.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.evidenceIndex.length).toBeLessThanOrEqual(200);
     expect(json.report.limitations.join(" ")).toContain("capped at 120 files");
   });

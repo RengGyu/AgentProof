@@ -793,7 +793,7 @@ function prepareSummaryReportForStorage(
   safeReport.authenticity = trust === "verified_agentproof"
     ? createVerifiedAuthenticity(safeReport, requireReportSigningSecret())
     : createUnverifiedAuthenticity("imported_unverified");
-  const validation = validateVerificationReport(safeReport, { mode: "summary" });
+  const validation = validateVerificationReport(safeReport, { mode: storedReportValidationMode(safeReport) });
 
   if (!validation.valid) {
     throw new SavedReportStoreError(`Summary-only saved report failed validation: ${validation.errors.join("; ")}`);
@@ -893,12 +893,25 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
     ...(report.semantic ? { semantic: report.semantic } : {}),
     ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
+  if (isVerificationReportV2(report)) {
+    Object.assign(safe, {
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: structuredClone(report.verificationContract)
+    });
+  }
   safe.authenticity = trust === "verified_agentproof" ? createVerifiedAuthenticity(safe, requireReportSigningSecret()) : createUnverifiedAuthenticity("imported_unverified");
   const validation = validateTenantStoredReport(safe, requireReportSigningSecret());
   if (!validation.valid) {
     throw new SavedReportStoreError(`Tenant saved report failed validation: ${validation.errors.join("; ")}`);
   }
   return safe;
+}
+
+function isVerificationReportV2(report: VerificationReport): report is VerificationReport & {
+  reportSchemaVersion: "verification-report.v2";
+  verificationContract: unknown;
+} {
+  return (report as { reportSchemaVersion?: unknown }).reportSchemaVersion === "verification-report.v2";
 }
 
 function copyPlannerProvenance(planner: NonNullable<VerificationReport["planner"]>): NonNullable<VerificationReport["planner"]> {
@@ -932,13 +945,19 @@ function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
       : authenticity?.trust === "portable_unverified"
         ? createUnverifiedAuthenticity("portable_unverified")
         : createUnverifiedAuthenticity("imported_unverified");
-  const validation = validateVerificationReport(safeReport, { mode: "summary" });
+  const validation = validateVerificationReport(safeReport, { mode: storedReportValidationMode(safeReport) });
 
   if (!validation.valid) {
     throw new SavedReportStoreError(`Summary-only saved report failed validation: ${validation.errors.join("; ")}`);
   }
 
   return safeReport;
+}
+
+function storedReportValidationMode(report: VerificationReport): "summary" | "v2_summary" {
+  return (report as { reportSchemaVersion?: unknown }).reportSchemaVersion === "verification-report.v2"
+    ? "v2_summary"
+    : "summary";
 }
 
 function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedReportSummary | null {
@@ -964,7 +983,7 @@ function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedRepor
   }
   const validation = saved.tenantId && saved.report.authenticity?.trust === "verified_agentproof"
     ? validateTenantStoredReport(saved.report, requireReportSigningSecret())
-    : validateVerificationReport(saved.report, { mode: "summary" });
+    : validateVerificationReport(saved.report, { mode: storedReportValidationMode(saved.report) });
   if (!validation.valid) return null;
 
   const report = saved.report;

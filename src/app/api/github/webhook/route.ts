@@ -63,7 +63,7 @@ import {
   UsageQuotaStoreError,
   type UsageQuotaReservation
 } from "@/lib/usage-quota";
-import { generateVerificationReport } from "@/lib/verifier";
+import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import {
   enrichReportWithHybridPlanning,
   enrichReportWithOpenAISemantics
@@ -833,7 +833,7 @@ async function handlePullRequestAutomation(
       throw new Error("GitHub App PR analysis could not build a pull request input.");
     }
 
-    const deterministicReport = generateVerificationReport(input);
+    const deterministicReport = generateVerificationReportV2FromInput(input);
     const semanticResult = tenantGrant.enabled
       ? await enrichReportWithHybridPlanning(input, {
         readCurrentInput: () => buildGitHubPullRequestInput(
@@ -881,7 +881,7 @@ async function handlePullRequestAutomation(
       : await enrichReportWithOpenAISemantics(input, deterministicReport, {
         mode: automation.repositoryPrivate === false ? "enhanced" : "essential"
       });
-    const runtimeReport = resolveRuntimeReportValidation({ input, report: semanticResult.report });
+    const runtimeReport = resolveRuntimeReportValidation({ input, report: semanticResult.report, requireV2: true });
 
     if (!runtimeReport.valid) {
       throw new Error(`Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`);

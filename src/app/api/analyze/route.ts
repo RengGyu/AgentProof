@@ -10,7 +10,7 @@ import {
   type GitHubFetchFailureCode
 } from "@/lib/github";
 import { validateVerificationReport } from "@/lib/report-validation";
-import { generateVerificationReport } from "@/lib/verifier";
+import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
 import { redactSecrets } from "@/lib/redact";
 import type { AnalyzeRequest, DemoScenarioId } from "@/lib/types";
@@ -96,10 +96,10 @@ export async function POST(request: Request) {
       : await buildPullRequestInput(body, evidenceTiming);
 
     timing.start("report");
-    const report = generateVerificationReport(input);
+    const report = generateVerificationReportV2FromInput(input);
 
     timing.start("validation");
-    const validation = validateVerificationReport(report, { mode: "full" });
+    const validation = validateVerificationReport(report, { mode: "v2_full" });
 
     if (!validation.valid) {
       return jsonNoStore(

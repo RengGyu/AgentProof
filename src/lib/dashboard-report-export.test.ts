@@ -39,6 +39,35 @@ describe("dashboard report export", () => {
     expect(json.requirements[0]).toMatchObject({ coverage: "met", source_authority: "pr_description" });
   });
 
+  it("separates a v2 no-contract outcome from its observed deterministic evidence", () => {
+    const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    strictDetail.report = {
+      ...strictDetail.report,
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent" },
+      requirements: [{
+        requirementId: "req_1",
+        requirementText: "Make the repository overview more useful.",
+        status: "unclear",
+        evidenceStatus: "met",
+        evidenceRefs: ["ev_1"],
+        gaps: ["Outcome was not assessed against an approved verification contract."]
+      }]
+    };
+
+    const markdown = dashboardReportToMarkdown(strictDetail);
+    const json = JSON.parse(dashboardReportToJson(strictDetail));
+
+    expect(markdown).toContain("**Policy:** Strict verification contract");
+    expect(markdown).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
+    expect(markdown).toContain("Observed evidence: Supported");
+    expect(markdown).toContain("Requirement outcome: Unclear");
+    expect(json).toMatchObject({
+      verification_policy: "Strict verification contract",
+      verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."
+    });
+  });
+
   it("projects enhanced planning as neutral policy copy without internal provenance", () => {
     const plannerDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
     plannerDetail.report!.planner = {

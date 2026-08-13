@@ -5,11 +5,100 @@ import { validateVerificationReport } from "./report-validation";
 import {
   buildRequirementEvidenceRelevanceIndex,
   buildVerifierEvidenceLookup,
-  generateVerificationReport
+  generateVerificationReport,
+  generateVerificationReportV2
 } from "./verifier";
 import type { EvidenceItem, PullRequestInput, Requirement, VerificationReport } from "./types";
 
 describe("generateVerificationReport", () => {
+  it("keeps PR #24-style evidence observations but caps outcome at unclear without an approved contract", () => {
+    const input: PullRequestInput = {
+      title: "Improve repository overview",
+      description: "Adds a reviewer action helper.",
+      taskText: "The repository overview should be more useful for reviewers.",
+      taskSource: "issue",
+      changedFiles: [{ path: "src/repositories/OverviewAction.js", status: "modified", patch: "+ export const overviewActionLabel = () => 'Review repository';" }],
+      checks: [{ name: "repository overview tests", status: "passed", summary: "Repository overview tests passed." }],
+      logs: []
+    };
+
+    const report = generateVerificationReportV2({
+      input,
+      contractSource: {
+        kind: "linked_issue",
+        title: input.taskText,
+        body: ""
+      },
+      binding: {
+        sourceKind: "linked_issue",
+        sourceIdentity: "github:repository:42:issue:23",
+        sourceContent: input.taskText,
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    expect(report).toMatchObject({
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent" }
+    });
+    expect(report.requirements[0]).toMatchObject({ status: "unclear" });
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "implementation", state: "satisfied" })
+    ]));
+  });
+
+  it("keeps an explicit return-value contract unavailable until an attested executor result exists", () => {
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "visibility_label",
+        objective: "Return a repository visibility label for both boolean states.",
+        criteria: [{
+          id: "boolean_labels",
+          type: "return_value",
+          label: "Return the label for each visibility value.",
+          adapter: {
+            id: "node_export_scalar.v1",
+            modulePath: "src/repositories/repository-visibility.js",
+            exportName: "repositoryVisibilityLabel",
+            moduleFormat: "esm"
+          },
+          cases: [
+            { id: "private", input: true, expected: "Private repository" },
+            { id: "public", input: false, expected: "Public repository" }
+          ]
+        }]
+      }]
+    };
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Add repository visibility label",
+        description: "Adds a visibility helper and focused tests.",
+        taskText: "Return a repository visibility label for both boolean states.",
+        taskSource: "issue",
+        changedFiles: [{ path: "src/repositories/repository-visibility.js", status: "added", patch: "+ export const repositoryVisibilityLabel = (isPrivate) => isPrivate ? 'Private repository' : 'Public repository';" }],
+        checks: [{ name: "repository visibility tests", status: "passed", summary: "Repository visibility tests passed." }],
+        logs: []
+      },
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:verification-contract:1",
+        sourceContent: JSON.stringify(contract),
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    expect(report.requirements[0]).toMatchObject({ status: "unclear" });
+    expect(report.verificationContract.objectives[0]?.criterionResults).toEqual([
+      expect.objectContaining({ state: "unavailable" })
+    ]);
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("indexes requirement/evidence relevance with one source-text scan per evidence item", () => {
     const requirements = Array.from({ length: 12 }, (_, index): Requirement => ({
       id: `req_${index}`,
@@ -42,7 +131,6 @@ describe("generateVerificationReport", () => {
     }
     expect(index.evidenceTextScanCount).toBe(evidence.length);
   });
-
   it("preserves exact substring match order, strength, and canonical overlap in the relevance index", () => {
     const requirement: Requirement = {
       id: "req_equivalence",
@@ -3221,6 +3309,7 @@ describe("generateVerificationReport", () => {
     expect(noChange?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
     expect(report.requirements.find((item) => item.requirementId === noChange?.requirementId)?.status).not.toBe("unclear");
   });
+
 });
 
 function expectRefsResolve(report: VerificationReport, refs: string[]) {
