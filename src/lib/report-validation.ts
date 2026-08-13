@@ -1149,10 +1149,12 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       validateFullRequirementProofAxes(report, requirementText, proofNode, axes, evidenceById, index, errors);
     }
 
-    const matchingAuthorClaimPartial = item.status === "partial" &&
-      proofNode?.sourceQuality === "author_claim" &&
-      proofNode.status === "partial" &&
-      duplicateTextMatches;
+    const matchingAuthorClaimPartial = isConstrainedAuthorClaimPartial(
+      report,
+      item,
+      proofNode,
+      duplicateTextMatches
+    );
     if (
       axes &&
       axes.length > 0 &&
@@ -1217,6 +1219,30 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`claims[${index}] execution claim cannot be supported without passing test or CI execution evidence.`);
     }
   });
+}
+
+function isConstrainedAuthorClaimPartial(
+  report: RecordValue,
+  requirement: RecordValue,
+  proofNode: RecordValue | undefined,
+  duplicateTextMatches: boolean
+): boolean {
+  if (
+    requirement.status !== "partial" ||
+    proofNode?.status !== "partial" ||
+    !duplicateTextMatches
+  ) {
+    return false;
+  }
+
+  if (proofNode.sourceQuality === "author_claim") return true;
+
+  if (!getStringArray(requirement.gaps).includes("PR author intent is not an authoritative linked requirement.")) {
+    return false;
+  }
+
+  return report.analysisContext === "unlinked_pr" &&
+    proofNode.sourceQuality === "requirement_language";
 }
 
 function validateFullRequirementProofAxes(

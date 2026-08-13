@@ -245,22 +245,52 @@ describe("requirement relation regression matrix", () => {
         "## Requirements",
         "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when isPrivate is true.",
         "- Return Public repository when isPrivate is false.",
-        "- Add focused automated tests for both boolean paths."
+        "- Add focused automated tests for both boolean paths.",
+        "",
+        "## Verification",
+        "",
+        "- npm test",
+        "",
+        "## Canary scope",
+        "",
+        "This is an unmerged private AgentProof code-and-test canary. It changes only the new visibility helper and its focused test."
       ].join("\n"),
       changedFiles: [
         {
           path: "src/repositories/repository-visibility.js",
           status: "added",
-          patch: "+ export function repositoryVisibilityLabel(isPrivate) { return isPrivate ? 'Private repository' : 'Public repository'; }"
+          patch: [
+            "+export function repositoryVisibilityLabel(isPrivate) {",
+            "+  return isPrivate ? \"Private repository\" : \"Public repository\";",
+            "+}"
+          ].join("\n")
         },
         {
           path: "test/repository-visibility.test.js",
           status: "added",
-          patch: "+ test('returns both repository visibility labels', () => {})"
+          patch: [
+            "+import test from \"node:test\";",
+            "+import assert from \"node:assert/strict\";",
+            "+import { repositoryVisibilityLabel } from \"../src/repositories/repository-visibility.js\";",
+            "+test(\"labels a private repository\", () => { assert.equal(repositoryVisibilityLabel(true), \"Private repository\"); });",
+            "+test(\"labels a public repository\", () => { assert.equal(repositoryVisibilityLabel(false), \"Public repository\"); });"
+          ].join("\n")
         }
       ],
-      checks: [{ name: "repository visibility tests", status: "passed", summary: "repository visibility tests passed." }],
-      logs: [{ source: "repository visibility tests", status: "passed", text: "repository visibility tests passed." }]
+      checks: [{ name: "unit-tests", status: "passed" }],
+      logs: [{
+        source: "GitHub Actions job: unit-tests",
+        status: "passed",
+        text: "GitHub Actions job unit-tests: passed. Steps: npm test"
+      }],
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/repository-visibility.test.js"]
+      }]
     }), [
       { disposition: "admit", classification: "requirement", expected_axes: [] },
       { disposition: "admit", classification: "requirement", expected_axes: [] },
@@ -287,7 +317,15 @@ describe("requirement relation regression matrix", () => {
         "## Requirements",
         "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when isPrivate is true.",
         "- Return Public repository when isPrivate is false.",
-        "- Add focused automated tests for both boolean paths."
+        "- Add focused automated tests for both boolean paths.",
+        "",
+        "## Verification",
+        "",
+        "- npm test",
+        "",
+        "## Canary scope",
+        "",
+        "This is an unmerged private AgentProof code-and-test canary. It changes only the new visibility helper and its focused test."
       ].join("\n"),
       changedFiles: [
         {
