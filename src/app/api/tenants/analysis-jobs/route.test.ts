@@ -89,6 +89,7 @@ describe("GET /api/tenants/analysis-jobs", () => {
           createdAt: "2026-06-30T00:00:00.000Z",
           updatedAt: "2026-06-30T00:02:00.000Z",
           repositoryFullName: "RengGyu/AgentProof",
+          repositoryId: 100,
           pullRequestNumber: 7,
           headShaPrefix: "abc123def456",
           action: "synchronize",

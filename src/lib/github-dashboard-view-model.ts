@@ -24,7 +24,7 @@ export interface DashboardSavedReport {
   staleAt?: string;
   freshness?: DashboardReportFreshness;
   copyEligible?: boolean;
-  availability?: "available" | "unavailable";
+  availability?: "available" | "unavailable" | "analysis_failed";
   failure?: {
     code?: string;
     summary?: string;

@@ -2,7 +2,8 @@ import { noStoreJson } from "@/lib/http";
 import { getSavedReport, listTenantSavedReportDetails, listTenantSavedReports, SavedReportStoreError, TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT, type StoredServerReport } from "@/lib/server-report-store";
 import { resolveTenantAuthAccess, TenantAuthStoreError } from "@/lib/tenant-auth";
 import { tenantReportAnalysisContext } from "@/lib/tenant-report-language";
-import { resolveAnalysisJobFreshness, type AnalysisJobFreshness } from "@/lib/analysis-jobs";
+import { listTenantAnalysisJobs, resolveAnalysisJobFreshness, type AnalysisJobFreshness, type TenantAnalysisJobSummary } from "@/lib/analysis-jobs";
+import type { DashboardSavedReport } from "@/lib/github-dashboard-view-model";
 
 export async function GET(request: Request) {
   try {
@@ -46,21 +47,55 @@ export async function GET(request: Request) {
         privacy: "tenant-sanitized-detail-bundle"
       });
     }
-    const reports = await listTenantSavedReports({ tenantId, limit: 25 });
+    const [savedReports, jobs] = await Promise.all([
+      listTenantSavedReports({ tenantId, limit: 25 }),
+      listTenantAnalysisJobs({ tenantId, limit: 25 }).catch(() => [])
+    ]);
+    const reports: DashboardSavedReport[] = await Promise.all(savedReports.map(async (report) => ({
+      ...report,
+      ...(report.availability === "unavailable"
+        ? { freshness: "unknown" as const, copyEligible: false }
+        : await resolveSavedReportFreshness(report, tenantId))
+    })));
+    const failedAnalysisRows = failedAnalysisRowsForDashboard(jobs, reports);
     return noStoreJson({
       ok: true,
-      reports: await Promise.all(reports.map(async (report) => ({
-        ...report,
-        ...(report.availability === "unavailable"
-          ? { freshness: "unknown" as const, copyEligible: false }
-          : await resolveSavedReportFreshness(report, tenantId))
-      }))),
+      reports: [...reports, ...failedAnalysisRows].sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       privacy: "tenant-report-metadata-only"
     });
   } catch (error) {
     if (error instanceof TenantAuthStoreError || error instanceof SavedReportStoreError) return noStoreJson({ error: "Dashboard reports are unavailable.", code: "dashboard_reports_unavailable" }, { status: 503 });
     throw error;
   }
+}
+
+function failedAnalysisRowsForDashboard(
+  jobs: TenantAnalysisJobSummary[],
+  reports: DashboardSavedReport[]
+): DashboardSavedReport[] {
+  return jobs
+    .filter((job) => job.status === "failed_retryable" || job.status === "failed_terminal")
+    .filter((job) => typeof job.repositoryId === "number")
+    .filter((job) => !reports.some((report) =>
+      report.repositoryId === job.repositoryId &&
+      report.pullRequestNumber === job.pullRequestNumber &&
+      report.freshness === "refresh_failed"
+    ))
+    .map((job) => ({
+      id: `analysis-failure:${job.id}`,
+      repositoryId: job.repositoryId,
+      pullRequestNumber: job.pullRequestNumber,
+      headSha: job.headShaPrefix,
+      priority: "high",
+      createdAt: job.completedAt ?? job.updatedAt,
+      freshness: "refresh_failed" as const,
+      copyEligible: false,
+      availability: "analysis_failed" as const,
+      failure: {
+        ...(job.errorCode ? { code: job.errorCode } : {}),
+        ...(job.errorSummary ? { summary: job.errorSummary } : {})
+      }
+    }));
 }
 
 async function toDashboardReportDetail(saved: StoredServerReport, tenantId: string) {

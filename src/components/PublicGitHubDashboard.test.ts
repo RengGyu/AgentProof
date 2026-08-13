@@ -37,7 +37,7 @@ describe("PublicGitHubDashboard saved reports", () => {
   it("keeps an undecodable saved-report row visible without allowing it to open or copy", () => {
     expect(source).toContain("REPORT UNAVAILABLE");
     expect(source).toContain("This saved report cannot be opened right now. Run the analysis again if the state does not recover.");
-    expect(source).toContain('disabled={report.availability === "unavailable"}');
+    expect(source).toContain('disabled={report.availability === "unavailable" || report.availability === "analysis_failed"}');
     expect(source).toContain('report.availability === "unavailable" ? "REPORT UNAVAILABLE"');
     expect(source).toContain("hasUnavailableSelectedReport");
     expect(source).toContain("copyableSelectedReports.length === 0 || hasUnavailableSelectedReport || bulkCopyState === \"copying\"");

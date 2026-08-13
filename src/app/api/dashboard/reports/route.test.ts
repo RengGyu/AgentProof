@@ -286,6 +286,56 @@ describe("/api/dashboard/reports", () => {
     expect(JSON.stringify(body)).not.toContain("tenant_a");
   });
 
+  it("lists a failed latest analysis even when it never saved a report", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const queued = await enqueueAnalysisJob({
+      tenantId: "tenant_a",
+      idempotencyKey: "dashboard-unsaved-failure",
+      deliveryId: "123e4567-e89b-12d3-a456-426614174399",
+      event: "pull_request",
+      action: "synchronize",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      pullRequestNumber: 30,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/30",
+      headSha: "c".repeat(40),
+      saveReport: true,
+      comment: false
+    });
+    const claim = await claimAnalysisJobById(queued.id, { now: new Date(Date.now() + 60_000) });
+    await failAnalysisJob({
+      id: queued.id,
+      claimGeneration: claim.job!.claim_generation!,
+      retryable: false,
+      code: "generated_report_validation_failed",
+      summary: "Generated report failed runtime validation."
+    });
+
+    const response = await GET(new Request("http://localhost/api/dashboard/reports", {
+      headers: { cookie: session.sessionCookie }
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.reports).toEqual([expect.objectContaining({
+      id: `analysis-failure:${queued.id}`,
+      repositoryId: 100,
+      pullRequestNumber: 30,
+      availability: "analysis_failed",
+      freshness: "refresh_failed",
+      copyEligible: false,
+      failure: {
+        code: "generated_report_validation_failed",
+        summary: "Generated report failed runtime validation."
+      }
+    })]);
+    expect(JSON.stringify(body)).not.toContain("tenant_a");
+    expect(JSON.stringify(body)).not.toContain("provider_response_id");
+  });
+
   it("keeps an unavailable report visible while blocking its detail content and copy bundle", async () => {
     const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
     const unavailable = {

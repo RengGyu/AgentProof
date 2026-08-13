@@ -83,6 +83,7 @@ function jobEvent(
     kind,
     occurredAt: job.completedAt ?? job.updatedAt,
     state,
+    repositoryId: job.repositoryId,
     repositoryFullName: job.repositoryFullName,
     pullRequestNumber: job.pullRequestNumber,
     headShaPrefix: safeHeadPrefix(job.headShaPrefix),

@@ -279,6 +279,35 @@ describe("requirement relation regression matrix", () => {
     expect(focusedTests?.gaps.join(" ")).not.toMatch(/implementation evidence/i);
   });
 
+  it("keeps PR30's PR-description test requirement partial without rejecting its satisfied proof axes", () => {
+    const report = finalizeAllAuthoritative(linkedInput({
+      taskSource: undefined,
+      taskText: "",
+      description: [
+        "## Requirements",
+        "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when isPrivate is true.",
+        "- Return Public repository when isPrivate is false.",
+        "- Add focused automated tests for both boolean paths."
+      ].join("\n"),
+      changedFiles: [
+        {
+          path: "src/repositories/repository-visibility.js",
+          status: "added",
+          patch: "+ export function repositoryVisibilityLabel(isPrivate) { return isPrivate ? 'Private repository' : 'Public repository'; }"
+        },
+        {
+          path: "test/repository-visibility.test.js",
+          status: "added",
+          patch: "+ test('returns both repository visibility labels', () => {})"
+        }
+      ],
+      checks: [{ name: "repository visibility tests", status: "passed", summary: "repository visibility tests passed." }],
+      logs: [{ source: "repository visibility tests", status: "passed", text: "repository visibility tests passed." }]
+    }));
+
+    expect(report.requirements[2]?.status).toBe("partial");
+  });
+
   it("keeps an explicit-subject test-only objective independent from implementation proof", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",

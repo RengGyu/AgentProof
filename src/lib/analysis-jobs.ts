@@ -274,6 +274,7 @@ export interface TenantAnalysisJobSummary {
   status: AnalysisJobStatus;
   createdAt: string;
   updatedAt: string;
+  repositoryId?: number;
   repositoryFullName: string;
   pullRequestNumber: number;
   headShaPrefix: string;
@@ -428,6 +429,7 @@ const TENANT_ANALYSIS_JOB_SELECT = [
   "id",
   "status",
   "action",
+  "repository_id",
   "repository_full_name",
   "pull_request_number",
   "head_sha",
@@ -2753,6 +2755,7 @@ function toTenantAnalysisJobSummary(row: AnalysisJobRow): TenantAnalysisJobSumma
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    repositoryId: safePositiveInteger(row.repository_id) ?? undefined,
     repositoryFullName: row.repository_full_name,
     pullRequestNumber: row.pull_request_number,
     headShaPrefix: row.head_sha.slice(0, 12),
@@ -3519,7 +3522,7 @@ function safeGitHubDeliveryId(value: string | undefined): string | null {
   return /^[a-f0-9-]{20,80}$/i.test(value) ? value : "unknown";
 }
 
-function safePositiveInteger(value: number | undefined): number | null {
+function safePositiveInteger(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
