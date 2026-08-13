@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash, createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
@@ -20,7 +21,7 @@ import {
 import { createVerifiedAuthenticity } from "./report-authenticity";
 import { decodeTenantPersistedReport, projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
 import type { VerificationReport } from "./types";
-import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
 
@@ -109,6 +110,235 @@ describe("server report store", () => {
         reportSchemaVersion: "verification-report.v2",
         verificationContract: { state: "absent", source: null }
       }
+    });
+  });
+
+  it("round-trips an active authoritative documentation contract without retaining its source details", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "reset_doc",
+        objective: "Document the local reset command.",
+        criteria: [{
+          id: "reset_literal",
+          type: "artifact",
+          label: "The reset document includes the exact test command.",
+          paths: ["docs/reset.md"],
+          artifact: { kind: "documentation_literal", literal: "Run npm test." }
+        }]
+      }]
+    };
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Document reset",
+        description: "Documents the reset command.",
+        taskText: "Document the local reset command.",
+        taskSource: "issue",
+        changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }],
+        checks: [],
+        logs: [],
+        verificationCriterionEvidenceV2: {
+          artifactBlobs: [{ path: "docs/reset.md", content: "Run npm test." }]
+        },
+        sourceProvenance: {
+          version: 1,
+          origin: "github_snapshot",
+          headSha: "a".repeat(40),
+          baseSha: "b".repeat(40),
+          changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) },
+          evidenceCapturedAt: "2026-08-13T00:00:00.000Z",
+          inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+        }
+      },
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:verification-contract:1",
+        sourceContent: JSON.stringify(contract),
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_v2",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 42,
+      headSha: "a".repeat(40)
+    });
+    const persisted = JSON.parse(JSON.stringify(projectTenantPersistedReport(saved.report, signingSecret)));
+    const decoded = decodeTenantPersistedReport(persisted, {
+      signingSecret,
+      createdAt: "2026-08-13T00:00:00.000Z"
+    });
+
+    expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(decoded).toMatchObject({
+      status: "valid",
+      report: {
+        reportSchemaVersion: "verification-report.v2",
+        verificationContract: {
+          state: "authoritative",
+          objectives: [{ criterionResults: [{ state: "satisfied" }] }]
+        },
+        requirements: [{ status: "met" }]
+      }
+    });
+    const persistedContract = JSON.stringify(persisted.verificationContract);
+    expect(persistedContract).not.toContain("Run npm test.");
+    expect(persistedContract).not.toContain("reset.md");
+    expect(persistedContract).not.toContain("The reset document includes");
+
+    const authorClaim = structuredClone(saved.report) as typeof report;
+    authorClaim.verificationContract.state = "author_claim";
+    authorClaim.verificationContract.source = { kind: "pr_description" };
+    authorClaim.verificationContract.objectives[0]!.state = "author_claim";
+    authorClaim.verificationContract.objectives[0]!.criteria[0]!.approval = "author_claim";
+    authorClaim.requirements[0]!.status = "partial";
+    authorClaim.proofGraph.nodes[0]!.status = "partial";
+    const authorClaimDecoded = decodeTenantPersistedReport(projectTenantPersistedReport(authorClaim, signingSecret), {
+      signingSecret,
+      createdAt: "2026-08-13T00:00:00.000Z"
+    });
+    expect(authorClaimDecoded).toMatchObject({
+      status: "valid",
+      report: { requirements: [{ status: "partial", evidenceStatus: "met" }] }
+    });
+
+    const unavailable = structuredClone(saved.report) as typeof report;
+    unavailable.verificationContract.objectives[0]!.criterionResults[0]!.state = "unavailable";
+    unavailable.verificationContract.objectives[0]!.criterionResults[0]!.evidenceRefs = [];
+    unavailable.verificationContract.objectives[0]!.criterionResults[0]!.gapKinds = ["evidence_unavailable"];
+    unavailable.requirements[0]!.status = "unclear";
+    unavailable.proofGraph.nodes[0]!.status = "unclear";
+    const unavailableDecoded = decodeTenantPersistedReport(projectTenantPersistedReport(unavailable, signingSecret), {
+      signingSecret,
+      createdAt: "2026-08-13T00:00:00.000Z"
+    });
+    expect(unavailableDecoded).toMatchObject({
+      status: "valid",
+      report: { requirements: [{ status: "unclear" }] }
+    });
+  });
+
+  it("fails closed for forged active return-value outcomes before signing and after persistence", () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "visibility_label",
+        objective: "Return the private repository label.",
+        criteria: [{
+          id: "private_label",
+          type: "return_value",
+          label: "The private branch returns the expected label.",
+          adapter: {
+            id: "node_export_scalar.v1",
+            modulePath: "src/repositories/repository-visibility.js",
+            exportName: "repositoryVisibilityLabel",
+            moduleFormat: "esm"
+          },
+          cases: [{ id: "private", input: true, expected: "Private repository" }]
+        }]
+      }]
+    };
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Repository visibility",
+        description: "Returns the repository visibility label.",
+        taskText: "Return the private repository label.",
+        taskSource: "issue",
+        changedFiles: [{ path: "src/repositories/repository-visibility.js", status: "modified", patch: "+export const repositoryVisibilityLabel = () => 'Private repository';" }],
+        checks: [],
+        logs: [],
+        sourceProvenance: {
+          version: 1,
+          origin: "github_snapshot",
+          headSha: "a".repeat(40),
+          baseSha: "b".repeat(40),
+          changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) },
+          evidenceCapturedAt: "2026-08-13T00:00:00.000Z",
+          inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+        }
+      },
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:verification-contract:1",
+        sourceContent: JSON.stringify(contract),
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+    const forged = structuredClone(report);
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.state = "satisfied";
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.evidenceRefs = [forged.evidenceIndex[0]!.id];
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.gapKinds = [];
+    forged.requirements[0]!.status = "met";
+    forged.requirements[0]!.evidenceRefs = [forged.evidenceIndex[0]!.id];
+    forged.requirements[0]!.gaps = [];
+    forged.proofGraph.nodes[0]!.status = "met";
+    forged.proofGraph.nodes[0]!.gapSignals = [];
+
+    expect(() => projectTenantPersistedReport(forged, signingSecret)).toThrow(
+      "Active verification-contract v2 report cannot be durably persisted without a valid attested evaluation."
+    );
+
+    const persisted = projectTenantPersistedReport(report, signingSecret);
+    const tampered = structuredClone(persisted);
+    (tampered.verificationContract!.objectives[0]!.criterionResults[0]!.state as string) = "satisfied";
+    expect(decodeTenantPersistedReport(tampered, { signingSecret, createdAt: report.createdAt })).toEqual({
+      status: "invalid",
+      reasonCode: "invalid_report_signature"
+    });
+  });
+
+  it("rejects a re-signed active contract whose source kind does not match its authority", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    const source = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "reset_doc",
+        objective: "Document the local reset command.",
+        criteria: [{
+          id: "reset_literal",
+          type: "artifact",
+          label: "The reset document includes the exact test command.",
+          paths: ["docs/reset.md"],
+          artifact: { kind: "documentation_literal", literal: "Run npm test." }
+        }]
+      }]
+    };
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Document reset", description: "Documents the reset command.", taskText: "Document the local reset command.", taskSource: "issue",
+        changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }], checks: [], logs: [],
+        verificationCriterionEvidenceV2: { artifactBlobs: [{ path: "docs/reset.md", content: "Run npm test." }] },
+        sourceProvenance: {
+          version: 1, origin: "github_snapshot", headSha: "a".repeat(40), baseSha: "b".repeat(40),
+          changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) }, evidenceCapturedAt: "2026-08-13T00:00:00.000Z",
+          inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+        }
+      },
+      contractSource: { kind: "provided_requirement", contract: source },
+      binding: { sourceKind: "provided_requirement", sourceIdentity: "manual:verification-contract:1", sourceContent: JSON.stringify(source), headSha: "a".repeat(40), baseSha: "b".repeat(40) }
+    });
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(report, { tenantId: "tenant_v2", installationId: 321, repositoryId: 100, pullRequestNumber: 42, headSha: "a".repeat(40) });
+    const tupleMismatch = resignPersistedTenantReport(projectTenantPersistedReport(saved.report, signingSecret), signingSecret);
+    tupleMismatch.verificationContract!.source = { kind: "pr_description" };
+    resignPersistedTenantReport(tupleMismatch, signingSecret);
+
+    expect(validateTenantPersistedReport(tupleMismatch, signingSecret)).toEqual({ valid: false, errors: expect.any(Array) });
+    expect(decodeTenantPersistedReport(tupleMismatch, { signingSecret, createdAt: saved.createdAt })).toEqual({
+      status: "invalid",
+      reasonCode: "invalid_report_shape"
     });
   });
 
@@ -1556,3 +1786,20 @@ describe("server report store", () => {
     await expect(createSavedReport(generateVerificationReport(demoScenarios.clean))).rejects.toThrow(SavedReportStoreError);
   });
 });
+
+function resignPersistedTenantReport<T extends { integrity: { canonicalDigest: string; signature: string } }>(report: T, signingSecret: string): T {
+  const { integrity: _integrity, ...unsigned } = structuredClone(report);
+  const payload = stableJsonForTest(unsigned);
+  report.integrity.canonicalDigest = createHash("sha256").update(payload).digest("hex");
+  report.integrity.signature = createHmac("sha256", signingSecret).update(payload).digest("hex");
+  return report;
+}
+
+function stableJsonForTest(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJsonForTest).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJsonForTest(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
