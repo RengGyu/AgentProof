@@ -12,6 +12,8 @@ describe("reportToGitHubComment", () => {
     expect(output).toContain("Strict verification contract");
     expect(output).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
     expect(output).toContain("**Observed evidence:** implementation, targeted tests, and execution are listed below.");
+    expect(output).toContain("Approved verification contract is missing.");
+    expect(output).not.toContain("Outcome was not assessed against an approved verification contract.");
   });
 
   it("renders enhanced planning as neutral policy copy only", () => {

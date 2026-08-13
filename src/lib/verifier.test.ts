@@ -152,7 +152,7 @@ describe("generateVerificationReport", () => {
       }
     });
 
-    expect(report.requirements[0]).toMatchObject({ status: "met" });
+    expect(report.requirements[0]).toMatchObject({ status: "met", gaps: [] });
     expect(report.verificationContract.objectives[0]?.criterionResults).toEqual([
       expect.objectContaining({ state: "satisfied" })
     ]);

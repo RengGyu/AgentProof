@@ -42,6 +42,7 @@ import type {
   RequirementProofNode,
   RequirementFinding,
   ReviewPriorityItem,
+  ProofGapKind,
   VerificationReport,
   VerificationReportV2
 } from "./types";
@@ -160,31 +161,33 @@ function applyStrictContractOutcomeV2(
   report: VerificationReport,
   contract: import("./verification-contract-v2").VerificationContractReportV2
 ): VerificationReportV2 {
-  const stateByRequirement = new Map(contract.objectives.map((objective) => [
+  const outcomes = new Map(contract.objectives.map((objective) => [
     objective.requirementId,
-    aggregateVerificationCriteriaV2(objective.state, objective.criterionResults.map((result) => result.state))
+    strictContractOutcomeForRequirement(contract, objective.requirementId)
   ]));
-  const noApprovedContract = contract.state === "absent" || contract.state === "invalid";
-  const gap = noApprovedContract
-    ? "Outcome was not assessed against an approved verification contract."
-    : "A required verification criterion was unavailable, incomplete, or not yet satisfied.";
-  const requirements = report.requirements.map((requirement) => ({
-    ...requirement,
-    evidenceStatus: requirement.evidenceStatus ?? requirement.status,
-    status: stateByRequirement.get(requirement.requirementId) ?? "unclear",
-    gaps: appendOnce(requirement.gaps, gap)
-  }));
+  const requirements = report.requirements.map((requirement) => {
+    const outcome = outcomes.get(requirement.requirementId) ?? strictContractOutcomeForRequirement(contract, requirement.requirementId);
+    return {
+      ...requirement,
+      evidenceStatus: requirement.evidenceStatus ?? requirement.status,
+      status: outcome.status,
+      gaps: outcome.gap ? [outcome.gap.message] : []
+    };
+  });
   const nodes = report.proofGraph.nodes.map((node) => ({
     ...node,
-    status: stateByRequirement.get(node.requirementId) ?? "unclear",
-    gapSignals: node.gapSignals.some((signal) => signal.message === gap)
-      ? node.gapSignals
-      : [...node.gapSignals, {
-        kind: "ambiguous_requirement" as const,
-        severity: "medium" as const,
-        message: gap,
-        evidenceRefs: []
-      }]
+    ...(() => {
+      const outcome = outcomes.get(node.requirementId) ?? strictContractOutcomeForRequirement(contract, node.requirementId);
+      return {
+        status: outcome.status,
+        gapSignals: outcome.gap ? [{
+          kind: outcome.gap.kind,
+          severity: "medium" as const,
+          message: outcome.gap.message,
+          evidenceRefs: outcome.gap.evidenceRefs
+        }] : []
+      };
+    })()
   }));
   const requirementsWithGaps = nodes.filter((node) => node.gapSignals.length > 0).length;
   const gapCount = nodes.reduce((count, node) => count + node.gapSignals.length, 0);
@@ -199,6 +202,59 @@ function applyStrictContractOutcomeV2(
       summary: { ...report.proofGraph.summary, requirementsWithGaps, gapCount }
     }
   };
+}
+
+function strictContractOutcomeForRequirement(
+  contract: import("./verification-contract-v2").VerificationContractReportV2,
+  requirementId: string
+): { status: RequirementFinding["status"]; gap?: { kind: ProofGapKind; message: string; evidenceRefs: string[] } } {
+  if (contract.state === "absent") {
+    return strictContractGap("Approved verification contract is missing.");
+  }
+  if (contract.state === "invalid") {
+    return strictContractGap("Verification contract could not be validated.");
+  }
+
+  const objective = contract.objectives.find((item) => item.requirementId === requirementId);
+  const results = objective?.criterionResults ?? [];
+  const status = aggregateVerificationCriteriaV2(objective?.state ?? contract.state, results.map((result) => result.state));
+  if (results.length > 0 && results.every((result) => result.state === "satisfied")) {
+    return { status };
+  }
+  if (results.some((result) => result.state === "violated")) {
+    const evidenceRefs = uniqueRefs(results.flatMap((result) => result.evidenceRefs));
+    const kind = results.flatMap((result) => result.gapKinds).find(isProofGapKind) ?? "missing_implementation";
+    return {
+      status,
+      gap: {
+        kind,
+        message: "An approved verification criterion was violated.",
+        evidenceRefs
+      }
+    };
+  }
+  return {
+    status,
+    gap: {
+      kind: "evidence_unavailable",
+      message: "A required verification criterion was unavailable, incomplete, or not yet satisfied.",
+      evidenceRefs: uniqueRefs(results.flatMap((result) => result.evidenceRefs))
+    }
+  };
+}
+
+function strictContractGap(message: string): { status: "unclear"; gap: { kind: "ambiguous_requirement"; message: string; evidenceRefs: string[] } } {
+  return {
+    status: "unclear",
+    gap: { kind: "ambiguous_requirement", message, evidenceRefs: [] }
+  };
+}
+
+function isProofGapKind(value: string): value is ProofGapKind {
+  return value === "missing_implementation" || value === "missing_targeted_test" || value === "missing_execution" ||
+    value === "failed_execution" || value === "interaction_proof_missing" || value === "ambiguous_requirement" ||
+    value === "self_reported_test_gap" || value === "evidence_unavailable" || value === "forbidden_implementation_present" ||
+    value === "visual_proof_missing";
 }
 
 function appendOnce(values: readonly string[], value: string): string[] {

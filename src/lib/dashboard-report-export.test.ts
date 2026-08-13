@@ -62,10 +62,31 @@ describe("dashboard report export", () => {
     expect(markdown).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
     expect(markdown).toContain("Observed evidence: Supported");
     expect(markdown).toContain("Requirement outcome: Unclear");
+    expect(markdown).toContain("Key gap: Approved verification contract is missing.");
+    expect(markdown).toContain("Next: Add or approve a typed verification contract, then rerun the analysis.");
     expect(json).toMatchObject({
       verification_policy: "Strict verification contract",
       verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."
     });
+  });
+
+  it("renders a verified authoritative outcome as contract-supported", () => {
+    const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    strictDetail.report = {
+      ...strictDetail.report,
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "authoritative" },
+      requirements: [{
+        requirementId: "req_1",
+        requirementText: "Document the local reset procedure.",
+        status: "met",
+        evidenceStatus: "met",
+        evidenceRefs: ["ev_1"],
+        gaps: []
+      }]
+    };
+
+    expect(dashboardReportToMarkdown(strictDetail)).toContain("Requirement outcome: Supported against approved contract");
   });
 
   it("projects enhanced planning as neutral policy copy without internal provenance", () => {

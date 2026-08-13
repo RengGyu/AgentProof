@@ -62,11 +62,13 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
     const relations = semantic?.requirement_evidence_relations.filter((item) => item.requirement_id === requirement.requirementId) ?? [];
     const uncertainties = semantic?.uncertainties.filter((item) => item.requirement_ids.includes(requirement.requirementId)) ?? [];
     const assessment = assessments.find((item) => usableCompactText(item.summary));
-    const deterministicGap = requirement.gaps.map((gap) => usableCompactText(gap)).find((gap): gap is string => Boolean(gap));
+    const strictGuidance = strictContractRequirementGuidance(verificationContract);
+    const reportGap = requirement.gaps.map((gap) => usableCompactText(gap)).find((gap): gap is string => Boolean(gap));
+    const deterministicGap = strictGuidance?.gap ?? reportGap;
     const target = targets.find((item) => usableCompactText(item.inspection_goal));
-    const deterministicNextAction = deterministicGap
+    const deterministicNextAction = strictGuidance?.nextAction ?? (deterministicGap
       ? tenantRemediationTextForGap(deterministicGap)
-      : undefined;
+      : undefined);
     const explanation = assessment
       ? { state: "assessment" as const, text: usableCompactText(assessment.summary)! }
       : semanticAnalysis?.status === "unavailable"
@@ -103,7 +105,9 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
         const label = proofAxisEvidenceLabel(axis);
         return label ? [label] : [];
       }) ?? []),
-      deterministicGaps: requirement.gaps.flatMap((gap) => usableCompactText(gap) ?? []),
+      deterministicGaps: strictGuidance
+        ? [strictGuidance.gap]
+        : requirement.gaps.flatMap((gap) => usableCompactText(gap) ?? []),
       explanation,
       ...(primaryGap ? { primaryGap } : {}),
       ...(nextAction ? { nextAction } : {}),
@@ -147,11 +151,37 @@ function strictContractOutcomePresentation(
     };
   }
   return {
-    outcomeLabel: toRequirementCoverageLabel(status),
+    outcomeLabel: strictContractOutcomeLabel(status, contract.state),
     outcomeMeaning: contract.state === "author_claim"
       ? "This outcome uses a PR-description verification contract and needs reviewer confirmation."
       : "This outcome is evaluated against an approved verification contract."
   };
+}
+
+function strictContractOutcomeLabel(status: string, state: VerificationContractStateV2): string {
+  const coverage = toRequirementCoverageLabel(status);
+  if (state === "authoritative" && status === "met") return "Supported against approved contract";
+  if (state === "authoritative" && status === "partial") return "Partially supported against approved contract";
+  if (state === "author_claim" && status === "partial") return "Partially supported against PR-description contract";
+  return coverage;
+}
+
+function strictContractRequirementGuidance(
+  contract: RequirementViewModelInput["verificationContract"]
+): { gap: string; nextAction: string } | undefined {
+  if (contract?.state === "absent") {
+    return {
+      gap: "Approved verification contract is missing.",
+      nextAction: "Add or approve a typed verification contract, then rerun the analysis."
+    };
+  }
+  if (contract?.state === "invalid") {
+    return {
+      gap: "Verification contract could not be validated.",
+      nextAction: "Correct the typed verification contract, then rerun the analysis."
+    };
+  }
+  return undefined;
 }
 
 function boundedObjectiveText(value: string | undefined, requirementId: string): string | undefined {

@@ -39,7 +39,30 @@ describe("toDashboardRequirementViewModels", () => {
       coverageHeading: "Observed evidence",
       coverageLabel: "Supported",
       outcomeLabel: "Unclear",
-      outcomeMeaning: "No approved verification contract defined how this objective should be evaluated."
+      outcomeMeaning: "No approved verification contract defined how this objective should be evaluated.",
+      primaryGap: "Approved verification contract is missing.",
+      nextAction: "Add or approve a typed verification contract, then rerun the analysis."
+    });
+  });
+
+  it("labels a satisfied authoritative v2 contract separately from observed evidence", () => {
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{
+        requirementId: "req_contract_satisfied",
+        requirementText: "Document the local reset procedure.",
+        status: "met",
+        evidenceStatus: "met",
+        evidenceRefs: ["ev_documentation"],
+        gaps: []
+      }],
+      verificationContract: { state: "authoritative" }
+    });
+
+    expect(card).toMatchObject({
+      coverageHeading: "Observed evidence",
+      coverageLabel: "Supported",
+      outcomeLabel: "Supported against approved contract",
+      outcomeMeaning: "This outcome is evaluated against an approved verification contract."
     });
   });
 
