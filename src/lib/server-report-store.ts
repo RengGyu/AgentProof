@@ -837,6 +837,8 @@ function prepareTenantDetailReportForStorage(report: VerificationReport, trust: 
         requirementId: item.requirementId,
         requirementText: objectiveLabels.get(item.requirementId) ?? `Requirement ${item.requirementId}`,
         status: item.status,
+        ...(item.evidenceStatus ? { evidenceStatus: item.evidenceStatus } : {}),
+        ...(item.sourceAuthority ? { sourceAuthority: item.sourceAuthority } : {}),
         evidenceRefs: item.evidenceRefs,
         gaps: gaps.slice(0, 10),
         reviewerNote: "Review the linked evidence and safe locations.",

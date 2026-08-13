@@ -85,6 +85,53 @@ describe("extractRequirements", () => {
     ]);
   });
 
+  it("excludes evaluation context from PR objectives without dropping a real scope constraint", () => {
+    const requirements = extractRequirements(
+      "",
+      [
+        "## Requirements",
+        "- Add a retry status label.",
+        "- Add focused tests for both retry paths.",
+        "- Do not change implementation code outside the retry module.",
+        "",
+        "## Evaluation context",
+        "This is an unmerged private canary for exercising the review pipeline.",
+        "It changes only the retry label and its focused test.",
+        "",
+        "## Fixture notes",
+        "This scenario is used to validate the report export benchmark."
+      ].join("\n")
+    );
+
+    expect(requirements.map((requirement) => requirement.text)).toEqual([
+      "Add a retry status label",
+      "Add focused tests for both retry paths",
+      "Do not change implementation code outside the retry module"
+    ]);
+  });
+
+  it("does not discard a product objective merely because its section mentions a benchmark or demo", () => {
+    const requirements = extractRequirements(
+      "",
+      [
+        "## Performance benchmark",
+        "- Add a p95 latency metric to the repository overview.",
+        "",
+        "## Demo behavior",
+        "- Show the demo badge when preview mode is enabled.",
+        "",
+        "## Summary",
+        "This PR adds a demo mode for reviewers."
+      ].join("\n")
+    );
+
+    expect(requirements.map((requirement) => requirement.text)).toEqual([
+      "Add a p95 latency metric to the repository overview",
+      "Show the demo badge when preview mode is enabled",
+      "This PR adds a demo mode for reviewers"
+    ]);
+  });
+
   it("does not promote Korean review-pipeline self-test prose into a PR objective", () => {
     const extraction = extractRequirementEvidence("", "이 PR은 검토 파이프라인을 테스트합니다.");
 

@@ -21,6 +21,7 @@ import {
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
+const REQUIREMENT_AUTHORITIES = new Set(["pr_description"]);
 const PROOF_AXIS_POLARITIES = new Set(["present", "absent"]);
 const PROOF_AXIS_STATES = new Set(["satisfied", "violated", "incomplete"]);
 const PROOF_AXIS_SUBJECT_SET = new Set<string>(PROOF_AXIS_SUBJECTS);
@@ -486,10 +487,18 @@ function validateRequirements(value: unknown, evidenceIds: Set<string>, errors: 
       continue;
     }
 
-    requireKeys(item, ["requirementId", "requirementText", "status", "evidenceRefs", "gaps", "reviewerNote", "confidence"], path, errors, ["proofAxes", "classificationBasis", "plannerAxisSubjects"]);
+    requireKeys(item, ["requirementId", "requirementText", "status", "evidenceRefs", "gaps", "reviewerNote", "confidence"], path, errors, ["evidenceStatus", "sourceAuthority", "proofAxes", "classificationBasis", "plannerAxisSubjects"]);
     validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
     validateString(item.requirementText, `${path}.requirementText`, LIMITS.requirementText, errors);
     validateEnum(item.status, `${path}.status`, REQUIREMENT_STATUSES, errors);
+    if (item.evidenceStatus !== undefined) validateEnum(item.evidenceStatus, `${path}.evidenceStatus`, REQUIREMENT_STATUSES, errors);
+    if (item.sourceAuthority !== undefined) validateEnum(item.sourceAuthority, `${path}.sourceAuthority`, REQUIREMENT_AUTHORITIES, errors);
+    if (item.evidenceStatus !== undefined && item.sourceAuthority !== "pr_description") {
+      errors.push(`${path}.evidenceStatus requires pr_description sourceAuthority.`);
+    }
+    if (item.sourceAuthority === "pr_description" && item.evidenceStatus === undefined) {
+      errors.push(`${path}.sourceAuthority requires evidenceStatus.`);
+    }
     validateEvidenceRefs(item.evidenceRefs, `${path}.evidenceRefs`, evidenceIds, errors);
     validateStringArray(item.gaps, `${path}.gaps`, LIMITS.requirementGaps, LIMITS.shortText, errors);
     validateString(item.reviewerNote, `${path}.reviewerNote`, LIMITS.shortText, errors);
@@ -1153,6 +1162,20 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       proofNode?.sourceQuality === "author_claim" &&
       proofNode.status === "partial" &&
       duplicateTextMatches;
+    if (item.sourceAuthority !== undefined || item.evidenceStatus !== undefined) {
+      if (item.sourceAuthority !== "pr_description" || proofNode?.sourceQuality !== "author_claim") {
+        errors.push(`requirements[${index}] sourceAuthority must match an author-claim proof node.`);
+      }
+      if (!axes || axes.length === 0) {
+        if (item.evidenceStatus !== item.status) {
+          errors.push(`requirements[${index}] evidenceStatus without proof axes must match status.`);
+        }
+      } else if (axes.every((axis) => axis.state === "satisfied") && item.evidenceStatus !== "met") {
+        errors.push(`requirements[${index}] evidenceStatus must be met when every proof axis is satisfied.`);
+      } else if (item.evidenceStatus === "met" && axes.some((axis) => axis.state !== "satisfied")) {
+        errors.push(`requirements[${index}] evidenceStatus cannot be met without every proof axis satisfied.`);
+      }
+    }
     if (
       axes &&
       axes.length > 0 &&

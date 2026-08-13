@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { extractKeywords, extractRequirementSpanSeed } from "./extractors";
+import { extractKeywords, extractRequirementSpanSeed, isUnlinkedPrEvaluationMetaCandidate } from "./extractors";
 import {
   bindHybridPlannerSeedHash,
   decodeHybridPlannerExpectedAxes,
@@ -205,8 +205,12 @@ function materializeRequirements(
     if (!span || !decision) return null;
     if (!decodeHybridPlannerExpectedAxes(decision.expected_axes)) return null;
 
-    const admitted = span.authority === "authoritative" ||
+    const plannerAdmitted = span.authority === "authoritative" ||
       (decision.disposition === "admit" && decision.classification === "requirement");
+    const admitted = plannerAdmitted && !(
+      span.authority === "pr_author_claim" &&
+      isUnlinkedPrEvaluationMetaCandidate(span.text, span.sourceSection)
+    );
     if (!admitted) {
       omittedPrCandidate = true;
       continue;

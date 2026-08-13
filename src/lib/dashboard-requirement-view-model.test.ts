@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
 
 describe("toDashboardRequirementViewModels", () => {
+  it("separates supported evidence from PR-description authority", () => {
+    const [card] = toDashboardRequirementViewModels({
+      requirements: [{
+        requirementId: "req_pr_objective",
+        requirementText: "Add a retry status label.",
+        status: "partial",
+        evidenceStatus: "met",
+        sourceAuthority: "pr_description",
+        evidenceRefs: ["ev_implementation", "ev_test", "ev_execution"],
+        gaps: []
+      } as never]
+    });
+
+    expect(card).toMatchObject({
+      coverageLabel: "Supported",
+      sourceAuthorityLabel: "PR description",
+      sourceAuthorityMeaning: "Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation."
+    });
+  });
+
   it("keeps deterministic coverage and joins semantic information only on an exact requirement ID", () => {
     const [card] = toDashboardRequirementViewModels({
       requirements: [{ requirementId: "req_checkout", status: "partial", evidenceRefs: ["ev_1", "ev_2"], gaps: ["A focused edge-case test is not recorded."] }],

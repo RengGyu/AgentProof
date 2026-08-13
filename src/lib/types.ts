@@ -3,6 +3,8 @@ export type { RequirementProofCollectionBasis, RequirementProofSubject } from ".
 
 export type CheckStatus = "passed" | "failed" | "pending" | "unknown";
 export type RequirementStatus = "met" | "partial" | "missing" | "unclear";
+/** Present only when the requirement is derived from the PR description. */
+export type RequirementAuthority = "pr_description";
 export type PriorityLevel = "low" | "medium" | "high" | "blocker";
 export type RequirementSourceRole =
   | "core_requirement"
@@ -244,6 +246,10 @@ export interface RequirementFinding {
   requirementId: string;
   requirementText: string;
   status: RequirementStatus;
+  /** Evidence-only status. It can be met while the PR-description origin still needs review. */
+  evidenceStatus?: RequirementStatus;
+  /** Optional PR-description provenance, displayed separately from evidence status. */
+  sourceAuthority?: RequirementAuthority;
   evidenceRefs: string[];
   gaps: string[];
   reviewerNote: string;

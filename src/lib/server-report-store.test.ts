@@ -390,6 +390,36 @@ describe("server report store", () => {
     );
   });
 
+  it("round-trips PR-description authority and its evidence status through signed tenant storage", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const report = generateVerificationReport({
+      title: "Add retry label",
+      taskText: "",
+      description: "## Requirements\n- Add a retry status label.",
+      changedFiles: [{ path: "src/retry-label.ts", status: "added", patch: "+ export const retryLabel = () => 'Retry';" }],
+      checks: [{ name: "retry label tests", status: "passed", summary: "retry label tests passed" }],
+      logs: [{ source: "retry label tests", status: "passed", text: "retry label tests passed" }]
+    });
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_a",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 30,
+      headSha: "a".repeat(40)
+    });
+    const persisted = JSON.parse(JSON.stringify(projectTenantPersistedReport(saved.report, signingSecret)));
+
+    expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
+    const decoded = decodeTenantPersistedReport(persisted, { signingSecret, createdAt: saved.createdAt });
+    expect(decoded).toMatchObject({
+      status: "valid",
+      report: {
+        requirements: [{ sourceAuthority: "pr_description", evidenceStatus: saved.report.requirements[0]?.evidenceStatus }]
+      }
+    });
+  });
+
   it("keeps historical v1 interaction and suite-execution proof values readable after JSON round-trip", async () => {
     const signingSecret = "test-report-signing-secret-that-is-long-enough";
     const headSha = "b".repeat(40);

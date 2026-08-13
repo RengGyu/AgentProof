@@ -20,6 +20,25 @@ const detail = {
 } satisfies DashboardReportDetail & { repositoryFullName: string };
 
 describe("dashboard report export", () => {
+  it("renders PR-description authority separately from supported evidence", () => {
+    const authorityDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    const requirements = authorityDetail.report?.requirements;
+    if (!requirements?.[0]) throw new Error("test fixture must include a requirement");
+    requirements[0] = {
+      ...requirements[0],
+      evidenceStatus: "met",
+      sourceAuthority: "pr_description"
+    };
+
+    const markdown = dashboardReportToMarkdown(authorityDetail);
+    const json = JSON.parse(dashboardReportToJson(authorityDetail));
+
+    expect(markdown).toContain("Evidence coverage: Supported");
+    expect(markdown).toContain("Requirement source: PR description");
+    expect(markdown).toContain("Source authority: Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation.");
+    expect(json.requirements[0]).toMatchObject({ coverage: "met", source_authority: "pr_description" });
+  });
+
   it("projects enhanced planning as neutral policy copy without internal provenance", () => {
     const plannerDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
     plannerDetail.report!.planner = {

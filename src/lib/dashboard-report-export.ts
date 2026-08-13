@@ -91,6 +91,8 @@ function conciseRequirementMarkdown(
   return [
     `- **${item.objectiveText ?? `Requirement ${item.requirementId}`}**`,
     `  - Evidence coverage: ${item.coverageLabel}`,
+    ...(item.sourceAuthorityLabel ? [`  - Requirement source: ${item.sourceAuthorityLabel}`] : []),
+    ...(item.sourceAuthorityMeaning ? [`  - Source authority: ${item.sourceAuthorityMeaning}`] : []),
     `  - What the evidence shows: ${item.explanation.text}`,
     ...(item.primaryGap ? [`  - Key gap: ${item.primaryGap}`] : []),
     ...(item.nextAction ? [`  - Next: ${item.nextAction}`] : []),
@@ -131,7 +133,8 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
     ...(report?.planner ? { planning_policy: "Enhanced planning policy" } : {}),
     requirements: (report?.requirements ?? []).map((item) => ({
       id: safeText(item.requirementId) ?? "Unavailable",
-      coverage: safeText(item.status) ?? "unclear",
+      coverage: safeText(item.evidenceStatus ?? item.status) ?? "unclear",
+      ...(item.sourceAuthority ? { source_authority: item.sourceAuthority } : {}),
       evidence_ids: item.evidenceRefs.map((reference) => safeText(reference) ?? "Unavailable"),
       evidence_gaps: item.gaps.map((gap) => safeText(gap) ?? "Unavailable")
     })),

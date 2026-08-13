@@ -1,5 +1,5 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
-import type { HybridPlannerProvenance, RequirementProofAxis } from "./types";
+import type { HybridPlannerProvenance, RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
 
 export interface DashboardRepositoryGrant {
   installationId: number;
@@ -40,7 +40,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
   evidenceCapturedAt?: string;
   analysisContext?: "linked_issue" | "unlinked_pr" | "provided_requirement";
   report?: {
-    requirements?: Array<{ requirementId: string; requirementText?: string; status: string; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[] }>;
+    requirements?: Array<{ requirementId: string; requirementText?: string; status: string; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[] }>;
     testing?: { ciStatus: string; lintStatus: string; typecheckStatus: string };
     reviewPriority?: Array<{ path: string; priority: string }>;
     evidenceIndex?: Array<{ id: string; locator?: string }>;

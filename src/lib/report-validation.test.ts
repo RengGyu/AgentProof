@@ -187,6 +187,17 @@ describe("validateVerificationReport", () => {
     }
   });
 
+  it("rejects forged PR-description authority on an authoritative requirement", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    report.requirements[0]!.evidenceStatus = "met";
+    report.requirements[0]!.sourceAuthority = "pr_description";
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("sourceAuthority must match an author-claim proof node");
+  });
+
   it("rejects missing evidence references and invalid confidence", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     report.requirements[0].evidenceRefs = ["ev_missing"];

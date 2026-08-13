@@ -1,7 +1,7 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
 import { toRequirementCoverageLabel } from "./github-dashboard-view-model";
 import { proofAxisEvidenceLabel } from "./proof-contract";
-import type { RequirementProofAxis } from "./types";
+import type { RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
 import { tenantRemediationTextForGap } from "./tenant-report-language";
 import { isProhibitedEvidenceRequestText } from "./semantic-text-policy";
 
@@ -11,8 +11,12 @@ export interface DashboardRequirementViewModel {
   requirementId: string;
   objectiveText?: string;
   status: string;
+  /** Evidence-only state for the coverage badge; defaults to the report status for legacy reports. */
+  coverageStatus?: string;
   coverageLabel: string;
   coverageMeaning: string;
+  sourceAuthorityLabel?: string;
+  sourceAuthorityMeaning?: string;
   evidenceRefs: string[];
   proofEvidence?: string[];
   deterministicGaps: string[];
@@ -29,6 +33,8 @@ interface RequirementInput {
   requirementId: string;
   requirementText?: string;
   status: string;
+  evidenceStatus?: RequirementStatus;
+  sourceAuthority?: RequirementAuthority;
   evidenceRefs: string[];
   gaps: string[];
   proofAxes?: RequirementProofAxis[];
@@ -76,8 +82,13 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       requirementId: requirement.requirementId,
       objectiveText: boundedObjectiveText(assessment?.requirement_summary ?? requirement.requirementText, requirement.requirementId),
       status: requirement.status,
-      coverageLabel: toRequirementCoverageLabel(requirement.status),
-      coverageMeaning: toCoverageMeaning(requirement.status),
+      coverageStatus: requirement.evidenceStatus ?? requirement.status,
+      coverageLabel: toRequirementCoverageLabel(requirement.evidenceStatus ?? requirement.status),
+      coverageMeaning: toCoverageMeaning(requirement.evidenceStatus ?? requirement.status),
+      ...(requirement.sourceAuthority === "pr_description" ? {
+        sourceAuthorityLabel: "PR description",
+        sourceAuthorityMeaning: "Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation."
+      } : {}),
       evidenceRefs: requirement.evidenceRefs,
       proofEvidence: unique(requirement.proofAxes?.flatMap((axis) => {
         const label = proofAxisEvidenceLabel(axis);

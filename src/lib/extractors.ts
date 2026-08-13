@@ -89,6 +89,10 @@ const PR_OBJECTIVE_ACTION_PATTERN =
   /\b(?:add|align|allow|block|create|delete|disable|display|document|enable|ensure|export|fix|handle|hide|implement|keep|migrate|prevent|preserve|refactor|refresh|rename|replace|require|return|rework|save|send|show|support|test|update|validat|verif)(?:e?s?|ed|es|ing|ied)?\b|(?:추가|수정|삭제|구현|문서화|리팩터링|지원|방지|유지|개선|변경|테스트|허용|표시|보장|보여줍니다)|\b(?:documentar|agregar|añadir|actualizar|mostrar|permitir|impedir|devolver|mantener)\b/i;
 const PR_META_PURPOSE_PATTERN =
   /\b(?:this|the)\b.{0,90}\b(?:PR|scenario|fixture|benchmark|demo)\b.{0,120}\b(?:evaluat|exercis|test|record|verif|validat)\w*\b.{0,120}\b(?:review|verification|semantic|analysis)\b|(?:이|본)\s*PR(?:은|는)?\s*(?:검토|검증|분석)\s*파이프라인을?\s*(?:테스트|평가|검증|실행)(?:합니다|한다|해요|함)?/i;
+const EVALUATION_CONTEXT_SECTION_PATTERN =
+  /\b(?:canary|fixture|evaluation)\b\s+(?:scope|context|notes?|scenario|case)\b|\b(?:scope|context|notes?|scenario|case)\b.{0,40}\b(?:canary|fixture|benchmark|evaluation|demo)\b/i;
+const SELF_REFERENTIAL_EVALUATION_PATTERN =
+  /^(?:this|the)\s+(?:pull request|pr|change|fixture|scenario|benchmark|demo|canary)\b.{0,90}\b(?:is|are|was|were|serves as|used|created|intended|for)\b.{0,120}\b(?:canary|fixture|benchmark|demo|evaluat|exercis|review pipeline|verification pipeline|analysis pipeline)\b/i;
 export const MAX_REPORT_EVIDENCE_ITEMS = 200;
 
 export interface RequirementExtractionResult {
@@ -628,9 +632,41 @@ export function extractRequirementEvidence(
 }
 
 function isEligibleUnlinkedPrObjective(line: ClassifiedRequirementLine): boolean {
+  if (isEvaluationContextLine(line)) return false;
   if (PR_META_PURPOSE_PATTERN.test(line.text)) return false;
   if (ACCEPTANCE_SECTION_PATTERN.test(line.sourceSection ?? "")) return true;
   return PR_OBJECTIVE_ACTION_PATTERN.test(line.text);
+}
+
+/**
+ * A narrow, deterministic source-hygiene veto used after planner admission.
+ * It mirrors the BASE extraction boundary for pure self-referential evaluation
+ * prose while preserving mixed sentences with a concrete product action.
+ */
+export function isUnlinkedPrEvaluationMetaCandidate(
+  value: string,
+  sourceSection?: string | null
+): boolean {
+  const text = normalizeSourceLine(value);
+  const line: ClassifiedRequirementLine = {
+    text,
+    source: "pr_description",
+    role: "author_claim",
+    sourceQuality: "author_claim",
+    sourceSection
+  };
+  return isEvaluationContextLine(line) ||
+    /^(?:이|본)\s*PR(?:은|는)?\s*(?:검토|검증|분석)\s*파이프라인을?\s*(?:테스트|평가|검증|실행)(?:합니다|한다|해요|함)?/i.test(text) ||
+    (PR_META_PURPOSE_PATTERN.test(text) && !PR_OBJECTIVE_ACTION_PATTERN.test(text));
+}
+
+function isEvaluationContextLine(line: ClassifiedRequirementLine): boolean {
+  const text = line.text.trim();
+  const section = line.sourceSection ?? "";
+  const explicitScopeConstraint = /^(?:do not|don't|must not|should not|only|limit|restrict)\b/i.test(text);
+
+  return (!explicitScopeConstraint && EVALUATION_CONTEXT_SECTION_PATTERN.test(section)) ||
+    SELF_REFERENTIAL_EVALUATION_PATTERN.test(text);
 }
 
 function classifyRequirementSource(

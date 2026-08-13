@@ -10,6 +10,7 @@ describe("RequirementEvidenceList", () => {
       requirementId: "req_checkout",
       objectiveText: "Show checkout validation status.",
       status: "partial",
+      coverageStatus: "met",
       coverageLabel: "Partially supported",
       coverageMeaning: "Deterministic evidence references only partially support this requirement.",
       evidenceRefs: ["ev_1", "ev_2"],
@@ -61,6 +62,30 @@ describe("RequirementEvidenceList", () => {
 
     expect(markup).toContain("Supporting details");
     expect(markup).toContain("lucide-circle-x");
+  });
+
+  it("shows PR-description authority separately from supported evidence", () => {
+    const markup = renderToStaticMarkup(createElement(RequirementEvidenceList, { requirements: [{
+      requirementId: "req_pr_description",
+      status: "partial",
+      coverageStatus: "met",
+      coverageLabel: "Supported",
+      coverageMeaning: "Deterministic evidence references support this requirement.",
+      sourceAuthorityLabel: "PR description",
+      sourceAuthorityMeaning: "Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation.",
+      evidenceRefs: ["ev_1"],
+      deterministicGaps: [],
+      explanation: { state: "none", text: "No additional supporting details are available for this requirement." },
+      actionIncluded: false,
+      semanticEvidenceIds: [],
+      uncertainties: []
+    }] }));
+
+    expect(markup).toContain("Evidence coverage");
+    expect(markup).toContain("Supported");
+    expect(markup).toContain("requirement-coverage-status met");
+    expect(markup).toContain("Requirement source: PR description");
+    expect(markup).toContain("Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation.");
   });
 
   it("does not render a Next label when the requirement has no actionable request", () => {

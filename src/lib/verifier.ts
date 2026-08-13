@@ -1269,7 +1269,10 @@ function applyProofGraphToRequirements(
   return findings.map((finding) => {
     const node = nodeByRequirement.get(finding.requirementId);
     const proofAxes = proofAxesByRequirement.get(finding.requirementId);
-    if (!node || !proofAxes || proofAxes.length === 0) return finding;
+    const prDescriptionAuthority = node?.sourceQuality === "author_claim"
+      ? { evidenceStatus: finding.status, sourceAuthority: "pr_description" as const }
+      : {};
+    if (!node || !proofAxes || proofAxes.length === 0) return { ...finding, ...prDescriptionAuthority };
 
     const gapMessages = node.gapSignals.map((gap) => gap.message);
     const hasHardGap = node.gapSignals.some((gap) => gap.severity === "blocker" || gap.severity === "high");
@@ -1290,6 +1293,10 @@ function applyProofGraphToRequirements(
     return {
       ...finding,
       status,
+      ...(node.sourceQuality === "author_claim" ? {
+        evidenceStatus: aggregateProofAxisStatus(proofAxes, finding.status),
+        sourceAuthority: "pr_description" as const
+      } : prDescriptionAuthority),
       proofAxes,
       confidence,
       gaps: status === "met" ? [] : uniqueRefs([...finding.gaps, ...gapMessages]).slice(0, 8),

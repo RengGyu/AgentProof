@@ -102,6 +102,26 @@ describe("report share", () => {
     expect(validateVerificationReport(shared, { mode: "summary" })).toEqual({ valid: true, errors: [] });
   });
 
+  it("preserves PR-description authority separately from evidence coverage", () => {
+    const report = generateVerificationReport({
+      title: "Add retry label",
+      taskText: "",
+      description: "## Requirements\n- Add a retry status label.",
+      changedFiles: [{ path: "src/retry-label.ts", status: "added", patch: "+ export const retryLabel = () => 'Retry';" }],
+      checks: [{ name: "retry label tests", status: "passed", summary: "retry label tests passed" }],
+      logs: [{ source: "retry label tests", status: "passed", text: "retry label tests passed" }]
+    });
+
+    const shared = decodeSharedReport(encodeReportForShare(report));
+
+    expect(report.requirements[0]).toMatchObject({ sourceAuthority: "pr_description" });
+    expect(shared.requirements[0]).toMatchObject({
+      sourceAuthority: "pr_description",
+      evidenceStatus: report.requirements[0]?.evidenceStatus
+    });
+    expect(validateVerificationReport(shared, { mode: "summary" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("redacts retained summary fields before sharing", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     report.source.title = "PR with github_pat_secret_should_not_leak_1234567890";

@@ -343,7 +343,20 @@ describe("requirement relation regression matrix", () => {
       logs: [{ source: "repository visibility tests", status: "passed", text: "repository visibility tests passed." }]
     }));
 
-    expect(report.requirements[2]?.status).toBe("partial");
+    expect(report.requirements.map((requirement) => requirement.requirementText).join("\n"))
+      .toContain("repositoryVisibilityLabel(isPrivate)");
+    expect(report.requirements.map((requirement) => requirement.requirementText).join("\n"))
+      .not.toMatch(/canary|changes only/i);
+    expect(report.requirements.map((requirement) => ({
+      status: requirement.status,
+      evidenceStatus: requirement.evidenceStatus,
+      sourceAuthority: requirement.sourceAuthority
+    }))).toEqual([
+      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
+      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
+      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" }
+    ]);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
   it("keeps an explicit-subject test-only objective independent from implementation proof", () => {

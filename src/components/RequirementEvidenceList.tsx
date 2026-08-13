@@ -8,13 +8,19 @@ export function RequirementEvidenceList({ requirements }: { requirements: Dashbo
       createElement("div", { className: "requirement-evidence-heading" }, createElement("h6", null, requirement.objectiveText ?? `Requirement ${requirement.requirementId}`)),
       createElement("details", { className: "requirement-evidence-disclosure", name: "requirement-evidence" },
         createElement("summary", null,
-          createElement("span", { className: `requirement-coverage-status ${requirement.status}` }, createElement("span", { className: "requirement-coverage-label" }, "Evidence coverage"), createElement(RequirementStatusIcon, { status: requirement.status }), " ", createElement("span", null, requirement.coverageLabel)),
+          createElement("span", { className: `requirement-coverage-status ${requirement.coverageStatus ?? requirement.status}` }, createElement("span", { className: "requirement-coverage-label" }, "Evidence coverage"), createElement(RequirementStatusIcon, { status: requirement.coverageStatus ?? requirement.status }), " ", createElement("span", null, requirement.coverageLabel)),
           createElement("span", { className: "requirement-evidence-disclosure-action" }, "Evidence details")
         ),
         createElement("div", { className: "requirement-evidence-disclosure-content" },
           createElement("p", null, "Coverage is based on deterministic evidence captured for this requirement."),
           createElement("p", null, `Requirement ID: ${requirement.requirementId}`),
           createElement("p", null, requirement.coverageMeaning),
+          requirement.sourceAuthorityLabel
+            ? createElement("p", null, `Requirement source: ${requirement.sourceAuthorityLabel}`)
+            : null,
+          requirement.sourceAuthorityMeaning
+            ? createElement("p", null, requirement.sourceAuthorityMeaning)
+            : null,
           createElement("p", null, `${requirement.evidenceRefs.length} evidence reference${requirement.evidenceRefs.length === 1 ? "" : "s"}`),
           createElement("p", null, `Evidence IDs: ${requirement.evidenceRefs.join(", ") || "Unavailable"}`),
           requirement.proofEvidence && requirement.proofEvidence.length > 0

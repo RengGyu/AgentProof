@@ -13,7 +13,7 @@ interface ShareableReportV1 {
   createdAt: string;
   source: VerificationReport["source"];
   summary: VerificationReport["summary"];
-  requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "gaps" | "reviewerNote" | "confidence" | "proofAxes" | "classificationBasis" | "plannerAxisSubjects">>;
+  requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "evidenceStatus" | "sourceAuthority" | "gaps" | "reviewerNote" | "confidence" | "proofAxes" | "classificationBasis" | "plannerAxisSubjects">>;
   testing: VerificationReport["testing"];
   reviewPriority: VerificationReport["reviewPriority"];
   proofGraph: VerificationReport["proofGraph"];
@@ -92,6 +92,8 @@ function toShareableReport(report: VerificationReport): ShareableReportV3 {
       requirementId: redactSecrets(requirement.requirementId),
       requirementText: redactSecrets(requirement.requirementText),
       status: requirement.status,
+      ...(requirement.evidenceStatus ? { evidenceStatus: requirement.evidenceStatus } : {}),
+      ...(requirement.sourceAuthority ? { sourceAuthority: requirement.sourceAuthority } : {}),
       gaps: requirement.gaps.map(redactSecrets),
       reviewerNote: redactSecrets(requirement.reviewerNote),
       confidence: requirement.confidence,
@@ -198,7 +200,7 @@ function parseShareableReport(value: unknown): ShareableReport {
 
 function validateShareableRequirement(value: unknown) {
   if (!isPlainRecord(value)) throw new Error("Shared report requirement is invalid.");
-  assertOnlyShareableKeys(value, ["requirementId", "requirementText", "status", "gaps", "reviewerNote", "confidence", "proofAxes", "classificationBasis", "plannerAxisSubjects"], "requirement");
+  assertOnlyShareableKeys(value, ["requirementId", "requirementText", "status", "evidenceStatus", "sourceAuthority", "gaps", "reviewerNote", "confidence", "proofAxes", "classificationBasis", "plannerAxisSubjects"], "requirement");
 }
 
 function validateShareableProofGraph(value: Record<string, unknown>) {

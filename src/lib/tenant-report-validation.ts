@@ -15,7 +15,7 @@ import {
   isProofAxisCollectionBasisAllowed,
   isProofAxisSubject
 } from "./proof-contract";
-import type { CheckStatus, EvidenceKind, HybridPlannerProvenance, PriorityLevel, RequirementProofAxis, RequirementStatus, VerificationReport } from "./types";
+import type { CheckStatus, EvidenceKind, HybridPlannerProvenance, PriorityLevel, RequirementAuthority, RequirementProofAxis, RequirementStatus, VerificationReport } from "./types";
 
 const TENANT_REPORT_MAX_BYTES = 256 * 1024;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9_.:@#-]{1,160}$/;
@@ -33,7 +33,7 @@ export interface TenantPersistedReport {
   analysisContext?: TenantReportAnalysisContext;
   planner?: HybridPlannerProvenance;
   priority: PriorityLevel;
-  requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
+  requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
   testing: { ciStatus: CheckStatus; lintStatus: CheckStatus; typecheckStatus: CheckStatus };
   reviewPriority: Array<{ path: string; priority: PriorityLevel; evidenceRefs: string[] }>;
   evidenceIndex: Array<{ id: string; kind?: EvidenceKind; locator?: string }>;
@@ -147,12 +147,14 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
     analysisContext: tenantReportAnalysisContext(report),
     ...(report.planner ? { planner: copyTenantPlannerProvenance(report.planner) } : {}),
     priority: report.summary.priority,
-    requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceRefs, gaps, proofAxes, classificationBasis, plannerAxisSubjects }) => {
+    requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceStatus, sourceAuthority, evidenceRefs, gaps, proofAxes, classificationBasis, plannerAxisSubjects }) => {
       const objectiveLabel = tenantObjectiveLabel(requirementText);
       return {
         requirementId,
         ...(objectiveLabel ? { objectiveLabel } : {}),
         status,
+        ...(evidenceStatus ? { evidenceStatus } : {}),
+        ...(sourceAuthority ? { sourceAuthority } : {}),
         evidenceRefs: [...evidenceRefs],
         gaps: [...gaps],
         ...(proofAxes ? { proofAxes: copyProofAxes(proofAxes) } : {}),
@@ -208,11 +210,14 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   for (const requirement of report.requirements ?? []) {
     if (!requirement || typeof requirement !== "object" || Array.isArray(requirement)) { errors.push("tenant persisted requirement is invalid."); continue; }
-    const item = requirement as { requirementId?: unknown; objectiveLabel?: unknown; status?: unknown; evidenceRefs?: unknown; gaps?: unknown; proofAxes?: unknown; classificationBasis?: unknown; plannerAxisSubjects?: unknown } & Record<string, unknown>;
-    if (Object.keys(item).some((key) => !["requirementId", "objectiveLabel", "status", "evidenceRefs", "gaps", "proofAxes", "classificationBasis", "plannerAxisSubjects"].includes(key))) errors.push("tenant persisted requirement has disallowed fields.");
+    const item = requirement as { requirementId?: unknown; objectiveLabel?: unknown; status?: unknown; evidenceStatus?: unknown; sourceAuthority?: unknown; evidenceRefs?: unknown; gaps?: unknown; proofAxes?: unknown; classificationBasis?: unknown; plannerAxisSubjects?: unknown } & Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["requirementId", "objectiveLabel", "status", "evidenceStatus", "sourceAuthority", "evidenceRefs", "gaps", "proofAxes", "classificationBasis", "plannerAxisSubjects"].includes(key))) errors.push("tenant persisted requirement has disallowed fields.");
     if (typeof item.requirementId !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.requirementId)) errors.push("tenant persisted requirement id is invalid.");
     if (item.objectiveLabel !== undefined && (typeof item.objectiveLabel !== "string" || tenantObjectiveLabel(item.objectiveLabel) !== item.objectiveLabel)) errors.push("tenant persisted objective label is invalid.");
     if (!isRequirementStatus(item.status)) errors.push("tenant persisted requirement status is invalid.");
+    if (item.evidenceStatus !== undefined && !isRequirementStatus(item.evidenceStatus)) errors.push("tenant persisted requirement evidence status is invalid.");
+    if (item.sourceAuthority !== undefined && item.sourceAuthority !== "pr_description") errors.push("tenant persisted requirement source authority is invalid.");
+    if ((item.evidenceStatus === undefined) !== (item.sourceAuthority === undefined)) errors.push("tenant persisted requirement authority and evidence status must be paired.");
     if (item.classificationBasis !== undefined && item.classificationBasis !== "deterministic" && item.classificationBasis !== "enhanced_plan") errors.push("tenant persisted requirement classification basis is invalid.");
     validateTenantPlannerAxisSubjects(item.plannerAxisSubjects, item.proofAxes, errors);
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
@@ -338,6 +343,8 @@ function hydrateTenantPersistedReport(
       requirementId: item.requirementId,
       requirementText: item.objectiveLabel ?? `Requirement ${item.requirementId}`,
       status: item.status,
+      ...(item.evidenceStatus ? { evidenceStatus: item.evidenceStatus } : {}),
+      ...(item.sourceAuthority ? { sourceAuthority: item.sourceAuthority } : {}),
       evidenceRefs: [...item.evidenceRefs],
       gaps: [...item.gaps],
       reviewerNote: FIXED.reviewerNote,
