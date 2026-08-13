@@ -284,6 +284,20 @@ describe("/api/dashboard/reports", () => {
     });
     expect(JSON.stringify(body)).not.toContain("provider_response_id");
     expect(JSON.stringify(body)).not.toContain("tenant_a");
+
+    const listResponse = await GET(new Request("http://localhost/api/dashboard/reports", {
+      headers: { cookie: session.sessionCookie }
+    }));
+    const list = await listResponse.json();
+    expect(list.reports).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: `analysis-failure:${queued.id}`,
+        pullRequestNumber: 10,
+        headSha: "b".repeat(12),
+        availability: "analysis_failed",
+        freshness: "refresh_failed"
+      })
+    ]));
   });
 
   it("lists a failed latest analysis even when it never saved a report", async () => {

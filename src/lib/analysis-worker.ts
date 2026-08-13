@@ -42,7 +42,7 @@ import {
   postGitHubAppMarkerComment
 } from "./github-app-side-effects";
 import { redactSecrets } from "./redact";
-import { validateVerificationReport } from "./report-validation";
+import { resolveRuntimeReportValidation } from "./report-runtime-validation";
 import { SavedReportStoreError } from "./server-report-store";
 import {
   assertSlackReportNotificationConfigured,
@@ -492,15 +492,19 @@ async function runPreflightedAnalysisJob(
       job.provider_submitted_at = finalizationClaim.provider_submitted_at;
       job.provider_expires_at = finalizationClaim.provider_expires_at;
     }
-    const report = semanticResult.report;
-    const validation = validateVerificationReport(report, { mode: "full", requireSourceProvenance: true });
+    const runtimeReport = resolveRuntimeReportValidation({
+      input,
+      report: semanticResult.report,
+      requireSourceProvenance: true
+    });
 
-    if (!validation.valid) {
+    if (!runtimeReport.valid) {
       throw new AnalysisWorkerTerminalError(
         "generated_report_validation_failed",
-        `Generated report failed runtime validation: ${validation.errors.join("; ")}`
+        `Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`
       );
     }
+    const report = runtimeReport.report;
 
     const finalAnchor = await fetchGitHubPullRequestAnchor(job.pull_request_url, token);
     if (!finalAnchor) {

@@ -79,6 +79,7 @@ function failedAnalysisRowsForDashboard(
     .filter((job) => !reports.some((report) =>
       report.repositoryId === job.repositoryId &&
       report.pullRequestNumber === job.pullRequestNumber &&
+      typeof report.headSha === "string" && report.headSha.startsWith(job.headShaPrefix) &&
       report.freshness === "refresh_failed"
     ))
     .map((job) => ({

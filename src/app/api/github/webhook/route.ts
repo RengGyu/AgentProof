@@ -39,7 +39,7 @@ import {
   evaluateBillingBetaGate
 } from "@/lib/billing-beta";
 import { redactSecrets } from "@/lib/redact";
-import { validateVerificationReport } from "@/lib/report-validation";
+import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
 import {
   assertSlackReportNotificationConfigured,
@@ -881,12 +881,12 @@ async function handlePullRequestAutomation(
       : await enrichReportWithOpenAISemantics(input, deterministicReport, {
         mode: automation.repositoryPrivate === false ? "enhanced" : "essential"
       });
-    const report = semanticResult.report;
-    const validation = validateVerificationReport(report, { mode: "full" });
+    const runtimeReport = resolveRuntimeReportValidation({ input, report: semanticResult.report });
 
-    if (!validation.valid) {
-      throw new Error(`Generated report failed runtime validation: ${validation.errors.join("; ")}`);
+    if (!runtimeReport.valid) {
+      throw new Error(`Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`);
     }
+    const report = runtimeReport.report;
 
     const finalAnchor = await fetchGitHubPullRequestAnchor(automation.pullRequestUrl, token);
     if (

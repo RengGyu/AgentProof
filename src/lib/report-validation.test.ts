@@ -737,18 +737,6 @@ describe("validateVerificationReport", () => {
     expect(requirement.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
 
-    const normalizedSourceQuality = structuredClone(report);
-    normalizedSourceQuality.proofGraph.nodes[0]!.sourceQuality = "requirement_language";
-    expect(validateVerificationReport(normalizedSourceQuality, { mode: "full" })).toEqual({
-      valid: true,
-      errors: []
-    });
-
-    const unrelatedSourceQuality = structuredClone(report);
-    unrelatedSourceQuality.proofGraph.nodes[0]!.sourceQuality = "problem_statement";
-    expect(validateVerificationReport(unrelatedSourceQuality, { mode: "full" }).errors.join("\n"))
-      .toContain("every satisfied authoritative axis requires met");
-
     const statusMismatch = structuredClone(report);
     statusMismatch.proofGraph.nodes[0]!.status = "met";
     const statusResult = validateVerificationReport(statusMismatch, { mode: "full" });
