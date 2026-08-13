@@ -130,6 +130,7 @@ describe("PublicGitHubDashboard saved reports", () => {
   it("shows a safe refresh-failure explanation in the existing dashboard workspace", () => {
     expect(source).toContain("Analysis refresh failed");
     expect(source).toContain("event.failure?.summary");
+    expect(source).toContain("event.failure?.code");
     expect(source).toContain("A newer analysis failed before a report was saved.");
   });
 
