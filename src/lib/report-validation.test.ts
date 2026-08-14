@@ -53,6 +53,40 @@ describe("validateVerificationReport", () => {
     expect(invalid.errors.join("\n")).toContain("complete required proof axis set");
   });
 
+  it("does not let duplicate requirement-text tampering neutralize a closed workflow receipt", () => {
+    const report = generateVerificationReport({
+      title: "Pin the validation workflow runtime",
+      description: "Updates the validation workflow.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      taskSource: "issue",
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }],
+      logs: []
+    });
+    const tampered = structuredClone(report);
+    tampered.requirements[0]!.requirementText = "Add the validation runner configuration.";
+    tampered.proofGraph.nodes[0]!.requirementText = "Add the validation runner configuration.";
+    tampered.requirements[1]!.requirementText = "The runner must use Node.js 22 and run npm test.";
+    tampered.proofGraph.nodes[1]!.requirementText = "The runner must use Node.js 22 and run npm test.";
+    for (const requirement of tampered.requirements) {
+      const ciAxis = requirement.proofAxes!.find((axis) => axis.subject === "ci_configuration")!;
+      ciAxis.subject = "implementation";
+    }
+
+    const result = validateVerificationReport(tampered, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("complete required proof axis set");
+  });
+
   it("accepts a v2 no-contract report only through the v2 full validator and rejects a deleted contract", () => {
     const report = generateVerificationReportV2({
       input: {

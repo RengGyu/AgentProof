@@ -67,7 +67,7 @@ export function requirementProofAxisExpectationsWithContext(
     return { ...expectations, visual: true };
   }
 
-  if (context.kind === "workflow_antecedent" && /^(?:\s{0,3}(?:[-*+]\s+|\d+[.)]\s+))?(?:it|this workflow|the job)\b/i.test(text)) {
+  if (context.kind === "workflow_antecedent") {
     return {
       ...expectations,
       implementation: false,

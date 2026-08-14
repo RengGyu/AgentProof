@@ -1383,7 +1383,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
         proofNode,
         axes,
         evidenceById,
-        deterministicProofContextForFullReport(proofNode, proofNodeByRequirement),
+        deterministicProofContextForFullReport(proofNode),
         index,
         errors
       );
@@ -1565,27 +1565,22 @@ function expectedProofAxisKeys(text: string, context: DeterministicProofContext)
 }
 
 function deterministicProofContextForFullReport(
-  current: RecordValue | undefined,
-  proofNodeByRequirement: ReadonlyMap<string, RecordValue>
+  current: RecordValue | undefined
 ): DeterministicProofContext {
-  const text = typeof current?.requirementText === "string" ? current.requirementText : "";
-  const presentation = requirementProofAxisExpectationsWithContext(text, { kind: "review_presentation" });
-  if (presentation.visual && !requirementProofAxisExpectations(text).visual) {
-    return { kind: "review_presentation" };
-  }
-
   const relation = isRecord(current?.deterministicRelation) ? current.deterministicRelation : null;
   if (
     relation?.version !== 1 ||
     relation.kind !== "workflow_antecedent" ||
     typeof relation.antecedentRequirementId !== "string"
-  ) return { kind: "none" };
+  ) {
+    const text = typeof current?.requirementText === "string" ? current.requirementText : "";
+    const presentation = requirementProofAxisExpectationsWithContext(text, { kind: "review_presentation" });
+    return presentation.visual && !requirementProofAxisExpectations(text).visual
+      ? { kind: "review_presentation" }
+      : { kind: "none" };
+  }
 
-  const antecedent = proofNodeByRequirement.get(relation.antecedentRequirementId);
-  const antecedentText = typeof antecedent?.requirementText === "string" ? antecedent.requirementText : "";
-  return requirementProofAxisExpectations(antecedentText).ci
-    ? { kind: "workflow_antecedent", requirementId: relation.antecedentRequirementId }
-    : { kind: "none" };
+  return { kind: "workflow_antecedent", requirementId: relation.antecedentRequirementId };
 }
 
 function isSatisfiedAxisEvidenceCompatible(
