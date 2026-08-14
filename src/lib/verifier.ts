@@ -31,6 +31,7 @@ import {
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckStatus,
+  DeterministicRequirementRelation,
   EvidenceItem,
   FindingProvenance,
   MissingTestFinding,
@@ -62,7 +63,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     contexts: requirementEvidence.contexts,
     omittedRequirementCount: requirementEvidence.omittedRequirementCount,
     proofExpectationsByRequirement: deterministicRelations.proofExpectationsByRequirement,
-    evidenceContextRequirementIdsByRequirement: deterministicRelations.evidenceContextRequirementIdsByRequirement
+    evidenceContextRequirementIdsByRequirement: deterministicRelations.evidenceContextRequirementIdsByRequirement,
+    deterministicRelationsByRequirement: deterministicRelations.deterministicRelationsByRequirement
   });
 }
 
@@ -220,6 +222,7 @@ export interface DeterministicRequirementReportSelection {
   omittedRequirementCount?: number;
   proofExpectationsByRequirement?: ReadonlyMap<string, RequirementProofExpectations>;
   evidenceContextRequirementIdsByRequirement?: ReadonlyMap<string, readonly string[]>;
+  deterministicRelationsByRequirement?: ReadonlyMap<string, DeterministicRequirementRelation>;
 }
 
 export interface VerifierEvidenceLookup {
@@ -536,6 +539,7 @@ export function generateVerificationReportFromRequirements(
     selection.contexts,
     selection.proofExpectationsByRequirement,
     selection.evidenceContextRequirementIdsByRequirement,
+    selection.deterministicRelationsByRequirement,
     evidenceLookup,
     relevanceIndex
   );
@@ -1143,6 +1147,7 @@ function buildProofGraph(
   contexts: RequirementContextSignal[],
   proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined,
   evidenceContextRequirementIdsByRequirement: ReadonlyMap<string, readonly string[]> | undefined,
+  deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation> | undefined,
   evidenceLookup: VerifierEvidenceLookup,
   relevanceIndex: RequirementEvidenceRelevanceIndex
 ): { proofGraph: ProofGraph; proofAxesByRequirement: Map<string, RequirementProofAxis[]> } {
@@ -1402,7 +1407,10 @@ function buildProofGraph(
         ...contextualImplementationRefs,
         ...targetedTestEvidenceRefs,
         ...relatedMissingTests.flatMap((item) => item.evidenceRefs)
-      ])).slice(0, 5)
+      ])).slice(0, 5),
+      ...(deterministicRelationsByRequirement?.get(requirement.id)
+        ? { deterministicRelation: deterministicRelationsByRequirement.get(requirement.id) }
+        : {})
     };
   });
 

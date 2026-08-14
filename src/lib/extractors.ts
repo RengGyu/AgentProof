@@ -2,6 +2,7 @@ import type {
   AgentClaim,
   ChangedFile,
   CheckRun,
+  DeterministicRequirementRelation,
   EvidenceItem,
   LogSnippet,
   PullRequestInput,
@@ -188,6 +189,7 @@ export function extractRequirementSpanSeed(
 export interface DeterministicRequirementRelations {
   proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations>;
   evidenceContextRequirementIdsByRequirement: ReadonlyMap<string, readonly string[]>;
+  deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation>;
 }
 
 /** Derives BASE-only proof relations from ordered spans in the selected authoritative source. */
@@ -197,6 +199,7 @@ export function deriveDeterministicRequirementRelations(
 ): DeterministicRequirementRelations {
   const proofExpectationsByRequirement = new Map<string, RequirementProofExpectations>();
   const evidenceContextRequirementIdsByRequirement = new Map<string, readonly string[]>();
+  const deterministicRelationsByRequirement = new Map<string, DeterministicRequirementRelation>();
   for (const requirement of requirements) {
     proofExpectationsByRequirement.set(requirement.id, requirementProofAxisExpectations(requirement.text));
   }
@@ -209,7 +212,11 @@ export function deriveDeterministicRequirementRelations(
       normalizedRelationText(span.text) !== normalizedRelationText(requirements[index]?.text ?? "")
     )
   ) {
-    return { proofExpectationsByRequirement, evidenceContextRequirementIdsByRequirement };
+    return {
+      proofExpectationsByRequirement,
+      evidenceContextRequirementIdsByRequirement,
+      deterministicRelationsByRequirement
+    };
   }
 
   for (let index = 0; index < requirements.length; index += 1) {
@@ -230,9 +237,18 @@ export function deriveDeterministicRequirementRelations(
       requirementProofAxisExpectationsWithContext(requirement.text, workflowContext)
     );
     evidenceContextRequirementIdsByRequirement.set(requirement.id, [workflowContext.requirementId]);
+    deterministicRelationsByRequirement.set(requirement.id, {
+      version: 1,
+      kind: "workflow_antecedent",
+      antecedentRequirementId: workflowContext.requirementId
+    });
   }
 
-  return { proofExpectationsByRequirement, evidenceContextRequirementIdsByRequirement };
+  return {
+    proofExpectationsByRequirement,
+    evidenceContextRequirementIdsByRequirement,
+    deterministicRelationsByRequirement
+  };
 }
 
 function deterministicWorkflowAntecedentContext(

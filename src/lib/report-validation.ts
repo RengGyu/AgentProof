@@ -887,7 +887,7 @@ function validateProofGraph(
         ],
         path,
         errors,
-        ["classificationBasis"]
+        ["classificationBasis", "deterministicRelation"]
       );
       validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
       if (typeof item.requirementId === "string" && requirementIds.size > 0 && !requirementIds.has(item.requirementId)) {
@@ -916,6 +916,7 @@ function validateProofGraph(
       }
       validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
       validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
+      validateDeterministicRelation(item.deterministicRelation, `${path}.deterministicRelation`, requirementIds, errors);
     }
     for (const requirementId of requirementIds) {
       if (!seenRequirementIds.has(requirementId)) {
@@ -966,6 +967,27 @@ function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<
     validateEnum(item.severity, `${itemPath}.severity`, PRIORITIES, errors);
     validateString(item.message, `${itemPath}.message`, LIMITS.shortText, errors);
     validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+  }
+}
+
+function validateDeterministicRelation(
+  value: unknown,
+  path: string,
+  requirementIds: ReadonlySet<string>,
+  errors: string[]
+) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return;
+  }
+
+  requireKeys(value, ["version", "kind", "antecedentRequirementId"], path, errors);
+  if (value.version !== 1) errors.push(`${path}.version must be 1.`);
+  if (value.kind !== "workflow_antecedent") errors.push(`${path}.kind is invalid.`);
+  validateString(value.antecedentRequirementId, `${path}.antecedentRequirementId`, LIMITS.shortText, errors);
+  if (typeof value.antecedentRequirementId === "string" && !requirementIds.has(value.antecedentRequirementId)) {
+    errors.push(`${path}.antecedentRequirementId must match a report requirement.`);
   }
 }
 
@@ -1288,7 +1310,6 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
   const scope = isRecord(report.scope) ? report.scope : null;
   const evidenceById = new Map<string, RecordValue>();
   const proofNodeByRequirement = new Map<string, RecordValue>();
-  const proofNodes: RecordValue[] = [];
 
   if (Array.isArray(report.evidenceIndex)) {
     for (const item of report.evidenceIndex) {
@@ -1301,7 +1322,6 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     for (const node of report.proofGraph.nodes) {
       if (isRecord(node) && typeof node.requirementId === "string") {
         proofNodeByRequirement.set(node.requirementId, node);
-        proofNodes.push(node);
       }
     }
   }
@@ -1363,7 +1383,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
         proofNode,
         axes,
         evidenceById,
-        deterministicProofContextForFullReport(proofNodes, index),
+        deterministicProofContextForFullReport(proofNode, proofNodeByRequirement),
         index,
         errors
       );
@@ -1545,30 +1565,26 @@ function expectedProofAxisKeys(text: string, context: DeterministicProofContext)
 }
 
 function deterministicProofContextForFullReport(
-  proofNodes: readonly RecordValue[],
-  index: number
+  current: RecordValue | undefined,
+  proofNodeByRequirement: ReadonlyMap<string, RecordValue>
 ): DeterministicProofContext {
-  const current = proofNodes[index];
   const text = typeof current?.requirementText === "string" ? current.requirementText : "";
   const presentation = requirementProofAxisExpectationsWithContext(text, { kind: "review_presentation" });
   if (presentation.visual && !requirementProofAxisExpectations(text).visual) {
     return { kind: "review_presentation" };
   }
 
-  const currentSection = typeof current?.sourceSection === "string" ? current.sourceSection : null;
-  const workflowIndexes = proofNodes
-    .slice(0, index)
-    .map((node, candidateIndex) => ({ node, candidateIndex }))
-    .filter(({ node }) => {
-      const section = typeof node.sourceSection === "string" ? node.sourceSection : null;
-      const candidateText = typeof node.requirementText === "string" ? node.requirementText : "";
-      return section === currentSection && requirementProofAxisExpectations(candidateText).ci;
-    })
-    .map(({ candidateIndex }) => candidateIndex);
-  const antecedentIndex = workflowIndexes.length === 1 ? workflowIndexes[0] : undefined;
-  const antecedent = antecedentIndex === index - 1 ? proofNodes[antecedentIndex] : undefined;
-  return antecedent && typeof antecedent.requirementId === "string"
-    ? { kind: "workflow_antecedent", requirementId: antecedent.requirementId }
+  const relation = isRecord(current?.deterministicRelation) ? current.deterministicRelation : null;
+  if (
+    relation?.version !== 1 ||
+    relation.kind !== "workflow_antecedent" ||
+    typeof relation.antecedentRequirementId !== "string"
+  ) return { kind: "none" };
+
+  const antecedent = proofNodeByRequirement.get(relation.antecedentRequirementId);
+  const antecedentText = typeof antecedent?.requirementText === "string" ? antecedent.requirementText : "";
+  return requirementProofAxisExpectations(antecedentText).ci
+    ? { kind: "workflow_antecedent", requirementId: relation.antecedentRequirementId }
     : { kind: "none" };
 }
 

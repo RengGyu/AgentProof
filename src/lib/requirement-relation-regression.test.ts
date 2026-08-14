@@ -234,6 +234,31 @@ describe("requirement relation regression matrix", () => {
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
+  it("keeps a workflow-like continuation sentence-local after a blank-line group break", () => {
+    const report = generateVerificationReport(linkedInput({
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/validation-runner.ts",
+        status: "modified",
+        patch: "+ export const validationRunner = { node: 22, command: 'npm test' };"
+      }],
+      checks: [{ name: "Validation runner tests", status: "passed", summary: "Node.js 22 npm test passed." }]
+    }));
+    const continuation = report.requirements[1];
+
+    expect(continuation?.proofAxes?.map((item) => item.subject)).toEqual([
+      "implementation",
+      "execution"
+    ]);
+    expect(report.proofGraph.nodes[1]?.deterministicRelation).toBeUndefined();
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("treats flat list items as siblings instead of an implicit parent chain", () => {
     const result = extractRequirementSpanSeed([
       "Acceptance criteria:",

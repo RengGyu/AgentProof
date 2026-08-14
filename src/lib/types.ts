@@ -349,8 +349,16 @@ export interface RequirementProofNode {
   executionEvidenceRefs: string[];
   gapSignals: ProofGapSignal[];
   firstFiles: string[];
+  /** BASE-only receipt for a source-span relation; contains no source text or planner data. */
+  deterministicRelation?: DeterministicRequirementRelation;
   /** Mirrors the requirement classification basis when enhanced planning applied. */
   classificationBasis?: "deterministic" | "enhanced_plan";
+}
+
+export interface DeterministicRequirementRelation {
+  version: 1;
+  kind: "workflow_antecedent";
+  antecedentRequirementId: string;
 }
 
 export interface ProofGraph {

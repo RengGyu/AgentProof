@@ -36,11 +36,17 @@ describe("validateVerificationReport", () => {
     });
 
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(report.proofGraph.nodes[1]?.deterministicRelation).toEqual({
+      version: 1,
+      kind: "workflow_antecedent",
+      antecedentRequirementId: report.requirements[0]!.requirementId
+    });
 
     const fallback = structuredClone(report);
     const continuation = fallback.requirements[1]!;
     const ciAxis = continuation.proofAxes!.find((axis) => axis.subject === "ci_configuration")!;
     ciAxis.subject = "implementation";
+    fallback.proofGraph.nodes[1]!.sourceSection = "tampered-section";
 
     const invalid = validateVerificationReport(fallback, { mode: "full" });
     expect(invalid.valid).toBe(false);
