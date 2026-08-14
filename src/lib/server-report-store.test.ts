@@ -193,6 +193,16 @@ describe("server report store", () => {
     expect(persistedContract).not.toContain("reset.md");
     expect(persistedContract).not.toContain("The reset document includes");
 
+    const summary = await createSavedReport(report);
+    expect(summary.report).toMatchObject({
+      reportSchemaVersion: "verification-report.v2",
+      evidenceIndex: [],
+      verificationContract: {
+        state: "authoritative",
+        objectives: [{ criterionResults: [{ state: "satisfied", proofAxisRefs: [], evidenceRefs: [] }] }]
+      }
+    });
+
     const authorClaim = structuredClone(saved.report) as typeof report;
     authorClaim.verificationContract.state = "author_claim";
     authorClaim.verificationContract.source = { kind: "pr_description" };
