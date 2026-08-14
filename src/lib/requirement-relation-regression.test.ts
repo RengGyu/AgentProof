@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { extractRequirementSpanSeed } from "./extractors";
+import {
+  deriveDeterministicRequirementRelations,
+  extractRequirementEvidence,
+  extractRequirementSpanSeed
+} from "./extractors";
 import {
   bindHybridPlannerSeedHash,
   buildHybridPlannerPlan,
@@ -16,6 +20,7 @@ import type {
   VerificationReport
 } from "./types";
 import { generateVerificationReport } from "./verifier";
+import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
 
 const provenance: SourceProvenance = {
   version: 1,
@@ -106,6 +111,129 @@ function linkedInput(overrides: Partial<PullRequestInput>): PullRequestInput {
 }
 
 describe("requirement relation regression matrix", () => {
+  function deterministicRelations(taskText: string) {
+    const input = linkedInput({ taskText });
+    const extraction = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+    return {
+      requirements: extraction.requirements,
+      relations: deriveDeterministicRequirementRelations(input, extraction.requirements)
+    };
+  }
+
+  it("derives a visual obligation only for reviewer-visible UI presentation wording", () => {
+    const { requirements, relations } = deterministicRelations(
+      "Important checks should be visible before review starts."
+    );
+
+    expect(relations.proofExpectationsByRequirement.get(requirements[0]!.id)).toMatchObject({
+      visual: true,
+      interaction: false
+    });
+    expect(relations.evidenceContextRequirementIdsByRequirement.size).toBe(0);
+  });
+
+  it("does not treat non-UI visibility wording as presentation evidence", () => {
+    const { requirements, relations } = deterministicRelations(
+      "The deployment should remain visible to network monitors."
+    );
+    const requirement = requirements[0]!;
+
+    expect(relations.proofExpectationsByRequirement.get(requirement.id))
+      .toEqual(requirementProofAxisExpectations(requirement.text));
+    expect(relations.evidenceContextRequirementIdsByRequirement.size).toBe(0);
+  });
+
+  it("inherits workflow modality from one explicit immediately preceding antecedent", () => {
+    const { requirements, relations } = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add the validation CI workflow.",
+      "- It must use Node.js 22 and run npm test."
+    ].join("\n"));
+    const [workflow, continuation] = requirements;
+
+    expect(relations.proofExpectationsByRequirement.get(continuation!.id)).toMatchObject({
+      ci: true,
+      implementation: false,
+      execution: true
+    });
+    expect(relations.evidenceContextRequirementIdsByRequirement.get(continuation!.id))
+      .toEqual([workflow!.id]);
+  });
+
+  it.each([
+    {
+      name: "a heading break",
+      taskText: [
+        "## Workflow",
+        "Add the validation CI workflow.",
+        "## Runtime",
+        "It must use Node.js 22 and run npm test."
+      ].join("\n")
+    },
+    {
+      name: "two possible workflows",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- Add the release CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n")
+    },
+    {
+      name: "a non-anaphoric sentence",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- The validation runner must use Node.js 22 and run npm test."
+      ].join("\n")
+    }
+  ])("keeps sentence-local proof for $name", ({ taskText }) => {
+    const { requirements, relations } = deterministicRelations(taskText);
+    const continuation = requirements.at(-1)!;
+
+    expect(relations.proofExpectationsByRequirement.get(continuation.id))
+      .toEqual(requirementProofAxisExpectations(continuation.text));
+    expect(relations.evidenceContextRequirementIdsByRequirement.has(continuation.id)).toBe(false);
+  });
+
+  it("keeps reviewer presentation incomplete without browser or visual evidence", () => {
+    const report = generateVerificationReport(linkedInput({
+      taskText: "Important checks should be visible before review starts.",
+      changedFiles: [
+        { path: "src/review/ChecksPanel.tsx", status: "modified", patch: "+ return <section>Important checks</section>" },
+        { path: "src/review/ChecksPanel.test.tsx", status: "modified", patch: "+ it('shows important checks', () => {})" }
+      ],
+      checks: [{ name: "Checks panel unit tests", status: "passed", summary: "Checks panel unit tests passed." }]
+    }));
+    const visual = axis(report.requirements[0], "visual");
+
+    expect(visual).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(report.requirements[0]?.gaps.join(" ")).toMatch(/visual/i);
+  });
+
+  it("uses CI plus execution axes for a resolved workflow continuation", () => {
+    const report = generateVerificationReport(linkedInput({
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }]
+    }));
+    const continuation = report.requirements[1];
+
+    expect(continuation?.proofAxes?.map((item) => item.subject)).toEqual([
+      "ci_configuration",
+      "execution"
+    ]);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("treats flat list items as siblings instead of an implicit parent chain", () => {
     const result = extractRequirementSpanSeed([
       "Acceptance criteria:",

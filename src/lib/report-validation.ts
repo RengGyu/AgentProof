@@ -10,7 +10,11 @@ import {
   executionEvidenceMatchesAnyTestPath
 } from "./evidence-relation";
 import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
-import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
+import {
+  requirementProofAxisExpectations,
+  requirementProofAxisExpectationsWithContext,
+  type DeterministicProofContext
+} from "./verifier-proof-expectations";
 import { aggregateVerificationCriteriaV2 } from "./verification-contract-v2";
 import {
   PROOF_AXIS_COLLECTION_BASES,
@@ -1284,6 +1288,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
   const scope = isRecord(report.scope) ? report.scope : null;
   const evidenceById = new Map<string, RecordValue>();
   const proofNodeByRequirement = new Map<string, RecordValue>();
+  const proofNodes: RecordValue[] = [];
 
   if (Array.isArray(report.evidenceIndex)) {
     for (const item of report.evidenceIndex) {
@@ -1296,6 +1301,7 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     for (const node of report.proofGraph.nodes) {
       if (isRecord(node) && typeof node.requirementId === "string") {
         proofNodeByRequirement.set(node.requirementId, node);
+        proofNodes.push(node);
       }
     }
   }
@@ -1351,7 +1357,16 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`requirements[${index}].status must match proofGraph node status.`);
     }
     if (axes) {
-      validateFullRequirementProofAxes(report, requirementText, proofNode, axes, evidenceById, index, errors);
+      validateFullRequirementProofAxes(
+        report,
+        requirementText,
+        proofNode,
+        axes,
+        evidenceById,
+        deterministicProofContextForFullReport(proofNodes, index),
+        index,
+        errors
+      );
     }
 
     const matchingAuthorClaimPartial = item.status === "partial" &&
@@ -1444,11 +1459,12 @@ function validateFullRequirementProofAxes(
   proofNode: RecordValue | undefined,
   axes: RecordValue[],
   evidenceById: Map<string, RecordValue>,
+  proofContext: DeterministicProofContext,
   requirementIndex: number,
   errors: string[]
 ) {
   const path = `requirements[${requirementIndex}].proofAxes`;
-  const expectedKeys = expectedProofAxisKeys(requirementText);
+  const expectedKeys = expectedProofAxisKeys(requirementText, proofContext);
   const actualKeys = new Set(axes.flatMap((axis) =>
     typeof axis.subject === "string" && typeof axis.polarity === "string" ? [`${axis.subject}:${axis.polarity}`] : []
   ));
@@ -1514,8 +1530,8 @@ function validateFullRequirementProofAxes(
   }
 }
 
-function expectedProofAxisKeys(text: string): Set<string> {
-  const expectations = requirementProofAxisExpectations(text);
+function expectedProofAxisKeys(text: string, context: DeterministicProofContext): Set<string> {
+  const expectations = requirementProofAxisExpectationsWithContext(text, context);
   const keys: string[] = [];
   if (expectations.implementation) keys.push("implementation:present");
   if (expectations.documentation) keys.push("documentation:present");
@@ -1526,6 +1542,34 @@ function expectedProofAxisKeys(text: string): Set<string> {
   if (expectations.visual) keys.push("visual:present");
   if (expectations.noImplementationChanges) keys.push("implementation:absent");
   return new Set(keys);
+}
+
+function deterministicProofContextForFullReport(
+  proofNodes: readonly RecordValue[],
+  index: number
+): DeterministicProofContext {
+  const current = proofNodes[index];
+  const text = typeof current?.requirementText === "string" ? current.requirementText : "";
+  const presentation = requirementProofAxisExpectationsWithContext(text, { kind: "review_presentation" });
+  if (presentation.visual && !requirementProofAxisExpectations(text).visual) {
+    return { kind: "review_presentation" };
+  }
+
+  const currentSection = typeof current?.sourceSection === "string" ? current.sourceSection : null;
+  const workflowIndexes = proofNodes
+    .slice(0, index)
+    .map((node, candidateIndex) => ({ node, candidateIndex }))
+    .filter(({ node }) => {
+      const section = typeof node.sourceSection === "string" ? node.sourceSection : null;
+      const candidateText = typeof node.requirementText === "string" ? node.requirementText : "";
+      return section === currentSection && requirementProofAxisExpectations(candidateText).ci;
+    })
+    .map(({ candidateIndex }) => candidateIndex);
+  const antecedentIndex = workflowIndexes.length === 1 ? workflowIndexes[0] : undefined;
+  const antecedent = antecedentIndex === index - 1 ? proofNodes[antecedentIndex] : undefined;
+  return antecedent && typeof antecedent.requirementId === "string"
+    ? { kind: "workflow_antecedent", requirementId: antecedent.requirementId }
+    : { kind: "none" };
 }
 
 function isSatisfiedAxisEvidenceCompatible(

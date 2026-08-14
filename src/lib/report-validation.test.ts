@@ -16,6 +16,37 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("requires CI plus execution instead of fallback implementation for a resolved workflow continuation", () => {
+    const report = generateVerificationReport({
+      title: "Pin the validation workflow runtime",
+      description: "Updates the validation workflow.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      taskSource: "issue",
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }],
+      logs: []
+    });
+
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+
+    const fallback = structuredClone(report);
+    const continuation = fallback.requirements[1]!;
+    const ciAxis = continuation.proofAxes!.find((axis) => axis.subject === "ci_configuration")!;
+    ciAxis.subject = "implementation";
+
+    const invalid = validateVerificationReport(fallback, { mode: "full" });
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join("\n")).toContain("complete required proof axis set");
+  });
+
   it("accepts a v2 no-contract report only through the v2 full validator and rejects a deleted contract", () => {
     const report = generateVerificationReportV2({
       input: {

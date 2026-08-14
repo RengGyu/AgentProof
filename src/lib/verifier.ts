@@ -1,5 +1,6 @@
 import {
   buildEvidenceIndexResult,
+  deriveDeterministicRequirementRelations,
   extractClaims,
   extractKeywords,
   extractRequirementEvidence,
@@ -55,10 +56,13 @@ const MAX_SCOPE_FINDINGS = 100;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
   const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+  const deterministicRelations = deriveDeterministicRequirementRelations(input, requirementEvidence.requirements);
   return generateVerificationReportFromRequirements(input, {
     requirements: requirementEvidence.requirements,
     contexts: requirementEvidence.contexts,
-    omittedRequirementCount: requirementEvidence.omittedRequirementCount
+    omittedRequirementCount: requirementEvidence.omittedRequirementCount,
+    proofExpectationsByRequirement: deterministicRelations.proofExpectationsByRequirement,
+    evidenceContextRequirementIdsByRequirement: deterministicRelations.evidenceContextRequirementIdsByRequirement
   });
 }
 
