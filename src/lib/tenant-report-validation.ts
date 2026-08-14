@@ -17,6 +17,7 @@ import {
 } from "./proof-contract";
 import type { CheckStatus, EvidenceKind, HybridPlannerProvenance, PriorityLevel, RequirementAuthority, RequirementProofAxis, RequirementStatus, VerificationReport, VerificationReportV2 } from "./types";
 import type { VerificationContractReportV2 } from "./verification-contract-v2";
+import { aggregateVerificationCriteriaV2 } from "./verification-contract-v2";
 
 const TENANT_REPORT_MAX_BYTES = 256 * 1024;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9_.:@#-]{1,160}$/;
@@ -32,9 +33,9 @@ const MAX_TENANT_OBJECTIVE_LABEL = 160;
 export interface TenantPersistedReport {
   version: 1;
   analysisContext?: TenantReportAnalysisContext;
-  /** A privacy-safe strict-contract marker. Active contract content is not durably stored until its evaluator is available. */
+  /** A privacy-safe strict-contract outcome projection. Source content and evaluator inputs are never stored. */
   reportSchemaVersion?: "verification-report.v2";
-  verificationContract?: Pick<VerificationContractReportV2, "version" | "policy" | "state" | "source" | "objectives">;
+  verificationContract?: TenantVerificationContract;
   planner?: HybridPlannerProvenance;
   priority: PriorityLevel;
   requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
@@ -46,6 +47,23 @@ export interface TenantPersistedReport {
   semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
   integrity: { version: 1; algorithm: "hmac-sha256"; canonicalDigest: string; signature: string };
 }
+
+type TenantVerificationContract = Omit<VerificationContractReportV2, "objectives" | "integrity"> & {
+  objectives: Array<{
+    requirementId: string;
+    state: "authoritative" | "author_claim";
+    criteria: Array<{
+      criterionId: string;
+      required: true;
+      approval: "source_explicit" | "author_claim";
+      type: "return_value" | "artifact" | "absence";
+      artifactKind?: "documentation_literal" | "workflow_job" | "test_case";
+      absenceKind?: "path_change";
+      requiredEvidence: RequirementProofAxis["subject"][];
+    }>;
+    criterionResults: VerificationContractReportV2["objectives"][number]["criterionResults"];
+  }>;
+};
 
 export type TenantReportDecodeReason =
   | "unsupported_report_version"
@@ -204,15 +222,37 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
 function tenantVerificationContract(report: VerificationReport): TenantPersistedReport["verificationContract"] | undefined {
   if (!isVerificationReportV2(report)) return undefined;
   const contract = report.verificationContract as VerificationContractReportV2;
-  if (contract.state !== "absent" && contract.state !== "invalid") {
-    throw new Error("Active verification-contract v2 reports cannot be durably persisted before the attested evaluator is available.");
+  if (contract.state === "authoritative" || contract.state === "author_claim") {
+    const validation = validateVerificationReport(report, { mode: "v2_full" });
+    if (!validation.valid) {
+      throw new Error("Active verification-contract v2 report cannot be durably persisted without a valid attested evaluation.");
+    }
   }
   return {
     version: 2,
     policy: "strict_typed_contract",
     state: contract.state,
-    source: null,
-    objectives: []
+    source: contract.source ? { kind: contract.source.kind } : null,
+    objectives: contract.objectives.map((objective) => ({
+      requirementId: objective.requirementId,
+      state: objective.state,
+      criteria: objective.criteria.map(({ criterionId, required, approval, type, artifactKind, absenceKind, requiredEvidence }) => ({
+        criterionId,
+        required,
+        approval,
+        type,
+        ...(artifactKind ? { artifactKind } : {}),
+        ...(absenceKind ? { absenceKind } : {}),
+        requiredEvidence: [...requiredEvidence]
+      })),
+      criterionResults: objective.criterionResults.map((result) => ({
+        criterionId: result.criterionId,
+        state: result.state,
+        proofAxisRefs: [...result.proofAxisRefs],
+        evidenceRefs: [...result.evidenceRefs],
+        gapKinds: [...result.gapKinds]
+      }))
+    }))
   };
 }
 
@@ -232,8 +272,9 @@ function validateTenantVerificationContractMarker(report: Partial<TenantPersiste
   const marker = contract as Record<string, unknown>;
   if (Object.keys(marker).some((key) => !["version", "policy", "state", "source", "objectives"].includes(key)) ||
     marker.version !== 2 || marker.policy !== "strict_typed_contract" ||
-    (marker.state !== "absent" && marker.state !== "invalid") || marker.source !== null ||
-    !Array.isArray(marker.objectives) || marker.objectives.length !== 0) {
+    (marker.state !== "authoritative" && marker.state !== "author_claim" && marker.state !== "absent" && marker.state !== "invalid") ||
+    !Array.isArray(marker.objectives) ||
+    ((marker.state === "absent" || marker.state === "invalid") && (marker.source !== null || marker.objectives.length !== 0))) {
     errors.push("tenant v2 contract marker is invalid.");
   }
 }
@@ -278,6 +319,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
     if (item.proofAxes !== undefined) validatePersistedProofAxes(item.proofAxes, evidenceIds, errors);
     if (!Array.isArray(item.gaps) || item.gaps.length > MAX_TENANT_GAPS || item.gaps.some((gap) => typeof gap !== "string" || !ALLOWED_TENANT_GAP_TEXTS.has(gap))) errors.push("tenant persisted requirement gaps are invalid.");
   }
+  validateTenantVerificationContractOutcome(report, evidenceIds, errors);
   const testing = report.testing as Record<string, unknown> | undefined;
   if (!testing || !isCheckStatus(testing.ciStatus) || !isCheckStatus(testing.lintStatus) || !isCheckStatus(testing.typecheckStatus) || Object.keys(testing).some((key) => !["ciStatus", "lintStatus", "typecheckStatus"].includes(key))) errors.push("tenant persisted check status is invalid.");
   for (const priority of report.reviewPriority ?? []) {
@@ -312,6 +354,112 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   if (!integrity || Object.keys(integrity).some((key) => !["version", "algorithm", "canonicalDigest", "signature"].includes(key)) || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > TENANT_REPORT_MAX_BYTES) errors.push(`report exceeds ${TENANT_REPORT_MAX_BYTES} bytes.`);
   return { valid: errors.length === 0, errors: [...new Set(errors)] };
+}
+
+function validateTenantVerificationContractOutcome(
+  report: Partial<TenantPersistedReport> & Record<string, unknown>,
+  evidenceIds: Set<string>,
+  errors: string[]
+): void {
+  if (report.reportSchemaVersion !== "verification-report.v2" || !report.verificationContract || typeof report.verificationContract !== "object") return;
+  const contract = report.verificationContract as Record<string, unknown>;
+  const state = contract.state;
+  if (state === "absent" || state === "invalid") return;
+  if ((state !== "authoritative" && state !== "author_claim") || !isTenantVerificationSource(contract.source, state)) {
+    errors.push("tenant v2 contract marker is invalid.");
+    return;
+  }
+  const objectives = Array.isArray(contract.objectives) ? contract.objectives : [];
+  if (objectives.length < 1 || objectives.length > 12) {
+    errors.push("tenant v2 contract outcomes are invalid.");
+    return;
+  }
+  const requirements = Array.isArray(report.requirements) ? report.requirements : [];
+  const objectiveIds = new Set<string>();
+  for (const [objectiveIndex, objective] of objectives.entries()) {
+    if (!objective || typeof objective !== "object" || Array.isArray(objective)) {
+      errors.push("tenant v2 contract outcomes are invalid.");
+      continue;
+    }
+    const item = objective as Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["requirementId", "state", "criteria", "criterionResults"].includes(key)) ||
+      item.requirementId !== `vc_o${objectiveIndex + 1}` || objectiveIds.has(item.requirementId) ||
+      item.state !== state || !Array.isArray(item.criteria) || !Array.isArray(item.criterionResults) ||
+      item.criteria.length < 1 || item.criteria.length > 4 || item.criteria.length !== item.criterionResults.length) {
+      errors.push("tenant v2 contract outcomes are invalid.");
+      continue;
+    }
+    objectiveIds.add(item.requirementId);
+    const requirement = requirements[objectiveIndex] && typeof requirements[objectiveIndex] === "object" && !Array.isArray(requirements[objectiveIndex]) &&
+      (requirements[objectiveIndex] as { requirementId?: unknown }).requirementId === item.requirementId
+      ? requirements[objectiveIndex] as Record<string, unknown>
+      : undefined;
+    const requirementEvidenceRefs = Array.isArray(requirement?.evidenceRefs) ? requirement.evidenceRefs : [];
+    const states: Array<"satisfied" | "violated" | "incomplete" | "unavailable"> = [];
+    for (const [index, criterion] of item.criteria.entries()) {
+      const result = item.criterionResults[index];
+      if (!isTenantVerificationCriterion(criterion, item.requirementId, index, state) || !isTenantVerificationResult(result, item.requirementId, index, evidenceIds, requirementEvidenceRefs)) {
+        errors.push("tenant v2 contract outcomes are invalid.");
+        continue;
+      }
+      const criterionItem = criterion as Record<string, unknown>;
+      const resultItem = result as Record<string, unknown>;
+      const resultState = resultItem.state as "satisfied" | "violated" | "incomplete" | "unavailable";
+      if (resultState === "satisfied" &&
+        (criterionItem.type === "return_value" ||
+          (criterionItem.type === "artifact" && criterionItem.artifactKind !== "documentation_literal") ||
+          criterionItem.type === "absence")) {
+        errors.push("tenant v2 contract outcomes are invalid.");
+      }
+      states.push(resultState);
+    }
+    if (requirement?.status !== aggregateVerificationCriteriaV2(state, states)) errors.push("tenant v2 contract outcome does not match its requirement.");
+  }
+  if (objectiveIds.size !== requirements.length) errors.push("tenant v2 contract outcomes must cover every requirement.");
+}
+
+function isTenantVerificationSource(value: unknown, state: "authoritative" | "author_claim"): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    (state === "authoritative"
+      ? ["linked_issue", "provided_requirement"].includes((value as { kind?: unknown }).kind as string)
+      : (value as { kind?: unknown }).kind === "pr_description"));
+}
+
+function isTenantVerificationCriterion(
+  value: unknown,
+  requirementId: string,
+  index: number,
+  state: unknown
+): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  if (Object.keys(item).some((key) => !["criterionId", "required", "approval", "type", "artifactKind", "absenceKind", "requiredEvidence"].includes(key)) ||
+    item.criterionId !== `${requirementId}_c${index + 1}` || item.required !== true ||
+    item.approval !== (state === "authoritative" ? "source_explicit" : "author_claim") ||
+    !Array.isArray(item.requiredEvidence) || item.requiredEvidence.length === 0 || item.requiredEvidence.some((subject) => !isProofAxisSubject(subject)) ||
+    new Set(item.requiredEvidence).size !== item.requiredEvidence.length) return false;
+  if (item.type === "return_value") return item.artifactKind === undefined && item.absenceKind === undefined;
+  if (item.type === "artifact") return ["documentation_literal", "workflow_job", "test_case"].includes(item.artifactKind as string) && item.absenceKind === undefined;
+  return item.type === "absence" && item.absenceKind === "path_change" && item.artifactKind === undefined;
+}
+
+function isTenantVerificationResult(
+  value: unknown,
+  requirementId: string,
+  index: number,
+  evidenceIds: Set<string>,
+  requirementEvidenceRefs: unknown[]
+): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  if (Object.keys(item).some((key) => !["criterionId", "state", "proofAxisRefs", "evidenceRefs", "gapKinds"].includes(key)) ||
+    item.criterionId !== `${requirementId}_c${index + 1}` ||
+    !["satisfied", "violated", "incomplete", "unavailable"].includes(item.state as string) ||
+    !Array.isArray(item.proofAxisRefs) || item.proofAxisRefs.length > MAX_TENANT_EVIDENCE_REFS || item.proofAxisRefs.some((reference) => typeof reference !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(reference)) || new Set(item.proofAxisRefs).size !== item.proofAxisRefs.length ||
+    !Array.isArray(item.evidenceRefs) || item.evidenceRefs.length > MAX_TENANT_EVIDENCE_REFS || item.evidenceRefs.some((reference) => typeof reference !== "string" || !evidenceIds.has(reference) || !requirementEvidenceRefs.includes(reference)) || new Set(item.evidenceRefs).size !== item.evidenceRefs.length ||
+    !Array.isArray(item.gapKinds) || item.gapKinds.length > MAX_TENANT_GAPS || item.gapKinds.some((kind) => typeof kind !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(kind)) || new Set(item.gapKinds).size !== item.gapKinds.length) return false;
+  return item.state !== "satisfied" || (item.evidenceRefs.length > 0 && item.gapKinds.length === 0);
 }
 
 function validateSemanticRuntimeState(value: unknown, semantic: unknown, errors: string[]) {
@@ -441,11 +589,36 @@ function hydrateTenantPersistedReport(
   if (report.reportSchemaVersion === "verification-report.v2" && report.verificationContract) {
     Object.assign(hydrated, {
       reportSchemaVersion: "verification-report.v2",
-      verificationContract: structuredClone(report.verificationContract)
+      verificationContract: hydrateTenantVerificationContract(report.verificationContract)
     });
   }
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, input.signingSecret);
   return hydrated;
+}
+
+function hydrateTenantVerificationContract(contract: TenantVerificationContract): VerificationContractReportV2 {
+  return {
+    version: contract.version,
+    policy: contract.policy,
+    state: contract.state,
+    source: contract.source ? { kind: contract.source.kind } : null,
+    objectives: contract.objectives.map((objective) => ({
+      requirementId: objective.requirementId,
+      state: objective.state,
+      criteria: objective.criteria.map((criterion) => ({
+        ...criterion,
+        label: `Criterion ${criterion.criterionId}`,
+        requiredEvidence: [...criterion.requiredEvidence]
+      })),
+      criterionResults: objective.criterionResults.map((result) => ({
+        criterionId: result.criterionId,
+        state: result.state,
+        proofAxisRefs: [...result.proofAxisRefs],
+        evidenceRefs: [...result.evidenceRefs],
+        gapKinds: [...result.gapKinds]
+      }))
+    }))
+  };
 }
 
 function validateTenantPlannerProvenance(value: unknown, errors: string[]) {
