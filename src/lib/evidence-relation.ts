@@ -207,11 +207,22 @@ function importedBindingsForImplementation(testFile: PatchFile, implementationFi
 
 function livePatchLines(patch: string): string[] {
   const lines: string[] = [];
+  const rawLines = patch.replace(/\r\n/g, "\n").split("\n");
+  let hunkStateKnown = !rawLines.some((line) => line.startsWith("@@"));
   let blockComment = false;
   let quote: "'" | '"' | "`" | null = null;
   let escaped = false;
 
-  for (const rawLine of patch.replace(/\r\n/g, "\n").split("\n")) {
+  for (const rawLine of rawLines) {
+    if (rawLine.startsWith("@@")) {
+      const hunkHeader = rawLine.match(/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@(?:\s.*)?$/);
+      hunkStateKnown = hunkHeader?.[1] === "1";
+      blockComment = false;
+      quote = null;
+      escaped = false;
+      continue;
+    }
+    if (!hunkStateKnown) continue;
     if (rawLine.startsWith("-")) continue;
     const line = rawLine.replace(/^\+/, "");
     let code = "";

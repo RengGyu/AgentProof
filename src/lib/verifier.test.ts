@@ -3418,6 +3418,29 @@ describe("generateVerificationReport", () => {
     expect(finding?.status).not.toBe("met");
   });
 
+  it("does not issue both-path coverage from a mid-file hunk with unknown lexical context", () => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({
+      testPatch: [
+        "@@ -40,3 +40,7 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+`;",
+        "+test('unrelated smoke', () => { expect(true).toBe(true); });"
+      ].join("\n")
+    }));
+    const finding = report.requirements[0];
+    const node = report.proofGraph.nodes[0];
+
+    expect(node?.targetedTestEvidenceRefs).toEqual([]);
+    expect(node?.caseCoverageReceipt).toBeUndefined();
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(finding?.status).not.toBe("met");
+  });
+
   it("completes both-path coverage with two distinct asserted direct calls and an exact-head suite", () => {
     const report = generateVerificationReport(customerDisplayNameBothPathsInput({
       testPatch: [

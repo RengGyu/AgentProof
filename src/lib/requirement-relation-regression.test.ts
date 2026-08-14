@@ -113,6 +113,58 @@ describe("exact changed-test import relationships", () => {
     expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
   });
 
+  it("fails closed for a mid-file hunk whose initial lexical state is unavailable", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "@@ -40,3 +40,7 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+`;",
+        "+test('unrelated smoke', () => { expect(true).toBe(true); });"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(false);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
+  });
+
+  it("resets an unclosed quote before a later hunk independently marked as file-start safe", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "@@ -20,1 +20,1 @@",
+        "+const fixture = `",
+        "@@ -0,0 +1,4 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(true);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(2);
+  });
+
+  it("parses static import and assertion evidence from a hunk starting at the file beginning", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "@@ -0,0 +1,3 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(true);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(2);
+  });
+
   it("counts distinct literal calls to one directly imported export inside assertions", () => {
     expect(distinctDirectAssertionCallCount(
       {
