@@ -79,7 +79,7 @@ describe("frozen English observation evidence regressions", () => {
       .toContain("visual_proof_missing");
   });
 
-  it("inherits satisfied CI and execution from one bounded workflow antecedent", () => {
+  it("keeps generic passing execution incomplete for a resolved workflow antecedent", () => {
     const workflowContinuation = generateVerificationReport(syntheticInput({
       title: "Pin the validation workflow runtime",
       description: "Updates the validation workflow.",
@@ -92,14 +92,26 @@ describe("frozen English observation evidence regressions", () => {
         path: ".github/workflows/validation.yml",
         status: "modified",
         patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }, {
+        path: "test/validation-workflow.test.js",
+        status: "modified",
+        patch: "+ test('validation workflow command', () => { expect('npm test').toBe('npm test'); });"
       }],
-      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }]
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }],
+      executionSuites: [{
+        headSha: HEAD_SHA,
+        status: "passed",
+        executionSource: "Validation CI",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/validation-workflow.test.js"]
+      }]
     }));
     const continuation = workflowContinuation.requirements[1];
 
     expect(continuation?.proofAxes).toEqual(expect.arrayContaining([
       expect.objectContaining({ subject: "ci_configuration", state: "satisfied" }),
-      expect.objectContaining({ subject: "execution", state: "satisfied" })
+      expect.objectContaining({ subject: "execution", state: "incomplete", evidenceRefs: [] })
     ]));
     expect(continuation?.proofAxes?.some((item) => item.subject === "implementation")).toBe(false);
     expect(workflowContinuation.proofGraph.nodes[1]?.deterministicRelation).toEqual({
@@ -107,6 +119,30 @@ describe("frozen English observation evidence regressions", () => {
       kind: "workflow_antecedent",
       antecedentRequirementId: workflowContinuation.requirements[0]!.requirementId
     });
+  });
+
+  it("retains relevant failed workflow execution evidence without treating generic passing evidence as proof", () => {
+    const workflowFailure = generateVerificationReport(syntheticInput({
+      title: "Configure validation workflow",
+      description: "Updates validation CI.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must configure the validation CI workflow to use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{ name: "Validation CI", status: "failed", summary: "Status: failed. npm test failed." }]
+    }));
+    const continuation = workflowFailure.requirements[1];
+    const execution = axis(continuation, "execution");
+
+    expect(execution).toMatchObject({ state: "violated", collectionBasis: "failed_execution" });
+    expect(execution?.evidenceRefs).toHaveLength(1);
+    expect(workflowFailure.proofGraph.nodes[1]?.executionEvidenceRefs).toEqual(execution?.evidenceRefs);
   });
 
   it("does not inherit CI identity from competing workflow antecedents", () => {

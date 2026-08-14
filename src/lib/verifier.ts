@@ -1166,6 +1166,8 @@ function buildProofGraph(
     const relevance = relevanceIndex.forRequirement(requirement);
     const finding = findingByRequirement.get(requirement.id);
     const expectations = proofExpectationsByRequirement?.get(requirement.id) ?? requirementProofAxisExpectations(requirement.text);
+    const deterministicRelation = deterministicRelationsByRequirement?.get(requirement.id);
+    const isWorkflowAntecedent = deterministicRelation?.kind === "workflow_antecedent";
     const implementationEvidenceRefs = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "diff" || item.kind === "changed_file") && match.score > 0
     );
@@ -1222,7 +1224,11 @@ function buildProofGraph(
       evidenceIndex,
       evidenceLookup
     );
-    const matchingExecutionRefs = requiresDirectAssertionCaseCoverage
+    const matchingExecutionRefs = isWorkflowAntecedent
+      // Generic checks and suite observations do not contain the complete
+      // workflow/run/job identity tuple needed for workflow execution proof.
+      ? []
+      : requiresDirectAssertionCaseCoverage
       ? verifiedSuiteExecutionRefs
       : uniqueRefs([
         ...directlyMatchingExecutionRefs,
@@ -1455,8 +1461,8 @@ function buildProofGraph(
         ...relatedMissingTests.flatMap((item) => item.evidenceRefs)
       ])).slice(0, 5),
       ...(caseCoverageReceipt ? { caseCoverageReceipt } : {}),
-      ...(deterministicRelationsByRequirement?.get(requirement.id)
-        ? { deterministicRelation: deterministicRelationsByRequirement.get(requirement.id) }
+      ...(deterministicRelation
+        ? { deterministicRelation }
         : {})
     };
   });

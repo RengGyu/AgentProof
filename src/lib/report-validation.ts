@@ -1595,6 +1595,11 @@ function validateFullRequirementProofAxes(
       continue;
     }
 
+    if (state === "satisfied" && subject === "execution" && isWorkflowAntecedentProofNode(proofNode)) {
+      errors.push(`${axisPath} satisfied workflow antecedent execution requires a complete workflow/job identity tuple.`);
+      continue;
+    }
+
     if (state !== "satisfied") continue;
     if (refs.length === 0) {
       errors.push(`${axisPath} satisfied present axis must cite evidence.`);
@@ -1607,6 +1612,13 @@ function validateFullRequirementProofAxes(
       errors.push(`${axisPath} cites incompatible evidence or collection basis.`);
     }
   }
+}
+
+function isWorkflowAntecedentProofNode(proofNode: RecordValue | undefined): boolean {
+  const relation = isRecord(proofNode?.deterministicRelation) ? proofNode.deterministicRelation : null;
+  return relation?.version === 1 &&
+    relation.kind === "workflow_antecedent" &&
+    typeof relation.antecedentRequirementId === "string";
 }
 
 function expectedProofAxisKeys(text: string, context: DeterministicProofContext): Set<string> {

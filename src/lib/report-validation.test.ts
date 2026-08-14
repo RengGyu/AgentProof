@@ -118,9 +118,22 @@ describe("validateVerificationReport", () => {
         path: ".github/workflows/validation.yml",
         status: "modified",
         patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }, {
+        path: "test/validation-workflow.test.js",
+        status: "modified",
+        patch: "+ test('validation workflow command', () => { expect('npm test').toBe('npm test'); });"
       }],
       checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }],
-      logs: []
+      logs: [],
+      sourceProvenance: githubInventoryProvenance(),
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: "Validation CI",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/validation-workflow.test.js"]
+      }]
     });
 
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
@@ -129,6 +142,30 @@ describe("validateVerificationReport", () => {
       kind: "workflow_antecedent",
       antecedentRequirementId: report.requirements[0]!.requirementId
     });
+
+    for (const collectionBasis of ["passing_execution", "passing_suite_execution"] as const) {
+      const forgedExecution = structuredClone(report);
+      const forgedAxis = forgedExecution.requirements[1]!.proofAxes!.find((axis) => axis.subject === "execution")!;
+      const passingRef = forgedExecution.evidenceIndex.find((evidence) => evidence.kind === "check")!.id;
+      forgedAxis.state = "satisfied";
+      forgedAxis.evidenceRefs = [passingRef];
+      forgedAxis.collectionBasis = collectionBasis;
+      forgedExecution.proofGraph.nodes[1]!.executionEvidenceRefs = [passingRef];
+      if (collectionBasis === "passing_suite_execution") {
+        const testRef = forgedExecution.evidenceIndex.find((evidence) => evidence.kind === "test")!.id;
+        forgedExecution.proofGraph.nodes[1]!.targetedTestEvidenceRefs = [testRef];
+      }
+      forgedExecution.proofGraph.summary.requirementsWithExecution = forgedExecution.proofGraph.nodes
+        .filter((node) => node.executionEvidenceRefs.length > 0).length;
+      forgedExecution.proofGraph.summary.requirementsWithTargetedTests = forgedExecution.proofGraph.nodes
+        .filter((node) => node.targetedTestEvidenceRefs.length > 0).length;
+
+      const forged = validateVerificationReport(forgedExecution, { mode: "full" });
+      expect(forged.valid).toBe(false);
+      expect(forged.errors).toEqual([
+        "requirements[1].proofAxes[1] satisfied workflow antecedent execution requires a complete workflow/job identity tuple."
+      ]);
+    }
 
     const fallback = structuredClone(report);
     const continuation = fallback.requirements[1]!;

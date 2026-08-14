@@ -73,8 +73,9 @@ insufficient.
 - A missing contract never hides a local visual, interaction, test, or execution
   gap and never promotes an outcome beyond `unclear`.
 - A #7-shaped helper plus unit test remains visual-evidence incomplete.
-- A #18-shaped explicit workflow antecedent links Node 22 and `npm test` only to
-  the uniquely identified exact-head workflow job.
+- A #18-shaped explicit workflow antecedent remains execution-incomplete unless
+  a separately scoped capability supplies the complete exact-head workflow/job
+  identity tuple; generic Check and suite evidence never substitute for it.
 - A #22-shaped related test is linked, but its targeted-test/case-coverage
   observation is satisfied only when both cases and their execution are
   deterministically established.
@@ -100,9 +101,10 @@ The suite freezes these boundaries independently:
   remain present;
 - helper and unit-test evidence for reviewer-visible UI remains incomplete on
   the `visual` axis without bounded visual or browser evidence;
-- a unique adjacent workflow antecedent produces satisfied CI-configuration and
-  execution observations, while competing workflow antecedents do not inherit
-  CI identity;
+- a unique adjacent workflow antecedent may preserve satisfied CI-configuration,
+  but its execution observation remains incomplete until a complete exact-head
+  workflow/job identity tuple exists; competing workflow antecedents do not
+  inherit CI identity;
 - a direct import, two distinct literal assertion cases, exact-head discovered
   suite path, and passing execution satisfy the test observation only as a
   complete set; missing imports, barrel imports, ambiguous implementation
