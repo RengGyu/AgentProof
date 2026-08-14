@@ -19,6 +19,7 @@ export const PROOF_AXIS_COLLECTION_BASES = [
   "complete_changed_file_inventory",
   "incomplete_changed_file_inventory",
   "matching_artifact_evidence",
+  "direct_assertion_case_coverage",
   "passing_execution",
   "passing_suite_execution",
   "failed_execution",
@@ -38,7 +39,7 @@ export const PROOF_AXIS_COLLECTION_BASES_BY_SUBJECT: Readonly<Record<Requirement
   implementation: ARTIFACT_BASES,
   documentation: ARTIFACT_BASES,
   ci_configuration: ARTIFACT_BASES,
-  targeted_test: ARTIFACT_BASES,
+  targeted_test: [...ARTIFACT_BASES, "direct_assertion_case_coverage"],
   execution: ["passing_execution", "passing_suite_execution", "failed_execution"],
   visual: ["visual_verification"],
   interaction: ["interaction_verification"]

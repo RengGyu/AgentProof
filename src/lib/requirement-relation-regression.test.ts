@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractRequirementSpanSeed } from "./extractors";
+import { distinctDirectAssertionCallCount, testImportMatchesImplementation } from "./evidence-relation";
 import {
   bindHybridPlannerSeedHash,
   buildHybridPlannerPlan,
@@ -37,6 +38,43 @@ const provenance: SourceProvenance = {
 };
 
 const SOURCE_IDENTITY_HASH = "d".repeat(64);
+
+describe("exact changed-test import relationships", () => {
+  it("links a test only when its direct relative import resolves to the implementation file", () => {
+    expect(testImportMatchesImplementation(
+      {
+        path: "test/customer-display-name.test.js",
+        patch: "import { customerDisplayName } from '../src/customers/display-name.js';"
+      },
+      { path: "src/customers/display-name.js", patch: "" }
+    )).toBe(true);
+  });
+
+  it("does not link a barrel import to a transitive implementation file", () => {
+    expect(testImportMatchesImplementation(
+      {
+        path: "test/customer-display-name.test.js",
+        patch: "import { customerDisplayName } from '../src/index.js';"
+      },
+      { path: "src/customers/display-name.js", patch: "" }
+    )).toBe(false);
+  });
+
+  it("counts distinct literal calls to one directly imported export inside assertions", () => {
+    expect(distinctDirectAssertionCallCount(
+      {
+        path: "test/retry.test.ts",
+        patch: [
+          "+ import assert from 'node:assert/strict';",
+          "+ import { retryRequest } from '../src/retry';",
+          "+ test('first', () => { assert.equal(retryRequest(true), undefined); });",
+          "+ test('second', () => { assert.equal(retryRequest(false), undefined); });"
+        ].join("\n")
+      },
+      { path: "src/retry.ts", patch: "+ export function retryRequest() {}" }
+    )).toBe(2);
+  });
+});
 
 function axis(
   finding: RequirementFinding | undefined,
@@ -146,10 +184,28 @@ describe("requirement relation regression matrix", () => {
       ].join("\n"),
       changedFiles: [
         { path: "src/retry.ts", status: "modified", patch: "+ export function retryRequest() {}" },
-        { path: "test/retry.test.ts", status: "modified", patch: "+ test('both retry paths', () => {})" },
+        {
+          path: "test/retry.test.ts",
+          status: "modified",
+          patch: [
+            "+ import assert from 'node:assert/strict';",
+            "+ import { retryRequest } from '../src/retry';",
+            "+ test('first retry path', () => { assert.equal(retryRequest(true), undefined); });",
+            "+ test('second retry path', () => { assert.equal(retryRequest(false), undefined); });"
+          ].join("\n")
+        },
         { path: "docs/retry.md", status: "modified", patch: "+ Retry setup" }
       ],
-      checks: [{ name: "retry tests", status: "passed", summary: "Both retry paths passed." }]
+      checks: [{ name: "retry tests", status: "passed", summary: "Both retry paths passed." }],
+      logs: [{ source: "retry tests", status: "passed", text: "npm test passed." }],
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: "retry tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/retry.test.ts"]
+      }]
     }));
     const nestedTest = report.requirements[1];
     const documentationSibling = report.requirements[2];
@@ -183,7 +239,12 @@ describe("requirement relation regression matrix", () => {
       sourcePath: "src/repositories/repository-visibility.js",
       testPath: "test/repository-visibility.test.js",
       patch: "+ export function repositoryVisibilityLabel(isPrivate) { return isPrivate ? 'Private repository' : 'Public repository'; }",
-      testPatch: "+ test('returns both repository visibility labels', () => {})",
+      testPatch: [
+        "+ import assert from 'node:assert/strict';",
+        "+ import { repositoryVisibilityLabel } from '../src/repositories/repository-visibility.js';",
+        "+ test('private repository', () => { assert.equal(repositoryVisibilityLabel(true), 'Private repository'); });",
+        "+ test('public repository', () => { assert.equal(repositoryVisibilityLabel(false), 'Public repository'); });"
+      ].join("\n"),
       check: "repository visibility tests"
     },
     {
@@ -197,7 +258,12 @@ describe("requirement relation regression matrix", () => {
       sourcePath: "src/billing/invoice-reference.js",
       testPath: "test/invoice-reference.test.js",
       patch: "+ export const invoiceReference = value => value.trim().toUpperCase() || 'UNKNOWN';",
-      testPatch: "+ test('normal and empty invoice references', () => {})",
+      testPatch: [
+        "+ import assert from 'node:assert/strict';",
+        "+ import { invoiceReference } from '../src/billing/invoice-reference.js';",
+        "+ test('normal reference', () => { assert.equal(invoiceReference('ab'), 'AB'); });",
+        "+ test('empty reference', () => { assert.equal(invoiceReference(''), 'UNKNOWN'); });"
+      ].join("\n"),
       check: "invoice reference tests"
     },
     {
@@ -211,7 +277,12 @@ describe("requirement relation regression matrix", () => {
       sourcePath: "src/connections/connection-label.js",
       testPath: "test/연결-라벨.test.js",
       patch: "+ export const connectionLabel = expired => expired ? 'Expired' : 'Connected';",
-      testPatch: "+ test('연결의 두 상태를 검증한다', () => {})",
+      testPatch: [
+        "+ import assert from 'node:assert/strict';",
+        "+ import { connectionLabel } from '../src/connections/connection-label.js';",
+        "+ test('연결 상태', () => { assert.equal(connectionLabel(false), 'Connected'); });",
+        "+ test('만료 상태', () => { assert.equal(connectionLabel(true), 'Expired'); });"
+      ].join("\n"),
       check: "연결 라벨 회귀 테스트"
     }
   ])("links a referential test-only sibling to $name without adding implementation proof", (fixture) => {
@@ -222,7 +293,15 @@ describe("requirement relation regression matrix", () => {
         { path: fixture.testPath, status: "modified", patch: fixture.testPatch }
       ],
       checks: [{ name: fixture.check, status: "passed", summary: `${fixture.check} passed.` }],
-      logs: [{ source: fixture.check, status: "passed", text: `${fixture.check} passed.` }]
+      logs: [{ source: fixture.check, status: "passed", text: `${fixture.check} passed.` }],
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: fixture.check,
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [fixture.testPath]
+      }]
     }));
     const testFinding = report.requirements.at(-1);
 
@@ -336,7 +415,10 @@ describe("requirement relation regression matrix", () => {
         {
           path: "test/repository-visibility.test.js",
           status: "added",
-          patch: "+ test('returns both repository visibility labels', () => {})"
+          patch: [
+            "+ import { repositoryVisibilityLabel } from '../src/repositories/repository-visibility.js';",
+            "+ test('returns one repository visibility label', () => { expect(repositoryVisibilityLabel(true)).toBe('Private repository'); });"
+          ].join("\n")
         }
       ],
       checks: [{ name: "repository visibility tests", status: "passed", summary: "repository visibility tests passed." }],
@@ -354,7 +436,7 @@ describe("requirement relation regression matrix", () => {
     }))).toEqual([
       { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
       { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
-      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" }
+      { status: "partial", evidenceStatus: "partial", sourceAuthority: "pr_description" }
     ]);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });

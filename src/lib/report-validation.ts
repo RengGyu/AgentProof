@@ -1525,12 +1525,18 @@ function isSatisfiedAxisEvidenceCompatible(
     return collectionBasis === "matching_artifact_evidence" && isImplementationProofEvidence(evidence) && isCiEvidencePath(path) && implementationRefs.has(ref);
   }
   if (subject === "targeted_test") {
-    return collectionBasis === "matching_artifact_evidence" &&
+    const requiredBasis = isEnglishBothPathsRequirement(requirementText)
+      ? "direct_assertion_case_coverage"
+      : "matching_artifact_evidence";
+    return collectionBasis === requiredBasis &&
       evidence.kind === "test" &&
       targetedTestRefs.has(ref) &&
       targetedTestEvidenceMatchesRequirement(report, proofNode, requirementText, evidence);
   }
   if (subject === "execution") {
+    if (isEnglishBothPathsRequirement(requirementText) && collectionBasis !== "passing_suite_execution") {
+      return false;
+    }
     if (collectionBasis === "passing_execution") {
       return isPassingTestExecutionEvidence(evidence) &&
         executionRefs.has(ref) &&
@@ -1619,7 +1625,7 @@ function isVerifiedSuiteExecutionEvidenceCompatible(
       suite.headSha !== headSha ||
       suite.status !== "passed" ||
       suite.executionSource !== label ||
-      (suite.scope !== "repository_discovery" && suite.scope !== "explicit_paths") ||
+      suite.scope !== "repository_discovery" ||
       !Array.isArray(suite.testPaths)
     ) {
       return false;
@@ -1634,6 +1640,10 @@ function isVerifiedSuiteExecutionEvidenceCompatible(
       coveredPaths.has(item.locator.toLowerCase())
     );
   });
+}
+
+function isEnglishBothPathsRequirement(text: string): boolean {
+  return /\bboth(?:\s+[a-z][a-z0-9-]*){0,4}\s+(?:paths?|branches?)\b/i.test(text);
 }
 
 function isViolatedExecutionAxisEvidenceCompatible(
