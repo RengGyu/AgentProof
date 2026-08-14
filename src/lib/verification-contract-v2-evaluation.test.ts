@@ -36,6 +36,37 @@ describe("verification-contract v2 evaluation closure", () => {
     expect(report.requirements.some((requirement) => requirement.evidenceStatus === "met")).toBe(true);
   });
 
+  it("keeps no-contract guidance report-level while preserving local observation gaps", () => {
+    const report = generateVerificationReportV2FromInput({
+      title: "Add repository search empty state",
+      description: "Adds search behavior.",
+      taskText: "Search results must show an empty-state message when no repositories match.",
+      changedFiles: [
+        { path: "src/repositories/RepositorySearch.js", additions: 8, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
+        { path: "test/repository-search.test.js", additions: 8, deletions: 0, status: "added", patch: "+ test('empty state', () => {})" }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "Steps: Run node --test: passed." }],
+      executionSuites: [{ headSha: "d".repeat(40), status: "passed", executionSource: "GitHub Actions job: unit-tests", runner: "node_test", scope: "repository_discovery", testPaths: ["test/repository-search.test.js"] }],
+      sourceProvenance: {
+        version: 1,
+        origin: "github_snapshot",
+        headSha: "d".repeat(40),
+        baseSha: "e".repeat(40),
+        changedFileInventory: { version: 1, completeness: "complete", headSha: "d".repeat(40) },
+        evidenceCapturedAt: "2026-08-14T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "f".repeat(64), coverage: "github_metadata" }
+      }
+    });
+
+    expect(report.verificationContract.gaps).toEqual([
+      expect.objectContaining({ kind: "verification_contract_missing" })
+    ]);
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind))
+      .toContain("interaction_proof_missing");
+    expect(report.requirements[0]?.gaps).not.toContain("Approved verification contract is missing.");
+  });
+
   it("materializes an authoritative documentation criterion only with its exact-head artifact", () => {
     const report = generateVerificationReportV2({
       input: contractInput(),
@@ -73,10 +104,7 @@ describe("verification-contract v2 evaluation closure", () => {
       binding: bindingFor("provided_requirement", JSON.stringify(documentationContract))
     });
 
-    expect(report.requirements[0]).toMatchObject({
-      status: "unclear",
-      gaps: ["A required verification criterion was unavailable, incomplete, or not yet satisfied."]
-    });
+    expect(report.requirements[0]?.status).toBe("unclear");
     expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({ state: "unavailable" });
   });
 
@@ -121,7 +149,7 @@ describe("verification-contract v2 evaluation closure", () => {
       binding: bindingFor("provided_requirement", JSON.stringify(absenceContract))
     });
 
-    expect(report.requirements[0]).toMatchObject({ status: "met", gaps: [] });
+    expect(report.requirements[0]?.status).toBe("met");
     expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({
       state: "satisfied",
       evidenceRefs: []
@@ -164,7 +192,7 @@ describe("verification-contract v2 evaluation closure", () => {
     expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({ state: "unavailable" });
   });
 
-  it("rejects malformed contracts and preserves a contract-specific next gap", () => {
+  it("rejects malformed contracts with report-level contract guidance", () => {
     const report = generateVerificationReportV2({
       input: contractInput(),
       contractSource: { kind: "provided_requirement", contract: { version: 2, scope: "complete_objective_set", objectives: [] } },
@@ -173,7 +201,10 @@ describe("verification-contract v2 evaluation closure", () => {
 
     expect(report.verificationContract.state).toBe("invalid");
     expect(report.requirements.every((requirement) => requirement.status === "unclear")).toBe(true);
-    expect(report.requirements.every((requirement) => requirement.gaps.includes("Verification contract could not be validated."))).toBe(true);
+    expect(report.verificationContract.gaps).toEqual([
+      expect.objectContaining({ kind: "verification_contract_invalid" })
+    ]);
+    expect(report.requirements.every((requirement) => !requirement.gaps.includes("Verification contract could not be validated."))).toBe(true);
   });
 
   it("changes the binding when an equal-text Issue contract is relinked", () => {

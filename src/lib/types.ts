@@ -307,6 +307,13 @@ export interface ReviewPriorityItem {
   evidenceRefs?: string[];
 }
 
+export type VerificationContractGapKindV2 =
+  | "verification_contract_missing"
+  | "verification_contract_invalid"
+  | "criterion_evidence_incomplete"
+  | "criterion_evidence_unavailable"
+;
+
 export type ProofGapKind =
   | "missing_implementation"
   | "missing_targeted_test"

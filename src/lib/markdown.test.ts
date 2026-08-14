@@ -7,12 +7,15 @@ import { generateVerificationReportV2FromInput } from "./verifier";
 describe("reportToGitHubComment", () => {
   it("separates v2 no-contract outcomes from observed implementation and execution evidence", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
-    const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
+    const markdown = reportToMarkdown(report);
+    const comment = reportToGitHubComment(report);
+    const output = `${markdown}\n${comment}`;
 
     expect(output).toContain("Strict verification contract");
     expect(output).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
     expect(output).toContain("**Observed evidence:** implementation, targeted tests, and execution are listed below.");
-    expect(output).toContain("Approved verification contract is missing.");
+    expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
+    expect(comment.match(/Approved verification contract is missing\./g)).toHaveLength(1);
     expect(output).not.toContain("Outcome was not assessed against an approved verification contract.");
   });
 

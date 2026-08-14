@@ -25,6 +25,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     verificationContract: detail.report?.verificationContract
   });
   const locationsByEvidenceId = new Map(exported.evidence_locations.map((item) => [item.id, item.safe_location]));
+  const contractGuidance = verificationContractGuidance(detail.report?.verificationContract?.state);
   const lines = [
     "# AgentProof evidence report",
     "",
@@ -39,6 +40,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     ...(exported.planning_policy ? [`**Policy:** ${exported.planning_policy}`] : []),
     ...(exported.verification_policy ? [`**Policy:** ${exported.verification_policy}`] : []),
     ...(exported.verification_outcome_note ? [`**Outcome policy:** ${exported.verification_outcome_note}`] : []),
+    ...(contractGuidance ? [`**Contract guidance:** ${contractGuidance}`] : []),
     "",
     "## Requirements",
     "",
@@ -227,6 +229,12 @@ function verificationOutcomeNote(state: "authoritative" | "author_claim" | "abse
   if (state === "invalid") return "The supplied verification contract was invalid; observed evidence does not establish the requirement outcome.";
   if (state === "author_claim") return "PR-description contract; reviewer confirmation is required for the requirement outcome.";
   return "Requirement outcomes are evaluated against an approved verification contract.";
+}
+
+function verificationContractGuidance(state: "authoritative" | "author_claim" | "absent" | "invalid" | undefined): string | undefined {
+  if (state === "absent") return "Approved verification contract is missing.";
+  if (state === "invalid") return "Verification contract could not be validated.";
+  return undefined;
 }
 
 function assertCopyEligible(detail: DashboardExportDetail): void {

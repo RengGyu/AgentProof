@@ -39,7 +39,7 @@ describe("dashboard report export", () => {
     expect(json.requirements[0]).toMatchObject({ coverage: "met", source_authority: "pr_description" });
   });
 
-  it("separates a v2 no-contract outcome from its observed deterministic evidence", () => {
+  it("renders v2 contract guidance once while preserving a card's local observation gap", () => {
     const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
     strictDetail.report = {
       ...strictDetail.report,
@@ -51,7 +51,7 @@ describe("dashboard report export", () => {
         status: "unclear",
         evidenceStatus: "met",
         evidenceRefs: ["ev_1"],
-        gaps: ["Outcome was not assessed against an approved verification contract."]
+        gaps: ["User-facing interaction evidence is missing for this requirement."]
       }]
     };
 
@@ -62,8 +62,10 @@ describe("dashboard report export", () => {
     expect(markdown).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
     expect(markdown).toContain("Observed evidence: Supported");
     expect(markdown).toContain("Requirement outcome: Unclear");
-    expect(markdown).toContain("Key gap: Approved verification contract is missing.");
-    expect(markdown).toContain("Next: Add or approve a typed verification contract, then rerun the analysis.");
+    expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
+    expect(markdown).toContain("**Contract guidance:** Approved verification contract is missing.");
+    expect(markdown).toContain("Key gap: User-facing interaction evidence is missing for this requirement.");
+    expect(markdown).not.toContain("Key gap: Approved verification contract is missing.");
     expect(json).toMatchObject({
       verification_policy: "Strict verification contract",
       verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."

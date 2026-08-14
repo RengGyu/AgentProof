@@ -85,6 +85,7 @@ const LIMITS = {
   proofGraphNodes: 40,
   proofGraphContext: 30,
   proofGraphGaps: 20,
+  verificationContractGaps: 4,
   proofGraphFiles: 20,
   reprompt: 6000,
   evidenceIndex: 200,
@@ -202,7 +203,7 @@ function validateVerificationContractV2(report: RecordValue, evidenceIds: Set<st
     return;
   }
   const contract = report.verificationContract;
-  requireKeys(contract, ["version", "policy", "state", "source", "objectives"], "verificationContract", errors, ["integrity"]);
+  requireKeys(contract, ["version", "policy", "state", "source", "gaps", "objectives"], "verificationContract", errors, ["integrity"]);
   if (contract.version !== 2 || contract.policy !== "strict_typed_contract") {
     errors.push("verificationContract version or policy is invalid.");
   }
@@ -218,6 +219,7 @@ function validateVerificationContractV2(report: RecordValue, evidenceIds: Set<st
     (contract.source.kind !== "linked_issue" && contract.source.kind !== "provided_requirement" && contract.source.kind !== "pr_description"))) {
     errors.push("active verification contracts require a recognized source kind.");
   }
+  validateVerificationContractGaps(contract.gaps, state, errors);
   const objectives = Array.isArray(contract.objectives) ? contract.objectives : null;
   if (!objectives) {
     errors.push("verificationContract.objectives must be an array.");
@@ -342,6 +344,31 @@ function validateVerificationContractV2(report: RecordValue, evidenceIds: Set<st
   }
   if ((state === "absent" || state === "invalid") && requirements.some((requirement) => requirement.status === "met")) {
     errors.push("absent or invalid verification contracts cannot produce met requirements.");
+  }
+}
+
+function validateVerificationContractGaps(value: unknown, state: "authoritative" | "author_claim" | "absent" | "invalid", errors: string[]): void {
+  const gaps = validateArray(value, "verificationContract.gaps", LIMITS.verificationContractGaps, errors);
+  if (!gaps) return;
+  const expected = state === "absent" ? "verification_contract_missing" : state === "invalid" ? "verification_contract_invalid" : undefined;
+  if (expected ? gaps.length !== 1 : gaps.length !== 0) {
+    errors.push(expected
+      ? `verificationContract.${state} state requires exactly one ${expected} gap.`
+      : "active verification contracts cannot contain report-level gaps.");
+  }
+  for (const [index, gap] of gaps.entries()) {
+    const path = `verificationContract.gaps[${index}]`;
+    if (!isRecord(gap)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(gap, ["kind", "message"], path, errors);
+    if (gap.kind !== "verification_contract_missing" && gap.kind !== "verification_contract_invalid" &&
+      gap.kind !== "criterion_evidence_incomplete" && gap.kind !== "criterion_evidence_unavailable") {
+      errors.push(`${path}.kind is invalid.`);
+    }
+    if (expected && gap.kind !== expected) errors.push(`${path}.kind must be ${expected}.`);
+    validateString(gap.message, `${path}.message`, LIMITS.shortText, errors);
   }
 }
 

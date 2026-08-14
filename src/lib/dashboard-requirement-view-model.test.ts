@@ -22,7 +22,7 @@ describe("toDashboardRequirementViewModels", () => {
     });
   });
 
-  it("labels v2 evidence as observed evidence when a missing contract leaves the requirement outcome unclear", () => {
+  it("keeps a v2 card focused on its local observation gap when contract guidance is report-level", () => {
     const [card] = toDashboardRequirementViewModels({
       requirements: [{
         requirementId: "req_contract_absent",
@@ -30,9 +30,12 @@ describe("toDashboardRequirementViewModels", () => {
         status: "unclear",
         evidenceStatus: "met",
         evidenceRefs: ["ev_implementation", "ev_test", "ev_execution"],
-        gaps: ["Outcome was not assessed against an approved verification contract."]
+        gaps: ["User-facing interaction evidence is missing for this requirement."]
       }],
-      verificationContract: { state: "absent" }
+      verificationContract: {
+        state: "absent",
+        gaps: [{ kind: "verification_contract_missing", message: "Approved verification contract is missing." }]
+      }
     });
 
     expect(card).toMatchObject({
@@ -40,9 +43,10 @@ describe("toDashboardRequirementViewModels", () => {
       coverageLabel: "Supported",
       outcomeLabel: "Unclear",
       outcomeMeaning: "No approved verification contract defined how this objective should be evaluated.",
-      primaryGap: "Approved verification contract is missing.",
-      nextAction: "Add or approve a typed verification contract, then rerun the analysis."
+      primaryGap: "User-facing interaction evidence is missing for this requirement.",
+      nextAction: "Add component or browser evidence for the user-facing interaction."
     });
+    expect(card?.deterministicGaps).not.toContain("Approved verification contract is missing.");
   });
 
   it("labels a satisfied authoritative v2 contract separately from observed evidence", () => {

@@ -43,7 +43,7 @@ interface ShareableReportV3 extends Omit<ShareableReportV2, "version" | "planner
 interface ShareableReportV4 extends Omit<ShareableReportV3, "version"> {
   version: 4;
   reportSchemaVersion: "verification-report.v2";
-  verificationContract: Omit<VerificationContractReportV2, "integrity">;
+  verificationContract: Omit<VerificationContractReportV2, "integrity" | "gaps">;
 }
 
 type ShareableReport = ShareableReportV1 | ShareableReportV2 | ShareableReportV3 | ShareableReportV4;
@@ -198,7 +198,10 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
   return {
     ...report,
     reportSchemaVersion: "verification-report.v2",
-    verificationContract: shared.verificationContract
+    verificationContract: {
+      ...shared.verificationContract,
+      gaps: portableVerificationContractGaps(shared.verificationContract.state)
+    }
   } as VerificationReportV2;
 }
 
@@ -224,9 +227,15 @@ function parseShareableReport(value: unknown): ShareableReport {
   return value as unknown as ShareableReport;
 }
 
-function portableVerificationContract(contract: VerificationContractReportV2): Omit<VerificationContractReportV2, "integrity"> {
-  const { integrity: _integrity, ...portable } = contract;
+function portableVerificationContract(contract: VerificationContractReportV2): Omit<VerificationContractReportV2, "integrity" | "gaps"> {
+  const { integrity: _integrity, gaps: _gaps, ...portable } = contract;
   return structuredClone(portable);
+}
+
+function portableVerificationContractGaps(state: VerificationContractReportV2["state"]): VerificationContractReportV2["gaps"] {
+  if (state === "absent") return [{ kind: "verification_contract_missing", message: "Approved verification contract is missing." }];
+  if (state === "invalid") return [{ kind: "verification_contract_invalid", message: "Verification contract could not be validated." }];
+  return [];
 }
 
 function isVerificationReportV2(report: VerificationReport): report is VerificationReportV2 {

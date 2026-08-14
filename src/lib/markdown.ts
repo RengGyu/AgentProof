@@ -20,6 +20,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     report.planner ? `**Policy:** Enhanced planning policy` : undefined,
     strictContract ? `**Policy:** Strict verification contract` : undefined,
     strictContract ? `**Outcome policy:** ${strictContract.outcomePolicy}` : undefined,
+    ...(strictContract?.guidance.map((message) => `**Contract guidance:** ${safeInlineText(message)}`) ?? []),
     strictContract ? "**Observed evidence:** implementation, targeted tests, and execution are listed below." : undefined,
     "",
     `## Summary`,
@@ -167,6 +168,7 @@ export function reportToGitHubComment(
     report.planner ? "**Policy:** Enhanced planning policy" : undefined,
     strictContract ? "**Policy:** Strict verification contract" : undefined,
     strictContract ? `**Outcome policy:** ${strictContract.outcomePolicy}` : undefined,
+    ...(strictContract?.guidance.map((message) => `**Contract guidance:** ${safeInlineText(message)}`) ?? []),
     strictContract ? "**Observed evidence:** implementation, targeted tests, and execution are listed below." : undefined,
     "",
     safeInlineText(report.summary.oneLine),
@@ -228,22 +230,28 @@ export function reportToGitHubComment(
   return truncateComment(neutralizeGitHubMentions(lines.join("\n")));
 }
 
-function strictContractPresentation(report: VerificationReport): { outcomePolicy: string } | undefined {
+function strictContractPresentation(report: VerificationReport): { outcomePolicy: string; guidance: string[] } | undefined {
   const candidate = report as VerificationReport & {
     reportSchemaVersion?: string;
-    verificationContract?: { state?: unknown };
+    verificationContract?: { state?: unknown; gaps?: unknown };
   };
   if (candidate.reportSchemaVersion !== "verification-report.v2" || !candidate.verificationContract) return undefined;
+  const guidance = Array.isArray(candidate.verificationContract.gaps)
+    ? candidate.verificationContract.gaps.flatMap((gap) => {
+      if (!gap || typeof gap !== "object" || typeof (gap as { message?: unknown }).message !== "string") return [];
+      return [(gap as { message: string }).message];
+    })
+    : [];
   if (candidate.verificationContract.state === "absent") {
-    return { outcomePolicy: "No approved verification contract; observed evidence does not establish the requirement outcome." };
+    return { outcomePolicy: "No approved verification contract; observed evidence does not establish the requirement outcome.", guidance };
   }
   if (candidate.verificationContract.state === "invalid") {
-    return { outcomePolicy: "The supplied verification contract was invalid; observed evidence does not establish the requirement outcome." };
+    return { outcomePolicy: "The supplied verification contract was invalid; observed evidence does not establish the requirement outcome.", guidance };
   }
   if (candidate.verificationContract.state === "author_claim") {
-    return { outcomePolicy: "PR-description contract; reviewer confirmation is required for the requirement outcome." };
+    return { outcomePolicy: "PR-description contract; reviewer confirmation is required for the requirement outcome.", guidance };
   }
-  return { outcomePolicy: "Requirement outcomes are evaluated against an approved verification contract." };
+  return { outcomePolicy: "Requirement outcomes are evaluated against an approved verification contract.", guidance };
 }
 
 function formatExecutionEvidenceLine(
