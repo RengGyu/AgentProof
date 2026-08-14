@@ -1,5 +1,5 @@
 import { noStoreJson } from "@/lib/http";
-import { getSavedReport, listTenantSavedReportDetails, listTenantSavedReports, SavedReportStoreError, TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT, type StoredServerReport } from "@/lib/server-report-store";
+import { getSavedReport, listTenantSavedReportDetails, listTenantSavedReports, SavedReportStoreError, TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT, tenantSavedReportVerificationOutcome, type StoredServerReport } from "@/lib/server-report-store";
 import { resolveTenantAuthAccess, TenantAuthStoreError } from "@/lib/tenant-auth";
 import { tenantReportAnalysisContext } from "@/lib/tenant-report-language";
 import { listTenantAnalysisJobs, resolveAnalysisJobFreshness, type AnalysisJobFreshness, type TenantAnalysisJobSummary } from "@/lib/analysis-jobs";
@@ -117,6 +117,7 @@ async function toDashboardReportDetail(saved: StoredServerReport, tenantId: stri
   }
   return {
     availability: "available" as const,
+    verificationOutcome: tenantSavedReportVerificationOutcome(saved.report),
     report: saved.report,
     createdAt: saved.createdAt,
     priority: saved.report.summary.priority,

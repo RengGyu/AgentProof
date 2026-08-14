@@ -26,6 +26,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Priority:");
   });
 
+  it("shows saved-report availability separately from the verification outcome", () => {
+    expect(source).toContain("Report:");
+    expect(source).toContain("Verification:");
+    expect(source).toContain("verificationOutcomeLabel(report.verificationOutcome)");
+  });
+
   it("keeps the report list compact until the reviewer expands it", () => {
     expect(source).toContain("const DASHBOARD_REPORT_LIST_LIMIT = 5");
     expect(source).toContain("const [reportListExpanded, setReportListExpanded] = useState(false)");
