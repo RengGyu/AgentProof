@@ -95,6 +95,24 @@ describe("exact changed-test import relationships", () => {
     expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
   });
 
+  it("ignores apparent imports and asserted calls inside a multi-line template literal", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "+const fixture = `",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+`;",
+        "+test('unrelated smoke', () => { expect(true).toBe(true); });"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(false);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
+  });
+
   it("counts distinct literal calls to one directly imported export inside assertions", () => {
     expect(distinctDirectAssertionCallCount(
       {

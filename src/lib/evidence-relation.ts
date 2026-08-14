@@ -215,6 +215,7 @@ function livePatchLines(patch: string): string[] {
     if (rawLine.startsWith("-")) continue;
     const line = rawLine.replace(/^\+/, "");
     let code = "";
+    let suppressContinuedQuoteContent = quote !== null;
 
     for (let index = 0; index < line.length; index += 1) {
       const character = line[index];
@@ -227,10 +228,13 @@ function livePatchLines(patch: string): string[] {
         continue;
       }
       if (quote) {
-        code += character;
+        if (!suppressContinuedQuoteContent) code += character;
         if (escaped) escaped = false;
         else if (character === "\\") escaped = true;
-        else if (character === quote) quote = null;
+        else if (character === quote) {
+          quote = null;
+          suppressContinuedQuoteContent = false;
+        }
         continue;
       }
       if (character === "/" && next === "/") break;
