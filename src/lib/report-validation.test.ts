@@ -3,6 +3,7 @@ import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport } from "./report-validation";
 import { decodeSharedReport, encodeReportForShare, sanitizeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
+import { projectTenantPersistedReport } from "./tenant-report-validation";
 import { generateVerificationReport } from "./verifier";
 import { generateVerificationReportV2 } from "./verifier";
 
@@ -16,6 +17,93 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("rejects direct assertion case coverage when its receipt is missing or inconsistent", () => {
+    const headSha = "d".repeat(40);
+    const testPath = "test/customer-display-name.test.js";
+    const secondaryTestPath = "test/customer-display-name-secondary.test.js";
+    const report = generateVerificationReport({
+      title: "Cover both customer display-name paths",
+      description: "Adds focused customer display-name tests.",
+      taskText: "Acceptance criteria: add focused tests for both paths of customer display-name formatting.",
+      taskSource: "issue",
+      changedFiles: [
+        {
+          path: "src/customers/display-name.js",
+          status: "modified",
+          patch: "+export function customerDisplayName(includeFamilyName) { return includeFamilyName ? 'Ada Lovelace' : 'Ada'; }"
+        },
+        {
+          path: testPath,
+          status: "modified",
+          patch: [
+            "+import assert from 'node:assert/strict';",
+            "+import { customerDisplayName } from '../src/customers/display-name.js';",
+            "+test('short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });",
+            "+test('full name', () => { assert.equal(customerDisplayName(true), 'Ada Lovelace'); });"
+          ].join("\n")
+        },
+        {
+          path: secondaryTestPath,
+          status: "modified",
+          patch: [
+            "+import assert from 'node:assert/strict';",
+            "+import { customerDisplayName } from '../src/customers/display-name.js';",
+            "+test('short name smoke', () => { assert.equal(customerDisplayName(false), 'Ada'); });"
+          ].join("\n")
+        }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "npm test passed." }],
+      sourceProvenance: { ...githubInventoryProvenance(), headSha, changedFileInventory: { version: 1, completeness: "complete", headSha } },
+      executionSuites: [{
+        headSha,
+        status: "passed",
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    });
+    const legitimateNode = report.proofGraph.nodes[0] as typeof report.proofGraph.nodes[number] & {
+      caseCoverageReceipt?: {
+        version: 1;
+        implementationEvidenceRef: string;
+        testEvidenceRef: string;
+        distinctLiteralCaseCount: number;
+      };
+    };
+
+    expect(legitimateNode.caseCoverageReceipt).toBeDefined();
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(JSON.stringify(sanitizeReportForShare(report))).not.toContain("caseCoverageReceipt");
+    expect(JSON.stringify(projectTenantPersistedReport(report, "task-3-test-signing-secret"))).not.toContain("caseCoverageReceipt");
+
+    const mismatchedSuite = structuredClone(report);
+    mismatchedSuite.source.provenance!.executionSuites![0]!.testPaths = [secondaryTestPath];
+    const mismatchedSuiteResult = validateVerificationReport(mismatchedSuite, { mode: "full" });
+    expect(mismatchedSuiteResult.valid).toBe(false);
+    expect(mismatchedSuiteResult.errors.join("\n")).toContain("cites incompatible evidence or collection basis");
+
+    const missing = structuredClone(report);
+    delete (missing.proofGraph.nodes[0] as typeof legitimateNode).caseCoverageReceipt;
+    const missingResult = validateVerificationReport(missing, { mode: "full" });
+    expect(missingResult.valid).toBe(false);
+    expect(missingResult.errors.join("\n")).toContain("case coverage receipt is required");
+
+    const inconsistent = structuredClone(report);
+    const inconsistentNode = inconsistent.proofGraph.nodes[0] as typeof legitimateNode;
+    (inconsistentNode as unknown as { caseCoverageReceipt: Record<string, unknown> }).caseCoverageReceipt = {
+      version: 1,
+      implementationEvidenceRef: legitimateNode.implementationEvidenceRefs[0]!,
+      testEvidenceRef: legitimateNode.implementationEvidenceRefs[0]!,
+      distinctLiteralCaseCount: 1
+    };
+    const inconsistentResult = validateVerificationReport(inconsistent, { mode: "full" });
+    expect(inconsistentResult.valid).toBe(false);
+    expect(inconsistentResult.errors.join("\n")).toContain("caseCoverageReceipt.testEvidenceRef must match targeted test evidence");
+    expect(inconsistentResult.errors.join("\n")).toContain("caseCoverageReceipt.distinctLiteralCaseCount must be 2");
+  });
+
   it("requires CI plus execution instead of fallback implementation for a resolved workflow continuation", () => {
     const report = generateVerificationReport({
       title: "Pin the validation workflow runtime",
@@ -246,7 +334,13 @@ describe("validateVerificationReport", () => {
       taskText: "Search results must show an empty-state message when no repositories match.",
       changedFiles: [
         { path: "src/repositories/RepositorySearch.js", additions: 8, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
-        { path: "test/repository-search.test.js", additions: 8, deletions: 0, status: "added", patch: "+ test('empty state', () => {})" }
+        {
+          path: "test/repository-search.test.js",
+          additions: 8,
+          deletions: 0,
+          status: "added",
+          patch: "+ import { emptyStateMessage } from '../src/repositories/RepositorySearch.js';\n+ test('empty state', () => { emptyStateMessage(); })"
+        }
       ],
       checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
       logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "Steps: Run npm test: passed." }],

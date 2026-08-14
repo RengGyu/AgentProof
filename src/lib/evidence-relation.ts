@@ -53,9 +53,7 @@ export function distinctDirectAssertionCallCount(
 
   const bindingPattern = new RegExp(`\\b${escapeRegExp(bindings[0])}\\s*\\(([^()]*)\\)`, "g");
   const signatures = new Set<string>();
-  for (const rawLine of (testFile.patch ?? "").replace(/\r\n/g, "\n").split("\n")) {
-    if (rawLine.startsWith("-")) continue;
-    const line = rawLine.replace(/^\+/, "");
+  for (const line of livePatchLines(testFile.patch ?? "")) {
     const assertionRanges = assertionArgumentRanges(line);
     if (assertionRanges.length === 0) continue;
 
@@ -149,11 +147,10 @@ function isCodePosition(line: string, targetIndex: number): boolean {
 
 function importedModuleSpecifiers(patch: string): string[] {
   const specifiers: string[] = [];
-  const lines = patch.replace(/\r\n/g, "\n").split("\n");
 
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/^\+/, "").trim();
-    if (!line || line.startsWith("//") || line.startsWith("/*") || line.startsWith("*")) continue;
+  for (const sourceLine of livePatchLines(patch)) {
+    const line = sourceLine.trim();
+    if (!line) continue;
 
     const importMatch = line.match(/^import\s+(?:(?:type\s+)?[\s\S]*?\s+from\s+)?["']([^"']+)["']/);
     const requireMatch = line.match(/^(?:const|let|var)\s+[\s\S]*?=\s*require\s*\(\s*["']([^"']+)["']\s*\)/);
@@ -168,10 +165,9 @@ function importedBindingsForImplementation(testFile: PatchFile, implementationFi
   const bindings: string[] = [];
   const targetPath = normalizeRepositoryPath(implementationFile.path);
 
-  for (const rawLine of (testFile.patch ?? "").replace(/\r\n/g, "\n").split("\n")) {
-    if (rawLine.startsWith("-")) continue;
-    const line = rawLine.replace(/^\+/, "").trim();
-    if (!line || line.startsWith("//") || line.startsWith("/*") || line.startsWith("*")) continue;
+  for (const sourceLine of livePatchLines(testFile.patch ?? "")) {
+    const line = sourceLine.trim();
+    if (!line) continue;
 
     const specifier = importedModuleSpecifiers(line)[0];
     if (!specifier || !relativeImportCandidates(testFile.path, specifier).includes(targetPath)) continue;
@@ -207,6 +203,50 @@ function importedBindingsForImplementation(testFile: PatchFile, implementationFi
   }
 
   return [...new Set(bindings)];
+}
+
+function livePatchLines(patch: string): string[] {
+  const lines: string[] = [];
+  let blockComment = false;
+  let quote: "'" | '"' | "`" | null = null;
+  let escaped = false;
+
+  for (const rawLine of patch.replace(/\r\n/g, "\n").split("\n")) {
+    if (rawLine.startsWith("-")) continue;
+    const line = rawLine.replace(/^\+/, "");
+    let code = "";
+
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      const next = line[index + 1];
+      if (blockComment) {
+        if (character === "*" && next === "/") {
+          blockComment = false;
+          index += 1;
+        }
+        continue;
+      }
+      if (quote) {
+        code += character;
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === quote) quote = null;
+        continue;
+      }
+      if (character === "/" && next === "/") break;
+      if (character === "/" && next === "*") {
+        blockComment = true;
+        index += 1;
+        continue;
+      }
+      code += character;
+      if (character === "'" || character === '"' || character === "`") quote = character;
+    }
+
+    if (code.trim()) lines.push(code);
+  }
+
+  return lines;
 }
 
 function literalArgumentSignature(args: string): string | null {

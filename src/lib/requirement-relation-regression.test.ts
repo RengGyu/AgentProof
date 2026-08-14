@@ -65,6 +65,36 @@ describe("exact changed-test import relationships", () => {
     )).toBe(false);
   });
 
+  it("ignores a deleted direct import when resolving the implementation edge", () => {
+    expect(testImportMatchesImplementation(
+      {
+        path: "test/customer-display-name.test.js",
+        patch: [
+          "-import { customerDisplayName } from '../src/customers/display-name.js';",
+          "+import { customerDisplayName } from '../src/index.js';"
+        ].join("\n")
+      },
+      { path: "src/customers/display-name.js", patch: "" }
+    )).toBe(false);
+  });
+
+  it("ignores direct imports and asserted calls inside a multi-line block comment", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "+/*",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+*/"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(false);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
+  });
+
   it("counts distinct literal calls to one directly imported export inside assertions", () => {
     expect(distinctDirectAssertionCallCount(
       {
@@ -597,11 +627,14 @@ describe("requirement relation regression matrix", () => {
   it("keeps an explicit-subject test-only objective independent from implementation proof", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
-      changedFiles: [{
-        path: "test/retry-queue.test.ts",
-        status: "modified",
-        patch: "+ test('retry queue synchronization', () => {})"
-      }],
+      changedFiles: [
+        { path: "src/retry-queue.ts", status: "modified", patch: "+ export function retryQueue() {}" },
+        {
+          path: "test/retry-queue.test.ts",
+          status: "modified",
+          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { retryQueue(); })"
+        }
+      ],
       checks: [{ name: "retry queue tests", status: "passed", summary: "Retry queue tests passed." }]
     }));
     const finding = report.requirements[0];
@@ -616,7 +649,11 @@ describe("requirement relation regression matrix", () => {
       taskText: "Acceptance criteria: retry failed synchronization jobs and add regression tests.",
       changedFiles: [
         { path: "src/retry-queue.ts", status: "modified", patch: "+ export function retryFailedJobs() {}" },
-        { path: "test/retry-queue.test.ts", status: "modified", patch: "+ test('retry failed jobs', () => {})" }
+        {
+          path: "test/retry-queue.test.ts",
+          status: "modified",
+          patch: "+ import { retryFailedJobs } from '../src/retry-queue';\n+ test('retry failed jobs', () => { retryFailedJobs(); })"
+        }
       ],
       checks: [{ name: "retry queue tests", status: "passed", summary: "Retry failed job tests passed." }]
     }));
@@ -723,8 +760,9 @@ describe("requirement relation regression matrix", () => {
       polarity: "absent",
       state: "satisfied"
     });
-    expect(axis(finding, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(finding, "targeted_test")).toMatchObject({ state: "violated" });
     expect(axis(finding, "execution")).toMatchObject({ state: "satisfied" });
+    expect(finding?.status).not.toBe("met");
   });
 
   it("violates a test-only negative implementation constraint when source code changes", () => {
@@ -764,11 +802,14 @@ describe("requirement relation regression matrix", () => {
   it("keeps execution incomplete when the targeted test exists but only an unrelated check passes", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
-      changedFiles: [{
-        path: "test/retry-queue.test.ts",
-        status: "added",
-        patch: "+ test('retry queue synchronization', () => {})"
-      }],
+      changedFiles: [
+        { path: "src/retry-queue.ts", status: "modified", patch: "+ export function retryQueue() {}" },
+        {
+          path: "test/retry-queue.test.ts",
+          status: "added",
+          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { retryQueue(); })"
+        }
+      ],
       checks: [{ name: "customer export tests", status: "passed", summary: "Customer export tests passed." }]
     }));
     const finding = report.requirements[0];

@@ -35,6 +35,7 @@ import {
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckStatus,
+  DeterministicCaseCoverageReceipt,
   DeterministicRequirementRelation,
   EvidenceItem,
   FindingProvenance,
@@ -752,15 +753,7 @@ function evaluateRequirement(
   }
 
   const implementationEvidenceRefs = implementationMatches.map(({ item }) => item.id);
-  const targetedProofRefs = targetedTestEvidenceRefsForRequirement(
-    requirement,
-    evidenceIndex,
-    input,
-    implementationEvidenceRefs,
-    expectations,
-    relevance,
-    evidenceLookup
-  );
+  const targetedProofRefs = targetedTestEvidenceRefsForRequirement(input, implementationEvidenceRefs, evidenceLookup);
   const artifactRefs = artifactEvidenceRefsByExpectation(
     requirement,
     evidenceIndex,
@@ -1186,14 +1179,9 @@ function buildProofGraph(
     );
     const subjectImplementationEvidenceRefs = uniqueRefs([...implementationEvidenceRefs, ...contextualImplementationRefs]);
     const targetedTestEvidenceRefs = targetedTestEvidenceRefsForRequirement(
-      requirement,
-      evidenceIndex,
       input,
       subjectImplementationEvidenceRefs,
-      expectations,
-      relevance,
-      evidenceLookup,
-      contextualImplementationRefs.length > 0 || evidenceContextRequirementIdsByRequirement?.has(requirement.id) === true
+      evidenceLookup
     );
     const requiresDirectAssertionCaseCoverage = isEnglishBothPathsRequirement(requirement.text);
     const directAssertionCaseTestRefs = requiresDirectAssertionCaseCoverage
@@ -1210,11 +1198,24 @@ function buildProofGraph(
       (relevance.canonicalOverlap(item) || isOpaqueMatrixExecutionFailure(item))
     );
     const allVerifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, targetedTestEvidenceRefs);
-    const directAssertionCaseExecutionRefs = requiresDirectAssertionCaseCoverage
-      ? verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, directAssertionCaseTestRefs)
-      : [];
+    const directAssertionCaseSupport = requiresDirectAssertionCaseCoverage
+      ? directAssertionCaseTestRefs
+        .map((testEvidenceRef) => ({
+          testEvidenceRef,
+          executionEvidenceRefs: verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, [testEvidenceRef])
+        }))
+        .find((support) => support.executionEvidenceRefs.length > 0)
+      : undefined;
+    const directAssertionCaseExecutionRefs = directAssertionCaseSupport?.executionEvidenceRefs ?? [];
+    const caseCoverageReceipt = directAssertionCaseSupport
+      ? caseCoverageReceiptForEvidence(
+        evidenceLookup,
+        subjectImplementationEvidenceRefs,
+        directAssertionCaseSupport.testEvidenceRef
+      )
+      : undefined;
     const verifiedSuiteExecutionRefs = requiresDirectAssertionCaseCoverage
-      ? directAssertionCaseExecutionRefs
+      ? caseCoverageReceipt ? directAssertionCaseExecutionRefs : []
       : allVerifiedSuiteExecutionRefs;
     const testLinkedExecutionRefs = passingExecutionEvidenceRefsForTargetedTests(
       targetedTestEvidenceRefs,
@@ -1287,7 +1288,8 @@ function buildProofGraph(
       implementationPatchEvidenceUnavailable,
       authoritativeChangedFileInventory,
       requiresDirectAssertionCaseCoverage,
-      directAssertionCaseCoverageComplete: directAssertionCaseExecutionRefs.length > 0
+      directAssertionCaseCoverageComplete: Boolean(caseCoverageReceipt),
+      directAssertionCaseTestRefs: caseCoverageReceipt ? [caseCoverageReceipt.testEvidenceRef] : []
     });
     proofAxesByRequirement.set(requirement.id, proofAxes);
 
@@ -1323,7 +1325,7 @@ function buildProofGraph(
     if (
       requiresDirectAssertionCaseCoverage &&
       targetedTestEvidenceRefs.length > 0 &&
-      directAssertionCaseExecutionRefs.length === 0
+      !caseCoverageReceipt
     ) {
       gapSignals.push({
         kind: "missing_targeted_test",
@@ -1432,7 +1434,7 @@ function buildProofGraph(
       contextRoles: requirement.contextRoles,
       status: requirement.sourceQuality === "manual_check" && finding?.status === "unclear"
         ? "unclear"
-        : requiresDirectAssertionCaseCoverage && targetedTestEvidenceRefs.length > 0 && directAssertionCaseExecutionRefs.length === 0
+        : requiresDirectAssertionCaseCoverage && targetedTestEvidenceRefs.length > 0 && !caseCoverageReceipt
           ? "partial"
         : requirement.sourceQuality === "author_claim" && finding?.status !== "met"
         ? finding?.status ?? "unclear"
@@ -1452,6 +1454,7 @@ function buildProofGraph(
         ...targetedTestEvidenceRefs,
         ...relatedMissingTests.flatMap((item) => item.evidenceRefs)
       ])).slice(0, 5),
+      ...(caseCoverageReceipt ? { caseCoverageReceipt } : {}),
       ...(deterministicRelationsByRequirement?.get(requirement.id)
         ? { deterministicRelation: deterministicRelationsByRequirement.get(requirement.id) }
         : {})
@@ -1547,6 +1550,7 @@ interface RequirementProofAxisBuildInput {
   authoritativeChangedFileInventory: boolean;
   requiresDirectAssertionCaseCoverage: boolean;
   directAssertionCaseCoverageComplete: boolean;
+  directAssertionCaseTestRefs: string[];
 }
 
 function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): RequirementProofAxis[] {
@@ -1583,7 +1587,7 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
       subject: "targeted_test",
       polarity: "present",
       state: input.directAssertionCaseCoverageComplete ? "satisfied" : "incomplete",
-      evidenceRefs: uniqueRefs(refs).slice(0, 8),
+      evidenceRefs: uniqueRefs(input.directAssertionCaseCoverageComplete ? input.directAssertionCaseTestRefs : refs).slice(0, 8),
       ...(input.directAssertionCaseCoverageComplete
         ? { collectionBasis: "direct_assertion_case_coverage" as const }
         : {})
@@ -1691,47 +1695,11 @@ function isOpaqueMatrixExecutionFailure(item: EvidenceItem): boolean {
 }
 
 function targetedTestEvidenceRefsForRequirement(
-  requirement: Requirement,
-  evidenceIndex: EvidenceItem[],
   input: PullRequestInput,
   implementationEvidenceRefs: string[],
-  expectations: RequirementProofExpectations,
-  relevance: RequirementEvidenceRelevance,
-  evidenceLookup: VerifierEvidenceLookup,
-  contextualOnly = false
+  evidenceLookup: VerifierEvidenceLookup
 ): string[] {
-  const directRefs = contextualOnly
-    ? []
-    : requirementEvidenceRefs(relevance, (item, match) =>
-      item.kind === "test" && isUsefulArtifactMatch(match)
-    );
-  const implementationPaths = new Set(
-    evidenceLookup.pathsForRefs(implementationEvidenceRefs)
-      .filter((path) => !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path))
-      .map((path) => path.toLowerCase())
-  );
-  const implementationFiles = input.changedFiles.filter((file) =>
-    implementationPaths.has(file.path.toLowerCase())
-  );
-  const testFiles = input.changedFiles.filter((file) => isTestFile(file.path));
-  const relatedRefs = implementationFiles.length === 1
-    ? evidenceLookup.testEvidenceItems
-      .filter((item) => {
-        const testFile = testFiles.find((file) => file.path === item.locator || file.path === item.label);
-        return Boolean(testFile && testImportMatchesImplementation(testFile, implementationFiles[0]));
-      })
-      .map((item) => item.id)
-    : [];
-  const singleArtifactFallbackRefs = directRefs.length === 0 &&
-    requirement.keywords.length === 0 &&
-    expectations.targetedTest &&
-    testFiles.length === 1
-    ? evidenceLookup.testEvidenceItems
-      .filter((item) => testFiles.some((file) => file.path === item.locator || file.path === item.label))
-      .map((item) => item.id)
-    : [];
-
-  return uniqueRefs([...directRefs, ...relatedRefs, ...singleArtifactFallbackRefs]);
+  return exactImportedTestEvidenceRefs(input, evidenceLookup, implementationEvidenceRefs);
 }
 
 function exactImportedTestEvidenceRefs(
@@ -1766,6 +1734,30 @@ function exactImportedTestEvidenceRefs(
       );
     })
     .map((item) => item.id);
+}
+
+function caseCoverageReceiptForEvidence(
+  evidenceLookup: VerifierEvidenceLookup,
+  implementationEvidenceRefs: readonly string[],
+  testEvidenceRef: string
+): DeterministicCaseCoverageReceipt | undefined {
+  const implementationRefsByPath = implementationEvidenceRefs
+    .map((ref) => ({ ref, path: evidenceLookup.pathsForRefs([ref])[0] ?? "" }))
+    .filter(({ path }) => path && !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path));
+  const implementationPaths = uniqueRefs(implementationRefsByPath.map(({ path }) => path.toLowerCase()));
+  if (implementationPaths.length !== 1) return undefined;
+
+  const implementationEvidenceRef = implementationRefsByPath.find(({ path }) =>
+    path.toLowerCase() === implementationPaths[0]
+  )?.ref;
+  if (!implementationEvidenceRef || evidenceLookup.evidenceForRef(testEvidenceRef)?.kind !== "test") return undefined;
+
+  return {
+    version: 1,
+    implementationEvidenceRef,
+    testEvidenceRef,
+    distinctLiteralCaseCount: 2
+  };
 }
 
 function isEnglishBothPathsRequirement(text: string): boolean {
