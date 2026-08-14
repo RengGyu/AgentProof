@@ -226,7 +226,19 @@ function parseShareableReport(value: unknown): ShareableReport {
 
 function portableVerificationContract(contract: VerificationContractReportV2): Omit<VerificationContractReportV2, "integrity"> {
   const { integrity: _integrity, ...portable } = contract;
-  return structuredClone(portable);
+  return {
+    ...structuredClone(portable),
+    objectives: portable.objectives.map((objective) => ({
+      ...objective,
+      criteria: objective.criteria.map((criterion) => ({ ...criterion })),
+      criterionResults: objective.criterionResults.map((result) => ({
+        ...result,
+        proofAxisRefs: [],
+        evidenceRefs: [],
+        gapKinds: [...result.gapKinds]
+      }))
+    }))
+  };
 }
 
 function isVerificationReportV2(report: VerificationReport): report is VerificationReportV2 {
