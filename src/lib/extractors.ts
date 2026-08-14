@@ -2,6 +2,7 @@ import type {
   AgentClaim,
   ChangedFile,
   CheckRun,
+  DeterministicRequirementRelation,
   EvidenceItem,
   LogSnippet,
   PullRequestInput,
@@ -16,6 +17,12 @@ import type {
 import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText } from "./redact";
 import { redactSecrets } from "./redact";
+import {
+  requirementProofAxisExpectations,
+  requirementProofAxisExpectationsWithContext,
+  type DeterministicProofContext,
+  type RequirementProofExpectations
+} from "./verifier-proof-expectations";
 
 const STOP_WORDS = new Set([
   "the",
@@ -177,6 +184,105 @@ export function extractRequirementSpanSeed(
       seedHash: ""
     }
   };
+}
+
+export interface DeterministicRequirementRelations {
+  proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations>;
+  evidenceContextRequirementIdsByRequirement: ReadonlyMap<string, readonly string[]>;
+  deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation>;
+}
+
+/** Derives BASE-only proof relations from ordered spans in the selected authoritative source. */
+export function deriveDeterministicRequirementRelations(
+  input: Pick<PullRequestInput, "taskText" | "description" | "taskSource">,
+  requirements: readonly Requirement[]
+): DeterministicRequirementRelations {
+  const proofExpectationsByRequirement = new Map<string, RequirementProofExpectations>();
+  const evidenceContextRequirementIdsByRequirement = new Map<string, readonly string[]>();
+  const deterministicRelationsByRequirement = new Map<string, DeterministicRequirementRelation>();
+  for (const requirement of requirements) {
+    proofExpectationsByRequirement.set(requirement.id, requirementProofAxisExpectations(requirement.text));
+  }
+
+  const spanExtraction = extractRequirementSpanSeed(input.taskText, input.description, input.taskSource);
+  const spans = spanExtraction.seed?.spans ?? [];
+  if (
+    spans.length !== requirements.length ||
+    spans.some((span, index) =>
+      normalizedRelationText(span.text) !== normalizedRelationText(requirements[index]?.text ?? "")
+    )
+  ) {
+    return {
+      proofExpectationsByRequirement,
+      evidenceContextRequirementIdsByRequirement,
+      deterministicRelationsByRequirement
+    };
+  }
+
+  for (let index = 0; index < requirements.length; index += 1) {
+    const requirement = requirements[index]!;
+    const presentationExpectations = requirementProofAxisExpectationsWithContext(
+      requirement.text,
+      { kind: "review_presentation" }
+    );
+    if (presentationExpectations.visual && !requirementProofAxisExpectations(requirement.text).visual) {
+      proofExpectationsByRequirement.set(requirement.id, presentationExpectations);
+      continue;
+    }
+
+    const workflowContext = deterministicWorkflowAntecedentContext(spans, requirements, index);
+    if (workflowContext.kind !== "workflow_antecedent") continue;
+    proofExpectationsByRequirement.set(
+      requirement.id,
+      requirementProofAxisExpectationsWithContext(requirement.text, workflowContext)
+    );
+    evidenceContextRequirementIdsByRequirement.set(requirement.id, [workflowContext.requirementId]);
+    deterministicRelationsByRequirement.set(requirement.id, {
+      version: 1,
+      kind: "workflow_antecedent",
+      antecedentRequirementId: workflowContext.requirementId
+    });
+  }
+
+  return {
+    proofExpectationsByRequirement,
+    evidenceContextRequirementIdsByRequirement,
+    deterministicRelationsByRequirement
+  };
+}
+
+function deterministicWorkflowAntecedentContext(
+  spans: readonly RequirementSourceSpan[],
+  requirements: readonly Requirement[],
+  index: number
+): DeterministicProofContext {
+  const span = spans[index];
+  const requirement = requirements[index];
+  if (!span || !requirement || !/^(?:it|this workflow|the job)\b/i.test(normalizedRelationText(requirement.text))) {
+    return { kind: "none" };
+  }
+
+  const workflowIndexes = spans
+    .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+    .filter(({ candidate, candidateIndex }) =>
+      candidateIndex < index &&
+      candidate.groupId === span.groupId &&
+      requirementProofAxisExpectations(requirements[candidateIndex]?.text ?? "").ci
+    )
+    .map(({ candidateIndex }) => candidateIndex);
+  const antecedentIndex = workflowIndexes.length === 1 ? workflowIndexes[0] : undefined;
+  if (antecedentIndex === undefined || antecedentIndex !== index - 1) return { kind: "none" };
+
+  return { kind: "workflow_antecedent", requirementId: requirements[antecedentIndex]!.id };
+}
+
+function normalizedRelationText(value: string): string {
+  return normalizeSentence(value
+    .trim()
+    .replace(/^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)/, ""))
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 interface SpanCandidate {

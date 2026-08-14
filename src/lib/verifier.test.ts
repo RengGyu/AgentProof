@@ -408,7 +408,8 @@ describe("generateVerificationReport", () => {
       requirement.requirementText === "add tests for invalid email"
     );
 
-    expect(invalidEmailTestRequirement?.status).toBe("met");
+    expect(invalidEmailTestRequirement?.status).toBe("partial");
+    expect(invalidEmailTestRequirement?.gaps.join(" ")).toContain("targeted test-file evidence");
   });
 
   it("does not mark test requirements met from test-file patches without passing execution evidence", () => {
@@ -1174,9 +1175,9 @@ describe("generateVerificationReport", () => {
 
     expect(report.testing.ciStatus).toBe("passed");
     expect(report.testing.missingTests.map((item) => item.path)).not.toContain("shell/browser/api/electron_api_menu.cc");
-    expect(proofNode?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
+    expect(proofNode?.targetedTestEvidenceRefs).toEqual([]);
     expect(proofNode?.executionEvidenceRefs.length).toBeGreaterThan(0);
-    expect(proofNode?.gapSignals.some((gap) => gap.kind === "missing_targeted_test")).toBe(false);
+    expect(proofNode?.gapSignals.some((gap) => gap.kind === "missing_targeted_test")).toBe(true);
   });
 
   it("prioritizes concrete file paths over repeated generic requirement labels", () => {
@@ -1431,15 +1432,20 @@ describe("generateVerificationReport", () => {
           status: "modified" as const,
           patch: "+ Export evidence report usage"
         },
-        ...Array.from({ length: 24 }, (_value, index) => ({
-          path: `src/reports/export-evidence-report-${index}.ts`,
+        {
+          path: "src/reports/export-evidence-report.ts",
           status: "modified" as const,
           patch: "+ export function exportEvidenceReport() {}"
+        },
+        ...Array.from({ length: 60 }, (_value, index) => ({
+          path: `docs/reports/export-evidence-report-${index}.md`,
+          status: "modified" as const,
+          patch: "+ Export evidence report reference"
         })),
         {
           path: "test/export-evidence-report.test.ts",
           status: "added" as const,
-          patch: "+ test('exports evidence report', () => {})"
+          patch: "+ import { exportEvidenceReport } from '../src/reports/export-evidence-report';\n+ test('exports evidence report', () => { exportEvidenceReport(); })"
         }
       ],
       checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
@@ -2154,7 +2160,7 @@ describe("generateVerificationReport", () => {
           additions: 18,
           deletions: 0,
           status: "added",
-          patch: "+ it('exports invoices from the export button', async () => {})"
+          patch: "+ import { InvoiceExportButton } from './InvoiceExportButton';\n+ it('exports invoices from the export button', async () => { InvoiceExportButton({}); })"
         }
       ],
       checks: [{ name: "unit tests", status: "passed", summary: "InvoiceExportButton tests passed" }],
@@ -2674,13 +2680,16 @@ describe("generateVerificationReport", () => {
       title: "Add retry queue regression coverage",
       description: "Adds a regression test for retry queue synchronization.",
       taskText: "Acceptance criteria: add a regression test for retry queue synchronization.",
-      changedFiles: [{
-        path: "src/queues/retry-queue.test.ts",
-        additions: 12,
-        deletions: 0,
-        status: "modified",
-        patch: "+ it('retries failed synchronization jobs', async () => {})"
-      }],
+      changedFiles: [
+        { path: "src/queues/retry-queue.ts", status: "modified", patch: "+ export function retryQueue() {}" },
+        {
+          path: "src/queues/retry-queue.test.ts",
+          additions: 12,
+          deletions: 0,
+          status: "modified",
+          patch: "+ import { retryQueue } from './retry-queue';\n+ it('retries failed synchronization jobs', async () => { retryQueue(); })"
+        }
+      ],
       checks: [{ name: "Test", status: "passed", summary: "Retry queue regression test passed." }],
       logs: []
     } satisfies PullRequestInput);
@@ -2712,7 +2721,7 @@ describe("generateVerificationReport", () => {
     const node = report.proofGraph.nodes[0];
 
     expect(node?.gapSignals.map((gap) => gap.kind)).toContain("missing_implementation");
-    expect(node?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+    expect(node?.gapSignals.map((gap) => gap.kind)).toContain("missing_targeted_test");
   });
 
   it("keeps behavior proof when an add-support objective also explicitly asks for tests", () => {
@@ -2734,7 +2743,7 @@ describe("generateVerificationReport", () => {
     const gaps = report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind);
 
     expect(gaps).toContain("missing_implementation");
-    expect(gaps).not.toContain("missing_targeted_test");
+    expect(gaps).toContain("missing_targeted_test");
   });
 
   it("keeps documentation and CI proof independent from targeted tests and recognizes Korean test-only objectives", () => {
@@ -2773,7 +2782,7 @@ describe("generateVerificationReport", () => {
     expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
     expect(koreanTest.proofGraph.nodes[0]?.requirementText).toContain("테스트");
     expect(koreanTest.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
-    expect(koreanTest.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+    expect(koreanTest.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("missing_targeted_test");
   });
 
   it("evaluates explicit Korean test, documentation, and CI objectives by their matching artifact contract", () => {
@@ -2803,7 +2812,7 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(koreanTest.requirements[0]?.status).not.toBe("unclear");
-    expect(koreanTest.requirements[0]?.gaps.join(" ")).not.toMatch(/No changed-file evidence|asks for tests/i);
+    expect(koreanTest.requirements[0]?.gaps.join(" ")).toMatch(/asks for tests|targeted test-file evidence/i);
     expect(documentation.requirements[0]?.gaps.join(" ")).not.toMatch(/matching test, log, or check|asks for tests/i);
     expect(ci.requirements[0]?.evidenceRefs.length).toBeGreaterThan(0);
     expect(ci.requirements[0]?.gaps.join(" ")).not.toMatch(/matching test, log, or check|asks for tests/i);
@@ -2900,9 +2909,9 @@ describe("generateVerificationReport", () => {
       sourceProvenance
     } satisfies PullRequestInput);
 
-    expect(passing.requirements[0]?.status).toBe("met");
+    expect(passing.requirements[0]?.status).not.toBe("met");
     expect(passing.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ subject: "targeted_test", polarity: "present", state: "satisfied" }),
+      expect.objectContaining({ subject: "targeted_test", polarity: "present", state: "violated" }),
       expect.objectContaining({ subject: "execution", polarity: "present", state: "satisfied" }),
       expect.objectContaining({ subject: "implementation", polarity: "absent", state: "satisfied" })
     ]));
@@ -3270,7 +3279,7 @@ describe("generateVerificationReport", () => {
       taskText: "Search results must show an empty-state message when no repositories match.",
       changedFiles: [
         { path: "src/repositories/RepositorySearch.js", additions: 10, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
-        { path: "test/repository-search.test.js", additions: 12, deletions: 0, status: "added", patch: "+ test('shows an empty state', () => {})" }
+        { path: "test/repository-search.test.js", additions: 12, deletions: 0, status: "added", patch: "+ import { emptyStateMessage } from '../src/repositories/RepositorySearch.js';\n+ test('shows an empty state', () => { emptyStateMessage(); })" }
       ],
       checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
       logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "GitHub Actions job unit-tests: passed. Steps: Run npm test: passed." }],
@@ -3295,6 +3304,220 @@ describe("generateVerificationReport", () => {
     expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
   });
 
+  it.each([
+    {
+      name: "no implementation import",
+      testPatch: "+test('formats a name', () => { expect(customerDisplayName(false)).toBe('Ada'); });",
+      extraImplementationPaths: []
+    },
+    {
+      name: "barrel import",
+      testPatch: [
+        "+import { customerDisplayName } from '../src/index.js';",
+        "+test('formats a name', () => { expect(customerDisplayName(false)).toBe('Ada'); });"
+      ].join("\n"),
+      extraImplementationPaths: []
+    },
+    {
+      name: "ambiguous implementation targets",
+      testPatch: [
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+test('formats a name', () => { expect(customerDisplayName(false)).toBe('Ada'); });"
+      ].join("\n"),
+      extraImplementationPaths: ["src/legacy/customer-display-name.js"]
+    }
+  ])("does not attach an ordinary targeted test through $name", ({ testPatch, extraImplementationPaths }) => {
+    const headSha = "f".repeat(40);
+    const testPath = "test/customer-display-name.test.js";
+    const report = generateVerificationReport({
+      title: "Add customer display-name tests",
+      description: "Adds focused customer display-name coverage.",
+      taskText: "Acceptance criteria: add focused customer display-name tests.",
+      taskSource: "issue",
+      changedFiles: [
+        {
+          path: "src/customers/display-name.js",
+          status: "modified",
+          patch: "+export function customerDisplayName() { return 'Ada'; }"
+        },
+        ...extraImplementationPaths.map((path) => ({
+          path,
+          status: "modified" as const,
+          patch: "+export function customerDisplayName() { return 'Legacy Ada'; }"
+        })),
+        { path: testPath, status: "modified", patch: testPatch }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "npm test passed." }],
+      sourceProvenance: githubInventoryProvenance(headSha),
+      executionSuites: [{
+        headSha,
+        status: "passed",
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    } satisfies PullRequestInput);
+    const finding = report.requirements[0];
+    const node = report.proofGraph.nodes[0];
+
+    expect(node?.targetedTestEvidenceRefs).toEqual([]);
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "violated" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(finding?.status).not.toBe("met");
+  });
+
+  it("retains a directly imported related test but keeps both-path coverage incomplete with one asserted call", () => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({
+      testPatch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+test('formats a short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });"
+      ].join("\n")
+    }));
+    const finding = report.requirements[0];
+    const relatedPaths = refsToEvidence(report, report.proofGraph.nodes[0]?.targetedTestEvidenceRefs ?? [])
+      .map((item) => item.locator);
+
+    expect(relatedPaths).toContain("test/customer-display-name.test.js");
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" })
+    ]));
+    expect(report.proofGraph.nodes[0]?.gapSignals).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "missing_targeted_test",
+        message: expect.stringMatching(/two distinct direct assertion cases.*exact-head suite/i)
+      })
+    ]));
+    expect(finding?.status).not.toBe("met");
+  });
+
+  it("does not issue both-path coverage from apparent code inside a multi-line template fixture", () => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({
+      testPatch: [
+        "+const fixture = `",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+`;",
+        "+test('unrelated smoke', () => { expect(true).toBe(true); });"
+      ].join("\n")
+    }));
+    const finding = report.requirements[0];
+    const node = report.proofGraph.nodes[0];
+
+    expect(node?.targetedTestEvidenceRefs).toEqual([]);
+    expect(node?.caseCoverageReceipt).toBeUndefined();
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(finding?.status).not.toBe("met");
+  });
+
+  it("does not issue both-path coverage from a mid-file hunk with unknown lexical context", () => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({
+      testPatch: [
+        "@@ -40,3 +40,7 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+`;",
+        "+test('unrelated smoke', () => { expect(true).toBe(true); });"
+      ].join("\n")
+    }));
+    const finding = report.requirements[0];
+    const node = report.proofGraph.nodes[0];
+
+    expect(node?.targetedTestEvidenceRefs).toEqual([]);
+    expect(node?.caseCoverageReceipt).toBeUndefined();
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(finding?.status).not.toBe("met");
+  });
+
+  it("completes both-path coverage with two distinct asserted direct calls and an exact-head suite", () => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({
+      testPatch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+test('formats a short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });",
+        "+test('formats a full name', () => { assert.equal(customerDisplayName(true), 'Ada Lovelace'); });"
+      ].join("\n")
+    }));
+    const finding = report.requirements[0];
+    const node = report.proofGraph.nodes[0] as typeof report.proofGraph.nodes[number] & {
+      caseCoverageReceipt?: {
+        version: number;
+        implementationEvidenceRef: string;
+        testEvidenceRef: string;
+        distinctLiteralCaseCount: number;
+      };
+    };
+
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        subject: "targeted_test",
+        state: "satisfied",
+        collectionBasis: "direct_assertion_case_coverage"
+      }),
+      expect.objectContaining({
+        subject: "execution",
+        state: "satisfied",
+        collectionBasis: "passing_suite_execution"
+      })
+    ]));
+    expect(finding?.status).toBe("met");
+    expect(node.caseCoverageReceipt).toEqual({
+      version: 1,
+      implementationEvidenceRef: expect.stringMatching(/^ev_/),
+      testEvidenceRef: expect.stringMatching(/^ev_/),
+      distinctLiteralCaseCount: 2
+    });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it.each([
+    {
+      name: "stale-head suite",
+      executionSuites: [{
+        headSha: "e".repeat(40),
+        status: "passed" as const,
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test" as const,
+        scope: "repository_discovery" as const,
+        testPaths: ["test/customer-display-name.test.js"]
+      }]
+    },
+    {
+      name: "filtered explicit-path suite",
+      executionSuites: [{
+        headSha: "d".repeat(40),
+        status: "passed" as const,
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test" as const,
+        scope: "explicit_paths" as const,
+        testPaths: ["test/customer-display-name.test.js"]
+      }]
+    }
+  ])("keeps both-path coverage incomplete for a $name", ({ executionSuites }) => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({ executionSuites }));
+    const finding = report.requirements[0];
+
+    expect(report.proofGraph.nodes[0]?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(finding?.status).not.toBe("met");
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("keeps explicit search UI behavior partial when only logic and suite execution are linked", () => {
     const headSha = "d".repeat(40);
     const report = generateVerificationReport({
@@ -3303,7 +3526,7 @@ describe("generateVerificationReport", () => {
       taskText: "Search results must show an empty-state message when no repositories match.",
       changedFiles: [
         { path: "src/repositories/RepositorySearch.js", additions: 8, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
-        { path: "test/repository-search.test.js", additions: 8, deletions: 0, status: "added", patch: "+ test('empty state', () => {})" }
+        { path: "test/repository-search.test.js", additions: 8, deletions: 0, status: "added", patch: "+ import { emptyStateMessage } from '../src/repositories/RepositorySearch.js';\n+ test('empty state', () => { emptyStateMessage(); })" }
       ],
       checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
       logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "Steps: Run node --test: passed." }],
@@ -3422,5 +3645,50 @@ function githubInventoryProvenance(headSha = "a".repeat(40), inventoryHeadSha = 
       value: "c".repeat(64),
       coverage: "github_metadata"
     }
+  };
+}
+
+function customerDisplayNameBothPathsInput(overrides: {
+  testPatch?: string;
+  executionSuites?: NonNullable<PullRequestInput["executionSuites"]>;
+} = {}): PullRequestInput {
+  const headSha = "d".repeat(40);
+  return {
+    title: "Cover both customer display-name paths",
+    description: "Adds focused customer display-name tests.",
+    taskText: "Acceptance criteria: add focused tests for both paths of customer display-name formatting.",
+    taskSource: "issue",
+    changedFiles: [
+      {
+        path: "src/customers/display-name.js",
+        status: "modified",
+        patch: "+export function customerDisplayName(includeFamilyName) { return includeFamilyName ? 'Ada Lovelace' : 'Ada'; }"
+      },
+      {
+        path: "test/customer-display-name.test.js",
+        status: "modified",
+        patch: overrides.testPatch ?? [
+          "+import assert from 'node:assert/strict';",
+          "+import { customerDisplayName } from '../src/customers/display-name.js';",
+          "+test('formats a short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });",
+          "+test('formats a full name', () => { assert.equal(customerDisplayName(true), 'Ada Lovelace'); });"
+        ].join("\n")
+      }
+    ],
+    checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+    logs: [{
+      source: "GitHub Actions job: unit-tests",
+      status: "passed",
+      text: "GitHub Actions job unit-tests: passed. Steps: Run npm test: passed."
+    }],
+    sourceProvenance: githubInventoryProvenance(headSha),
+    executionSuites: overrides.executionSuites ?? [{
+      headSha,
+      status: "passed",
+      executionSource: "GitHub Actions job: unit-tests",
+      runner: "node_test",
+      scope: "repository_discovery",
+      testPaths: ["test/customer-display-name.test.js"]
+    }]
   };
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { extractRequirementSpanSeed } from "./extractors";
+import {
+  deriveDeterministicRequirementRelations,
+  extractRequirementEvidence,
+  extractRequirementSpanSeed
+} from "./extractors";
+import { distinctDirectAssertionCallCount, testImportMatchesImplementation } from "./evidence-relation";
 import {
   bindHybridPlannerSeedHash,
   buildHybridPlannerPlan,
@@ -16,6 +21,7 @@ import type {
   VerificationReport
 } from "./types";
 import { generateVerificationReport } from "./verifier";
+import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
 
 const provenance: SourceProvenance = {
   version: 1,
@@ -37,6 +43,143 @@ const provenance: SourceProvenance = {
 };
 
 const SOURCE_IDENTITY_HASH = "d".repeat(64);
+
+describe("exact changed-test import relationships", () => {
+  it("links a test only when its direct relative import resolves to the implementation file", () => {
+    expect(testImportMatchesImplementation(
+      {
+        path: "test/customer-display-name.test.js",
+        patch: "import { customerDisplayName } from '../src/customers/display-name.js';"
+      },
+      { path: "src/customers/display-name.js", patch: "" }
+    )).toBe(true);
+  });
+
+  it("does not link a barrel import to a transitive implementation file", () => {
+    expect(testImportMatchesImplementation(
+      {
+        path: "test/customer-display-name.test.js",
+        patch: "import { customerDisplayName } from '../src/index.js';"
+      },
+      { path: "src/customers/display-name.js", patch: "" }
+    )).toBe(false);
+  });
+
+  it("ignores a deleted direct import when resolving the implementation edge", () => {
+    expect(testImportMatchesImplementation(
+      {
+        path: "test/customer-display-name.test.js",
+        patch: [
+          "-import { customerDisplayName } from '../src/customers/display-name.js';",
+          "+import { customerDisplayName } from '../src/index.js';"
+        ].join("\n")
+      },
+      { path: "src/customers/display-name.js", patch: "" }
+    )).toBe(false);
+  });
+
+  it("ignores direct imports and asserted calls inside a multi-line block comment", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "+/*",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+*/"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(false);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
+  });
+
+  it("ignores apparent imports and asserted calls inside a multi-line template literal", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "+const fixture = `",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+`;",
+        "+test('unrelated smoke', () => { expect(true).toBe(true); });"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(false);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
+  });
+
+  it("fails closed for a mid-file hunk whose initial lexical state is unavailable", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "@@ -40,3 +40,7 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');",
+        "+`;",
+        "+test('unrelated smoke', () => { expect(true).toBe(true); });"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(false);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
+  });
+
+  it("resets an unclosed quote before a later hunk independently marked as file-start safe", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "@@ -20,1 +20,1 @@",
+        "+const fixture = `",
+        "@@ -0,0 +1,4 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(true);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(2);
+  });
+
+  it("parses static import and assertion evidence from a hunk starting at the file beginning", () => {
+    const testFile = {
+      path: "test/customer-display-name.test.js",
+      patch: [
+        "@@ -0,0 +1,3 @@",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+expect(customerDisplayName(false)).toBe('Ada');",
+        "+expect(customerDisplayName(true)).toBe('Ada Lovelace');"
+      ].join("\n")
+    };
+    const implementationFile = { path: "src/customers/display-name.js", patch: "" };
+
+    expect(testImportMatchesImplementation(testFile, implementationFile)).toBe(true);
+    expect(distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(2);
+  });
+
+  it("counts distinct literal calls to one directly imported export inside assertions", () => {
+    expect(distinctDirectAssertionCallCount(
+      {
+        path: "test/retry.test.ts",
+        patch: [
+          "+ import assert from 'node:assert/strict';",
+          "+ import { retryRequest } from '../src/retry';",
+          "+ test('first', () => { assert.equal(retryRequest(true), undefined); });",
+          "+ test('second', () => { assert.equal(retryRequest(false), undefined); });"
+        ].join("\n")
+      },
+      { path: "src/retry.ts", patch: "+ export function retryRequest() {}" }
+    )).toBe(2);
+  });
+});
 
 function axis(
   finding: RequirementFinding | undefined,
@@ -106,6 +249,154 @@ function linkedInput(overrides: Partial<PullRequestInput>): PullRequestInput {
 }
 
 describe("requirement relation regression matrix", () => {
+  function deterministicRelations(taskText: string) {
+    const input = linkedInput({ taskText });
+    const extraction = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
+    return {
+      requirements: extraction.requirements,
+      relations: deriveDeterministicRequirementRelations(input, extraction.requirements)
+    };
+  }
+
+  it("derives a visual obligation only for reviewer-visible UI presentation wording", () => {
+    const { requirements, relations } = deterministicRelations(
+      "Important checks should be visible before review starts."
+    );
+
+    expect(relations.proofExpectationsByRequirement.get(requirements[0]!.id)).toMatchObject({
+      visual: true,
+      interaction: false
+    });
+    expect(relations.evidenceContextRequirementIdsByRequirement.size).toBe(0);
+  });
+
+  it("does not treat non-UI visibility wording as presentation evidence", () => {
+    const { requirements, relations } = deterministicRelations(
+      "The deployment should remain visible to network monitors."
+    );
+    const requirement = requirements[0]!;
+
+    expect(relations.proofExpectationsByRequirement.get(requirement.id))
+      .toEqual(requirementProofAxisExpectations(requirement.text));
+    expect(relations.evidenceContextRequirementIdsByRequirement.size).toBe(0);
+  });
+
+  it("inherits workflow modality from one explicit immediately preceding antecedent", () => {
+    const { requirements, relations } = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add the validation CI workflow.",
+      "- It must use Node.js 22 and run npm test."
+    ].join("\n"));
+    const [workflow, continuation] = requirements;
+
+    expect(relations.proofExpectationsByRequirement.get(continuation!.id)).toMatchObject({
+      ci: true,
+      implementation: false,
+      execution: true
+    });
+    expect(relations.evidenceContextRequirementIdsByRequirement.get(continuation!.id))
+      .toEqual([workflow!.id]);
+  });
+
+  it.each([
+    {
+      name: "a heading break",
+      taskText: [
+        "## Workflow",
+        "Add the validation CI workflow.",
+        "## Runtime",
+        "It must use Node.js 22 and run npm test."
+      ].join("\n")
+    },
+    {
+      name: "two possible workflows",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- Add the release CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n")
+    },
+    {
+      name: "a non-anaphoric sentence",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- The validation runner must use Node.js 22 and run npm test."
+      ].join("\n")
+    }
+  ])("keeps sentence-local proof for $name", ({ taskText }) => {
+    const { requirements, relations } = deterministicRelations(taskText);
+    const continuation = requirements.at(-1)!;
+
+    expect(relations.proofExpectationsByRequirement.get(continuation.id))
+      .toEqual(requirementProofAxisExpectations(continuation.text));
+    expect(relations.evidenceContextRequirementIdsByRequirement.has(continuation.id)).toBe(false);
+  });
+
+  it("keeps reviewer presentation incomplete without browser or visual evidence", () => {
+    const report = generateVerificationReport(linkedInput({
+      taskText: "Important checks should be visible before review starts.",
+      changedFiles: [
+        { path: "src/review/ChecksPanel.tsx", status: "modified", patch: "+ return <section>Important checks</section>" },
+        { path: "src/review/ChecksPanel.test.tsx", status: "modified", patch: "+ it('shows important checks', () => {})" }
+      ],
+      checks: [{ name: "Checks panel unit tests", status: "passed", summary: "Checks panel unit tests passed." }]
+    }));
+    const visual = axis(report.requirements[0], "visual");
+
+    expect(visual).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(report.requirements[0]?.gaps.join(" ")).toMatch(/visual/i);
+  });
+
+  it("uses CI plus execution axes for a resolved workflow continuation", () => {
+    const report = generateVerificationReport(linkedInput({
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }]
+    }));
+    const continuation = report.requirements[1];
+
+    expect(continuation?.proofAxes?.map((item) => item.subject)).toEqual([
+      "ci_configuration",
+      "execution"
+    ]);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("keeps a workflow-like continuation sentence-local after a blank-line group break", () => {
+    const report = generateVerificationReport(linkedInput({
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/validation-runner.ts",
+        status: "modified",
+        patch: "+ export const validationRunner = { node: 22, command: 'npm test' };"
+      }],
+      checks: [{ name: "Validation runner tests", status: "passed", summary: "Node.js 22 npm test passed." }]
+    }));
+    const continuation = report.requirements[1];
+
+    expect(continuation?.proofAxes?.map((item) => item.subject)).toEqual([
+      "implementation",
+      "execution"
+    ]);
+    expect(report.proofGraph.nodes[1]?.deterministicRelation).toBeUndefined();
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("treats flat list items as siblings instead of an implicit parent chain", () => {
     const result = extractRequirementSpanSeed([
       "Acceptance criteria:",
@@ -146,10 +437,28 @@ describe("requirement relation regression matrix", () => {
       ].join("\n"),
       changedFiles: [
         { path: "src/retry.ts", status: "modified", patch: "+ export function retryRequest() {}" },
-        { path: "test/retry.test.ts", status: "modified", patch: "+ test('both retry paths', () => {})" },
+        {
+          path: "test/retry.test.ts",
+          status: "modified",
+          patch: [
+            "+ import assert from 'node:assert/strict';",
+            "+ import { retryRequest } from '../src/retry';",
+            "+ test('first retry path', () => { assert.equal(retryRequest(true), undefined); });",
+            "+ test('second retry path', () => { assert.equal(retryRequest(false), undefined); });"
+          ].join("\n")
+        },
         { path: "docs/retry.md", status: "modified", patch: "+ Retry setup" }
       ],
-      checks: [{ name: "retry tests", status: "passed", summary: "Both retry paths passed." }]
+      checks: [{ name: "retry tests", status: "passed", summary: "Both retry paths passed." }],
+      logs: [{ source: "retry tests", status: "passed", text: "npm test passed." }],
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: "retry tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/retry.test.ts"]
+      }]
     }));
     const nestedTest = report.requirements[1];
     const documentationSibling = report.requirements[2];
@@ -183,7 +492,12 @@ describe("requirement relation regression matrix", () => {
       sourcePath: "src/repositories/repository-visibility.js",
       testPath: "test/repository-visibility.test.js",
       patch: "+ export function repositoryVisibilityLabel(isPrivate) { return isPrivate ? 'Private repository' : 'Public repository'; }",
-      testPatch: "+ test('returns both repository visibility labels', () => {})",
+      testPatch: [
+        "+ import assert from 'node:assert/strict';",
+        "+ import { repositoryVisibilityLabel } from '../src/repositories/repository-visibility.js';",
+        "+ test('private repository', () => { assert.equal(repositoryVisibilityLabel(true), 'Private repository'); });",
+        "+ test('public repository', () => { assert.equal(repositoryVisibilityLabel(false), 'Public repository'); });"
+      ].join("\n"),
       check: "repository visibility tests"
     },
     {
@@ -197,7 +511,12 @@ describe("requirement relation regression matrix", () => {
       sourcePath: "src/billing/invoice-reference.js",
       testPath: "test/invoice-reference.test.js",
       patch: "+ export const invoiceReference = value => value.trim().toUpperCase() || 'UNKNOWN';",
-      testPatch: "+ test('normal and empty invoice references', () => {})",
+      testPatch: [
+        "+ import assert from 'node:assert/strict';",
+        "+ import { invoiceReference } from '../src/billing/invoice-reference.js';",
+        "+ test('normal reference', () => { assert.equal(invoiceReference('ab'), 'AB'); });",
+        "+ test('empty reference', () => { assert.equal(invoiceReference(''), 'UNKNOWN'); });"
+      ].join("\n"),
       check: "invoice reference tests"
     },
     {
@@ -211,7 +530,12 @@ describe("requirement relation regression matrix", () => {
       sourcePath: "src/connections/connection-label.js",
       testPath: "test/연결-라벨.test.js",
       patch: "+ export const connectionLabel = expired => expired ? 'Expired' : 'Connected';",
-      testPatch: "+ test('연결의 두 상태를 검증한다', () => {})",
+      testPatch: [
+        "+ import assert from 'node:assert/strict';",
+        "+ import { connectionLabel } from '../src/connections/connection-label.js';",
+        "+ test('연결 상태', () => { assert.equal(connectionLabel(false), 'Connected'); });",
+        "+ test('만료 상태', () => { assert.equal(connectionLabel(true), 'Expired'); });"
+      ].join("\n"),
       check: "연결 라벨 회귀 테스트"
     }
   ])("links a referential test-only sibling to $name without adding implementation proof", (fixture) => {
@@ -222,7 +546,15 @@ describe("requirement relation regression matrix", () => {
         { path: fixture.testPath, status: "modified", patch: fixture.testPatch }
       ],
       checks: [{ name: fixture.check, status: "passed", summary: `${fixture.check} passed.` }],
-      logs: [{ source: fixture.check, status: "passed", text: `${fixture.check} passed.` }]
+      logs: [{ source: fixture.check, status: "passed", text: `${fixture.check} passed.` }],
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: fixture.check,
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [fixture.testPath]
+      }]
     }));
     const testFinding = report.requirements.at(-1);
 
@@ -336,7 +668,10 @@ describe("requirement relation regression matrix", () => {
         {
           path: "test/repository-visibility.test.js",
           status: "added",
-          patch: "+ test('returns both repository visibility labels', () => {})"
+          patch: [
+            "+ import { repositoryVisibilityLabel } from '../src/repositories/repository-visibility.js';",
+            "+ test('returns one repository visibility label', () => { expect(repositoryVisibilityLabel(true)).toBe('Private repository'); });"
+          ].join("\n")
         }
       ],
       checks: [{ name: "repository visibility tests", status: "passed", summary: "repository visibility tests passed." }],
@@ -354,7 +689,7 @@ describe("requirement relation regression matrix", () => {
     }))).toEqual([
       { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
       { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
-      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" }
+      { status: "partial", evidenceStatus: "partial", sourceAuthority: "pr_description" }
     ]);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
@@ -362,11 +697,14 @@ describe("requirement relation regression matrix", () => {
   it("keeps an explicit-subject test-only objective independent from implementation proof", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
-      changedFiles: [{
-        path: "test/retry-queue.test.ts",
-        status: "modified",
-        patch: "+ test('retry queue synchronization', () => {})"
-      }],
+      changedFiles: [
+        { path: "src/retry-queue.ts", status: "modified", patch: "+ export function retryQueue() {}" },
+        {
+          path: "test/retry-queue.test.ts",
+          status: "modified",
+          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { retryQueue(); })"
+        }
+      ],
       checks: [{ name: "retry queue tests", status: "passed", summary: "Retry queue tests passed." }]
     }));
     const finding = report.requirements[0];
@@ -381,7 +719,11 @@ describe("requirement relation regression matrix", () => {
       taskText: "Acceptance criteria: retry failed synchronization jobs and add regression tests.",
       changedFiles: [
         { path: "src/retry-queue.ts", status: "modified", patch: "+ export function retryFailedJobs() {}" },
-        { path: "test/retry-queue.test.ts", status: "modified", patch: "+ test('retry failed jobs', () => {})" }
+        {
+          path: "test/retry-queue.test.ts",
+          status: "modified",
+          patch: "+ import { retryFailedJobs } from '../src/retry-queue';\n+ test('retry failed jobs', () => { retryFailedJobs(); })"
+        }
       ],
       checks: [{ name: "retry queue tests", status: "passed", summary: "Retry failed job tests passed." }]
     }));
@@ -488,8 +830,9 @@ describe("requirement relation regression matrix", () => {
       polarity: "absent",
       state: "satisfied"
     });
-    expect(axis(finding, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(finding, "targeted_test")).toMatchObject({ state: "violated" });
     expect(axis(finding, "execution")).toMatchObject({ state: "satisfied" });
+    expect(finding?.status).not.toBe("met");
   });
 
   it("violates a test-only negative implementation constraint when source code changes", () => {
@@ -529,11 +872,14 @@ describe("requirement relation regression matrix", () => {
   it("keeps execution incomplete when the targeted test exists but only an unrelated check passes", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
-      changedFiles: [{
-        path: "test/retry-queue.test.ts",
-        status: "added",
-        patch: "+ test('retry queue synchronization', () => {})"
-      }],
+      changedFiles: [
+        { path: "src/retry-queue.ts", status: "modified", patch: "+ export function retryQueue() {}" },
+        {
+          path: "test/retry-queue.test.ts",
+          status: "added",
+          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { retryQueue(); })"
+        }
+      ],
       checks: [{ name: "customer export tests", status: "passed", summary: "Customer export tests passed." }]
     }));
     const finding = report.requirements[0];

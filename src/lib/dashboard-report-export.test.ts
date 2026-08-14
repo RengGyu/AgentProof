@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "./dashboard-report-export";
+import { generateVerificationReportV2FromInput } from "./verifier";
 
 const detail = {
-  repositoryFullName: "RengGyu/agentproof-evaluation-fixtures",
-  pullRequestNumber: 5,
+  repositoryFullName: "synthetic-org/agentproof-rendering-fixture",
+  pullRequestNumber: 424242,
   headSha: "a".repeat(40),
   priority: "high",
   createdAt: "2026-08-09T00:00:00.000Z",
@@ -18,6 +19,32 @@ const detail = {
     reprompt: { prompt: "Add focused evidence for the empty state." }
   }
 } satisfies DashboardReportDetail & { repositoryFullName: string };
+
+function generatedSearchEmptyStateReport() {
+  return generateVerificationReportV2FromInput({
+    title: "Add repository search empty state",
+    description: "Adds empty-state behavior and a focused logic test.",
+    taskText: "Search results must show an empty-state message when no repositories match.",
+    taskSource: "issue",
+    changedFiles: [
+      {
+        path: "src/repositories/RepositorySearch.js",
+        status: "modified",
+        patch: "+ export function emptyStateMessage() { return 'No repositories found'; }"
+      },
+      {
+        path: "test/repository-search.test.js",
+        status: "modified",
+        patch: [
+          "+ import { emptyStateMessage } from '../src/repositories/RepositorySearch.js';",
+          "+ test('returns the empty state message', () => { expect(emptyStateMessage()).toBe('No repositories found'); });"
+        ].join("\n")
+      }
+    ],
+    checks: [{ name: "repository search tests", status: "passed", summary: "Repository search tests passed." }],
+    logs: [{ source: "repository search tests", status: "passed", text: "Repository search tests passed." }]
+  });
+}
 
 describe("dashboard report export", () => {
   it("renders PR-description authority separately from supported evidence", () => {
@@ -39,35 +66,31 @@ describe("dashboard report export", () => {
     expect(json.requirements[0]).toMatchObject({ coverage: "met", source_authority: "pr_description" });
   });
 
-  it("separates a v2 no-contract outcome from its observed deterministic evidence", () => {
+  it("renders v2 contract guidance once while preserving a card's local observation gap", () => {
     const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
-    strictDetail.report = {
-      ...strictDetail.report,
-      reportSchemaVersion: "verification-report.v2",
-      verificationContract: { state: "absent" },
-      requirements: [{
-        requirementId: "req_1",
-        requirementText: "Make the repository overview more useful.",
-        status: "unclear",
-        evidenceStatus: "met",
-        evidenceRefs: ["ev_1"],
-        gaps: ["Outcome was not assessed against an approved verification contract."]
-      }]
-    };
+    strictDetail.report = generatedSearchEmptyStateReport();
 
     const markdown = dashboardReportToMarkdown(strictDetail);
     const json = JSON.parse(dashboardReportToJson(strictDetail));
 
     expect(markdown).toContain("**Policy:** Strict verification contract");
     expect(markdown).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
-    expect(markdown).toContain("Observed evidence: Supported");
+    expect(markdown).toContain("Observed evidence: Partially supported");
     expect(markdown).toContain("Requirement outcome: Unclear");
-    expect(markdown).toContain("Key gap: Approved verification contract is missing.");
-    expect(markdown).toContain("Next: Add or approve a typed verification contract, then rerun the analysis.");
+    expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
+    expect(markdown).toContain("**Contract guidance:** Approved verification contract is missing.");
+    expect(markdown).toContain("Key gap: User-facing interaction needs component or browser evidence beyond logic and suite execution.");
+    expect(markdown).not.toContain("Key gap: Approved verification contract is missing.");
+    expect(markdown.match(/User-facing interaction needs component or browser evidence beyond logic and suite execution\./g)).toHaveLength(1);
+    expect(markdown.indexOf("**Contract guidance:**")).toBeLessThan(markdown.indexOf("Key gap:"));
     expect(json).toMatchObject({
       verification_policy: "Strict verification contract",
       verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."
     });
+    expect(json.requirements[0].evidence_gaps).toEqual([
+      "User-facing interaction needs component or browser evidence beyond logic and suite execution."
+    ]);
+    expect(JSON.stringify(json.requirements[0])).not.toContain("Approved verification contract is missing.");
   });
 
   it("renders a verified authoritative outcome as contract-supported", () => {
@@ -121,9 +144,9 @@ describe("dashboard report export", () => {
 
     expect(exported).toEqual({
       schema_version: "agentproof.dashboard-report-export.v1",
-      repository: "RengGyu/agentproof-evaluation-fixtures",
+      repository: "synthetic-org/agentproof-rendering-fixture",
       pull_request: {
-        number: 5,
+        number: 424242,
         head_sha: "a".repeat(40),
         analyzed_at: "2026-08-09T00:00:00.000Z",
         evidence_captured_at: null,
@@ -146,8 +169,8 @@ describe("dashboard report export", () => {
     const markdown = dashboardReportToMarkdown(detail);
 
     expect(markdown).toContain("# AgentProof evidence report");
-    expect(markdown).toContain("RengGyu/agentproof-evaluation-fixtures");
-    expect(markdown).toContain("**PR:** #5");
+    expect(markdown).toContain("synthetic-org/agentproof-rendering-fixture");
+    expect(markdown).toContain("**PR:** #424242");
     expect(markdown).toContain("Focused test evidence is missing.");
     expect(markdown).toContain("src/repositories/search.ts");
     expect(markdown).toContain("Requirement ID: req_1");
@@ -162,7 +185,7 @@ describe("dashboard report export", () => {
     const markdown = dashboardReportsToMarkdown([older, newer]);
 
     expect(markdown).toContain("# AgentProof repository evidence reports");
-    expect(markdown).toContain("**Repository:** RengGyu/agentproof-evaluation-fixtures");
+    expect(markdown).toContain("**Repository:** synthetic-org/agentproof-rendering-fixture");
     expect(markdown).toContain("**Reports:** 2");
     expect(markdown.indexOf("**PR:** #28")).toBeLessThan(markdown.indexOf("**PR:** #12"));
     expect(markdown.match(/# AgentProof evidence report/g)).toHaveLength(2);

@@ -233,6 +233,7 @@ function tenantVerificationContract(report: VerificationReport): TenantPersisted
     policy: "strict_typed_contract",
     state: contract.state,
     source: contract.source ? { kind: contract.source.kind } : null,
+    gaps: tenantVerificationContractGaps(contract.state),
     objectives: contract.objectives.map((objective) => ({
       requirementId: objective.requirementId,
       state: objective.state,
@@ -256,6 +257,27 @@ function tenantVerificationContract(report: VerificationReport): TenantPersisted
   };
 }
 
+function tenantVerificationContractGaps(state: VerificationContractReportV2["state"]): VerificationContractReportV2["gaps"] {
+  if (state === "absent") return [{ kind: "verification_contract_missing", message: "Approved verification contract is missing." }];
+  if (state === "invalid") return [{ kind: "verification_contract_invalid", message: "Verification contract could not be validated." }];
+  return [];
+}
+
+function hasTenantVerificationContractGaps(value: unknown, state: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  const expected = state === "absent"
+    ? { kind: "verification_contract_missing", message: "Approved verification contract is missing." }
+    : state === "invalid"
+      ? { kind: "verification_contract_invalid", message: "Verification contract could not be validated." }
+      : undefined;
+  return expected
+    ? value.length === 1 && Boolean(value[0] && typeof value[0] === "object" && !Array.isArray(value[0]) &&
+      Object.keys(value[0]).length === 2 &&
+      (value[0] as { kind?: unknown }).kind === expected.kind &&
+      (value[0] as { message?: unknown }).message === expected.message)
+    : value.length === 0;
+}
+
 function validateTenantVerificationContractMarker(report: Partial<TenantPersistedReport> & Record<string, unknown>, errors: string[]): void {
   const isV2 = report.reportSchemaVersion === "verification-report.v2";
   if (!isV2) {
@@ -270,9 +292,10 @@ function validateTenantVerificationContractMarker(report: Partial<TenantPersiste
     return;
   }
   const marker = contract as Record<string, unknown>;
-  if (Object.keys(marker).some((key) => !["version", "policy", "state", "source", "objectives"].includes(key)) ||
+  if (Object.keys(marker).some((key) => !["version", "policy", "state", "source", "gaps", "objectives"].includes(key)) ||
     marker.version !== 2 || marker.policy !== "strict_typed_contract" ||
     (marker.state !== "authoritative" && marker.state !== "author_claim" && marker.state !== "absent" && marker.state !== "invalid") ||
+    !hasTenantVerificationContractGaps(marker.gaps, marker.state) ||
     !Array.isArray(marker.objectives) ||
     ((marker.state === "absent" || marker.state === "invalid") && (marker.source !== null || marker.objectives.length !== 0))) {
     errors.push("tenant v2 contract marker is invalid.");
@@ -602,6 +625,7 @@ function hydrateTenantVerificationContract(contract: TenantVerificationContract)
     policy: contract.policy,
     state: contract.state,
     source: contract.source ? { kind: contract.source.kind } : null,
+    gaps: tenantVerificationContractGaps(contract.state),
     objectives: contract.objectives.map((objective) => ({
       requirementId: objective.requirementId,
       state: objective.state,

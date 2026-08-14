@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { requirementProofExpectations } from "./verifier-proof-expectations";
+import {
+  requirementProofAxisExpectations,
+  requirementProofAxisExpectationsWithContext,
+  requirementProofExpectations
+} from "./verifier-proof-expectations";
 
 describe("requirementProofExpectations", () => {
   it.each([
@@ -27,5 +31,26 @@ describe("requirementProofExpectations", () => {
     expect(requirementProofExpectations("* Prevent stale session renewal and add regression coverage.")).toEqual(plain);
     expect(requirementProofExpectations("7. Prevent stale session renewal and add regression coverage.")).toEqual(plain);
     expect(plain).toMatchObject({ implementation: true, targetedTest: true, execution: true });
+  });
+
+  it("adds only the visual axis for a closed reviewer-presentation context", () => {
+    expect(requirementProofAxisExpectationsWithContext(
+      "Important checks should be visible before review starts.",
+      { kind: "review_presentation" }
+    )).toMatchObject({ visual: true, interaction: false });
+  });
+
+  it("replaces the fallback implementation axis for a closed workflow antecedent", () => {
+    expect(requirementProofAxisExpectationsWithContext(
+      "It must use Node.js 22 and run npm test.",
+      { kind: "workflow_antecedent" }
+    )).toMatchObject({ ci: true, implementation: false, execution: true });
+  });
+
+  it("keeps sentence-local expectations when no deterministic context resolved", () => {
+    const text = "The validation runner must use Node.js 22 and run npm test.";
+
+    expect(requirementProofAxisExpectationsWithContext(text, { kind: "none" }))
+      .toEqual(requirementProofAxisExpectations(text));
   });
 });

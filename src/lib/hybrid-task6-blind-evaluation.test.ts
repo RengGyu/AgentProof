@@ -79,7 +79,7 @@ describe("Task 6 frozen development/regression set (16)", () => {
       taskText: "Acceptance criteria:\n- Add retry handling with regression tests.",
       changedFiles: [
         { path: "src/retry.ts", status: "modified", patch: "+ export function retryRequest() {}" },
-        { path: "src/retry.test.ts", status: "modified", patch: "+ test('retry request', () => {})" }
+        { path: "src/retry.test.ts", status: "modified", patch: "+ import { retryRequest } from './retry';\n+ test('retry request', () => { retryRequest(); })" }
       ],
       checks: [{ name: "retry tests", status: "passed", summary: "Retry request regression tests passed." }],
       logs: [{ source: "retry tests", status: "passed", text: "retry request regression passed" }]

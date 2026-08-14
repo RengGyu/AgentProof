@@ -3,6 +3,7 @@ import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport } from "./report-validation";
 import { decodeSharedReport, encodeReportForShare, sanitizeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
+import { projectTenantPersistedReport } from "./tenant-report-validation";
 import { generateVerificationReport } from "./verifier";
 import { generateVerificationReportV2 } from "./verifier";
 
@@ -16,6 +17,201 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("rejects direct assertion case coverage when its receipt is missing or inconsistent", () => {
+    const headSha = "d".repeat(40);
+    const testPath = "test/customer-display-name.test.js";
+    const secondaryTestPath = "test/customer-display-name-secondary.test.js";
+    const report = generateVerificationReport({
+      title: "Cover both customer display-name paths",
+      description: "Adds focused customer display-name tests.",
+      taskText: "Acceptance criteria: add focused tests for both paths of customer display-name formatting.",
+      taskSource: "issue",
+      changedFiles: [
+        {
+          path: "src/customers/display-name.js",
+          status: "modified",
+          patch: "+export function customerDisplayName(includeFamilyName) { return includeFamilyName ? 'Ada Lovelace' : 'Ada'; }"
+        },
+        {
+          path: testPath,
+          status: "modified",
+          patch: [
+            "+import assert from 'node:assert/strict';",
+            "+import { customerDisplayName } from '../src/customers/display-name.js';",
+            "+test('short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });",
+            "+test('full name', () => { assert.equal(customerDisplayName(true), 'Ada Lovelace'); });"
+          ].join("\n")
+        },
+        {
+          path: secondaryTestPath,
+          status: "modified",
+          patch: [
+            "+import assert from 'node:assert/strict';",
+            "+import { customerDisplayName } from '../src/customers/display-name.js';",
+            "+test('short name smoke', () => { assert.equal(customerDisplayName(false), 'Ada'); });"
+          ].join("\n")
+        }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "npm test passed." }],
+      sourceProvenance: { ...githubInventoryProvenance(), headSha, changedFileInventory: { version: 1, completeness: "complete", headSha } },
+      executionSuites: [{
+        headSha,
+        status: "passed",
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    });
+    const legitimateNode = report.proofGraph.nodes[0] as typeof report.proofGraph.nodes[number] & {
+      caseCoverageReceipt?: {
+        version: 1;
+        implementationEvidenceRef: string;
+        testEvidenceRef: string;
+        distinctLiteralCaseCount: number;
+      };
+    };
+
+    expect(legitimateNode.caseCoverageReceipt).toBeDefined();
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(JSON.stringify(sanitizeReportForShare(report))).not.toContain("caseCoverageReceipt");
+    expect(JSON.stringify(projectTenantPersistedReport(report, "task-3-test-signing-secret"))).not.toContain("caseCoverageReceipt");
+
+    const mismatchedSuite = structuredClone(report);
+    mismatchedSuite.source.provenance!.executionSuites![0]!.testPaths = [secondaryTestPath];
+    const mismatchedSuiteResult = validateVerificationReport(mismatchedSuite, { mode: "full" });
+    expect(mismatchedSuiteResult.valid).toBe(false);
+    expect(mismatchedSuiteResult.errors.join("\n")).toContain("cites incompatible evidence or collection basis");
+
+    const missing = structuredClone(report);
+    delete (missing.proofGraph.nodes[0] as typeof legitimateNode).caseCoverageReceipt;
+    const missingResult = validateVerificationReport(missing, { mode: "full" });
+    expect(missingResult.valid).toBe(false);
+    expect(missingResult.errors.join("\n")).toContain("case coverage receipt is required");
+
+    const inconsistent = structuredClone(report);
+    const inconsistentNode = inconsistent.proofGraph.nodes[0] as typeof legitimateNode;
+    (inconsistentNode as unknown as { caseCoverageReceipt: Record<string, unknown> }).caseCoverageReceipt = {
+      version: 1,
+      implementationEvidenceRef: legitimateNode.implementationEvidenceRefs[0]!,
+      testEvidenceRef: legitimateNode.implementationEvidenceRefs[0]!,
+      distinctLiteralCaseCount: 1
+    };
+    const inconsistentResult = validateVerificationReport(inconsistent, { mode: "full" });
+    expect(inconsistentResult.valid).toBe(false);
+    expect(inconsistentResult.errors.join("\n")).toContain("caseCoverageReceipt.testEvidenceRef must match targeted test evidence");
+    expect(inconsistentResult.errors.join("\n")).toContain("caseCoverageReceipt.distinctLiteralCaseCount must be 2");
+  });
+
+  it("requires CI plus execution instead of fallback implementation for a resolved workflow continuation", () => {
+    const report = generateVerificationReport({
+      title: "Pin the validation workflow runtime",
+      description: "Updates the validation workflow.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      taskSource: "issue",
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }, {
+        path: "test/validation-workflow.test.js",
+        status: "modified",
+        patch: "+ test('validation workflow command', () => { expect('npm test').toBe('npm test'); });"
+      }],
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }],
+      logs: [],
+      sourceProvenance: githubInventoryProvenance(),
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: "Validation CI",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/validation-workflow.test.js"]
+      }]
+    });
+
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(report.proofGraph.nodes[1]?.deterministicRelation).toEqual({
+      version: 1,
+      kind: "workflow_antecedent",
+      antecedentRequirementId: report.requirements[0]!.requirementId
+    });
+
+    for (const collectionBasis of ["passing_execution", "passing_suite_execution"] as const) {
+      const forgedExecution = structuredClone(report);
+      const forgedAxis = forgedExecution.requirements[1]!.proofAxes!.find((axis) => axis.subject === "execution")!;
+      const passingRef = forgedExecution.evidenceIndex.find((evidence) => evidence.kind === "check")!.id;
+      forgedAxis.state = "satisfied";
+      forgedAxis.evidenceRefs = [passingRef];
+      forgedAxis.collectionBasis = collectionBasis;
+      forgedExecution.proofGraph.nodes[1]!.executionEvidenceRefs = [passingRef];
+      if (collectionBasis === "passing_suite_execution") {
+        const testRef = forgedExecution.evidenceIndex.find((evidence) => evidence.kind === "test")!.id;
+        forgedExecution.proofGraph.nodes[1]!.targetedTestEvidenceRefs = [testRef];
+      }
+      forgedExecution.proofGraph.summary.requirementsWithExecution = forgedExecution.proofGraph.nodes
+        .filter((node) => node.executionEvidenceRefs.length > 0).length;
+      forgedExecution.proofGraph.summary.requirementsWithTargetedTests = forgedExecution.proofGraph.nodes
+        .filter((node) => node.targetedTestEvidenceRefs.length > 0).length;
+
+      const forged = validateVerificationReport(forgedExecution, { mode: "full" });
+      expect(forged.valid).toBe(false);
+      expect(forged.errors).toEqual([
+        "requirements[1].proofAxes[1] satisfied workflow antecedent execution requires a complete workflow/job identity tuple."
+      ]);
+    }
+
+    const fallback = structuredClone(report);
+    const continuation = fallback.requirements[1]!;
+    const ciAxis = continuation.proofAxes!.find((axis) => axis.subject === "ci_configuration")!;
+    ciAxis.subject = "implementation";
+    fallback.proofGraph.nodes[1]!.sourceSection = "tampered-section";
+
+    const invalid = validateVerificationReport(fallback, { mode: "full" });
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join("\n")).toContain("complete required proof axis set");
+  });
+
+  it("does not let duplicate requirement-text tampering neutralize a closed workflow receipt", () => {
+    const report = generateVerificationReport({
+      title: "Pin the validation workflow runtime",
+      description: "Updates the validation workflow.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      taskSource: "issue",
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }],
+      logs: []
+    });
+    const tampered = structuredClone(report);
+    tampered.requirements[0]!.requirementText = "Add the validation runner configuration.";
+    tampered.proofGraph.nodes[0]!.requirementText = "Add the validation runner configuration.";
+    tampered.requirements[1]!.requirementText = "The runner must use Node.js 22 and run npm test.";
+    tampered.proofGraph.nodes[1]!.requirementText = "The runner must use Node.js 22 and run npm test.";
+    for (const requirement of tampered.requirements) {
+      const ciAxis = requirement.proofAxes!.find((axis) => axis.subject === "ci_configuration")!;
+      ciAxis.subject = "implementation";
+    }
+
+    const result = validateVerificationReport(tampered, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("complete required proof axis set");
+  });
+
   it("accepts a v2 no-contract report only through the v2 full validator and rejects a deleted contract", () => {
     const report = generateVerificationReportV2({
       input: {
@@ -175,7 +371,13 @@ describe("validateVerificationReport", () => {
       taskText: "Search results must show an empty-state message when no repositories match.",
       changedFiles: [
         { path: "src/repositories/RepositorySearch.js", additions: 8, deletions: 0, status: "added", patch: "+ export function emptyStateMessage() {}" },
-        { path: "test/repository-search.test.js", additions: 8, deletions: 0, status: "added", patch: "+ test('empty state', () => {})" }
+        {
+          path: "test/repository-search.test.js",
+          additions: 8,
+          deletions: 0,
+          status: "added",
+          patch: "+ import { emptyStateMessage } from '../src/repositories/RepositorySearch.js';\n+ test('empty state', () => { emptyStateMessage(); })"
+        }
       ],
       checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
       logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "Steps: Run npm test: passed." }],

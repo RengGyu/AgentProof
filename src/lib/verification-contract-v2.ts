@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import type { RequirementProofPolarity, RequirementProofSubject } from "./types";
+import type { RequirementProofPolarity, RequirementProofSubject, VerificationContractGapKindV2 } from "./types";
 
 export const VERIFICATION_CONTRACT_V2_VERSION = 2 as const;
 export const VERIFICATION_CONTRACT_TITLE = "AgentProof verification contract";
@@ -18,6 +18,11 @@ const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]{1,200}$/;
 const SAFE_SYMBOL = /^[A-Za-z_$][A-Za-z0-9_$]{0,199}$/;
 
 export type VerificationContractStateV2 = "authoritative" | "author_claim" | "absent" | "invalid";
+
+export interface VerificationContractGapSignalV2 {
+  kind: VerificationContractGapKindV2;
+  message: string;
+}
 
 export type VerificationContractInvalidReasonV2 =
   | "malformed"
@@ -148,6 +153,8 @@ export interface VerificationContractReportV2 {
   policy: "strict_typed_contract";
   state: VerificationContractStateV2;
   source: { kind: VerificationBindingInputV2["sourceKind"] } | null;
+  /** Report-level contract guidance; it never replaces a requirement's local observations. */
+  gaps: VerificationContractGapSignalV2[];
   objectives: Array<{
     requirementId: string;
     state: "authoritative" | "author_claim";
@@ -368,7 +375,16 @@ export function toVerificationContractReportV2(
   results: readonly VerificationCriterionEvaluationV2[] = []
 ): VerificationContractReportV2 {
   if (parsed.state === "absent" || parsed.state === "invalid" || !materialized || !sourceKind) {
-    return { version: 2, policy: "strict_typed_contract", state: parsed.state, source: null, objectives: [] };
+    return {
+      version: 2,
+      policy: "strict_typed_contract",
+      state: parsed.state,
+      source: null,
+      gaps: parsed.state === "absent"
+        ? [{ kind: "verification_contract_missing", message: "Approved verification contract is missing." }]
+        : [{ kind: "verification_contract_invalid", message: "Verification contract could not be validated." }],
+      objectives: []
+    };
   }
   const resultByCriterionId = new Map(results.map((result) => [result.criterionId, result]));
   return {
@@ -376,6 +392,7 @@ export function toVerificationContractReportV2(
     policy: "strict_typed_contract",
     state: materialized.state,
     source: { kind: sourceKind },
+    gaps: [],
     objectives: materialized.objectives.map((objective) => ({
       requirementId: objective.requirementId,
       state: objective.state,

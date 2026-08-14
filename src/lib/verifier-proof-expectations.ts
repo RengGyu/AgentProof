@@ -9,6 +9,13 @@ export interface RequirementProofExpectations {
   execution: boolean;
 }
 
+export type DeterministicProofContext =
+  | { kind: "none" }
+  | { kind: "review_presentation" }
+  | { kind: "workflow_antecedent"; requirementId: string };
+
+type ProofExpectationContext = DeterministicProofContext | { kind: "workflow_antecedent" };
+
 /** Classifies explicit objective modalities independently. */
 export function requirementProofExpectations(text: string): RequirementProofExpectations {
   const normalized = text.trim().replace(/^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)/, "");
@@ -47,4 +54,34 @@ export function requirementProofAxisExpectations(text: string): RequirementProof
     targetedTest,
     execution: expectations.execution || targetedTest
   };
+}
+
+/** Applies only closed, deterministic English relations established from the selected source. */
+export function requirementProofAxisExpectationsWithContext(
+  text: string,
+  context: ProofExpectationContext
+): RequirementProofExpectations {
+  const expectations = requirementProofAxisExpectations(text);
+
+  if (context.kind === "review_presentation" && isEnglishReviewPresentationV1(text)) {
+    return { ...expectations, visual: true };
+  }
+
+  if (context.kind === "workflow_antecedent") {
+    return {
+      ...expectations,
+      implementation: false,
+      ci: true,
+      execution: true
+    };
+  }
+
+  return expectations;
+}
+
+function isEnglishReviewPresentationV1(text: string): boolean {
+  const reviewOrUser = /\b(?:review(?:er|ers|ing)?|users?)\b/i.test(text);
+  const uiSurface = /\b(?:checks?|statuses?|results?|evidence|findings?|requirements?|cards?|panels?|screens?|views?|ui|interface)\b/i.test(text);
+  const presentationVerb = /\b(?:visible|shown?|displayed?|rendered?|presented?|surfaced?)\b/i.test(text);
+  return reviewOrUser && uiSurface && presentationVerb;
 }

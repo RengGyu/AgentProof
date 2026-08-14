@@ -307,6 +307,13 @@ export interface ReviewPriorityItem {
   evidenceRefs?: string[];
 }
 
+export type VerificationContractGapKindV2 =
+  | "verification_contract_missing"
+  | "verification_contract_invalid"
+  | "criterion_evidence_incomplete"
+  | "criterion_evidence_unavailable"
+;
+
 export type ProofGapKind =
   | "missing_implementation"
   | "missing_targeted_test"
@@ -342,8 +349,26 @@ export interface RequirementProofNode {
   executionEvidenceRefs: string[];
   gapSignals: ProofGapSignal[];
   firstFiles: string[];
+  /** Bounded BASE receipt for direct asserted literal cases; report-local only. */
+  caseCoverageReceipt?: DeterministicCaseCoverageReceipt;
+  /** BASE-only receipt for a source-span relation; contains no source text or planner data. */
+  deterministicRelation?: DeterministicRequirementRelation;
   /** Mirrors the requirement classification basis when enhanced planning applied. */
   classificationBasis?: "deterministic" | "enhanced_plan";
+}
+
+export interface DeterministicRequirementRelation {
+  version: 1;
+  kind: "workflow_antecedent";
+  antecedentRequirementId: string;
+}
+
+export interface DeterministicCaseCoverageReceipt {
+  version: 1;
+  implementationEvidenceRef: string;
+  testEvidenceRef: string;
+  /** Saturated at two; records only that two distinct literal cases were observed. */
+  distinctLiteralCaseCount: 2;
 }
 
 export interface ProofGraph {

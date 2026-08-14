@@ -11,14 +11,19 @@ describe("report share", () => {
   it("round-trips a v2 no-contract report without leaking a private integrity digest", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     const sanitized = sanitizeReportForShare(report);
+    const envelope = JSON.parse(Buffer.from(encodeReportForShare(report), "base64url").toString("utf8")) as Record<string, unknown>;
 
     expect(validateVerificationReport(sanitized, { mode: "v2_summary" })).toEqual({ valid: true, errors: [] });
     const decoded = decodeSharedReport(encodeReportForShare(report));
 
     expect(decoded).toMatchObject({
       reportSchemaVersion: "verification-report.v2",
-      verificationContract: { state: "absent" }
+      verificationContract: {
+        state: "absent",
+        gaps: [{ kind: "verification_contract_missing" }]
+      }
     });
+    expect((envelope.verificationContract as Record<string, unknown>).gaps).toBeUndefined();
     expect(JSON.stringify(decoded)).not.toContain("verificationBindingDigest");
     expect(validateVerificationReport(decoded, { mode: "v2_summary" })).toEqual({ valid: true, errors: [] });
   });

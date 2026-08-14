@@ -10,7 +10,11 @@ import {
   executionEvidenceMatchesAnyTestPath
 } from "./evidence-relation";
 import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
-import { requirementProofAxisExpectations } from "./verifier-proof-expectations";
+import {
+  requirementProofAxisExpectations,
+  requirementProofAxisExpectationsWithContext,
+  type DeterministicProofContext
+} from "./verifier-proof-expectations";
 import { aggregateVerificationCriteriaV2 } from "./verification-contract-v2";
 import {
   PROOF_AXIS_COLLECTION_BASES,
@@ -85,6 +89,7 @@ const LIMITS = {
   proofGraphNodes: 40,
   proofGraphContext: 30,
   proofGraphGaps: 20,
+  verificationContractGaps: 4,
   proofGraphFiles: 20,
   reprompt: 6000,
   evidenceIndex: 200,
@@ -207,7 +212,7 @@ function validateVerificationContractV2(
     return;
   }
   const contract = report.verificationContract;
-  requireKeys(contract, ["version", "policy", "state", "source", "objectives"], "verificationContract", errors, ["integrity"]);
+  requireKeys(contract, ["version", "policy", "state", "source", "gaps", "objectives"], "verificationContract", errors, ["integrity"]);
   if (contract.version !== 2 || contract.policy !== "strict_typed_contract") {
     errors.push("verificationContract version or policy is invalid.");
   }
@@ -223,6 +228,7 @@ function validateVerificationContractV2(
     (contract.source.kind !== "linked_issue" && contract.source.kind !== "provided_requirement" && contract.source.kind !== "pr_description"))) {
     errors.push("active verification contracts require a recognized source kind.");
   }
+  validateVerificationContractGaps(contract.gaps, state, errors);
   const objectives = Array.isArray(contract.objectives) ? contract.objectives : null;
   if (!objectives) {
     errors.push("verificationContract.objectives must be an array.");
@@ -358,6 +364,31 @@ function validateVerificationContractV2(
   }
   if ((state === "absent" || state === "invalid") && requirements.some((requirement) => requirement.status === "met")) {
     errors.push("absent or invalid verification contracts cannot produce met requirements.");
+  }
+}
+
+function validateVerificationContractGaps(value: unknown, state: "authoritative" | "author_claim" | "absent" | "invalid", errors: string[]): void {
+  const gaps = validateArray(value, "verificationContract.gaps", LIMITS.verificationContractGaps, errors);
+  if (!gaps) return;
+  const expected = state === "absent" ? "verification_contract_missing" : state === "invalid" ? "verification_contract_invalid" : undefined;
+  if (expected ? gaps.length !== 1 : gaps.length !== 0) {
+    errors.push(expected
+      ? `verificationContract.${state} state requires exactly one ${expected} gap.`
+      : "active verification contracts cannot contain report-level gaps.");
+  }
+  for (const [index, gap] of gaps.entries()) {
+    const path = `verificationContract.gaps[${index}]`;
+    if (!isRecord(gap)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(gap, ["kind", "message"], path, errors);
+    if (gap.kind !== "verification_contract_missing" && gap.kind !== "verification_contract_invalid" &&
+      gap.kind !== "criterion_evidence_incomplete" && gap.kind !== "criterion_evidence_unavailable") {
+      errors.push(`${path}.kind is invalid.`);
+    }
+    if (expected && gap.kind !== expected) errors.push(`${path}.kind must be ${expected}.`);
+    validateString(gap.message, `${path}.message`, LIMITS.shortText, errors);
   }
 }
 
@@ -872,7 +903,7 @@ function validateProofGraph(
         ],
         path,
         errors,
-        ["classificationBasis"]
+        ["classificationBasis", "deterministicRelation", "caseCoverageReceipt"]
       );
       validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
       if (typeof item.requirementId === "string" && requirementIds.size > 0 && !requirementIds.has(item.requirementId)) {
@@ -901,6 +932,8 @@ function validateProofGraph(
       }
       validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
       validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
+      validateCaseCoverageReceipt(item.caseCoverageReceipt, `${path}.caseCoverageReceipt`, item, evidenceById, errors);
+      validateDeterministicRelation(item.deterministicRelation, `${path}.deterministicRelation`, requirementIds, errors);
     }
     for (const requirementId of requirementIds) {
       if (!seenRequirementIds.has(requirementId)) {
@@ -951,6 +984,76 @@ function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<
     validateEnum(item.severity, `${itemPath}.severity`, PRIORITIES, errors);
     validateString(item.message, `${itemPath}.message`, LIMITS.shortText, errors);
     validateEvidenceRefs(item.evidenceRefs, `${itemPath}.evidenceRefs`, evidenceIds, errors);
+  }
+}
+
+function validateDeterministicRelation(
+  value: unknown,
+  path: string,
+  requirementIds: ReadonlySet<string>,
+  errors: string[]
+) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return;
+  }
+
+  requireKeys(value, ["version", "kind", "antecedentRequirementId"], path, errors);
+  if (value.version !== 1) errors.push(`${path}.version must be 1.`);
+  if (value.kind !== "workflow_antecedent") errors.push(`${path}.kind is invalid.`);
+  validateString(value.antecedentRequirementId, `${path}.antecedentRequirementId`, LIMITS.shortText, errors);
+  if (typeof value.antecedentRequirementId === "string" && !requirementIds.has(value.antecedentRequirementId)) {
+    errors.push(`${path}.antecedentRequirementId must match a report requirement.`);
+  }
+}
+
+function validateCaseCoverageReceipt(
+  value: unknown,
+  path: string,
+  proofNode: RecordValue,
+  evidenceById: ReadonlyMap<string, RecordValue>,
+  errors: string[]
+) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return;
+  }
+
+  requireKeys(
+    value,
+    ["version", "implementationEvidenceRef", "testEvidenceRef", "distinctLiteralCaseCount"],
+    path,
+    errors
+  );
+  if (value.version !== 1) errors.push(`${path}.version must be 1.`);
+  validateString(value.implementationEvidenceRef, `${path}.implementationEvidenceRef`, LIMITS.shortText, errors);
+  validateString(value.testEvidenceRef, `${path}.testEvidenceRef`, LIMITS.shortText, errors);
+  if (value.distinctLiteralCaseCount !== 2) {
+    errors.push(`${path}.distinctLiteralCaseCount must be 2.`);
+  }
+
+  const implementationRefs = new Set(getStringArray(proofNode.implementationEvidenceRefs));
+  const targetedTestRefs = new Set(getStringArray(proofNode.targetedTestEvidenceRefs));
+  if (typeof value.implementationEvidenceRef === "string" && !implementationRefs.has(value.implementationEvidenceRef)) {
+    errors.push(`${path}.implementationEvidenceRef must match implementation evidence.`);
+  }
+  if (typeof value.testEvidenceRef === "string" && !targetedTestRefs.has(value.testEvidenceRef)) {
+    errors.push(`${path}.testEvidenceRef must match targeted test evidence.`);
+  }
+
+  const implementationEvidence = typeof value.implementationEvidenceRef === "string"
+    ? evidenceById.get(value.implementationEvidenceRef)
+    : undefined;
+  if (implementationEvidence && !isImplementationProofEvidence(implementationEvidence)) {
+    errors.push(`${path}.implementationEvidenceRef must cite implementation evidence.`);
+  }
+  const testEvidence = typeof value.testEvidenceRef === "string"
+    ? evidenceById.get(value.testEvidenceRef)
+    : undefined;
+  if (testEvidence && !isTargetedTestProofEvidence(testEvidence)) {
+    errors.push(`${path}.testEvidenceRef must cite test evidence.`);
   }
 }
 
@@ -1340,7 +1443,16 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`requirements[${index}].status must match proofGraph node status.`);
     }
     if (axes) {
-      validateFullRequirementProofAxes(report, requirementText, proofNode, axes, evidenceById, index, errors);
+      validateFullRequirementProofAxes(
+        report,
+        requirementText,
+        proofNode,
+        axes,
+        evidenceById,
+        deterministicProofContextForFullReport(proofNode),
+        index,
+        errors
+      );
     }
 
     const matchingAuthorClaimPartial = item.status === "partial" &&
@@ -1433,11 +1545,12 @@ function validateFullRequirementProofAxes(
   proofNode: RecordValue | undefined,
   axes: RecordValue[],
   evidenceById: Map<string, RecordValue>,
+  proofContext: DeterministicProofContext,
   requirementIndex: number,
   errors: string[]
 ) {
   const path = `requirements[${requirementIndex}].proofAxes`;
-  const expectedKeys = expectedProofAxisKeys(requirementText);
+  const expectedKeys = expectedProofAxisKeys(requirementText, proofContext);
   const actualKeys = new Set(axes.flatMap((axis) =>
     typeof axis.subject === "string" && typeof axis.polarity === "string" ? [`${axis.subject}:${axis.polarity}`] : []
   ));
@@ -1460,6 +1573,15 @@ function validateFullRequirementProofAxes(
     const polarity = typeof axis.polarity === "string" ? axis.polarity : "";
     const state = typeof axis.state === "string" ? axis.state : "";
     const refs = getStringArray(axis.evidenceRefs);
+
+    if (
+      subject === "targeted_test" &&
+      axis.collectionBasis === "direct_assertion_case_coverage" &&
+      state === "satisfied" &&
+      !isRecord(proofNode?.caseCoverageReceipt)
+    ) {
+      errors.push(`${axisPath} case coverage receipt is required for direct assertion case coverage.`);
+    }
 
     if (polarity === "absent") {
       if (state === "satisfied" && !hasAuthoritativeReportChangedFileInventory(report)) {
@@ -1489,6 +1611,11 @@ function validateFullRequirementProofAxes(
       continue;
     }
 
+    if (state === "satisfied" && subject === "execution" && isWorkflowAntecedentProofNode(proofNode)) {
+      errors.push(`${axisPath} satisfied workflow antecedent execution requires a complete workflow/job identity tuple.`);
+      continue;
+    }
+
     if (state !== "satisfied") continue;
     if (refs.length === 0) {
       errors.push(`${axisPath} satisfied present axis must cite evidence.`);
@@ -1503,8 +1630,15 @@ function validateFullRequirementProofAxes(
   }
 }
 
-function expectedProofAxisKeys(text: string): Set<string> {
-  const expectations = requirementProofAxisExpectations(text);
+function isWorkflowAntecedentProofNode(proofNode: RecordValue | undefined): boolean {
+  const relation = isRecord(proofNode?.deterministicRelation) ? proofNode.deterministicRelation : null;
+  return relation?.version === 1 &&
+    relation.kind === "workflow_antecedent" &&
+    typeof relation.antecedentRequirementId === "string";
+}
+
+function expectedProofAxisKeys(text: string, context: DeterministicProofContext): Set<string> {
+  const expectations = requirementProofAxisExpectationsWithContext(text, context);
   const keys: string[] = [];
   if (expectations.implementation) keys.push("implementation:present");
   if (expectations.documentation) keys.push("documentation:present");
@@ -1515,6 +1649,25 @@ function expectedProofAxisKeys(text: string): Set<string> {
   if (expectations.visual) keys.push("visual:present");
   if (expectations.noImplementationChanges) keys.push("implementation:absent");
   return new Set(keys);
+}
+
+function deterministicProofContextForFullReport(
+  current: RecordValue | undefined
+): DeterministicProofContext {
+  const relation = isRecord(current?.deterministicRelation) ? current.deterministicRelation : null;
+  if (
+    relation?.version !== 1 ||
+    relation.kind !== "workflow_antecedent" ||
+    typeof relation.antecedentRequirementId !== "string"
+  ) {
+    const text = typeof current?.requirementText === "string" ? current.requirementText : "";
+    const presentation = requirementProofAxisExpectationsWithContext(text, { kind: "review_presentation" });
+    return presentation.visual && !requirementProofAxisExpectations(text).visual
+      ? { kind: "review_presentation" }
+      : { kind: "none" };
+  }
+
+  return { kind: "workflow_antecedent", requirementId: relation.antecedentRequirementId };
 }
 
 function isSatisfiedAxisEvidenceCompatible(
@@ -1541,12 +1694,19 @@ function isSatisfiedAxisEvidenceCompatible(
     return collectionBasis === "matching_artifact_evidence" && isImplementationProofEvidence(evidence) && isCiEvidencePath(path) && implementationRefs.has(ref);
   }
   if (subject === "targeted_test") {
-    return collectionBasis === "matching_artifact_evidence" &&
+    const requiredBasis = isEnglishBothPathsRequirement(requirementText)
+      ? "direct_assertion_case_coverage"
+      : "matching_artifact_evidence";
+    return collectionBasis === requiredBasis &&
       evidence.kind === "test" &&
       targetedTestRefs.has(ref) &&
-      targetedTestEvidenceMatchesRequirement(report, proofNode, requirementText, evidence);
+      targetedTestEvidenceMatchesRequirement(report, proofNode, requirementText, evidence) &&
+      (requiredBasis !== "direct_assertion_case_coverage" || caseCoverageReceiptMatchesRef(proofNode, ref));
   }
   if (subject === "execution") {
+    if (isEnglishBothPathsRequirement(requirementText) && collectionBasis !== "passing_suite_execution") {
+      return false;
+    }
     if (collectionBasis === "passing_execution") {
       return isPassingTestExecutionEvidence(evidence) &&
         executionRefs.has(ref) &&
@@ -1556,7 +1716,11 @@ function isSatisfiedAxisEvidenceCompatible(
         );
     }
     if (collectionBasis === "passing_suite_execution") {
-      return isVerifiedSuiteExecutionEvidenceCompatible(report, evidence, proofNode, ref);
+      const caseCoverageTestRef = isEnglishBothPathsRequirement(requirementText)
+        ? caseCoverageReceiptTestEvidenceRef(proofNode)
+        : undefined;
+      if (isEnglishBothPathsRequirement(requirementText) && !caseCoverageTestRef) return false;
+      return isVerifiedSuiteExecutionEvidenceCompatible(report, evidence, proofNode, ref, caseCoverageTestRef);
     }
     return false;
   }
@@ -1567,6 +1731,25 @@ function isSatisfiedAxisEvidenceCompatible(
     return collectionBasis === "interaction_verification" && isVisualVerificationProofEvidence(evidence) && evidenceOverlapsRequirement(requirementText, evidence);
   }
   return false;
+}
+
+function caseCoverageReceiptMatchesRef(proofNode: RecordValue | undefined, testEvidenceRef: string): boolean {
+  const receipt = isRecord(proofNode?.caseCoverageReceipt) ? proofNode.caseCoverageReceipt : null;
+  if (
+    receipt?.version !== 1 ||
+    receipt.distinctLiteralCaseCount !== 2 ||
+    receipt.testEvidenceRef !== testEvidenceRef ||
+    typeof receipt.implementationEvidenceRef !== "string"
+  ) {
+    return false;
+  }
+  return getStringArray(proofNode?.implementationEvidenceRefs).includes(receipt.implementationEvidenceRef) &&
+    getStringArray(proofNode?.targetedTestEvidenceRefs).includes(testEvidenceRef);
+}
+
+function caseCoverageReceiptTestEvidenceRef(proofNode: RecordValue | undefined): string | undefined {
+  const receipt = isRecord(proofNode?.caseCoverageReceipt) ? proofNode.caseCoverageReceipt : null;
+  return typeof receipt?.testEvidenceRef === "string" ? receipt.testEvidenceRef : undefined;
 }
 
 function targetedTestEvidenceMatchesRequirement(
@@ -1615,7 +1798,8 @@ function isVerifiedSuiteExecutionEvidenceCompatible(
   report: RecordValue,
   evidence: RecordValue,
   proofNode: RecordValue | undefined,
-  ref: string
+  ref: string,
+  requiredTestEvidenceRef?: string
 ): boolean {
   if (!isPassingTestExecutionEvidence(evidence)) return false;
   if (!new Set(getStringArray(proofNode?.executionEvidenceRefs)).has(ref)) return false;
@@ -1627,7 +1811,9 @@ function isVerifiedSuiteExecutionEvidenceCompatible(
 
   const suites = Array.isArray(provenance.executionSuites) ? provenance.executionSuites.filter(isRecord) : [];
   const label = typeof evidence.label === "string" ? evidence.label : "";
-  const targetedTestRefs = new Set(getStringArray(proofNode?.targetedTestEvidenceRefs));
+  const targetedTestRefs = requiredTestEvidenceRef
+    ? new Set([requiredTestEvidenceRef])
+    : new Set(getStringArray(proofNode?.targetedTestEvidenceRefs));
   const evidenceIndex = Array.isArray(report.evidenceIndex) ? report.evidenceIndex.filter(isRecord) : [];
 
   return suites.some((suite) => {
@@ -1635,7 +1821,7 @@ function isVerifiedSuiteExecutionEvidenceCompatible(
       suite.headSha !== headSha ||
       suite.status !== "passed" ||
       suite.executionSource !== label ||
-      (suite.scope !== "repository_discovery" && suite.scope !== "explicit_paths") ||
+      suite.scope !== "repository_discovery" ||
       !Array.isArray(suite.testPaths)
     ) {
       return false;
@@ -1650,6 +1836,10 @@ function isVerifiedSuiteExecutionEvidenceCompatible(
       coveredPaths.has(item.locator.toLowerCase())
     );
   });
+}
+
+function isEnglishBothPathsRequirement(text: string): boolean {
+  return /\bboth(?:\s+[a-z][a-z0-9-]*){0,4}\s+(?:paths?|branches?)\b/i.test(text);
 }
 
 function isViolatedExecutionAxisEvidenceCompatible(

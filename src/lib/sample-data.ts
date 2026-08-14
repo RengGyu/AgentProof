@@ -29,7 +29,11 @@ export const demoScenarios: Record<DemoScenarioId, PullRequestInput> = {
         additions: 64,
         deletions: 0,
         status: "added",
-        patch: "+ it('shows an inline error for invalid email', async () => {})\n+ it('keeps the valid reset path working', async () => {})"
+        patch: [
+          "+ import { PasswordResetForm } from './PasswordResetForm'",
+          "+ it('shows an inline error for invalid email', async () => { expect(PasswordResetForm(false)).toBeDefined() })",
+          "+ it('keeps the valid reset path working', async () => { expect(PasswordResetForm(true)).toBeDefined() })"
+        ].join("\n")
       }
     ],
     checks: [

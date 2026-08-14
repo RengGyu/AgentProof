@@ -104,13 +104,24 @@ describe("server report store", () => {
 
     expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
 
+    expect(persisted.verificationContract?.gaps).toEqual([
+      { kind: "verification_contract_missing", message: "Approved verification contract is missing." }
+    ]);
+
     expect(decoded).toMatchObject({
       status: "valid",
       report: {
         reportSchemaVersion: "verification-report.v2",
-        verificationContract: { state: "absent", source: null }
+        verificationContract: {
+          state: "absent",
+          source: null,
+          gaps: [{ kind: "verification_contract_missing", message: "Approved verification contract is missing." }]
+        }
       }
     });
+    if (decoded.status === "valid") {
+      expect(validateTenantStoredReport(decoded.report, signingSecret)).toEqual({ valid: true, errors: [] });
+    }
   });
 
   it("round-trips an active authoritative documentation contract without retaining its source details", async () => {
