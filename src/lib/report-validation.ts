@@ -187,13 +187,18 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     validateFullReportSemantics(report, evidenceIds, errors);
   }
   if (isV2) {
-    validateVerificationContractV2(report, evidenceIds, errors);
+    validateVerificationContractV2(report, evidenceIds, mode, errors);
   }
 
   return { valid: errors.length === 0, errors };
 }
 
-function validateVerificationContractV2(report: RecordValue, evidenceIds: Set<string>, errors: string[]): void {
+function validateVerificationContractV2(
+  report: RecordValue,
+  evidenceIds: Set<string>,
+  mode: NonNullable<ReportValidationOptions["mode"]>,
+  errors: string[]
+): void {
   if (report.reportSchemaVersion !== "verification-report.v2") {
     errors.push("report.reportSchemaVersion must be verification-report.v2.");
     return;
@@ -307,6 +312,17 @@ function validateVerificationContractV2(report: RecordValue, evidenceIds: Set<st
         states.push(result.state);
       }
       if (result.state === "satisfied") {
+        // Portable summaries deliberately remove all evidence references. They
+        // remain explicitly unverified and cannot pass the full/private mode.
+        if (mode === "v2_summary") {
+          if (!Array.isArray(result.evidenceRefs) || result.evidenceRefs.length !== 0) {
+            errors.push(`${path}.criterionResults[${criterionIndex}] summary evidence references must be omitted.`);
+          }
+          if (!Array.isArray(result.gapKinds) || result.gapKinds.length !== 0) {
+            errors.push(`${path}.criterionResults[${criterionIndex}] satisfied state cannot include gaps.`);
+          }
+          continue;
+        }
         const satisfiedAbsenceInventory = criterion.type === "absence" && hasAuthoritativeReportChangedFileInventory(report);
         if (criterion.type === "return_value") {
           errors.push(`${path}.criterionResults[${criterionIndex}] return-value satisfied state requires an attested executor result.`);
