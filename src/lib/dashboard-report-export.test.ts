@@ -66,10 +66,16 @@ describe("dashboard report export", () => {
     expect(markdown).toContain("**Contract guidance:** Approved verification contract is missing.");
     expect(markdown).toContain("Key gap: User-facing interaction evidence is missing for this requirement.");
     expect(markdown).not.toContain("Key gap: Approved verification contract is missing.");
+    expect(markdown.match(/User-facing interaction evidence is missing for this requirement\./g)).toHaveLength(1);
+    expect(markdown.indexOf("**Contract guidance:**")).toBeLessThan(markdown.indexOf("Key gap:"));
     expect(json).toMatchObject({
       verification_policy: "Strict verification contract",
       verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."
     });
+    expect(json.requirements[0].evidence_gaps).toEqual([
+      "User-facing interaction evidence is missing for this requirement."
+    ]);
+    expect(JSON.stringify(json.requirements[0])).not.toContain("Approved verification contract is missing.");
   });
 
   it("renders a verified authoritative outcome as contract-supported", () => {
