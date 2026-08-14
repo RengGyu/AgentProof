@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  partitionVisibleRepositoryReports,
   reportWorkspaceStatusLabel,
   visibleRepositoryReports
 } from "./dashboard-report-list";
@@ -21,5 +22,17 @@ describe("dashboard report list", () => {
     expect(reportWorkspaceStatusLabel("current")).toBe("CURRENT");
     expect(reportWorkspaceStatusLabel("refreshing")).toBe("UPDATING");
     expect(reportWorkspaceStatusLabel("refresh_failed")).toBe("NEEDS ATTENTION");
+  });
+
+  it("keeps unavailable historical rows out of the active repository workspace", () => {
+    const mixedReports = [
+      { id: "current", repositoryId: 7, freshness: "current", availability: "available", copyEligible: true, createdAt: "2026-08-14T14:55:31.065Z" },
+      { id: "legacy", repositoryId: 7, freshness: "unknown", availability: "unavailable", copyEligible: false, createdAt: "2026-08-14T01:52:25.235Z" }
+    ] as const;
+
+    expect(partitionVisibleRepositoryReports(mixedReports, 7)).toEqual({
+      primary: [mixedReports[0]],
+      unavailableHistory: [mixedReports[1]]
+    });
   });
 });
