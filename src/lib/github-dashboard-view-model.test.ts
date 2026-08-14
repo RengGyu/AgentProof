@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGitHubPullUrl,
   isPreviewDemoEnabled,
+  verificationOutcomeLabel,
   toRequirementCoverageLabel,
   toQuickSummary,
   toRepositoryWorkspaceRows
@@ -19,6 +20,14 @@ describe("github dashboard view model", () => {
     expect(toRequirementCoverageLabel("partial")).toBe("Partially supported");
     expect(toRequirementCoverageLabel("missing")).toBe("Evidence missing");
     expect(toRequirementCoverageLabel("unclear")).toBe("Unclear");
+  });
+
+  it("labels the verification outcome separately from saved-report availability", () => {
+    expect(verificationOutcomeLabel("supported")).toBe("SUPPORTED");
+    expect(verificationOutcomeLabel("partial")).toBe("PARTIALLY SUPPORTED");
+    expect(verificationOutcomeLabel("contract_missing")).toBe("CONTRACT MISSING");
+    expect(verificationOutcomeLabel("contract_invalid")).toBe("CONTRACT INVALID");
+    expect(verificationOutcomeLabel("unclear")).toBe("UNCLEAR");
   });
 
   it("builds a GitHub pull URL only from a safe repository name and PR number", () => {

@@ -26,11 +26,19 @@ export interface DashboardSavedReport {
   freshness?: DashboardReportFreshness;
   copyEligible?: boolean;
   availability?: "available" | "unavailable" | "analysis_failed";
+  verificationOutcome?: DashboardVerificationOutcome;
   failure?: {
     code?: string;
     summary?: string;
   };
 }
+
+export type DashboardVerificationOutcome =
+  | "supported"
+  | "partial"
+  | "contract_missing"
+  | "contract_invalid"
+  | "unclear";
 
 export type DashboardReportFreshness = "current" | "refreshing" | "refresh_failed" | "superseded" | "stale" | "unknown";
 
@@ -83,6 +91,14 @@ export function toRequirementCoverageLabel(status: string): string {
   if (status === "partial") return "Partially supported";
   if (status === "missing") return "Evidence missing";
   return "Unclear";
+}
+
+export function verificationOutcomeLabel(outcome: DashboardVerificationOutcome | undefined): string {
+  if (outcome === "supported") return "SUPPORTED";
+  if (outcome === "partial") return "PARTIALLY SUPPORTED";
+  if (outcome === "contract_missing") return "CONTRACT MISSING";
+  if (outcome === "contract_invalid") return "CONTRACT INVALID";
+  return "UNCLEAR";
 }
 
 export function buildGitHubPullUrl(repositoryFullName: string | undefined, pullRequestNumber: number | undefined): string | undefined {

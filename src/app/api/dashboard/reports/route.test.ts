@@ -3,7 +3,7 @@ import { clearSavedReportsForTests, createVerifiedSavedReport } from "@/lib/serv
 import * as savedReportStore from "@/lib/server-report-store";
 import { clearTenantAuthSessionsForTests, createTenantAuthSessionForMember } from "@/lib/tenant-auth";
 import { demoScenarios } from "@/lib/sample-data";
-import { generateVerificationReport } from "@/lib/verifier";
+import { generateVerificationReport, generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { claimAnalysisJobById, clearAnalysisJobsForTests, completeAnalysisJob, enqueueAnalysisJob, failAnalysisJob, resolveAnalysisJobFreshness } from "@/lib/analysis-jobs";
 import { GET } from "./route";
 
@@ -72,6 +72,33 @@ describe("/api/dashboard/reports", () => {
     }));
     expect(crossTenantResponse.status).toBe(404);
     await expect(crossTenantResponse.json()).resolves.toMatchObject({ code: "dashboard_report_not_found" });
+  });
+
+  it("keeps a readable saved report distinct from a missing or invalid verification contract", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const missingContract = await createVerifiedSavedReport(generateVerificationReportV2FromInput(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 16, headSha: "a".repeat(40)
+    });
+    const invalidContractReport = generateVerificationReportV2FromInput(demoScenarios.clean);
+    invalidContractReport.verificationContract = {
+      ...invalidContractReport.verificationContract,
+      state: "invalid",
+      gaps: [{ kind: "verification_contract_invalid", message: "Verification contract could not be validated." }],
+      source: null,
+      objectives: []
+    };
+    const invalidContract = await createVerifiedSavedReport(invalidContractReport, {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 19, headSha: "b".repeat(40)
+    });
+
+    const response = await GET(new Request("http://localhost/api/dashboard/reports", { headers: { cookie: session.sessionCookie } }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.reports).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: missingContract.id, availability: "available", verificationOutcome: "contract_missing" }),
+      expect.objectContaining({ id: invalidContract.id, availability: "available", verificationOutcome: "contract_invalid" })
+    ]));
   });
 
   it("returns report priority and safe analysis metadata with tenant-authorized detail", async () => {

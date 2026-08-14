@@ -106,8 +106,16 @@ export interface TenantSavedReportSummary {
   scopeCreepSuspected: boolean;
   staleAt?: string;
   availability?: "available" | "unavailable";
+  verificationOutcome?: TenantSavedReportVerificationOutcome;
   privacy: "summary-only";
 }
+
+export type TenantSavedReportVerificationOutcome =
+  | "supported"
+  | "partial"
+  | "contract_missing"
+  | "contract_invalid"
+  | "unclear";
 
 export type TenantSavedReportPriorityFilter = "all" | VerificationReport["summary"]["priority"];
 export type TenantSavedReportStatusFilter = "all" | "missing_tests" | "scope_creep" | "weak_evidence";
@@ -1026,8 +1034,24 @@ function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedRepor
     scopeCreepSuspected: report.scope.suspected,
     ...(saved.staleAt ? { staleAt: saved.staleAt } : {}),
     availability: "available",
+    verificationOutcome: tenantSavedReportVerificationOutcome(report),
     privacy: "summary-only"
   };
+}
+
+export function tenantSavedReportVerificationOutcome(report: VerificationReport): TenantSavedReportVerificationOutcome {
+  const contract = report as VerificationReport & {
+    reportSchemaVersion?: unknown;
+    verificationContract?: { state?: unknown };
+  };
+  if (contract.reportSchemaVersion === "verification-report.v2") {
+    if (contract.verificationContract?.state === "invalid") return "contract_invalid";
+    if (contract.verificationContract?.state === "absent") return "contract_missing";
+  }
+  const requirementStates = report.requirements.map((requirement) => requirement.status);
+  if (requirementStates.length > 0 && requirementStates.every((state) => state === "met")) return "supported";
+  if (requirementStates.includes("partial")) return "partial";
+  return "unclear";
 }
 
 async function supabaseFetch(config: SupabaseReportStoreConfig, query: string, init: RequestInit) {
