@@ -3295,6 +3295,94 @@ describe("generateVerificationReport", () => {
     expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
   });
 
+  it("retains a directly imported related test but keeps both-path coverage incomplete with one asserted call", () => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({
+      testPatch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+test('formats a short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });"
+      ].join("\n")
+    }));
+    const finding = report.requirements[0];
+    const relatedPaths = refsToEvidence(report, report.proofGraph.nodes[0]?.targetedTestEvidenceRefs ?? [])
+      .map((item) => item.locator);
+
+    expect(relatedPaths).toContain("test/customer-display-name.test.js");
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" })
+    ]));
+    expect(report.proofGraph.nodes[0]?.gapSignals).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "missing_targeted_test",
+        message: expect.stringMatching(/two distinct direct assertion cases.*exact-head suite/i)
+      })
+    ]));
+    expect(finding?.status).not.toBe("met");
+  });
+
+  it("completes both-path coverage with two distinct asserted direct calls and an exact-head suite", () => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({
+      testPatch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { customerDisplayName } from '../src/customers/display-name.js';",
+        "+test('formats a short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });",
+        "+test('formats a full name', () => { assert.equal(customerDisplayName(true), 'Ada Lovelace'); });"
+      ].join("\n")
+    }));
+    const finding = report.requirements[0];
+
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        subject: "targeted_test",
+        state: "satisfied",
+        collectionBasis: "direct_assertion_case_coverage"
+      }),
+      expect.objectContaining({
+        subject: "execution",
+        state: "satisfied",
+        collectionBasis: "passing_suite_execution"
+      })
+    ]));
+    expect(finding?.status).toBe("met");
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it.each([
+    {
+      name: "stale-head suite",
+      executionSuites: [{
+        headSha: "e".repeat(40),
+        status: "passed" as const,
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test" as const,
+        scope: "repository_discovery" as const,
+        testPaths: ["test/customer-display-name.test.js"]
+      }]
+    },
+    {
+      name: "filtered explicit-path suite",
+      executionSuites: [{
+        headSha: "d".repeat(40),
+        status: "passed" as const,
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test" as const,
+        scope: "explicit_paths" as const,
+        testPaths: ["test/customer-display-name.test.js"]
+      }]
+    }
+  ])("keeps both-path coverage incomplete for a $name", ({ executionSuites }) => {
+    const report = generateVerificationReport(customerDisplayNameBothPathsInput({ executionSuites }));
+    const finding = report.requirements[0];
+
+    expect(report.proofGraph.nodes[0]?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
+    expect(finding?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(finding?.status).not.toBe("met");
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("keeps explicit search UI behavior partial when only logic and suite execution are linked", () => {
     const headSha = "d".repeat(40);
     const report = generateVerificationReport({
@@ -3422,5 +3510,50 @@ function githubInventoryProvenance(headSha = "a".repeat(40), inventoryHeadSha = 
       value: "c".repeat(64),
       coverage: "github_metadata"
     }
+  };
+}
+
+function customerDisplayNameBothPathsInput(overrides: {
+  testPatch?: string;
+  executionSuites?: NonNullable<PullRequestInput["executionSuites"]>;
+} = {}): PullRequestInput {
+  const headSha = "d".repeat(40);
+  return {
+    title: "Cover both customer display-name paths",
+    description: "Adds focused customer display-name tests.",
+    taskText: "Acceptance criteria: add focused tests for both paths of customer display-name formatting.",
+    taskSource: "issue",
+    changedFiles: [
+      {
+        path: "src/customers/display-name.js",
+        status: "modified",
+        patch: "+export function customerDisplayName(includeFamilyName) { return includeFamilyName ? 'Ada Lovelace' : 'Ada'; }"
+      },
+      {
+        path: "test/customer-display-name.test.js",
+        status: "modified",
+        patch: overrides.testPatch ?? [
+          "+import assert from 'node:assert/strict';",
+          "+import { customerDisplayName } from '../src/customers/display-name.js';",
+          "+test('formats a short name', () => { assert.equal(customerDisplayName(false), 'Ada'); });",
+          "+test('formats a full name', () => { assert.equal(customerDisplayName(true), 'Ada Lovelace'); });"
+        ].join("\n")
+      }
+    ],
+    checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+    logs: [{
+      source: "GitHub Actions job: unit-tests",
+      status: "passed",
+      text: "GitHub Actions job unit-tests: passed. Steps: Run npm test: passed."
+    }],
+    sourceProvenance: githubInventoryProvenance(headSha),
+    executionSuites: overrides.executionSuites ?? [{
+      headSha,
+      status: "passed",
+      executionSource: "GitHub Actions job: unit-tests",
+      runner: "node_test",
+      scope: "repository_discovery",
+      testPaths: ["test/customer-display-name.test.js"]
+    }]
   };
 }

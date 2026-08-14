@@ -13,7 +13,11 @@ import {
   isExecutionEvidenceSignal,
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
-import { executionEvidenceMatchesAnyTestPath } from "./evidence-relation";
+import {
+  distinctDirectAssertionCallCount,
+  executionEvidenceMatchesAnyTestPath,
+  testImportMatchesImplementation
+} from "./evidence-relation";
 import { redactSecrets } from "./redact";
 import {
   aggregateVerificationCriteriaV2,
@@ -618,13 +622,18 @@ export function generateVerificationReportFromRequirements(
 
 function provenanceWithExecutionSuites(input: PullRequestInput) {
   const provenance = input.sourceProvenance;
-  if (!provenance || provenance.origin !== "github_snapshot" || !input.executionSuites?.length) {
+  if (!provenance || provenance.origin !== "github_snapshot") {
     return provenance;
   }
 
+  const { executionSuites: _untrustedExecutionSuites, ...provenanceWithoutSuites } = provenance;
+  const exactHeadSuites = (input.executionSuites ?? [])
+    .filter((suite) => suite.headSha === provenance.headSha && suite.status === "passed");
+  if (exactHeadSuites.length === 0) return provenanceWithoutSuites;
+
   return {
-    ...provenance,
-    executionSuites: input.executionSuites.map((suite) => ({
+    ...provenanceWithoutSuites,
+    executionSuites: exactHeadSuites.map((suite) => ({
       headSha: suite.headSha,
       status: suite.status,
       executionSource: redactSecrets(suite.executionSource),
@@ -1175,32 +1184,50 @@ function buildProofGraph(
       evidenceLookup,
       implementationArtifactRefs
     );
+    const subjectImplementationEvidenceRefs = uniqueRefs([...implementationEvidenceRefs, ...contextualImplementationRefs]);
     const targetedTestEvidenceRefs = targetedTestEvidenceRefsForRequirement(
       requirement,
       evidenceIndex,
       input,
-      uniqueRefs([...implementationEvidenceRefs, ...contextualImplementationRefs]),
+      subjectImplementationEvidenceRefs,
       expectations,
       relevance,
       evidenceLookup,
       contextualImplementationRefs.length > 0 || evidenceContextRequirementIdsByRequirement?.has(requirement.id) === true
     );
+    const requiresDirectAssertionCaseCoverage = isEnglishBothPathsRequirement(requirement.text);
+    const directAssertionCaseTestRefs = requiresDirectAssertionCaseCoverage
+      ? exactImportedTestEvidenceRefs(
+        input,
+        evidenceLookup,
+        subjectImplementationEvidenceRefs,
+        (testFile, implementationFile) => distinctDirectAssertionCallCount(testFile, implementationFile) >= 2
+      )
+      : [];
     const directlyMatchingExecutionRefs = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "check" || item.kind === "log") &&
       isEvidenceExecutionSignal(item) &&
       (relevance.canonicalOverlap(item) || isOpaqueMatrixExecutionFailure(item))
     );
-    const verifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, targetedTestEvidenceRefs);
+    const allVerifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, targetedTestEvidenceRefs);
+    const directAssertionCaseExecutionRefs = requiresDirectAssertionCaseCoverage
+      ? verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, directAssertionCaseTestRefs)
+      : [];
+    const verifiedSuiteExecutionRefs = requiresDirectAssertionCaseCoverage
+      ? directAssertionCaseExecutionRefs
+      : allVerifiedSuiteExecutionRefs;
     const testLinkedExecutionRefs = passingExecutionEvidenceRefsForTargetedTests(
       targetedTestEvidenceRefs,
       evidenceIndex,
       evidenceLookup
     );
-    const matchingExecutionRefs = uniqueRefs([
-      ...directlyMatchingExecutionRefs,
-      ...verifiedSuiteExecutionRefs,
-      ...testLinkedExecutionRefs
-    ]);
+    const matchingExecutionRefs = requiresDirectAssertionCaseCoverage
+      ? verifiedSuiteExecutionRefs
+      : uniqueRefs([
+        ...directlyMatchingExecutionRefs,
+        ...verifiedSuiteExecutionRefs,
+        ...testLinkedExecutionRefs
+      ]);
     const matchingFailedExecutionRefs = [...relevance.failedExecutionRefs];
     const matchingVisualRefs = requirementEvidenceRefs(relevance, (item, match) =>
       isVisualVerificationEvidence(item) && relevance.canonicalOverlap(item)
@@ -1258,7 +1285,9 @@ function buildProofGraph(
       changedFileEvidenceUnavailable,
       diffEvidenceUnavailable,
       implementationPatchEvidenceUnavailable,
-      authoritativeChangedFileInventory
+      authoritativeChangedFileInventory,
+      requiresDirectAssertionCaseCoverage,
+      directAssertionCaseCoverageComplete: directAssertionCaseExecutionRefs.length > 0
     });
     proofAxesByRequirement.set(requirement.id, proofAxes);
 
@@ -1289,6 +1318,19 @@ function buildProofGraph(
           evidenceRefs: finding?.evidenceRefs ?? sourceEvidenceRefs(evidenceIndex)
         });
       }
+    }
+
+    if (
+      requiresDirectAssertionCaseCoverage &&
+      targetedTestEvidenceRefs.length > 0 &&
+      directAssertionCaseExecutionRefs.length === 0
+    ) {
+      gapSignals.push({
+        kind: "missing_targeted_test",
+        severity: targetedProofGapSeverity(requirement, input, ciStatus),
+        message: "A related test file was found, but two distinct direct assertion cases and an exact-head suite execution were not established.",
+        evidenceRefs: targetedTestEvidenceRefs.slice(0, 8)
+      });
     }
 
     const absentImplementationAxis = proofAxes.find((axis) => axis.subject === "implementation" && axis.polarity === "absent");
@@ -1390,6 +1432,8 @@ function buildProofGraph(
       contextRoles: requirement.contextRoles,
       status: requirement.sourceQuality === "manual_check" && finding?.status === "unclear"
         ? "unclear"
+        : requiresDirectAssertionCaseCoverage && targetedTestEvidenceRefs.length > 0 && directAssertionCaseExecutionRefs.length === 0
+          ? "partial"
         : requirement.sourceQuality === "author_claim" && finding?.status !== "met"
         ? finding?.status ?? "unclear"
         : aggregateProofAxisStatus(proofAxes, finding?.status ?? "unclear"),
@@ -1468,7 +1512,10 @@ function applyProofGraphToRequirements(
       ...finding,
       status,
       ...(node.sourceQuality === "author_claim" ? {
-        evidenceStatus: aggregateProofAxisStatus(proofAxes, finding.status),
+        evidenceStatus: isEnglishBothPathsRequirement(finding.requirementText) &&
+          proofAxes.some((axis) => axis.subject === "targeted_test" && axis.state === "incomplete" && axis.evidenceRefs.length > 0)
+          ? "partial"
+          : aggregateProofAxisStatus(proofAxes, finding.status),
         sourceAuthority: "pr_description" as const
       } : prDescriptionAuthority),
       proofAxes,
@@ -1498,6 +1545,8 @@ interface RequirementProofAxisBuildInput {
   diffEvidenceUnavailable: boolean;
   implementationPatchEvidenceUnavailable: boolean;
   authoritativeChangedFileInventory: boolean;
+  requiresDirectAssertionCaseCoverage: boolean;
+  directAssertionCaseCoverageComplete: boolean;
 }
 
 function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): RequirementProofAxis[] {
@@ -1528,7 +1577,20 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
   if (input.expectations.implementation) addArtifactAxis("implementation", input.artifactRefs.implementation ?? [], true);
   if (input.expectations.documentation) addArtifactAxis("documentation", input.artifactRefs.documentation ?? []);
   if (input.expectations.ci) addArtifactAxis("ci_configuration", input.artifactRefs.ci ?? []);
-  if (input.expectations.targetedTest) addArtifactAxis("targeted_test", input.artifactRefs.targetedTest ?? []);
+  if (input.expectations.targetedTest && input.requiresDirectAssertionCaseCoverage) {
+    const refs = input.artifactRefs.targetedTest ?? [];
+    axes.push({
+      subject: "targeted_test",
+      polarity: "present",
+      state: input.directAssertionCaseCoverageComplete ? "satisfied" : "incomplete",
+      evidenceRefs: uniqueRefs(refs).slice(0, 8),
+      ...(input.directAssertionCaseCoverageComplete
+        ? { collectionBasis: "direct_assertion_case_coverage" as const }
+        : {})
+    });
+  } else if (input.expectations.targetedTest) {
+    addArtifactAxis("targeted_test", input.artifactRefs.targetedTest ?? []);
+  }
 
   if (input.expectations.execution) {
     const passingRefs = uniqueRefs(input.matchingExecutionRefs)
@@ -1645,22 +1707,21 @@ function targetedTestEvidenceRefsForRequirement(
     );
   const implementationPaths = new Set(
     evidenceLookup.pathsForRefs(implementationEvidenceRefs)
+      .filter((path) => !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path))
       .map((path) => path.toLowerCase())
   );
   const implementationFiles = input.changedFiles.filter((file) =>
     implementationPaths.has(file.path.toLowerCase())
   );
   const testFiles = input.changedFiles.filter((file) => isTestFile(file.path));
-  const relatedRefs = evidenceLookup.testEvidenceItems
-    .filter((item) => {
-      const testFile = testFiles.find((file) => file.path === item.locator || file.path === item.label);
-      if (!testFile) return false;
-
-      return implementationFiles.some((implementationFile) =>
-        testEvidenceLooksRelated(implementationFile, testFile)
-      );
-    })
-    .map((item) => item.id);
+  const relatedRefs = implementationFiles.length === 1
+    ? evidenceLookup.testEvidenceItems
+      .filter((item) => {
+        const testFile = testFiles.find((file) => file.path === item.locator || file.path === item.label);
+        return Boolean(testFile && testImportMatchesImplementation(testFile, implementationFiles[0]));
+      })
+      .map((item) => item.id)
+    : [];
   const singleArtifactFallbackRefs = directRefs.length === 0 &&
     requirement.keywords.length === 0 &&
     expectations.targetedTest &&
@@ -1671,6 +1732,44 @@ function targetedTestEvidenceRefsForRequirement(
     : [];
 
   return uniqueRefs([...directRefs, ...relatedRefs, ...singleArtifactFallbackRefs]);
+}
+
+function exactImportedTestEvidenceRefs(
+  input: PullRequestInput,
+  evidenceLookup: VerifierEvidenceLookup,
+  implementationEvidenceRefs: readonly string[],
+  predicate: (
+    testFile: PullRequestInput["changedFiles"][number],
+    implementationFile: PullRequestInput["changedFiles"][number]
+  ) => boolean = () => true
+): string[] {
+  const implementationPaths = uniqueRefs(evidenceLookup.pathsForRefs(implementationEvidenceRefs)
+    .filter((path) => !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path))
+    .map((path) => path.toLowerCase()));
+  if (implementationPaths.length !== 1) return [];
+
+  const implementationFile = input.changedFiles.find((file) =>
+    file.path.toLowerCase() === implementationPaths[0] && !isTestFile(file.path)
+  );
+  if (!implementationFile) return [];
+
+  return evidenceLookup.testEvidenceItems
+    .filter((item) => {
+      const testPath = (item.locator ?? item.label).toLowerCase();
+      const testFile = input.changedFiles.find((file) =>
+        file.path.toLowerCase() === testPath && isTestFile(file.path)
+      );
+      return Boolean(
+        testFile &&
+        testImportMatchesImplementation(testFile, implementationFile) &&
+        predicate(testFile, implementationFile)
+      );
+    })
+    .map((item) => item.id);
+}
+
+function isEnglishBothPathsRequirement(text: string): boolean {
+  return /\bboth(?:\s+[a-z][a-z0-9-]*){0,4}\s+(?:paths?|branches?)\b/i.test(text);
 }
 
 function contextualImplementationEvidenceRefs(
