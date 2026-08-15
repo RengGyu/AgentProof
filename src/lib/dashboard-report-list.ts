@@ -1,6 +1,6 @@
 import type { DashboardReportFreshness, DashboardSavedReport } from "./github-dashboard-view-model";
 
-type ReportListItem = Pick<DashboardSavedReport, "repositoryId" | "createdAt" | "freshness">;
+type ReportListItem = Pick<DashboardSavedReport, "repositoryId" | "createdAt" | "freshness" | "availability">;
 
 /**
  * Keeps the newest saved report reachable while its replacement is running.
@@ -13,6 +13,17 @@ export function visibleRepositoryReports<T extends ReportListItem>(reports: read
   return reports
     .filter((report) => report.repositoryId === repositoryId && report.freshness !== "superseded" && report.freshness !== "stale")
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+export function partitionVisibleRepositoryReports<T extends ReportListItem>(reports: readonly T[], repositoryId?: number): {
+  primary: T[];
+  unavailableHistory: T[];
+} {
+  const visible = visibleRepositoryReports(reports, repositoryId);
+  return {
+    primary: visible.filter((report) => report.availability !== "unavailable"),
+    unavailableHistory: visible.filter((report) => report.availability === "unavailable")
+  };
 }
 
 export function reportWorkspaceStatusLabel(freshness?: DashboardReportFreshness): string {

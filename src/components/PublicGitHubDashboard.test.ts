@@ -17,7 +17,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("PR #");
     expect(source).toContain("formatCreatedAt(report.createdAt)");
     expect(source).toContain("headPrefix(report.headSha)");
-    expect(source).toContain("visibleRepositoryReports");
+    expect(source).toContain("partitionVisibleRepositoryReports");
     expect(source).toContain("copyableSelectedReports");
     expect(source).toContain("reportWorkspaceStatusLabel");
     expect(source).toContain("reportWorkspaceStatusLabel(report.freshness)");
@@ -40,13 +40,21 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Show fewer");
   });
 
-  it("keeps an undecodable saved-report row visible without allowing it to open or copy", () => {
+  it("keeps an undecodable saved-report row in separate history without allowing it to open or copy", () => {
     expect(source).toContain("REPORT UNAVAILABLE");
     expect(source).toContain("This saved report cannot be opened right now. Run the analysis again if the state does not recover.");
     expect(source).toContain('disabled={report.availability === "unavailable" || report.availability === "analysis_failed"}');
     expect(source).toContain('report.availability === "unavailable" ? "REPORT UNAVAILABLE"');
-    expect(source).toContain("hasUnavailableSelectedReport");
-    expect(source).toContain("copyableSelectedReports.length === 0 || hasUnavailableSelectedReport || bulkCopyState === \"copying\"");
+    expect(source).toContain("unavailableHistoryReports.map");
+    expect(source).toContain("Previous unavailable reports");
+  });
+
+  it("keeps unavailable history separate from current report actions", () => {
+    expect(source).toContain("partitionVisibleRepositoryReports");
+    expect(source).toContain("unavailableHistoryReports");
+    expect(source).toContain("Previous unavailable reports");
+    expect(source).toContain("unavailableHistoryExpanded");
+    expect(source).not.toContain("hasUnavailableSelectedReport");
   });
 
   it("separates connected repositories from previously saved reports and disables a pending selection", () => {
@@ -67,7 +75,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("prepareCurrentDashboardDetailForCopy");
     expect(source).not.toContain("preparedBulkCopy");
     expect(source).not.toContain("Promise.all(selectedReports.map");
-    expect(source).toContain("disabled={copyableSelectedReports.length === 0 || hasUnavailableSelectedReport || bulkCopyState === \"copying\"}");
+    expect(source).toContain("disabled={copyableSelectedReports.length === 0 || bulkCopyState === \"copying\"}");
     expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setBulkCopyCount\(0\); setBulkCopyState\("idle"\);/);
   });
 
