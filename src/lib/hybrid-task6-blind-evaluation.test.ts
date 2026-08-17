@@ -258,7 +258,7 @@ describe("Task 6 frozen development/regression set (16)", () => {
     expectValid(report);
   });
 
-  it("D10 relevant failed execution is violated and cannot be met", async () => {
+  it("keeps a textually related failed Check global without complete workflow identity", async () => {
     const input = syntheticInput({
       taskText: "Add retry handling with regression tests.",
       changedFiles: [
@@ -272,8 +272,14 @@ describe("Task 6 frozen development/regression set (16)", () => {
     const report = readyReport(result);
     const requirement = report.requirements[0]!;
 
-    expect(axis(requirement.proofAxes, "execution")?.state).toBe("violated");
-    expect(gapKinds(report, requirement.requirementId)).toContain("failed_execution");
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(axis(requirement.proofAxes, "execution")?.state).toBe("incomplete");
+    expect(gapKinds(report, requirement.requirementId)).not.toContain("failed_execution");
+    expect(report.proofGraph.failedCheckAssociations).toContainEqual(expect.objectContaining({
+      requirementId: requirement.requirementId,
+      state: "unknown",
+      basis: "identity_incomplete"
+    }));
     expect(requirement.status).not.toBe("met");
     expectValid(report);
   });

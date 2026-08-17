@@ -298,6 +298,90 @@ describe("requirement relation regression matrix", () => {
       .toEqual([workflow!.id]);
   });
 
+  it("records one bounded antecedent relation for an immediate subjectless test sibling", () => {
+    const eligible = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add repository visibility labels.",
+      "- Add focused tests for both paths."
+    ].join("\n"));
+    const headingBreak = deterministicRelations([
+      "## Behavior",
+      "- Add repository visibility labels.",
+      "## Tests",
+      "- Add focused tests for both paths."
+    ].join("\n"));
+    const competingBehavior = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add private repository visibility labels.",
+      "- Add public repository visibility labels.",
+      "- Add focused tests for both paths."
+    ].join("\n"));
+    const testRequirement = eligible.requirements[1]!;
+    const behaviorRequirement = eligible.requirements[0]!;
+
+    const relation = eligible.relations.deterministicRelationsByRequirement.get(testRequirement.id);
+    expect(relation).toEqual({
+      version: 1,
+      kind: "test_antecedent",
+      antecedentRequirementId: behaviorRequirement.id,
+      currentSourceBindingRef: expect.any(String),
+      antecedentSourceBindingRef: expect.any(String)
+    });
+    if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
+    const currentBinding = eligible.relations.sourceBindingsByRef.get(relation.currentSourceBindingRef);
+    const antecedentBinding = eligible.relations.sourceBindingsByRef.get(relation.antecedentSourceBindingRef);
+    expect({
+      current: currentBinding,
+      antecedent: antecedentBinding
+    }).toEqual({
+      current: expect.objectContaining({ requirementId: testRequirement.id, kind: "requirement_source_binding" }),
+      antecedent: expect.objectContaining({ requirementId: behaviorRequirement.id, kind: "requirement_source_binding" })
+    });
+    expect(currentBinding?.seedId).toBe(antecedentBinding?.seedId);
+    expect(currentBinding?.groupId).toBe(antecedentBinding?.groupId);
+    expect(currentBinding?.ordinal).toBe((antecedentBinding?.ordinal ?? 0) + 1);
+    expect(eligible.relations.proofExpectationsByRequirement.get(testRequirement.id)).toMatchObject({
+      implementation: false,
+      targetedTest: true,
+      execution: true
+    });
+    expect(headingBreak.relations.deterministicRelationsByRequirement.size).toBe(0);
+    expect(competingBehavior.relations.deterministicRelationsByRequirement.size).toBe(0);
+  });
+
+  it("uses a distinct bounded seed identity for different selected sources", () => {
+    const first = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add repository visibility labels.",
+      "- Add focused tests for both paths."
+    ].join("\n"));
+    const second = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add account visibility labels.",
+      "- Add focused tests for both paths."
+    ].join("\n"));
+    const relation = first.relations.deterministicRelationsByRequirement.get(first.requirements[1]!.id);
+    const otherRelation = second.relations.deterministicRelationsByRequirement.get(second.requirements[1]!.id);
+    if (relation?.kind !== "test_antecedent" || otherRelation?.kind !== "test_antecedent") {
+      throw new Error("expected bounded test antecedents");
+    }
+
+    expect(first.relations.sourceBindingsByRef.get(relation.currentSourceBindingRef)?.seedId)
+      .not.toBe(second.relations.sourceBindingsByRef.get(otherRelation.currentSourceBindingRef)?.seedId);
+  });
+
+  it("keeps a product objective containing test evidence independent", () => {
+    const { requirements, relations } = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add repository visibility labels.",
+      "- Provide test evidence in the report export."
+    ].join("\n"));
+    const objective = requirements[1]!;
+
+    expect(relations.deterministicRelationsByRequirement.has(objective.id)).toBe(false);
+    expect(relations.proofExpectationsByRequirement.get(objective.id)).toMatchObject({ implementation: true });
+  });
+
   it.each([
     {
       name: "a heading break",
@@ -428,7 +512,7 @@ describe("requirement relation regression matrix", () => {
   });
 
   it("inherits proof context only for the truly nested child and not the following sibling", () => {
-    const report = finalizeAllAuthoritative(linkedInput({
+    const input = linkedInput({
       taskText: [
         "Acceptance criteria:",
         "- Add retry handling.",
@@ -459,15 +543,17 @@ describe("requirement relation regression matrix", () => {
         scope: "repository_discovery",
         testPaths: ["test/retry.test.ts"]
       }]
-    }));
+    });
+    const report = finalizeAllAuthoritative(input);
+    const base = generateVerificationReport(input);
     const nestedTest = report.requirements[1];
     const documentationSibling = report.requirements[2];
 
     expect(nestedTest?.proofAxes?.map((item) => item.subject)).toEqual([
-      "implementation",
       "targeted_test",
       "execution"
     ]);
+    expect(nestedTest?.proofAxes).toEqual(base.requirements[1]?.proofAxes);
     expect(axis(nestedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
     expect(axis(nestedTest, "execution")).toMatchObject({ state: "satisfied" });
     expect(nestedTest?.plannerAxisSubjects).toBeUndefined();
@@ -485,8 +571,7 @@ describe("requirement relation regression matrix", () => {
       name: "repository visibility booleans",
       taskText: [
         "Acceptance criteria:",
-        "- Add repositoryVisibilityLabel(true) that returns Private repository.",
-        "- Return Public repository when the value is false.",
+        "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when true and Public repository when false.",
         "- Add focused automated tests for both boolean paths."
       ].join("\n"),
       sourcePath: "src/repositories/repository-visibility.js",
@@ -504,8 +589,7 @@ describe("requirement relation regression matrix", () => {
       name: "invoice reference branches",
       taskText: [
         "Acceptance criteria:",
-        "- Normalize an invoice reference to uppercase.",
-        "- Return UNKNOWN when the reference is empty.",
+        "- Normalize invoiceReference(value) to uppercase and return UNKNOWN when the value is empty.",
         "- Add regression tests for both branches."
       ].join("\n"),
       sourcePath: "src/billing/invoice-reference.js",
@@ -518,25 +602,6 @@ describe("requirement relation regression matrix", () => {
         "+ test('empty reference', () => { assert.equal(invoiceReference(''), 'UNKNOWN'); });"
       ].join("\n"),
       check: "invoice reference tests"
-    },
-    {
-      name: "Korean connection states",
-      taskText: [
-        "수용 기준:",
-        "- 만료되지 않은 연결은 Connected를 반환한다.",
-        "- 만료된 연결은 Expired를 반환한다.",
-        "- 두 상태에 대한 회귀 테스트를 추가한다."
-      ].join("\n"),
-      sourcePath: "src/connections/connection-label.js",
-      testPath: "test/연결-라벨.test.js",
-      patch: "+ export const connectionLabel = expired => expired ? 'Expired' : 'Connected';",
-      testPatch: [
-        "+ import assert from 'node:assert/strict';",
-        "+ import { connectionLabel } from '../src/connections/connection-label.js';",
-        "+ test('연결 상태', () => { assert.equal(connectionLabel(false), 'Connected'); });",
-        "+ test('만료 상태', () => { assert.equal(connectionLabel(true), 'Expired'); });"
-      ].join("\n"),
-      check: "연결 라벨 회귀 테스트"
     }
   ])("links a referential test-only sibling to $name without adding implementation proof", (fixture) => {
     const report = finalizeAllAuthoritative(linkedInput({
@@ -571,12 +636,23 @@ describe("requirement relation regression matrix", () => {
     });
   });
 
-  it("keeps PR30 behavior and test-only proof contracts deterministic when the planner suggests implementation", () => {
+  it("keeps a non-English test sibling sentence-local in the English-only relation pass", () => {
+    const { requirements, relations } = deterministicRelations([
+      "수용 기준:",
+      "- 연결 상태 라벨을 추가한다.",
+      "- 두 상태에 대한 회귀 테스트를 추가한다."
+    ].join("\n"));
+
+    expect(relations.deterministicRelationsByRequirement.has(requirements.at(-1)!.id)).toBe(false);
+    expect(relations.proofExpectationsByRequirement.get(requirements.at(-1)!.id))
+      .toEqual(requirementProofAxisExpectations(requirements.at(-1)!.text));
+  });
+
+  it("keeps selected-source behavior and test-only proof deterministic when the planner suggests implementation", () => {
     const report = finalizeAllAuthoritative(linkedInput({
       taskText: [
         "## Requirements",
-        "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when isPrivate is true.",
-        "- Return Public repository when isPrivate is false.",
+        "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when true and Public repository when false.",
         "- Add focused automated tests for both boolean paths.",
         "",
         "## Verification",
@@ -625,30 +701,27 @@ describe("requirement relation regression matrix", () => {
       }]
     }), [
       { disposition: "admit", classification: "requirement", expected_axes: [] },
-      { disposition: "admit", classification: "requirement", expected_axes: [] },
       {
         disposition: "admit",
         classification: "requirement",
         expected_axes: [{ subject: "implementation", polarity: "present" }]
       }
     ]);
-    const [privateLabel, publicLabel, focusedTests] = report.requirements;
+    const [visibilityBehavior, focusedTests] = report.requirements;
 
-    expect(axis(privateLabel, "implementation")).toMatchObject({ state: "satisfied" });
-    expect(axis(publicLabel, "implementation")).toMatchObject({ state: "satisfied" });
+    expect(axis(visibilityBehavior, "implementation")).toMatchObject({ state: "satisfied" });
     expect(focusedTests?.proofAxes?.map((item) => item.subject)).toEqual(["targeted_test", "execution"]);
     expect(axis(focusedTests, "targeted_test")).toMatchObject({ state: "satisfied" });
     expect(focusedTests?.gaps.join(" ")).not.toMatch(/implementation evidence/i);
   });
 
-  it("keeps PR30's PR-description test requirement partial without rejecting its satisfied proof axes", () => {
+  it("caps a PR-description test requirement at partial without rejecting satisfied proof axes", () => {
     const report = finalizeAllAuthoritative(linkedInput({
       taskSource: undefined,
       taskText: "",
       description: [
         "## Requirements",
-        "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when isPrivate is true.",
-        "- Return Public repository when isPrivate is false.",
+        "- Add repositoryVisibilityLabel(isPrivate) that returns Private repository when true and Public repository when false.",
         "- Add focused automated tests for both boolean paths.",
         "",
         "## Verification",
@@ -669,13 +742,23 @@ describe("requirement relation regression matrix", () => {
           path: "test/repository-visibility.test.js",
           status: "added",
           patch: [
+            "+ import assert from 'node:assert/strict';",
             "+ import { repositoryVisibilityLabel } from '../src/repositories/repository-visibility.js';",
-            "+ test('returns one repository visibility label', () => { expect(repositoryVisibilityLabel(true)).toBe('Private repository'); });"
+            "+ test('returns a private repository label', () => { assert.equal(repositoryVisibilityLabel(true), 'Private repository'); });",
+            "+ test('returns a public repository label', () => { assert.equal(repositoryVisibilityLabel(false), 'Public repository'); });"
           ].join("\n")
         }
       ],
       checks: [{ name: "repository visibility tests", status: "passed", summary: "repository visibility tests passed." }],
-      logs: [{ source: "repository visibility tests", status: "passed", text: "repository visibility tests passed." }]
+      logs: [{ source: "repository visibility tests", status: "passed", text: "repository visibility tests passed." }],
+      executionSuites: [{
+        headSha: "a".repeat(40),
+        status: "passed",
+        executionSource: "repository visibility tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/repository-visibility.test.js"]
+      }]
     }));
 
     expect(report.requirements.map((requirement) => requirement.requirementText).join("\n"))
@@ -688,8 +771,7 @@ describe("requirement relation regression matrix", () => {
       sourceAuthority: requirement.sourceAuthority
     }))).toEqual([
       { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
-      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
-      { status: "partial", evidenceStatus: "partial", sourceAuthority: "pr_description" }
+      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" }
     ]);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
@@ -807,7 +889,6 @@ describe("requirement relation regression matrix", () => {
 
     expect(parent?.plannerAxisSubjects).toBeUndefined();
     expect(child?.proofAxes?.map((item) => item.subject)).toEqual([
-      "implementation",
       "targeted_test",
       "execution"
     ]);

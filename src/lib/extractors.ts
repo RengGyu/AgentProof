@@ -11,9 +11,11 @@ import type {
   RequirementSourceSpan,
   RequirementSourceQuality,
   RequirementSourceRole,
+  RequirementSourceBinding,
   RequirementSpanId,
   RequirementSpanSeedExtractionResult
 } from "./types";
+import { createHash } from "crypto";
 import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText } from "./redact";
 import { redactSecrets } from "./redact";
@@ -100,6 +102,10 @@ const EVALUATION_CONTEXT_SECTION_PATTERN =
   /\b(?:canary|fixture|evaluation)\b\s+(?:scope|context|notes?|scenario|case)\b|\b(?:scope|context|notes?|scenario|case)\b.{0,40}\b(?:canary|fixture|benchmark|evaluation|demo)\b/i;
 const SELF_REFERENTIAL_EVALUATION_PATTERN =
   /^(?:this|the)\s+(?:pull request|pr|change|fixture|scenario|benchmark|demo|canary)\b.{0,90}\b(?:is|are|was|were|serves as|used|created|intended|for)\b.{0,120}\b(?:canary|fixture|benchmark|demo|evaluat|exercis|review pipeline|verification pipeline|analysis pipeline)\b/i;
+const PR_EVIDENCE_INVENTORY_SUBJECT_PATTERN = /^(?:this|the)\s+(?:pull request|pr|change|fixture|scenario)\b/i;
+const PR_EVIDENCE_INVENTORY_VERB_PATTERN = /\b(?:provides?|contains?|lists?|limits?|includes?|has)\b/i;
+const PR_EVIDENCE_INPUT_NOUN_PATTERN = /\b(?:changed[- ]files?|diffs?|patch(?:es)?|tests?|test results?|evidence|checks?|logs?|screenshots?|analysis inputs?)\b/i;
+const PR_PRODUCT_BEHAVIOR_PATTERN = /\b(?:add|allow|block|create|delete|disable|display|document|enable|ensure|export|fix|handle|hide|implement|keep|migrate|prevent|preserve|refactor|refresh|rename|replace|require|return|rework|save|send|show|support)\b/i;
 export const MAX_REPORT_EVIDENCE_ITEMS = 200;
 
 export interface RequirementExtractionResult {
@@ -190,6 +196,7 @@ export interface DeterministicRequirementRelations {
   proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations>;
   evidenceContextRequirementIdsByRequirement: ReadonlyMap<string, readonly string[]>;
   deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation>;
+  sourceBindingsByRef: ReadonlyMap<string, RequirementSourceBinding>;
 }
 
 /** Derives BASE-only proof relations from ordered spans in the selected authoritative source. */
@@ -200,6 +207,7 @@ export function deriveDeterministicRequirementRelations(
   const proofExpectationsByRequirement = new Map<string, RequirementProofExpectations>();
   const evidenceContextRequirementIdsByRequirement = new Map<string, readonly string[]>();
   const deterministicRelationsByRequirement = new Map<string, DeterministicRequirementRelation>();
+  const sourceBindingsByRef = new Map<string, RequirementSourceBinding>();
   for (const requirement of requirements) {
     proofExpectationsByRequirement.set(requirement.id, requirementProofAxisExpectations(requirement.text));
   }
@@ -215,7 +223,8 @@ export function deriveDeterministicRequirementRelations(
     return {
       proofExpectationsByRequirement,
       evidenceContextRequirementIdsByRequirement,
-      deterministicRelationsByRequirement
+      deterministicRelationsByRequirement,
+      sourceBindingsByRef
     };
   }
 
@@ -231,23 +240,132 @@ export function deriveDeterministicRequirementRelations(
     }
 
     const workflowContext = deterministicWorkflowAntecedentContext(spans, requirements, index);
-    if (workflowContext.kind !== "workflow_antecedent") continue;
+    if (workflowContext.kind === "workflow_antecedent") {
+      proofExpectationsByRequirement.set(
+        requirement.id,
+        requirementProofAxisExpectationsWithContext(requirement.text, workflowContext)
+      );
+      evidenceContextRequirementIdsByRequirement.set(requirement.id, [workflowContext.requirementId]);
+      deterministicRelationsByRequirement.set(requirement.id, {
+        version: 1,
+        kind: "workflow_antecedent",
+        antecedentRequirementId: workflowContext.requirementId
+      });
+      continue;
+    }
+
+    const testContext = deterministicTestAntecedentContext(
+      spans,
+      requirements,
+      index,
+      sourceBindingSeedId(spanExtraction.seed!)
+    );
+    if (testContext.kind !== "test_antecedent") continue;
     proofExpectationsByRequirement.set(
       requirement.id,
-      requirementProofAxisExpectationsWithContext(requirement.text, workflowContext)
+      requirementProofAxisExpectationsWithContext(requirement.text, testContext)
     );
-    evidenceContextRequirementIdsByRequirement.set(requirement.id, [workflowContext.requirementId]);
+    evidenceContextRequirementIdsByRequirement.set(requirement.id, [testContext.requirementId]);
+    const currentBinding = requirementSourceBinding(requirement, spans[index]!, testContext.currentSourceBindingRef, testContext.seedId);
+    const antecedentBinding = requirementSourceBinding(
+      requirements[testContext.antecedentIndex]!,
+      spans[testContext.antecedentIndex]!,
+      testContext.antecedentSourceBindingRef,
+      testContext.seedId
+    );
+    sourceBindingsByRef.set(currentBinding.id, currentBinding);
+    sourceBindingsByRef.set(antecedentBinding.id, antecedentBinding);
     deterministicRelationsByRequirement.set(requirement.id, {
       version: 1,
-      kind: "workflow_antecedent",
-      antecedentRequirementId: workflowContext.requirementId
+      kind: "test_antecedent",
+      antecedentRequirementId: testContext.requirementId,
+      currentSourceBindingRef: currentBinding.id,
+      antecedentSourceBindingRef: antecedentBinding.id
     });
   }
 
   return {
     proofExpectationsByRequirement,
     evidenceContextRequirementIdsByRequirement,
-    deterministicRelationsByRequirement
+    deterministicRelationsByRequirement,
+    sourceBindingsByRef
+  };
+}
+
+function deterministicTestAntecedentContext(
+  spans: readonly RequirementSourceSpan[],
+  requirements: readonly Requirement[],
+  index: number,
+  seedHash: string
+): (Extract<DeterministicProofContext, { kind: "test_antecedent" }> & { antecedentIndex: number; seedId: string }) | { kind: "none" } {
+  const span = spans[index];
+  const requirement = requirements[index];
+  if (!span || !requirement || !isSubjectlessEnglishTestObjective(requirement.text)) return { kind: "none" };
+
+  const behaviorIndexes = spans
+    .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+    .filter(({ candidate, candidateIndex }) =>
+      candidateIndex < index &&
+      candidate.groupId === span.groupId &&
+      requirementProofAxisExpectations(requirements[candidateIndex]?.text ?? "").implementation
+    )
+    .map(({ candidateIndex }) => candidateIndex);
+  const antecedentIndex = behaviorIndexes.length === 1 ? behaviorIndexes[0] : undefined;
+  if (antecedentIndex === undefined || antecedentIndex !== index - 1) return { kind: "none" };
+
+  const seedId = seedHash || "requirement_span_seed_v1";
+  return {
+    kind: "test_antecedent",
+    requirementId: requirements[antecedentIndex]!.id,
+    antecedentIndex,
+    seedId,
+    currentSourceBindingRef: `rsb_${span.id}`,
+    antecedentSourceBindingRef: `rsb_${spans[antecedentIndex]!.id}`
+  };
+}
+
+function isSubjectlessEnglishTestObjective(text: string): boolean {
+  return /^(?:add|create|write|update|extend)\s+(?:(?:focused|automated|regression|targeted|unit|integration)\s+)*(?:tests?|test cases?|coverage|specs?|regression tests?)\b/i.test(normalizedRelationText(text));
+}
+
+function sourceBindingSeedId(seed: NonNullable<RequirementSpanSeedExtractionResult["seed"]>): string {
+  return createHash("sha256").update(JSON.stringify({
+    version: seed.version,
+    analysisContext: seed.analysisContext,
+    spans: seed.spans.map((span) => ({
+      id: span.id,
+      groupId: span.groupId,
+      ordinal: span.ordinal,
+      immediateParentSpanId: span.immediateParentSpanId,
+      source: span.source,
+      authority: span.authority,
+      sourceQuality: span.sourceQuality,
+      sourceSection: span.sourceSection,
+      start: span.start,
+      end: span.end,
+      text: span.text,
+      priority: span.priority
+    })),
+    contexts: seed.contexts
+  })).digest("hex");
+}
+
+function requirementSourceBinding(
+  requirement: Requirement,
+  span: RequirementSourceSpan,
+  id: string,
+  seedId: string
+): RequirementSourceBinding {
+  return {
+    version: 1,
+    kind: "requirement_source_binding",
+    id,
+    requirementId: requirement.id,
+    spanId: span.id,
+    seedId,
+    groupId: span.groupId,
+    source: span.source,
+    ordinal: span.ordinal
   };
 }
 
@@ -427,6 +545,7 @@ function selectSpanCandidates(candidates: SpanCandidate[], isPrBody: boolean): S
   if (isPrBody) {
     return candidates
       .filter((candidate) => candidate.role === "author_claim")
+      .filter((candidate) => !isPurePrEvidenceInventory(candidate.text))
       .filter((candidate) => !AUTHOR_EVIDENCE_SECTION_PATTERN.test(candidate.sourceSection ?? ""));
   }
 
@@ -681,6 +800,7 @@ export function extractRequirementEvidence(
       .filter((line) => line.role === "author_claim")
       .filter((line) => !AUTHOR_EVIDENCE_SECTION_PATTERN.test(line.sourceSection ?? ""))
       .filter((line) => !isIssueTemplateNoiseLine(line.text))
+      .filter((line) => !isPurePrEvidenceInventory(line.text))
       .filter(isEligibleUnlinkedPrObjective)
       .map((line) => ({ ...line, role: "core_requirement" as const, sourceQuality: "author_claim" as const }))
     : [];
@@ -738,10 +858,18 @@ export function extractRequirementEvidence(
 }
 
 function isEligibleUnlinkedPrObjective(line: ClassifiedRequirementLine): boolean {
+  if (isPurePrEvidenceInventory(line.text)) return false;
   if (isEvaluationContextLine(line)) return false;
   if (PR_META_PURPOSE_PATTERN.test(line.text)) return false;
   if (ACCEPTANCE_SECTION_PATTERN.test(line.sourceSection ?? "")) return true;
   return PR_OBJECTIVE_ACTION_PATTERN.test(line.text);
+}
+
+function isPurePrEvidenceInventory(text: string): boolean {
+  return PR_EVIDENCE_INVENTORY_SUBJECT_PATTERN.test(text) &&
+    PR_EVIDENCE_INVENTORY_VERB_PATTERN.test(text) &&
+    PR_EVIDENCE_INPUT_NOUN_PATTERN.test(text) &&
+    !PR_PRODUCT_BEHAVIOR_PATTERN.test(text);
 }
 
 /**
@@ -761,7 +889,8 @@ export function isUnlinkedPrEvaluationMetaCandidate(
     sourceQuality: "author_claim",
     sourceSection
   };
-  return isEvaluationContextLine(line) ||
+  return isPurePrEvidenceInventory(text) ||
+    isEvaluationContextLine(line) ||
     /^(?:이|본)\s*PR(?:은|는)?\s*(?:검토|검증|분석)\s*파이프라인을?\s*(?:테스트|평가|검증|실행)(?:합니다|한다|해요|함)?/i.test(text) ||
     (PR_META_PURPOSE_PATTERN.test(text) && !PR_OBJECTIVE_ACTION_PATTERN.test(text));
 }

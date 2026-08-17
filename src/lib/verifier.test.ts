@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
 import { buildEvidenceIndex } from "./extractors";
@@ -6,11 +7,244 @@ import {
   buildRequirementEvidenceRelevanceIndex,
   buildVerifierEvidenceLookup,
   generateVerificationReport,
+  generateVerificationReportFromRequirements,
   generateVerificationReportV2
 } from "./verifier";
 import type { EvidenceItem, PullRequestInput, Requirement, VerificationReport } from "./types";
 
 describe("generateVerificationReport", () => {
+  it("links a changed regression test to an unchanged exact-head helper and suite", () => {
+    const headSha = "7".repeat(40);
+    const testPath = "test/repository-name-regression.test.js";
+    const moduleSource = "export function repositoryName(value) { return String(value).toLowerCase(); } // exact-head-only-marker";
+    const input = {
+      title: "Add repository name regression coverage",
+      description: "Adds focused regression coverage.",
+      taskText: "Acceptance criteria: add a regression test for repositoryName(value) formatting.",
+      taskSource: "issue",
+      changedFiles: [{
+        path: testPath,
+        status: "added",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+test('formats repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+        ].join("\n")
+      }],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "npm test passed." }],
+      sourceProvenance: githubInventoryProvenance(headSha),
+      executionSuites: [{
+        headSha,
+        status: "passed",
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }],
+      resolvedHeadModules: [{
+        version: 1,
+        kind: "resolved_head_module",
+        headSha,
+        path: "src/repositories/name.js",
+        blobSha: gitBlobSha(moduleSource),
+        source: moduleSource
+      }]
+    } as PullRequestInput & { resolvedHeadModules: unknown[] };
+
+    const report = generateVerificationReport(input);
+    const node = report.proofGraph.nodes[0];
+    const targetReceipts = (report.proofGraph as typeof report.proofGraph & { exactHeadTargetReceipts?: unknown[] }).exactHeadTargetReceipts;
+    const relationReceipts = (report.proofGraph as typeof report.proofGraph & { testRelationReceipts?: unknown[] }).testRelationReceipts;
+
+    expect(node?.targetedTestEvidenceRefs.length).toBe(1);
+    expect(node?.executionEvidenceRefs.length).toBe(1);
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "satisfied" }),
+      expect.objectContaining({ subject: "execution", state: "satisfied", collectionBasis: "passing_suite_execution" })
+    ]));
+    expect(targetReceipts).toEqual([expect.objectContaining({ kind: "exact_head_target", headSha })]);
+    expect(relationReceipts).toEqual([expect.objectContaining({
+      kind: "targeted_test_relation",
+      subjectRequirementId: "req_1",
+      subjectSource: "current_requirement",
+      relationBasis: "direct_static_import",
+      directAssertionCaseCount: 1
+    })]);
+    const serializedReport = JSON.stringify(report);
+    const targetReceipt = (targetReceipts?.[0] ?? {}) as { targetBlobSha?: string; canonicalBindingDigest?: string };
+    const { exactHeadTargetReceipts: _privateTargets, ...proofGraphWithoutPrivateTargets } = report.proofGraph;
+    const reportWithoutPrivateTargets = JSON.stringify({ ...report, proofGraph: proofGraphWithoutPrivateTargets });
+    expect(serializedReport).not.toContain("exact-head-only-marker");
+    expect(serializedReport).not.toContain('"resolvedHeadModules"');
+    expect(serializedReport).not.toContain('"targetPath"');
+    expect(serializedReport).not.toContain('"bindingExportedName"');
+    expect(serializedReport).not.toContain('"bindingLocalName"');
+    expect(targetReceipt.targetBlobSha).toBe(gitBlobSha(moduleSource));
+    expect(targetReceipt.canonicalBindingDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(reportWithoutPrivateTargets).not.toContain(targetReceipt.targetBlobSha);
+    expect(reportWithoutPrivateTargets).not.toContain(targetReceipt.canonicalBindingDigest);
+  });
+
+  it("keeps an exact-head relation incomplete when the asserted binding mismatches the named requirement subject", () => {
+    const input = unchangedExactHeadRelationInput();
+    const moduleSource = "export function repositorySlug(value) { return String(value).toLowerCase(); }";
+    input.taskText = "Acceptance criteria: add a regression test for repositoryName formatting.";
+    input.changedFiles[0]!.patch = [
+      "+import { repositorySlug } from '../src/repositories/name.js';",
+      "+test('formats repository slugs', () => { expect(repositorySlug('AgentProof')).toBe('agentproof'); });"
+    ].join("\n");
+    input.resolvedHeadModules![0]!.source = moduleSource;
+    input.resolvedHeadModules![0]!.blobSha = gitBlobSha(moduleSource);
+
+    const report = generateVerificationReport(input);
+
+    expect(report.proofGraph.nodes[0]?.targetedTestEvidenceRefs).toEqual([]);
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete", evidenceRefs: [] })
+    ]));
+    expect(report.proofGraph.exactHeadTargetReceipts).toBeUndefined();
+    expect(report.proofGraph.testRelationReceipts).toBeUndefined();
+  });
+
+  it.each([
+    {
+      name: "stale target blob",
+      mutate: (input: ReturnType<typeof unchangedExactHeadRelationInput>) => {
+        input.resolvedHeadModules![0].blobSha = "9".repeat(40);
+      },
+      expectedTargeted: 0,
+      expectedTargets: 0
+    },
+    {
+      name: "stale target head",
+      mutate: (input: ReturnType<typeof unchangedExactHeadRelationInput>) => {
+        input.resolvedHeadModules![0].headSha = "9".repeat(40);
+      },
+      expectedTargeted: 0,
+      expectedTargets: 0
+    },
+    {
+      name: "stale suite head",
+      mutate: (input: ReturnType<typeof unchangedExactHeadRelationInput>) => {
+        input.executionSuites![0].headSha = "9".repeat(40);
+      },
+      expectedTargeted: 1,
+      expectedTargets: 1
+    },
+    {
+      name: "explicit-path suite",
+      mutate: (input: ReturnType<typeof unchangedExactHeadRelationInput>) => {
+        input.executionSuites![0].scope = "explicit_paths";
+      },
+      expectedTargeted: 1,
+      expectedTargets: 1
+    },
+    {
+      name: "mismatched suite test",
+      mutate: (input: ReturnType<typeof unchangedExactHeadRelationInput>) => {
+        input.executionSuites![0].testPaths = ["test/unrelated.test.js"];
+      },
+      expectedTargeted: 1,
+      expectedTargets: 1
+    },
+    {
+      name: "unrelated imported binding",
+      mutate: (input: ReturnType<typeof unchangedExactHeadRelationInput>) => {
+        input.changedFiles[0].patch = [
+          "+import { repositoryName, repositorySlug } from '../src/repositories/name.js';",
+          "+test('formats repository slugs', () => { expect(repositorySlug('AgentProof')).toBe('agentproof'); });"
+        ].join("\n");
+      },
+      expectedTargeted: 0,
+      expectedTargets: 0
+    }
+  ])("keeps an unchanged-helper relation incomplete for a $name", ({ mutate, expectedTargeted, expectedTargets }) => {
+    const input = unchangedExactHeadRelationInput();
+    mutate(input);
+
+    const report = generateVerificationReport(input);
+    const graph = report.proofGraph as typeof report.proofGraph & {
+      exactHeadTargetReceipts?: unknown[];
+      testRelationReceipts?: unknown[];
+    };
+
+    expect(report.proofGraph.nodes[0]?.targetedTestEvidenceRefs).toHaveLength(expectedTargeted);
+    expect(report.proofGraph.nodes[0]?.executionEvidenceRefs).toEqual([]);
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(graph.exactHeadTargetReceipts ?? []).toHaveLength(expectedTargets);
+    expect(graph.testRelationReceipts).toBeUndefined();
+    expect(report.requirements[0]?.status).not.toBe("met");
+  });
+
+  it("does not resolve one exact-head relation when a second changed test file is present", () => {
+    const input = unchangedExactHeadRelationInput();
+    input.changedFiles.push({
+      path: "test/unrelated-regression.test.js",
+      status: "added",
+      patch: "+test('unrelated', () => { expect(true).toBe(true); });"
+    });
+
+    const report = generateVerificationReport(input);
+    const graph = report.proofGraph as typeof report.proofGraph & { exactHeadTargetReceipts?: unknown[] };
+
+    expect(report.proofGraph.nodes[0]?.targetedTestEvidenceRefs).toEqual([]);
+    expect(report.proofGraph.nodes[0]?.executionEvidenceRefs).toEqual([]);
+    expect(graph.exactHeadTargetReceipts).toBeUndefined();
+  });
+
+  it("keeps an exact-head test relation local to the sole deterministic test subject", () => {
+    const input = unchangedExactHeadRelationInput();
+    input.taskText = [
+      "Acceptance criteria:",
+      "- Add a regression test for repositoryName(value) formatting.",
+      "- Document billing invoice retention."
+    ].join("\n");
+
+    const report = generateVerificationReport(input);
+    expect(report.requirements.map((requirement) => requirement.requirementText)).toEqual([
+      "Add a regression test for repositoryName(value) formatting",
+      "Document billing invoice retention"
+    ]);
+    const testRequirement = report.requirements.find((requirement) => /regression test/i.test(requirement.requirementText));
+    const unrelatedRequirement = report.requirements.find((requirement) => /billing invoice/i.test(requirement.requirementText));
+    const testNode = report.proofGraph.nodes.find((node) => node.requirementId === testRequirement?.requirementId);
+    const unrelatedNode = report.proofGraph.nodes.find((node) => node.requirementId === unrelatedRequirement?.requirementId);
+    const graph = report.proofGraph as typeof report.proofGraph & {
+      testRelationReceipts?: Array<{ subjectRequirementId: string }>;
+    };
+
+    expect(testNode?.targetedTestEvidenceRefs).toHaveLength(1);
+    expect(testNode?.executionEvidenceRefs).toHaveLength(1);
+    expect(unrelatedNode?.targetedTestEvidenceRefs).toEqual([]);
+    expect(unrelatedNode?.executionEvidenceRefs).toEqual([]);
+    expect(graph.testRelationReceipts?.map((receipt) => receipt.subjectRequirementId)).toEqual([testRequirement?.requirementId]);
+  });
+
+  it("carries bounded test antecedent bindings into the proof graph", () => {
+    const report = generateVerificationReport({
+      title: "Add repository visibility labels",
+      description: "",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add repository visibility labels.",
+        "- Add focused tests for both paths."
+      ].join("\n"),
+      taskSource: "issue",
+      changedFiles: [],
+      checks: [],
+      logs: []
+    });
+    const relation = report.proofGraph.nodes[1]?.deterministicRelation;
+    if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
+
+    expect(report.proofGraph.sourceBindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: relation.currentSourceBindingRef, requirementId: "req_2" }),
+      expect.objectContaining({ id: relation.antecedentSourceBindingRef, requirementId: "req_1" })
+    ]));
+  });
+
   it("keeps PR #24-style evidence observations but caps outcome at unclear without an approved contract", () => {
     const input: PullRequestInput = {
       title: "Improve repository overview",
@@ -876,7 +1110,7 @@ describe("generateVerificationReport", () => {
     expect(report.summary.priority).toBe("blocker");
   });
 
-  it("treats opaque failed GitHub Actions matrix jobs as execution failures", () => {
+  it("keeps opaque failed GitHub Actions matrix jobs global without local execution proof", () => {
     const report = generateVerificationReport({
       title: "Fix dataframe copy-on-write mutation",
       description: "Fixes copy-on-write handling and expands constructor tests.",
@@ -920,9 +1154,13 @@ describe("generateVerificationReport", () => {
     expect(report.reviewPriority[0]).toEqual(expect.objectContaining({ path: "Test/build checks", priority: "blocker" }));
     expect(refsToEvidence(report, report.reviewPriority[0]?.evidenceRefs ?? []).map((item) => item.label)).toContain("PANDAS_FUTURE_INFER_STRING=0");
     expect(report.testing.ciStatus).toBe("failed");
-    expect(report.proofGraph.nodes.some((node) =>
-      node.gapSignals.some((gap) => gap.kind === "failed_execution" && gap.severity === "blocker")
+    expect(report.proofGraph.nodes.every((node) =>
+      !node.gapSignals.some((gap) => gap.kind === "failed_execution") &&
+      node.executionEvidenceRefs.every((ref) => report.evidenceIndex.find((item) => item.id === ref)?.kind !== "check")
     )).toBe(true);
+    expect(report.proofGraph.failedCheckAssociations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ state: "unknown", basis: "identity_incomplete" })
+    ]));
   });
 
   it("keeps opaque failed statuses without GitHub Actions job URLs out of test/build status", () => {
@@ -3015,7 +3253,201 @@ describe("generateVerificationReport", () => {
     expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("failed_execution");
   });
 
-  it("violates execution only for a canonical or opaque failed check", () => {
+  it("keeps an unrelated failed Check outside requirement proof refs and records a bounded association", () => {
+    const report = generateVerificationReport({
+      title: "Add settings panel behavior and tests",
+      description: "Adds settings panel behavior with a focused test.",
+      taskText: "Acceptance criteria: implement settings panel behavior and add targeted tests.",
+      changedFiles: [
+        {
+          path: "src/settings/panel.ts",
+          status: "modified",
+          patch: "+ export function settingsPanelLabel() { return 'Settings'; }"
+        },
+        {
+          path: "src/settings/panel.test.ts",
+          status: "modified",
+          patch: [
+            "+ import { settingsPanelLabel } from './panel';",
+            "+ test('settings panel label', () => { expect(settingsPanelLabel()).toBe('Settings'); });"
+          ].join("\n")
+        }
+      ],
+      checks: [{
+        name: "PANDAS_FUTURE_INFER_STRING=0",
+        status: "failed",
+        summary: "An unrelated matrix job failed.",
+        url: "https://github.com/example/project/actions/runs/100/job/201"
+      }],
+      logs: []
+    } satisfies PullRequestInput);
+    const requirement = report.requirements[0]!;
+    const node = report.proofGraph.nodes[0]!;
+    const failedCheckRef = report.evidenceIndex.find((item) => item.kind === "check")!.id;
+    const associations = (report.proofGraph as typeof report.proofGraph & {
+      failedCheckAssociations?: Array<Record<string, unknown>>;
+    }).failedCheckAssociations;
+
+    expect(node.implementationEvidenceRefs.length).toBeGreaterThan(0);
+    expect(node.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
+    expect(requirement.evidenceRefs).not.toContain(failedCheckRef);
+    expect(requirement.proofAxes?.flatMap((axis) => axis.evidenceRefs)).not.toContain(failedCheckRef);
+    expect(node.executionEvidenceRefs).not.toContain(failedCheckRef);
+    expect(node.gapSignals.flatMap((gap) => gap.evidenceRefs)).not.toContain(failedCheckRef);
+    expect(associations).toContainEqual({
+      version: 1,
+      kind: "failed_check_association",
+      requirementId: requirement.requirementId,
+      checkEvidenceRef: failedCheckRef,
+      state: "unknown",
+      basis: "identity_incomplete"
+    });
+    expect(report.testing.ciStatus).toBe("failed");
+  });
+
+  it("retains a later linked workflow failure ahead of earlier unknown associations at the report cap", () => {
+    const headSha = "a".repeat(40);
+    const requirements: Requirement[] = [
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `req_${index + 1}`,
+        source: "issue" as const,
+        text: `Implement preference panel ${index + 1} behavior.`,
+        keywords: ["preference", `panel-${index + 1}`],
+        priority: "must" as const,
+        role: "core_requirement" as const,
+        sourceQuality: "explicit_acceptance_criteria" as const,
+        sourceSection: "Acceptance criteria",
+        contextRoles: []
+      })),
+      {
+        id: "req_11",
+        source: "issue",
+        text: "Add the validation CI workflow.",
+        keywords: ["validation", "workflow"],
+        priority: "must",
+        role: "core_requirement",
+        sourceQuality: "explicit_acceptance_criteria",
+        sourceSection: "Acceptance criteria",
+        contextRoles: []
+      },
+      {
+        id: "req_12",
+        source: "issue",
+        text: "It must configure the validation CI workflow to use Node.js 22 and run npm test.",
+        keywords: ["validation", "workflow", "node", "npm"],
+        priority: "must",
+        role: "core_requirement",
+        sourceQuality: "explicit_acceptance_criteria",
+        sourceSection: "Acceptance criteria",
+        contextRoles: []
+      }
+    ];
+    const report = generateVerificationReportFromRequirements({
+      title: "Implement preference panels and validation workflow",
+      description: "Adds preference behavior and configures validation CI.",
+      taskText: "Synthetic bounded requirement selection.",
+      taskSource: "issue",
+      changedFiles: [
+        ...Array.from({ length: 10 }, (_, index) => ({
+          path: `src/preferences/panel-${index + 1}.ts`,
+          status: "modified" as const,
+          patch: `+ export const preferencePanel${index + 1} = true;`
+        })),
+        {
+          path: ".github/workflows/validation.yml",
+          status: "modified",
+          patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+        }
+      ],
+      checks: [
+        ...Array.from({ length: 4 }, (_, index) => ({
+          name: `Unrelated matrix ${index + 1}`,
+          status: "failed" as const,
+          summary: "An unrelated matrix job failed."
+        })),
+        {
+          name: "Validation CI",
+          status: "failed",
+          summary: "Status: failed. npm test failed.",
+          workflowExecutionIdentity: {
+            version: 1,
+            kind: "workflow_execution_identity",
+            workflowPath: ".github/workflows/validation.yml",
+            workflowName: "Validation CI",
+            workflowId: 101,
+            runId: 202,
+            runAttempt: 1,
+            jobId: 303,
+            jobName: "test",
+            headSha
+          }
+        }
+      ],
+      logs: [],
+      sourceProvenance: githubInventoryProvenance(headSha)
+    } satisfies PullRequestInput, {
+      requirements,
+      contexts: [],
+      proofExpectationsByRequirement: new Map([["req_12", {
+        implementation: false,
+        documentation: false,
+        ci: true,
+        targetedTest: false,
+        visual: false,
+        interaction: false,
+        noImplementationChanges: false,
+        execution: true
+      }]]),
+      deterministicRelationsByRequirement: new Map([["req_12", {
+        version: 1,
+        kind: "workflow_antecedent",
+        antecedentRequirementId: "req_11"
+      }]])
+    });
+    const workflowNode = report.proofGraph.nodes.find((node) => node.deterministicRelation?.kind === "workflow_antecedent")!;
+    const workflowRequirement = report.requirements.find((item) => item.requirementId === workflowNode.requirementId)!;
+    const linked = report.proofGraph.failedCheckAssociations?.find((association) =>
+      association.requirementId === workflowNode.requirementId && association.state === "linked"
+    );
+
+    expect(report.proofGraph.failedCheckAssociations).toHaveLength(50);
+    expect(linked).toEqual(expect.objectContaining({ basis: "complete_identity_match" }));
+    expect(workflowRequirement.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "execution", state: "violated", collectionBasis: "failed_execution" })
+    ]));
+    expect(workflowNode.gapSignals.map((gap) => gap.kind)).toContain("failed_execution");
+    expect(workflowNode.executionEvidenceRefs).toContain(linked?.checkEvidenceRef);
+  });
+
+  it("caps failed Check associations at eight per requirement while retaining global failure", () => {
+    const report = generateVerificationReport({
+      title: "Add repository settings behavior",
+      description: "Adds repository settings behavior.",
+      taskText: "Acceptance criteria: implement repository settings behavior.",
+      taskSource: "issue",
+      changedFiles: [{
+        path: "src/settings/repository-settings.ts",
+        status: "modified",
+        patch: "+ export const repositorySettings = true;"
+      }],
+      checks: Array.from({ length: 20 }, (_, index) => ({
+        name: `Repository tests matrix ${index + 1}`,
+        status: "failed" as const,
+        summary: "Repository tests failed."
+      })),
+      logs: []
+    });
+    const requirementId = report.requirements[0]!.requirementId;
+
+    expect(report.proofGraph.failedCheckAssociations).toHaveLength(8);
+    expect(report.proofGraph.failedCheckAssociations?.every((association) =>
+      association.requirementId === requirementId
+    )).toBe(true);
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("keeps canonical and opaque failed Checks out of local execution proof without identity", () => {
     const canonical = generateVerificationReport({
       title: "Add settings-panel tests",
       description: "Adds settings-panel coverage.",
@@ -3040,11 +3472,16 @@ describe("generateVerificationReport", () => {
 
     for (const report of [canonical, opaque]) {
       expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
-        expect.objectContaining({ subject: "execution", state: "violated", collectionBasis: "failed_execution" })
+        expect.objectContaining({ subject: "execution", state: "incomplete", evidenceRefs: [] })
       ]));
-      expect(report.proofGraph.nodes[0]?.gapSignals).toEqual(expect.arrayContaining([
-        expect.objectContaining({ kind: "failed_execution", severity: "blocker" })
-      ]));
+      expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("failed_execution");
+      expect(report.proofGraph.failedCheckAssociations).toEqual([
+        expect.objectContaining({
+          requirementId: report.requirements[0]!.requirementId,
+          state: "unknown",
+          basis: "identity_incomplete"
+        })
+      ]);
       expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
     }
   });
@@ -3625,6 +4062,53 @@ function refsToEvidence(report: VerificationReport, refs: string[]) {
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
 
   return refs.map((ref) => evidenceById.get(ref)).filter((item): item is VerificationReport["evidenceIndex"][number] => Boolean(item));
+}
+
+function gitBlobSha(source: string) {
+  return createHash("sha1").update(`blob ${Buffer.byteLength(source, "utf8")}\0`).update(source).digest("hex");
+}
+
+function unchangedExactHeadRelationInput(): PullRequestInput {
+  const headSha = "7".repeat(40);
+  const testPath = "test/repository-name-regression.test.js";
+  const source = "export function repositoryName(value) { return String(value).toLowerCase(); } // transient-unchanged-source";
+  return {
+    title: "Add repository name regression coverage",
+    description: "Adds focused regression coverage.",
+    taskText: "Acceptance criteria: add a regression test for repositoryName(value) formatting.",
+    taskSource: "issue",
+    changedFiles: [{
+      path: testPath,
+      status: "added",
+      patch: [
+        "+import { repositoryName } from '../src/repositories/name.js';",
+        "+test('formats repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+      ].join("\n")
+    }],
+    checks: [{
+      name: "repository-name-regression",
+      status: "passed",
+      summary: "Repository name regression test passed."
+    }],
+    logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "npm test passed." }],
+    sourceProvenance: githubInventoryProvenance(headSha),
+    executionSuites: [{
+      headSha,
+      status: "passed",
+      executionSource: "GitHub Actions job: unit-tests",
+      runner: "node_test",
+      scope: "repository_discovery",
+      testPaths: [testPath]
+    }],
+    resolvedHeadModules: [{
+      version: 1,
+      kind: "resolved_head_module",
+      headSha,
+      path: "src/repositories/name.js",
+      blobSha: gitBlobSha(source),
+      source
+    }]
+  };
 }
 
 function githubInventoryProvenance(headSha = "a".repeat(40), inventoryHeadSha = headSha): NonNullable<PullRequestInput["sourceProvenance"]> {

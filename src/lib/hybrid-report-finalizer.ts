@@ -1,5 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
-import { extractKeywords, extractRequirementSpanSeed, isUnlinkedPrEvaluationMetaCandidate } from "./extractors";
+import {
+  deriveDeterministicRequirementRelations,
+  extractKeywords,
+  extractRequirementSpanSeed,
+  isUnlinkedPrEvaluationMetaCandidate
+} from "./extractors";
 import {
   bindHybridPlannerSeedHash,
   decodeHybridPlannerExpectedAxes,
@@ -108,11 +113,26 @@ export function finalizeHybridVerificationReport(
   const reportInput = materialized.omittedPrCandidate
     ? { ...args.input, limitations: appendOnce(args.input.limitations ?? [], HYBRID_PR_OMISSION_LIMITATION) }
     : args.input;
+  const deterministicRelations = deriveAdmittedDeterministicRelations(
+    reportInput,
+    currentSeed,
+    materialized.requirements
+  );
+  const proofExpectationsByRequirement = new Map(materialized.expectations);
+  for (const [requirementId, expectations] of deterministicRelations.proofExpectationsByRequirement) {
+    proofExpectationsByRequirement.set(requirementId, expectations);
+  }
+  const evidenceContextRequirementIdsByRequirement = new Map(materialized.evidenceContextRequirementIds);
+  for (const [requirementId, contextIds] of deterministicRelations.evidenceContextRequirementIdsByRequirement) {
+    evidenceContextRequirementIdsByRequirement.set(requirementId, [...contextIds]);
+  }
   const report = generateVerificationReportFromRequirements(reportInput, {
     requirements: materialized.requirements,
     contexts: currentSeed.contexts,
-    proofExpectationsByRequirement: materialized.expectations,
-    evidenceContextRequirementIdsByRequirement: materialized.evidenceContextRequirementIds
+    proofExpectationsByRequirement,
+    evidenceContextRequirementIdsByRequirement,
+    deterministicRelationsByRequirement: deterministicRelations.deterministicRelationsByRequirement,
+    sourceBindingsByRef: deterministicRelations.sourceBindingsByRef
   });
   report.analysisContext = currentSeed.analysisContext;
   report.planner = {
@@ -130,6 +150,52 @@ export function finalizeHybridVerificationReport(
   }
   for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
   return { disposition: "hybrid", report };
+}
+
+function deriveAdmittedDeterministicRelations(
+  input: Pick<PullRequestInput, "taskText" | "description" | "taskSource">,
+  seed: RequirementSpanSeed,
+  admittedRequirements: readonly Requirement[]
+) {
+  const admittedById = new Map(admittedRequirements.map((requirement) => [requirement.id, requirement]));
+  const sourceRequirements = seed.spans.map((span): Requirement => admittedById.get(span.id) ?? ({
+    id: span.id,
+    source: span.source,
+    text: span.text,
+    keywords: span.sourceQuality === "manual_check" ? [] : extractKeywords(span.text),
+    priority: span.priority,
+    role: "core_requirement",
+    sourceQuality: span.authority === "pr_author_claim" ? "author_claim" : span.sourceQuality,
+    sourceSection: span.sourceSection,
+    contextRoles: []
+  }));
+  const derived = deriveDeterministicRequirementRelations(input, sourceRequirements);
+  const admittedIds = new Set(admittedRequirements.map((requirement) => requirement.id));
+  const deterministicRelationsByRequirement = new Map([...derived.deterministicRelationsByRequirement]
+    .filter(([requirementId, relation]) =>
+      admittedIds.has(requirementId) && admittedIds.has(relation.antecedentRequirementId)
+    ));
+  const retainedSourceBindingRefs = new Set([...deterministicRelationsByRequirement.values()].flatMap((relation) =>
+    relation.kind === "test_antecedent"
+      ? [relation.currentSourceBindingRef, relation.antecedentSourceBindingRef]
+      : []
+  ));
+  const sourceBindingsByRef = new Map([...derived.sourceBindingsByRef]
+    .filter(([ref]) => retainedSourceBindingRefs.has(ref)));
+  const relationRequirementIds = new Set(deterministicRelationsByRequirement.keys());
+  const proofExpectationsByRequirement = new Map([...derived.proofExpectationsByRequirement]
+    .filter(([requirementId]) => relationRequirementIds.has(requirementId)));
+  const evidenceContextRequirementIdsByRequirement = new Map([...derived.evidenceContextRequirementIdsByRequirement]
+    .filter(([requirementId, contextIds]) =>
+      relationRequirementIds.has(requirementId) && contextIds.every((contextId) => admittedIds.has(contextId))
+    ));
+
+  return {
+    proofExpectationsByRequirement,
+    evidenceContextRequirementIdsByRequirement,
+    deterministicRelationsByRequirement,
+    sourceBindingsByRef
+  };
 }
 
 function currentBoundSeed(

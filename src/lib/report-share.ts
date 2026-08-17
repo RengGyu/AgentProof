@@ -1,6 +1,6 @@
 import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport } from "./report-validation";
-import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
+import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, PublicProofGraph, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
 import type { VerificationContractReportV2 } from "./verification-contract-v2";
 import { redactSecrets } from "./redact";
 
@@ -17,7 +17,7 @@ interface ShareableReportV1 {
   requirements: Array<Pick<VerificationReport["requirements"][number], "requirementId" | "requirementText" | "status" | "evidenceStatus" | "sourceAuthority" | "gaps" | "reviewerNote" | "confidence" | "proofAxes" | "classificationBasis" | "plannerAxisSubjects">>;
   testing: VerificationReport["testing"];
   reviewPriority: VerificationReport["reviewPriority"];
-  proofGraph: VerificationReport["proofGraph"];
+  proofGraph: PublicProofGraph;
   limitations: string[];
 }
 
@@ -352,7 +352,7 @@ function appendPortableTrustLimitation(limitations: string[], version: 1 | 2 | 3
   return limitations.includes(limitation) ? limitations : [...limitations, limitation];
 }
 
-function sanitizeProofGraphForShare(proofGraph: VerificationReport["proofGraph"] | undefined): VerificationReport["proofGraph"] {
+function sanitizeProofGraphForShare(proofGraph: VerificationReport["proofGraph"] | undefined): PublicProofGraph {
   const nodes = (proofGraph?.nodes ?? []).map((node) => ({
     requirementId: redactSecrets(node.requirementId),
     requirementText: summaryProofText(node.requirementText, "Requirement proof text omitted from summary view."),

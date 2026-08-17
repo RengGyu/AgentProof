@@ -94,9 +94,23 @@ export interface PullRequestInput {
   logs: LogSnippet[];
   /** Bounded, normalized Actions suite metadata. Raw commands and logs are excluded. */
   executionSuites?: ExecutionSuiteObservation[];
+  /**
+   * Transient exact-head source used only to resolve direct changed-test
+   * relations. Raw source and paths must never be copied into a report.
+   */
+  resolvedHeadModules?: ResolvedHeadModulePayload[];
   taskText: string;
   limitations?: string[];
   sourceProvenance?: SourceProvenance;
+}
+
+export interface ResolvedHeadModulePayload {
+  version: 1;
+  kind: "resolved_head_module";
+  headSha: string;
+  path: string;
+  blobSha: string;
+  source: string;
 }
 
 export type ExecutionSuiteRunner = "node_test" | "pytest" | "go_test" | "cargo_test";
@@ -168,6 +182,24 @@ export interface CheckRun {
   status: CheckStatus;
   summary?: string;
   url?: string;
+  /**
+   * Transient normalized GitHub Actions identity. It is never persisted;
+   * reports retain only the associated Check evidence reference and result.
+   */
+  workflowExecutionIdentity?: WorkflowExecutionIdentity;
+}
+
+export interface WorkflowExecutionIdentity {
+  version: 1;
+  kind: "workflow_execution_identity";
+  workflowPath: string;
+  workflowName: string;
+  workflowId: number;
+  runId: number;
+  runAttempt: number;
+  jobId: number;
+  jobName: string;
+  headSha: string;
 }
 
 export interface LogSnippet {
@@ -222,6 +254,19 @@ export interface RequirementSpanSeed {
   spans: RequirementSourceSpan[];
   contexts: RequirementContextSignal[];
   seedHash: string;
+}
+
+/** Bounded source-span receipt. Deliberately excludes source text and sections. */
+export interface RequirementSourceBinding {
+  version: 1;
+  kind: "requirement_source_binding";
+  id: string;
+  requirementId: string;
+  spanId: RequirementSpanId;
+  seedId: string;
+  groupId: RequirementSourceSpan["groupId"];
+  source: Requirement["source"];
+  ordinal: number;
 }
 
 export interface RequirementSpanSeedExtractionResult {
@@ -357,11 +402,15 @@ export interface RequirementProofNode {
   classificationBasis?: "deterministic" | "enhanced_plan";
 }
 
-export interface DeterministicRequirementRelation {
-  version: 1;
-  kind: "workflow_antecedent";
-  antecedentRequirementId: string;
-}
+export type DeterministicRequirementRelation =
+  | { version: 1; kind: "workflow_antecedent"; antecedentRequirementId: string }
+  | {
+      version: 1;
+      kind: "test_antecedent";
+      antecedentRequirementId: string;
+      currentSourceBindingRef: string;
+      antecedentSourceBindingRef: string;
+    };
 
 export interface DeterministicCaseCoverageReceipt {
   version: 1;
@@ -374,6 +423,14 @@ export interface DeterministicCaseCoverageReceipt {
 export interface ProofGraph {
   version: 1;
   nodes: RequirementProofNode[];
+  /** Bounded relation receipts; no source text or source section is retained. */
+  sourceBindings?: RequirementSourceBinding[];
+  /** Private exact-head identities. Raw module paths, source, and bindings are excluded. */
+  exactHeadTargetReceipts?: ExactHeadTargetReceipt[];
+  /** Private direct-test relation receipts. Raw imports and assertion values are excluded. */
+  testRelationReceipts?: TestRelationReceipt[];
+  /** Private, bounded association decisions. Raw Check text and identity tuples are excluded. */
+  failedCheckAssociations?: FailedCheckAssociation[];
   context: RequirementContextSignal[];
   summary: {
     requirementCount: number;
@@ -383,6 +440,60 @@ export interface ProofGraph {
     requirementsWithGaps: number;
     gapCount: number;
   };
+}
+
+export type PrivateProofGraphReceiptCollectionKey =
+  | "sourceBindings"
+  | "exactHeadTargetReceipts"
+  | "testRelationReceipts"
+  | "failedCheckAssociations";
+
+/** Public/share projection. Private receipt collections cannot be represented or structurally assigned. */
+export type PublicProofGraph = Omit<ProofGraph, PrivateProofGraphReceiptCollectionKey> & {
+  sourceBindings?: never;
+  exactHeadTargetReceipts?: never;
+  testRelationReceipts?: never;
+  failedCheckAssociations?: never;
+};
+
+export interface ExactHeadTargetReceipt {
+  id: string;
+  version: 1;
+  kind: "exact_head_target";
+  headSha: string;
+  targetPathDigest: string;
+  targetBlobSha: string;
+  exportKind: "named" | "default" | "commonjs";
+  canonicalBindingDigest: string;
+}
+
+export interface TestRelationReceipt {
+  id: string;
+  version: 1;
+  kind: "targeted_test_relation";
+  subjectRequirementId: string;
+  subjectSource: "current_requirement" | "test_antecedent";
+  exactHeadTargetReceiptRef: string;
+  testEvidenceRef: string;
+  relationBasis: "direct_static_import";
+  /** Saturated at eight; raw assertion text and values are never retained. */
+  directAssertionCaseCount: number;
+  executionEvidenceRef: string;
+}
+
+export type FailedCheckAssociationState = "linked" | "not_linked" | "unknown";
+export type FailedCheckAssociationBasis =
+  | "complete_identity_match"
+  | "deterministic_non_match"
+  | "identity_incomplete";
+
+export interface FailedCheckAssociation {
+  version: 1;
+  kind: "failed_check_association";
+  requirementId: string;
+  checkEvidenceRef: string;
+  state: FailedCheckAssociationState;
+  basis: FailedCheckAssociationBasis;
 }
 
 export interface VerificationReport {

@@ -1,4 +1,7 @@
+import { createHash } from "crypto";
 import { describe, expect, it } from "vitest";
+import { sanitizeReportForShare } from "./report-share";
+import { validateVerificationReport } from "./report-validation";
 import type { PullRequestInput, RequirementFinding, RequirementProofAxis } from "./types";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 
@@ -6,6 +9,72 @@ const HEAD_SHA = "a".repeat(40);
 const BASE_SHA = "b".repeat(40);
 
 describe("frozen English observation evidence regressions", () => {
+  it("extracts zero objectives from an evidence-inventory-only PR", () => {
+    const report = generateVerificationReport(syntheticInput({
+      title: "Supply evaluation evidence",
+      description: [
+        "## Requirements",
+        "- This PR only provides changed-file and test evidence."
+      ].join("\n"),
+      taskText: "",
+      taskSource: undefined,
+      changedFiles: [{
+        path: "test/evidence-fixture.test.js",
+        status: "modified",
+        patch: "+ test('supplies evidence', () => { expect(true).toBe(true); });"
+      }],
+      checks: [{ name: "fixture tests", status: "passed", summary: "Fixture tests passed." }]
+    }));
+
+    expect(report.requirements).toEqual([]);
+    expect(report.proofGraph.nodes).toEqual([]);
+    expect(report.proofGraph.summary.requirementCount).toBe(0);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it.each([
+    { source: "selected issue text", taskSource: "issue" as const, expectedStatus: "met" as const, expectedEvidenceStatus: undefined },
+    { source: "PR-description fallback", taskSource: undefined, expectedStatus: "partial" as const, expectedEvidenceStatus: "met" as const }
+  ])("resolves an unqualified test sibling only through its predecessor for $source", ({ taskSource, expectedStatus, expectedEvidenceStatus }) => {
+    const report = generateVerificationReport(changedSiblingInput(taskSource));
+    const [behavior, testSibling] = report.requirements;
+    const relation = report.proofGraph.nodes[1]?.deterministicRelation;
+
+    expect(report.requirements).toHaveLength(2);
+    expect(relation).toMatchObject({
+      version: 1,
+      kind: "test_antecedent",
+      antecedentRequirementId: behavior?.requirementId
+    });
+    expect(testSibling?.proofAxes?.map((item) => item.subject)).toEqual([
+      "targeted_test",
+      "execution"
+    ]);
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(testSibling).toMatchObject({ status: expectedStatus });
+    expect(testSibling?.evidenceStatus).toBe(expectedEvidenceStatus);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("supports a direct test-only regression of an unchanged helper only with exact receipts", () => {
+    const withExactTarget = generateVerificationReport(unchangedHelperInput());
+    const withoutExactTarget = generateVerificationReport(unchangedHelperInput({ resolvedHeadModules: [] }));
+    const supported = withExactTarget.requirements.at(-1);
+    const unsupported = withoutExactTarget.requirements.at(-1);
+
+    expect(axis(supported, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(supported, "execution")).toMatchObject({ state: "satisfied" });
+    expect(withExactTarget.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
+    expect(withExactTarget.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(axis(unsupported, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(unsupported, "execution")).toMatchObject({ state: "incomplete" });
+    expect(withoutExactTarget.proofGraph.exactHeadTargetReceipts).toBeUndefined();
+    expect(withoutExactTarget.proofGraph.testRelationReceipts).toBeUndefined();
+    expect(validateVerificationReport(withExactTarget, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(withoutExactTarget, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("keeps an absent-contract outcome unclear without replacing the local observation gap", () => {
     const noContract = generateVerificationReportV2FromInput(searchEmptyStateInput());
 
@@ -86,7 +155,7 @@ describe("frozen English observation evidence regressions", () => {
       taskText: [
         "Acceptance criteria:",
         "- Add the validation CI workflow.",
-        "- It must configure the validation CI workflow to use Node.js 22 and run npm test."
+        "- It must use Node.js 22 and run npm test."
       ].join("\n"),
       changedFiles: [{
         path: ".github/workflows/validation.yml",
@@ -119,9 +188,75 @@ describe("frozen English observation evidence regressions", () => {
       kind: "workflow_antecedent",
       antecedentRequirementId: workflowContinuation.requirements[0]!.requirementId
     });
+    expect(validateVerificationReport(workflowContinuation, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("retains relevant failed workflow execution evidence without treating generic passing evidence as proof", () => {
+  it("keeps an unrelated failed Check global while exact test execution remains local", () => {
+    const report = generateVerificationReport(changedSiblingInput("issue", [{
+      name: "UNRELATED_MATRIX=0",
+      status: "failed",
+      summary: "Status: failed. An unrelated matrix suite failed.",
+      url: "https://github.com/example/project/actions/runs/10/job/20"
+    }]));
+    const testSibling = report.requirements[1];
+    const failedCheckRef = report.evidenceIndex.find((item) =>
+      item.kind === "check" && item.label === "UNRELATED_MATRIX=0"
+    )!.id;
+
+    expect(report.testing.ciStatus).toBe("failed");
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(testSibling?.evidenceRefs).not.toContain(failedCheckRef);
+    expect(report.proofGraph.nodes[1]?.executionEvidenceRefs).not.toContain(failedCheckRef);
+    expect(report.proofGraph.nodes[1]?.gapSignals.map((gap) => gap.kind)).not.toContain("failed_execution");
+    expect(report.proofGraph.failedCheckAssociations).toContainEqual({
+      version: 1,
+      kind: "failed_check_association",
+      requirementId: testSibling!.requirementId,
+      checkEvidenceRef: failedCheckRef,
+      state: "unknown",
+      basis: "identity_incomplete"
+    });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("omits every private relation receipt from the public share projection", () => {
+    const failedCheck = {
+      name: "UNRELATED_MATRIX=0",
+      status: "failed" as const,
+      summary: "Status: failed. An unrelated matrix suite failed.",
+      url: "https://github.com/example/project/actions/runs/10/job/20"
+    };
+    const relationReport = generateVerificationReport(changedSiblingInput("issue", [failedCheck]));
+    const exactTargetReport = generateVerificationReport(unchangedHelperInput({ checks: [failedCheck] }));
+    const serializedShare = JSON.stringify([
+      sanitizeReportForShare(relationReport),
+      sanitizeReportForShare(exactTargetReport)
+    ]);
+
+    expect(relationReport.proofGraph.sourceBindings).toHaveLength(2);
+    expect(exactTargetReport.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
+    expect(exactTargetReport.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(relationReport.proofGraph.failedCheckAssociations?.length).toBeGreaterThan(0);
+    for (const privateField of [
+      "sourceBindings",
+      "exactHeadTargetReceipts",
+      "testRelationReceipts",
+      "failedCheckAssociations",
+      "targetBlobSha",
+      "canonicalBindingDigest",
+      "UNRELATED_MATRIX=0",
+      "An unrelated matrix suite failed"
+    ]) {
+      expect(serializedShare).not.toContain(privateField);
+    }
+    expect(relationReport.testing.ciStatus).toBe("failed");
+    expect(exactTargetReport.testing.ciStatus).toBe("failed");
+    expect(validateVerificationReport(relationReport, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(exactTargetReport, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("keeps a generic failed workflow Check global and records an incomplete association", () => {
     const workflowFailure = generateVerificationReport(syntheticInput({
       title: "Configure validation workflow",
       description: "Updates validation CI.",
@@ -139,10 +274,88 @@ describe("frozen English observation evidence regressions", () => {
     }));
     const continuation = workflowFailure.requirements[1];
     const execution = axis(continuation, "execution");
+    const associations = (workflowFailure.proofGraph as typeof workflowFailure.proofGraph & {
+      failedCheckAssociations?: Array<Record<string, unknown>>;
+    }).failedCheckAssociations;
+    const failedCheckRef = workflowFailure.evidenceIndex.find((item) => item.kind === "check")!.id;
 
-    expect(execution).toMatchObject({ state: "violated", collectionBasis: "failed_execution" });
-    expect(execution?.evidenceRefs).toHaveLength(1);
-    expect(workflowFailure.proofGraph.nodes[1]?.executionEvidenceRefs).toEqual(execution?.evidenceRefs);
+    expect(workflowFailure.testing.ciStatus).toBe("failed");
+    expect(execution).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(workflowFailure.proofGraph.nodes[1]?.executionEvidenceRefs).toEqual([]);
+    expect(workflowFailure.proofGraph.nodes[1]?.gapSignals.map((gap) => gap.kind)).not.toContain("failed_execution");
+    expect(continuation?.evidenceRefs).not.toContain(failedCheckRef);
+    expect(associations).toContainEqual({
+      version: 1,
+      kind: "failed_check_association",
+      requirementId: continuation!.requirementId,
+      checkEvidenceRef: failedCheckRef,
+      state: "unknown",
+      basis: "identity_incomplete"
+    });
+  });
+
+  it("links failed workflow execution only from a complete matching identity tuple", () => {
+    const workflowFailure = generateVerificationReport(syntheticInput({
+      title: "Configure validation workflow",
+      description: "Updates validation CI.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must configure the validation CI workflow to use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{
+        name: "Validation CI",
+        status: "failed",
+        summary: "Status: failed. npm test failed.",
+        workflowExecutionIdentity: {
+          version: 1,
+          kind: "workflow_execution_identity",
+          workflowPath: ".github/workflows/validation.yml",
+          workflowName: "Validation CI",
+          workflowId: 101,
+          runId: 202,
+          runAttempt: 1,
+          jobId: 303,
+          jobName: "test",
+          headSha: HEAD_SHA
+        }
+      }]
+    } as Partial<PullRequestInput> & { checks: Array<Record<string, unknown>> }) as PullRequestInput);
+    const continuation = workflowFailure.requirements[1];
+    const execution = axis(continuation, "execution");
+    const associations = (workflowFailure.proofGraph as typeof workflowFailure.proofGraph & {
+      failedCheckAssociations?: Array<Record<string, unknown>>;
+    }).failedCheckAssociations;
+    const failedCheckRef = workflowFailure.evidenceIndex.find((item) => item.kind === "check")!.id;
+
+    expect(workflowFailure.testing.ciStatus).toBe("failed");
+    expect(execution).toMatchObject({
+      state: "violated",
+      collectionBasis: "failed_execution",
+      evidenceRefs: [failedCheckRef]
+    });
+    expect(workflowFailure.proofGraph.nodes[1]?.executionEvidenceRefs).toEqual([failedCheckRef]);
+    expect(workflowFailure.proofGraph.nodes[1]?.gapSignals.map((gap) => gap.kind)).toContain("failed_execution");
+    expect(associations).toContainEqual({
+      version: 1,
+      kind: "failed_check_association",
+      requirementId: continuation!.requirementId,
+      checkEvidenceRef: failedCheckRef,
+      state: "linked",
+      basis: "complete_identity_match"
+    });
+    const serializedAssociations = JSON.stringify(associations);
+    expect(serializedAssociations).not.toContain("workflowExecutionIdentity");
+    expect(serializedAssociations).not.toContain("workflowPath");
+    expect(serializedAssociations).not.toContain("workflowId");
+    expect(serializedAssociations).not.toContain("runId");
+    expect(serializedAssociations).not.toContain("jobId");
+    expect(serializedAssociations).not.toContain("npm test failed");
   });
 
   it("does not inherit CI identity from competing workflow antecedents", () => {
@@ -269,6 +482,105 @@ function syntheticInput(overrides: Partial<PullRequestInput>): PullRequestInput 
     },
     ...overrides
   };
+}
+
+function changedSiblingInput(
+  taskSource: "issue" | undefined,
+  additionalChecks: PullRequestInput["checks"] = []
+): PullRequestInput {
+  const selectedSource = [
+    "## Requirements",
+    "- Add repositoryVisibilityLabel(isPrivate) for Private and Public repository values.",
+    "- Add focused automated tests for both boolean paths."
+  ].join("\n");
+  const testPath = "test/repository-visibility.test.js";
+
+  return syntheticInput({
+    title: "Cover repository visibility behavior",
+    description: taskSource ? "Adds repository visibility behavior and tests." : selectedSource,
+    taskText: taskSource ? selectedSource : "",
+    taskSource,
+    changedFiles: [
+      {
+        path: "src/repositories/repository-visibility.js",
+        status: "modified",
+        patch: "+ export function repositoryVisibilityLabel(isPrivate) { return isPrivate ? 'Private repository' : 'Public repository'; }"
+      },
+      {
+        path: testPath,
+        status: "modified",
+        patch: twoCaseTestPatch(
+          "import { repositoryVisibilityLabel } from '../src/repositories/repository-visibility.js';",
+          "repositoryVisibilityLabel"
+        )
+      }
+    ],
+    checks: [
+      { name: "repository visibility tests", status: "passed", summary: "Repository visibility tests passed." },
+      ...additionalChecks
+    ],
+    logs: [{ source: "repository visibility tests", status: "passed", text: "Repository visibility tests passed." }],
+    executionSuites: [{
+      headSha: HEAD_SHA,
+      status: "passed",
+      executionSource: "repository visibility tests",
+      runner: "node_test",
+      scope: "repository_discovery",
+      testPaths: [testPath]
+    }]
+  });
+}
+
+function unchangedHelperInput(
+  overrides: Partial<Pick<PullRequestInput, "checks" | "resolvedHeadModules">> = {}
+): PullRequestInput {
+  const targetPath = "src/repositories/name.js";
+  const testPath = "test/repository-name-regression.test.js";
+  const moduleSource = "export function repositoryName(value) { return String(value).toLowerCase(); }";
+  const sourceText = [
+    "## Requirements",
+    "- Add repositoryName(value) formatting.",
+    "- Add a focused regression test for repositoryName(value)."
+  ].join("\n");
+
+  return syntheticInput({
+    title: "Add focused formatting regression coverage",
+    description: "Adds a direct regression test for an existing helper.",
+    taskText: sourceText,
+    changedFiles: [{
+      path: testPath,
+      status: "added",
+      patch: [
+        "+import { repositoryName } from '../src/repositories/name.js';",
+        "+test('formats repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+      ].join("\n")
+    }],
+    checks: overrides.checks ?? [{ name: "unit tests", status: "passed", summary: "Unit tests passed." }],
+    logs: [{ source: "unit tests", status: "passed", text: "Unit tests passed." }],
+    executionSuites: [{
+      headSha: HEAD_SHA,
+      status: "passed",
+      executionSource: "unit tests",
+      runner: "node_test",
+      scope: "repository_discovery",
+      testPaths: [testPath]
+    }],
+    resolvedHeadModules: overrides.resolvedHeadModules ?? [{
+      version: 1,
+      kind: "resolved_head_module",
+      headSha: HEAD_SHA,
+      path: targetPath,
+      blobSha: gitBlobSha(moduleSource),
+      source: moduleSource
+    }]
+  });
+}
+
+function gitBlobSha(source: string): string {
+  return createHash("sha1")
+    .update(`blob ${Buffer.byteLength(source, "utf8")}\0`)
+    .update(source)
+    .digest("hex");
 }
 
 function searchEmptyStateInput(overrides: Partial<PullRequestInput> = {}): PullRequestInput {

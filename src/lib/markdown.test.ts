@@ -5,6 +5,64 @@ import { generateVerificationReport } from "./verifier";
 import { generateVerificationReportV2FromInput } from "./verifier";
 
 describe("reportToGitHubComment", () => {
+  it("omits private proof receipts from Markdown and GitHub comments", () => {
+    const report = generateVerificationReport(demoScenarios.clean);
+    const requirementId = report.requirements[0]!.requirementId;
+    Object.assign(report.proofGraph, {
+      sourceBindings: [{
+        version: 1,
+        kind: "requirement_source_binding",
+        id: "PRIVATE_SOURCE_BINDING",
+        requirementId,
+        spanId: "sp_1_2",
+        seedId: "1".repeat(64),
+        groupId: "grp_1",
+        source: "issue",
+        ordinal: 1
+      }],
+      exactHeadTargetReceipts: [{
+        id: "PRIVATE_EXACT_TARGET",
+        version: 1,
+        kind: "exact_head_target",
+        headSha: "2".repeat(40),
+        targetPathDigest: "3".repeat(64),
+        targetBlobSha: "PRIVATE_TARGET_BLOB_SHA",
+        exportKind: "named",
+        canonicalBindingDigest: "4".repeat(64)
+      }],
+      testRelationReceipts: [{
+        id: "PRIVATE_TEST_RELATION",
+        version: 1,
+        kind: "test_relation",
+        requirementId,
+        exactHeadTargetReceiptRef: "PRIVATE_EXACT_TARGET",
+        testEvidenceRef: "PRIVATE_TEST_REF",
+        executionEvidenceRef: "PRIVATE_EXECUTION_REF"
+      }],
+      failedCheckAssociations: [{
+        version: 1,
+        kind: "failed_check_association",
+        requirementId,
+        checkEvidenceRef: "PRIVATE_CHECK_REF",
+        state: "unknown",
+        basis: "identity_incomplete"
+      }]
+    });
+
+    const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
+    for (const privateValue of [
+      "PRIVATE_SOURCE_BINDING",
+      "PRIVATE_EXACT_TARGET",
+      "PRIVATE_TARGET_BLOB_SHA",
+      "PRIVATE_TEST_RELATION",
+      "PRIVATE_TEST_REF",
+      "PRIVATE_EXECUTION_REF",
+      "PRIVATE_CHECK_REF"
+    ]) {
+      expect(output).not.toContain(privateValue);
+    }
+  });
+
   it("separates v2 no-contract outcomes from observed implementation and execution evidence", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     const markdown = reportToMarkdown(report);

@@ -85,6 +85,25 @@ describe("extractRequirements", () => {
     ]);
   });
 
+  it("excludes a pure PR evidence inventory while retaining report behavior", () => {
+    for (const inventory of [
+      "This PR provides changed-file and test evidence.",
+      "The change contains checks, tests, and logs.",
+      "The fixture lists screenshots and analysis inputs.",
+      "This scenario limits evidence to changed files, checks, tests, and logs."
+    ]) {
+      expect(extractRequirements("", [
+        "## Requirements",
+        `- ${inventory}`
+      ].join("\n")), inventory).toEqual([]);
+    }
+
+    expect(extractRequirements("", [
+      "## Requirements",
+      "- Show evidence in the report export."
+    ].join("\n"))).toHaveLength(1);
+  });
+
   it("excludes evaluation context from PR objectives without dropping a real scope constraint", () => {
     const requirements = extractRequirements(
       "",
