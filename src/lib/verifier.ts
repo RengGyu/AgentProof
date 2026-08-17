@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import {
   buildEvidenceIndexResult,
   deriveDeterministicRequirementRelations,
@@ -14,8 +15,11 @@ import {
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import {
+  directTestTargetCandidate,
   distinctDirectAssertionCallCount,
+  exactTestRelationSubjectSource,
   executionEvidenceMatchesAnyTestPath,
+  resolveExactHeadTarget,
   testImportMatchesImplementation
 } from "./evidence-relation";
 import { redactSecrets } from "./redact";
@@ -34,10 +38,13 @@ import {
 } from "./verification-criterion-evaluator-v2";
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
+  CheckRun,
   CheckStatus,
   DeterministicCaseCoverageReceipt,
   DeterministicRequirementRelation,
   EvidenceItem,
+  ExactHeadTargetReceipt,
+  FailedCheckAssociation,
   FindingProvenance,
   MissingTestFinding,
   PriorityLevel,
@@ -45,12 +52,15 @@ import type {
   PullRequestInput,
   Requirement,
   RequirementContextSignal,
+  RequirementSourceBinding,
   RequirementProofAxis,
   RequirementProofNode,
   RequirementFinding,
   ReviewPriorityItem,
+  TestRelationReceipt,
   VerificationReport,
-  VerificationReportV2
+  VerificationReportV2,
+  WorkflowExecutionIdentity
 } from "./types";
 import { tenantReportAnalysisContext } from "./tenant-report-language";
 
@@ -59,6 +69,8 @@ const MAX_FINDING_PROVENANCE_ITEMS = 5;
 const MAX_FINDING_PROVENANCE_TEXT = 240;
 const MAX_EVIDENCE_REFS_PER_FIELD = 50;
 const MAX_SCOPE_FINDINGS = 100;
+const MAX_FAILED_CHECK_ASSOCIATIONS = 50;
+const MAX_FAILED_CHECK_ASSOCIATIONS_PER_REQUIREMENT = 8;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
   const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
@@ -69,7 +81,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     omittedRequirementCount: requirementEvidence.omittedRequirementCount,
     proofExpectationsByRequirement: deterministicRelations.proofExpectationsByRequirement,
     evidenceContextRequirementIdsByRequirement: deterministicRelations.evidenceContextRequirementIdsByRequirement,
-    deterministicRelationsByRequirement: deterministicRelations.deterministicRelationsByRequirement
+    deterministicRelationsByRequirement: deterministicRelations.deterministicRelationsByRequirement,
+    sourceBindingsByRef: deterministicRelations.sourceBindingsByRef
   });
 }
 
@@ -228,6 +241,7 @@ export interface DeterministicRequirementReportSelection {
   proofExpectationsByRequirement?: ReadonlyMap<string, RequirementProofExpectations>;
   evidenceContextRequirementIdsByRequirement?: ReadonlyMap<string, readonly string[]>;
   deterministicRelationsByRequirement?: ReadonlyMap<string, DeterministicRequirementRelation>;
+  sourceBindingsByRef?: ReadonlyMap<string, RequirementSourceBinding>;
 }
 
 export interface VerifierEvidenceLookup {
@@ -543,8 +557,8 @@ export function generateVerificationReportFromRequirements(
     ciStatus,
     selection.contexts,
     selection.proofExpectationsByRequirement,
-    selection.evidenceContextRequirementIdsByRequirement,
     selection.deterministicRelationsByRequirement,
+    selection.sourceBindingsByRef,
     evidenceLookup,
     relevanceIndex
   );
@@ -737,21 +751,6 @@ function evaluateRequirement(
     .filter(({ item, match }) => match.strong && isVisualVerificationEvidence(item))
     .map(({ item }) => item.id);
   const hasMatchingVisualEvidence = matchingVisualEvidenceRefs.length > 0;
-  const matchingFailedExecutionRefs = relevance.failedExecutionRefs;
-  const failedCheck = matchingFailedExecutionRefs.length > 0;
-
-  if (failedCheck && expectations.execution) {
-    return {
-      requirementId: requirement.id,
-      requirementText: requirement.text,
-      status: hasImplementationEvidence ? "partial" : "unclear",
-      evidenceRefs: uniqueRefs([...refs, ...matchingFailedExecutionRefs]).slice(0, 5),
-      gaps: ["CI has a failing check, so requirement satisfaction is not proven."],
-      reviewerNote: "Review failed checks before relying on implementation evidence.",
-      confidence: hasImplementationEvidence ? 0.45 : 0.25
-    };
-  }
-
   const implementationEvidenceRefs = implementationMatches.map(({ item }) => item.id);
   const targetedProofRefs = targetedTestEvidenceRefsForRequirement(input, implementationEvidenceRefs, evidenceLookup);
   const artifactRefs = artifactEvidenceRefsByExpectation(
@@ -794,7 +793,7 @@ function evaluateRequirement(
     };
   }
 
-  if (asksForTests && !expectations.implementation && hasMatchingTestArtifactEvidence && hasMatchingPassingTestExecutionEvidence && !failedCheck) {
+  if (asksForTests && !expectations.implementation && hasMatchingTestArtifactEvidence && hasMatchingPassingTestExecutionEvidence) {
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -1148,8 +1147,8 @@ function buildProofGraph(
   ciStatus: CheckStatus,
   contexts: RequirementContextSignal[],
   proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined,
-  evidenceContextRequirementIdsByRequirement: ReadonlyMap<string, readonly string[]> | undefined,
   deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation> | undefined,
+  sourceBindingsByRef: ReadonlyMap<string, RequirementSourceBinding> | undefined,
   evidenceLookup: VerifierEvidenceLookup,
   relevanceIndex: RequirementEvidenceRelevanceIndex
 ): { proofGraph: ProofGraph; proofAxesByRequirement: Map<string, RequirementProofAxis[]> } {
@@ -1159,7 +1158,44 @@ function buildProofGraph(
   const diffEvidenceUnavailable = hasDiffEvidenceUnavailable(input);
   const authoritativeChangedFileInventory = hasAuthoritativeChangedFileInventory(input);
   const requirementById = new Map(requirements.map((requirement) => [requirement.id, requirement]));
-  const implementationArtifactRefs = new Set(evidenceLookup.implementationArtifactRefs);
+  const changedArtifactRefs = new Set(evidenceIndex
+    .filter((item) => item.kind === "diff" || item.kind === "changed_file")
+    .map((item) => item.id));
+  const exactHeadTargetReceiptsById = new Map<string, ExactHeadTargetReceipt>();
+  const testRelationReceiptsById = new Map<string, TestRelationReceipt>();
+  const failedChecks = failedChecksWithEvidenceRefs(input, evidenceIndex);
+  const failedCheckAssociationCandidates = requirements.flatMap((requirement) => {
+    const relation = deterministicRelationsByRequirement?.get(requirement.id);
+    const contextualCiConfiguration = resolveContextualArtifactRefs(
+      relation,
+      "ci_configuration",
+      requirementById,
+      relevanceIndex,
+      evidenceLookup,
+      changedArtifactRefs
+    );
+    return failedChecks.map(({ check, checkEvidenceRef }) => associateFailedCheck(
+      requirement.id,
+      check,
+      checkEvidenceRef,
+      relation,
+      contextualCiConfiguration,
+      input,
+      evidenceLookup
+    ));
+  });
+  const failedCheckAssociations = capFailedCheckAssociations(failedCheckAssociationCandidates);
+  const failedCheckAssociationsByRequirement = new Map<string, FailedCheckAssociation[]>();
+  for (const association of failedCheckAssociations) {
+    const existing = failedCheckAssociationsByRequirement.get(association.requirementId);
+    if (existing) existing.push(association);
+    else failedCheckAssociationsByRequirement.set(association.requirementId, [association]);
+  }
+  const exactHeadSubjectRequirementIds = exactHeadRelationSubjectRequirementIds(
+    requirements,
+    proofExpectationsByRequirement,
+    deterministicRelationsByRequirement
+  );
 
   const proofAxesByRequirement = new Map<string, RequirementProofAxis[]>();
   const nodes = requirements.map((requirement): RequirementProofNode => {
@@ -1171,20 +1207,34 @@ function buildProofGraph(
     const implementationEvidenceRefs = requirementEvidenceRefs(relevance, (item, match) =>
       (item.kind === "diff" || item.kind === "changed_file") && match.score > 0
     );
-    const contextualImplementationRefs = contextualImplementationEvidenceRefs(
-      requirement.id,
-      evidenceContextRequirementIdsByRequirement,
+    const contextualImplementation = resolveContextualArtifactRefs(
+      deterministicRelation,
+      "implementation",
       requirementById,
       relevanceIndex,
       evidenceLookup,
-      implementationArtifactRefs
+      changedArtifactRefs
     );
+    const contextualCiConfiguration = resolveContextualArtifactRefs(
+      deterministicRelation,
+      "ci_configuration",
+      requirementById,
+      relevanceIndex,
+      evidenceLookup,
+      changedArtifactRefs
+    );
+    const contextualImplementationRefs = [...contextualImplementation.refs];
     const subjectImplementationEvidenceRefs = uniqueRefs([...implementationEvidenceRefs, ...contextualImplementationRefs]);
-    const targetedTestEvidenceRefs = targetedTestEvidenceRefsForRequirement(
+    const targetedTestSelection = targetedTestEvidenceForRequirement(
       input,
       subjectImplementationEvidenceRefs,
-      evidenceLookup
+      evidenceLookup,
+      exactHeadSubjectRequirementIds.has(requirement.id),
+      requirement,
+      deterministicRelation,
+      requirementById
     );
+    const targetedTestEvidenceRefs = targetedTestSelection.refs;
     const requiresDirectAssertionCaseCoverage = isEnglishBothPathsRequirement(requirement.text);
     const directAssertionCaseTestRefs = requiresDirectAssertionCaseCoverage
       ? exactImportedTestEvidenceRefs(
@@ -1200,6 +1250,34 @@ function buildProofGraph(
       (relevance.canonicalOverlap(item) || isOpaqueMatrixExecutionFailure(item))
     );
     const allVerifiedSuiteExecutionRefs = verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, targetedTestEvidenceRefs);
+    const exactHeadSuiteExecutionRefs = uniqueRefs(targetedTestSelection.exactHeadRelations.flatMap((relation) =>
+      verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, [relation.testEvidenceRef])
+    ));
+    for (const relation of targetedTestSelection.exactHeadRelations) {
+      exactHeadTargetReceiptsById.set(relation.target.receipt.id, relation.target.receipt);
+      for (const executionEvidenceRef of verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, [relation.testEvidenceRef])) {
+        const id = `test_relation_${createHash("sha256").update([
+          requirement.id,
+          relation.subjectSource,
+          relation.target.receipt.id,
+          relation.testEvidenceRef,
+          String(Math.min(relation.target.distinctLiteralCaseCount, 8)),
+          executionEvidenceRef
+        ].join("\0")).digest("hex").slice(0, 24)}`;
+        testRelationReceiptsById.set(id, {
+          id,
+          version: 1,
+          kind: "targeted_test_relation",
+          subjectRequirementId: requirement.id,
+          subjectSource: relation.subjectSource,
+          exactHeadTargetReceiptRef: relation.target.receipt.id,
+          testEvidenceRef: relation.testEvidenceRef,
+          relationBasis: "direct_static_import",
+          directAssertionCaseCount: Math.min(relation.target.distinctLiteralCaseCount, 8),
+          executionEvidenceRef
+        });
+      }
+    }
     const directAssertionCaseSupport = requiresDirectAssertionCaseCoverage
       ? directAssertionCaseTestRefs
         .map((testEvidenceRef) => ({
@@ -1224,18 +1302,26 @@ function buildProofGraph(
       evidenceIndex,
       evidenceLookup
     );
-    const matchingExecutionRefs = isWorkflowAntecedent
+    const matchingExecutionRefs = (isWorkflowAntecedent
       // Generic checks and suite observations do not contain the complete
       // workflow/run/job identity tuple needed for workflow execution proof.
       ? []
+      : targetedTestSelection.exactHeadRelationRequired
+      ? exactHeadSuiteExecutionRefs
       : requiresDirectAssertionCaseCoverage
       ? verifiedSuiteExecutionRefs
       : uniqueRefs([
         ...directlyMatchingExecutionRefs,
         ...verifiedSuiteExecutionRefs,
         ...testLinkedExecutionRefs
-      ]);
-    const matchingFailedExecutionRefs = [...relevance.failedExecutionRefs];
+      ])).filter((ref) => {
+        const evidence = evidenceLookup.evidenceForRef(ref);
+        return Boolean(evidence && isPassingTestExecutionEvidence(evidence));
+      });
+    const requirementFailedCheckAssociations = failedCheckAssociationsByRequirement.get(requirement.id) ?? [];
+    const matchingFailedExecutionRefs = requirementFailedCheckAssociations
+      .filter((association) => association.state === "linked")
+      .map((association) => association.checkEvidenceRef);
     const matchingVisualRefs = requirementEvidenceRefs(relevance, (item, match) =>
       isVisualVerificationEvidence(item) && relevance.canonicalOverlap(item)
     );
@@ -1258,6 +1344,9 @@ function buildProofGraph(
       relevance,
       evidenceLookup
     );
+    if (isWorkflowAntecedent && expectations.ci) {
+      artifactRefs.ci = [...contextualCiConfiguration.refs];
+    }
     // The full-report validator checks satisfied artifact axes against the
     // corresponding proof-node references. Keep the exact axis candidates
     // ahead of broader relevance matches, which may otherwise consume the
@@ -1293,6 +1382,10 @@ function buildProofGraph(
       diffEvidenceUnavailable,
       implementationPatchEvidenceUnavailable,
       authoritativeChangedFileInventory,
+      targetedTestCollectionIncomplete:
+        targetedTestSelection.exactHeadRelationRequired &&
+        targetedTestEvidenceRefs.length === 0 &&
+        evidenceLookup.implementationArtifactRefs.length === 0,
       requiresDirectAssertionCaseCoverage,
       directAssertionCaseCoverageComplete: Boolean(caseCoverageReceipt),
       directAssertionCaseTestRefs: caseCoverageReceipt ? [caseCoverageReceipt.testEvidenceRef] : []
@@ -1431,6 +1524,15 @@ function buildProofGraph(
       });
     }
 
+    const nonLinkedFailedCheckRefs = new Set(failedChecks
+      .map(({ checkEvidenceRef }) => checkEvidenceRef)
+      .filter((ref) => !matchingFailedExecutionRefs.includes(ref)));
+    const localGapSignals = dedupeGapSignals(gapSignals).map((gap) => ({
+      ...gap,
+      evidenceRefs: gap.evidenceRefs.filter((ref) => !nonLinkedFailedCheckRefs.has(ref))
+    }));
+    const aggregatedProofStatus = aggregateProofAxisStatus(proofAxes, finding?.status ?? "unclear");
+
     return {
       requirementId: requirement.id,
       requirementText: requirement.text,
@@ -1440,11 +1542,15 @@ function buildProofGraph(
       contextRoles: requirement.contextRoles,
       status: requirement.sourceQuality === "manual_check" && finding?.status === "unclear"
         ? "unclear"
+        : requirement.sourceQuality === "author_claim" &&
+          deterministicRelation?.kind === "test_antecedent" &&
+          aggregatedProofStatus === "met"
+          ? "partial"
         : requiresDirectAssertionCaseCoverage && targetedTestEvidenceRefs.length > 0 && !caseCoverageReceipt
           ? "partial"
         : requirement.sourceQuality === "author_claim" && finding?.status !== "met"
-        ? finding?.status ?? "unclear"
-        : aggregateProofAxisStatus(proofAxes, finding?.status ?? "unclear"),
+          ? finding?.status ?? "unclear"
+        : aggregatedProofStatus,
       confidence: finding?.confidence ?? 0.2,
       implementationEvidenceRefs: uniqueRefs([
         ...proofArtifactRefs,
@@ -1453,7 +1559,7 @@ function buildProofGraph(
       ]).slice(0, 8),
       targetedTestEvidenceRefs: targetedTestEvidenceRefs.slice(0, 8),
       executionEvidenceRefs,
-      gapSignals: dedupeGapSignals(gapSignals),
+      gapSignals: localGapSignals,
       firstFiles: evidenceLookup.firstFilesForRefs(uniqueRefs([
         ...implementationEvidenceRefs,
         ...contextualImplementationRefs,
@@ -1470,6 +1576,18 @@ function buildProofGraph(
   const proofGraph: ProofGraph = {
     version: 1,
     nodes,
+    ...(sourceBindingsByRef && sourceBindingsByRef.size > 0
+      ? { sourceBindings: [...sourceBindingsByRef.values()] }
+      : {}),
+    ...(exactHeadTargetReceiptsById.size > 0
+      ? { exactHeadTargetReceipts: [...exactHeadTargetReceiptsById.values()] }
+      : {}),
+    ...(testRelationReceiptsById.size > 0
+      ? { testRelationReceipts: [...testRelationReceiptsById.values()] }
+      : {}),
+    ...(failedCheckAssociations.length > 0
+      ? { failedCheckAssociations }
+      : {}),
     context: contexts.map((context) => ({
       ...context,
       text: shortEvidenceText(context.text)
@@ -1506,14 +1624,11 @@ function applyProofGraphToRequirements(
     const hasEvidenceUnavailable = node.gapSignals.some((gap) => gap.kind === "evidence_unavailable");
     const status = node.status;
     const confidence = hasHardGap ? Math.min(finding.confidence, 0.58) : finding.confidence;
-    // A met requirement with an execution axis must retain a matching
-    // execution reference even when broad artifact evidence fills the bounded
-    // requirement-level evidence list.
+    // Requirement-level refs are a projection of its proof axes and local gap
+    // receipts. Broad relevance matches and global failed Checks stay outside
+    // this proof-axis list.
     const evidenceRefs = uniqueRefs([
-      ...(status === "met" ? node.executionEvidenceRefs : []),
-      ...finding.evidenceRefs,
-      ...node.implementationEvidenceRefs,
-      ...node.targetedTestEvidenceRefs,
+      ...proofAxes.flatMap((axis) => axis.evidenceRefs),
       ...node.gapSignals.flatMap((gap) => gap.evidenceRefs)
     ]).slice(0, 12);
 
@@ -1554,6 +1669,7 @@ interface RequirementProofAxisBuildInput {
   diffEvidenceUnavailable: boolean;
   implementationPatchEvidenceUnavailable: boolean;
   authoritativeChangedFileInventory: boolean;
+  targetedTestCollectionIncomplete: boolean;
   requiresDirectAssertionCaseCoverage: boolean;
   directAssertionCaseCoverageComplete: boolean;
   directAssertionCaseTestRefs: string[];
@@ -1599,7 +1715,17 @@ function buildRequirementProofAxes(input: RequirementProofAxisBuildInput): Requi
         : {})
     });
   } else if (input.expectations.targetedTest) {
-    addArtifactAxis("targeted_test", input.artifactRefs.targetedTest ?? []);
+    const refs = input.artifactRefs.targetedTest ?? [];
+    if (input.targetedTestCollectionIncomplete && refs.length === 0) {
+      axes.push({
+        subject: "targeted_test",
+        polarity: "present",
+        state: "incomplete",
+        evidenceRefs: []
+      });
+    } else {
+      addArtifactAxis("targeted_test", refs);
+    }
   }
 
   if (input.expectations.execution) {
@@ -1700,12 +1826,143 @@ function isOpaqueMatrixExecutionFailure(item: EvidenceItem): boolean {
     isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
 }
 
+function targetedTestEvidenceForRequirement(
+  input: PullRequestInput,
+  implementationEvidenceRefs: string[],
+  evidenceLookup: VerifierEvidenceLookup,
+  allowExactHeadRelation = false,
+  requirement?: Requirement,
+  deterministicRelation?: DeterministicRequirementRelation,
+  requirementById?: ReadonlyMap<string, Requirement>
+): {
+  refs: string[];
+  exactHeadRelations: Array<{
+    testEvidenceRef: string;
+    subjectSource: "current_requirement" | "test_antecedent";
+    target: NonNullable<ReturnType<typeof resolveExactHeadTarget>>;
+  }>;
+  exactHeadRelationRequired: boolean;
+} {
+  const changedImplementationRefs = exactImportedTestEvidenceRefs(input, evidenceLookup, implementationEvidenceRefs);
+  if (changedImplementationRefs.length > 0) {
+    return { refs: changedImplementationRefs, exactHeadRelations: [], exactHeadRelationRequired: false };
+  }
+
+  const exactHeadRelationRequired = allowExactHeadRelation && requiresUnchangedExactHeadRelation(input, evidenceLookup);
+  const exactHeadRelations = allowExactHeadRelation && requirement
+    ? exactHeadTestRelations(
+      input,
+      evidenceLookup,
+      requirement,
+      deterministicRelation,
+      requirementById
+    )
+    : [];
+  return {
+    refs: exactHeadRelations.map((relation) => relation.testEvidenceRef),
+    exactHeadRelations,
+    exactHeadRelationRequired
+  };
+}
+
 function targetedTestEvidenceRefsForRequirement(
   input: PullRequestInput,
   implementationEvidenceRefs: string[],
   evidenceLookup: VerifierEvidenceLookup
 ): string[] {
-  return exactImportedTestEvidenceRefs(input, evidenceLookup, implementationEvidenceRefs);
+  return targetedTestEvidenceForRequirement(input, implementationEvidenceRefs, evidenceLookup).refs;
+}
+
+function exactHeadTestRelations(
+  input: PullRequestInput,
+  evidenceLookup: VerifierEvidenceLookup,
+  requirement: Requirement,
+  deterministicRelation: DeterministicRequirementRelation | undefined,
+  requirementById: ReadonlyMap<string, Requirement> | undefined
+): Array<{
+  testEvidenceRef: string;
+  subjectSource: "current_requirement" | "test_antecedent";
+  target: NonNullable<ReturnType<typeof resolveExactHeadTarget>>;
+}> {
+  const provenance = input.sourceProvenance;
+  if (
+    provenance?.origin !== "github_snapshot" ||
+    !provenance.headSha ||
+    provenance.changedFileInventory?.completeness !== "complete" ||
+    provenance.changedFileInventory.headSha !== provenance.headSha
+  ) return [];
+  const headSha = provenance.headSha;
+
+  const modules = input.resolvedHeadModules ?? [];
+  if (modules.length === 0) return [];
+  const changedTestFiles = input.changedFiles.filter((file) => isTestFile(file.path));
+  if (changedTestFiles.length !== 1) return [];
+  const changedPaths = new Set(input.changedFiles.map((file) => file.path.toLowerCase()));
+  const relations = evidenceLookup.testEvidenceItems.flatMap((item) => {
+    const testPath = item.locator ?? item.label;
+    const testFile = input.changedFiles.find((file) =>
+      file.path.toLowerCase() === testPath.toLowerCase() && isTestFile(file.path)
+    );
+    if (!testFile?.patch) return [];
+    const candidate = directTestTargetCandidate(testFile);
+    if (!candidate || changedPaths.has(candidate.targetPath.toLowerCase())) return [];
+    const matchingModules = modules.filter((module) =>
+      module.path.toLowerCase() === candidate.targetPath.toLowerCase() &&
+      module.headSha === headSha
+    );
+    if (matchingModules.length !== 1) return [];
+    const target = resolveExactHeadTarget({
+      testPath: testFile.path,
+      testPatch: testFile.patch,
+      importSpecifier: candidate.importSpecifier,
+      headSha,
+      target: matchingModules[0]
+    });
+    if (!target) return [];
+    const antecedentRequirementText = deterministicRelation?.kind === "test_antecedent"
+      ? requirementById?.get(deterministicRelation.antecedentRequirementId)?.text
+      : undefined;
+    const subjectSource = exactTestRelationSubjectSource({
+      currentRequirementText: requirement.text,
+      antecedentRequirementText,
+      target
+    });
+    return subjectSource ? [{ testEvidenceRef: item.id, subjectSource, target }] : [];
+  });
+
+  return relations.length === 1 ? relations : [];
+}
+
+function exactHeadRelationSubjectRequirementIds(
+  requirements: readonly Requirement[],
+  proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined,
+  deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation> | undefined
+): ReadonlySet<string> {
+  const candidates = requirements.filter((requirement) => {
+    const expectations = proofExpectationsByRequirement?.get(requirement.id) ?? requirementProofAxisExpectations(requirement.text);
+    const relation = deterministicRelationsByRequirement?.get(requirement.id);
+    return expectations.targetedTest && (
+      relation?.kind === "test_antecedent" ||
+      (!expectations.implementation && !expectations.documentation && !expectations.ci)
+    );
+  });
+  return candidates.length === 1 ? new Set([candidates[0].id]) : new Set();
+}
+
+function requiresUnchangedExactHeadRelation(
+  input: PullRequestInput,
+  evidenceLookup: VerifierEvidenceLookup
+): boolean {
+  if ((input.resolvedHeadModules?.length ?? 0) > 0) return true;
+  const changedPaths = new Set(input.changedFiles.map((file) => file.path.toLowerCase()));
+  return evidenceLookup.testEvidenceItems.some((item) => {
+    const testPath = item.locator ?? item.label;
+    const testFile = input.changedFiles.find((file) =>
+      file.path.toLowerCase() === testPath.toLowerCase() && isTestFile(file.path)
+    );
+    const candidate = testFile ? directTestTargetCandidate(testFile) : null;
+    return Boolean(candidate && !changedPaths.has(candidate.targetPath.toLowerCase()));
+  });
 }
 
 function exactImportedTestEvidenceRefs(
@@ -1770,29 +2027,174 @@ function isEnglishBothPathsRequirement(text: string): boolean {
   return /\bboth(?:\s+[a-z][a-z0-9-]*){0,4}\s+(?:paths?|branches?)\b/i.test(text);
 }
 
-function contextualImplementationEvidenceRefs(
-  requirementId: string,
-  contextIdsByRequirement: ReadonlyMap<string, readonly string[]> | undefined,
+type ContextualArtifactResolution =
+  | { state: "resolved"; refs: readonly string[] }
+  | { state: "incomplete"; refs: readonly [] };
+
+function resolveContextualArtifactRefs(
+  relation: DeterministicRequirementRelation | undefined,
+  expectedSubject: "implementation" | "ci_configuration",
   requirementById: ReadonlyMap<string, Requirement>,
   relevanceIndex: RequirementEvidenceRelevanceIndex,
   evidenceLookup: VerifierEvidenceLookup,
-  implementationArtifactRefs: ReadonlySet<string>
-): string[] {
-  const contextIds = contextIdsByRequirement?.get(requirementId) ?? [];
-  if (contextIds.length === 0) return [];
+  changedArtifactRefs: ReadonlySet<string>
+): ContextualArtifactResolution {
+  const eligible = relation?.kind === "workflow_antecedent"
+    ? expectedSubject === "ci_configuration"
+    : relation?.kind === "test_antecedent"
+      ? expectedSubject === "implementation"
+      : false;
+  if (!eligible || !relation) return { state: "incomplete", refs: [] };
 
-  const refs = uniqueRefs(contextIds.flatMap((contextId) => {
-    const context = requirementById.get(contextId);
-    if (!context) return [];
-    return requirementEvidenceRefs(relevanceIndex.forRequirement(context), (item, match) =>
-      (item.kind === "diff" || item.kind === "changed_file") &&
-      implementationArtifactRefs.has(item.id) &&
-      match.score > 0
-    );
-  }));
+  const antecedent = requirementById.get(relation.antecedentRequirementId);
+  if (!antecedent) return { state: "incomplete", refs: [] };
+
+  const refs = relation.kind === "workflow_antecedent"
+    ? [...changedArtifactRefs].filter((ref) => {
+      const item = evidenceLookup.evidenceForRef(ref);
+      return Boolean(item && isCiPath(item.locator ?? item.label));
+    })
+    : uniqueRefs(requirementEvidenceRefs(relevanceIndex.forRequirement(antecedent), (item, match) => {
+      if (
+        (item.kind !== "diff" && item.kind !== "changed_file") ||
+        !changedArtifactRefs.has(item.id) ||
+        match.score <= 0
+      ) return false;
+      const path = item.locator ?? item.label;
+      return !isTestFile(path) && !isDocumentationPath(path) && !isCiPath(path);
+    }));
   const paths = new Set(evidenceLookup.pathsForRefs(refs).map((path) => path.toLowerCase()));
 
-  return paths.size === 1 ? refs : [];
+  return paths.size === 1
+    ? { state: "resolved", refs }
+    : { state: "incomplete", refs: [] };
+}
+
+function failedChecksWithEvidenceRefs(
+  input: PullRequestInput,
+  evidenceIndex: readonly EvidenceItem[]
+): Array<{ check: CheckRun; checkEvidenceRef: string }> {
+  const firstCheckEvidenceOrdinal =
+    (input.taskText.trim() ? 1 : 0) +
+    (input.description.trim() ? 1 : 0) +
+    input.changedFiles.length +
+    1;
+  const retainedEvidenceIds = new Set(evidenceIndex.map((item) => item.id));
+
+  return input.checks.flatMap((check, index) => {
+    if (check.status !== "failed") return [];
+    const checkEvidenceRef = `ev_${firstCheckEvidenceOrdinal + index}`;
+    return retainedEvidenceIds.has(checkEvidenceRef) ? [{ check, checkEvidenceRef }] : [];
+  });
+}
+
+function associateFailedCheck(
+  requirementId: string,
+  check: CheckRun,
+  checkEvidenceRef: string,
+  relation: DeterministicRequirementRelation | undefined,
+  contextualCiConfiguration: ContextualArtifactResolution,
+  input: PullRequestInput,
+  evidenceLookup: VerifierEvidenceLookup
+): FailedCheckAssociation {
+  const unknown = (): FailedCheckAssociation => ({
+    version: 1,
+    kind: "failed_check_association",
+    requirementId,
+    checkEvidenceRef,
+    state: "unknown",
+    basis: "identity_incomplete"
+  });
+  const identity = check.workflowExecutionIdentity;
+  if (
+    relation?.kind !== "workflow_antecedent" ||
+    contextualCiConfiguration.state !== "resolved" ||
+    !isCompleteWorkflowExecutionIdentity(identity)
+  ) return unknown();
+
+  const provenance = input.sourceProvenance;
+  if (
+    provenance?.origin !== "github_snapshot" ||
+    typeof provenance.headSha !== "string" ||
+    !/^[a-f0-9]{40,64}$/.test(provenance.headSha)
+  ) return unknown();
+
+  const artifactPaths = uniqueRefs(evidenceLookup.pathsForRefs([...contextualCiConfiguration.refs])
+    .map(normalizeWorkflowArtifactPath));
+  if (artifactPaths.length !== 1) return unknown();
+
+  const matches = identity.headSha === provenance.headSha &&
+    normalizeWorkflowArtifactPath(identity.workflowPath) === artifactPaths[0];
+  return {
+    version: 1,
+    kind: "failed_check_association",
+    requirementId,
+    checkEvidenceRef,
+    state: matches ? "linked" : "not_linked",
+    basis: matches ? "complete_identity_match" : "deterministic_non_match"
+  };
+}
+
+function capFailedCheckAssociations(
+  candidates: readonly FailedCheckAssociation[]
+): FailedCheckAssociation[] {
+  const seenPairs = new Set<string>();
+  const unique = candidates.filter((association) => {
+    const pair = `${association.requirementId}\0${association.checkEvidenceRef}`;
+    if (seenPairs.has(pair)) return false;
+    seenPairs.add(pair);
+    return true;
+  });
+  const prioritized = [
+    ...unique.filter((association) => association.state === "linked"),
+    ...unique.filter((association) => association.state !== "linked")
+  ];
+  const retainedByRequirement = new Map<string, number>();
+  return prioritized.filter((association) => {
+    const retained = retainedByRequirement.get(association.requirementId) ?? 0;
+    if (retained >= MAX_FAILED_CHECK_ASSOCIATIONS_PER_REQUIREMENT) return false;
+    retainedByRequirement.set(association.requirementId, retained + 1);
+    return true;
+  }).slice(0, MAX_FAILED_CHECK_ASSOCIATIONS);
+}
+
+function isCompleteWorkflowExecutionIdentity(
+  value: WorkflowExecutionIdentity | undefined
+): value is WorkflowExecutionIdentity {
+  if (!value || typeof value !== "object") return false;
+  const expectedKeys = new Set([
+    "version",
+    "kind",
+    "workflowPath",
+    "workflowName",
+    "workflowId",
+    "runId",
+    "runAttempt",
+    "jobId",
+    "jobName",
+    "headSha"
+  ]);
+  if (Object.keys(value).some((key) => !expectedKeys.has(key)) || Object.keys(value).length !== expectedKeys.size) {
+    return false;
+  }
+  const positiveInteger = (item: unknown) => typeof item === "number" && Number.isSafeInteger(item) && item > 0;
+  const boundedName = (item: unknown) => typeof item === "string" && item.trim().length > 0 && item.length <= 200;
+  return value.version === 1 &&
+    value.kind === "workflow_execution_identity" &&
+    boundedName(value.workflowPath) &&
+    isCiPath(value.workflowPath) &&
+    boundedName(value.workflowName) &&
+    positiveInteger(value.workflowId) &&
+    positiveInteger(value.runId) &&
+    positiveInteger(value.runAttempt) &&
+    positiveInteger(value.jobId) &&
+    boundedName(value.jobName) &&
+    typeof value.headSha === "string" &&
+    /^[a-f0-9]{40,64}$/.test(value.headSha);
+}
+
+function normalizeWorkflowArtifactPath(value: string): string {
+  return value.trim().replace(/^\.\/+/, "").toLowerCase();
 }
 
 function passingExecutionEvidenceRefsForTargetedTests(

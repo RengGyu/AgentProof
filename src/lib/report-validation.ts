@@ -68,6 +68,15 @@ const PROOF_GAP_KINDS = new Set([
   "forbidden_implementation_present",
   "visual_proof_missing"
 ]);
+const FAILED_CHECK_ASSOCIATION_STATES = new Set(["linked", "not_linked", "unknown"]);
+const FAILED_CHECK_ASSOCIATION_BASES = new Set([
+  "complete_identity_match",
+  "deterministic_non_match",
+  "identity_incomplete"
+]);
+const EXACT_HEAD_EXPORT_KINDS = new Set(["named", "default", "commonjs"]);
+const TEST_RELATION_SUBJECT_SOURCES = new Set(["current_requirement", "test_antecedent"]);
+const TEST_RELATION_BASES = new Set(["direct_static_import"]);
 const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
 
 const LIMITS = {
@@ -89,6 +98,10 @@ const LIMITS = {
   proofGraphNodes: 40,
   proofGraphContext: 30,
   proofGraphGaps: 20,
+  sourceBindings: 80,
+  exactHeadTargetReceipts: 200,
+  testRelationReceipts: 200,
+  failedCheckAssociations: 50,
   verificationContractGaps: 4,
   proofGraphFiles: 20,
   reprompt: 6000,
@@ -171,7 +184,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateScope(report.scope, evidenceIds, errors);
   validateTesting(report.testing, evidenceIds, errors);
   validateReviewPriority(report.reviewPriority, evidenceIds, errors);
-  validateProofGraph(report.proofGraph, evidenceIds, evidenceById, requirementIds, mode, errors);
+  validateProofGraph(report.proofGraph, report.source, evidenceIds, evidenceById, requirementIds, mode, errors);
   validateReprompt(report.reprompt, errors);
   validateStringArray(report.limitations, "limitations", LIMITS.limitationCount, LIMITS.shortText, errors);
   validateSemanticAnalysis(report.semantic, requirementIds, report.evidenceIndex, errors);
@@ -179,8 +192,14 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validatePlannerProvenance(report.planner, mode, report.authenticity, errors);
   validatePlanningFieldConsistency(report, errors);
   validateAuthenticity(report.authenticity, errors);
+  if (mode === "full" || mode === "v2_full") {
+    validateFailedCheckProofIsolation(report, errors);
+  }
   if (mode === "summary" || mode === "v2_summary") {
     validateSummaryOnlyReport(report, errors);
+  }
+  if (mode === "tenant" || mode === "v2_tenant") {
+    validatePrivateProofReceiptOmission(report, "tenant reports", errors);
   }
   if (mode === "full") {
     validateFullReportProvenance(report, evidenceIds, errors);
@@ -858,6 +877,7 @@ function validateReviewPriority(value: unknown, evidenceIds: Set<string>, errors
 
 function validateProofGraph(
   value: unknown,
+  source: unknown,
   evidenceIds: Set<string>,
   evidenceById: Map<string, RecordValue>,
   requirementIds: Set<string>,
@@ -869,11 +889,25 @@ function validateProofGraph(
     return;
   }
 
-  requireKeys(value, ["version", "nodes", "context", "summary"], "proofGraph", errors);
+  requireKeys(
+    value,
+    ["version", "nodes", "context", "summary"],
+    "proofGraph",
+    errors,
+    ["sourceBindings", "exactHeadTargetReceipts", "testRelationReceipts", "failedCheckAssociations"]
+  );
   if (value.version !== 1) {
     errors.push("proofGraph.version must be 1.");
   }
 
+  const sourceBindingsById = validateRequirementSourceBindings(value.sourceBindings, requirementIds, errors);
+  const provenance = isRecord(source) && isRecord(source.provenance) ? source.provenance : undefined;
+  const targetReceiptsById = validateExactHeadTargetReceipts(
+    value.exactHeadTargetReceipts,
+    provenance?.headSha,
+    errors
+  );
+  const referencedSourceBindingIds = new Set<string>();
   const nodes = validateArray(value.nodes, "proofGraph.nodes", LIMITS.proofGraphNodes, errors);
   if (nodes) {
     const seenRequirementIds = new Set<string>();
@@ -933,7 +967,15 @@ function validateProofGraph(
       validateStringArray(item.firstFiles, `${path}.firstFiles`, LIMITS.proofGraphFiles, LIMITS.sourceUrl, errors);
       validateProofGapSignals(item.gapSignals, `${path}.gapSignals`, evidenceIds, errors);
       validateCaseCoverageReceipt(item.caseCoverageReceipt, `${path}.caseCoverageReceipt`, item, evidenceById, errors);
-      validateDeterministicRelation(item.deterministicRelation, `${path}.deterministicRelation`, requirementIds, errors);
+      validateDeterministicRelation(
+        item.deterministicRelation,
+        `${path}.deterministicRelation`,
+        item.requirementId,
+        requirementIds,
+        sourceBindingsById,
+        referencedSourceBindingIds,
+        errors
+      );
     }
     for (const requirementId of requirementIds) {
       if (!seenRequirementIds.has(requirementId)) {
@@ -942,9 +984,378 @@ function validateProofGraph(
     }
   }
 
+  for (const bindingId of sourceBindingsById.keys()) {
+    if (!referencedSourceBindingIds.has(bindingId)) {
+      errors.push("proofGraph.sourceBindings contains an unreferenced source binding.");
+    }
+  }
+
   validateProofGraphContext(value.context, errors);
+  validateTestRelationReceipts(
+    value.testRelationReceipts,
+    targetReceiptsById,
+    evidenceById,
+    requirementIds,
+    nodes,
+    errors
+  );
+  validateFailedCheckAssociations(
+    value.failedCheckAssociations,
+    evidenceById,
+    requirementIds,
+    nodes,
+    errors
+  );
   validateProofGraphSummary(value.summary, errors);
   validateProofGraphSummaryMatchesNodes(value.summary, nodes, mode === "summary", errors);
+}
+
+function validateRequirementSourceBindings(
+  value: unknown,
+  requirementIds: ReadonlySet<string>,
+  errors: string[]
+): Map<string, RecordValue> {
+  const bindingsById = new Map<string, RecordValue>();
+  if (value === undefined) return bindingsById;
+  const bindings = validateArray(value, "proofGraph.sourceBindings", LIMITS.sourceBindings, errors);
+  if (!bindings) return bindingsById;
+  const seenRequirementIds = new Set<string>();
+  const seenSpanIds = new Set<string>();
+  const seenIdentities = new Set<string>();
+
+  for (const [index, item] of bindings.entries()) {
+    const path = `proofGraph.sourceBindings[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(
+      item,
+      ["version", "kind", "id", "requirementId", "spanId", "seedId", "groupId", "source", "ordinal"],
+      path,
+      errors
+    );
+    if (item.version !== 1) errors.push(`${path}.version must be 1.`);
+    if (item.kind !== "requirement_source_binding") errors.push(`${path}.kind is invalid.`);
+    validateString(item.id, `${path}.id`, LIMITS.shortText, errors);
+    validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
+    validateString(item.spanId, `${path}.spanId`, LIMITS.shortText, errors);
+    validateString(item.seedId, `${path}.seedId`, LIMITS.shortText, errors);
+    validateString(item.groupId, `${path}.groupId`, LIMITS.shortText, errors);
+    validateEnum(item.source, `${path}.source`, REQUIREMENT_SOURCES, errors);
+
+    if (typeof item.requirementId === "string" && !requirementIds.has(item.requirementId)) {
+      errors.push(`${path}.requirementId must match a report requirement.`);
+    }
+    if (typeof item.requirementId === "string") {
+      if (seenRequirementIds.has(item.requirementId)) errors.push(`${path} duplicates a requirement binding.`);
+      seenRequirementIds.add(item.requirementId);
+    }
+    if (typeof item.spanId === "string" && !/^sp_\d+_\d+$/.test(item.spanId)) {
+      errors.push(`${path}.spanId is invalid.`);
+    }
+    if (typeof item.spanId === "string") {
+      if (seenSpanIds.has(item.spanId)) errors.push(`${path} duplicates a source span binding.`);
+      seenSpanIds.add(item.spanId);
+    }
+    if (typeof item.seedId === "string" && !/^[a-f0-9]{64}$/.test(item.seedId)) {
+      errors.push(`${path}.seedId must be a lowercase SHA-256 digest.`);
+    }
+    if (typeof item.groupId === "string" && !/^grp_\d+$/.test(item.groupId)) {
+      errors.push(`${path}.groupId is invalid.`);
+    }
+    if (typeof item.ordinal !== "number" || !Number.isSafeInteger(item.ordinal) || item.ordinal < 0) {
+      errors.push(`${path}.ordinal must be a non-negative integer.`);
+    }
+    if (
+      typeof item.seedId === "string" &&
+      typeof item.groupId === "string" &&
+      typeof item.source === "string" &&
+      typeof item.ordinal === "number" &&
+      Number.isSafeInteger(item.ordinal)
+    ) {
+      const identity = [item.seedId, item.groupId, item.source, item.ordinal].join("\0");
+      if (seenIdentities.has(identity)) errors.push(`${path} duplicates a source identity tuple.`);
+      seenIdentities.add(identity);
+    }
+    if (typeof item.id === "string") {
+      if (bindingsById.has(item.id)) errors.push(`${path}.id duplicates a source binding ID.`);
+      else bindingsById.set(item.id, item);
+    }
+  }
+  return bindingsById;
+}
+
+function validateExactHeadTargetReceipts(
+  value: unknown,
+  reportHeadSha: unknown,
+  errors: string[]
+): Map<string, RecordValue> {
+  const receiptsById = new Map<string, RecordValue>();
+  if (value === undefined) return receiptsById;
+  const receipts = validateArray(
+    value,
+    "proofGraph.exactHeadTargetReceipts",
+    LIMITS.exactHeadTargetReceipts,
+    errors
+  );
+  if (!receipts) return receiptsById;
+  const seenIdentity = new Set<string>();
+
+  for (const [index, item] of receipts.entries()) {
+    const path = `proofGraph.exactHeadTargetReceipts[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(
+      item,
+      ["id", "version", "kind", "headSha", "targetPathDigest", "targetBlobSha", "exportKind", "canonicalBindingDigest"],
+      path,
+      errors
+    );
+    if (item.version !== 1) errors.push(`${path}.version must be 1.`);
+    if (item.kind !== "exact_head_target") errors.push(`${path}.kind is invalid.`);
+    validateString(item.id, `${path}.id`, LIMITS.shortText, errors);
+    if (typeof item.headSha !== "string" || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(item.headSha)) {
+      errors.push(`${path}.headSha must be exactly 40 or 64 lowercase hexadecimal characters.`);
+    }
+    if (item.headSha !== reportHeadSha || typeof reportHeadSha !== "string") {
+      errors.push(`${path}.headSha must match source.provenance.headSha.`);
+    }
+    for (const key of ["targetPathDigest", "canonicalBindingDigest"] as const) {
+      if (typeof item[key] !== "string" || !/^[a-f0-9]{64}$/.test(item[key])) {
+        errors.push(`${path}.${key} must be a lowercase SHA-256 digest.`);
+      }
+    }
+    if (typeof item.targetBlobSha !== "string" || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(item.targetBlobSha)) {
+      errors.push(`${path}.targetBlobSha must be a lowercase Git blob SHA.`);
+    }
+    validateEnum(item.exportKind, `${path}.exportKind`, EXACT_HEAD_EXPORT_KINDS, errors);
+
+    if (typeof item.id === "string") {
+      if (receiptsById.has(item.id)) errors.push(`${path}.id duplicates a target receipt ID.`);
+      else receiptsById.set(item.id, item);
+    }
+    const identity = [item.headSha, item.targetPathDigest, item.targetBlobSha, item.exportKind, item.canonicalBindingDigest].join("\0");
+    if (seenIdentity.has(identity)) errors.push(`${path} duplicates an exact-head target identity.`);
+    seenIdentity.add(identity);
+  }
+  return receiptsById;
+}
+
+function validateTestRelationReceipts(
+  value: unknown,
+  targetReceiptsById: ReadonlyMap<string, RecordValue>,
+  evidenceById: ReadonlyMap<string, RecordValue>,
+  requirementIds: ReadonlySet<string>,
+  nodes: readonly unknown[] | null,
+  errors: string[]
+): void {
+  if (value === undefined) return;
+  const receipts = validateArray(value, "proofGraph.testRelationReceipts", LIMITS.testRelationReceipts, errors);
+  if (!receipts) return;
+  const nodeByRequirementId = new Map<string, RecordValue>();
+  for (const node of nodes ?? []) {
+    if (isRecord(node) && typeof node.requirementId === "string") nodeByRequirementId.set(node.requirementId, node);
+  }
+  const seenIds = new Set<string>();
+  const ownerByTargetAndTest = new Map<string, string>();
+  const seenRelations = new Set<string>();
+
+  for (const [index, item] of receipts.entries()) {
+    const path = `proofGraph.testRelationReceipts[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(
+      item,
+      [
+        "id",
+        "version",
+        "kind",
+        "subjectRequirementId",
+        "subjectSource",
+        "exactHeadTargetReceiptRef",
+        "testEvidenceRef",
+        "relationBasis",
+        "directAssertionCaseCount",
+        "executionEvidenceRef"
+      ],
+      path,
+      errors
+    );
+    if (item.version !== 1) errors.push(`${path}.version must be 1.`);
+    if (item.kind !== "targeted_test_relation") errors.push(`${path}.kind is invalid.`);
+    for (const key of ["id", "subjectRequirementId", "exactHeadTargetReceiptRef", "testEvidenceRef", "executionEvidenceRef"] as const) {
+      validateString(item[key], `${path}.${key}`, LIMITS.shortText, errors);
+    }
+    validateEnum(item.subjectSource, `${path}.subjectSource`, TEST_RELATION_SUBJECT_SOURCES, errors);
+    validateEnum(item.relationBasis, `${path}.relationBasis`, TEST_RELATION_BASES, errors);
+    if (
+      typeof item.directAssertionCaseCount !== "number" ||
+      !Number.isSafeInteger(item.directAssertionCaseCount) ||
+      item.directAssertionCaseCount < 1 ||
+      item.directAssertionCaseCount > 8
+    ) {
+      errors.push(`${path}.directAssertionCaseCount must be an integer between 1 and 8.`);
+    }
+    if (typeof item.subjectRequirementId === "string" && !requirementIds.has(item.subjectRequirementId)) {
+      errors.push(`${path}.subjectRequirementId must match a report requirement.`);
+    }
+    if (typeof item.exactHeadTargetReceiptRef === "string" && !targetReceiptsById.has(item.exactHeadTargetReceiptRef)) {
+      errors.push(`${path}.exactHeadTargetReceiptRef cites a missing target receipt.`);
+    }
+    const testEvidence = typeof item.testEvidenceRef === "string" ? evidenceById.get(item.testEvidenceRef) : undefined;
+    if (typeof item.testEvidenceRef === "string" && !testEvidence) {
+      errors.push(`${path}.testEvidenceRef cites missing evidence.`);
+    } else if (testEvidence?.kind !== "test") {
+      errors.push(`${path}.testEvidenceRef must cite test evidence.`);
+    }
+    const executionEvidence = typeof item.executionEvidenceRef === "string" ? evidenceById.get(item.executionEvidenceRef) : undefined;
+    if (typeof item.executionEvidenceRef === "string" && !executionEvidence) {
+      errors.push(`${path}.executionEvidenceRef cites missing evidence.`);
+    } else if (
+      executionEvidence &&
+      (executionEvidence.kind !== "check" && executionEvidence.kind !== "log" ||
+        evidenceStatusFromSummary(typeof executionEvidence.summary === "string" ? executionEvidence.summary : "") !== "passed")
+    ) {
+      errors.push(`${path}.executionEvidenceRef must cite passing execution evidence.`);
+    }
+
+    const node = typeof item.subjectRequirementId === "string"
+      ? nodeByRequirementId.get(item.subjectRequirementId)
+      : undefined;
+    if (typeof item.testEvidenceRef === "string" && !getStringArray(node?.targetedTestEvidenceRefs).includes(item.testEvidenceRef)) {
+      errors.push(`${path}.testEvidenceRef must match requirement-local targeted test proof.`);
+    }
+    if (typeof item.executionEvidenceRef === "string" && !getStringArray(node?.executionEvidenceRefs).includes(item.executionEvidenceRef)) {
+      errors.push(`${path}.executionEvidenceRef must match requirement-local execution proof.`);
+    }
+    const deterministicRelation = isRecord(node?.deterministicRelation) ? node.deterministicRelation : undefined;
+    if (item.subjectSource === "test_antecedent" && deterministicRelation?.kind !== "test_antecedent") {
+      errors.push(`${path}.subjectSource must match the proof node test antecedent.`);
+    }
+    if (item.subjectSource === "current_requirement" && deterministicRelation?.kind === "test_antecedent") {
+      errors.push(`${path}.subjectSource must identify the test antecedent for a test-antecedent node.`);
+    }
+    const caseCoverageReceipt = isRecord(node?.caseCoverageReceipt) ? node.caseCoverageReceipt : undefined;
+    if (caseCoverageReceipt) {
+      if (caseCoverageReceipt.testEvidenceRef !== item.testEvidenceRef) {
+        errors.push(`${path}.testEvidenceRef must match proof-node case coverage.`);
+      }
+      if (caseCoverageReceipt.distinctLiteralCaseCount !== item.directAssertionCaseCount) {
+        errors.push(`${path}.directAssertionCaseCount must match proof-node case coverage.`);
+      }
+    }
+
+    if (typeof item.id === "string") {
+      if (seenIds.has(item.id)) errors.push(`${path}.id duplicates a test relation receipt ID.`);
+      seenIds.add(item.id);
+    }
+    const targetAndTest = [item.exactHeadTargetReceiptRef, item.testEvidenceRef].join("\0");
+    const existingOwner = ownerByTargetAndTest.get(targetAndTest);
+    if (existingOwner !== undefined && existingOwner !== item.subjectRequirementId) {
+      errors.push(`${path} reuses one exact target and test relation across requirements.`);
+    } else if (existingOwner === undefined && typeof item.subjectRequirementId === "string") {
+      ownerByTargetAndTest.set(targetAndTest, item.subjectRequirementId);
+    }
+    const relation = [item.subjectRequirementId, targetAndTest, item.executionEvidenceRef].join("\0");
+    if (seenRelations.has(relation)) errors.push(`${path} duplicates test relation receipt.`);
+    seenRelations.add(relation);
+  }
+}
+
+function validateFailedCheckAssociations(
+  value: unknown,
+  evidenceById: ReadonlyMap<string, RecordValue>,
+  requirementIds: ReadonlySet<string>,
+  nodes: readonly unknown[] | null,
+  errors: string[]
+) {
+  if (value === undefined) return;
+  const associations = validateArray(
+    value,
+    "proofGraph.failedCheckAssociations",
+    LIMITS.failedCheckAssociations,
+    errors
+  );
+  if (!associations) return;
+
+  const proofNodeByRequirement = new Map<string, RecordValue>();
+  for (const node of nodes ?? []) {
+    if (isRecord(node) && typeof node.requirementId === "string") {
+      proofNodeByRequirement.set(node.requirementId, node);
+    }
+  }
+  const seenPairs = new Set<string>();
+  const associationsByRequirement = new Map<string, number>();
+  for (const [index, item] of associations.entries()) {
+    const path = `proofGraph.failedCheckAssociations[${index}]`;
+    if (!isRecord(item)) {
+      errors.push(`${path} must be an object.`);
+      continue;
+    }
+    requireKeys(
+      item,
+      ["version", "kind", "requirementId", "checkEvidenceRef", "state", "basis"],
+      path,
+      errors
+    );
+    if (item.version !== 1) errors.push(`${path}.version must be 1.`);
+    if (item.kind !== "failed_check_association") errors.push(`${path}.kind is invalid.`);
+    validateString(item.requirementId, `${path}.requirementId`, LIMITS.shortText, errors);
+    validateString(item.checkEvidenceRef, `${path}.checkEvidenceRef`, LIMITS.shortText, errors);
+    validateEnum(item.state, `${path}.state`, FAILED_CHECK_ASSOCIATION_STATES, errors);
+    validateEnum(item.basis, `${path}.basis`, FAILED_CHECK_ASSOCIATION_BASES, errors);
+
+    if (typeof item.requirementId === "string" && !requirementIds.has(item.requirementId)) {
+      errors.push(`${path}.requirementId must match a report requirement.`);
+    }
+    const evidence = typeof item.checkEvidenceRef === "string"
+      ? evidenceById.get(item.checkEvidenceRef)
+      : undefined;
+    if (typeof item.checkEvidenceRef === "string" && !evidence) {
+      errors.push(`${path}.checkEvidenceRef cites missing evidence.`);
+    } else if (
+      evidence &&
+      (evidence.kind !== "check" || evidenceStatusFromSummary(typeof evidence.summary === "string" ? evidence.summary : "") !== "failed")
+    ) {
+      errors.push(`${path}.checkEvidenceRef must cite failed Check evidence.`);
+    }
+
+    const validPair =
+      (item.state === "linked" && item.basis === "complete_identity_match") ||
+      (item.state === "not_linked" && item.basis === "deterministic_non_match") ||
+      (item.state === "unknown" && item.basis === "identity_incomplete");
+    if (!validPair) errors.push(`${path} has an incompatible state and basis.`);
+
+    if (typeof item.requirementId === "string" && typeof item.checkEvidenceRef === "string") {
+      const requirementAssociationCount = (associationsByRequirement.get(item.requirementId) ?? 0) + 1;
+      associationsByRequirement.set(item.requirementId, requirementAssociationCount);
+      if (requirementAssociationCount > 8) {
+        errors.push("proofGraph.failedCheckAssociations must contain at most 8 items per requirement.");
+      }
+      const pair = `${item.requirementId}\0${item.checkEvidenceRef}`;
+      if (seenPairs.has(pair)) {
+        errors.push(`${path} duplicates requirement/check association.`);
+      }
+      seenPairs.add(pair);
+
+      const proofNode = proofNodeByRequirement.get(item.requirementId);
+      const executionRefs = new Set(getStringArray(proofNode?.executionEvidenceRefs));
+      const gapRefs = new Set(Array.isArray(proofNode?.gapSignals)
+        ? proofNode.gapSignals.filter(isRecord).flatMap((gap) => getStringArray(gap.evidenceRefs))
+        : []);
+      if (item.state === "linked" && (!executionRefs.has(item.checkEvidenceRef) || !gapRefs.has(item.checkEvidenceRef))) {
+        errors.push(`${path} linked association must match local failed-execution proof.`);
+      }
+      if (item.state !== "linked" && (executionRefs.has(item.checkEvidenceRef) || gapRefs.has(item.checkEvidenceRef))) {
+        errors.push(`${path} non-linked association cannot enter requirement-local proof.`);
+      }
+    }
+  }
 }
 
 function validateProofGraphContext(value: unknown, errors: string[]) {
@@ -990,7 +1401,10 @@ function validateProofGapSignals(value: unknown, path: string, evidenceIds: Set<
 function validateDeterministicRelation(
   value: unknown,
   path: string,
+  currentRequirementId: unknown,
   requirementIds: ReadonlySet<string>,
+  sourceBindingsById: ReadonlyMap<string, RecordValue>,
+  referencedSourceBindingIds: Set<string>,
   errors: string[]
 ) {
   if (value === undefined) return;
@@ -999,12 +1413,58 @@ function validateDeterministicRelation(
     return;
   }
 
-  requireKeys(value, ["version", "kind", "antecedentRequirementId"], path, errors);
+  const isTestAntecedent = value.kind === "test_antecedent";
+  requireKeys(
+    value,
+    isTestAntecedent
+      ? ["version", "kind", "antecedentRequirementId", "currentSourceBindingRef", "antecedentSourceBindingRef"]
+      : ["version", "kind", "antecedentRequirementId"],
+    path,
+    errors
+  );
   if (value.version !== 1) errors.push(`${path}.version must be 1.`);
-  if (value.kind !== "workflow_antecedent") errors.push(`${path}.kind is invalid.`);
+  if (value.kind !== "workflow_antecedent" && value.kind !== "test_antecedent") errors.push(`${path}.kind is invalid.`);
   validateString(value.antecedentRequirementId, `${path}.antecedentRequirementId`, LIMITS.shortText, errors);
   if (typeof value.antecedentRequirementId === "string" && !requirementIds.has(value.antecedentRequirementId)) {
     errors.push(`${path}.antecedentRequirementId must match a report requirement.`);
+  }
+  if (!isTestAntecedent) return;
+
+  validateString(value.currentSourceBindingRef, `${path}.currentSourceBindingRef`, LIMITS.shortText, errors);
+  validateString(value.antecedentSourceBindingRef, `${path}.antecedentSourceBindingRef`, LIMITS.shortText, errors);
+  const currentBinding = typeof value.currentSourceBindingRef === "string"
+    ? sourceBindingsById.get(value.currentSourceBindingRef)
+    : undefined;
+  const antecedentBinding = typeof value.antecedentSourceBindingRef === "string"
+    ? sourceBindingsById.get(value.antecedentSourceBindingRef)
+    : undefined;
+  if (typeof value.currentSourceBindingRef === "string") {
+    referencedSourceBindingIds.add(value.currentSourceBindingRef);
+    if (!currentBinding) errors.push(`${path}.currentSourceBindingRef cites a missing source binding.`);
+  }
+  if (typeof value.antecedentSourceBindingRef === "string") {
+    referencedSourceBindingIds.add(value.antecedentSourceBindingRef);
+    if (!antecedentBinding) errors.push(`${path}.antecedentSourceBindingRef cites a missing source binding.`);
+  }
+  if (currentBinding && currentBinding.requirementId !== currentRequirementId) {
+    errors.push(`${path}.currentSourceBindingRef must bind the current requirement.`);
+  }
+  if (antecedentBinding && antecedentBinding.requirementId !== value.antecedentRequirementId) {
+    errors.push(`${path}.antecedentSourceBindingRef must bind the antecedent requirement.`);
+  }
+  if (
+    currentBinding &&
+    antecedentBinding &&
+    (
+      currentBinding.seedId !== antecedentBinding.seedId ||
+      currentBinding.groupId !== antecedentBinding.groupId ||
+      currentBinding.source !== antecedentBinding.source ||
+      typeof currentBinding.ordinal !== "number" ||
+      typeof antecedentBinding.ordinal !== "number" ||
+      currentBinding.ordinal !== antecedentBinding.ordinal + 1
+    )
+  ) {
+    errors.push(`${path} source bindings must share one seed and group with consecutive ordinals.`);
   }
 }
 
@@ -1287,7 +1747,57 @@ function validateFullReportProvenance(report: RecordValue, evidenceIds: Set<stri
   });
 }
 
+function validateFailedCheckProofIsolation(report: RecordValue, errors: string[]) {
+  const proofGraph = isRecord(report.proofGraph) ? report.proofGraph : null;
+  const associations = Array.isArray(proofGraph?.failedCheckAssociations)
+    ? proofGraph.failedCheckAssociations
+    : [];
+  const requirements = Array.isArray(report.requirements) ? report.requirements : [];
+  const nodes = Array.isArray(proofGraph?.nodes) ? proofGraph.nodes : [];
+
+  associations.forEach((association, associationIndex) => {
+    if (
+      !isRecord(association) ||
+      (association.state !== "unknown" && association.state !== "not_linked") ||
+      typeof association.requirementId !== "string" ||
+      typeof association.checkEvidenceRef !== "string"
+    ) return;
+
+    const requirement = requirements.find((item) =>
+      isRecord(item) && item.requirementId === association.requirementId
+    );
+    const node = nodes.find((item) =>
+      isRecord(item) && item.requirementId === association.requirementId
+    );
+    const ref = association.checkEvidenceRef;
+    const prefix = `proofGraph.failedCheckAssociations[${associationIndex}] ${association.state} Check evidence cannot enter`;
+
+    if (isRecord(requirement) && getStringArray(requirement.evidenceRefs).includes(ref)) {
+      errors.push(`${prefix} requirement proof.`);
+    }
+    if (
+      isRecord(requirement) &&
+      Array.isArray(requirement.proofAxes) &&
+      requirement.proofAxes.some((axis) => isRecord(axis) && getStringArray(axis.evidenceRefs).includes(ref))
+    ) {
+      errors.push(`${prefix} proof_axis proof.`);
+    }
+    if (isRecord(node) && getStringArray(node.executionEvidenceRefs).includes(ref)) {
+      errors.push(`${prefix} proof_node_execution proof.`);
+    }
+    if (
+      isRecord(node) &&
+      Array.isArray(node.gapSignals) &&
+      node.gapSignals.some((gap) => isRecord(gap) && getStringArray(gap.evidenceRefs).includes(ref))
+    ) {
+      errors.push(`${prefix} local_gap proof.`);
+    }
+  });
+}
+
 function validateSummaryOnlyReport(report: RecordValue, errors: string[]) {
+  validatePrivateProofReceiptOmission(report, "summary-only reports", errors);
+
   if (Array.isArray(report.evidenceIndex) && report.evidenceIndex.length > 0) {
     errors.push("summary-only reports must omit evidenceIndex items.");
   }
@@ -1365,6 +1875,24 @@ function validateSummaryOnlyReport(report: RecordValue, errors: string[]) {
         }
       }
     });
+  }
+}
+
+function validatePrivateProofReceiptOmission(
+  report: RecordValue,
+  boundary: "summary-only reports" | "tenant reports",
+  errors: string[]
+): void {
+  if (!isRecord(report.proofGraph)) return;
+  for (const collection of [
+    "sourceBindings",
+    "exactHeadTargetReceipts",
+    "testRelationReceipts",
+    "failedCheckAssociations"
+  ]) {
+    if (Object.hasOwn(report.proofGraph, collection)) {
+      errors.push(`${boundary} must omit proofGraph.${collection}.`);
+    }
   }
 }
 
@@ -1604,7 +2132,7 @@ function validateFullRequirementProofAxes(
     if (state === "violated" && subject === "execution") {
       if (axis.collectionBasis !== "failed_execution" || refs.length === 0 || refs.some((ref) => {
         const evidence = evidenceById.get(ref);
-        return !evidence || !isViolatedExecutionAxisEvidenceCompatible(evidence, proofNode, requirementText, ref);
+        return !evidence || !isViolatedExecutionAxisEvidenceCompatible(report, evidence, proofNode, ref);
       })) {
         errors.push(`${axisPath} violated execution has incompatible evidence or collection basis.`);
       }
@@ -1843,26 +2371,31 @@ function isEnglishBothPathsRequirement(text: string): boolean {
 }
 
 function isViolatedExecutionAxisEvidenceCompatible(
+  report: RecordValue,
   evidence: RecordValue,
   proofNode: RecordValue | undefined,
-  requirementText: string,
   ref: string
 ): boolean {
-  const label = typeof evidence.label === "string" ? evidence.label : "";
   const summary = typeof evidence.summary === "string" ? evidence.summary : "";
-  const locator = typeof evidence.locator === "string" ? evidence.locator : "";
   const executionRefs = new Set(getStringArray(proofNode?.executionEvidenceRefs));
-  const opaqueMatrixFailure = isFailedAmbiguousActionsExecutionSignal(
-    label,
-    evidenceStatusFromSummary(summary),
-    locator,
-    summary
+  const requirementId = typeof proofNode?.requirementId === "string" ? proofNode.requirementId : "";
+  const proofGraph = isRecord(report.proofGraph) ? report.proofGraph : null;
+  const associations = Array.isArray(proofGraph?.failedCheckAssociations)
+    ? proofGraph.failedCheckAssociations.filter(isRecord)
+    : [];
+  const hasLinkedAssociation = associations.some((association) =>
+    association.version === 1 &&
+    association.kind === "failed_check_association" &&
+    association.requirementId === requirementId &&
+    association.checkEvidenceRef === ref &&
+    association.state === "linked" &&
+    association.basis === "complete_identity_match"
   );
-  return (evidence.kind === "check" || evidence.kind === "log") &&
+  return evidence.kind === "check" &&
     evidenceStatusFromSummary(summary) === "failed" &&
     isExecutionProofEvidence(evidence) &&
     executionRefs.has(ref) &&
-    (evidenceOverlapsRequirement(requirementText, evidence) || opaqueMatrixFailure);
+    hasLinkedAssociation;
 }
 
 function isImplementationArtifactEvidence(evidence: RecordValue): boolean {

@@ -1,10 +1,11 @@
+import { createHash } from "crypto";
 import { describe, expect, it } from "vitest";
 import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateVerificationReport } from "./report-validation";
 import { decodeSharedReport, encodeReportForShare, sanitizeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
 import { projectTenantPersistedReport } from "./tenant-report-validation";
-import { generateVerificationReport } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 import { generateVerificationReportV2 } from "./verifier";
 
 const HYBRID_PLANNER_PROVENANCE = {
@@ -17,6 +18,526 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("closes every private receipt collection in full mode and rejects it in summary mode", () => {
+    const report = fullPrivateReceiptReport();
+
+    expect(report.proofGraph.sourceBindings).toHaveLength(2);
+    expect(report.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
+    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.failedCheckAssociations?.length).toBeGreaterThan(0);
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    const summaryResult = validateVerificationReport(report, { mode: "v2_summary" });
+    for (const collection of [
+      "sourceBindings",
+      "exactHeadTargetReceipts",
+      "testRelationReceipts",
+      "failedCheckAssociations"
+    ]) {
+      expect(summaryResult.errors).toContain(`summary-only reports must omit proofGraph.${collection}.`);
+    }
+  });
+
+  it("emits the closed test-relation subject, source, basis, and assertion count", () => {
+    const report = fullPrivateReceiptReport();
+    const receipt = report.proofGraph.testRelationReceipts?.[0];
+
+    expect(receipt).toMatchObject({
+      version: 1,
+      kind: "targeted_test_relation",
+      subjectRequirementId: report.requirements[1]?.requirementId,
+      subjectSource: "test_antecedent",
+      relationBasis: "direct_static_import",
+      directAssertionCaseCount: 1
+    });
+    expect(Object.keys(receipt ?? {}).sort()).toEqual([
+      "directAssertionCaseCount",
+      "exactHeadTargetReceiptRef",
+      "executionEvidenceRef",
+      "id",
+      "kind",
+      "relationBasis",
+      "subjectRequirementId",
+      "subjectSource",
+      "testEvidenceRef",
+      "version"
+    ]);
+  });
+
+  it("rejects one exact target, test, and execution relation reused by another requirement", () => {
+    const report = fullPrivateReceiptReport();
+    const original = report.proofGraph.testRelationReceipts![0]!;
+    const otherRequirementId = report.requirements[0]!.requirementId;
+    const otherNode = report.proofGraph.nodes.find((node) => node.requirementId === otherRequirementId)!;
+    otherNode.targetedTestEvidenceRefs = [original.testEvidenceRef];
+    otherNode.executionEvidenceRefs = [original.executionEvidenceRef];
+    report.proofGraph.summary.requirementsWithTargetedTests = 2;
+    report.proofGraph.summary.requirementsWithExecution = 2;
+    report.proofGraph.testRelationReceipts!.push({
+      ...structuredClone(original),
+      id: "test_relation_cross_requirement_clone",
+      subjectRequirementId: otherRequirementId
+    });
+
+    const result = validateVerificationReport(report, { mode: "v2_full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "reuses one exact target and test relation across requirements"
+    );
+  });
+
+  it("rejects cross-requirement target and test reuse even with a different execution ref", () => {
+    const report = fullPrivateReceiptReport();
+    const original = report.proofGraph.testRelationReceipts![0]!;
+    const otherRequirementId = report.requirements[0]!.requirementId;
+    const otherNode = report.proofGraph.nodes.find((node) => node.requirementId === otherRequirementId)!;
+    const differentPassingExecutionRef = report.evidenceIndex.find((evidence) =>
+      evidence.kind === "check" && evidence.label === "unit-tests"
+    )!.id;
+    expect(differentPassingExecutionRef).not.toBe(original.executionEvidenceRef);
+    otherNode.targetedTestEvidenceRefs = [original.testEvidenceRef];
+    otherNode.executionEvidenceRefs = [differentPassingExecutionRef];
+    report.proofGraph.summary.requirementsWithTargetedTests = 2;
+    report.proofGraph.summary.requirementsWithExecution = 2;
+    report.proofGraph.testRelationReceipts!.push({
+      ...structuredClone(original),
+      id: "test_relation_distinct_execution_clone",
+      subjectRequirementId: otherRequirementId,
+      subjectSource: "current_requirement",
+      executionEvidenceRef: differentPassingExecutionRef
+    });
+
+    const result = validateVerificationReport(report, { mode: "v2_full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "reuses one exact target and test relation across requirements"
+    );
+  });
+
+  it("rejects malformed or disconnected private source, target, and test-relation receipts", () => {
+    const mutations: Array<{ name: string; mutate: (report: ReturnType<typeof fullPrivateReceiptReport>) => void; expected: string }> = [
+      {
+        name: "source-binding unknown key",
+        mutate: (report) => { (report.proofGraph.sourceBindings![0] as unknown as Record<string, unknown>).sourceText = "raw source"; },
+        expected: "proofGraph.sourceBindings[0].sourceText is not allowed"
+      },
+      {
+        name: "missing source-binding ref",
+        mutate: (report) => {
+          const relation = report.proofGraph.nodes[1]!.deterministicRelation;
+          if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
+          relation.currentSourceBindingRef = "rsb_missing";
+        },
+        expected: "currentSourceBindingRef cites a missing source binding"
+      },
+      {
+        name: "mismatched source-binding seed",
+        mutate: (report) => { report.proofGraph.sourceBindings![0]!.seedId = "f".repeat(64); },
+        expected: "source bindings must share one seed and group with consecutive ordinals"
+      },
+      {
+        name: "mismatched source-binding group",
+        mutate: (report) => { report.proofGraph.sourceBindings![0]!.groupId = "grp_99"; },
+        expected: "source bindings must share one seed and group with consecutive ordinals"
+      },
+      {
+        name: "mismatched source-binding ordinal",
+        mutate: (report) => { report.proofGraph.sourceBindings![1]!.ordinal = report.proofGraph.sourceBindings![0]!.ordinal; },
+        expected: "source bindings must share one seed and group with consecutive ordinals"
+      },
+      {
+        name: "target receipt unknown key",
+        mutate: (report) => { (report.proofGraph.exactHeadTargetReceipts![0] as unknown as Record<string, unknown>).targetPath = "src/private.ts"; },
+        expected: "proofGraph.exactHeadTargetReceipts[0].targetPath is not allowed"
+      },
+      {
+        name: "target head mismatch",
+        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.headSha = "9".repeat(40); },
+        expected: "headSha must match source.provenance.headSha"
+      },
+      {
+        name: "invalid target blob SHA",
+        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.targetBlobSha = "ABC"; },
+        expected: "targetBlobSha must be a lowercase Git blob SHA"
+      },
+      {
+        name: "invalid target digest",
+        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.canonicalBindingDigest = "not-a-digest"; },
+        expected: "canonicalBindingDigest must be a lowercase SHA-256 digest"
+      },
+      {
+        name: "invalid target path digest",
+        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.targetPathDigest = "not-a-digest"; },
+        expected: "targetPathDigest must be a lowercase SHA-256 digest"
+      },
+      {
+        name: "invalid export kind",
+        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.exportKind = "namespace" as never; },
+        expected: "exportKind is invalid"
+      },
+      {
+        name: "missing target receipt ref",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.exactHeadTargetReceiptRef = "exact_head_missing"; },
+        expected: "exactHeadTargetReceiptRef cites a missing target receipt"
+      },
+      {
+        name: "missing subject requirement",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.subjectRequirementId = "req_missing"; },
+        expected: "subjectRequirementId must match a report requirement"
+      },
+      {
+        name: "invalid subject source",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.subjectSource = "neighbor" as never; },
+        expected: "subjectSource is invalid"
+      },
+      {
+        name: "subject source does not match antecedent node",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.subjectSource = "current_requirement"; },
+        expected: "subjectSource must identify the test antecedent"
+      },
+      {
+        name: "invalid relation basis",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.relationBasis = "lexical_overlap" as never; },
+        expected: "relationBasis is invalid"
+      },
+      {
+        name: "unbounded assertion count",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.directAssertionCaseCount = 9; },
+        expected: "directAssertionCaseCount must be an integer between 1 and 8"
+      },
+      {
+        name: "assertion count disagrees with case coverage",
+        mutate: (report) => {
+          const relation = report.proofGraph.testRelationReceipts![0]!;
+          report.proofGraph.nodes[1]!.caseCoverageReceipt = {
+            version: 1,
+            implementationEvidenceRef: relation.testEvidenceRef,
+            testEvidenceRef: relation.testEvidenceRef,
+            distinctLiteralCaseCount: 2
+          };
+        },
+        expected: "directAssertionCaseCount must match proof-node case coverage"
+      },
+      {
+        name: "missing test evidence ref",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.testEvidenceRef = "ev_missing"; },
+        expected: "testEvidenceRef cites missing evidence"
+      },
+      {
+        name: "test-relation unknown key",
+        mutate: (report) => { (report.proofGraph.testRelationReceipts![0] as unknown as Record<string, unknown>).rawAssertion = "private source"; },
+        expected: "proofGraph.testRelationReceipts[0].rawAssertion is not allowed"
+      },
+      {
+        name: "missing execution evidence ref",
+        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.executionEvidenceRef = "ev_missing"; },
+        expected: "executionEvidenceRef cites missing evidence"
+      },
+      {
+        name: "duplicate test relation",
+        mutate: (report) => { report.proofGraph.testRelationReceipts!.push(structuredClone(report.proofGraph.testRelationReceipts![0]!)); },
+        expected: "duplicates test relation receipt"
+      },
+      {
+        name: "duplicate target receipt",
+        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts!.push(structuredClone(report.proofGraph.exactHeadTargetReceipts![0]!)); },
+        expected: "duplicates a target receipt ID"
+      },
+      {
+        name: "source-binding cap",
+        mutate: (report) => { report.proofGraph.sourceBindings = Array.from({ length: 81 }, () => structuredClone(report.proofGraph.sourceBindings![0]!)); },
+        expected: "proofGraph.sourceBindings must contain at most 80 items"
+      },
+      {
+        name: "target-receipt cap",
+        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts = Array.from({ length: 201 }, () => structuredClone(report.proofGraph.exactHeadTargetReceipts![0]!)); },
+        expected: "proofGraph.exactHeadTargetReceipts must contain at most 200 items"
+      },
+      {
+        name: "test-relation cap",
+        mutate: (report) => { report.proofGraph.testRelationReceipts = Array.from({ length: 201 }, () => structuredClone(report.proofGraph.testRelationReceipts![0]!)); },
+        expected: "proofGraph.testRelationReceipts must contain at most 200 items"
+      }
+    ];
+
+    for (const mutation of mutations) {
+      const report = fullPrivateReceiptReport();
+      mutation.mutate(report);
+      const result = validateVerificationReport(report, { mode: "v2_full" });
+      expect(result.valid, mutation.name).toBe(false);
+      expect(result.errors.join("\n"), mutation.name).toContain(mutation.expected);
+    }
+  });
+
+  it("never echoes attacker-controlled private receipt IDs or refs in validation errors", () => {
+    const attacks: Array<(report: ReturnType<typeof fullPrivateReceiptReport>, token: string) => void> = [
+      (report, token) => {
+        report.proofGraph.sourceBindings![0]!.id = token;
+        report.proofGraph.sourceBindings![1]!.id = token;
+        const relation = report.proofGraph.nodes[1]!.deterministicRelation;
+        if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
+        relation.currentSourceBindingRef = token;
+        relation.antecedentSourceBindingRef = token;
+      },
+      (report, token) => {
+        const relation = report.proofGraph.nodes[1]!.deterministicRelation;
+        if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
+        relation.currentSourceBindingRef = token;
+      },
+      (report, token) => { report.proofGraph.exactHeadTargetReceipts![0]!.id = token; report.proofGraph.exactHeadTargetReceipts!.push(structuredClone(report.proofGraph.exactHeadTargetReceipts![0]!)); },
+      (report, token) => { report.proofGraph.testRelationReceipts![0]!.id = token; report.proofGraph.testRelationReceipts!.push(structuredClone(report.proofGraph.testRelationReceipts![0]!)); },
+      (report, token) => { report.proofGraph.testRelationReceipts![0]!.subjectRequirementId = token; },
+      (report, token) => { report.proofGraph.testRelationReceipts![0]!.exactHeadTargetReceiptRef = token; },
+      (report, token) => { report.proofGraph.testRelationReceipts![0]!.testEvidenceRef = token; },
+      (report, token) => { report.proofGraph.testRelationReceipts![0]!.executionEvidenceRef = token; },
+      (report, token) => { report.proofGraph.failedCheckAssociations![0]!.checkEvidenceRef = token; }
+    ];
+
+    attacks.forEach((attack, index) => {
+      const token = `PRIVATE_ATTACKER_RECEIPT_${index}`;
+      const report = fullPrivateReceiptReport();
+      attack(report, token);
+
+      const errors = validateVerificationReport(report, { mode: "v2_full" }).errors.join("\n");
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors).not.toContain(token);
+    });
+  });
+
+  it.each([41, 63])("rejects an exact-head receipt and report head with %i hex characters", (length) => {
+    const report = fullPrivateReceiptReport();
+    const headSha = "a".repeat(length);
+    report.source.provenance!.headSha = headSha;
+    report.source.provenance!.changedFileInventory!.headSha = headSha;
+    report.source.provenance!.executionSuites![0]!.headSha = headSha;
+    report.proofGraph.exactHeadTargetReceipts![0]!.headSha = headSha;
+
+    const result = validateVerificationReport(report, { mode: "v2_full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "proofGraph.exactHeadTargetReceipts[0].headSha must be exactly 40 or 64 lowercase hexadecimal characters."
+    );
+  });
+
+  it("accepts an exact-head receipt with a 64-character report head", () => {
+    const report = fullPrivateReceiptReport();
+    const headSha = "a".repeat(64);
+    report.source.provenance!.headSha = headSha;
+    report.source.provenance!.changedFileInventory!.headSha = headSha;
+    report.source.provenance!.executionSuites![0]!.headSha = headSha;
+    report.proofGraph.exactHeadTargetReceipts![0]!.headSha = headSha;
+
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects duplicate source-binding requirement, span, and identity tuples", () => {
+    const cases: Array<{ name: string; mutate: (report: ReturnType<typeof fullPrivateReceiptReport>) => void; expected: string }> = [
+      {
+        name: "requirement",
+        mutate: (report) => { report.proofGraph.sourceBindings![1]!.requirementId = report.proofGraph.sourceBindings![0]!.requirementId; },
+        expected: "proofGraph.sourceBindings[1] duplicates a requirement binding."
+      },
+      {
+        name: "span",
+        mutate: (report) => { report.proofGraph.sourceBindings![1]!.spanId = report.proofGraph.sourceBindings![0]!.spanId; },
+        expected: "proofGraph.sourceBindings[1] duplicates a source span binding."
+      },
+      {
+        name: "identity",
+        mutate: (report) => {
+          const first = report.proofGraph.sourceBindings![0]!;
+          const second = report.proofGraph.sourceBindings![1]!;
+          second.seedId = first.seedId;
+          second.groupId = first.groupId;
+          second.source = first.source;
+          second.ordinal = first.ordinal;
+        },
+        expected: "proofGraph.sourceBindings[1] duplicates a source identity tuple."
+      }
+    ];
+
+    for (const item of cases) {
+      const report = fullPrivateReceiptReport();
+      item.mutate(report);
+      const result = validateVerificationReport(report, { mode: "v2_full" });
+      expect(result.valid, item.name).toBe(false);
+      expect(result.errors, item.name).toContain(item.expected);
+    }
+  });
+
+  it("validates closed failed Check associations, references, pairings, uniqueness, and cap", () => {
+    const report = generateVerificationReport({
+      title: "Add settings panel behavior",
+      description: "Adds settings panel behavior.",
+      taskText: "Acceptance criteria: implement settings panel behavior and add targeted tests.",
+      taskSource: "issue",
+      changedFiles: [
+        { path: "src/settings/panel.ts", status: "modified", patch: "+ export const settingsPanel = true;" },
+        { path: "src/settings/panel.test.ts", status: "modified", patch: "+ test('settings panel', () => expect(true).toBe(true));" }
+      ],
+      checks: [{ name: "unrelated matrix", status: "failed", summary: "An unrelated matrix job failed." }],
+      logs: []
+    });
+    const requirementId = report.requirements[0]!.requirementId;
+    const checkEvidenceRef = report.evidenceIndex.find((item) => item.kind === "check")!.id;
+    const association = {
+      version: 1,
+      kind: "failed_check_association",
+      requirementId,
+      checkEvidenceRef,
+      state: "unknown",
+      basis: "identity_incomplete"
+    } as const;
+    const withAssociations = report as typeof report & {
+      proofGraph: typeof report.proofGraph & { failedCheckAssociations: Array<Record<string, unknown>> };
+    };
+    withAssociations.proofGraph.failedCheckAssociations = [association];
+
+    expect(validateVerificationReport(withAssociations, { mode: "full" })).toEqual({ valid: true, errors: [] });
+
+    const unknownKey = structuredClone(withAssociations);
+    unknownKey.proofGraph.failedCheckAssociations[0]!.summary = "raw Check output must not be retained";
+    expect(validateVerificationReport(unknownKey, { mode: "full" }).errors.join("\n"))
+      .toContain("proofGraph.failedCheckAssociations[0].summary is not allowed");
+
+    const invalidRef = structuredClone(withAssociations);
+    invalidRef.proofGraph.failedCheckAssociations[0]!.checkEvidenceRef = "ev_missing";
+    expect(validateVerificationReport(invalidRef, { mode: "full" }).errors.join("\n"))
+      .toContain("proofGraph.failedCheckAssociations[0].checkEvidenceRef cites missing evidence");
+
+    const invalidPairing = structuredClone(withAssociations);
+    invalidPairing.proofGraph.failedCheckAssociations[0]!.state = "linked";
+    expect(validateVerificationReport(invalidPairing, { mode: "full" }).errors.join("\n"))
+      .toContain("proofGraph.failedCheckAssociations[0] has an incompatible state and basis");
+
+    const invalidState = structuredClone(withAssociations);
+    invalidState.proofGraph.failedCheckAssociations[0]!.state = "maybe" as never;
+    expect(validateVerificationReport(invalidState, { mode: "full" }).errors.join("\n"))
+      .toContain("proofGraph.failedCheckAssociations[0].state is invalid");
+
+    const duplicate = structuredClone(withAssociations);
+    duplicate.proofGraph.failedCheckAssociations.push(structuredClone(duplicate.proofGraph.failedCheckAssociations[0]!));
+    expect(validateVerificationReport(duplicate, { mode: "full" }).errors.join("\n"))
+      .toContain("proofGraph.failedCheckAssociations[1] duplicates requirement/check association");
+
+    const overCap = structuredClone(withAssociations);
+    overCap.proofGraph.failedCheckAssociations = Array.from({ length: 51 }, () => structuredClone(association));
+    expect(validateVerificationReport(overCap, { mode: "full" }).errors.join("\n"))
+      .toContain("proofGraph.failedCheckAssociations must contain at most 50 items");
+  });
+
+  it("rejects more than eight failed Check associations for one requirement", () => {
+    const report = generateVerificationReport({
+      title: "Add repository settings behavior",
+      description: "Adds repository settings behavior.",
+      taskText: "Acceptance criteria: implement repository settings behavior.",
+      taskSource: "issue",
+      changedFiles: [{
+        path: "src/settings/repository-settings.ts",
+        status: "modified",
+        patch: "+ export const repositorySettings = true;"
+      }],
+      checks: Array.from({ length: 9 }, (_, index) => ({
+        name: `Unrelated failed matrix ${index + 1}`,
+        status: "failed" as const,
+        summary: "An unrelated matrix job failed."
+      })),
+      logs: []
+    });
+    const requirementId = report.requirements[0]!.requirementId;
+    const failedCheckRefs = report.evidenceIndex
+      .filter((evidence) => evidence.kind === "check")
+      .map((evidence) => evidence.id);
+    report.proofGraph.failedCheckAssociations = failedCheckRefs.map((checkEvidenceRef) => ({
+      version: 1,
+      kind: "failed_check_association",
+      requirementId,
+      checkEvidenceRef,
+      state: "unknown",
+      basis: "identity_incomplete"
+    }));
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "proofGraph.failedCheckAssociations must contain at most 8 items per requirement"
+    );
+  });
+
+  it("rejects private receipts at the tenant validation boundary and omits them from tenant persistence", () => {
+    const report = fullPrivateReceiptReport();
+    const tenantValidation = validateVerificationReport(report, { mode: "v2_tenant" });
+
+    for (const collection of [
+      "sourceBindings",
+      "exactHeadTargetReceipts",
+      "testRelationReceipts",
+      "failedCheckAssociations"
+    ]) {
+      expect(tenantValidation.errors).toContain(`tenant reports must omit proofGraph.${collection}.`);
+    }
+
+    const serialized = JSON.stringify(projectTenantPersistedReport(report, "task-4-tenant-projection-secret"));
+    expect(serialized).not.toContain("sourceBindings");
+    expect(serialized).not.toContain("exactHeadTargetReceipts");
+    expect(serialized).not.toContain("testRelationReceipts");
+    expect(serialized).not.toContain("failedCheckAssociations");
+    expect(serialized).not.toContain("targetBlobSha");
+    expect(serialized).not.toContain("An unrelated matrix job failed");
+  });
+
+  it.each([
+    { state: "unknown", basis: "identity_incomplete", location: "requirement" },
+    { state: "unknown", basis: "identity_incomplete", location: "proof_axis" },
+    { state: "unknown", basis: "identity_incomplete", location: "proof_node_execution" },
+    { state: "unknown", basis: "identity_incomplete", location: "local_gap" },
+    { state: "not_linked", basis: "deterministic_non_match", location: "requirement" },
+    { state: "not_linked", basis: "deterministic_non_match", location: "proof_axis" },
+    { state: "not_linked", basis: "deterministic_non_match", location: "proof_node_execution" },
+    { state: "not_linked", basis: "deterministic_non_match", location: "local_gap" }
+  ] as const)("rejects $state failed Check evidence in $location proof", ({ state, basis, location }) => {
+    const report = generateVerificationReport({
+      title: "Add settings panel behavior",
+      description: "Adds settings panel behavior.",
+      taskText: "Acceptance criteria: implement settings panel behavior and add targeted tests.",
+      taskSource: "issue",
+      changedFiles: [
+        { path: "src/settings/panel.ts", status: "modified", patch: "+ export const settingsPanel = true;" },
+        { path: "src/settings/panel.test.ts", status: "modified", patch: "+ test('settings panel', () => expect(true).toBe(true));" }
+      ],
+      checks: [{ name: "unrelated matrix", status: "failed", summary: "An unrelated matrix job failed." }],
+      logs: []
+    });
+    const requirement = report.requirements[0]!;
+    const node = report.proofGraph.nodes[0]!;
+    const failedCheckRef = report.evidenceIndex.find((item) => item.kind === "check")!.id;
+    const association = report.proofGraph.failedCheckAssociations![0]!;
+    association.state = state;
+    association.basis = basis;
+
+    if (location === "requirement") {
+      requirement.evidenceRefs.push(failedCheckRef);
+    } else if (location === "proof_axis") {
+      requirement.proofAxes!.find((axis) => axis.subject === "execution")!.evidenceRefs.push(failedCheckRef);
+    } else if (location === "proof_node_execution") {
+      node.executionEvidenceRefs.push(failedCheckRef);
+      report.proofGraph.summary.requirementsWithExecution = 1;
+    } else {
+      node.gapSignals[0]!.evidenceRefs.push(failedCheckRef);
+    }
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      `proofGraph.failedCheckAssociations[0] ${state} Check evidence cannot enter ${location} proof`
+    );
+  });
+
   it("rejects direct assertion case coverage when its receipt is missing or inconsistent", () => {
     const headSha = "d".repeat(40);
     const testPath = "test/customer-display-name.test.js";
@@ -162,9 +683,9 @@ describe("validateVerificationReport", () => {
 
       const forged = validateVerificationReport(forgedExecution, { mode: "full" });
       expect(forged.valid).toBe(false);
-      expect(forged.errors).toEqual([
+      expect(forged.errors).toContain(
         "requirements[1].proofAxes[1] satisfied workflow antecedent execution requires a complete workflow/job identity tuple."
-      ]);
+      );
     }
 
     const fallback = structuredClone(report);
@@ -912,17 +1433,43 @@ describe("validateVerificationReport", () => {
     expect(result.errors.join("\n")).toContain("incompatible evidence");
   });
 
-  it("rejects forged violated execution axes while accepting canonical and opaque failures", () => {
+  it("rejects forged violated execution axes while accepting a linked failed workflow receipt", () => {
     const canonical = generateVerificationReport({
-      title: "Add settings-panel tests",
-      description: "Adds settings-panel coverage.",
-      taskText: "Acceptance criteria: add settings panel tests.",
-      changedFiles: [{ path: "src/settings/Panel.test.tsx", status: "modified", patch: "+ it('renders settings panel', () => {})" }],
-      checks: [{ name: "Settings panel tests", status: "failed", summary: "Settings panel tests failed." }],
-      logs: []
+      title: "Configure validation workflow",
+      description: "Updates validation CI.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must configure the validation CI workflow to use Node.js 22 and run npm test."
+      ].join("\n"),
+      taskSource: "issue",
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{
+        name: "Validation CI",
+        status: "failed",
+        summary: "Status: failed. npm test failed.",
+        workflowExecutionIdentity: {
+          version: 1,
+          kind: "workflow_execution_identity",
+          workflowPath: ".github/workflows/validation.yml",
+          workflowName: "Validation CI",
+          workflowId: 101,
+          runId: 202,
+          runAttempt: 1,
+          jobId: 303,
+          jobName: "test",
+          headSha: "a".repeat(40)
+        }
+      }],
+      logs: [],
+      sourceProvenance: githubInventoryProvenance()
     });
-    const executionAxis = canonical.requirements[0]!.proofAxes!.find((axis) => axis.subject === "execution")!;
-    const executionNode = canonical.proofGraph.nodes[0]!;
+    const executionAxis = canonical.requirements[1]!.proofAxes!.find((axis) => axis.subject === "execution")!;
+    const executionNode = canonical.proofGraph.nodes[1]!;
     const failedRef = executionAxis.evidenceRefs[0]!;
 
     expect(executionAxis).toMatchObject({ state: "violated", collectionBasis: "failed_execution" });
@@ -933,23 +1480,23 @@ describe("validateVerificationReport", () => {
     expect(validateVerificationReport(wrongStatus, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
 
     const wrongBasis = structuredClone(canonical);
-    wrongBasis.requirements[0]!.proofAxes!.find((axis) => axis.subject === "execution")!.collectionBasis = "passing_execution";
+    wrongBasis.requirements[1]!.proofAxes!.find((axis) => axis.subject === "execution")!.collectionBasis = "passing_execution";
     expect(validateVerificationReport(wrongBasis, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
 
     const missingNodeRef = structuredClone(canonical);
-    missingNodeRef.proofGraph.nodes[0]!.executionEvidenceRefs = [];
+    missingNodeRef.proofGraph.nodes[1]!.executionEvidenceRefs = [];
     expect(validateVerificationReport(missingNodeRef, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
 
-    const wrongRelevance = structuredClone(canonical);
-    wrongRelevance.evidenceIndex.find((item) => item.id === failedRef)!.label = "Payments tests";
-    wrongRelevance.evidenceIndex.find((item) => item.id === failedRef)!.summary = "Status: failed. Payments tests failed.";
-    expect(validateVerificationReport(wrongRelevance, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
+    const missingAssociation = structuredClone(canonical);
+    delete missingAssociation.proofGraph.failedCheckAssociations;
+    expect(validateVerificationReport(missingAssociation, { mode: "full" }).errors.join("\n")).toContain("violated execution has incompatible evidence");
 
-    const opaque = structuredClone(canonical);
-    opaque.evidenceIndex.find((item) => item.id === failedRef)!.label = "PANDAS_FUTURE_INFER_STRING=0";
-    opaque.evidenceIndex.find((item) => item.id === failedRef)!.summary = "Status: failed. Matrix job failed on the head commit.";
-    opaque.evidenceIndex.find((item) => item.id === failedRef)!.locator = "https://github.com/example/project/actions/runs/100/job/201";
-    expect(validateVerificationReport(opaque, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    const wrongAssociationState = structuredClone(canonical);
+    wrongAssociationState.proofGraph.failedCheckAssociations!.find((association) =>
+      association.requirementId === executionNode.requirementId && association.checkEvidenceRef === failedRef
+    )!.state = "unknown";
+    expect(validateVerificationReport(wrongAssociationState, { mode: "full" }).errors.join("\n"))
+      .toContain("has an incompatible state and basis");
     expect(executionNode.executionEvidenceRefs).toEqual([failedRef]);
   });
 
@@ -1256,4 +1803,63 @@ function githubInventoryProvenance(): NonNullable<ReturnType<typeof generateVeri
     changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) },
     inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
   };
+}
+
+function fullPrivateReceiptReport() {
+  const headSha = "a".repeat(40);
+  const moduleSource = "export function repositoryName(value) { return String(value).toLowerCase(); }";
+  const targetBlobSha = createHash("sha1")
+    .update(`blob ${Buffer.byteLength(moduleSource, "utf8")}\0`)
+    .update(moduleSource)
+    .digest("hex");
+  const testPath = "test/repository-name-regression.test.js";
+
+  return generateVerificationReportV2FromInput({
+    title: "Add repository name behavior and regression coverage",
+    description: "Adds deterministic repository-name evidence.",
+    taskText: [
+      "Acceptance criteria:",
+      "- Add repositoryName(value) formatting.",
+      "- Add focused regression tests."
+    ].join("\n"),
+    taskSource: "issue",
+    changedFiles: [{
+      path: testPath,
+      status: "added",
+      patch: [
+        "+import { repositoryName } from '../src/repositories/name.js';",
+        "+test('formats repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+      ].join("\n")
+    }],
+    checks: [
+      { name: "unit-tests", status: "passed", summary: "Unit tests passed." },
+      { name: "unrelated matrix", status: "failed", summary: "An unrelated matrix job failed." }
+    ],
+    logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "npm test passed." }],
+    sourceProvenance: {
+      version: 1,
+      origin: "github_snapshot",
+      headSha,
+      baseSha: "b".repeat(40),
+      evidenceCapturedAt: "2026-08-17T00:00:00.000Z",
+      changedFileInventory: { version: 1, completeness: "complete", headSha },
+      inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+    },
+    executionSuites: [{
+      headSha,
+      status: "passed",
+      executionSource: "GitHub Actions job: unit-tests",
+      runner: "node_test",
+      scope: "repository_discovery",
+      testPaths: [testPath]
+    }],
+    resolvedHeadModules: [{
+      version: 1,
+      kind: "resolved_head_module",
+      headSha,
+      path: "src/repositories/name.js",
+      blobSha: targetBlobSha,
+      source: moduleSource
+    }]
+  });
 }

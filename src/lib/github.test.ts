@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPullRequestInput,
@@ -1300,6 +1301,138 @@ describe("buildPullRequestInput", () => {
     expect(input.sourceProvenance?.executionSuites).toEqual(input.executionSuites);
     expect(input.limitations?.join(" ")).toContain("linked a passing generic test suite to changed test artifacts");
     expect(input.limitations?.join(" ")).not.toContain("success remains an unverified observation");
+  });
+
+  it("collects one bounded unchanged module only after a direct changed-test target is selected", async () => {
+    const headSha = "6".repeat(40);
+    const baseSha = "5".repeat(40);
+    const source = "export function repositoryName(value) { return String(value).toLowerCase(); } // transient-source-marker";
+    const blobSha = createHash("sha1").update(`blob ${Buffer.byteLength(source, "utf8")}\0`).update(source).digest("hex");
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Repository name regression",
+        body: "Adds focused regression coverage.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        user: { login: "ai-agent" },
+        base: { ref: "main", sha: baseSha },
+        head: { ref: "agent/name-test", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{
+        filename: "test/repository-name-regression.test.js",
+        status: "added",
+        additions: 3,
+        deletions: 0,
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+test('formats names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+        ].join("\n")
+      }]));
+      if (url.includes("/commits/") && url.includes("/check-runs")) {
+        return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      }
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/contents/src/repositories/name.js?ref=")) return Promise.resolve(Response.json({
+        type: "file",
+        path: "src/repositories/name.js",
+        sha: blobSha,
+        encoding: "base64",
+        content: Buffer.from(source).toString("base64")
+      }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.resolvedHeadModules).toEqual([{
+      version: 1,
+      kind: "resolved_head_module",
+      headSha,
+      path: "src/repositories/name.js",
+      blobSha,
+      source
+    }]);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/contents/")).length).toBe(1);
+    expect(String(fetchMock.mock.calls.find(([url]) => String(url).includes("/contents/"))?.[0])).toContain(`ref=${headSha}`);
+    expect(JSON.stringify(input.sourceProvenance)).not.toContain("transient-source-marker");
+    expect(JSON.stringify(input.sourceProvenance)).not.toContain("src/repositories/name.js");
+  });
+
+  it("does not fetch an unchanged module when a changed test asserts ambiguous direct targets", async () => {
+    const headSha = "3".repeat(40);
+    const baseSha = "2".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Ambiguous regression",
+        body: "Adds regression coverage.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        base: { ref: "main", sha: baseSha },
+        head: { ref: "agent/name-test", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{
+        filename: "test/repository-name-regression.test.js",
+        status: "added",
+        additions: 4,
+        deletions: 0,
+        patch: [
+          "+import assert from 'node:assert/strict';",
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+import { legacyName } from '../src/repositories/legacy-name.js';",
+          "+test('formats names', () => { assert.equal(repositoryName('AgentProof'), legacyName('AgentProof')); });"
+        ].join("\n")
+      }]));
+      if (url.includes("/commits/") && url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.resolvedHeadModules).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/contents/"))).toBe(false);
+  });
+
+  it("does not fetch an unchanged module when a second changed test file has no surviving target", async () => {
+    const headSha = "1".repeat(40);
+    const baseSha = "0".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Two changed tests",
+        body: "Adds regression coverage.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        base: { ref: "main", sha: baseSha },
+        head: { ref: "agent/name-tests", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([
+        {
+          filename: "test/repository-name-regression.test.js",
+          status: "added",
+          additions: 2,
+          deletions: 0,
+          patch: [
+            "+import { repositoryName } from '../src/repositories/name.js';",
+            "+test('formats names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+          ].join("\n")
+        },
+        {
+          filename: "test/unrelated-regression.test.js",
+          status: "added",
+          additions: 1,
+          deletions: 0,
+          patch: "+test('unrelated', () => { expect(true).toBe(true); });"
+        }
+      ]));
+      if (url.includes("/commits/") && url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.resolvedHeadModules).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/contents/"))).toBe(false);
   });
 
   it("resolves npm test only when the head package script is an unfiltered supported runner", async () => {

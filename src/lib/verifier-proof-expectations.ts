@@ -12,7 +12,13 @@ export interface RequirementProofExpectations {
 export type DeterministicProofContext =
   | { kind: "none" }
   | { kind: "review_presentation" }
-  | { kind: "workflow_antecedent"; requirementId: string };
+  | { kind: "workflow_antecedent"; requirementId: string }
+  | {
+      kind: "test_antecedent";
+      requirementId: string;
+      currentSourceBindingRef: string;
+      antecedentSourceBindingRef: string;
+    };
 
 type ProofExpectationContext = DeterministicProofContext | { kind: "workflow_antecedent" };
 
@@ -23,7 +29,8 @@ export function requirementProofExpectations(text: string): RequirementProofExpe
   const ci = /\b(?:ci|continuous integration|workflow|pipeline)\b|(?:지속적 통합|워크플로|파이프라인)/i.test(normalized);
   const noImplementationChanges = /\b(?:do not|don't|must not)\s+(?:add|chang(?:e|ing)|modify(?:ing)?|touch(?:ing)?)\s+(?:the\s+)?(?:implementation|production|source)\s+code\b|\bwithout\s+(?:(?:chang(?:e|ing)|modify(?:ing)?|touch(?:ing)?)\s+(?:the\s+)?(?:implementation|production|source)\s+code|(?:implementation|production|source)(?:\s+code)?\s+changes?)\b|(?:구현|프로덕션|소스)\s*코드(?:를|는)?\s*(?:변경|수정|건드리)하지\s*(?:않|마)/i.test(normalized);
   const explicitTestArtifact = /\b(?:add|create|write|update|extend|include|provide|require)\b.{0,50}\b(?:tests?|test cases?|coverage|specs?|regression tests?)\b|\b(?:tests?|test cases?|coverage|specs?|regression tests?)\b.{0,50}\b(?:must|should|shall|required|add|create|write|update|cover|verify|confirm)\b|(?:테스트|회귀)(?:를|가|는)?\s*(?:추가|작성|수정|보강|포함|검증)|(?:추가|작성|수정|보강|포함)(?:하|해)?고?.{0,30}(?:테스트|회귀)/i.test(normalized);
-  const targetedTest = explicitTestArtifact && !(ci && /^\s*(?:run|execute)\b/i.test(normalized));
+  const productEvidenceDelivery = /\b(?:provide|include)\s+(?:test|coverage|spec)\s+evidence\b.{0,50}\b(?:report|export|review)\b/i.test(normalized);
+  const targetedTest = explicitTestArtifact && !productEvidenceDelivery && !(ci && /^\s*(?:run|execute)\b/i.test(normalized));
   const visual = /\b(?:accessibility|browser-facing|layout|mobile|readability|readable|responsive|screenshot|visual|viewport)\b|\b(?:text|content|card|layout)\s+overlap\b|\boverlap\b.{0,30}\b(?:text|content|card|layout)\b|\b\d{3,4}px\b|(?:접근성|가독성|반응형|모바일|레이아웃|스크린샷|시각적|뷰포트|텍스트\s*겹침)/i.test(normalized);
   const interactionSurface = /\b(?:search|filter|input|button|form|list|results?|screen|ui|interface)\b|(?:검색|입력|버튼|목록|화면|사용자\s*인터페이스)/i.test(normalized);
   const interactionVerb = /\b(?:show|display|render|clear|click|tap|type|select|restore)\b|(?:표시|보여|렌더링|지우|클릭|탭|입력|복원)/i.test(normalized);
@@ -74,6 +81,10 @@ export function requirementProofAxisExpectationsWithContext(
       ci: true,
       execution: true
     };
+  }
+
+  if (context.kind === "test_antecedent") {
+    return { ...expectations, implementation: false, targetedTest: true, execution: true };
   }
 
   return expectations;

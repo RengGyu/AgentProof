@@ -27,6 +27,13 @@ type ExecutableAssertion = {
     maxRequirementConfidence?: number;
     requiredRequirementStatuses?: RequirementStatus[];
     requiredLimitations?: string[];
+    failedCheckAssociation?: {
+      checkLabel: string;
+      aggregateCiStatus: "failed";
+      localFailedExecution: false;
+      state: "linked" | "not_linked" | "unknown";
+      basis: "complete_identity_match" | "deterministic_non_match" | "identity_incomplete";
+    };
   };
 };
 
@@ -63,6 +70,25 @@ describe("external regression executable assertions", () => {
     const executableCaseIds = new Set(fixture.executableAssertions.map((assertion) => assertion.caseId));
 
     expect(executableCaseIds).toEqual(caseIds);
+  });
+
+  it("declares tuple-absent failed Check associations as bounded evidence shapes", () => {
+    const declarations = fixture.executableAssertions.flatMap((assertion) =>
+      assertion.expected.failedCheckAssociation
+        ? [{ assertion, expected: assertion.expected.failedCheckAssociation }]
+        : []
+    );
+
+    expect(declarations.length).toBeGreaterThan(0);
+    for (const { assertion, expected } of declarations) {
+      expect(assertion.input?.checks.filter((check) => check.name === expected.checkLabel)).toHaveLength(1);
+      expect(expected).toMatchObject({
+        aggregateCiStatus: "failed",
+        localFailedExecution: false,
+        state: "unknown",
+        basis: "identity_incomplete"
+      });
+    }
   });
 
   it.each(fixture.executableAssertions.map((assertion) => [assertion.id, assertion] as const))(
@@ -121,7 +147,37 @@ describe("external regression executable assertions", () => {
       }
 
       for (const proofGapKind of expected.requiredProofGapKinds ?? []) {
-        expect(report.proofGraph.nodes.flatMap((node) => node.gapSignals.map((gap) => gap.kind))).toContain(proofGapKind);
+        const proofGapKinds = report.proofGraph.nodes.flatMap((node) =>
+          node.gapSignals.map((gap) => gap.kind)
+        );
+        expect(proofGapKinds).toContain(proofGapKind);
+      }
+
+      if (expected.failedCheckAssociation) {
+        const associationExpectation = expected.failedCheckAssociation;
+        const inputChecks = assertion.input?.checks.filter((check) =>
+          check.name === associationExpectation.checkLabel
+        ) ?? [];
+        expect(inputChecks).toHaveLength(1);
+        const checkEvidence = report.evidenceIndex.find((item) =>
+          item.kind === "check" && item.label === associationExpectation.checkLabel
+        );
+        expect(checkEvidence).toBeDefined();
+        expect(report.testing.ciStatus).toBe(associationExpectation.aggregateCiStatus);
+        if (!associationExpectation.localFailedExecution) {
+          expect(report.proofGraph.nodes.flatMap((node) =>
+            node.gapSignals.map((gap) => gap.kind)
+          )).not.toContain("failed_execution");
+          expect(report.proofGraph.nodes.flatMap((node) => node.executionEvidenceRefs))
+            .not.toContain(checkEvidence!.id);
+        }
+        expect(report.proofGraph.failedCheckAssociations).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            checkEvidenceRef: checkEvidence!.id,
+            state: associationExpectation.state,
+            basis: associationExpectation.basis
+          })
+        ]));
       }
 
       for (const reviewPath of expected.requiredReviewPriorityPaths ?? []) {

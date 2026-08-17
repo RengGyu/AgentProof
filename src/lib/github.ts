@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import type { AnalyzeRequest, ChangedFile, CheckRun, ExecutionSuiteObservation, LogSnippet, PullRequestInput, SourceProvenance } from "./types";
+import { directTestTargetCandidate } from "./evidence-relation";
 import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
 import {
   extractSupportedIssueReferences,
@@ -24,6 +25,7 @@ const GITHUB_MAX_ACTION_JOB_SUMMARIES = 12;
 const GITHUB_MAX_ACTION_STEPS_PER_JOB = 8;
 const GITHUB_MAX_CONTRACT_ARTIFACT_PATHS = 8;
 const GITHUB_MAX_CONTRACT_ARTIFACT_BYTES = 64 * 1024;
+const GITHUB_MAX_RESOLVED_HEAD_MODULE_BYTES = 64 * 1024;
 const GITHUB_MAX_ANNOTATED_CHECK_RUNS = 3;
 const GITHUB_MAX_CHECK_ANNOTATIONS_TOTAL = 20;
 const GITHUB_MAX_CHECK_ANNOTATIONS_PER_RUN = 10;
@@ -363,7 +365,7 @@ async function fetchGitHubPullRequest(
   ]);
   const annotationLimitations: string[] = [];
   const actionJobLimitations: string[] = [];
-  const [annotatedCheckRuns, actionJobEvidence] = await Promise.all([
+  const [annotatedCheckRuns, actionJobEvidence, resolvedHeadModules] = await Promise.all([
     measureGitHubEvidenceTiming(
       evidenceTiming,
       "github_annotations",
@@ -373,7 +375,15 @@ async function fetchGitHubPullRequest(
       evidenceTiming,
       "github_jobs",
       () => fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, actionJobLimitations, hasToken, initialHeadSha, files)
-    )
+    ),
+    collectResolvedHeadModules({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      headSha: initialHeadSha,
+      files,
+      headers,
+      limitations
+    })
   ]);
 
   limitations.push(...annotationLimitations, ...actionJobLimitations);
@@ -461,6 +471,7 @@ async function fetchGitHubPullRequest(
     }))),
     logs: actionJobEvidence.logs,
     executionSuites: actionJobEvidence.executionSuites,
+    ...(resolvedHeadModules.length > 0 ? { resolvedHeadModules } : {}),
     limitations: normalizeGitHubEvidenceLimitations(limitations)
   };
   input.sourceProvenance = buildMetadataOnlyProvenance({
@@ -471,6 +482,97 @@ async function fetchGitHubPullRequest(
     capturedAt: (snapshotOptions.now ?? (() => new Date()))().toISOString()
   });
   return input;
+}
+
+async function collectResolvedHeadModules(input: {
+  owner: string;
+  repo: string;
+  headSha: string;
+  files: GitHubFileResponse[];
+  headers: Record<string, string>;
+  limitations: string[];
+}): Promise<NonNullable<PullRequestInput["resolvedHeadModules"]>> {
+  const changedTestFiles = input.files.filter((file) => isGitHubTestPath(file.filename));
+  if (changedTestFiles.length !== 1) return [];
+  const changedPaths = new Set(input.files.map((file) => normalizeGitHubRepositoryPath(file.filename).toLowerCase()));
+  const candidates = changedTestFiles.flatMap((file) => {
+    if (!file.patch) return [];
+    const candidate = directTestTargetCandidate({ path: file.filename, patch: file.patch });
+    if (!candidate || changedPaths.has(candidate.targetPath.toLowerCase())) return [];
+    return [candidate];
+  });
+  if (candidates.length !== 1) return [];
+
+  const targetPath = candidates[0].targetPath;
+  try {
+    const response = await githubFetch(
+      `https://api.github.com/repos/${input.owner}/${input.repo}/contents/${encodeGitHubContentPath(targetPath)}?ref=${encodeURIComponent(input.headSha)}`,
+      input.headers
+    );
+    if (!response.ok) {
+      input.limitations.push("An unchanged exact-head module required for direct test relation evaluation could not be collected.");
+      return [];
+    }
+    const payload = await response.json() as {
+      type?: unknown;
+      path?: unknown;
+      sha?: unknown;
+      encoding?: unknown;
+      content?: unknown;
+    };
+    if (
+      payload.type !== "file" ||
+      typeof payload.path !== "string" ||
+      normalizeGitHubRepositoryPath(payload.path) !== targetPath ||
+      typeof payload.sha !== "string" ||
+      !/^[a-f0-9]{40,64}$/i.test(payload.sha) ||
+      payload.encoding !== "base64" ||
+      typeof payload.content !== "string"
+    ) {
+      input.limitations.push("An unchanged exact-head module response lacked a complete exact-head file identity.");
+      return [];
+    }
+    const compactBase64 = payload.content.replace(/\s/g, "");
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(compactBase64)) {
+      input.limitations.push("An unchanged exact-head module response was not valid bounded text content.");
+      return [];
+    }
+    const source = Buffer.from(compactBase64, "base64").toString("utf8");
+    if (Buffer.byteLength(source, "utf8") > GITHUB_MAX_RESOLVED_HEAD_MODULE_BYTES) {
+      input.limitations.push("An unchanged exact-head module exceeded the bounded content limit.");
+      return [];
+    }
+    return [{
+      version: 1,
+      kind: "resolved_head_module",
+      headSha: input.headSha,
+      path: targetPath,
+      blobSha: payload.sha.toLowerCase(),
+      source
+    }];
+  } catch {
+    input.limitations.push("An unchanged exact-head module required for direct test relation evaluation could not be collected.");
+    return [];
+  }
+}
+
+function isGitHubTestPath(path: string): boolean {
+  const normalized = normalizeGitHubRepositoryPath(path).toLowerCase();
+  return /(?:^|\/)(?:test|tests|__tests__)(?:\/|$)|(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$/.test(normalized);
+}
+
+function normalizeGitHubRepositoryPath(path: string): string {
+  const result: string[] = [];
+  for (const segment of path.replace(/\\/g, "/").split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      if (result.length === 0) return "";
+      result.pop();
+    } else {
+      result.push(segment);
+    }
+  }
+  return result.join("/");
 }
 
 function requireGitHubHeadSha(pr: unknown, phase: "initial" | "final"): string {
@@ -881,6 +983,7 @@ function mergePastedOverrides(live: PullRequestInput, request: AnalyzeRequest): 
     taskSource: request.taskText ? "task" : live.taskSource,
     description: request.prDescription?.trim() ? redactSecrets(request.prDescription) : live.description,
     changedFiles: request.changedFiles?.trim() ? parseChangedFiles(request.changedFiles) : live.changedFiles,
+    resolvedHeadModules: request.changedFiles?.trim() ? undefined : live.resolvedHeadModules,
     checks: request.checks?.trim() ? parseChecks(request.checks) : live.checks,
     logs: request.logs?.trim() ? parseLogs(request.logs) : live.logs,
     limitations: [

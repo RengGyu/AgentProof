@@ -258,6 +258,127 @@ describe("valid hybrid finalization", () => {
     vi.spyOn(Math, "random").mockReturnValue(0.123456);
   });
 
+  it("preserves closed BASE test-antecedent relations without linking competing predecessors", () => {
+    const eligibleInput: PullRequestInput = {
+      ...input,
+      taskText: [
+        "Acceptance criteria:",
+        "- Add repositoryVisibilityLabel(isPrivate) for Private and Public repository values.",
+        "- Add focused automated tests for both boolean paths."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/repositories/repository-visibility.js",
+        status: "modified",
+        patch: "+ export function repositoryVisibilityLabel(isPrivate) { return isPrivate ? 'Private repository' : 'Public repository'; }"
+      }, {
+        path: "test/repository-visibility.test.js",
+        status: "modified",
+        patch: [
+          "+ import assert from 'node:assert/strict';",
+          "+ import { repositoryVisibilityLabel } from '../src/repositories/repository-visibility.js';",
+          "+ test('private repository', () => { assert.equal(repositoryVisibilityLabel(true), 'Private repository'); });",
+          "+ test('public repository', () => { assert.equal(repositoryVisibilityLabel(false), 'Public repository'); });"
+        ].join("\n")
+      }],
+      checks: [{ name: "repository visibility tests", status: "passed", summary: "Repository visibility tests passed." }],
+      logs: [{ source: "repository visibility tests", status: "passed", text: "Repository visibility tests passed." }],
+      executionSuites: [{
+        headSha: provenance.headSha!,
+        status: "passed",
+        executionSource: "repository visibility tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/repository-visibility.test.js"]
+      }]
+    };
+    const eligibleSeed = extractedBoundSeed(eligibleInput);
+    const hybrid = finalizeHybridVerificationReport({
+      input: eligibleInput,
+      seed: eligibleSeed,
+      provenance,
+      planValidation: validation(eligibleSeed, eligibleSeed.spans.map(() => ({
+        disposition: "admit" as const,
+        classification: "requirement" as const,
+        expected_axes: []
+      })))
+    }).report;
+    const base = generateVerificationReport(eligibleInput);
+
+    expect(hybrid.proofGraph.nodes.at(-1)?.deterministicRelation?.kind).toBe("test_antecedent");
+    expect(hybrid.proofGraph.sourceBindings).toHaveLength(2);
+    expect(hybrid.requirements.at(-1)?.proofAxes?.map((axis) => [axis.subject, axis.state]))
+      .toEqual(base.requirements.at(-1)?.proofAxes?.map((axis) => [axis.subject, axis.state]));
+
+    const competingInput: PullRequestInput = {
+      ...eligibleInput,
+      taskText: [
+        "Acceptance criteria:",
+        "- Add private repository visibility labels.",
+        "- Add public repository visibility labels.",
+        "- Add focused automated tests for both boolean paths."
+      ].join("\n")
+    };
+    const competingSeed = extractedBoundSeed(competingInput);
+    const competing = finalizeHybridVerificationReport({
+      input: competingInput,
+      seed: competingSeed,
+      provenance,
+      planValidation: validation(competingSeed, competingSeed.spans.map(() => ({
+        disposition: "admit" as const,
+        classification: "requirement" as const,
+        expected_axes: []
+      })))
+    }).report;
+
+    expect(competing.proofGraph.nodes.at(-1)?.deterministicRelation).toBeUndefined();
+    expect(competing.proofGraph.sourceBindings).toBeUndefined();
+  });
+
+  it("applies deterministic workflow axes to a hybrid pronoun continuation", () => {
+    const workflowInput: PullRequestInput = {
+      ...input,
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{ name: "Validation CI", status: "passed", summary: "Node.js 22 npm test passed." }],
+      logs: []
+    };
+    const seed = extractedBoundSeed(workflowInput);
+    const report = finalizeHybridVerificationReport({
+      input: workflowInput,
+      seed,
+      provenance,
+      planValidation: validation(seed, seed.spans.map(() => ({
+        disposition: "admit" as const,
+        classification: "requirement" as const,
+        expected_axes: []
+      })))
+    }).report;
+    const continuation = report.requirements[1];
+
+    expect(report.proofGraph.nodes[1]?.deterministicRelation).toMatchObject({
+      kind: "workflow_antecedent",
+      antecedentRequirementId: report.requirements[0]?.requirementId
+    });
+    expect(continuation?.proofAxes?.map((axis) => axis.subject)).toEqual([
+      "ci_configuration",
+      "execution"
+    ]);
+    expect(continuation?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "ci_configuration", state: "satisfied" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete", evidenceRefs: [] })
+    ]));
+    expect(continuation?.proofAxes?.some((axis) => axis.subject === "implementation")).toBe(false);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it.each(["requirement", "not_requirement", "mixed_or_uncertain"] as const)(
     "always materializes exact authoritative span text for %s planning metadata",
     (classification) => {

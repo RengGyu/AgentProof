@@ -574,7 +574,13 @@
         "priority": "blocker",
         "mustNotTestBuildStatuses": ["passed"],
         "topRiskIncludes": "Test/build execution failed",
-        "requiredProofGapKinds": ["failed_execution"],
+        "failedCheckAssociation": {
+          "checkLabel": "PANDAS_FUTURE_INFER_STRING=0",
+          "aggregateCiStatus": "failed",
+          "localFailedExecution": false,
+          "state": "unknown",
+          "basis": "identity_incomplete"
+        },
         "requiredReviewPriorityPaths": ["Test/build checks"]
       }
     },

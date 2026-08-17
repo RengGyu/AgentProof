@@ -1,13 +1,120 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { reportToMarkdown } from "./markdown";
 import { buildShareUrl, decodeSharedReport, encodeReportForShare, sanitizeReportForShare, SUMMARY_ONLY_LIMITATION } from "./report-share";
 import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
+import type { ProofGraph, PublicProofGraph } from "./types";
 
 const PLANNER_INPUT_HASH = "0123456789abcdef".repeat(4);
 
 describe("report share", () => {
+  it("makes a full proof graph structurally incompatible with the public proof graph", () => {
+    expectTypeOf<ProofGraph>().not.toExtend<PublicProofGraph>();
+  });
+
+  it("projects private receipts and Check details down to aggregate CI status", () => {
+    const report = generateVerificationReport({
+      ...demoScenarios.clean,
+      checks: [{
+        name: "PRIVATE_CHECK_LABEL",
+        status: "failed",
+        summary: "PRIVATE_RAW_CHECK_SUMMARY",
+        url: "https://github.com/acme/private/actions/runs/42/job/99"
+      }]
+    });
+    const requirementId = report.requirements[0]!.requirementId;
+    Object.assign(report.proofGraph, {
+      sourceBindings: [{
+        version: 1,
+        kind: "requirement_source_binding",
+        id: "rsb_private",
+        requirementId,
+        spanId: "sp_1_2",
+        seedId: "1".repeat(64),
+        groupId: "grp_1",
+        source: "issue",
+        ordinal: 1
+      }],
+      exactHeadTargetReceipts: [{
+        id: "exact_head_private",
+        version: 1,
+        kind: "exact_head_target",
+        headSha: "2".repeat(40),
+        targetPathDigest: "3".repeat(64),
+        targetBlobSha: "4".repeat(40),
+        exportKind: "named",
+        canonicalBindingDigest: "5".repeat(64)
+      }],
+      testRelationReceipts: [{
+        id: "test_relation_private",
+        version: 1,
+        kind: "test_relation",
+        requirementId,
+        exactHeadTargetReceiptRef: "exact_head_private",
+        testEvidenceRef: "ev_private_test",
+        executionEvidenceRef: "ev_private_execution"
+      }],
+      failedCheckAssociations: [{
+        version: 1,
+        kind: "failed_check_association",
+        requirementId,
+        checkEvidenceRef: "ev_private_check",
+        state: "unknown",
+        basis: "identity_incomplete"
+      }]
+    });
+
+    const payload = encodeReportForShare(report);
+    const envelope = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+    const decoded = decodeSharedReport(payload);
+    const serialized = JSON.stringify({ envelope, decoded });
+
+    expect(decoded.testing.ciStatus).toBe(report.testing.ciStatus);
+    expect(Object.keys((envelope.proofGraph as Record<string, unknown>))).toEqual(["version", "nodes", "context", "summary"]);
+    for (const privateValue of [
+      "sourceBindings",
+      "exactHeadTargetReceipts",
+      "testRelationReceipts",
+      "failedCheckAssociations",
+      "targetBlobSha",
+      "PRIVATE_CHECK_LABEL",
+      "PRIVATE_RAW_CHECK_SUMMARY",
+      "actions/runs/42/job/99"
+    ]) {
+      expect(serialized).not.toContain(privateValue);
+    }
+  });
+
+  it("rejects portable payloads that inject private receipts, raw Check summaries, or non-GitHub URLs", () => {
+    const envelope = JSON.parse(Buffer.from(
+      encodeReportForShare(generateVerificationReport(demoScenarios.clean)),
+      "base64url"
+    ).toString("utf8")) as Record<string, unknown>;
+    const proofGraph = envelope.proofGraph as Record<string, unknown>;
+
+    for (const injected of [
+      { sourceBindings: [] },
+      { exactHeadTargetReceipts: [] },
+      { testRelationReceipts: [] },
+      { failedCheckAssociations: [{
+        version: 1,
+        kind: "failed_check_association",
+        requirementId: "req_1",
+        checkEvidenceRef: "ev_1",
+        state: "unknown",
+        basis: "identity_incomplete",
+        summary: "raw Check output",
+        url: "https://attacker.example/jobs/1"
+      }] }
+    ]) {
+      Object.assign(proofGraph, injected);
+      const payload = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+      expect(() => decodeSharedReport(payload)).toThrow("Shared report proofGraph has unknown fields");
+      for (const key of Object.keys(injected)) delete proofGraph[key];
+    }
+  });
+
   it("round-trips a v2 no-contract report without leaking a private integrity digest", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     const sanitized = sanitizeReportForShare(report);
