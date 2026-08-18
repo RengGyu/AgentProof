@@ -827,7 +827,7 @@ describe("requirement relation regression matrix", () => {
         {
           path: "test/retry-queue.test.ts",
           status: "modified",
-          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { retryQueue(); })"
+          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { expect(retryQueue()).toBeUndefined(); })"
         }
       ],
       checks: [{ name: "retry queue tests", status: "passed", summary: "Retry queue tests passed." }]
@@ -847,7 +847,7 @@ describe("requirement relation regression matrix", () => {
         {
           path: "test/retry-queue.test.ts",
           status: "modified",
-          patch: "+ import { retryFailedJobs } from '../src/retry-queue';\n+ test('retry failed jobs', () => { retryFailedJobs(); })"
+          patch: "+ import { retryFailedJobs } from '../src/retry-queue';\n+ test('retry failed jobs', () => { expect(retryFailedJobs()).toBeUndefined(); })"
         }
       ],
       checks: [{ name: "retry queue tests", status: "passed", summary: "Retry failed job tests passed." }]
@@ -1001,7 +1001,7 @@ describe("requirement relation regression matrix", () => {
         {
           path: "test/retry-queue.test.ts",
           status: "added",
-          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { retryQueue(); })"
+          patch: "+ import { retryQueue } from '../src/retry-queue';\n+ test('retry queue synchronization', () => { expect(retryQueue()).toBeUndefined(); })"
         }
       ],
       checks: [{ name: "customer export tests", status: "passed", summary: "Customer export tests passed." }]

@@ -481,7 +481,7 @@ export interface TestRelationReceipt {
   version: 1;
   kind: "targeted_test_relation";
   subjectRequirementId: string;
-  subjectSource: "current_requirement" | "test_antecedent";
+  subjectSource: "current_requirement";
   exactHeadTargetReceiptRef: string;
   testEvidenceRef: string;
   relationBasis: "direct_static_import";

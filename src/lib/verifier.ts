@@ -1193,8 +1193,7 @@ function buildProofGraph(
   }
   const exactHeadSubjectRequirementIds = exactHeadRelationSubjectRequirementIds(
     requirements,
-    proofExpectationsByRequirement,
-    deterministicRelationsByRequirement
+    proofExpectationsByRequirement
   );
 
   const proofAxesByRequirement = new Map<string, RequirementProofAxis[]>();
@@ -1231,8 +1230,6 @@ function buildProofGraph(
       evidenceLookup,
       exactHeadSubjectRequirementIds.has(requirement.id),
       requirement,
-      deterministicRelation,
-      requirementById,
       expectations.targetedTest
     );
     const targetedTestEvidenceRefs = targetedTestSelection.refs;
@@ -1833,14 +1830,12 @@ function targetedTestEvidenceForRequirement(
   evidenceLookup: VerifierEvidenceLookup,
   allowExactHeadRelation = false,
   requirement?: Requirement,
-  deterministicRelation?: DeterministicRequirementRelation,
-  requirementById?: ReadonlyMap<string, Requirement>,
   requireDirectAssertion = false
 ): {
   refs: string[];
   exactHeadRelations: Array<{
     testEvidenceRef: string;
-    subjectSource: "current_requirement" | "test_antecedent";
+    subjectSource: "current_requirement";
     target: NonNullable<ReturnType<typeof resolveExactHeadTarget>>;
   }>;
   exactHeadRelationRequired: boolean;
@@ -1862,9 +1857,7 @@ function targetedTestEvidenceForRequirement(
     ? exactHeadTestRelations(
       input,
       evidenceLookup,
-      requirement,
-      deterministicRelation,
-      requirementById
+      requirement
     )
     : [];
   return {
@@ -1885,12 +1878,10 @@ function targetedTestEvidenceRefsForRequirement(
 function exactHeadTestRelations(
   input: PullRequestInput,
   evidenceLookup: VerifierEvidenceLookup,
-  requirement: Requirement,
-  deterministicRelation: DeterministicRequirementRelation | undefined,
-  requirementById: ReadonlyMap<string, Requirement> | undefined
+  requirement: Requirement
 ): Array<{
   testEvidenceRef: string;
-  subjectSource: "current_requirement" | "test_antecedent";
+  subjectSource: "current_requirement";
   target: NonNullable<ReturnType<typeof resolveExactHeadTarget>>;
 }> {
   const provenance = input.sourceProvenance;
@@ -1928,12 +1919,8 @@ function exactHeadTestRelations(
       target: matchingModules[0]
     });
     if (!target) return [];
-    const antecedentRequirementText = deterministicRelation?.kind === "test_antecedent"
-      ? requirementById?.get(deterministicRelation.antecedentRequirementId)?.text
-      : undefined;
     const subjectSource = exactTestRelationSubjectSource({
       currentRequirementText: requirement.text,
-      antecedentRequirementText,
       target
     });
     return subjectSource ? [{ testEvidenceRef: item.id, subjectSource, target }] : [];
@@ -1944,18 +1931,32 @@ function exactHeadTestRelations(
 
 function exactHeadRelationSubjectRequirementIds(
   requirements: readonly Requirement[],
-  proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined,
-  deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation> | undefined
+  proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined
 ): ReadonlySet<string> {
   const candidates = requirements.filter((requirement) => {
     const expectations = proofExpectationsByRequirement?.get(requirement.id) ?? requirementProofAxisExpectations(requirement.text);
-    const relation = deterministicRelationsByRequirement?.get(requirement.id);
     return expectations.targetedTest && (
-      relation?.kind === "test_antecedent" ||
       (!expectations.implementation && !expectations.documentation && !expectations.ci)
-    );
+    ) && hasExplicitCodeSubjectInTestObjective(requirement.text);
   });
   return candidates.length === 1 ? new Set([candidates[0].id]) : new Set();
+}
+
+function hasExplicitCodeSubjectInTestObjective(text: string): boolean {
+  const identifiers = new Set<string>();
+  for (const match of text.matchAll(/`([A-Za-z_$][\w$]*)`|\b([A-Za-z_$][\w$]*)\s*\(/g)) {
+    identifiers.add(match[1] ?? match[2]!);
+  }
+  for (const match of text.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)) {
+    const identifier = match[1]!;
+    if (/[a-z][A-Z]|[_$]/.test(identifier)) identifiers.add(identifier);
+  }
+  return [...identifiers].some((identifier) => !new Set([
+    "assert",
+    "expect",
+    "it",
+    "test"
+  ]).has(identifier.toLowerCase()));
 }
 
 function requiresUnchangedExactHeadRelation(

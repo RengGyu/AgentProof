@@ -79,7 +79,7 @@ export interface ExactHeadTargetResolution {
   receipt: ExactHeadTargetReceipt;
 }
 
-export type TestRelationSubjectSource = "current_requirement" | "test_antecedent";
+export type TestRelationSubjectSource = "current_requirement";
 
 /**
  * Binds an exact imported target to one explicit code identifier in the
@@ -87,7 +87,6 @@ export type TestRelationSubjectSource = "current_requirement" | "test_antecedent
  */
 export function exactTestRelationSubjectSource(input: {
   currentRequirementText: string;
-  antecedentRequirementText?: string;
   target: Pick<ExactHeadTargetResolution, "bindingExportedName" | "bindingLocalName">;
 }): TestRelationSubjectSource | null {
   const bindingIdentifiers = new Set([
@@ -98,11 +97,7 @@ export function exactTestRelationSubjectSource(input: {
   if (bindingIdentifiers.size === 0) return null;
 
   const currentMatches = matchingCodeIdentifiers(input.currentRequirementText, bindingIdentifiers);
-  const antecedentMatches = input.antecedentRequirementText === undefined
-    ? []
-    : matchingCodeIdentifiers(input.antecedentRequirementText, bindingIdentifiers);
-  if (currentMatches.length + antecedentMatches.length !== 1) return null;
-  return currentMatches.length === 1 ? "current_requirement" : "test_antecedent";
+  return currentMatches.length === 1 ? "current_requirement" : null;
 }
 
 /**

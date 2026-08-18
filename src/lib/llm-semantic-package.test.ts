@@ -513,7 +513,7 @@ describe("LLM semantic analysis package", () => {
       taskText: "Acceptance criteria: add a regression test for retry queue synchronization.",
       changedFiles: [
         { path: "src/queues/retry-queue.ts", additions: 4, deletions: 0, status: "modified" as const, patch: "+ export function retryQueue() {}" },
-        { path: "src/queues/retry-queue.test.ts", additions: 8, deletions: 0, status: "modified" as const, patch: "+ import { retryQueue } from './retry-queue';\n+ it('retries failed synchronization jobs', async () => { retryQueue(); })" }
+        { path: "src/queues/retry-queue.test.ts", additions: 8, deletions: 0, status: "modified" as const, patch: "+ import { retryQueue } from './retry-queue';\n+ it('retries failed synchronization jobs', async () => { expect(retryQueue()).toBeUndefined(); })" }
       ],
       checks: [{ name: "Test", status: "passed" as const, summary: "Retry queue regression test passed." }],
       logs: []

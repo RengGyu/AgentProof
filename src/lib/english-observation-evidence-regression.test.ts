@@ -101,6 +101,88 @@ describe("frozen English observation evidence regressions", () => {
     expect(JSON.stringify(sanitizeReportForShare(report))).not.toContain("test_subject_chain");
   });
 
+  it("supports one bounded subject chain with direct flat-object assertions", () => {
+    const testPath = "test/repository-slug.test.js";
+    const report = generateVerificationReport(syntheticInput({
+      title: "Add repository slug behavior",
+      description: "Adds repository slug behavior and coverage.",
+      taskText: [
+        "## Requirements",
+        "- Add repositorySlug(repository) for owner/name values.",
+        "- Return unknown/repository when owner/name is unavailable.",
+        "- Add focused tests for normal and fallback paths."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/repositories/repository-slug.js",
+        status: "modified",
+        patch: "+export function repositorySlug(repository) { return repository.owner && repository.name ? `${repository.owner}/${repository.name}` : 'unknown/repository'; }"
+      }, {
+        path: testPath,
+        status: "modified",
+        patch: [
+          "+import assert from 'node:assert/strict';",
+          "+import { repositorySlug } from '../src/repositories/repository-slug.js';",
+          "+test('formats a repository', () => { assert.equal(repositorySlug({ owner: 'RengGyu', name: 'AgentProof' }), 'RengGyu/AgentProof'); });",
+          "+test('falls back without values', () => { assert.equal(repositorySlug({}), 'unknown/repository'); });"
+        ].join("\n")
+      }],
+      checks: [{ name: "repository slug tests", status: "passed", summary: "Repository slug tests passed." }],
+      logs: [{ source: "repository slug tests", status: "passed", text: "Repository slug tests passed." }],
+      executionSuites: [{
+        headSha: HEAD_SHA,
+        status: "passed",
+        executionSource: "repository slug tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    }));
+    const testSibling = report.requirements.at(-1);
+
+    expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_subject_chain" });
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("assigns an unchanged-helper receipt only to its explicitly named test objective", () => {
+    const input = unchangedHelperInput();
+    input.taskText = [
+      "## Requirements",
+      "- Add a regression test for the existing `repositoryName` helper.",
+      "- The test must confirm that the helper returns the repository name unchanged."
+    ].join("\n");
+    const report = generateVerificationReport(input);
+    const [namedTest, semanticClaim] = report.requirements;
+
+    expect(axis(namedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(namedTest, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(semanticClaim, "targeted_test")).toMatchObject({ state: "violated" });
+    expect(axis(semanticClaim, "execution")).toMatchObject({ state: "incomplete" });
+    expect(semanticClaim?.status).toBe("partial");
+    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.testRelationReceipts?.[0]?.subjectRequirementId).toBe(namedTest?.requirementId);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("does not assign an unchanged-helper receipt through a subjectless test antecedent", () => {
+    const input = unchangedHelperInput();
+    input.taskText = [
+      "## Requirements",
+      "- Add `repositoryName` helper behavior.",
+      "- Add focused tests."
+    ].join("\n");
+    const report = generateVerificationReport(input);
+    const testObjective = report.requirements.at(-1);
+
+    expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_antecedent" });
+    expect(axis(testObjective, "targeted_test")).toMatchObject({ state: "violated", evidenceRefs: [] });
+    expect(axis(testObjective, "execution")).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(report.proofGraph.exactHeadTargetReceipts).toBeUndefined();
+    expect(report.proofGraph.testRelationReceipts).toBeUndefined();
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("supports a direct test-only regression of an unchanged helper only with exact receipts", () => {
     const withExactTarget = generateVerificationReport(unchangedHelperInput());
     const withoutExactTarget = generateVerificationReport(unchangedHelperInput({ resolvedHeadModules: [] }));

@@ -2398,7 +2398,7 @@ describe("generateVerificationReport", () => {
           additions: 18,
           deletions: 0,
           status: "added",
-          patch: "+ import { InvoiceExportButton } from './InvoiceExportButton';\n+ it('exports invoices from the export button', async () => { InvoiceExportButton({}); })"
+          patch: "+ import { InvoiceExportButton } from './InvoiceExportButton';\n+ it('exports invoices from the export button', async () => { expect(InvoiceExportButton({})).toBeTruthy(); })"
         }
       ],
       checks: [{ name: "unit tests", status: "passed", summary: "InvoiceExportButton tests passed" }],
@@ -2925,7 +2925,7 @@ describe("generateVerificationReport", () => {
           additions: 12,
           deletions: 0,
           status: "modified",
-          patch: "+ import { retryQueue } from './retry-queue';\n+ it('retries failed synchronization jobs', async () => { retryQueue(); })"
+          patch: "+ import { retryQueue } from './retry-queue';\n+ it('retries failed synchronization jobs', async () => { expect(retryQueue()).toBeUndefined(); })"
         }
       ],
       checks: [{ name: "Test", status: "passed", summary: "Retry queue regression test passed." }],

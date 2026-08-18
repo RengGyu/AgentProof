@@ -46,7 +46,7 @@ describe("validateVerificationReport", () => {
       version: 1,
       kind: "targeted_test_relation",
       subjectRequirementId: report.requirements[1]?.requirementId,
-      subjectSource: "test_antecedent",
+      subjectSource: "current_requirement",
       relationBasis: "direct_static_import",
       directAssertionCaseCount: 1
     });
@@ -193,9 +193,9 @@ describe("validateVerificationReport", () => {
         expected: "subjectSource is invalid"
       },
       {
-        name: "subject source does not match antecedent node",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.subjectSource = "current_requirement"; },
-        expected: "subjectSource must identify the test antecedent"
+        name: "test antecedent subject source is no longer eligible",
+        mutate: (report) => { (report.proofGraph.testRelationReceipts![0] as unknown as { subjectSource: string }).subjectSource = "test_antecedent"; },
+        expected: "subjectSource is invalid"
       },
       {
         name: "invalid relation basis",
@@ -1820,7 +1820,7 @@ function fullPrivateReceiptReport() {
     taskText: [
       "Acceptance criteria:",
       "- Add repositoryName(value) formatting.",
-      "- Add focused regression tests."
+      "- Add focused regression tests for repositoryName(value)."
     ].join("\n"),
     taskSource: "issue",
     changedFiles: [{

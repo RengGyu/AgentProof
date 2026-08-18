@@ -75,7 +75,7 @@ const FAILED_CHECK_ASSOCIATION_BASES = new Set([
   "identity_incomplete"
 ]);
 const EXACT_HEAD_EXPORT_KINDS = new Set(["named", "default", "commonjs"]);
-const TEST_RELATION_SUBJECT_SOURCES = new Set(["current_requirement", "test_antecedent"]);
+const TEST_RELATION_SUBJECT_SOURCES = new Set(["current_requirement"]);
 const TEST_RELATION_BASES = new Set(["direct_static_import"]);
 const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
 
@@ -1232,13 +1232,6 @@ function validateTestRelationReceipts(
     }
     if (typeof item.executionEvidenceRef === "string" && !getStringArray(node?.executionEvidenceRefs).includes(item.executionEvidenceRef)) {
       errors.push(`${path}.executionEvidenceRef must match requirement-local execution proof.`);
-    }
-    const deterministicRelation = isRecord(node?.deterministicRelation) ? node.deterministicRelation : undefined;
-    if (item.subjectSource === "test_antecedent" && deterministicRelation?.kind !== "test_antecedent") {
-      errors.push(`${path}.subjectSource must match the proof node test antecedent.`);
-    }
-    if (item.subjectSource === "current_requirement" && deterministicRelation?.kind === "test_antecedent") {
-      errors.push(`${path}.subjectSource must identify the test antecedent for a test-antecedent node.`);
     }
     const caseCoverageReceipt = isRecord(node?.caseCoverageReceipt) ? node.caseCoverageReceipt : undefined;
     if (caseCoverageReceipt) {
