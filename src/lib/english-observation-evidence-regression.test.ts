@@ -145,6 +145,138 @@ describe("frozen English observation evidence regressions", () => {
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
+  it("supports one named subject-chain binding plus an unrelated sibling binding from the same module", () => {
+    const testPath = "test/labels.test.js";
+    const report = generateVerificationReport(syntheticInput({
+      title: "Add label formatting behavior",
+      description: "Adds label formatting coverage.",
+      taskText: [
+        "## Requirements",
+        "- Add formatLabel(repository) for owner/name values.",
+        "- Return the owner/name label string.",
+        "- Add focused tests for the normal path."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/labels.js",
+        status: "modified",
+        patch: "+export function formatLabel(repository) { return `${repository.owner}/${repository.name}`; }"
+      }, {
+        path: testPath,
+        status: "modified",
+        patch: [
+          "+import assert from 'node:assert/strict';",
+          "+import { legacyLabel, formatLabel } from '../src/labels.js';",
+          "+test('legacyLabel keeps legacy labels', () => { assert.equal(legacyLabel({ name: 'old' }), 'old'); });",
+          "+test('formatLabel normal path formats owner/name labels', () => { assert.equal(formatLabel({ owner: 'acme', name: 'app' }), 'acme/app'); });"
+        ].join("\n")
+      }],
+      checks: [{ name: "format tests", status: "passed", summary: "Format tests passed." }],
+      logs: [{ source: "format tests", status: "passed", text: "Format tests passed." }],
+      executionSuites: [{
+        headSha: HEAD_SHA,
+        status: "passed",
+        executionSource: "format tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    }));
+    const testSibling = report.requirements.at(-1);
+
+    expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_subject_chain" });
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("does not use an explicit code subject from a non-subject-chain test objective to relax changed-target binding selection", () => {
+    const testPath = "test/labels.test.js";
+    const report = generateVerificationReport(syntheticInput({
+      title: "Add label formatting behavior",
+      description: "Adds label formatting coverage.",
+      taskText: [
+        "## Requirements",
+        "- Add label formatting behavior.",
+        "- Add focused automated tests for `formatLabel` normal path."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/labels.js",
+        status: "modified",
+        patch: "+export function formatLabel(repository) { return `${repository.owner}/${repository.name}`; }"
+      }, {
+        path: testPath,
+        status: "modified",
+        patch: [
+          "+import assert from 'node:assert/strict';",
+          "+import { legacyLabel, formatLabel } from '../src/labels.js';",
+          "+test('legacyLabel keeps legacy labels', () => { assert.equal(legacyLabel({ name: 'old' }), 'old'); });",
+          "+test('formatLabel formats owner/name labels', () => { assert.equal(formatLabel({ owner: 'acme', name: 'app' }), 'acme/app'); });"
+        ].join("\n")
+      }],
+      checks: [{ name: "format tests", status: "passed", summary: "Format tests passed." }],
+      logs: [{ source: "format tests", status: "passed", text: "Format tests passed." }],
+      executionSuites: [{
+        headSha: HEAD_SHA,
+        status: "passed",
+        executionSource: "format tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    }));
+    const requirement = report.requirements.at(-1);
+
+    expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_antecedent" });
+    expect(axis(requirement, "targeted_test")).toMatchObject({ state: "violated", evidenceRefs: [] });
+    expect(report.proofGraph.exactHeadTargetReceipts).toBeUndefined();
+    expect(report.proofGraph.testRelationReceipts).toBeUndefined();
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("keeps a subject-chain test incomplete when the selected subject exists only in unchanged context", () => {
+    const testPath = "test/labels.test.js";
+    const report = generateVerificationReport(syntheticInput({
+      title: "Add label formatting behavior",
+      description: "Adds unrelated assertion coverage.",
+      taskText: [
+        "## Requirements",
+        "- Add formatLabel(repository) for owner/name values.",
+        "- Return the owner/name label string.",
+        "- Add focused tests for the normal path."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/labels.js",
+        status: "modified",
+        patch: "+export function formatLabel(repository) { return `${repository.owner}/${repository.name}`; }"
+      }, {
+        path: testPath,
+        status: "modified",
+        patch: [
+          "@@ -1,3 +1,4 @@",
+          " import assert from 'node:assert/strict';",
+          " import { legacyLabel, formatLabel } from '../src/labels.js';",
+          " test('formatLabel normal path formats owner/name labels', () => { assert.equal(formatLabel({ owner: 'acme', name: 'app' }), 'acme/app'); });",
+          "+test('legacyLabel keeps legacy labels', () => { assert.equal(legacyLabel({ name: 'old' }), 'old'); });"
+        ].join("\n")
+      }],
+      checks: [{ name: "format tests", status: "passed", summary: "Format tests passed." }],
+      logs: [{ source: "format tests", status: "passed", text: "Format tests passed." }],
+      executionSuites: [{
+        headSha: HEAD_SHA,
+        status: "passed",
+        executionSource: "format tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    }));
+    const testSibling = report.requirements.at(-1);
+
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "violated", evidenceRefs: [] });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
   it("assigns an unchanged-helper receipt only to its explicitly named test objective", () => {
     const input = unchangedHelperInput();
     input.taskText = [
@@ -199,6 +331,50 @@ describe("frozen English observation evidence regressions", () => {
     expect(withoutExactTarget.proofGraph.testRelationReceipts).toBeUndefined();
     expect(validateVerificationReport(withExactTarget, { mode: "full" })).toEqual({ valid: true, errors: [] });
     expect(validateVerificationReport(withoutExactTarget, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("keeps an unchanged mixed-binding helper receipt bound only to its named export", () => {
+    const report = generateVerificationReport(unchangedHelperInput({
+      testPatch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { legacyLabel, repositoryName } from '../src/repositories/name.js';",
+        "+assert.equal(legacyLabel('AgentProof'), 'AgentProof');",
+        "+test('formats repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+      ].join("\n"),
+      moduleSource: [
+        "export function legacyLabel(value) { return String(value); }",
+        "export function repositoryName(value) { return String(value).toLowerCase(); }"
+      ].join("\n")
+    }));
+    const namedTest = report.requirements.at(-1);
+
+    expect(axis(namedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(namedTest, "execution")).toMatchObject({ state: "satisfied" });
+    expect(report.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
+    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("keeps an unchanged alias-bound helper receipt on its named export with an unrelated sibling import", () => {
+    const report = generateVerificationReport(unchangedHelperInput({
+      testPatch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { legacyLabel, repositoryName as formatName } from '../src/repositories/name.js';",
+        "+assert.equal(legacyLabel('AgentProof'), 'AgentProof');",
+        "+test('formats repository names', () => { expect(formatName('AgentProof')).toBe('agentproof'); });"
+      ].join("\n"),
+      moduleSource: [
+        "export function legacyLabel(value) { return String(value); }",
+        "export function repositoryName(value) { return String(value).toLowerCase(); }"
+      ].join("\n")
+    }));
+    const namedTest = report.requirements.at(-1);
+
+    expect(axis(namedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(namedTest, "execution")).toMatchObject({ state: "satisfied" });
+    expect(report.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
+    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
   it("keeps an absent-contract outcome unclear without replacing the local observation gap", () => {
@@ -658,11 +834,14 @@ function changedSiblingInput(
 }
 
 function unchangedHelperInput(
-  overrides: Partial<Pick<PullRequestInput, "checks" | "resolvedHeadModules">> = {}
+  overrides: Partial<Pick<PullRequestInput, "checks" | "resolvedHeadModules">> & {
+    testPatch?: string;
+    moduleSource?: string;
+  } = {}
 ): PullRequestInput {
   const targetPath = "src/repositories/name.js";
   const testPath = "test/repository-name-regression.test.js";
-  const moduleSource = "export function repositoryName(value) { return String(value).toLowerCase(); }";
+  const moduleSource = overrides.moduleSource ?? "export function repositoryName(value) { return String(value).toLowerCase(); }";
   const sourceText = [
     "## Requirements",
     "- Add repositoryName(value) formatting.",
@@ -676,7 +855,7 @@ function unchangedHelperInput(
     changedFiles: [{
       path: testPath,
       status: "added",
-      patch: [
+      patch: overrides.testPatch ?? [
         "+import { repositoryName } from '../src/repositories/name.js';",
         "+test('formats repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
       ].join("\n")
