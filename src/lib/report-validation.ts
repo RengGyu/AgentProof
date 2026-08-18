@@ -1414,16 +1414,88 @@ function validateDeterministicRelation(
   }
 
   const isTestAntecedent = value.kind === "test_antecedent";
+  const isTestSubjectChain = value.kind === "test_subject_chain";
   requireKeys(
     value,
-    isTestAntecedent
+    isTestSubjectChain
+      ? [
+          "version",
+          "kind",
+          "subjectRequirementId",
+          "bridgeRequirementId",
+          "currentSourceBindingRef",
+          "subjectSourceBindingRef",
+          "bridgeSourceBindingRef"
+        ]
+      : isTestAntecedent
       ? ["version", "kind", "antecedentRequirementId", "currentSourceBindingRef", "antecedentSourceBindingRef"]
       : ["version", "kind", "antecedentRequirementId"],
     path,
     errors
   );
   if (value.version !== 1) errors.push(`${path}.version must be 1.`);
-  if (value.kind !== "workflow_antecedent" && value.kind !== "test_antecedent") errors.push(`${path}.kind is invalid.`);
+  if (!isTestSubjectChain && value.kind !== "workflow_antecedent" && !isTestAntecedent) {
+    errors.push(`${path}.kind is invalid.`);
+  }
+  if (isTestSubjectChain) {
+    validateString(value.subjectRequirementId, `${path}.subjectRequirementId`, LIMITS.shortText, errors);
+    validateString(value.bridgeRequirementId, `${path}.bridgeRequirementId`, LIMITS.shortText, errors);
+    for (const [key, requirementId] of [
+      ["subjectRequirementId", value.subjectRequirementId],
+      ["bridgeRequirementId", value.bridgeRequirementId]
+    ] as const) {
+      if (typeof requirementId === "string" && !requirementIds.has(requirementId)) {
+        errors.push(`${path}.${key} must match a report requirement.`);
+      }
+    }
+    if (
+      value.subjectRequirementId === currentRequirementId ||
+      value.bridgeRequirementId === currentRequirementId ||
+      value.subjectRequirementId === value.bridgeRequirementId
+    ) {
+      errors.push(`${path} must bind three distinct requirements.`);
+    }
+
+    const bindingEntries = [
+      ["currentSourceBindingRef", currentRequirementId],
+      ["subjectSourceBindingRef", value.subjectRequirementId],
+      ["bridgeSourceBindingRef", value.bridgeRequirementId]
+    ] as const;
+    const bindings: Array<RecordValue | undefined> = [];
+    for (const [key, requirementId] of bindingEntries) {
+      validateString(value[key], `${path}.${key}`, LIMITS.shortText, errors);
+      const binding = typeof value[key] === "string" ? sourceBindingsById.get(value[key]) : undefined;
+      bindings.push(binding);
+      if (typeof value[key] === "string") {
+        referencedSourceBindingIds.add(value[key]);
+        if (!binding) errors.push(`${path}.${key} cites a missing source binding.`);
+      }
+      if (binding && binding.requirementId !== requirementId) {
+        errors.push(`${path}.${key} must bind its named requirement.`);
+      }
+    }
+    const [currentBinding, subjectBinding, bridgeBinding] = bindings;
+    if (
+      currentBinding && subjectBinding && bridgeBinding &&
+      (
+        currentBinding.seedId !== subjectBinding.seedId ||
+        currentBinding.seedId !== bridgeBinding.seedId ||
+        currentBinding.groupId !== subjectBinding.groupId ||
+        currentBinding.groupId !== bridgeBinding.groupId ||
+        currentBinding.source !== subjectBinding.source ||
+        currentBinding.source !== bridgeBinding.source ||
+        typeof currentBinding.ordinal !== "number" ||
+        typeof subjectBinding.ordinal !== "number" ||
+        typeof bridgeBinding.ordinal !== "number" ||
+        bridgeBinding.ordinal !== subjectBinding.ordinal + 1 ||
+        currentBinding.ordinal !== bridgeBinding.ordinal + 1
+      )
+    ) {
+      errors.push(`${path} source bindings must share one seed and group with consecutive ordinals.`);
+    }
+    return;
+  }
+
   validateString(value.antecedentRequirementId, `${path}.antecedentRequirementId`, LIMITS.shortText, errors);
   if (typeof value.antecedentRequirementId === "string" && !requirementIds.has(value.antecedentRequirementId)) {
     errors.push(`${path}.antecedentRequirementId must match a report requirement.`);
@@ -2183,6 +2255,38 @@ function deterministicProofContextForFullReport(
   current: RecordValue | undefined
 ): DeterministicProofContext {
   const relation = isRecord(current?.deterministicRelation) ? current.deterministicRelation : null;
+  if (
+    relation?.version === 1 &&
+    relation.kind === "test_subject_chain" &&
+    typeof relation.subjectRequirementId === "string" &&
+    typeof relation.bridgeRequirementId === "string" &&
+    typeof relation.currentSourceBindingRef === "string" &&
+    typeof relation.subjectSourceBindingRef === "string" &&
+    typeof relation.bridgeSourceBindingRef === "string"
+  ) {
+    return {
+      kind: "test_subject_chain",
+      subjectRequirementId: relation.subjectRequirementId,
+      bridgeRequirementId: relation.bridgeRequirementId,
+      currentSourceBindingRef: relation.currentSourceBindingRef,
+      subjectSourceBindingRef: relation.subjectSourceBindingRef,
+      bridgeSourceBindingRef: relation.bridgeSourceBindingRef
+    };
+  }
+  if (
+    relation?.version === 1 &&
+    relation.kind === "test_antecedent" &&
+    typeof relation.antecedentRequirementId === "string" &&
+    typeof relation.currentSourceBindingRef === "string" &&
+    typeof relation.antecedentSourceBindingRef === "string"
+  ) {
+    return {
+      kind: "test_antecedent",
+      requirementId: relation.antecedentRequirementId,
+      currentSourceBindingRef: relation.currentSourceBindingRef,
+      antecedentSourceBindingRef: relation.antecedentSourceBindingRef
+    };
+  }
   if (
     relation?.version !== 1 ||
     relation.kind !== "workflow_antecedent" ||

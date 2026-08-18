@@ -1232,7 +1232,8 @@ function buildProofGraph(
       exactHeadSubjectRequirementIds.has(requirement.id),
       requirement,
       deterministicRelation,
-      requirementById
+      requirementById,
+      expectations.targetedTest
     );
     const targetedTestEvidenceRefs = targetedTestSelection.refs;
     const requiresDirectAssertionCaseCoverage = isEnglishBothPathsRequirement(requirement.text);
@@ -1833,7 +1834,8 @@ function targetedTestEvidenceForRequirement(
   allowExactHeadRelation = false,
   requirement?: Requirement,
   deterministicRelation?: DeterministicRequirementRelation,
-  requirementById?: ReadonlyMap<string, Requirement>
+  requirementById?: ReadonlyMap<string, Requirement>,
+  requireDirectAssertion = false
 ): {
   refs: string[];
   exactHeadRelations: Array<{
@@ -1843,7 +1845,14 @@ function targetedTestEvidenceForRequirement(
   }>;
   exactHeadRelationRequired: boolean;
 } {
-  const changedImplementationRefs = exactImportedTestEvidenceRefs(input, evidenceLookup, implementationEvidenceRefs);
+  const changedImplementationRefs = exactImportedTestEvidenceRefs(
+    input,
+    evidenceLookup,
+    implementationEvidenceRefs,
+    requireDirectAssertion
+      ? (testFile, implementationFile) => distinctDirectAssertionCallCount(testFile, implementationFile) > 0
+      : () => true
+  );
   if (changedImplementationRefs.length > 0) {
     return { refs: changedImplementationRefs, exactHeadRelations: [], exactHeadRelationRequired: false };
   }
@@ -1993,7 +2002,6 @@ function exactImportedTestEvidenceRefs(
       return Boolean(
         testFile &&
         testImportMatchesImplementation(testFile, implementationFile) &&
-        distinctDirectAssertionCallCount(testFile, implementationFile) > 0 &&
         predicate(testFile, implementationFile)
       );
     })

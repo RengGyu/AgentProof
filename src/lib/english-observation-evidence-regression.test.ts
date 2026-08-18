@@ -97,6 +97,8 @@ describe("frozen English observation evidence regressions", () => {
     expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_subject_chain" });
     expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "violated", evidenceRefs: [] });
     expect(axis(testSibling, "execution")).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(JSON.stringify(sanitizeReportForShare(report))).not.toContain("test_subject_chain");
   });
 
   it("supports a direct test-only regression of an unchanged helper only with exact receipts", () => {
