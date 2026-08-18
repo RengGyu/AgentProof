@@ -380,3 +380,44 @@ describe("exact test-relation subject binding", () => {
     })).toBe(expected);
   });
 });
+
+describe("bounded direct assertion literals", () => {
+  const implementationFile = {
+    path: "src/repositories/repository-slug.js",
+    patch: "+export function repositorySlug(repository) { return `${repository.owner}/${repository.name}`; }"
+  };
+
+  it("counts direct assertions with one bounded flat object argument", () => {
+    const testFile = {
+      path: "test/repository-slug.test.js",
+      patch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { repositorySlug } from '../src/repositories/repository-slug.js';",
+        "+test('formats a repository', () => { assert.equal(repositorySlug({ owner: 'RengGyu', name: 'AgentProof' }), 'RengGyu/AgentProof'); });"
+      ].join("\n")
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(1);
+  });
+
+  it.each([
+    "{ ...repository }",
+    "{ [key]: 'AgentProof' }",
+    "{ owner: ownerName }",
+    "{ owner: createOwner() }",
+    "{ owner: { name: 'RengGyu' } }",
+    "{ owner: `RengGyu${suffix}` }",
+    "{ /* owner */ name: 'AgentProof' }"
+  ])("rejects a non-static object argument: %s", (argument) => {
+    const testFile = {
+      path: "test/repository-slug.test.js",
+      patch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { repositorySlug } from '../src/repositories/repository-slug.js';",
+        `+test('formats a repository', () => { assert.equal(repositorySlug(${argument}), 'RengGyu/AgentProof'); });`
+      ].join("\n")
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(0);
+  });
+});

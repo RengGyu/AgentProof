@@ -57,6 +57,48 @@ describe("frozen English observation evidence regressions", () => {
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
+  it("does not promote an imported subject-chain test without a direct assertion", () => {
+    const testPath = "test/repository-slug.test.js";
+    const report = generateVerificationReport(syntheticInput({
+      title: "Add repository slug behavior",
+      description: "Adds repository slug behavior and coverage.",
+      taskText: [
+        "## Requirements",
+        "- Add repositorySlug(repository) for owner/name values.",
+        "- Return unknown/repository when owner/name is unavailable.",
+        "- Add focused tests for normal and fallback paths."
+      ].join("\n"),
+      changedFiles: [{
+        path: "src/repositories/repository-slug.js",
+        status: "modified",
+        patch: "+export function repositorySlug(repository) { return `${repository.owner}/${repository.name}`; }"
+      }, {
+        path: testPath,
+        status: "modified",
+        patch: [
+          "+import assert from 'node:assert/strict';",
+          "+import { repositorySlug } from '../src/repositories/repository-slug.js';",
+          "+test('keeps an unrelated assertion', () => { assert.equal(true, true); });"
+        ].join("\n")
+      }],
+      checks: [{ name: "repository slug tests", status: "passed", summary: "Repository slug tests passed." }],
+      logs: [{ source: "repository slug tests", status: "passed", text: "Repository slug tests passed." }],
+      executionSuites: [{
+        headSha: HEAD_SHA,
+        status: "passed",
+        executionSource: "repository slug tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: [testPath]
+      }]
+    }));
+    const testSibling = report.requirements.at(-1);
+
+    expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_subject_chain" });
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "violated", evidenceRefs: [] });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+  });
+
   it("supports a direct test-only regression of an unchanged helper only with exact receipts", () => {
     const withExactTarget = generateVerificationReport(unchangedHelperInput());
     const withoutExactTarget = generateVerificationReport(unchangedHelperInput({ resolvedHeadModules: [] }));

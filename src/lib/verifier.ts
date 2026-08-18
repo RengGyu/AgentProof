@@ -1993,6 +1993,7 @@ function exactImportedTestEvidenceRefs(
       return Boolean(
         testFile &&
         testImportMatchesImplementation(testFile, implementationFile) &&
+        distinctDirectAssertionCallCount(testFile, implementationFile) > 0 &&
         predicate(testFile, implementationFile)
       );
     })

@@ -47,6 +47,9 @@ const GENERIC_CODE_SUBJECT_IDENTIFIERS = new Set([
   "values"
 ]);
 
+const MAX_FLAT_OBJECT_LITERAL_FIELDS = 8;
+const SCALAR_LITERAL_PATTERN = /^(?:true|false|null|undefined|-?(?:\d+(?:\.\d+)?|\.\d+)|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`$]*`)$/u;
+
 interface PatchFile {
   path: string;
   patch?: string;
@@ -280,7 +283,9 @@ function directAssertedTestBindings(testFile: PatchFile): DirectTestBinding[] {
   ) === index);
   const asserted = uniqueImports.flatMap((binding) => {
     const signatures = directAssertionSignatures(lines, binding.localName);
-    return signatures.size > 0 ? [{ ...binding, distinctLiteralCaseCount: signatures.size }] : [];
+    return signatures.size > 0 && !hasRawCommentInBindingCall(testFile.patch ?? "", binding.localName)
+      ? [{ ...binding, distinctLiteralCaseCount: signatures.size }]
+      : [];
   });
   return asserted.length === 1 ? asserted : [];
 }
@@ -515,6 +520,7 @@ export function distinctDirectAssertionCallCount(
 ): number {
   const bindings = importedBindingsForImplementation(testFile, implementationFile);
   if (bindings.length !== 1) return 0;
+  if (hasRawCommentInBindingCall(testFile.patch ?? "", bindings[0])) return 0;
 
   const bindingPattern = new RegExp(`\\b${escapeRegExp(bindings[0])}\\s*\\(([^()]*)\\)`, "g");
   const signatures = new Set<string>();
@@ -705,11 +711,124 @@ function livePatchLines(patch: string): string[] {
 
 function literalArgumentSignature(args: string): string | null {
   if (!args) return "()";
-  const values = args.split(",").map((value) => value.trim());
-  if (values.some((value) => !/^(?:true|false|null|undefined|-?(?:\d+(?:\.\d+)?|\.\d+)|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`$]*`)$/u.test(value))) {
-    return null;
+  const values = splitTopLevel(args, ",");
+  if (!values || values.length === 0) return null;
+  const signatures = values.map(literalValueSignature);
+  return signatures.every((value): value is string => value !== null) ? signatures.join(",") : null;
+}
+
+function literalValueSignature(value: string): string | null {
+  const trimmed = value.trim();
+  if (SCALAR_LITERAL_PATTERN.test(trimmed)) return trimmed;
+  return flatObjectLiteralSignature(trimmed);
+}
+
+function flatObjectLiteralSignature(value: string): string | null {
+  if (!value.startsWith("{") || !value.endsWith("}")) return null;
+  const body = value.slice(1, -1).trim();
+  if (!body) return "{}";
+  const fields = splitTopLevel(body, ",");
+  if (!fields || fields.length === 0 || fields.length > MAX_FLAT_OBJECT_LITERAL_FIELDS) return null;
+
+  const canonicalFields = new Map<string, string>();
+  for (const field of fields) {
+    const separator = topLevelSeparatorIndex(field, ":");
+    if (separator <= 0 || topLevelSeparatorIndex(field.slice(separator + 1), ":") >= 0) return null;
+    const key = canonicalObjectKey(field.slice(0, separator).trim());
+    const fieldValue = field.slice(separator + 1).trim();
+    if (!key || !SCALAR_LITERAL_PATTERN.test(fieldValue) || canonicalFields.has(key)) return null;
+    canonicalFields.set(key, fieldValue);
   }
-  return values.join(",");
+  return `{${[...canonicalFields.entries()].sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, fieldValue]) => `${key}:${fieldValue}`).join(",")}}`;
+}
+
+function canonicalObjectKey(value: string): string | null {
+  if (/^[A-Za-z_$][\w$]*$/.test(value)) return value;
+  if (/^"(?:[^"\\]|\\.)*"$|^'(?:[^'\\]|\\.)*'$/u.test(value)) return value;
+  return null;
+}
+
+function splitTopLevel(value: string, separator: string): string[] | null {
+  const parts: string[] = [];
+  let start = 0;
+  let quote: "'" | '"' | "`" | null = null;
+  let escaped = false;
+  let braces = 0;
+  let brackets = 0;
+  let parentheses = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "{") braces += 1;
+    else if (character === "}") braces -= 1;
+    else if (character === "[") brackets += 1;
+    else if (character === "]") brackets -= 1;
+    else if (character === "(") parentheses += 1;
+    else if (character === ")") parentheses -= 1;
+    if (braces < 0 || brackets < 0 || parentheses < 0) return null;
+    if (character === separator && braces === 0 && brackets === 0 && parentheses === 0) {
+      parts.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+
+  if (quote || braces !== 0 || brackets !== 0 || parentheses !== 0) return null;
+  const finalPart = value.slice(start).trim();
+  return finalPart ? [...parts, finalPart] : null;
+}
+
+function topLevelSeparatorIndex(value: string, separator: string): number {
+  let quote: "'" | '"' | "`" | null = null;
+  let escaped = false;
+  let braces = 0;
+  let brackets = 0;
+  let parentheses = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === separator && braces === 0 && brackets === 0 && parentheses === 0) return index;
+    if (character === "{") braces += 1;
+    else if (character === "}") braces -= 1;
+    else if (character === "[") brackets += 1;
+    else if (character === "]") brackets -= 1;
+    else if (character === "(") parentheses += 1;
+    else if (character === ")") parentheses -= 1;
+  }
+  return -1;
+}
+
+function hasRawCommentInBindingCall(patch: string, localName: string): boolean {
+  const bindingPattern = new RegExp(`\\b${escapeRegExp(localName)}\\s*\\(`);
+  return patch.split(/\r?\n/).some((rawLine) => {
+    if (!rawLine.startsWith("+") || rawLine.startsWith("+++")) return false;
+    const line = rawLine.slice(1);
+    const match = bindingPattern.exec(line);
+    if (!match || match.index === undefined || !isCodePosition(line, match.index)) return false;
+    const openIndex = line.indexOf("(", match.index);
+    const closeIndex = matchingClosingParenthesis(line, openIndex);
+    return closeIndex > openIndex && /\/\*|\/\//.test(line.slice(openIndex + 1, closeIndex));
+  });
 }
 
 function escapeRegExp(value: string): string {
