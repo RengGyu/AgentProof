@@ -12,6 +12,7 @@ type ResolverInput = {
   testPatch: string;
   importSpecifier: string;
   headSha: string;
+  subject?: string;
   target: {
     version: 1;
     kind: "resolved_head_module";
@@ -89,6 +90,27 @@ describe("resolveExactHeadTarget", () => {
         targetPathDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
         canonicalBindingDigest: expect.stringMatching(/^[a-f0-9]{64}$/)
       }
+    });
+  });
+
+  it("keeps no-subject exact-head resolution when one sibling import is not asserted", () => {
+    const target = resolve(namedTarget({
+      testPatch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { legacyLabel, repositoryName as formatName } from '../src/repositories/name.js';",
+        "+test('formats a name', () => { assert.equal(formatName(false), 'agentproof'); });"
+      ].join("\n"),
+      target: targetWithSource([
+        "const repositoryName = value => value ? 'AgentProof' : 'agentproof';",
+        "const legacyLabel = value => String(value);",
+        "export { legacyLabel, repositoryName };"
+      ].join("\n"))
+    }));
+
+    expect(target).toMatchObject({
+      bindingLocalName: "formatName",
+      distinctLiteralCaseCount: 1,
+      receipt: expect.objectContaining({ exportKind: "named" })
     });
   });
 
@@ -398,6 +420,77 @@ describe("bounded direct assertion literals", () => {
     };
 
     expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(1);
+  });
+
+  it("counts one selected subject binding even when the module import also includes an unrelated sibling", () => {
+    const testFile = {
+      path: "test/labels.test.js",
+      patch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { legacyLabel, formatLabel } from '../src/labels.js';",
+        "+assert.equal(legacyLabel({ name: 'old' }), 'old');",
+        "+assert.equal(formatLabel({ owner: 'acme', name: 'app' }), 'acme/app');"
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/labels.js",
+      patch: "+export function formatLabel(repository) { return `${repository.owner}/${repository.name}`; }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "formatLabel")).toBe(1);
+  });
+
+  it("counts one selected subject binding through a local alias with an unrelated sibling", () => {
+    const testFile = {
+      path: "test/labels.test.js",
+      patch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { legacyLabel, formatLabel as renderLabel } from '../src/labels.js';",
+        "+assert.equal(legacyLabel({ name: 'old' }), 'old');",
+        "+assert.equal(renderLabel({ owner: 'acme', name: 'app' }), 'acme/app');"
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/labels.js",
+      patch: "+export function formatLabel(repository) { return `${repository.owner}/${repository.name}`; }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "formatLabel")).toBe(1);
+  });
+
+  it("fails closed when the named subject has no added assertion", () => {
+    const testFile = {
+      path: "test/labels.test.js",
+      patch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { legacyLabel, formatLabel } from '../src/labels.js';",
+        "+assert.equal(legacyLabel({ owner: 'acme', name: 'app' }), 'acme/app');"
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/labels.js",
+      patch: "+export function formatLabel(repository) { return `${repository.owner}/${repository.name}`; }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "formatLabel")).toBe(0);
+  });
+
+  it("fails closed when two direct static bindings match the named subject", () => {
+    const testFile = {
+      path: "test/labels.test.js",
+      patch: [
+        "+import assert from 'node:assert/strict';",
+        "+import { formatLabel, formatLabel as renamedFormatLabel } from '../src/labels.js';",
+        "+assert.equal(formatLabel({ owner: 'acme', name: 'app' }), 'acme/app');",
+        "+assert.equal(renamedFormatLabel({ owner: 'beta', name: 'svc' }), 'beta/svc');"
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/labels.js",
+      patch: "+export function formatLabel(repository) { return `${repository.owner}/${repository.name}`; }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "formatLabel")).toBe(0);
   });
 
   it.each([

@@ -1224,13 +1224,22 @@ function buildProofGraph(
     );
     const contextualImplementationRefs = [...contextualImplementation.refs];
     const subjectImplementationEvidenceRefs = uniqueRefs([...implementationEvidenceRefs, ...contextualImplementationRefs]);
+    const changedTargetSubject = changedTargetTestEvidenceSubject(
+      deterministicRelation,
+      requirementById
+    );
+    const exactHeadSubject = exactHeadSubjectRequirementIds.has(requirement.id)
+      ? uniqueExplicitCodeSubject(requirement.text)
+      : undefined;
     const targetedTestSelection = targetedTestEvidenceForRequirement(
       input,
       subjectImplementationEvidenceRefs,
       evidenceLookup,
       exactHeadSubjectRequirementIds.has(requirement.id),
       requirement,
-      expectations.targetedTest
+      expectations.targetedTest,
+      changedTargetSubject,
+      exactHeadSubject
     );
     const targetedTestEvidenceRefs = targetedTestSelection.refs;
     const requiresDirectAssertionCaseCoverage = isEnglishBothPathsRequirement(requirement.text);
@@ -1239,7 +1248,7 @@ function buildProofGraph(
         input,
         evidenceLookup,
         subjectImplementationEvidenceRefs,
-        (testFile, implementationFile) => distinctDirectAssertionCallCount(testFile, implementationFile) >= 2
+        (testFile, implementationFile) => distinctDirectAssertionCallCount(testFile, implementationFile, changedTargetSubject) >= 2
       )
       : [];
     const directlyMatchingExecutionRefs = requirementEvidenceRefs(relevance, (item, match) =>
@@ -1824,13 +1833,24 @@ function isOpaqueMatrixExecutionFailure(item: EvidenceItem): boolean {
     isFailedAmbiguousActionsExecutionSignal(item.label, evidenceStatusFromSummary(item.summary), item.locator, item.summary);
 }
 
+function changedTargetTestEvidenceSubject(
+  relation: DeterministicRequirementRelation | undefined,
+  requirementById: ReadonlyMap<string, Requirement>
+): string | undefined {
+  return relation?.kind === "test_subject_chain"
+    ? uniqueExplicitCodeSubject(requirementById.get(relation.subjectRequirementId)?.text ?? "")
+    : undefined;
+}
+
 function targetedTestEvidenceForRequirement(
   input: PullRequestInput,
   implementationEvidenceRefs: string[],
   evidenceLookup: VerifierEvidenceLookup,
   allowExactHeadRelation = false,
   requirement?: Requirement,
-  requireDirectAssertion = false
+  requireDirectAssertion = false,
+  changedTargetSubject?: string,
+  exactHeadSubject?: string
 ): {
   refs: string[];
   exactHeadRelations: Array<{
@@ -1845,7 +1865,7 @@ function targetedTestEvidenceForRequirement(
     evidenceLookup,
     implementationEvidenceRefs,
     requireDirectAssertion
-      ? (testFile, implementationFile) => distinctDirectAssertionCallCount(testFile, implementationFile) > 0
+      ? (testFile, implementationFile) => distinctDirectAssertionCallCount(testFile, implementationFile, changedTargetSubject) > 0
       : () => true
   );
   if (changedImplementationRefs.length > 0) {
@@ -1857,7 +1877,8 @@ function targetedTestEvidenceForRequirement(
     ? exactHeadTestRelations(
       input,
       evidenceLookup,
-      requirement
+      requirement,
+      exactHeadSubject
     )
     : [];
   return {
@@ -1878,7 +1899,8 @@ function targetedTestEvidenceRefsForRequirement(
 function exactHeadTestRelations(
   input: PullRequestInput,
   evidenceLookup: VerifierEvidenceLookup,
-  requirement: Requirement
+  requirement: Requirement,
+  subject?: string
 ): Array<{
   testEvidenceRef: string;
   subjectSource: "current_requirement";
@@ -1904,7 +1926,7 @@ function exactHeadTestRelations(
       file.path.toLowerCase() === testPath.toLowerCase() && isTestFile(file.path)
     );
     if (!testFile?.patch) return [];
-    const candidate = directTestTargetCandidate(testFile);
+    const candidate = directTestTargetCandidate(testFile, subject);
     if (!candidate || changedPaths.has(candidate.targetPath.toLowerCase())) return [];
     const matchingModules = modules.filter((module) =>
       module.path.toLowerCase() === candidate.targetPath.toLowerCase() &&
@@ -1916,10 +1938,11 @@ function exactHeadTestRelations(
       testPatch: testFile.patch,
       importSpecifier: candidate.importSpecifier,
       headSha,
-      target: matchingModules[0]
+      target: matchingModules[0],
+      subject
     });
     if (!target) return [];
-    const subjectSource = exactTestRelationSubjectSource({
+    const subjectSource = subject ? "current_requirement" : exactTestRelationSubjectSource({
       currentRequirementText: requirement.text,
       target
     });
@@ -1937,12 +1960,12 @@ function exactHeadRelationSubjectRequirementIds(
     const expectations = proofExpectationsByRequirement?.get(requirement.id) ?? requirementProofAxisExpectations(requirement.text);
     return expectations.targetedTest && (
       (!expectations.implementation && !expectations.documentation && !expectations.ci)
-    ) && hasExplicitCodeSubjectInTestObjective(requirement.text);
+    ) && uniqueExplicitCodeSubject(requirement.text) !== undefined;
   });
   return candidates.length === 1 ? new Set([candidates[0].id]) : new Set();
 }
 
-function hasExplicitCodeSubjectInTestObjective(text: string): boolean {
+function uniqueExplicitCodeSubject(text: string): string | undefined {
   const identifiers = new Set<string>();
   for (const match of text.matchAll(/`([A-Za-z_$][\w$]*)`|\b([A-Za-z_$][\w$]*)\s*\(/g)) {
     identifiers.add(match[1] ?? match[2]!);
@@ -1951,12 +1974,13 @@ function hasExplicitCodeSubjectInTestObjective(text: string): boolean {
     const identifier = match[1]!;
     if (/[a-z][A-Z]|[_$]/.test(identifier)) identifiers.add(identifier);
   }
-  return [...identifiers].some((identifier) => !new Set([
+  const explicitIdentifiers = [...identifiers].filter((identifier) => !new Set([
     "assert",
     "expect",
     "it",
     "test"
   ]).has(identifier.toLowerCase()));
+  return explicitIdentifiers.length === 1 ? explicitIdentifiers[0] : undefined;
 }
 
 function requiresUnchangedExactHeadRelation(

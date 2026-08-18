@@ -105,8 +105,8 @@ export function exactTestRelationSubjectSource(input: {
  * called directly inside an assertion. Returned raw names and paths are
  * transient resolver state, never report data.
  */
-export function directTestTargetCandidate(testFile: PatchFile): DirectTestTargetCandidate | null {
-  const bindings = directAssertedTestBindings(testFile);
+export function directTestTargetCandidate(testFile: PatchFile, subject?: string): DirectTestTargetCandidate | null {
+  const bindings = directAssertedTestBindings(testFile, subject);
   if (bindings.length !== 1) return null;
   const binding = bindings[0];
   return {
@@ -126,6 +126,7 @@ export function resolveExactHeadTarget(input: {
   importSpecifier: string;
   headSha: string;
   target: ResolvedHeadModulePayload;
+  subject?: string;
 }): ExactHeadTargetResolution | null {
   if (!/^[a-f0-9]{40,64}$/i.test(input.headSha)) return null;
   if (
@@ -143,7 +144,7 @@ export function resolveExactHeadTarget(input: {
   if (expectedBlobSha !== input.target.blobSha.toLowerCase()) return null;
 
   const testFile = { path: input.testPath, patch: input.testPatch };
-  const bindings = directAssertedTestBindings(testFile)
+  const bindings = directAssertedTestBindings(testFile, input.subject)
     .filter((binding) => binding.importSpecifier === input.importSpecifier);
   if (bindings.length !== 1) return null;
   const binding = bindings[0];
@@ -197,8 +198,9 @@ function isExplicitCodeIdentifierReference(text: string, candidate: string): boo
   return hasCodeShape && new RegExp(`(^|[^A-Za-z0-9_$])${identifier}(?![A-Za-z0-9_$])`).test(text);
 }
 
-function directAssertedTestBindings(testFile: PatchFile): DirectTestBinding[] {
-  const lines = livePatchLines(testFile.patch ?? "");
+function directAssertedTestBindings(testFile: PatchFile, subject?: string): DirectTestBinding[] {
+  const entries = livePatchEntries(testFile.patch ?? "");
+  const lines = entries.map((entry) => entry.line);
   const code = lines.join("\n");
   if (/\bimport\s*\(/.test(code) || /\b(?:vi|jest)\s*\.\s*(?:doMock|mock)\s*\(/.test(code)) return [];
 
@@ -276,8 +278,18 @@ function directAssertedTestBindings(testFile: PatchFile): DirectTestBinding[] {
     candidate.localName === binding.localName &&
     candidate.importKind === binding.importKind
   ) === index);
+  if (subject) {
+    const candidates = uniqueImports.filter((binding) => binding.exportedName === subject);
+    if (candidates.length !== 1) return [];
+
+    const signatures = countAddedDirectAssertionSignatures(entries, candidates[0]!.localName);
+    return signatures.size > 0 && !hasRawCommentInBindingCall(testFile.patch ?? "", candidates[0]!.localName)
+      ? [{ ...candidates[0]!, distinctLiteralCaseCount: signatures.size }]
+      : [];
+  }
+
   const asserted = uniqueImports.flatMap((binding) => {
-    const signatures = directAssertionSignatures(lines, binding.localName);
+    const signatures = countAddedDirectAssertionSignatures(entries, binding.localName);
     return signatures.size > 0 && !hasRawCommentInBindingCall(testFile.patch ?? "", binding.localName)
       ? [{ ...binding, distinctLiteralCaseCount: signatures.size }]
       : [];
@@ -332,6 +344,13 @@ function directAssertionSignatures(lines: readonly string[], localName: string):
     }
   }
   return signatures;
+}
+
+function countAddedDirectAssertionSignatures(
+  entries: readonly { line: string; added: boolean }[],
+  localName: string
+): Set<string> {
+  return directAssertionSignatures(entries.filter((entry) => entry.added).map((entry) => entry.line), localName);
 }
 
 function directExportKind(
@@ -511,31 +530,14 @@ export function testImportMatchesImplementation(
 
 export function distinctDirectAssertionCallCount(
   testFile: PatchFile,
-  implementationFile: PatchFile
+  implementationFile: PatchFile,
+  subject?: string
 ): number {
-  const bindings = importedBindingsForImplementation(testFile, implementationFile);
+  const entries = livePatchEntries(testFile.patch ?? "");
+  const bindings = importedBindingsForImplementation(testFile, implementationFile, subject);
   if (bindings.length !== 1) return 0;
-  if (hasRawCommentInBindingCall(testFile.patch ?? "", bindings[0])) return 0;
-
-  const bindingPattern = new RegExp(`\\b${escapeRegExp(bindings[0])}\\s*\\(([^()]*)\\)`, "g");
-  const signatures = new Set<string>();
-  for (const line of livePatchLines(testFile.patch ?? "")) {
-    const assertionRanges = assertionArgumentRanges(line);
-    if (assertionRanges.length === 0) continue;
-
-    for (const match of line.matchAll(bindingPattern)) {
-      const matchIndex = match.index;
-      if (
-        matchIndex === undefined ||
-        !isCodePosition(line, matchIndex) ||
-        !assertionRanges.some(([start, end]) => matchIndex >= start && matchIndex < end)
-      ) continue;
-      const args = match[1].trim();
-      const signature = literalArgumentSignature(args);
-      if (signature !== null) signatures.add(signature);
-    }
-  }
-  return signatures.size;
+  if (hasRawCommentInBindingCall(testFile.patch ?? "", bindings[0]!.localName)) return 0;
+  return countAddedDirectAssertionSignatures(entries, bindings[0]!.localName).size;
 }
 
 function assertionArgumentRanges(line: string): Array<readonly [number, number]> {
@@ -601,8 +603,12 @@ function importedModuleSpecifiers(patch: string): string[] {
   return specifiers;
 }
 
-function importedBindingsForImplementation(testFile: PatchFile, implementationFile: PatchFile): string[] {
-  const bindings: string[] = [];
+function importedBindingsForImplementation(
+  testFile: PatchFile,
+  implementationFile: PatchFile,
+  subject?: string
+): DirectTestBinding[] {
+  const bindings: Omit<DirectTestBinding, "distinctLiteralCaseCount">[] = [];
   const targetPath = normalizeRepositoryPath(implementationFile.path);
 
   for (const sourceLine of livePatchLines(testFile.patch ?? "")) {
@@ -615,38 +621,76 @@ function importedBindingsForImplementation(testFile: PatchFile, implementationFi
     const namedImport = line.match(/^import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+["']/);
     if (namedImport) {
       for (const entry of namedImport[1].split(",")) {
-        const match = entry.trim().match(/^(?:type\s+)?[A-Za-z_$][\w$]*(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
-        const localName = match?.[1] ?? entry.trim().replace(/^type\s+/, "").split(/\s+/)[0];
-        if (match && localName) bindings.push(localName);
+        const match = entry.trim().match(/^(?:type\s+)?([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
+        if (match && !entry.trim().startsWith("type ")) {
+          bindings.push({
+            importSpecifier: specifier,
+            targetPath,
+            exportedName: match[1],
+            localName: match[2] ?? match[1],
+            importKind: "named"
+          });
+        }
       }
       continue;
     }
 
     const defaultImport = line.match(/^import\s+([A-Za-z_$][\w$]*)\s*(?:,|from\s+["'])/);
     if (defaultImport) {
-      bindings.push(defaultImport[1]);
+      bindings.push({
+        importSpecifier: specifier,
+        targetPath,
+        exportedName: "default",
+        localName: defaultImport[1],
+        importKind: "default"
+      });
       continue;
     }
 
     const destructuredRequire = line.match(/^(?:const|let|var)\s*\{([^}]+)\}\s*=\s*require\s*\(/);
     if (destructuredRequire) {
       for (const entry of destructuredRequire[1].split(",")) {
-        const match = entry.trim().match(/^[A-Za-z_$][\w$]*(?:\s*:\s*([A-Za-z_$][\w$]*))?$/);
-        const localName = match?.[1] ?? entry.trim().split(/\s*:\s*/)[0];
-        if (match && localName) bindings.push(localName);
+        const match = entry.trim().match(/^([A-Za-z_$][\w$]*)(?:\s*:\s*([A-Za-z_$][\w$]*))?$/);
+        if (match) {
+          bindings.push({
+            importSpecifier: specifier,
+            targetPath,
+            exportedName: match[1],
+            localName: match[2] ?? match[1],
+            importKind: "commonjs"
+          });
+        }
       }
       continue;
     }
 
     const directRequire = line.match(/^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(/);
-    if (directRequire) bindings.push(directRequire[1]);
+    if (directRequire) bindings.push({
+      importSpecifier: specifier,
+      targetPath,
+      exportedName: "module.exports",
+      localName: directRequire[1],
+      importKind: "commonjs"
+    });
   }
 
-  return [...new Set(bindings)];
+  const uniqueBindings = bindings.filter((binding, index) => bindings.findIndex((candidate) =>
+    candidate.importSpecifier === binding.importSpecifier &&
+    candidate.targetPath === binding.targetPath &&
+    candidate.exportedName === binding.exportedName &&
+    candidate.localName === binding.localName &&
+    candidate.importKind === binding.importKind
+  ) === index);
+  const candidates = subject
+    ? uniqueBindings.filter((binding) => binding.exportedName === subject)
+    : uniqueBindings;
+  return candidates.length === 1
+    ? [{ ...candidates[0]!, distinctLiteralCaseCount: 0 }]
+    : [];
 }
 
-function livePatchLines(patch: string): string[] {
-  const lines: string[] = [];
+function livePatchEntries(patch: string): Array<{ line: string; added: boolean }> {
+  const entries: Array<{ line: string; added: boolean }> = [];
   const rawLines = patch.replace(/\r\n/g, "\n").split("\n");
   let hunkStateKnown = !rawLines.some((line) => line.startsWith("@@"));
   let blockComment = false;
@@ -664,6 +708,7 @@ function livePatchLines(patch: string): string[] {
     }
     if (!hunkStateKnown) continue;
     if (rawLine.startsWith("-")) continue;
+    const added = rawLine.startsWith("+") && !rawLine.startsWith("+++");
     const line = rawLine.replace(/^\+/, "");
     let code = "";
     let suppressContinuedQuoteContent = quote !== null;
@@ -698,10 +743,14 @@ function livePatchLines(patch: string): string[] {
       if (character === "'" || character === '"' || character === "`") quote = character;
     }
 
-    if (code.trim()) lines.push(code);
+    if (code.trim()) entries.push({ line: code, added });
   }
 
-  return lines;
+  return entries;
+}
+
+function livePatchLines(patch: string): string[] {
+  return livePatchEntries(patch).map((entry) => entry.line);
 }
 
 function literalArgumentSignature(args: string): string | null {
