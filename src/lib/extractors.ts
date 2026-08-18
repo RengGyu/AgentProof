@@ -260,27 +260,56 @@ export function deriveDeterministicRequirementRelations(
       index,
       sourceBindingSeedId(spanExtraction.seed!)
     );
-    if (testContext.kind !== "test_antecedent") continue;
+    if (testContext.kind === "none") continue;
     proofExpectationsByRequirement.set(
       requirement.id,
       requirementProofAxisExpectationsWithContext(requirement.text, testContext)
     );
-    evidenceContextRequirementIdsByRequirement.set(requirement.id, [testContext.requirementId]);
     const currentBinding = requirementSourceBinding(requirement, spans[index]!, testContext.currentSourceBindingRef, testContext.seedId);
-    const antecedentBinding = requirementSourceBinding(
-      requirements[testContext.antecedentIndex]!,
-      spans[testContext.antecedentIndex]!,
-      testContext.antecedentSourceBindingRef,
+    sourceBindingsByRef.set(currentBinding.id, currentBinding);
+
+    if (testContext.kind === "test_antecedent") {
+      evidenceContextRequirementIdsByRequirement.set(requirement.id, [testContext.requirementId]);
+      const antecedentBinding = requirementSourceBinding(
+        requirements[testContext.antecedentIndex]!,
+        spans[testContext.antecedentIndex]!,
+        testContext.antecedentSourceBindingRef,
+        testContext.seedId
+      );
+      sourceBindingsByRef.set(antecedentBinding.id, antecedentBinding);
+      deterministicRelationsByRequirement.set(requirement.id, {
+        version: 1,
+        kind: "test_antecedent",
+        antecedentRequirementId: testContext.requirementId,
+        currentSourceBindingRef: currentBinding.id,
+        antecedentSourceBindingRef: antecedentBinding.id
+      });
+      continue;
+    }
+
+    evidenceContextRequirementIdsByRequirement.set(requirement.id, [testContext.subjectRequirementId, testContext.bridgeRequirementId]);
+    const subjectBinding = requirementSourceBinding(
+      requirements[testContext.subjectIndex]!,
+      spans[testContext.subjectIndex]!,
+      testContext.subjectSourceBindingRef,
       testContext.seedId
     );
-    sourceBindingsByRef.set(currentBinding.id, currentBinding);
-    sourceBindingsByRef.set(antecedentBinding.id, antecedentBinding);
+    const bridgeBinding = requirementSourceBinding(
+      requirements[testContext.bridgeIndex]!,
+      spans[testContext.bridgeIndex]!,
+      testContext.bridgeSourceBindingRef,
+      testContext.seedId
+    );
+    sourceBindingsByRef.set(subjectBinding.id, subjectBinding);
+    sourceBindingsByRef.set(bridgeBinding.id, bridgeBinding);
     deterministicRelationsByRequirement.set(requirement.id, {
       version: 1,
-      kind: "test_antecedent",
-      antecedentRequirementId: testContext.requirementId,
+      kind: "test_subject_chain",
+      subjectRequirementId: testContext.subjectRequirementId,
+      bridgeRequirementId: testContext.bridgeRequirementId,
       currentSourceBindingRef: currentBinding.id,
-      antecedentSourceBindingRef: antecedentBinding.id
+      subjectSourceBindingRef: subjectBinding.id,
+      bridgeSourceBindingRef: bridgeBinding.id
     });
   }
 
@@ -297,10 +326,50 @@ function deterministicTestAntecedentContext(
   requirements: readonly Requirement[],
   index: number,
   seedHash: string
-): (Extract<DeterministicProofContext, { kind: "test_antecedent" }> & { antecedentIndex: number; seedId: string }) | { kind: "none" } {
+): (
+  | (Extract<DeterministicProofContext, { kind: "test_antecedent" }> & { antecedentIndex: number; seedId: string })
+  | (Extract<DeterministicProofContext, { kind: "test_subject_chain" }> & { subjectIndex: number; bridgeIndex: number; seedId: string })
+  | { kind: "none" }
+) {
   const span = spans[index];
   const requirement = requirements[index];
   if (!span || !requirement || !isSubjectlessEnglishTestObjective(requirement.text)) return { kind: "none" };
+
+  const subjectIndex = index - 2;
+  const bridgeIndex = index - 1;
+  const subjectSpan = spans[subjectIndex];
+  const bridgeSpan = spans[bridgeIndex];
+  const subject = requirements[subjectIndex];
+  const bridge = requirements[bridgeIndex];
+  const subjectIdentifiers = explicitFunctionIdentifiers(subject?.text ?? "");
+  const bridgeIdentifiers = explicitFunctionIdentifiers(bridge?.text ?? "");
+  if (
+    subjectSpan &&
+    bridgeSpan &&
+    subject &&
+    bridge &&
+    subjectSpan.groupId === span.groupId &&
+    bridgeSpan.groupId === span.groupId &&
+    subjectSpan.ordinal + 1 === bridgeSpan.ordinal &&
+    bridgeSpan.ordinal + 1 === span.ordinal &&
+    requirementProofAxisExpectations(subject.text).implementation &&
+    requirementProofAxisExpectations(bridge.text).implementation &&
+    subjectIdentifiers.length === 1 &&
+    bridgeIdentifiers.length === 0
+  ) {
+    const seedId = seedHash || "requirement_span_seed_v1";
+    return {
+      kind: "test_subject_chain",
+      subjectRequirementId: subject.id,
+      bridgeRequirementId: bridge.id,
+      subjectIndex,
+      bridgeIndex,
+      seedId,
+      currentSourceBindingRef: `rsb_${span.id}`,
+      subjectSourceBindingRef: `rsb_${subjectSpan.id}`,
+      bridgeSourceBindingRef: `rsb_${bridgeSpan.id}`
+    };
+  }
 
   const behaviorIndexes = spans
     .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
@@ -322,6 +391,10 @@ function deterministicTestAntecedentContext(
     currentSourceBindingRef: `rsb_${span.id}`,
     antecedentSourceBindingRef: `rsb_${spans[antecedentIndex]!.id}`
   };
+}
+
+function explicitFunctionIdentifiers(text: string): string[] {
+  return Array.from(new Set(Array.from(text.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g), (match) => match[1]!)));
 }
 
 function isSubjectlessEnglishTestObjective(text: string): boolean {

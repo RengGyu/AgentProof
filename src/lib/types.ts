@@ -410,6 +410,15 @@ export type DeterministicRequirementRelation =
       antecedentRequirementId: string;
       currentSourceBindingRef: string;
       antecedentSourceBindingRef: string;
+    }
+  | {
+      version: 1;
+      kind: "test_subject_chain";
+      subjectRequirementId: string;
+      bridgeRequirementId: string;
+      currentSourceBindingRef: string;
+      subjectSourceBindingRef: string;
+      bridgeSourceBindingRef: string;
     };
 
 export interface DeterministicCaseCoverageReceipt {

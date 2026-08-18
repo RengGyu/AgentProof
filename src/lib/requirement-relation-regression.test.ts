@@ -349,6 +349,49 @@ describe("requirement relation regression matrix", () => {
     expect(competingBehavior.relations.deterministicRelationsByRequirement.size).toBe(0);
   });
 
+  it("records a bounded subject chain across one identifier-free behavior continuation", () => {
+    const eligible = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add repositorySlug(repository) for owner/name values.",
+      "- Return unknown/repository when an owner or name is unavailable.",
+      "- Add focused tests for the normal and fallback paths."
+    ].join("\n"));
+    const conflictingIdentifier = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add repositorySlug(repository) for owner/name values.",
+      "- Add repositoryVisibilityLabel(isPrivate) for visibility values.",
+      "- Add focused tests for the normal and fallback paths."
+    ].join("\n"));
+    const twoBridges = deterministicRelations([
+      "Acceptance criteria:",
+      "- Add repositorySlug(repository) for owner/name values.",
+      "- Return unknown/repository when an owner is unavailable.",
+      "- Trim surrounding whitespace before formatting.",
+      "- Add focused tests for the normal and fallback paths."
+    ].join("\n"));
+    const headingBoundary = deterministicRelations([
+      "## Behavior",
+      "- Add repositorySlug(repository) for owner/name values.",
+      "- Return unknown/repository when an owner or name is unavailable.",
+      "## Tests",
+      "- Add focused tests for the normal and fallback paths."
+    ].join("\n"));
+    const [subject, bridge, testSibling] = eligible.requirements;
+
+    expect(eligible.relations.deterministicRelationsByRequirement.get(testSibling!.id)).toEqual({
+      version: 1,
+      kind: "test_subject_chain",
+      subjectRequirementId: subject!.id,
+      bridgeRequirementId: bridge!.id,
+      currentSourceBindingRef: expect.any(String),
+      subjectSourceBindingRef: expect.any(String),
+      bridgeSourceBindingRef: expect.any(String)
+    });
+    expect(conflictingIdentifier.relations.deterministicRelationsByRequirement.size).toBe(0);
+    expect(twoBridges.relations.deterministicRelationsByRequirement.size).toBe(0);
+    expect(headingBoundary.relations.deterministicRelationsByRequirement.size).toBe(0);
+  });
+
   it("uses a distinct bounded seed identity for different selected sources", () => {
     const first = deterministicRelations([
       "Acceptance criteria:",

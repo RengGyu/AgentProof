@@ -173,11 +173,17 @@ function deriveAdmittedDeterministicRelations(
   const admittedIds = new Set(admittedRequirements.map((requirement) => requirement.id));
   const deterministicRelationsByRequirement = new Map([...derived.deterministicRelationsByRequirement]
     .filter(([requirementId, relation]) =>
-      admittedIds.has(requirementId) && admittedIds.has(relation.antecedentRequirementId)
+      admittedIds.has(requirementId) && (
+        relation.kind === "test_subject_chain"
+          ? admittedIds.has(relation.subjectRequirementId) && admittedIds.has(relation.bridgeRequirementId)
+          : admittedIds.has(relation.antecedentRequirementId)
+      )
     ));
   const retainedSourceBindingRefs = new Set([...deterministicRelationsByRequirement.values()].flatMap((relation) =>
     relation.kind === "test_antecedent"
       ? [relation.currentSourceBindingRef, relation.antecedentSourceBindingRef]
+      : relation.kind === "test_subject_chain"
+        ? [relation.currentSourceBindingRef, relation.subjectSourceBindingRef, relation.bridgeSourceBindingRef]
       : []
   ));
   const sourceBindingsByRef = new Map([...derived.sourceBindingsByRef]

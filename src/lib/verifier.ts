@@ -2043,10 +2043,14 @@ function resolveContextualArtifactRefs(
     ? expectedSubject === "ci_configuration"
     : relation?.kind === "test_antecedent"
       ? expectedSubject === "implementation"
+      : relation?.kind === "test_subject_chain"
+        ? expectedSubject === "implementation"
       : false;
   if (!eligible || !relation) return { state: "incomplete", refs: [] };
 
-  const antecedent = requirementById.get(relation.antecedentRequirementId);
+  const antecedent = requirementById.get(
+    relation.kind === "test_subject_chain" ? relation.subjectRequirementId : relation.antecedentRequirementId
+  );
   if (!antecedent) return { state: "incomplete", refs: [] };
 
   const refs = relation.kind === "workflow_antecedent"

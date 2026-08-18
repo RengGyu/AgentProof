@@ -18,6 +18,14 @@ export type DeterministicProofContext =
       requirementId: string;
       currentSourceBindingRef: string;
       antecedentSourceBindingRef: string;
+    }
+  | {
+      kind: "test_subject_chain";
+      subjectRequirementId: string;
+      bridgeRequirementId: string;
+      currentSourceBindingRef: string;
+      subjectSourceBindingRef: string;
+      bridgeSourceBindingRef: string;
     };
 
 type ProofExpectationContext = DeterministicProofContext | { kind: "workflow_antecedent" };
@@ -83,7 +91,7 @@ export function requirementProofAxisExpectationsWithContext(
     };
   }
 
-  if (context.kind === "test_antecedent") {
+  if (context.kind === "test_antecedent" || context.kind === "test_subject_chain") {
     return { ...expectations, implementation: false, targetedTest: true, execution: true };
   }
 
