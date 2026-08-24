@@ -91,6 +91,25 @@ describe("hybrid report fallback matrix", () => {
     vi.spyOn(Math, "random").mockReturnValue(0.123456);
   });
 
+  it("keeps canonical BASE requirement IDs, text, relations, and proof expectations for every planner disposition", () => {
+    const base = generateVerificationReport(input);
+    const seed = extractedBoundSeed(input);
+    const available = finalizeHybridVerificationReport({
+      input,
+      seed,
+      provenance,
+      planValidation: validation(seed, [{ disposition: "admit", classification: "requirement", expected_axes: [] }])
+    }).report;
+    const projection = (report: typeof base) => ({
+      requirements: report.requirements.map(({ requirementId, requirementText, proofAxes }) => ({ requirementId, requirementText, proofAxes })),
+      nodes: report.proofGraph.nodes.map(({ requirementId, requirementText, deterministicRelation }) => ({ requirementId, requirementText, deterministicRelation }))
+    });
+
+    expect(projection(available)).toEqual(projection(base));
+    expect(projection(generateHybridFallbackReport(input, "post_call_failure"))).toEqual(projection(base));
+    expect(projection(generateHybridFallbackReport(input, "overflow"))).toEqual(projection(base));
+  });
+
   it("keeps disabled, ineligible, consent-absent, and no-span output exactly BASE", () => {
     const base = generateVerificationReport(input);
     for (const reason of ["disabled", "ineligible", "consent_absent", "no_spans"] as const) {
@@ -380,7 +399,7 @@ describe("valid hybrid finalization", () => {
   });
 
   it.each(["requirement", "not_requirement", "mixed_or_uncertain"] as const)(
-    "always materializes exact authoritative span text for %s planning metadata",
+    "keeps canonical authoritative requirements for %s planning metadata",
     (classification) => {
       const seed = extractedBoundSeed(input);
       const result = finalizeHybridVerificationReport({
@@ -391,7 +410,8 @@ describe("valid hybrid finalization", () => {
       });
 
       expect(result.disposition).toBe("hybrid");
-      expect(result.report.requirements.map((item) => item.requirementText)).toEqual([seed.spans[0]!.text]);
+      expect(result.report.requirements.map((item) => item.requirementText))
+        .toEqual(generateVerificationReport(input).requirements.map((item) => item.requirementText));
       expect(result.report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
         expect.objectContaining({ subject: "implementation", polarity: "present" }),
         expect.objectContaining({ subject: "execution", polarity: "present" })
@@ -429,12 +449,13 @@ describe("valid hybrid finalization", () => {
       planValidation: validation(seed, [{ disposition: "admit", classification: "requirement", expected_axes: [] }])
     });
 
-    expect(result.report.requirements[0]?.requirementText).toBe(seed.spans[0]!.text);
+    expect(result.report.requirements[0]?.requirementText)
+      .toBe(generateVerificationReport(prInput).requirements[0]?.requirementText);
     expect(result.report.requirements[0]?.status).not.toBe("met");
     expect(validateVerificationReport(result.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it.each(["not_requirement", "mixed_or_uncertain"] as const)("omits excluded PR %s once with one bounded limitation", (classification) => {
+  it.each(["not_requirement", "mixed_or_uncertain"] as const)("does not let excluded PR %s planner output omit canonical requirements", (classification) => {
     const prInput: PullRequestInput = { ...input, taskText: "", taskSource: undefined };
     const seed = extractedBoundSeed(prInput);
     const result = finalizeHybridVerificationReport({
@@ -442,8 +463,9 @@ describe("valid hybrid finalization", () => {
       planValidation: validation(seed, [{ disposition: "exclude", classification, expected_axes: [] }])
     });
 
-    expect(result.report.requirements).toEqual([]);
-    expect(result.report.limitations.filter((item) => /objective candidate/i.test(item))).toHaveLength(1);
+    expect(result.report.requirements.map((item) => item.requirementId))
+      .toEqual(generateVerificationReport(prInput).requirements.map((item) => item.requirementId));
+    expect(result.report.limitations.filter((item) => /objective candidate/i.test(item))).toHaveLength(0);
     expect(validateVerificationReport(result.report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
@@ -537,7 +559,8 @@ describe("valid hybrid finalization", () => {
       ])
     });
 
-    expect(result.report.requirements[1]?.proofAxes?.some((axis) => axis.subject === "documentation")).toBe(true);
+    expect(result.report.requirements.map((item) => item.requirementId))
+      .toEqual(generateVerificationReport(parentInput).requirements.map((item) => item.requirementId));
     expect(result.report.requirements[2]?.proofAxes?.some((axis) => axis.subject === "visual")).toBe(false);
     expect(result.report.requirements[2]?.proofAxes?.some((axis) => axis.subject === "documentation")).toBe(false);
   });
@@ -560,8 +583,8 @@ describe("valid hybrid finalization", () => {
       ])
     });
 
-    expect(result.report.requirements).toHaveLength(2);
-    expect(result.report.requirements[1]?.proofAxes?.some((axis) => axis.subject === "documentation")).toBe(false);
+    expect(result.report.requirements.map((item) => item.requirementId))
+      .toEqual(generateVerificationReport(prInput).requirements.map((item) => item.requirementId));
   });
 
   it.each([

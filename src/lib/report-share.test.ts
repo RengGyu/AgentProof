@@ -55,6 +55,32 @@ describe("report share", () => {
         testEvidenceRef: "ev_private_test",
         executionEvidenceRef: "ev_private_execution"
       }],
+      privateReceiptBundleV2: {
+        sourceBindings: [],
+        exactHeadTargetReceipts: [],
+        testRelationReceipts: [],
+        executionBindingReceipts: [{
+          id: "execution_private_v2",
+          version: 2,
+          kind: "execution_binding",
+          requirementId,
+          testEvidenceRef: "ev_private_test",
+          executionEvidenceRef: "ev_private_execution",
+          headBindingDigest: "PRIVATE_V2_BINDING_DIGEST",
+          scope: "exact_test"
+        }],
+        failedCheckAssociations: []
+      },
+      executionBindingReceipts: [{
+        id: "execution_private_v2",
+        version: 2,
+        kind: "execution_binding",
+        requirementId,
+        testEvidenceRef: "ev_private_test",
+        executionEvidenceRef: "ev_private_execution",
+        headBindingDigest: "PRIVATE_V2_BINDING_DIGEST",
+        scope: "exact_test"
+      }],
       failedCheckAssociations: [{
         version: 1,
         kind: "failed_check_association",
@@ -76,8 +102,11 @@ describe("report share", () => {
       "sourceBindings",
       "exactHeadTargetReceipts",
       "testRelationReceipts",
+      "privateReceiptBundleV2",
+      "executionBindingReceipts",
       "failedCheckAssociations",
       "targetBlobSha",
+      "PRIVATE_V2_BINDING_DIGEST",
       "PRIVATE_CHECK_LABEL",
       "PRIVATE_RAW_CHECK_SUMMARY",
       "actions/runs/42/job/99"
@@ -97,6 +126,8 @@ describe("report share", () => {
       { sourceBindings: [] },
       { exactHeadTargetReceipts: [] },
       { testRelationReceipts: [] },
+      { privateReceiptBundleV2: {} },
+      { executionBindingReceipts: [] },
       { failedCheckAssociations: [{
         version: 1,
         kind: "failed_check_association",

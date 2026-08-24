@@ -63,6 +63,33 @@ describe("POST /api/reports", () => {
     expect(json.privacy).toBe("summary-only");
   });
 
+  it("rejects inbound authoritative artifact reports before saving", async () => {
+    const marker = "raw-report-save-authority-marker";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
+    process.env.AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    const fetchMock = vi.fn(async () => new Response("[]", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    global.fetch = fetchMock as typeof fetch;
+
+    const response = await POST(
+      new Request("http://localhost/api/reports", {
+        method: "POST",
+        body: JSON.stringify({ report: authoritativeArtifactReport(marker) })
+      })
+    );
+    const serialized = await response.text();
+
+    expect(response.status).toBe(422);
+    expect(JSON.parse(serialized)).toEqual({
+      error: "Report failed validation.",
+      details: ["An inbound untrusted full report cannot carry active v2 contract authority."]
+    });
+    expect(serialized).not.toContain(marker);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns durability metadata when reading a saved report", async () => {
     const saveResponse = await POST(
       new Request("http://localhost/api/reports", {
@@ -245,3 +272,50 @@ describe("POST /api/reports", () => {
     expect(deleteJson.error).toBe("Saved report delete failed.");
   });
 });
+
+function authoritativeArtifactReport(marker: string) {
+  const headSha = "a".repeat(40);
+  const baseSha = "b".repeat(40);
+  const contract = {
+    version: 2 as const,
+    scope: "complete_objective_set" as const,
+    objectives: [{
+      id: "reset_doc",
+      objective: "Document the local reset command.",
+      criteria: [{
+        id: "reset_literal",
+        type: "artifact" as const,
+        label: "The reset document includes the exact test command.",
+        paths: ["docs/reset.md"],
+        artifact: { kind: "documentation_literal" as const, literal: "Run pnpm test." }
+      }]
+    }]
+  };
+  return generateVerificationReportV2FromInput({
+    ...demoScenarios.clean,
+    title: marker,
+    changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run pnpm test." }],
+    checks: [],
+    logs: [],
+    verificationContractSourceV2: { kind: "provided_requirement", contract },
+    verificationContractBindingV2: {
+      sourceKind: "provided_requirement",
+      sourceIdentity: "synthetic:save-authority:1",
+      sourceContent: JSON.stringify(contract),
+      headSha,
+      baseSha
+    },
+    verificationCriterionEvidenceV2: {
+      artifactBlobs: [{ path: "docs/reset.md", content: "Stop the server.\nRun pnpm test." }]
+    },
+    sourceProvenance: {
+      version: 1,
+      origin: "github_snapshot",
+      headSha,
+      baseSha,
+      changedFileInventory: { version: 1, completeness: "complete", headSha },
+      evidenceCapturedAt: "2026-08-22T00:00:00.000Z",
+      inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+    }
+  });
+}

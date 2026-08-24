@@ -200,6 +200,8 @@ export interface WorkflowExecutionIdentity {
   jobId: number;
   jobName: string;
   headSha: string;
+  /** Exact transient evidence reference assigned to this Check in the collector snapshot. */
+  checkEvidenceRef: string;
 }
 
 export interface LogSnippet {
@@ -273,6 +275,28 @@ export interface RequirementSpanSeedExtractionResult {
   eligible: boolean;
   overflow: boolean;
   seed: RequirementSpanSeed | null;
+}
+
+/** Private, transient canonical requirement receipt. It is never persisted in a report. */
+export interface CanonicalRequirementUnitV1 {
+  reportRequirementId: string;
+  stableBindingKey: string;
+  source: "task" | "issue" | "pr_description";
+  authority: "authoritative" | "author_claim";
+  groupId: string;
+  ordinal: number;
+  normalizedTextHash: string;
+  text: string;
+  priority: Requirement["priority"];
+  sourceQuality: RequirementSourceQuality;
+}
+
+export interface CanonicalRequirementSetV1 {
+  version: 1;
+  inputKind: "selected_source" | "typed_contract";
+  sourceIdentityHash: string;
+  sourceContentHash: string;
+  requirements: CanonicalRequirementUnitV1[];
 }
 
 export interface AgentClaim {
@@ -436,8 +460,12 @@ export interface ProofGraph {
   sourceBindings?: RequirementSourceBinding[];
   /** Private exact-head identities. Raw module paths, source, and bindings are excluded. */
   exactHeadTargetReceipts?: ExactHeadTargetReceipt[];
-  /** Private direct-test relation receipts. Raw imports and assertion values are excluded. */
-  testRelationReceipts?: TestRelationReceipt[];
+  /** Private v1 graph receipts. V2 stays in the separate private bundle until Task 4B. */
+  testRelationReceipts?: ExistingTestRelationReceiptV1[];
+  /** Private v2 receipts used by generator-local targeted-test/execution closure. */
+  privateReceiptBundleV2?: PrivateProofReceiptBundleV2;
+  /** Private execution-to-test bindings. Raw commands, paths, and logs are excluded. */
+  executionBindingReceipts?: ExecutionBindingReceiptV2[];
   /** Private, bounded association decisions. Raw Check text and identity tuples are excluded. */
   failedCheckAssociations?: FailedCheckAssociation[];
   context: RequirementContextSignal[];
@@ -455,6 +483,8 @@ export type PrivateProofGraphReceiptCollectionKey =
   | "sourceBindings"
   | "exactHeadTargetReceipts"
   | "testRelationReceipts"
+  | "privateReceiptBundleV2"
+  | "executionBindingReceipts"
   | "failedCheckAssociations";
 
 /** Public/share projection. Private receipt collections cannot be represented or structurally assigned. */
@@ -462,6 +492,8 @@ export type PublicProofGraph = Omit<ProofGraph, PrivateProofGraphReceiptCollecti
   sourceBindings?: never;
   exactHeadTargetReceipts?: never;
   testRelationReceipts?: never;
+  privateReceiptBundleV2?: never;
+  executionBindingReceipts?: never;
   failedCheckAssociations?: never;
 };
 
@@ -476,7 +508,7 @@ export interface ExactHeadTargetReceipt {
   canonicalBindingDigest: string;
 }
 
-export interface TestRelationReceipt {
+export interface ExistingTestRelationReceiptV1 {
   id: string;
   version: 1;
   kind: "targeted_test_relation";
@@ -488,6 +520,55 @@ export interface TestRelationReceipt {
   /** Saturated at eight; raw assertion text and values are never retained. */
   directAssertionCaseCount: number;
   executionEvidenceRef: string;
+}
+
+/**
+ * Private v2 relation receipt. It retains only stable references and digests;
+ * raw identifiers, imports, paths, assertions, and expected values stay in
+ * transient parser state.
+ */
+export interface TestRelationReceiptV2 {
+  id: string;
+  version: 2;
+  kind: "targeted_test_relation";
+  requirementId: string;
+  subjectSource: "current_requirement" | "test_antecedent" | "test_subject_chain";
+  targetMode: "changed_target" | "exact_head_target";
+  implementationEvidenceRef?: string;
+  exactHeadTargetReceiptRef?: string;
+  testEvidenceRef: string;
+  subjectDigest: string;
+  importBindingDigest: string;
+  assertionShape: "direct_argument";
+  directAssertionCount: number;
+  executionReceiptRef?: string;
+}
+
+/** Compatible private receipt union; v2 is never structurally admitted to the v1 graph. */
+export type TestRelationReceipt = ExistingTestRelationReceiptV1 | TestRelationReceiptV2;
+
+export interface ExecutionBindingReceiptV2 {
+  id: string;
+  version: 2;
+  kind: "execution_binding";
+  requirementId: string;
+  testEvidenceRef: string;
+  executionEvidenceRef: string;
+  headBindingDigest: string;
+  scope: "exact_test" | "exact_workflow_job";
+}
+
+/**
+ * Private-only receipt collections. This is a compatibility envelope: v1
+ * exact-head and relation receipts remain readable while v2 receipts are
+ * added without changing public report projections.
+ */
+export interface PrivateProofReceiptBundleV2 {
+  sourceBindings: RequirementSourceBinding[];
+  exactHeadTargetReceipts: ExactHeadTargetReceipt[];
+  testRelationReceipts: TestRelationReceipt[];
+  executionBindingReceipts: ExecutionBindingReceiptV2[];
+  failedCheckAssociations: FailedCheckAssociation[];
 }
 
 export type FailedCheckAssociationState = "linked" | "not_linked" | "unknown";

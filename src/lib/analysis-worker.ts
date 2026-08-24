@@ -505,7 +505,7 @@ async function runPreflightedAnalysisJob(
         `Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`
       );
     }
-    const report = runtimeReport.report;
+    let report = runtimeReport.report;
 
     const finalAnchor = await fetchGitHubPullRequestAnchor(job.pull_request_url, token);
     if (!finalAnchor) {
@@ -534,8 +534,10 @@ async function runPreflightedAnalysisJob(
     let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
     if (sideEffectsBeforeSave.saveReport) {
       await assertWorkerTenantDeletionNotActive(job, env);
+      report = requirePublishableGeneratedReport(input, report);
       saved = await createAutomationSavedReport(report, {
         requestUrl: options.requestUrl,
+        validationInput: input,
         ...(job.tenant_id && job.installation_id && job.repository_id ? {
           tenantId: job.tenant_id,
           installationId: job.installation_id,
@@ -568,6 +570,7 @@ async function runPreflightedAnalysisJob(
     let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
     if (completedSideEffects.comment) {
       await assertWorkerTenantDeletionNotActive(job, env);
+      report = requirePublishableGeneratedReport(input, report);
       comment = await postGitHubAppMarkerComment({
         repositoryFullName: job.repository_full_name,
         pullRequestNumber: job.pull_request_number,
@@ -577,6 +580,7 @@ async function runPreflightedAnalysisJob(
     let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
     if (completedSideEffects.slackSummary) {
       await assertWorkerTenantDeletionNotActive(job, env);
+      report = requirePublishableGeneratedReport(input, report);
       slack = await sendSlackReportSummary(report, {}, env);
     }
 
@@ -662,6 +666,26 @@ async function runPreflightedAnalysisJob(
       sideEffects
     };
   }
+}
+
+function requirePublishableGeneratedReport(
+  input: PullRequestInput,
+  report: VerificationReport
+): VerificationReport {
+  const validation = resolveRuntimeReportValidation({
+    boundary: "generated_private_full",
+    input,
+    report,
+    requireV2: true,
+    requireSourceProvenance: true
+  });
+  if (!validation.valid) {
+    throw new AnalysisWorkerTerminalError(
+      "generated_report_publication_validation_failed",
+      `Generated report failed publication validation: ${validation.errors.join("; ")}`
+    );
+  }
+  return validation.report;
 }
 
 export async function runAnalysisJobBatch(

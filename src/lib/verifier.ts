@@ -4,7 +4,10 @@ import {
   deriveDeterministicRequirementRelations,
   extractClaims,
   extractKeywords,
-  extractRequirementEvidence,
+  selectCanonicalRequirements,
+  selectCanonicalSelectedSourceBundle,
+  toRequirementExtractionResult,
+  toReportRequirements,
   fileKeywords,
   isRiskFile,
   isTestFile
@@ -15,6 +18,8 @@ import {
   isFailedAmbiguousActionsExecutionSignal
 } from "./evidence-status";
 import {
+  boundedTestRelationCandidate,
+  canonicalCurrentRequirementBinding,
   directTestTargetCandidate,
   distinctDirectAssertionCallCount,
   exactTestRelationSubjectSource,
@@ -23,6 +28,9 @@ import {
   testImportMatchesImplementation
 } from "./evidence-relation";
 import { redactSecrets } from "./redact";
+import {
+  completePrivateProofReceiptBundleV2,
+} from "./evidence-receipts";
 import {
   aggregateVerificationCriteriaV2,
   canonicalVerificationBindingV2,
@@ -39,6 +47,7 @@ import {
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckRun,
+  CanonicalRequirementSetV1,
   CheckStatus,
   DeterministicCaseCoverageReceipt,
   DeterministicRequirementRelation,
@@ -57,12 +66,15 @@ import type {
   RequirementProofNode,
   RequirementFinding,
   ReviewPriorityItem,
-  TestRelationReceipt,
+  ExecutionBindingReceiptV2,
+  PrivateProofReceiptBundleV2,
+  TestRelationReceiptV2,
   VerificationReport,
   VerificationReportV2,
   WorkflowExecutionIdentity
 } from "./types";
 import { tenantReportAnalysisContext } from "./tenant-report-language";
+import { mayPromoteObservedAxis, readRequirementLocalPromotionMode } from "./proof-promotion-policy";
 
 const MAX_MISSING_TEST_FINDINGS = 100;
 const MAX_FINDING_PROVENANCE_ITEMS = 5;
@@ -73,8 +85,10 @@ const MAX_FAILED_CHECK_ASSOCIATIONS = 50;
 const MAX_FAILED_CHECK_ASSOCIATIONS_PER_REQUIREMENT = 8;
 
 export function generateVerificationReport(input: PullRequestInput): VerificationReport {
-  const requirementEvidence = extractRequirementEvidence(input.taskText, input.description, input.taskSource);
-  const deterministicRelations = deriveDeterministicRequirementRelations(input, requirementEvidence.requirements);
+  const bundle = selectCanonicalSelectedSourceBundle(input);
+  const canonical = bundle.canonical;
+  const requirementEvidence = toRequirementExtractionResult(bundle);
+  const deterministicRelations = deriveDeterministicRequirementRelations(canonical);
   return generateVerificationReportFromRequirements(input, {
     requirements: requirementEvidence.requirements,
     contexts: requirementEvidence.contexts,
@@ -82,7 +96,8 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     proofExpectationsByRequirement: deterministicRelations.proofExpectationsByRequirement,
     evidenceContextRequirementIdsByRequirement: deterministicRelations.evidenceContextRequirementIdsByRequirement,
     deterministicRelationsByRequirement: deterministicRelations.deterministicRelationsByRequirement,
-    sourceBindingsByRef: deterministicRelations.sourceBindingsByRef
+    sourceBindingsByRef: deterministicRelations.sourceBindingsByRef,
+    canonicalRequirementSet: canonical
   });
 }
 
@@ -97,23 +112,17 @@ export interface VerificationReportV2GenerationInput {
  * The v2 evaluator has no ambient Check-name or prose-based path to `met`.
  */
 export function generateVerificationReportV2(args: VerificationReportV2GenerationInput): VerificationReportV2 {
-  const parsed = parseVerificationContractV2(args.contractSource);
+  const parsed = parseVerificationContractV2(args.input.sourceProvenance?.origin === "pasted_evidence"
+    ? { kind: "provided_requirement", contract: undefined }
+    : args.contractSource);
   if (parsed.state === "authoritative" || parsed.state === "author_claim") {
     const bindingDigest = canonicalVerificationBindingV2(args.binding, parsed.contract);
     const materialized = materializeVerificationContractV2(parsed, bindingDigest);
+    const canonical = selectCanonicalRequirements({ kind: "typed_contract", materialized, binding: args.binding });
     const report = generateVerificationReportFromRequirements(args.input, {
-      requirements: materialized.objectives.map((objective) => ({
-        id: objective.requirementId,
-        source: parsed.state === "author_claim" ? "pr_description" : args.binding.sourceKind === "linked_issue" ? "issue" : "task",
-        text: objective.objective,
-        keywords: extractKeywords(objective.objective),
-        priority: "must",
-        role: "core_requirement",
-        sourceQuality: parsed.state === "author_claim" ? "author_claim" : "explicit_acceptance_criteria",
-        sourceSection: "AgentProof verification",
-        contextRoles: []
-      })),
-      contexts: []
+      requirements: toReportRequirements(canonical),
+      contexts: [],
+      canonicalRequirementSet: canonical
     });
     const evidence = verificationCriterionEvidenceForInput(args.input, report.evidenceIndex);
     const results = materialized.objectives.flatMap((objective) =>
@@ -123,6 +132,7 @@ export function generateVerificationReportV2(args: VerificationReportV2Generatio
       }))
     );
     const contract = toVerificationContractReportV2(parsed, args.binding.sourceKind, materialized, results);
+    assertCanonicalV2Closure(canonical, materialized, contract, report);
     return applyStrictContractOutcomeV2(report, contract);
   }
 
@@ -131,6 +141,28 @@ export function generateVerificationReportV2(args: VerificationReportV2Generatio
     report,
     toVerificationContractReportV2(parsed, null)
   );
+}
+
+function assertCanonicalV2Closure(
+  canonical: ReturnType<typeof selectCanonicalRequirements>,
+  materialized: ReturnType<typeof materializeVerificationContractV2>,
+  contract: NonNullable<VerificationReportV2["verificationContract"]>,
+  report: VerificationReport
+): void {
+  if (canonical.requirements.length !== materialized.objectives.length ||
+    report.requirements.length !== materialized.objectives.length ||
+    report.proofGraph.nodes.length !== materialized.objectives.length ||
+    contract.objectives.length !== materialized.objectives.length) throw new Error("Invalid v2 canonical objective closure.");
+  for (let index = 0; index < materialized.objectives.length; index += 1) {
+    const objective = materialized.objectives[index]!;
+    const unit = canonical.requirements[index]!;
+    const finding = report.requirements[index]!;
+    const node = report.proofGraph.nodes[index]!;
+    const reportObjective = contract.objectives[index]!;
+    if (unit.reportRequirementId !== objective.requirementId || finding.requirementId !== objective.requirementId || node.requirementId !== objective.requirementId || reportObjective.requirementId !== objective.requirementId || unit.text !== objective.objective || finding.requirementText !== objective.objective || node.requirementText !== objective.objective || objective.state !== materialized.state || reportObjective.state !== materialized.state || objective.criteria.length !== reportObjective.criteria.length || objective.criteria.some((criterion, criterionIndex) => criterion.criterionId !== reportObjective.criteria[criterionIndex]?.criterionId || criterion.criterionId !== reportObjective.criterionResults[criterionIndex]?.criterionId)) {
+      throw new Error("Invalid v2 canonical objective closure.");
+    }
+  }
 }
 
 function verificationCriterionEvidenceForInput(
@@ -242,6 +274,8 @@ export interface DeterministicRequirementReportSelection {
   evidenceContextRequirementIdsByRequirement?: ReadonlyMap<string, readonly string[]>;
   deterministicRelationsByRequirement?: ReadonlyMap<string, DeterministicRequirementRelation>;
   sourceBindingsByRef?: ReadonlyMap<string, RequirementSourceBinding>;
+  /** Task 3 canonical source identity for private v2 receipt ownership. */
+  canonicalRequirementSet?: CanonicalRequirementSetV1;
 }
 
 export interface VerifierEvidenceLookup {
@@ -559,6 +593,7 @@ export function generateVerificationReportFromRequirements(
     selection.proofExpectationsByRequirement,
     selection.deterministicRelationsByRequirement,
     selection.sourceBindingsByRef,
+    selection.canonicalRequirementSet,
     evidenceLookup,
     relevanceIndex
   );
@@ -1149,6 +1184,7 @@ function buildProofGraph(
   proofExpectationsByRequirement: ReadonlyMap<string, RequirementProofExpectations> | undefined,
   deterministicRelationsByRequirement: ReadonlyMap<string, DeterministicRequirementRelation> | undefined,
   sourceBindingsByRef: ReadonlyMap<string, RequirementSourceBinding> | undefined,
+  canonicalRequirementSet: CanonicalRequirementSetV1 | undefined,
   evidenceLookup: VerifierEvidenceLookup,
   relevanceIndex: RequirementEvidenceRelevanceIndex
 ): { proofGraph: ProofGraph; proofAxesByRequirement: Map<string, RequirementProofAxis[]> } {
@@ -1162,7 +1198,11 @@ function buildProofGraph(
     .filter((item) => item.kind === "diff" || item.kind === "changed_file")
     .map((item) => item.id));
   const exactHeadTargetReceiptsById = new Map<string, ExactHeadTargetReceipt>();
-  const testRelationReceiptsById = new Map<string, TestRelationReceipt>();
+  const v2TestRelationReceiptsById = new Map<string, TestRelationReceiptV2>();
+  const executionBindingReceiptsById = new Map<string, ExecutionBindingReceiptV2>();
+  const claimedTestTargetPairs = new Set<string>();
+  const requirementTexts = new Map(requirements.map((requirement) => [requirement.id, requirement.text]));
+  const relationSourceBindings = [...(sourceBindingsByRef?.values() ?? [])];
   const failedChecks = failedChecksWithEvidenceRefs(input, evidenceIndex);
   const failedCheckAssociationCandidates = requirements.flatMap((requirement) => {
     const relation = deterministicRelationsByRequirement?.get(requirement.id);
@@ -1241,7 +1281,24 @@ function buildProofGraph(
       changedTargetSubject,
       exactHeadSubject
     );
-    const targetedTestEvidenceRefs = targetedTestSelection.refs;
+    const v2RelationCandidate = canonicalRequirementSet
+      ? receiptReadyTestRelationCandidate({
+        input,
+        requirement,
+        deterministicRelation,
+        requirementById,
+        requirementTexts,
+        sourceBindings: relationSourceBindings,
+        canonical: canonicalRequirementSet,
+        targetedTestSelection,
+        subjectImplementationEvidenceRefs,
+        evidenceLookup
+      })
+      : undefined;
+    const targetedTestEvidenceRefs = uniqueRefs([
+      ...targetedTestSelection.refs,
+      ...(v2RelationCandidate ? [v2RelationCandidate.testEvidenceRef] : [])
+    ]);
     const requiresDirectAssertionCaseCoverage = isEnglishBothPathsRequirement(requirement.text);
     const directAssertionCaseTestRefs = requiresDirectAssertionCaseCoverage
       ? exactImportedTestEvidenceRefs(
@@ -1262,28 +1319,6 @@ function buildProofGraph(
     ));
     for (const relation of targetedTestSelection.exactHeadRelations) {
       exactHeadTargetReceiptsById.set(relation.target.receipt.id, relation.target.receipt);
-      for (const executionEvidenceRef of verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, [relation.testEvidenceRef])) {
-        const id = `test_relation_${createHash("sha256").update([
-          requirement.id,
-          relation.subjectSource,
-          relation.target.receipt.id,
-          relation.testEvidenceRef,
-          String(Math.min(relation.target.distinctLiteralCaseCount, 8)),
-          executionEvidenceRef
-        ].join("\0")).digest("hex").slice(0, 24)}`;
-        testRelationReceiptsById.set(id, {
-          id,
-          version: 1,
-          kind: "targeted_test_relation",
-          subjectRequirementId: requirement.id,
-          subjectSource: relation.subjectSource,
-          exactHeadTargetReceiptRef: relation.target.receipt.id,
-          testEvidenceRef: relation.testEvidenceRef,
-          relationBasis: "direct_static_import",
-          directAssertionCaseCount: Math.min(relation.target.distinctLiteralCaseCount, 8),
-          executionEvidenceRef
-        });
-      }
     }
     const directAssertionCaseSupport = requiresDirectAssertionCaseCoverage
       ? directAssertionCaseTestRefs
@@ -1325,6 +1360,30 @@ function buildProofGraph(
         const evidence = evidenceLookup.evidenceForRef(ref);
         return Boolean(evidence && isPassingTestExecutionEvidence(evidence));
       });
+    const receiptExecutionRefs = v2RelationCandidate
+      ? verifiedSuiteExecutionEvidenceRefs(input, evidenceLookup, [v2RelationCandidate.testEvidenceRef])
+        .filter((ref) => matchingExecutionRefs.includes(ref))
+      : [];
+    if (v2RelationCandidate && receiptExecutionRefs.length === 1) {
+      const pairKey = `${v2RelationCandidate.targetRef}\0${v2RelationCandidate.testEvidenceRef}`;
+      if (!claimedTestTargetPairs.has(pairKey)) {
+        claimedTestTargetPairs.add(pairKey);
+        const executionEvidenceRef = receiptExecutionRefs[0]!;
+        const executionReceipt = executionBindingReceiptForRelation(
+          input,
+          requirement.id,
+          v2RelationCandidate.testEvidenceRef,
+          executionEvidenceRef
+        );
+        const receipt = testRelationReceiptV2ForCandidate(
+          requirement.id,
+          v2RelationCandidate,
+          executionReceipt.id
+        );
+        v2TestRelationReceiptsById.set(receipt.id, receipt);
+        executionBindingReceiptsById.set(executionReceipt.id, executionReceipt);
+      }
+    }
     const requirementFailedCheckAssociations = failedCheckAssociationsByRequirement.get(requirement.id) ?? [];
     const matchingFailedExecutionRefs = requirementFailedCheckAssociations
       .filter((association) => association.state === "linked")
@@ -1397,8 +1456,12 @@ function buildProofGraph(
       directAssertionCaseCoverageComplete: Boolean(caseCoverageReceipt),
       directAssertionCaseTestRefs: caseCoverageReceipt ? [caseCoverageReceipt.testEvidenceRef] : []
     });
-    proofAxesByRequirement.set(requirement.id, proofAxes);
-
+    const promotionDowngradedAxes = downgradeUnreceiptedRequirementLocalAxes(
+      proofAxes,
+      requirement.id,
+      v2TestRelationReceiptsById,
+      executionBindingReceiptsById
+    );
     if (implementationPatchEvidenceUnavailable) {
       gapSignals.push({
         kind: "evidence_unavailable",
@@ -1438,6 +1501,23 @@ function buildProofGraph(
         severity: targetedProofGapSeverity(requirement, input, ciStatus),
         message: "A related test file was found, but two distinct direct assertion cases and an exact-head suite execution were not established.",
         evidenceRefs: targetedTestEvidenceRefs.slice(0, 8)
+      });
+    }
+
+    if (promotionDowngradedAxes.has("targeted_test")) {
+      gapSignals.push({
+        kind: "missing_targeted_test",
+        severity: targetedProofGapSeverity(requirement, input, ciStatus),
+        message: "Targeted-test evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
+        evidenceRefs: targetedTestEvidenceRefs.slice(0, 8)
+      });
+    }
+    if (promotionDowngradedAxes.has("execution")) {
+      gapSignals.push({
+        kind: "missing_execution",
+        severity: "medium",
+        message: "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
+        evidenceRefs: executionEvidenceRefs
       });
     }
 
@@ -1538,7 +1618,16 @@ function buildProofGraph(
       ...gap,
       evidenceRefs: gap.evidenceRefs.filter((ref) => !nonLinkedFailedCheckRefs.has(ref))
     }));
-    const aggregatedProofStatus = aggregateProofAxisStatus(proofAxes, finding?.status ?? "unclear");
+    const pastedGuard = guardPastedRequirementProof(
+      input,
+      proofAxes,
+      executionEvidenceRefs,
+      finding?.status ?? "unclear"
+    );
+    proofAxesByRequirement.set(requirement.id, proofAxes);
+    const aggregatedProofStatus = pastedGuard.applied
+      ? pastedGuard.fallbackStatus
+      : aggregateProofAxisStatus(proofAxes, pastedGuard.fallbackStatus);
 
     return {
       requirementId: requirement.id,
@@ -1547,7 +1636,9 @@ function buildProofGraph(
       sourceQuality: requirement.sourceQuality,
       sourceSection: requirement.sourceSection,
       contextRoles: requirement.contextRoles,
-      status: requirement.sourceQuality === "manual_check" && finding?.status === "unclear"
+      status: pastedGuard.applied
+        ? aggregatedProofStatus
+        : requirement.sourceQuality === "manual_check" && finding?.status === "unclear"
         ? "unclear"
         : requirement.sourceQuality === "author_claim" &&
           deterministicRelation?.kind === "test_antecedent" &&
@@ -1563,9 +1654,10 @@ function buildProofGraph(
         ...proofArtifactRefs,
         ...implementationEvidenceRefs,
         ...contextualImplementationRefs,
+        ...(v2RelationCandidate?.targetMode === "changed_target" ? [v2RelationCandidate.targetRef] : []),
       ]).slice(0, 8),
       targetedTestEvidenceRefs: targetedTestEvidenceRefs.slice(0, 8),
-      executionEvidenceRefs,
+      executionEvidenceRefs: pastedGuard.executionEvidenceRefs,
       gapSignals: localGapSignals,
       firstFiles: evidenceLookup.firstFilesForRefs(uniqueRefs([
         ...implementationEvidenceRefs,
@@ -1589,8 +1681,15 @@ function buildProofGraph(
     ...(exactHeadTargetReceiptsById.size > 0
       ? { exactHeadTargetReceipts: [...exactHeadTargetReceiptsById.values()] }
       : {}),
-    ...(testRelationReceiptsById.size > 0
-      ? { testRelationReceipts: [...testRelationReceiptsById.values()] }
+    ...(v2TestRelationReceiptsById.size > 0 || executionBindingReceiptsById.size > 0
+      ? { privateReceiptBundleV2: privateReceiptBundleV2ForGraph(
+        canonicalRequirementSet,
+        relationSourceBindings,
+        [...exactHeadTargetReceiptsById.values()],
+        [...v2TestRelationReceiptsById.values()],
+        [...executionBindingReceiptsById.values()],
+        failedCheckAssociations
+      ) }
       : {}),
     ...(failedCheckAssociations.length > 0
       ? { failedCheckAssociations }
@@ -1609,6 +1708,30 @@ function buildProofGraph(
     }
   };
   return { proofGraph, proofAxesByRequirement };
+}
+
+function guardPastedRequirementProof(
+  input: PullRequestInput,
+  axes: RequirementProofAxis[],
+  executionEvidenceRefs: string[],
+  fallbackStatus: RequirementFinding["status"]
+): { applied: boolean; executionEvidenceRefs: string[]; fallbackStatus: RequirementFinding["status"] } {
+  if (input.sourceProvenance?.origin !== "pasted_evidence") {
+    return { applied: false, executionEvidenceRefs, fallbackStatus };
+  }
+
+  const hasContradictoryObservation = axes.some((axis) => axis.state === "violated");
+  const hasBoundedObservation = axes.some((axis) => axis.evidenceRefs.length > 0);
+  for (const axis of axes) {
+    axis.state = "incomplete";
+    if (axis.subject === "execution") axis.evidenceRefs = [];
+  }
+
+  return {
+    applied: true,
+    executionEvidenceRefs: [],
+    fallbackStatus: hasBoundedObservation && !hasContradictoryObservation ? "partial" : "unclear"
+  };
 }
 
 function applyProofGraphToRequirements(
@@ -1660,6 +1783,246 @@ function applyProofGraphToRequirements(
         : finding.reviewerNote
     };
   });
+}
+
+function downgradeUnreceiptedRequirementLocalAxes(
+  axes: RequirementProofAxis[],
+  requirementId: string,
+  receipts: ReadonlyMap<string, TestRelationReceiptV2>,
+  executionBindings: ReadonlyMap<string, ExecutionBindingReceiptV2>
+): Set<"targeted_test" | "execution"> {
+  const targeted = axes.find((axis) => axis.subject === "targeted_test");
+  const execution = axes.find((axis) => axis.subject === "execution");
+  if (!targeted && execution?.state !== "satisfied") return new Set();
+  const localPairSatisfied = targeted?.state === "satisfied" && execution?.state === "satisfied";
+  const receiptRefs = localPairSatisfied
+    ? [...receipts.values()]
+      .filter((receipt) => {
+        const executionBinding = receipt.executionReceiptRef
+          ? executionBindings.get(receipt.executionReceiptRef)
+          : undefined;
+        return receipt.requirementId === requirementId &&
+          Boolean(targeted?.evidenceRefs.includes(receipt.testEvidenceRef)) &&
+          Boolean(executionBinding &&
+            executionBinding.requirementId === requirementId &&
+            executionBinding.testEvidenceRef === receipt.testEvidenceRef &&
+            execution.evidenceRefs.includes(executionBinding.executionEvidenceRef));
+      })
+      .map((receipt) => receipt.id)
+    : [];
+  const mode = readRequirementLocalPromotionMode();
+  const receiptsValidated = receiptRefs.length > 0;
+  const downgraded = new Set<"targeted_test" | "execution">();
+  for (const [axisName, axis] of [["targeted_test", targeted], ["execution", execution]] as const) {
+    if (axis?.state !== "satisfied") continue;
+    if (!mayPromoteObservedAxis(mode, { axis: axisName, requirementId, receiptRefs, receiptsValidated })) {
+      axis.state = "incomplete";
+      downgraded.add(axisName);
+    }
+  }
+  return downgraded;
+}
+
+type ReceiptReadyTestRelationCandidate = {
+  targetMode: TestRelationReceiptV2["targetMode"];
+  targetRef: string;
+  testEvidenceRef: string;
+  subjectSource: TestRelationReceiptV2["subjectSource"];
+  subjectDigest: string;
+  importBindingDigest: string;
+  directAssertionCount: number;
+};
+
+function receiptReadyTestRelationCandidate(input: {
+  input: PullRequestInput;
+  requirement: Requirement;
+  deterministicRelation: DeterministicRequirementRelation | undefined;
+  requirementById: ReadonlyMap<string, Requirement>;
+  requirementTexts: ReadonlyMap<string, string>;
+  sourceBindings: readonly RequirementSourceBinding[];
+  canonical: CanonicalRequirementSetV1;
+  targetedTestSelection: ReturnType<typeof targetedTestEvidenceForRequirement>;
+  subjectImplementationEvidenceRefs: readonly string[];
+  evidenceLookup: VerifierEvidenceLookup;
+}): ReceiptReadyTestRelationCandidate | undefined {
+  if (!hasAuthoritativeChangedFileInventory(input.input)) return undefined;
+  const subject = receiptSubjectForRequirement(input.requirement, input.deterministicRelation, input.requirementById);
+  if (!subject) return undefined;
+  const currentSourceBinding = input.deterministicRelation
+    ? undefined
+    : canonicalCurrentRequirementBinding(input.canonical, input.requirement.id) ?? undefined;
+
+  const exactHead = input.targetedTestSelection.exactHeadRelations;
+  if (exactHead.length === 1) {
+    const relation = exactHead[0]!;
+    const testFile = changedTestFileForEvidenceRef(input.input, input.evidenceLookup, relation.testEvidenceRef);
+    if (!testFile) return undefined;
+    const candidate = boundedTestRelationCandidate({
+      testFile,
+      subject,
+      requirementId: input.requirement.id,
+      currentRequirementText: input.requirement.text,
+      requirementTexts: input.requirementTexts,
+      currentSourceBinding,
+      targetMode: "exact_head_target",
+      sourceBindings: input.sourceBindings
+    });
+    if (!candidate || candidate.target.targetPath !== relation.target.targetPath) return undefined;
+    return {
+      targetMode: "exact_head_target",
+      targetRef: relation.target.receipt.id,
+      testEvidenceRef: relation.testEvidenceRef,
+      subjectSource: candidate.subjectSource,
+      subjectDigest: candidate.subjectDigest,
+      importBindingDigest: candidate.importBindingDigest,
+      directAssertionCount: candidate.directAssertionCount
+    };
+  }
+
+  const candidates = input.evidenceLookup.testEvidenceItems.flatMap((testEvidence) => {
+    const testEvidenceRef = testEvidence.id;
+    const testFile = changedTestFileForEvidenceRef(input.input, input.evidenceLookup, testEvidenceRef);
+    if (!testFile) return [];
+    const candidate = boundedTestRelationCandidate({
+      testFile,
+      subject,
+      requirementId: input.requirement.id,
+      currentRequirementText: input.requirement.text,
+      requirementTexts: input.requirementTexts,
+      currentSourceBinding,
+      targetMode: "changed_target",
+      relation: input.deterministicRelation,
+      sourceBindings: input.sourceBindings
+    });
+    if (!candidate) return [];
+    const artifactRefs = input.evidenceLookup.refsForPath(candidate.target.targetPath)
+      .filter((ref) => {
+        const evidence = input.evidenceLookup.evidenceForRef(ref);
+        return evidence?.kind === "diff" || evidence?.kind === "changed_file";
+      });
+    const implementationRefs = artifactRefs.filter((ref) => input.evidenceLookup.evidenceForRef(ref)?.kind === "diff");
+    const selectedImplementationRefs = implementationRefs.length > 0 ? implementationRefs : artifactRefs;
+    return selectedImplementationRefs.length === 1
+      ? [{ testEvidenceRef, candidate, implementationEvidenceRef: selectedImplementationRefs[0]! }]
+      : [];
+  });
+  if (candidates.length !== 1) return undefined;
+  const candidate = candidates[0]!;
+  return {
+    targetMode: "changed_target",
+    targetRef: candidate.implementationEvidenceRef,
+    testEvidenceRef: candidate.testEvidenceRef,
+    subjectSource: candidate.candidate.subjectSource,
+    subjectDigest: candidate.candidate.subjectDigest,
+    importBindingDigest: candidate.candidate.importBindingDigest,
+    directAssertionCount: candidate.candidate.directAssertionCount
+  };
+}
+
+function receiptSubjectForRequirement(
+  requirement: Requirement,
+  relation: DeterministicRequirementRelation | undefined,
+  requirementById: ReadonlyMap<string, Requirement>
+): string | undefined {
+  if (!relation) return uniqueExplicitCodeSubject(requirement.text);
+  if (relation.kind === "test_antecedent") {
+    return uniqueExplicitCodeSubject(requirementById.get(relation.antecedentRequirementId)?.text ?? "");
+  }
+  if (relation.kind === "test_subject_chain") {
+    return uniqueExplicitCodeSubject(requirementById.get(relation.subjectRequirementId)?.text ?? "");
+  }
+  return undefined;
+}
+
+function changedTestFileForEvidenceRef(
+  input: PullRequestInput,
+  evidenceLookup: VerifierEvidenceLookup,
+  evidenceRef: string
+): PullRequestInput["changedFiles"][number] | undefined {
+  const path = evidenceLookup.pathsForRefs([evidenceRef])[0];
+  return path
+    ? input.changedFiles.find((file) => file.path.toLowerCase() === path.toLowerCase() && isTestFile(file.path))
+    : undefined;
+}
+
+function executionBindingReceiptForRelation(
+  input: PullRequestInput,
+  requirementId: string,
+  testEvidenceRef: string,
+  executionEvidenceRef: string
+): ExecutionBindingReceiptV2 {
+  const headSha = input.sourceProvenance?.origin === "github_snapshot"
+    ? input.sourceProvenance.headSha ?? ""
+    : "";
+  const headBindingDigest = createHash("sha256")
+    .update(["v2", headSha, testEvidenceRef, executionEvidenceRef].join("\0"))
+    .digest("hex");
+  return {
+    id: `execution_binding_${createHash("sha256").update([
+      requirementId,
+      testEvidenceRef,
+      executionEvidenceRef,
+      headBindingDigest
+    ].join("\0")).digest("hex").slice(0, 24)}`,
+    version: 2,
+    kind: "execution_binding",
+    requirementId,
+    testEvidenceRef,
+    executionEvidenceRef,
+    headBindingDigest,
+    scope: "exact_test"
+  };
+}
+
+function testRelationReceiptV2ForCandidate(
+  requirementId: string,
+  candidate: ReceiptReadyTestRelationCandidate,
+  executionReceiptRef: string
+): TestRelationReceiptV2 {
+  const id = `test_relation_v2_${createHash("sha256").update([
+    requirementId,
+    candidate.targetMode,
+    candidate.targetRef,
+    candidate.testEvidenceRef,
+    candidate.subjectDigest,
+    candidate.importBindingDigest,
+    executionReceiptRef
+  ].join("\0")).digest("hex").slice(0, 24)}`;
+  return {
+    id,
+    version: 2,
+    kind: "targeted_test_relation",
+    requirementId,
+    subjectSource: candidate.subjectSource,
+    targetMode: candidate.targetMode,
+    ...(candidate.targetMode === "changed_target"
+      ? { implementationEvidenceRef: candidate.targetRef }
+      : { exactHeadTargetReceiptRef: candidate.targetRef }),
+    testEvidenceRef: candidate.testEvidenceRef,
+    subjectDigest: candidate.subjectDigest,
+    importBindingDigest: candidate.importBindingDigest,
+    assertionShape: "direct_argument",
+    directAssertionCount: candidate.directAssertionCount,
+    executionReceiptRef
+  };
+}
+
+function privateReceiptBundleV2ForGraph(
+  canonical: CanonicalRequirementSetV1 | undefined,
+  sourceBindings: readonly RequirementSourceBinding[],
+  exactHeadTargetReceipts: ExactHeadTargetReceipt[],
+  testRelationReceipts: TestRelationReceiptV2[],
+  executionBindingReceipts: ExecutionBindingReceiptV2[],
+  failedCheckAssociations: FailedCheckAssociation[]
+): PrivateProofReceiptBundleV2 {
+  const bundle: PrivateProofReceiptBundleV2 = {
+    sourceBindings: [...sourceBindings],
+    exactHeadTargetReceipts,
+    testRelationReceipts,
+    executionBindingReceipts,
+    failedCheckAssociations
+  };
+  return canonical ? completePrivateProofReceiptBundleV2(bundle, canonical) : bundle;
 }
 
 interface RequirementProofAxisBuildInput {
@@ -2149,6 +2512,11 @@ function associateFailedCheck(
     contextualCiConfiguration.state !== "resolved" ||
     !isCompleteWorkflowExecutionIdentity(identity)
   ) return unknown();
+  const boundCheckEvidence = evidenceLookup.evidenceForRef(checkEvidenceRef);
+  if (
+    identity.checkEvidenceRef !== checkEvidenceRef ||
+    boundCheckEvidence?.kind !== "check"
+  ) return unknown();
 
   const provenance = input.sourceProvenance;
   if (
@@ -2210,7 +2578,8 @@ function isCompleteWorkflowExecutionIdentity(
     "runAttempt",
     "jobId",
     "jobName",
-    "headSha"
+    "headSha",
+    "checkEvidenceRef"
   ]);
   if (Object.keys(value).some((key) => !expectedKeys.has(key)) || Object.keys(value).length !== expectedKeys.size) {
     return false;
@@ -2228,7 +2597,9 @@ function isCompleteWorkflowExecutionIdentity(
     positiveInteger(value.jobId) &&
     boundedName(value.jobName) &&
     typeof value.headSha === "string" &&
-    /^[a-f0-9]{40,64}$/.test(value.headSha);
+    /^[a-f0-9]{40,64}$/.test(value.headSha) &&
+    typeof value.checkEvidenceRef === "string" &&
+    /^ev_(?:[1-9]\d?|1\d\d|200)$/.test(value.checkEvidenceRef);
 }
 
 function normalizeWorkflowArtifactPath(value: string): string {

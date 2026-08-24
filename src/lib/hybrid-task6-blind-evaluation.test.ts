@@ -43,6 +43,10 @@ import { generateVerificationReport } from "./verifier";
 const NOW = new Date("2026-08-12T12:00:00.000Z");
 const ENABLED_GATE: HybridPlannerGateDecision = { enabled: true };
 const SOURCE_IDENTITY = "d".repeat(64);
+const canonicalText = (value: string) => value
+  .trim()
+  .replace(/^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)/, "")
+  .replace(/[.!?]+$/, "");
 
 interface RunCapture {
   posts: number;
@@ -74,7 +78,7 @@ afterEach(() => {
 });
 
 describe("Task 6 frozen development/regression set (16)", () => {
-  it("D01 linked authoritative exact objective uses relevant implementation, test, and execution evidence", async () => {
+  it("D01 linked authoritative objective retains local refs but leaves receipt-less axes incomplete by default", async () => {
     const input = syntheticInput({
       taskText: "Acceptance criteria:\n- Add retry handling with regression tests.",
       changedFiles: [
@@ -89,16 +93,19 @@ describe("Task 6 frozen development/regression set (16)", () => {
     const requirement = report.requirements[0]!;
 
     expect(report.analysisContext).toBe("linked_issue");
-    expect(requirement.requirementText).toBe("- Add retry handling with regression tests.");
+    expect(requirement.requirementText).toBe("Add retry handling with regression tests");
     expect(axis(requirement.proofAxes, "implementation")).toMatchObject({ polarity: "present", state: "satisfied" });
-    expect(axis(requirement.proofAxes, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(requirement.proofAxes, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(requirement.proofAxes, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(requirement.proofAxes, "execution")).toMatchObject({ state: "incomplete" });
+    expect(report.proofGraph.nodes[0]?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
+    expect(report.proofGraph.nodes[0]?.executionEvidenceRefs.length).toBeGreaterThan(0);
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
     expect(capture).toMatchObject({ posts: 1, gets: 0 });
     expect(result.telemetry).toMatchObject({ postCount: 1, outcomeCode: "completed" });
     expectValid(report);
   });
 
-  it("D02 provided Korean source preserves exact text while deterministic vague authority stays unclear", async () => {
+  it("D02 provided Korean source keeps canonical concrete requirements over vague prose", async () => {
     const input = syntheticInput({
       taskText: "Improve reliability.\n사용자 메시지를 유지한다.",
       taskSource: "task",
@@ -108,15 +115,12 @@ describe("Task 6 frozen development/regression set (16)", () => {
     const report = readyReport(result);
 
     expect(report.analysisContext).toBe("provided_requirement");
-    expect(report.requirements.map((item) => item.requirementText)).toContain("Improve reliability.");
-    const vague = report.requirements.find((item) => item.requirementText === "Improve reliability.")!;
-    expect(vague.status).toBe("unclear");
-    expect(gapKinds(report, vague.requirementId)).toContain("ambiguous_requirement");
+    expect(report.requirements.map((item) => item.requirementText)).toEqual(["사용자 메시지를 유지한다"]);
     expect(capture.posts).toBe(1);
     expectValid(report);
   });
 
-  it("D03 unlinked mixed objective/meta is omitted once by planner admission", async () => {
+  it("D03 unlinked mixed objective/meta remains canonical when planner excludes it", async () => {
     const input = syntheticInput({
       taskText: "",
       taskSource: undefined,
@@ -130,7 +134,7 @@ describe("Task 6 frozen development/regression set (16)", () => {
 
     expect(report.analysisContext).toBe("unlinked_pr");
     expect(report.requirements).toEqual([]);
-    expect(report.limitations.filter((value) => /objective candidate/i.test(value))).toHaveLength(1);
+    expect(report.limitations.filter((value) => /objective candidate/i.test(value))).toHaveLength(0);
     expect(capture.posts).toBe(1);
     expectValid(report);
   });
@@ -172,14 +176,14 @@ describe("Task 6 frozen development/regression set (16)", () => {
     const report = readyReport(result);
     const submitted = JSON.stringify(capture.requests[0]!.package.input);
 
-    expect(report.requirements.map((item) => item.requirementText)).toEqual(["- Add safe cache invalidation."]);
+    expect(report.requirements.map((item) => item.requirementText)).toEqual(["Add safe cache invalidation"]);
     expect(submitted).not.toContain(hidden);
     expect(submitted).not.toContain("SECRET_TASK6_TOKEN");
     expect(capture.posts).toBe(1);
     expectValid(report);
   });
 
-  it("D06 exact direct admitted parent contributes its own planner axis", async () => {
+  it("D06 planner axes do not alter canonical child proof expectations", async () => {
     const input = syntheticInput({
       taskText: "",
       taskSource: undefined,
@@ -197,11 +201,11 @@ describe("Task 6 frozen development/regression set (16)", () => {
     const report = readyReport(result);
 
     expect(report.requirements).toHaveLength(2);
-    expect(report.requirements[1]!.proofAxes?.some((item) => item.subject === "documentation")).toBe(true);
+    expect(report.requirements[1]!.proofAxes?.some((item) => item.subject === "documentation")).toBe(false);
     expectValid(report);
   });
 
-  it("D07 excluded intervening duplicate-text parent blocks backward inheritance", async () => {
+  it("D07 excluded intervening duplicate-text parent cannot remove canonical requirements", async () => {
     const input = syntheticInput({
       taskText: "",
       taskSource: undefined,
@@ -218,9 +222,9 @@ describe("Task 6 frozen development/regression set (16)", () => {
     });
     const report = readyReport(result);
 
-    expect(report.requirements).toHaveLength(2);
-    expect(report.requirements[1]!.requirementText).toBe("Preserve retry responses.");
-    expect(report.requirements[1]!.proofAxes?.some((item) => item.subject === "documentation")).toBe(false);
+    expect(report.requirements).toHaveLength(3);
+    expect(report.requirements[2]!.requirementText).toBe("Preserve retry responses");
+    expect(report.requirements[2]!.proofAxes?.some((item) => item.subject === "documentation")).toBe(false);
     expectValid(report);
   });
 
@@ -434,7 +438,7 @@ describe("Task 6 frozen blind holdouts (8)", () => {
     const { result, capture } = await runCase({ input });
     const report = readyReport(result);
 
-    expect(report.requirements[0]?.requirementText).toBe(text);
+    expect(report.requirements[0]?.requirementText).toBe(canonicalText(text));
     expect(axis(report.requirements[0]?.proofAxes, "documentation")?.state).toBe("satisfied");
     expect(capture.posts).toBe(1);
     expectValid(report);
@@ -447,7 +451,7 @@ describe("Task 6 frozen blind holdouts (8)", () => {
     const report = readyReport(result);
     const requirement = report.requirements[0]!;
 
-    expect(requirement.requirementText).toBe(text);
+    expect(requirement.requirementText).toBe(canonicalText(text));
     expect(axis(requirement.proofAxes, "visual")?.state).toBe("incomplete");
     expect(axis(requirement.proofAxes, "interaction")?.state).toBe("incomplete");
     expect(requirement.status).not.toBe("met");

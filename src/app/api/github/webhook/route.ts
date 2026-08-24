@@ -41,6 +41,7 @@ import {
 import { redactSecrets } from "@/lib/redact";
 import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import { SavedReportStoreError } from "@/lib/server-report-store";
+import type { PullRequestInput, VerificationReport } from "@/lib/types";
 import {
   assertSlackReportNotificationConfigured,
   sendSlackReportSummary,
@@ -881,12 +882,17 @@ async function handlePullRequestAutomation(
       : await enrichReportWithOpenAISemantics(input, deterministicReport, {
         mode: automation.repositoryPrivate === false ? "enhanced" : "essential"
       });
-    const runtimeReport = resolveRuntimeReportValidation({ input, report: semanticResult.report, requireV2: true });
+    const runtimeReport = resolveRuntimeReportValidation({
+      boundary: "generated_private_full",
+      input,
+      report: semanticResult.report,
+      requireV2: true
+    });
 
     if (!runtimeReport.valid) {
       throw new Error(`Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`);
     }
-    const report = runtimeReport.report;
+    let report = runtimeReport.report;
 
     const finalAnchor = await fetchGitHubPullRequestAnchor(automation.pullRequestUrl, token);
     if (
@@ -902,9 +908,12 @@ async function handlePullRequestAutomation(
       semanticResult.publicationSuppressed === true;
     const canSaveReport = !publicationSuppressed && plannedSideEffects.saveReport;
     const canPostComment = !publicationSuppressed && plannedSideEffects.comment;
-    const saved = canSaveReport
-      ? await createAutomationSavedReport(report, {
+    let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
+    if (canSaveReport) {
+      report = requirePublishableGeneratedReport(input, report);
+      saved = await createAutomationSavedReport(report, {
         requestUrl: context.requestUrl,
+        validationInput: input,
         ...(tenantGrant.grant?.tenantId ? {
           tenantId: tenantGrant.grant.tenantId,
           installationId: automation.installationId,
@@ -912,14 +921,18 @@ async function handlePullRequestAutomation(
           pullRequestNumber: automation.pullRequestNumber,
           headSha: automation.headSha
         } : {})
-      })
-      : undefined;
-    const comment = canPostComment
-      ? await postGitHubAppMarkerComment(automation, token, report)
-      : undefined;
-    const slack = !publicationSuppressed && plannedSideEffects.slackSummary
-      ? await sendSlackReportSummary(report)
-      : undefined;
+      });
+    }
+    let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
+    if (canPostComment) {
+      report = requirePublishableGeneratedReport(input, report);
+      comment = await postGitHubAppMarkerComment(automation, token, report);
+    }
+    let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
+    if (!publicationSuppressed && plannedSideEffects.slackSummary) {
+      report = requirePublishableGeneratedReport(input, report);
+      slack = await sendSlackReportSummary(report);
+    }
     const analysis = {
       status: "completed",
       repository: automation.repositoryFullName,
@@ -1010,6 +1023,22 @@ async function handlePullRequestAutomation(
       code: "github_app_automation_failed"
     }, { status });
   }
+}
+
+function requirePublishableGeneratedReport(
+  input: PullRequestInput,
+  report: VerificationReport
+): VerificationReport {
+  const validation = resolveRuntimeReportValidation({
+    boundary: "generated_private_full",
+    input,
+    report,
+    requireV2: true
+  });
+  if (!validation.valid) {
+    throw new Error(`Generated report failed publication validation: ${validation.errors.join("; ")}`);
+  }
+  return validation.report;
 }
 
 async function recordWebhookAuditEvent(

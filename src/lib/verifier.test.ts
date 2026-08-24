@@ -12,8 +12,143 @@ import {
 } from "./verifier";
 import type { EvidenceItem, PullRequestInput, Requirement, VerificationReport } from "./types";
 
+function withReceiptV2<T>(run: () => T): T {
+  const previous = process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+  process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = "receipt_v2";
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+    else process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = previous;
+  }
+}
+
+function withPromotionOff<T>(run: () => T): T {
+  const previous = process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+  delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+    else process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = previous;
+  }
+}
+
 describe("generateVerificationReport", () => {
-  it("links a changed regression test to an unchanged exact-head helper and suite", () => {
+  it("keeps every requirement-local proof axis incomplete for pasted evidence", () => {
+    const requirement: Requirement = {
+      id: "req_pasted",
+      source: "issue",
+      text: "Implement repository name normalization with a targeted regression test and execution proof.",
+      keywords: ["repository", "name", "normalization", "regression"],
+      priority: "must",
+      role: "core_requirement",
+      sourceQuality: "explicit_acceptance_criteria",
+      sourceSection: "Acceptance criteria",
+      contextRoles: []
+    };
+    const report = generateVerificationReportFromRequirements({
+      title: "Pasted repository name normalization",
+      description: "",
+      taskText: requirement.text,
+      taskSource: "issue",
+      changedFiles: [
+        {
+          path: "src/repositories/name.js",
+          status: "modified",
+          patch: "+export function repositoryName(value) { return String(value).toLowerCase(); }"
+        },
+        {
+          path: "test/repository-name.test.js",
+          status: "modified",
+          patch: [
+            "+import { repositoryName } from '../src/repositories/name.js';",
+            "+test('normalizes repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+          ].join("\n")
+        }
+      ],
+      checks: [{ name: "repository name regression tests", status: "passed", summary: "Repository name normalization tests passed." }],
+      logs: [{ source: "repository name regression tests", status: "passed", text: "Repository name normalization tests passed." }],
+      sourceProvenance: {
+        version: 1,
+        origin: "pasted_evidence",
+        changedFileInventory: { version: 1, completeness: "incomplete" },
+        evidenceCapturedAt: "2026-08-22T00:00:00.000Z",
+        inputFingerprint: {
+          version: 1,
+          algorithm: "sha256",
+          value: "f".repeat(64),
+          coverage: "pasted_metadata"
+        }
+      }
+    }, {
+      requirements: [requirement],
+      contexts: [],
+      proofExpectationsByRequirement: new Map([[requirement.id, {
+        implementation: true,
+        documentation: false,
+        ci: false,
+        targetedTest: true,
+        visual: false,
+        interaction: false,
+        noImplementationChanges: false,
+        execution: true
+      }]])
+    });
+
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "implementation", state: "incomplete" }),
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(report.requirements[0]?.status).not.toBe("met");
+  });
+
+  it("keeps an unusable pasted author claim unclear instead of missing", () => {
+    const requirement: Requirement = {
+      id: "req_pasted_author_claim",
+      source: "pr_description",
+      text: "Implement the billing export workflow.",
+      keywords: ["billing", "export", "workflow"],
+      priority: "must",
+      role: "core_requirement",
+      sourceQuality: "author_claim",
+      sourceSection: "Summary",
+      contextRoles: []
+    };
+    const report = generateVerificationReportFromRequirements({
+      title: "Unrelated pasted observation",
+      description: "",
+      taskText: requirement.text,
+      changedFiles: [{ path: "src/repositories/name.js", status: "modified", patch: "+export const repositoryName = 'agentproof';" }],
+      checks: [{ name: "repository tests", status: "passed", summary: "Repository tests passed." }],
+      logs: [],
+      sourceProvenance: {
+        version: 1,
+        origin: "pasted_evidence",
+        changedFileInventory: { version: 1, completeness: "incomplete" },
+        evidenceCapturedAt: "2026-08-22T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "e".repeat(64), coverage: "pasted_metadata" }
+      }
+    }, {
+      requirements: [requirement],
+      contexts: [],
+      proofExpectationsByRequirement: new Map([[requirement.id, {
+        implementation: true,
+        documentation: false,
+        ci: false,
+        targetedTest: true,
+        visual: false,
+        interaction: false,
+        noImplementationChanges: false,
+        execution: true
+      }]])
+    });
+
+    expect(report.requirements[0]?.status).toBe("unclear");
+  });
+
+  it("links a changed regression test to an unchanged exact-head helper and suite in receipt_v2 mode", () => withReceiptV2(() => {
     const headSha = "7".repeat(40);
     const testPath = "test/repository-name-regression.test.js";
     const moduleSource = "export function repositoryName(value) { return String(value).toLowerCase(); } // exact-head-only-marker";
@@ -54,7 +189,7 @@ describe("generateVerificationReport", () => {
     const report = generateVerificationReport(input);
     const node = report.proofGraph.nodes[0];
     const targetReceipts = (report.proofGraph as typeof report.proofGraph & { exactHeadTargetReceipts?: unknown[] }).exactHeadTargetReceipts;
-    const relationReceipts = (report.proofGraph as typeof report.proofGraph & { testRelationReceipts?: unknown[] }).testRelationReceipts;
+    const privateReceipts = report.proofGraph.privateReceiptBundleV2;
 
     expect(node?.targetedTestEvidenceRefs.length).toBe(1);
     expect(node?.executionEvidenceRefs.length).toBe(1);
@@ -63,16 +198,28 @@ describe("generateVerificationReport", () => {
       expect.objectContaining({ subject: "execution", state: "satisfied", collectionBasis: "passing_suite_execution" })
     ]));
     expect(targetReceipts).toEqual([expect.objectContaining({ kind: "exact_head_target", headSha })]);
-    expect(relationReceipts).toEqual([expect.objectContaining({
+    expect(privateReceipts?.testRelationReceipts).toEqual([expect.objectContaining({
+      version: 2,
       kind: "targeted_test_relation",
-      subjectRequirementId: "req_1",
+      requirementId: "req_1",
       subjectSource: "current_requirement",
-      relationBasis: "direct_static_import",
-      directAssertionCaseCount: 1
+      targetMode: "exact_head_target",
+      assertionShape: "direct_argument",
+      directAssertionCount: 1
+    })]);
+    expect(privateReceipts?.executionBindingReceipts).toEqual([expect.objectContaining({
+      version: 2,
+      kind: "execution_binding",
+      requirementId: "req_1",
+      scope: "exact_test"
     })]);
     const serializedReport = JSON.stringify(report);
     const targetReceipt = (targetReceipts?.[0] ?? {}) as { targetBlobSha?: string; canonicalBindingDigest?: string };
-    const { exactHeadTargetReceipts: _privateTargets, ...proofGraphWithoutPrivateTargets } = report.proofGraph;
+    const {
+      exactHeadTargetReceipts: _privateTargets,
+      privateReceiptBundleV2: _privateReceiptBundleV2,
+      ...proofGraphWithoutPrivateTargets
+    } = report.proofGraph;
     const reportWithoutPrivateTargets = JSON.stringify({ ...report, proofGraph: proofGraphWithoutPrivateTargets });
     expect(serializedReport).not.toContain("exact-head-only-marker");
     expect(serializedReport).not.toContain('"resolvedHeadModules"');
@@ -83,7 +230,236 @@ describe("generateVerificationReport", () => {
     expect(targetReceipt.canonicalBindingDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(reportWithoutPrivateTargets).not.toContain(targetReceipt.targetBlobSha);
     expect(reportWithoutPrivateTargets).not.toContain(targetReceipt.canonicalBindingDigest);
-  });
+  }));
+
+  it("emits one private v2 receipt pair for a changed target only when its direct test and suite execution close together", () => withReceiptV2(() => {
+    const headSha = "8".repeat(40);
+    const report = generateVerificationReport({
+      title: "Add repository name normalization",
+      description: "",
+      taskText: "Acceptance criteria: add a regression test for repositoryName(value) formatting.",
+      taskSource: "issue",
+      changedFiles: [
+        {
+          path: "src/repositories/name.js",
+          status: "modified",
+          patch: "+export function repositoryName(value) { return String(value).toLowerCase(); }"
+        },
+        {
+          path: "test/repository-name.test.js",
+          status: "modified",
+          patch: [
+            "+import { repositoryName } from '../src/repositories/name.js';",
+            "+test('formats repository names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+          ].join("\n")
+        }
+      ],
+      checks: [{ name: "unit-tests", status: "passed", summary: "Unit tests passed." }],
+      logs: [{ source: "GitHub Actions job: unit-tests", status: "passed", text: "npm test passed." }],
+      sourceProvenance: githubInventoryProvenance(headSha),
+      executionSuites: [{
+        headSha,
+        status: "passed",
+        executionSource: "GitHub Actions job: unit-tests",
+        runner: "node_test",
+        scope: "repository_discovery",
+        testPaths: ["test/repository-name.test.js"]
+      }]
+    });
+
+    const receipts = report.proofGraph.privateReceiptBundleV2;
+    expect(receipts?.testRelationReceipts).toEqual([expect.objectContaining({
+      version: 2,
+      requirementId: "req_1",
+      targetMode: "changed_target"
+    })]);
+    expect(receipts?.executionBindingReceipts).toEqual([expect.objectContaining({
+      version: 2,
+      requirementId: "req_1"
+    })]);
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "satisfied" }),
+      expect.objectContaining({ subject: "execution", state: "satisfied" })
+    ]));
+  }));
+
+  it("mints no changed-target receipt pair without a complete head-bound changed-file inventory", () => withReceiptV2(() => {
+    const input = unchangedExactHeadRelationInput();
+    input.changedFiles.unshift({
+      path: "src/repositories/name.js",
+      status: "modified",
+      patch: "+export function repositoryName(value) { return String(value).toLowerCase(); }"
+    });
+    input.resolvedHeadModules = [];
+    input.sourceProvenance!.changedFileInventory!.completeness = "incomplete";
+
+    const report = generateVerificationReport(input);
+
+    expect(report.proofGraph.privateReceiptBundleV2).toBeUndefined();
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+  }));
+
+  it("keeps changed-target targeted-test and execution axes incomplete when no v2 receipt pair can be bound", () => withReceiptV2(() => {
+    const input = unchangedExactHeadRelationInput();
+    input.changedFiles.unshift({
+      path: "src/repositories/name.js",
+      status: "modified",
+      patch: "+export function repositoryName(value) { return String(value).toLowerCase(); }"
+    });
+    input.resolvedHeadModules = [];
+    input.executionSuites = [];
+
+    const report = generateVerificationReport(input);
+
+    expect(report.proofGraph.privateReceiptBundleV2).toBeUndefined();
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+  }));
+
+  it("keeps the same receipt-complete exact-head relation incomplete when promotion defaults off", () => withPromotionOff(() => {
+    const report = generateVerificationReport(unchangedExactHeadRelationInput());
+
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+  }));
+
+  it("downgrades satisfied execution when its targeted-test counterpart is incomplete and promotion defaults off", () => withPromotionOff(() => {
+    const requirement: Requirement = {
+      id: "req_local_pair",
+      source: "issue",
+      text: "Add regression tests for repository name normalization.",
+      keywords: ["regression", "repository", "name", "normalization"],
+      priority: "must",
+      role: "core_requirement",
+      sourceQuality: "explicit_acceptance_criteria",
+      sourceSection: "Acceptance criteria",
+      contextRoles: []
+    };
+    const report = generateVerificationReportFromRequirements({
+      title: "Verify repository name normalization",
+      description: "",
+      taskText: "Synthetic bounded requirement selection.",
+      taskSource: "issue",
+      changedFiles: [],
+      checks: [{
+        name: "repository name regression tests",
+        status: "passed",
+        summary: "Repository name normalization tests passed."
+      }],
+      logs: [],
+      limitations: ["GitHub changed-file evidence unavailable: request timed out or network failed."]
+    }, {
+      requirements: [requirement],
+      contexts: [],
+      proofExpectationsByRequirement: new Map([[requirement.id, {
+        implementation: false,
+        documentation: false,
+        ci: false,
+        targetedTest: true,
+        visual: false,
+        interaction: false,
+        noImplementationChanges: false,
+        execution: true
+      }]])
+    });
+
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+  }));
+
+  it("downgrades receipt-less requirement-local execution when no targeted-test axis was requested", () => withReceiptV2(() => {
+    const requirement: Requirement = {
+      id: "req_execution_only",
+      source: "issue",
+      text: "Run the repository name verification suite.",
+      keywords: ["repository", "name", "verification", "suite"],
+      priority: "must",
+      role: "core_requirement",
+      sourceQuality: "explicit_acceptance_criteria",
+      sourceSection: "Acceptance criteria",
+      contextRoles: []
+    };
+    const report = generateVerificationReportFromRequirements({
+      title: "Run repository name verification",
+      description: "",
+      taskText: "Run the repository name verification suite.",
+      taskSource: "issue",
+      changedFiles: [],
+      checks: [{
+        name: "repository name verification",
+        status: "passed",
+        summary: "Repository name verification suite passed."
+      }],
+      logs: []
+    }, {
+      requirements: [requirement],
+      contexts: [],
+      proofExpectationsByRequirement: new Map([[requirement.id, {
+        implementation: false,
+        documentation: false,
+        ci: false,
+        targetedTest: false,
+        visual: false,
+        interaction: false,
+        noImplementationChanges: false,
+        execution: true
+      }]])
+    });
+
+    expect(report.requirements[0]?.proofAxes).toEqual([
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]);
+    expect(report.proofGraph.privateReceiptBundleV2).toBeUndefined();
+  }));
+
+  it("downgrades satisfied targeted-test evidence when execution is incomplete despite a generated receipt in receipt_v2 mode", () => withReceiptV2(() => {
+    const requirement: Requirement = {
+      id: "req_local_pair",
+      source: "issue",
+      text: "Add a regression test for repositoryName(value) formatting.",
+      keywords: ["regression", "repositoryName", "formatting"],
+      priority: "must",
+      role: "core_requirement",
+      sourceQuality: "explicit_acceptance_criteria",
+      sourceSection: "Acceptance criteria",
+      contextRoles: []
+    };
+    const report = generateVerificationReportFromRequirements(unchangedExactHeadRelationInput(), {
+      requirements: [requirement],
+      contexts: [],
+      proofExpectationsByRequirement: new Map([[requirement.id, {
+        implementation: false,
+        documentation: false,
+        ci: false,
+        targetedTest: true,
+        visual: false,
+        interaction: false,
+        noImplementationChanges: false,
+        execution: true
+      }]]),
+      deterministicRelationsByRequirement: new Map([[requirement.id, {
+        version: 1,
+        kind: "workflow_antecedent",
+        antecedentRequirementId: "req_parent"
+      }]])
+    });
+
+    expect(report.proofGraph.privateReceiptBundleV2).toBeUndefined();
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+  }));
 
   it("keeps an exact-head relation incomplete when the asserted binding mismatches the named requirement subject", () => {
     const input = unchangedExactHeadRelationInput();
@@ -105,6 +481,54 @@ describe("generateVerificationReport", () => {
     expect(report.proofGraph.exactHeadTargetReceipts).toBeUndefined();
     expect(report.proofGraph.testRelationReceipts).toBeUndefined();
   });
+
+  it.each([
+    "test.skip('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "it.todo('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.skip.each([['AgentProof']])('disabled', (value) => { expect(repositoryName(value)).toBe('agentproof'); });",
+    "it.todo.each([['AgentProof']])('disabled', (value) => { expect(repositoryName(value)).toBe('agentproof'); });",
+    "test.each([['AgentProof']]).skip('disabled', (value) => { expect(repositoryName(value)).toBe('agentproof'); });",
+    "test.each([\n+  ['AgentProof']\n+]).skip('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.each`\n+  value\n+  ${'AgentProof'}\n+`.todo('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "if (false) { expect(repositoryName('AgentProof')).toBe('agentproof'); }",
+    "test('unreachable return', () => {\n+  return;\n+  expect(repositoryName('AgentProof')).toBe('agentproof');\n+});",
+    "test('unreachable throw', () => {\n+  throw new Error('stop');\n+  expect(repositoryName('AgentProof')).toBe('agentproof');\n+});"
+  ])("mints zero private receipts for disabled or unreachable tests: %s", (assertion) => withReceiptV2(() => {
+    const input = unchangedExactHeadRelationInput();
+    input.changedFiles[0]!.patch = [
+      "+import { repositoryName } from '../src/repositories/name.js';",
+      `+${assertion}`
+    ].join("\n");
+
+    const report = generateVerificationReport(input);
+
+    expect(report.proofGraph.privateReceiptBundleV2).toBeUndefined();
+    expect(report.proofGraph.exactHeadTargetReceipts).toBeUndefined();
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+  }));
+
+  it.each([
+    "test.each([\n+  ['AgentProof']\n+])('formats names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.each`\n+  value\n+  ${'AgentProof'}\n+`('formats names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+  ])("keeps a non-disabled multiline parameterized exact-head test receipt-eligible: %s", (assertion) => withReceiptV2(() => {
+    const input = unchangedExactHeadRelationInput();
+    input.changedFiles[0]!.patch = [
+      "+import { repositoryName } from '../src/repositories/name.js';",
+      `+${assertion}`
+    ].join("\n");
+
+    const report = generateVerificationReport(input);
+
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.privateReceiptBundleV2?.executionBindingReceipts).toHaveLength(1);
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "satisfied" }),
+      expect.objectContaining({ subject: "execution", state: "satisfied" })
+    ]));
+  }));
 
   it.each([
     {
@@ -211,15 +635,14 @@ describe("generateVerificationReport", () => {
     const unrelatedRequirement = report.requirements.find((requirement) => /billing invoice/i.test(requirement.requirementText));
     const testNode = report.proofGraph.nodes.find((node) => node.requirementId === testRequirement?.requirementId);
     const unrelatedNode = report.proofGraph.nodes.find((node) => node.requirementId === unrelatedRequirement?.requirementId);
-    const graph = report.proofGraph as typeof report.proofGraph & {
-      testRelationReceipts?: Array<{ subjectRequirementId: string }>;
-    };
 
     expect(testNode?.targetedTestEvidenceRefs).toHaveLength(1);
     expect(testNode?.executionEvidenceRefs).toHaveLength(1);
     expect(unrelatedNode?.targetedTestEvidenceRefs).toEqual([]);
     expect(unrelatedNode?.executionEvidenceRefs).toEqual([]);
-    expect(graph.testRelationReceipts?.map((receipt) => receipt.subjectRequirementId)).toEqual([testRequirement?.requirementId]);
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts.map((receipt) =>
+      receipt.version === 2 ? receipt.requirementId : undefined
+    )).toEqual([testRequirement?.requirementId]);
   });
 
   it("carries bounded test antecedent bindings into the proof graph", () => {
@@ -639,11 +1062,11 @@ describe("generateVerificationReport", () => {
   it("recognizes demo test evidence for the invalid email acceptance criterion", () => {
     const report = generateVerificationReport(demoScenarios["scope-creep"]);
     const invalidEmailTestRequirement = report.requirements.find((requirement) =>
-      requirement.requirementText === "add tests for invalid email"
+      /add tests for invalid email/i.test(requirement.requirementText)
     );
 
     expect(invalidEmailTestRequirement?.status).toBe("partial");
-    expect(invalidEmailTestRequirement?.gaps.join(" ")).toContain("targeted test-file evidence");
+    expect(invalidEmailTestRequirement?.gaps.join(" ")).toContain("No targeted test-file evidence");
   });
 
   it("does not mark test requirements met from test-file patches without passing execution evidence", () => {
@@ -1370,7 +1793,7 @@ describe("generateVerificationReport", () => {
       sourceQuality: "expected_behavior",
       sourceSection: "Expected behavior"
     }));
-    expect(node?.contextRoles).toContain("problem_context");
+    expect(node?.contextRoles).toEqual([]);
     expect(report.proofGraph.context.some((context) => context.role === "environment_context")).toBe(true);
     expect(report.proofGraph.context.some((context) => context.role === "problem_context" && /segfault/.test(context.text))).toBe(true);
   });
@@ -1628,7 +2051,7 @@ describe("generateVerificationReport", () => {
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("keeps passing execution evidence on met requirements when diff refs hit the cap", () => {
+  it("keeps passing execution evidence on receipt-incomplete requirements when diff refs hit the cap", () => {
     const report = generateVerificationReport({
       title: "Validate export evidence report",
       description: "Implemented export evidence report validation.",
@@ -1653,12 +2076,12 @@ describe("generateVerificationReport", () => {
     const requirementEvidence = refsToEvidence(report, requirement?.evidenceRefs ?? []);
     const validation = validateVerificationReport(report, { mode: "full" });
 
-    expect(requirement?.status).toBe("met");
+    expect(requirement?.status).toBe("partial");
     expect(requirementEvidence.some((item) => item.kind === "check" && item.summary.startsWith("Status: passed"))).toBe(true);
     expect(validation).toEqual({ valid: true, errors: [] });
   });
 
-  it("keeps suite-linked execution evidence in a met requirement after artifact references are capped", () => {
+  it("keeps suite-linked execution evidence in a receipt-incomplete requirement after artifact references are capped", () => {
     const headSha = "a".repeat(40);
     const report = generateVerificationReport({
       title: "Add export evidence report",
@@ -1701,7 +2124,7 @@ describe("generateVerificationReport", () => {
     const finding = report.requirements[0];
     const evidence = refsToEvidence(report, finding?.evidenceRefs ?? []);
 
-    expect(finding?.status).toBe("met");
+    expect(finding?.status).toBe("partial");
     expect(evidence.some((item) => item.kind === "log" && item.summary.startsWith("Status: passed"))).toBe(true);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
@@ -2180,7 +2603,7 @@ describe("generateVerificationReport", () => {
       logs: []
     } satisfies PullRequestInput);
 
-    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.status).toBe("partial");
     expect(report.testing.missingTests.some((item) => item.path === "src/components/ReportView.tsx")).toBe(false);
   });
 
@@ -2380,7 +2803,7 @@ describe("generateVerificationReport", () => {
     expect(report.scope.outOfScopeFiles).toContain("src/server/auth/sessionExpiry.ts");
   });
 
-  it("does not require visual QA for functional button requirements with targeted test evidence", () => {
+  it("keeps functional button test observations incomplete by default without adding a visual-QA gap", () => {
     const report = generateVerificationReport({
       title: "Add invoice export button",
       description: "Added invoice export button and tests.",
@@ -2405,7 +2828,12 @@ describe("generateVerificationReport", () => {
       logs: []
     } satisfies PullRequestInput);
 
-    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.status).toBe("partial");
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
     expect(report.requirements[0]?.gaps.join(" ")).not.toContain("visual QA");
   });
 
@@ -2518,7 +2946,7 @@ describe("generateVerificationReport", () => {
       logs: []
     } satisfies PullRequestInput);
 
-    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.status).toBe("partial");
     expect(report.requirements[0]?.reviewerNote).toContain("visual QA evidence");
   });
 
@@ -2768,13 +3196,17 @@ describe("generateVerificationReport", () => {
     expect(vague.requirements[0]?.status).toBe("unclear");
   });
 
-  it("does not escalate clean demo risk-sensitive files to high priority by default", () => {
+  it("escalates the receipt-less clean demo while local promotion defaults off", () => {
     const report = generateVerificationReport(demoScenarios.clean);
 
-    expect(report.summary.priority).not.toBe("high");
-    if (report.summary.topRisks.join(" ").includes("No major evidence gap")) {
-      expect(report.summary.priority).toBe("low");
-    }
+    expect(report.summary.priority).toBe("high");
+    expect(report.requirements.some((requirement) => requirement.proofAxes?.some((axis) =>
+      axis.subject === "targeted_test" && axis.state === "violated"
+    ))).toBe(true);
+    expect(report.requirements.some((requirement) => requirement.proofAxes?.some((axis) =>
+      axis.subject === "execution" && axis.state === "incomplete"
+    ))).toBe(true);
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
   });
 
   it("never emits met with evidence gaps", () => {
@@ -2913,7 +3345,7 @@ describe("generateVerificationReport", () => {
     expect(missingTest?.provenance?.every((item) => item.evidenceText.length <= 240)).toBe(true);
   });
 
-  it("does not require implementation or another targeted test for a test-only objective with test and execution evidence", () => {
+  it("retains bounded test and execution refs but emits local gaps while promotion defaults off", () => {
     const report = generateVerificationReport({
       title: "Add retry queue regression coverage",
       description: "Adds a regression test for retry queue synchronization.",
@@ -2937,7 +3369,15 @@ describe("generateVerificationReport", () => {
     expect(node?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
     expect(node?.executionEvidenceRefs.length).toBeGreaterThan(0);
     expect(node?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
-    expect(node?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
+    expect(node?.gapSignals.map((gap) => gap.kind)).toEqual(expect.arrayContaining([
+      "missing_targeted_test",
+      "missing_execution"
+    ]));
+    expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: "targeted_test", state: "incomplete" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
+    ]));
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
   });
 
   it("keeps implementation and targeted-test expectations for a behavior objective that also asks for tests", () => {
@@ -3017,7 +3457,7 @@ describe("generateVerificationReport", () => {
     expect(ci.proofGraph.nodes[0]?.implementationEvidenceRefs.length).toBeGreaterThan(0);
     expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
     expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_targeted_test");
-    expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
+    expect(ci.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("missing_execution");
     expect(koreanTest.proofGraph.nodes[0]?.requirementText).toContain("테스트");
     expect(koreanTest.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_implementation");
     expect(koreanTest.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("missing_targeted_test");
@@ -3150,7 +3590,7 @@ describe("generateVerificationReport", () => {
     expect(passing.requirements[0]?.status).not.toBe("met");
     expect(passing.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
       expect.objectContaining({ subject: "targeted_test", polarity: "present", state: "violated" }),
-      expect.objectContaining({ subject: "execution", polarity: "present", state: "satisfied" }),
+      expect.objectContaining({ subject: "execution", polarity: "present", state: "incomplete" }),
       expect.objectContaining({ subject: "implementation", polarity: "absent", state: "satisfied" })
     ]));
     expect(violated.requirements[0]?.status).not.toBe("met");
@@ -3183,9 +3623,11 @@ describe("generateVerificationReport", () => {
       sourceProvenance: githubInventoryProvenance()
     } satisfies PullRequestInput);
 
-    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.status).toBe(subjects.includes("execution") ? "partial" : "met");
     expect(report.requirements[0]?.proofAxes?.map((axis) => axis.subject)).toEqual(subjects);
-    expect(report.requirements[0]?.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+    if (subjects.includes("execution")) {
+      expect(report.requirements[0]?.proofAxes?.find((axis) => axis.subject === "execution")?.state).toBe("incomplete");
+    }
   });
 
   it.each([
@@ -3379,7 +3821,8 @@ describe("generateVerificationReport", () => {
             runAttempt: 1,
             jobId: 303,
             jobName: "test",
-            headSha
+            headSha,
+            checkEvidenceRef: "ev_18"
           }
         }
       ],
@@ -3545,7 +3988,7 @@ describe("generateVerificationReport", () => {
     expect(validateVerificationReport(visual, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("satisfies canonical requirement-text execution and visual matches without changing proof axes", () => {
+  it("preserves canonical visual proof while closing asymmetric local test axes", () => {
     const report = generateVerificationReport({
       title: "Keep settings panel readable with regression coverage",
       description: "Adds settings-panel coverage.",
@@ -3563,7 +4006,8 @@ describe("generateVerificationReport", () => {
     const axes = structuredClone(report.requirements[0]?.proofAxes);
 
     expect(report.requirements[0]?.proofAxes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ subject: "execution", state: "satisfied" }),
+      expect.objectContaining({ subject: "targeted_test", state: "violated" }),
+      expect.objectContaining({ subject: "execution", state: "incomplete" }),
       expect.objectContaining({ subject: "visual", state: "satisfied" })
     ]));
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
@@ -3735,10 +4179,10 @@ describe("generateVerificationReport", () => {
     const execution = report.requirements[0]?.proofAxes?.find((axis) => axis.subject === "execution");
 
     expect(execution).toMatchObject({
-      state: "satisfied",
+      state: "incomplete",
       collectionBasis: "passing_suite_execution"
     });
-    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).not.toContain("missing_execution");
+    expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("missing_execution");
   });
 
   it.each([
@@ -3878,7 +4322,7 @@ describe("generateVerificationReport", () => {
     expect(finding?.status).not.toBe("met");
   });
 
-  it("completes both-path coverage with two distinct asserted direct calls and an exact-head suite", () => {
+  it("retains both-path case evidence but leaves receipt-less local axes incomplete by default", () => {
     const report = generateVerificationReport(customerDisplayNameBothPathsInput({
       testPatch: [
         "+import assert from 'node:assert/strict';",
@@ -3900,22 +4344,23 @@ describe("generateVerificationReport", () => {
     expect(finding?.proofAxes).toEqual(expect.arrayContaining([
       expect.objectContaining({
         subject: "targeted_test",
-        state: "satisfied",
+        state: "incomplete",
         collectionBasis: "direct_assertion_case_coverage"
       }),
       expect.objectContaining({
         subject: "execution",
-        state: "satisfied",
+        state: "incomplete",
         collectionBasis: "passing_suite_execution"
       })
     ]));
-    expect(finding?.status).toBe("met");
+    expect(finding?.status).not.toBe("met");
     expect(node.caseCoverageReceipt).toEqual({
       version: 1,
       implementationEvidenceRef: expect.stringMatching(/^ev_/),
       testEvidenceRef: expect.stringMatching(/^ev_/),
       distinctLiteralCaseCount: 2
     });
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
@@ -3972,7 +4417,7 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     const axes = report.requirements[0]?.proofAxes ?? [];
-    expect(axes).toContainEqual(expect.objectContaining({ subject: "execution", state: "satisfied" }));
+    expect(axes).toContainEqual(expect.objectContaining({ subject: "execution", state: "incomplete" }));
     expect(axes).toContainEqual(expect.objectContaining({ subject: "interaction", state: "incomplete" }));
     expect(report.proofGraph.nodes[0]?.gapSignals.map((gap) => gap.kind)).toContain("interaction_proof_missing");
     expect(report.requirements[0]?.status).toBe("partial");

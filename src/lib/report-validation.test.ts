@@ -1,12 +1,14 @@
 import { createHash } from "crypto";
 import { describe, expect, it } from "vitest";
+import { selectCanonicalRequirements } from "./extractors";
 import { createUnverifiedAuthenticity } from "./report-authenticity";
-import { validateVerificationReport } from "./report-validation";
+import { createVerificationValidationContextV2, validateVerificationReport, type VerificationValidationContextV2 } from "./report-validation";
 import { decodeSharedReport, encodeReportForShare, sanitizeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
 import { projectTenantPersistedReport } from "./tenant-report-validation";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 import { generateVerificationReportV2 } from "./verifier";
+import type { PullRequestInput, TestRelationReceiptV2 } from "./types";
 
 const HYBRID_PLANNER_PROVENANCE = {
   version: 1,
@@ -18,289 +20,356 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("admits a structurally valid private v2 receipt bundle only for a full report", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    const requirementId = report.requirements[0]!.requirementId;
+    const executionBindingReceipts = [{
+      id: "execution_private_v2",
+      version: 2 as const,
+      kind: "execution_binding" as const,
+      requirementId,
+      testEvidenceRef: "ev_private_test",
+      executionEvidenceRef: "ev_private_execution",
+      headBindingDigest: "a".repeat(64),
+      scope: "exact_test" as const
+    }];
+    report.proofGraph.privateReceiptBundleV2 = {
+      sourceBindings: [{
+        version: 1,
+        kind: "requirement_source_binding",
+        id: "binding_private_v2",
+        requirementId,
+        spanId: "sp_1_1",
+        seedId: "b".repeat(64),
+        groupId: "grp_1",
+        source: "issue",
+        ordinal: 1
+      }],
+      exactHeadTargetReceipts: [],
+      testRelationReceipts: [{
+        id: "relation_private_v2",
+        version: 2,
+        kind: "targeted_test_relation",
+        requirementId,
+        subjectSource: "current_requirement",
+        targetMode: "changed_target",
+        implementationEvidenceRef: "ev_private_implementation",
+        testEvidenceRef: "ev_private_test",
+        subjectDigest: "c".repeat(64),
+        importBindingDigest: "d".repeat(64),
+        assertionShape: "direct_argument",
+        directAssertionCount: 1,
+        executionReceiptRef: "execution_private_v2"
+      }],
+      executionBindingReceipts,
+      failedCheckAssociations: []
+    };
+    report.proofGraph.executionBindingReceipts = structuredClone(executionBindingReceipts);
+
+    expect(validateVerificationReport(report, { mode: "v2_full" }).errors).toContain("v2 private receipt validation requires transient validation context.");
+    const tenantProjection = JSON.stringify(projectTenantPersistedReport(report, "task-4c-test-signing-secret"));
+    expect(tenantProjection).not.toContain("privateReceiptBundleV2");
+    expect(tenantProjection).not.toContain("executionBindingReceipts");
+    expect(tenantProjection).not.toContain("execution_private_v2");
+    for (const mode of ["v2_summary", "v2_tenant"] as const) {
+      const result = validateVerificationReport(report, { mode });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain(`${mode === "v2_summary" ? "summary-only" : "tenant"} reports must omit proofGraph.privateReceiptBundleV2.`);
+      expect(result.errors).toContain(`${mode === "v2_summary" ? "summary-only" : "tenant"} reports must omit proofGraph.executionBindingReceipts.`);
+    }
+
+    const malformed = structuredClone(report);
+    const malformedRelation = malformed.proofGraph.privateReceiptBundleV2!.testRelationReceipts[0]!;
+    if (malformedRelation.version !== 2) throw new Error("fixture must contain a v2 test relation receipt");
+    (malformedRelation as unknown as Record<string, unknown>).rawAssertion = "private source";
+    malformedRelation.executionReceiptRef = "missing_execution";
+    malformed.proofGraph.privateReceiptBundleV2!.executionBindingReceipts[0]!.version = 1 as never;
+    const malformedResult = validateVerificationReport(malformed, { mode: "v2_full" });
+    expect(malformedResult.valid).toBe(false);
+    expect(malformedResult.errors.join("\n")).toContain("test relation receipt.rawAssertion is not allowed");
+    expect(malformedResult.errors.join("\n")).toContain("test relation receipts cite a missing execution binding receipt");
+    expect(malformedResult.errors.join("\n")).toContain("execution binding receipt version or kind is invalid");
+  });
+
+  it("closes satisfied v2 targeted-test and execution axes from a changed-target private bundle", () => {
+    const report = fullPrivateReceiptReport("receipt_v2");
+    const requirement = report.requirements[1]!;
+    const targetedAxis = requirement.proofAxes!.find((axis) => axis.subject === "targeted_test")!;
+    const executionAxis = requirement.proofAxes!.find((axis) => axis.subject === "execution")!;
+    expect(targetedAxis.state).toBe("satisfied");
+    expect(executionAxis.state).toBe("satisfied");
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toEqual([
+      expect.objectContaining({ version: 2, requirementId: requirement.requirementId, targetMode: "exact_head_target" })
+    ]);
+    expect(validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: v2ReceiptValidationContext(report) })).toEqual({ valid: true, errors: [] });
+    const missing = structuredClone(report);
+    missing.proofGraph.privateReceiptBundleV2!.testRelationReceipts = [];
+    expect(validateVerificationReport(missing, { mode: "v2_full" }).valid).toBe(false);
+  });
+
   it("closes every private receipt collection in full mode and rejects it in summary mode", () => {
-    const report = fullPrivateReceiptReport();
+    const report = fullPrivateReceiptReport("receipt_v2");
 
     expect(report.proofGraph.sourceBindings).toHaveLength(2);
     expect(report.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
-    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.privateReceiptBundleV2?.executionBindingReceipts).toHaveLength(1);
     expect(report.proofGraph.failedCheckAssociations?.length).toBeGreaterThan(0);
-    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: v2ReceiptValidationContext(report) })).toEqual({ valid: true, errors: [] });
 
     const summaryResult = validateVerificationReport(report, { mode: "v2_summary" });
     for (const collection of [
       "sourceBindings",
       "exactHeadTargetReceipts",
-      "testRelationReceipts",
+      "privateReceiptBundleV2",
       "failedCheckAssociations"
     ]) {
       expect(summaryResult.errors).toContain(`summary-only reports must omit proofGraph.${collection}.`);
     }
   });
 
+  it("rejects a receipt-less satisfied v2 observation axis", () => {
+    const report = fullPrivateReceiptReport("receipt_v2");
+    const subject = report.requirements[1]!;
+    expect(subject.proofAxes?.find((axis) => axis.subject === "targeted_test")?.state).toBe("satisfied");
+    expect(subject.proofAxes?.find((axis) => axis.subject === "execution")?.state).toBe("satisfied");
+    report.proofGraph.privateReceiptBundleV2!.testRelationReceipts = [];
+
+    expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
+  });
+
+  it.each(["targeted_test", "execution"] as const)("rejects a receipt-less satisfied %s axis when its counterpart is incomplete", (subject) => {
+    const report = fullPrivateReceiptReport("receipt_v2");
+    const requirement = report.requirements[1]!;
+    const counterpart = subject === "targeted_test" ? "execution" : "targeted_test";
+    requirement.proofAxes!.find((axis) => axis.subject === counterpart)!.state = "incomplete";
+    requirement.evidenceStatus = "partial";
+    report.proofGraph.privateReceiptBundleV2!.testRelationReceipts = [];
+
+    expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
+  });
+
+  it("rejects receipt-less satisfied local execution even when the targeted-test axis is absent", () => {
+    const report = fullPrivateReceiptReport("receipt_v2");
+    const requirement = report.requirements[1]!;
+    requirement.proofAxes = requirement.proofAxes!.filter((axis) => axis.subject !== "targeted_test");
+    report.proofGraph.privateReceiptBundleV2!.testRelationReceipts = [];
+    report.proofGraph.privateReceiptBundleV2!.executionBindingReceipts = [];
+
+    const result = validateVerificationReport(report, { mode: "v2_full" });
+
+    expect(result.errors.join("\n")).toContain(
+      "satisfied requirement-local targeted-test or execution observation requires a closed test-relation receipt"
+    );
+  });
+
+  it("keeps receipt evidence but downgrades local positive axes while the default-off kill switch is active", () => {
+    const report = fullPrivateReceiptReport("off");
+    const subject = report.requirements[1]!;
+
+    expect(subject.proofAxes?.find((axis) => axis.subject === "targeted_test")?.state).toBe("incomplete");
+    expect(subject.proofAxes?.find((axis) => axis.subject === "execution")?.state).toBe("incomplete");
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
+  });
+
+  it("keeps receipt-complete absent and invalid v2 observations distinct from the unclear outcome", () => {
+    const absent = fullPrivateReceiptReport("receipt_v2");
+    const absentRequirement = absent.requirements[1]!;
+    const absentNode = absent.proofGraph.nodes.find((node) => node.requirementId === absentRequirement.requirementId)!;
+    expect(absentRequirement.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+    expect(absentRequirement.evidenceStatus).toBe("met");
+    expect(absentRequirement.status).toBe("unclear");
+    expect(absentNode.status).toBe("unclear");
+    const context = v2ReceiptValidationContext(absent);
+    expect(validateVerificationReport(absent, { mode: "v2_full", receiptValidationContext: context })).toEqual({ valid: true, errors: [] });
+
+    const invalid = structuredClone(absent);
+    invalid.verificationContract.state = "invalid";
+    invalid.verificationContract.gaps = [{
+      kind: "verification_contract_invalid",
+      message: "The supplied verification contract was invalid."
+    }];
+    expect(validateVerificationReport(invalid, { mode: "v2_full", receiptValidationContext: context })).toEqual({ valid: true, errors: [] });
+
+    for (const report of [absent, invalid]) {
+      report.requirements[1]!.status = "partial";
+      report.proofGraph.nodes.find((node) => node.requirementId === report.requirements[1]!.requirementId)!.status = "partial";
+      expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
+    }
+  });
+
   it("emits the closed test-relation subject, source, basis, and assertion count", () => {
     const report = fullPrivateReceiptReport();
-    const receipt = report.proofGraph.testRelationReceipts?.[0];
+    const receipt = report.proofGraph.privateReceiptBundleV2?.testRelationReceipts[0];
 
     expect(receipt).toMatchObject({
-      version: 1,
+      version: 2,
       kind: "targeted_test_relation",
-      subjectRequirementId: report.requirements[1]?.requirementId,
+      requirementId: report.requirements[1]?.requirementId,
       subjectSource: "current_requirement",
-      relationBasis: "direct_static_import",
-      directAssertionCaseCount: 1
+      targetMode: "exact_head_target",
+      assertionShape: "direct_argument",
+      directAssertionCount: 1
     });
     expect(Object.keys(receipt ?? {}).sort()).toEqual([
-      "directAssertionCaseCount",
+      "assertionShape",
+      "directAssertionCount",
       "exactHeadTargetReceiptRef",
-      "executionEvidenceRef",
+      "executionReceiptRef",
       "id",
+      "importBindingDigest",
       "kind",
-      "relationBasis",
-      "subjectRequirementId",
+      "requirementId",
+      "subjectDigest",
       "subjectSource",
+      "targetMode",
       "testEvidenceRef",
       "version"
     ]);
   });
 
-  it("rejects one exact target, test, and execution relation reused by another requirement", () => {
-    const report = fullPrivateReceiptReport();
-    const original = report.proofGraph.testRelationReceipts![0]!;
-    const otherRequirementId = report.requirements[0]!.requirementId;
-    const otherNode = report.proofGraph.nodes.find((node) => node.requirementId === otherRequirementId)!;
-    otherNode.targetedTestEvidenceRefs = [original.testEvidenceRef];
-    otherNode.executionEvidenceRefs = [original.executionEvidenceRef];
-    report.proofGraph.summary.requirementsWithTargetedTests = 2;
-    report.proofGraph.summary.requirementsWithExecution = 2;
-    report.proofGraph.testRelationReceipts!.push({
-      ...structuredClone(original),
-      id: "test_relation_cross_requirement_clone",
-      subjectRequirementId: otherRequirementId
-    });
-
-    const result = validateVerificationReport(report, { mode: "v2_full" });
-
-    expect(result.valid).toBe(false);
-    expect(result.errors.join("\n")).toContain(
-      "reuses one exact target and test relation across requirements"
-    );
-  });
-
-  it("rejects cross-requirement target and test reuse even with a different execution ref", () => {
-    const report = fullPrivateReceiptReport();
-    const original = report.proofGraph.testRelationReceipts![0]!;
-    const otherRequirementId = report.requirements[0]!.requirementId;
-    const otherNode = report.proofGraph.nodes.find((node) => node.requirementId === otherRequirementId)!;
-    const differentPassingExecutionRef = report.evidenceIndex.find((evidence) =>
-      evidence.kind === "check" && evidence.label === "unit-tests"
-    )!.id;
-    expect(differentPassingExecutionRef).not.toBe(original.executionEvidenceRef);
-    otherNode.targetedTestEvidenceRefs = [original.testEvidenceRef];
-    otherNode.executionEvidenceRefs = [differentPassingExecutionRef];
-    report.proofGraph.summary.requirementsWithTargetedTests = 2;
-    report.proofGraph.summary.requirementsWithExecution = 2;
-    report.proofGraph.testRelationReceipts!.push({
-      ...structuredClone(original),
-      id: "test_relation_distinct_execution_clone",
-      subjectRequirementId: otherRequirementId,
-      subjectSource: "current_requirement",
-      executionEvidenceRef: differentPassingExecutionRef
-    });
-
-    const result = validateVerificationReport(report, { mode: "v2_full" });
-
-    expect(result.valid).toBe(false);
-    expect(result.errors.join("\n")).toContain(
-      "reuses one exact target and test relation across requirements"
-    );
-  });
-
-  it("rejects malformed or disconnected private source, target, and test-relation receipts", () => {
-    const mutations: Array<{ name: string; mutate: (report: ReturnType<typeof fullPrivateReceiptReport>) => void; expected: string }> = [
-      {
-        name: "source-binding unknown key",
-        mutate: (report) => { (report.proofGraph.sourceBindings![0] as unknown as Record<string, unknown>).sourceText = "raw source"; },
-        expected: "proofGraph.sourceBindings[0].sourceText is not allowed"
-      },
-      {
-        name: "missing source-binding ref",
-        mutate: (report) => {
-          const relation = report.proofGraph.nodes[1]!.deterministicRelation;
-          if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
-          relation.currentSourceBindingRef = "rsb_missing";
-        },
-        expected: "currentSourceBindingRef cites a missing source binding"
-      },
-      {
-        name: "mismatched source-binding seed",
-        mutate: (report) => { report.proofGraph.sourceBindings![0]!.seedId = "f".repeat(64); },
-        expected: "source bindings must share one seed and group with consecutive ordinals"
-      },
-      {
-        name: "mismatched source-binding group",
-        mutate: (report) => { report.proofGraph.sourceBindings![0]!.groupId = "grp_99"; },
-        expected: "source bindings must share one seed and group with consecutive ordinals"
-      },
-      {
-        name: "mismatched source-binding ordinal",
-        mutate: (report) => { report.proofGraph.sourceBindings![1]!.ordinal = report.proofGraph.sourceBindings![0]!.ordinal; },
-        expected: "source bindings must share one seed and group with consecutive ordinals"
-      },
-      {
-        name: "target receipt unknown key",
-        mutate: (report) => { (report.proofGraph.exactHeadTargetReceipts![0] as unknown as Record<string, unknown>).targetPath = "src/private.ts"; },
-        expected: "proofGraph.exactHeadTargetReceipts[0].targetPath is not allowed"
-      },
-      {
-        name: "target head mismatch",
-        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.headSha = "9".repeat(40); },
-        expected: "headSha must match source.provenance.headSha"
-      },
-      {
-        name: "invalid target blob SHA",
-        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.targetBlobSha = "ABC"; },
-        expected: "targetBlobSha must be a lowercase Git blob SHA"
-      },
-      {
-        name: "invalid target digest",
-        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.canonicalBindingDigest = "not-a-digest"; },
-        expected: "canonicalBindingDigest must be a lowercase SHA-256 digest"
-      },
-      {
-        name: "invalid target path digest",
-        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.targetPathDigest = "not-a-digest"; },
-        expected: "targetPathDigest must be a lowercase SHA-256 digest"
-      },
-      {
-        name: "invalid export kind",
-        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts![0]!.exportKind = "namespace" as never; },
-        expected: "exportKind is invalid"
-      },
-      {
-        name: "missing target receipt ref",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.exactHeadTargetReceiptRef = "exact_head_missing"; },
-        expected: "exactHeadTargetReceiptRef cites a missing target receipt"
-      },
-      {
-        name: "missing subject requirement",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.subjectRequirementId = "req_missing"; },
-        expected: "subjectRequirementId must match a report requirement"
-      },
-      {
-        name: "invalid subject source",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.subjectSource = "neighbor" as never; },
-        expected: "subjectSource is invalid"
-      },
-      {
-        name: "test antecedent subject source is no longer eligible",
-        mutate: (report) => { (report.proofGraph.testRelationReceipts![0] as unknown as { subjectSource: string }).subjectSource = "test_antecedent"; },
-        expected: "subjectSource is invalid"
-      },
-      {
-        name: "invalid relation basis",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.relationBasis = "lexical_overlap" as never; },
-        expected: "relationBasis is invalid"
-      },
-      {
-        name: "unbounded assertion count",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.directAssertionCaseCount = 9; },
-        expected: "directAssertionCaseCount must be an integer between 1 and 8"
-      },
-      {
-        name: "assertion count disagrees with case coverage",
-        mutate: (report) => {
-          const relation = report.proofGraph.testRelationReceipts![0]!;
-          report.proofGraph.nodes[1]!.caseCoverageReceipt = {
-            version: 1,
-            implementationEvidenceRef: relation.testEvidenceRef,
-            testEvidenceRef: relation.testEvidenceRef,
-            distinctLiteralCaseCount: 2
-          };
-        },
-        expected: "directAssertionCaseCount must match proof-node case coverage"
-      },
-      {
-        name: "missing test evidence ref",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.testEvidenceRef = "ev_missing"; },
-        expected: "testEvidenceRef cites missing evidence"
-      },
-      {
-        name: "test-relation unknown key",
-        mutate: (report) => { (report.proofGraph.testRelationReceipts![0] as unknown as Record<string, unknown>).rawAssertion = "private source"; },
-        expected: "proofGraph.testRelationReceipts[0].rawAssertion is not allowed"
-      },
-      {
-        name: "missing execution evidence ref",
-        mutate: (report) => { report.proofGraph.testRelationReceipts![0]!.executionEvidenceRef = "ev_missing"; },
-        expected: "executionEvidenceRef cites missing evidence"
-      },
-      {
-        name: "duplicate test relation",
-        mutate: (report) => { report.proofGraph.testRelationReceipts!.push(structuredClone(report.proofGraph.testRelationReceipts![0]!)); },
-        expected: "duplicates test relation receipt"
-      },
-      {
-        name: "duplicate target receipt",
-        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts!.push(structuredClone(report.proofGraph.exactHeadTargetReceipts![0]!)); },
-        expected: "duplicates a target receipt ID"
-      },
-      {
-        name: "source-binding cap",
-        mutate: (report) => { report.proofGraph.sourceBindings = Array.from({ length: 81 }, () => structuredClone(report.proofGraph.sourceBindings![0]!)); },
-        expected: "proofGraph.sourceBindings must contain at most 80 items"
-      },
-      {
-        name: "target-receipt cap",
-        mutate: (report) => { report.proofGraph.exactHeadTargetReceipts = Array.from({ length: 201 }, () => structuredClone(report.proofGraph.exactHeadTargetReceipts![0]!)); },
-        expected: "proofGraph.exactHeadTargetReceipts must contain at most 200 items"
-      },
-      {
-        name: "test-relation cap",
-        mutate: (report) => { report.proofGraph.testRelationReceipts = Array.from({ length: 201 }, () => structuredClone(report.proofGraph.testRelationReceipts![0]!)); },
-        expected: "proofGraph.testRelationReceipts must contain at most 200 items"
-      }
+  it("rejects v2 private-bundle receipt mutations against the independent transient context", () => {
+    const mutations: Array<{ name: string; mutate: (report: ReturnType<typeof fullPrivateReceiptReport>) => void }> = [
+      { name: "requirement owner", mutate: (report) => { v2Receipt(report).requirementId = report.requirements[0]!.requirementId; } },
+      { name: "test evidence", mutate: (report) => { v2Receipt(report).testEvidenceRef = "ev_other_test"; } },
+      { name: "subject digest", mutate: (report) => { v2Receipt(report).subjectDigest = "f".repeat(64); } },
+      { name: "import digest", mutate: (report) => { v2Receipt(report).importBindingDigest = "e".repeat(64); } },
+      { name: "assertion count", mutate: (report) => { v2Receipt(report).directAssertionCount = 2; } },
+      { name: "implementation target", mutate: (report) => {
+        const receipt = v2Receipt(report);
+        receipt.targetMode = "changed_target";
+        receipt.implementationEvidenceRef = "ev_other_implementation";
+        delete receipt.exactHeadTargetReceiptRef;
+      } },
+      { name: "execution head digest", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.executionBindingReceipts[0]!.headBindingDigest = "d".repeat(64); } },
+      { name: "source relation binding", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.sourceBindings[1]!.seedId = "c".repeat(64); } },
+      { name: "source binding id", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.sourceBindings[1]!.id = "rsb_forged"; } },
+      { name: "source binding group", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.sourceBindings[1]!.groupId = "grp_99"; } },
+      { name: "source binding ordinal", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.sourceBindings[1]!.ordinal = 99; } },
+      { name: "source binding authority", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.sourceBindings[1]!.source = "pr_description"; } },
+      { name: "exact-head target binding", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.exactHeadTargetReceipts[0]!.canonicalBindingDigest = "b".repeat(64); } },
+      { name: "exact-head target id", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.exactHeadTargetReceipts[0]!.id = "exact_head_forged"; } },
+      { name: "exact-head target path", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.exactHeadTargetReceipts[0]!.targetPathDigest = "1".repeat(64); } },
+      { name: "exact-head target blob", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.exactHeadTargetReceipts[0]!.targetBlobSha = "2".repeat(40); } },
+      { name: "exact-head target export", mutate: (report) => { report.proofGraph.privateReceiptBundleV2!.exactHeadTargetReceipts[0]!.exportKind = "default"; } }
     ];
 
     for (const mutation of mutations) {
       const report = fullPrivateReceiptReport();
+      const context = v2ReceiptValidationContext(report);
       mutation.mutate(report);
-      const result = validateVerificationReport(report, { mode: "v2_full" });
+      const result = validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: context } as never);
       expect(result.valid, mutation.name).toBe(false);
-      expect(result.errors.join("\n"), mutation.name).toContain(mutation.expected);
+      expect(result.errors.join("\n"), mutation.name).toContain("private v2 receipt does not match transient validation context");
     }
+  });
+
+  it.each(["test", "execution"] as const)("rejects a coherent %s evidence-identity rename", (identity) => {
+    const report = fullPrivateReceiptReport();
+    const context = v2ReceiptValidationContext(report);
+
+    coherentlyRenameReceiptEvidence(report, identity);
+
+    expect(validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: context }).errors.join("\n"))
+      .toContain("private v2 receipt does not match transient validation context");
+  });
+
+  it.each([
+    {
+      name: "canonical digest",
+      mutate: (context: VerificationValidationContextV2) => { context.canonicalRequirementDigest = "f".repeat(64); }
+    },
+    {
+      name: "changed canonical source",
+      mutate: (context: VerificationValidationContextV2) => { context.selectedRequirementSource!.taskText += "\n- Add an unrelated objective."; }
+    },
+    {
+      name: "incomplete changed-file inventory",
+      mutate: (context: VerificationValidationContextV2) => { context.changedFileInventory.completeness = "incomplete"; }
+    },
+    {
+      name: "stale inventory head",
+      mutate: (context: VerificationValidationContextV2) => { context.changedFileInventory.headSha = "f".repeat(40); }
+    },
+    {
+      name: "missing changed test",
+      mutate: (context: VerificationValidationContextV2) => { context.changedFileInventory.files = []; }
+    },
+    {
+      name: "stale exact-head module",
+      mutate: (context: VerificationValidationContextV2) => { context.resolvedHeadModules = []; }
+    },
+    {
+      name: "unbound execution suite",
+      mutate: (context: VerificationValidationContextV2) => { context.executionBindings = []; }
+    }
+  ])("rejects a receipt bundle against $name context", ({ mutate }) => {
+    const report = fullPrivateReceiptReport();
+    const context = structuredClone(v2ReceiptValidationContext(report));
+    mutate(context);
+
+    expect(validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: context }).errors.join("\n"))
+      .toContain("private v2 receipt does not match transient validation context");
+  });
+
+  it("rejects a v2 receipt cloned across requirement owners", () => {
+    const report = fullPrivateReceiptReport();
+    const original = v2Receipt(report);
+    report.proofGraph.privateReceiptBundleV2!.testRelationReceipts.push({
+      ...structuredClone(original),
+      id: "cross_owner_clone",
+      requirementId: report.requirements[0]!.requirementId
+    });
+
+    const result = validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: v2ReceiptValidationContext(report) } as never);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("private v2 receipt does not match transient validation context");
+  });
+
+  it("does not let a v1 relation receipt close satisfied v2 observation axes", () => {
+    const report = fullPrivateReceiptReport();
+    const relation = v2Receipt(report);
+    const execution = report.proofGraph.privateReceiptBundleV2!.executionBindingReceipts[0]!;
+    const context = v2ReceiptValidationContext(report);
+    report.proofGraph.privateReceiptBundleV2!.testRelationReceipts = [{
+      id: "legacy_relation",
+      version: 1,
+      kind: "targeted_test_relation",
+      subjectRequirementId: relation.requirementId,
+      subjectSource: "current_requirement",
+      exactHeadTargetReceiptRef: relation.exactHeadTargetReceiptRef!,
+      testEvidenceRef: relation.testEvidenceRef,
+      relationBasis: "direct_static_import",
+      directAssertionCaseCount: relation.directAssertionCount,
+      executionEvidenceRef: execution.executionEvidenceRef
+    }];
+
+    const result = validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: context });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("satisfied requirement-local targeted-test or execution observation requires a closed test-relation receipt");
   });
 
   it("never echoes attacker-controlled private receipt IDs or refs in validation errors", () => {
     const attacks: Array<(report: ReturnType<typeof fullPrivateReceiptReport>, token: string) => void> = [
-      (report, token) => {
-        report.proofGraph.sourceBindings![0]!.id = token;
-        report.proofGraph.sourceBindings![1]!.id = token;
-        const relation = report.proofGraph.nodes[1]!.deterministicRelation;
-        if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
-        relation.currentSourceBindingRef = token;
-        relation.antecedentSourceBindingRef = token;
-      },
-      (report, token) => {
-        const relation = report.proofGraph.nodes[1]!.deterministicRelation;
-        if (relation?.kind !== "test_antecedent") throw new Error("expected test antecedent");
-        relation.currentSourceBindingRef = token;
-      },
-      (report, token) => { report.proofGraph.exactHeadTargetReceipts![0]!.id = token; report.proofGraph.exactHeadTargetReceipts!.push(structuredClone(report.proofGraph.exactHeadTargetReceipts![0]!)); },
-      (report, token) => { report.proofGraph.testRelationReceipts![0]!.id = token; report.proofGraph.testRelationReceipts!.push(structuredClone(report.proofGraph.testRelationReceipts![0]!)); },
-      (report, token) => { report.proofGraph.testRelationReceipts![0]!.subjectRequirementId = token; },
-      (report, token) => { report.proofGraph.testRelationReceipts![0]!.exactHeadTargetReceiptRef = token; },
-      (report, token) => { report.proofGraph.testRelationReceipts![0]!.testEvidenceRef = token; },
-      (report, token) => { report.proofGraph.testRelationReceipts![0]!.executionEvidenceRef = token; },
-      (report, token) => { report.proofGraph.failedCheckAssociations![0]!.checkEvidenceRef = token; }
+      (report, token) => { report.proofGraph.privateReceiptBundleV2!.sourceBindings[0]!.id = token; },
+      (report, token) => { report.proofGraph.privateReceiptBundleV2!.exactHeadTargetReceipts[0]!.id = token; },
+      (report, token) => { v2Receipt(report).id = token; },
+      (report, token) => { v2Receipt(report).requirementId = token; },
+      (report, token) => { v2Receipt(report).exactHeadTargetReceiptRef = token; },
+      (report, token) => { v2Receipt(report).testEvidenceRef = token; },
+      (report, token) => { v2Receipt(report).executionReceiptRef = token; },
+      (report, token) => { report.proofGraph.privateReceiptBundleV2!.executionBindingReceipts[0]!.executionEvidenceRef = token; }
     ];
 
     attacks.forEach((attack, index) => {
       const token = `PRIVATE_ATTACKER_RECEIPT_${index}`;
       const report = fullPrivateReceiptReport();
+      const context = v2ReceiptValidationContext(report);
       attack(report, token);
 
-      const errors = validateVerificationReport(report, { mode: "v2_full" }).errors.join("\n");
+      const errors = validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: context } as never).errors.join("\n");
       expect(errors.length).toBeGreaterThan(0);
       expect(errors).not.toContain(token);
     });
@@ -323,14 +392,10 @@ describe("validateVerificationReport", () => {
   });
 
   it("accepts an exact-head receipt with a 64-character report head", () => {
-    const report = fullPrivateReceiptReport();
     const headSha = "a".repeat(64);
-    report.source.provenance!.headSha = headSha;
-    report.source.provenance!.changedFileInventory!.headSha = headSha;
-    report.source.provenance!.executionSuites![0]!.headSha = headSha;
-    report.proofGraph.exactHeadTargetReceipts![0]!.headSha = headSha;
+    const report = fullPrivateReceiptReport("receipt_v2", headSha);
 
-    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    expect(validateVerificationReport(report, { mode: "v2_full", receiptValidationContext: v2ReceiptValidationContext(report) })).toEqual({ valid: true, errors: [] });
   });
 
   it("rejects duplicate source-binding requirement, span, and identity tuples", () => {
@@ -475,7 +540,7 @@ describe("validateVerificationReport", () => {
     for (const collection of [
       "sourceBindings",
       "exactHeadTargetReceipts",
-      "testRelationReceipts",
+      "privateReceiptBundleV2",
       "failedCheckAssociations"
     ]) {
       expect(tenantValidation.errors).toContain(`tenant reports must omit proofGraph.${collection}.`);
@@ -593,6 +658,18 @@ describe("validateVerificationReport", () => {
         distinctLiteralCaseCount: number;
       };
     };
+
+    // This test targets the axis validator itself, so make the pre-policy
+    // candidate explicit rather than relying on a receipt-less promotion.
+    for (const axis of report.requirements[0]!.proofAxes ?? []) {
+      if (axis.subject === "targeted_test" || axis.subject === "execution") axis.state = "satisfied";
+    }
+    report.requirements[0]!.status = "met";
+    report.requirements[0]!.gaps = [];
+    report.proofGraph.nodes[0]!.status = "met";
+    report.proofGraph.nodes[0]!.gapSignals = [];
+    report.proofGraph.summary.requirementsWithGaps = 0;
+    report.proofGraph.summary.gapCount = 0;
 
     expect(legitimateNode.caseCoverageReceipt).toBeDefined();
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
@@ -884,7 +961,7 @@ describe("validateVerificationReport", () => {
     expect(validateVerificationReport(report)).toEqual({ valid: true, errors: [] });
   });
 
-  it("accepts verified suite execution only with a GitHub-head-anchored changed test path", () => {
+  it("keeps suite execution requirement-local only when a receipt can bind the changed test path", () => {
     const headSha = "c".repeat(40);
     const report = generateVerificationReport({
       title: "Add repository search empty state",
@@ -922,11 +999,11 @@ describe("validateVerificationReport", () => {
     });
 
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
+    expect(report.requirements[0]?.proofAxes?.find((axis) => axis.subject === "execution")?.state).toBe("incomplete");
 
     report.source.provenance!.executionSuites![0]!.testPaths = ["test/unrelated.test.js"];
     const forged = validateVerificationReport(report, { mode: "full" });
-    expect(forged.valid).toBe(false);
-    expect(forged.errors.join("\n")).toContain("cites incompatible evidence or collection basis");
+    expect(forged).toEqual({ valid: true, errors: [] });
   });
 
   it("validates every no-secret demo report in full and summary modes", () => {
@@ -1147,8 +1224,9 @@ describe("validateVerificationReport", () => {
 
   it("rejects met test requirements without passing execution evidence", () => {
     const report = generateVerificationReport(demoScenarios["missing-tests"]);
-    report.requirements[2].status = "met";
-    report.requirements[2].gaps = [];
+    const testRequirement = report.requirements.find((requirement) => /\btests?\b/i.test(requirement.requirementText))!;
+    testRequirement.status = "met";
+    testRequirement.gaps = [];
 
     const result = validateVerificationReport(report, { mode: "full" });
 
@@ -1246,7 +1324,7 @@ describe("validateVerificationReport", () => {
     expect(incompatibleResult.errors.join("\n")).toContain("incompatible evidence");
 
     const nodeMismatch = generateVerificationReport(demoScenarios.clean);
-    nodeMismatch.proofGraph.nodes[0]!.status = "partial";
+    nodeMismatch.proofGraph.nodes[0]!.status = nodeMismatch.requirements[0]!.status === "partial" ? "met" : "partial";
     const mismatchResult = validateVerificationReport(nodeMismatch, { mode: "full" });
     expect(mismatchResult.valid).toBe(false);
     expect(mismatchResult.errors.join("\n")).toContain("must match proofGraph node status");
@@ -1267,6 +1345,7 @@ describe("validateVerificationReport", () => {
       locator: "ci://payments",
       confidence: 0.99
     });
+    executionAxis.state = "satisfied";
     executionAxis.evidenceRefs = ["ev_unrelated_global_execution"];
     executionNode.executionEvidenceRefs = ["ev_unrelated_global_execution"];
     const unrelatedResult = validateVerificationReport(unrelatedExecution, { mode: "full" });
@@ -1330,8 +1409,16 @@ describe("validateVerificationReport", () => {
     });
     const finding = report.requirements[0]!;
     const node = report.proofGraph.nodes[0]!;
+    finding.proofAxes!.find((axis) => axis.subject === "execution")!.state = "satisfied";
+    finding.status = "met";
+    finding.gaps = [];
+    node.status = "met";
+    node.gapSignals = node.gapSignals.filter((gap) => gap.kind !== "missing_execution");
+    report.proofGraph.summary.requirementsWithGaps = node.gapSignals.length > 0 ? 1 : 0;
+    report.proofGraph.summary.gapCount = node.gapSignals.length;
     expect(finding.status).toBe("met");
     expect(finding.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+    expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
 
     finding.status = "unclear";
     finding.gaps = ["Requirement needs human interpretation before trusting the report."];
@@ -1462,7 +1549,8 @@ describe("validateVerificationReport", () => {
           runAttempt: 1,
           jobId: 303,
           jobName: "test",
-          headSha: "a".repeat(40)
+          headSha: "a".repeat(40),
+          checkEvidenceRef: "ev_4"
         }
       }],
       logs: [],
@@ -1526,7 +1614,7 @@ describe("validateVerificationReport", () => {
     expect(node.requirementText).toBe(requirement.requirementText);
     expect(node.status).toBe("partial");
     expect(requirement.status).toBe("partial");
-    expect(requirement.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
+    expect(requirement.proofAxes?.find((axis) => axis.subject === "execution")?.state).toBe("incomplete");
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
 
     const statusMismatch = structuredClone(report);
@@ -1562,6 +1650,37 @@ describe("validateVerificationReport", () => {
     const result = validateVerificationReport(report, { mode: "full" });
     expect(result.valid).toBe(false);
     expect(result.errors.join("\n")).toContain("head-anchored authoritative GitHub inventory");
+  });
+
+  it("rejects pasted provenance that retains a GitHub execution-suite receipt", () => {
+    const report = generateVerificationReport({
+      title: "Pasted checks replace GitHub checks",
+      description: "Pasted test result.",
+      taskText: "Acceptance criteria: run the focused test.",
+      changedFiles: [{ path: "test/pasted.test.js", status: "added", patch: "+ test('pasted', () => {})" }],
+      checks: [{ name: "pasted unit tests", status: "passed", summary: "passed" }],
+      logs: [],
+      sourceProvenance: {
+        version: 1,
+        origin: "pasted_evidence",
+        changedFileInventory: { version: 1, completeness: "incomplete" },
+        executionSuites: [{
+          headSha: "a".repeat(40),
+          status: "passed",
+          executionSource: "GitHub Actions job: unit-tests",
+          runner: "node_test",
+          scope: "repository_discovery",
+          testPaths: ["test/pasted.test.js"]
+        }],
+        evidenceCapturedAt: "2026-08-11T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "pasted_metadata" }
+      }
+    });
+
+    const result = validateVerificationReport(report, { mode: "full" });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("must be anchored to the GitHub snapshot head");
   });
 
   it.each([
@@ -1616,14 +1735,23 @@ describe("validateVerificationReport", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     const requirement = report.requirements[0];
     expect(requirement?.proofAxes?.length).toBeGreaterThan(0);
-    requirement!.proofAxes![0].state = "incomplete";
+    requirement!.status = "met";
+    report.proofGraph.nodes.find((node) => node.requirementId === requirement!.requirementId)!.status = "met";
 
     const result = validateVerificationReport(report, { mode: "full" });
 
     expect(result.valid).toBe(false);
     expect(result.errors.join("\n")).toContain("status must agree with proofAxes");
 
-    const satisfied = generateVerificationReport(demoScenarios.clean);
+    const satisfied = generateVerificationReport({
+      title: "Document retry setup",
+      description: "",
+      taskText: "Acceptance criteria: document retry setup.",
+      changedFiles: [{ path: "docs/retry.md", status: "modified", patch: "+ Retry setup" }],
+      checks: [],
+      logs: []
+    });
+    expect(satisfied.requirements[0]!.status).toBe("met");
     satisfied.requirements[0]!.status = "partial";
     const reverseResult = validateVerificationReport(satisfied, { mode: "full" });
     expect(reverseResult.valid).toBe(false);
@@ -1805,8 +1933,9 @@ function githubInventoryProvenance(): NonNullable<ReturnType<typeof generateVeri
   };
 }
 
-function fullPrivateReceiptReport() {
-  const headSha = "a".repeat(40);
+const privateReceiptInputs = new WeakMap<object, PullRequestInput>();
+
+function fullPrivateReceiptInput(headSha = "a".repeat(40)): PullRequestInput {
   const moduleSource = "export function repositoryName(value) { return String(value).toLowerCase(); }";
   const targetBlobSha = createHash("sha1")
     .update(`blob ${Buffer.byteLength(moduleSource, "utf8")}\0`)
@@ -1814,7 +1943,7 @@ function fullPrivateReceiptReport() {
     .digest("hex");
   const testPath = "test/repository-name-regression.test.js";
 
-  return generateVerificationReportV2FromInput({
+  return {
     title: "Add repository name behavior and regression coverage",
     description: "Adds deterministic repository-name evidence.",
     taskText: [
@@ -1861,5 +1990,80 @@ function fullPrivateReceiptReport() {
       blobSha: targetBlobSha,
       source: moduleSource
     }]
-  });
+  };
+}
+
+function fullPrivateReceiptReport(mode: "off" | "receipt_v2" = "receipt_v2", headSha = "a".repeat(40)) {
+  const input = fullPrivateReceiptInput(headSha);
+  const previous = process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+  if (mode === "receipt_v2") process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = "receipt_v2";
+  else delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+  try {
+    const report = generateVerificationReportV2FromInput(input);
+    privateReceiptInputs.set(report, input);
+    return report;
+  } finally {
+    if (previous === undefined) delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+    else process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = previous;
+  }
+}
+
+function v2Receipt(report: ReturnType<typeof fullPrivateReceiptReport>): TestRelationReceiptV2 {
+  const receipt = report.proofGraph.privateReceiptBundleV2!.testRelationReceipts[0];
+  if (!receipt || receipt.version !== 2) throw new Error("fixture must contain a v2 test relation receipt");
+  return receipt;
+}
+
+function v2ReceiptValidationContext(report: ReturnType<typeof fullPrivateReceiptReport>): VerificationValidationContextV2 {
+  const input = privateReceiptInputs.get(report);
+  if (!input) throw new Error("fixture input is unavailable");
+  const canonical = selectCanonicalRequirements({ kind: "selected_source", input });
+  return createVerificationValidationContextV2(input, canonical);
+}
+
+function coherentlyRenameReceiptEvidence(
+  report: ReturnType<typeof fullPrivateReceiptReport>,
+  identity: "test" | "execution"
+): void {
+  const relation = v2Receipt(report);
+  const execution = report.proofGraph.privateReceiptBundleV2!.executionBindingReceipts[0]!;
+  const oldEvidenceRef = identity === "test" ? relation.testEvidenceRef : execution.executionEvidenceRef;
+  const newEvidenceRef = identity === "test" ? "ev_forged_test" : "ev_forged_execution";
+  replaceExactStringValues(report, oldEvidenceRef, newEvidenceRef);
+
+  const headSha = report.source.provenance!.headSha!;
+  execution.headBindingDigest = receiptHash(["v2", headSha, execution.testEvidenceRef, execution.executionEvidenceRef]);
+  const oldExecutionId = execution.id;
+  const newExecutionId = `execution_binding_${receiptHash([
+    execution.requirementId,
+    execution.testEvidenceRef,
+    execution.executionEvidenceRef,
+    execution.headBindingDigest
+  ]).slice(0, 24)}`;
+  replaceExactStringValues(report, oldExecutionId, newExecutionId);
+
+  const targetRef = relation.targetMode === "changed_target"
+    ? relation.implementationEvidenceRef!
+    : relation.exactHeadTargetReceiptRef!;
+  relation.id = `test_relation_v2_${receiptHash([
+    relation.requirementId,
+    relation.targetMode,
+    targetRef,
+    relation.testEvidenceRef,
+    relation.subjectDigest,
+    relation.importBindingDigest,
+    relation.executionReceiptRef!
+  ]).slice(0, 24)}`;
+}
+
+function replaceExactStringValues(value: unknown, from: string, to: string): void {
+  if (!value || typeof value !== "object") return;
+  for (const [key, item] of Object.entries(value)) {
+    if (item === from) (value as Record<string, unknown>)[key] = to;
+    else replaceExactStringValues(item, from, to);
+  }
+}
+
+function receiptHash(parts: readonly string[]): string {
+  return createHash("sha256").update(parts.join("\0")).digest("hex");
 }

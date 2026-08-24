@@ -8,7 +8,7 @@ import {
 } from "./report-authenticity";
 import { sanitizeReportForShare } from "./report-share";
 import { redactSecrets } from "./redact";
-import { validateVerificationReport } from "./report-validation";
+import { resolveRuntimeReportValidation, validateRuntimeReportBoundary } from "./report-runtime-validation";
 import {
   decodeTenantPersistedReport,
   isSafeTenantLocator,
@@ -18,7 +18,7 @@ import {
   validateTenantStoredReport
 } from "./tenant-report-validation";
 import { tenantGapText, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
-import type { RequirementProofAxis, VerificationReport } from "./types";
+import type { PullRequestInput, RequirementProofAxis, VerificationReport } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_SERVER_REPORTS = 100;
@@ -63,6 +63,8 @@ export interface CreateSavedReportOptions {
   repositoryId?: number;
   pullRequestNumber?: number;
   headSha?: string;
+  /** Raw transient evidence used only to admit server-generated private v2 reports. */
+  validationInput?: PullRequestInput;
 }
 
 interface NormalizedCreateSavedReportOptions {
@@ -72,6 +74,7 @@ interface NormalizedCreateSavedReportOptions {
   repositoryId?: number;
   pullRequestNumber?: number;
   headSha?: string;
+  validationInput?: PullRequestInput;
 }
 
 export interface SavedReportStoreStatus {
@@ -203,10 +206,26 @@ export async function createVerifiedSavedReport(
   const config = getSupabaseReportStoreConfig();
   const options = normalizeCreateOptions(optionsOrTtlMs);
   requireReportSigningSecret();
+  let admittedReport = report;
+  if (requiresGeneratedPrivateContext(report)) {
+    if (!options.validationInput) {
+      throw new SavedReportStoreError("Active or receipt-positive v2 report requires generated private validation context before persistence.");
+    }
+    const validation = resolveRuntimeReportValidation({
+      boundary: "generated_private_full",
+      input: options.validationInput,
+      report,
+      requireV2: true
+    });
+    if (!validation.valid) {
+      throw new SavedReportStoreError(`Generated private report failed persistence validation: ${validation.errors.join("; ")}`);
+    }
+    admittedReport = validation.report;
+  }
 
-  if (config) return createSupabaseSavedReport(config, report, options, "verified_agentproof");
+  if (config) return createSupabaseSavedReport(config, admittedReport, options, "verified_agentproof");
 
-  return createMemorySavedReport(report, options, "verified_agentproof");
+  return createMemorySavedReport(admittedReport, options, "verified_agentproof");
 }
 
 export async function getSavedReport(
@@ -801,7 +820,7 @@ function prepareSummaryReportForStorage(
   safeReport.authenticity = trust === "verified_agentproof"
     ? createVerifiedAuthenticity(safeReport, requireReportSigningSecret())
     : createStoredUnverifiedAuthenticity(safeReport, "imported_unverified");
-  const validation = validateVerificationReport(safeReport, { mode: storedReportValidationMode(safeReport) });
+  const validation = validateRuntimeReportBoundary({ boundary: "signed_summary_read", report: safeReport });
 
   if (!validation.valid) {
     throw new SavedReportStoreError(`Summary-only saved report failed validation: ${validation.errors.join("; ")}`);
@@ -817,7 +836,7 @@ function prepareSummaryReportForStorage(
  * raw GitHub response, PR/Issue body, or unbounded generated prose is written
  * to the saved-report row.
  */
-function prepareTenantDetailReportForStorage(report: VerificationReport, trust: "verified_agentproof" | "imported_unverified"): VerificationReport {
+export function prepareTenantDetailReportForStorage(report: VerificationReport, trust: "verified_agentproof" | "imported_unverified"): VerificationReport {
   const analysisContext = tenantReportAnalysisContext(report);
   const proofNodesByRequirement = new Map(report.proofGraph.nodes.map((node) => [node.requirementId, node]));
   const objectiveLabels = new Map(report.requirements.map((item) => [item.requirementId, tenantObjectiveLabel(item.requirementText)]));
@@ -965,19 +984,13 @@ function sanitizeSummaryReport(report: VerificationReport): VerificationReport {
       : authenticity?.trust === "portable_unverified"
         ? createStoredUnverifiedAuthenticity(safeReport, "portable_unverified")
         : createStoredUnverifiedAuthenticity(safeReport, "imported_unverified");
-  const validation = validateVerificationReport(safeReport, { mode: storedReportValidationMode(safeReport) });
+  const validation = validateRuntimeReportBoundary({ boundary: "signed_summary_read", report: safeReport });
 
   if (!validation.valid) {
     throw new SavedReportStoreError(`Summary-only saved report failed validation: ${validation.errors.join("; ")}`);
   }
 
   return safeReport;
-}
-
-function storedReportValidationMode(report: VerificationReport): "summary" | "v2_summary" {
-  return (report as { reportSchemaVersion?: unknown }).reportSchemaVersion === "verification-report.v2"
-    ? "v2_summary"
-    : "summary";
 }
 
 function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedReportSummary | null {
@@ -1003,7 +1016,7 @@ function toTenantSavedReportSummary(saved: StoredServerReport): TenantSavedRepor
   }
   const validation = saved.tenantId && saved.report.authenticity?.trust === "verified_agentproof"
     ? validateTenantStoredReport(saved.report, requireReportSigningSecret())
-    : validateVerificationReport(saved.report, { mode: storedReportValidationMode(saved.report) });
+    : validateRuntimeReportBoundary({ boundary: "signed_summary_read", report: saved.report });
   if (!validation.valid) return null;
 
   const report = saved.report;
@@ -1291,8 +1304,20 @@ function normalizeCreateOptions(optionsOrTtlMs: CreateSavedReportOptions | numbe
 
   return {
     ttlMs,
-    tenantId, installationId, repositoryId, pullRequestNumber, headSha
+    tenantId, installationId, repositoryId, pullRequestNumber, headSha,
+    validationInput: options.validationInput
   };
+}
+
+function requiresGeneratedPrivateContext(report: VerificationReport): boolean {
+  if ((report as { reportSchemaVersion?: unknown }).reportSchemaVersion !== "verification-report.v2") return false;
+  const contractState = (report as { verificationContract?: { state?: unknown } }).verificationContract?.state;
+  const hasPositive = report.requirements.some((requirement) => requirement.proofAxes?.some((axis) =>
+    (axis.subject === "targeted_test" || axis.subject === "execution") && axis.state === "satisfied"
+  ));
+  const bundle = report.proofGraph.privateReceiptBundleV2;
+  return contractState === "authoritative" || contractState === "author_claim" || hasPositive ||
+    Boolean(bundle?.testRelationReceipts.some((receipt) => receipt.version === 2));
 }
 
 function markPriorMemoryReportsStale(saved: StoredServerReport) {

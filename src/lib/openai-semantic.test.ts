@@ -151,7 +151,7 @@ describe("OpenAI semantic adapter", () => {
   });
 
   it("submits one background retry containing only the first response's missing requirements", async () => {
-    const input = demoScenarios.clean;
+    const input = threeRequirementInput();
     const report = generateVerificationReport(input);
     const llmPackage = buildLlmSemanticPackage(input, report);
     const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
@@ -188,7 +188,7 @@ describe("OpenAI semantic adapter", () => {
   });
 
   it("retrieves a background missing-only response and preserves first-valid semantic units", async () => {
-    const input = demoScenarios.clean;
+    const input = threeRequirementInput();
     const report = generateVerificationReport(input);
     const llmPackage = buildLlmSemanticPackage(input, report);
     const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
@@ -233,7 +233,7 @@ describe("OpenAI semantic adapter", () => {
   });
 
   it("preserves partial background retry raw and rejected diagnostics through merge", async () => {
-    const input = demoScenarios.clean;
+    const input = threeRequirementInput();
     const report = generateVerificationReport(input);
     const llmPackage = buildLlmSemanticPackage(input, report);
     const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
@@ -278,7 +278,7 @@ describe("OpenAI semantic adapter", () => {
   });
 
   it("preserves discarded background retry diagnostics while falling back to the first candidate", async () => {
-    const input = demoScenarios.clean;
+    const input = threeRequirementInput();
     const report = generateVerificationReport(input);
     const llmPackage = buildLlmSemanticPackage(input, report);
     const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
@@ -509,7 +509,7 @@ describe("OpenAI semantic adapter", () => {
   });
 
   it("returns valid merged units after one incomplete coverage retry without a third request", async () => {
-    const input = demoScenarios.clean;
+    const input = threeRequirementInput();
     const report = generateVerificationReport(input);
     const llmPackage = buildLlmSemanticPackage(input, report);
     const requirementIds = llmPackage.input.requirements.map((requirement) => requirement.id);
@@ -637,6 +637,25 @@ function hybridFixture() {
     expected_axes: []
   })))!;
   return { input, seed, plannerPackage, plan };
+}
+
+function threeRequirementInput() {
+  const taskText = [
+    "- Add password-reset validation before submission.",
+    "- Add billing-invoice validation before submission.",
+    "- Add workspace-invitation validation before submission."
+  ].join("\n");
+  return {
+    ...demoScenarios.clean,
+    taskText,
+    description: taskText,
+    taskSource: "task" as const,
+    changedFiles: [
+      { path: "src/auth/password-reset.ts", status: "modified" as const, patch: "+ validate password-reset validation before submission" },
+      { path: "src/billing/invoice.ts", status: "modified" as const, patch: "+ validate billing-invoice validation before submission" },
+      { path: "src/team/invitation.ts", status: "modified" as const, patch: "+ validate workspace-invitation validation before submission" }
+    ]
+  };
 }
 
 function semanticOutput(requirementId: string, evidenceId: string) {

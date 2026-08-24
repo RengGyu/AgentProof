@@ -79,15 +79,16 @@ describe("dashboard report export", () => {
     expect(markdown).toContain("Requirement outcome: Unclear");
     expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
     expect(markdown).toContain("**Contract guidance:** Approved verification contract is missing.");
-    expect(markdown).toContain("Key gap: User-facing interaction needs component or browser evidence beyond logic and suite execution.");
+    expect(markdown).toContain("Key gap: Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.");
     expect(markdown).not.toContain("Key gap: Approved verification contract is missing.");
-    expect(markdown.match(/User-facing interaction needs component or browser evidence beyond logic and suite execution\./g)).toHaveLength(1);
+    expect(markdown).not.toContain("Key gap: User-facing interaction needs component or browser evidence beyond logic and suite execution.");
     expect(markdown.indexOf("**Contract guidance:**")).toBeLessThan(markdown.indexOf("Key gap:"));
     expect(json).toMatchObject({
       verification_policy: "Strict verification contract",
       verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."
     });
     expect(json.requirements[0].evidence_gaps).toEqual([
+      "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
       "User-facing interaction needs component or browser evidence beyond logic and suite execution."
     ]);
     expect(JSON.stringify(json.requirements[0])).not.toContain("Approved verification contract is missing.");

@@ -1,7 +1,8 @@
 import { createHash } from "crypto";
-import type { AnalyzeRequest, ChangedFile, CheckRun, ExecutionSuiteObservation, LogSnippet, PullRequestInput, SourceProvenance } from "./types";
+import type { AnalyzeRequest, ChangedFile, CheckRun, ExecutionSuiteObservation, LogSnippet, PullRequestInput, SourceProvenance, WorkflowExecutionIdentity } from "./types";
 import { directTestTargetCandidate } from "./evidence-relation";
 import { isExecutionEvidenceSignal, isFailedAmbiguousActionsExecutionSignal } from "./evidence-status";
+import { normalizeGitHubWorkflowObservationV2 } from "./github-snapshot-v2";
 import {
   extractSupportedIssueReferences,
   formatIssueReference,
@@ -117,6 +118,8 @@ interface GitHubCheckRunResponse {
   name: string;
   status: string;
   conclusion: string | null;
+  head_sha?: string;
+  check_suite?: { id?: number };
   html_url?: string;
   details_url?: string;
   output?: {
@@ -134,7 +137,13 @@ interface GitHubStatusResponse {
 }
 
 interface GitHubActionJobResponse {
+  id?: number;
+  run_id?: number;
+  run_attempt?: number;
+  head_sha?: string;
   name: string;
+  workflow_name?: string;
+  check_run_url?: string;
   status: string;
   conclusion: string | null;
   html_url?: string;
@@ -173,6 +182,11 @@ interface GitHubActionJobFetchResult {
   logs: LogSnippet[];
   executionSuites: ExecutionSuiteObservation[];
   limitation?: string;
+}
+
+interface GitHubWorkflowIdentityFetchResult {
+  identitiesByCheckId: Map<number, WorkflowExecutionIdentity>;
+  limitations: string[];
 }
 
 export function parseGitHubPullUrl(url: string): GitHubPullUrl | null {
@@ -222,7 +236,7 @@ export async function buildPullRequestInput(
       const live = await buildGitHubPullRequestInput(request.prUrl, request.githubToken, request.taskText ?? "", evidenceTiming);
 
       if (live) {
-        return mergePastedOverrides(live, request);
+        return mergePastedEvidenceForAnalysis(live, request);
       }
     } catch (error) {
       if (error instanceof GitHubPullRequestHeadChangedError) {
@@ -363,6 +377,13 @@ async function fetchGitHubPullRequest(
       () => fetchCommitStatuses(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits/${initialHeadSha}/status`, headers, limitations, hasToken)
     )
   ]);
+  const taskEvidenceText = taskText.trim() ? taskText : linkedIssueTask?.taskText ?? "";
+  const checkEvidenceRefs = assignGitHubCheckEvidenceRefs(
+    taskEvidenceText,
+    String(pr.body ?? ""),
+    files.length,
+    checkRuns
+  );
   const annotationLimitations: string[] = [];
   const actionJobLimitations: string[] = [];
   const [annotatedCheckRuns, actionJobEvidence, resolvedHeadModules] = await Promise.all([
@@ -374,7 +395,19 @@ async function fetchGitHubPullRequest(
     measureGitHubEvidenceTiming(
       evidenceTiming,
       "github_jobs",
-      () => fetchActionJobSummaries(parsed.owner, parsed.repo, checkRuns, headers, actionJobLimitations, hasToken, initialHeadSha, files)
+      () => fetchActionJobSummaries(
+        parsed.owner,
+        parsed.repo,
+        checkRuns,
+        headers,
+        actionJobLimitations,
+        hasToken,
+        initialHeadSha,
+        files,
+        !hasIncompleteCheckRunCollection(limitations),
+        checkEvidenceRefs.byCheckId,
+        checkEvidenceRefs.available
+      )
     ),
     collectResolvedHeadModules({
       owner: parsed.owner,
@@ -458,12 +491,18 @@ async function fetchGitHubPullRequest(
       status: file.status,
       patch: file.patch ? compactText(file.patch, 1000) : undefined
     })),
-    checks: annotatedCheckRuns.map((check) => ({
-      name: check.name,
-      status: mapGitHubObservationStatus(mapGitHubCheckStatus(check.status, check.conclusion)),
-      summary: checkSummaryWithAnnotations(check),
-      url: sanitizeGitHubEvidenceUrl(check.html_url)
-    })).concat(statuses.map((status) => ({
+    checks: annotatedCheckRuns.map((check) => {
+      const workflowExecutionIdentity = typeof check.id === "number"
+        ? actionJobEvidence.workflowIdentitiesByCheckId.get(check.id)
+        : undefined;
+      return {
+        name: check.name,
+        status: mapGitHubObservationStatus(mapGitHubCheckStatus(check.status, check.conclusion)),
+        summary: checkSummaryWithAnnotations(check),
+        url: sanitizeGitHubEvidenceUrl(check.html_url),
+        ...(workflowExecutionIdentity ? { workflowExecutionIdentity } : {})
+      };
+    }).concat(statuses.map((status) => ({
       name: status.context,
       status: mapGitHubObservationStatus(mapGitHubCommitStatus(status.state)),
       summary: status.description ? compactText(status.description, 240) : undefined,
@@ -779,6 +818,40 @@ function hasIncompleteChangedFileInventory(limitations: string[] | undefined): b
   );
 }
 
+function hasIncompleteCheckRunCollection(limitations: string[]): boolean {
+  return limitations.some((limitation) =>
+    /check-run evidence (?:unavailable|was capped)|check-run fetch failed/i.test(limitation)
+  );
+}
+
+function assignGitHubCheckEvidenceRefs(
+  taskText: string,
+  description: string,
+  changedFileCount: number,
+  checkRuns: GitHubCheckRunResponse[]
+): { byCheckId: Map<number, string>; available: string[] } {
+  const firstCheckEvidenceOrdinal =
+    (taskText.trim() ? 1 : 0) +
+    (description.trim() ? 1 : 0) +
+    changedFileCount +
+    1;
+  const countsByCheckId = new Map<number, number>();
+  for (const check of checkRuns) {
+    if (typeof check.id !== "number" || !Number.isSafeInteger(check.id) || check.id <= 0) continue;
+    countsByCheckId.set(check.id, (countsByCheckId.get(check.id) ?? 0) + 1);
+  }
+  const byCheckId = new Map<number, string>();
+  const available = checkRuns.map((_, index) => `ev_${firstCheckEvidenceOrdinal + index}`);
+  checkRuns.forEach((check, index) => {
+    if (
+      typeof check.id === "number" &&
+      countsByCheckId.get(check.id) === 1 &&
+      firstCheckEvidenceOrdinal + index <= 200
+    ) byCheckId.set(check.id, available[index]!);
+  });
+  return { byCheckId, available };
+}
+
 function safeUrlHost(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try { return new URL(value).hostname.toLowerCase(); } catch { return undefined; }
@@ -976,24 +1049,55 @@ function formatGitHubRateLimitReset(value: string | null): string | null {
   return new Date(seconds * 1000).toISOString();
 }
 
-function mergePastedOverrides(live: PullRequestInput, request: AnalyzeRequest): PullRequestInput {
-  return {
+export function mergePastedEvidenceForAnalysis(live: PullRequestInput, request: AnalyzeRequest): PullRequestInput {
+  const hasPastedChangedFiles = Boolean(request.changedFiles?.trim());
+  const hasPastedChecks = Boolean(request.checks?.trim());
+  const hasPastedLogs = Boolean(request.logs?.trim());
+  const replacesLiveGitHubAuthority = hasPastedAuthorityOverride(request);
+  const liveChecksWithoutWorkflowIdentity = replacesLiveGitHubAuthority
+    ? live.checks.map(({ workflowExecutionIdentity: _workflowExecutionIdentity, ...check }) => check)
+    : live.checks;
+  const merged: PullRequestInput = {
     ...live,
     taskText: request.taskText ? redactSecrets(request.taskText) : live.taskText,
     taskSource: request.taskText ? "task" : live.taskSource,
     description: request.prDescription?.trim() ? redactSecrets(request.prDescription) : live.description,
-    changedFiles: request.changedFiles?.trim() ? parseChangedFiles(request.changedFiles) : live.changedFiles,
-    resolvedHeadModules: request.changedFiles?.trim() ? undefined : live.resolvedHeadModules,
-    checks: request.checks?.trim() ? parseChecks(request.checks) : live.checks,
-    logs: request.logs?.trim() ? parseLogs(request.logs) : live.logs,
+    requirementSourceIdentityHash: replacesLiveGitHubAuthority ? undefined : live.requirementSourceIdentityHash,
+    verificationContractSourceV2: replacesLiveGitHubAuthority ? undefined : live.verificationContractSourceV2,
+    verificationContractBindingV2: replacesLiveGitHubAuthority ? undefined : live.verificationContractBindingV2,
+    verificationCriterionEvidenceV2: replacesLiveGitHubAuthority ? undefined : live.verificationCriterionEvidenceV2,
+    changedFiles: hasPastedChangedFiles ? parseChangedFiles(request.changedFiles!) : live.changedFiles,
+    resolvedHeadModules: replacesLiveGitHubAuthority ? undefined : live.resolvedHeadModules,
+    checks: hasPastedChecks ? parseChecks(request.checks!) : liveChecksWithoutWorkflowIdentity,
+    executionSuites: replacesLiveGitHubAuthority ? undefined : live.executionSuites,
+    logs: hasPastedLogs ? parseLogs(request.logs!) : live.logs,
     limitations: [
       ...(live.limitations ?? []),
       ...(request.inputLimitations ?? []),
-      ...(request.changedFiles?.trim() ? ["Pasted changed files replaced live GitHub file evidence."] : []),
-      ...(request.checks?.trim() ? ["Pasted checks replaced live GitHub check evidence."] : []),
-      ...(request.logs?.trim() ? [] : [])
+      ...(hasPastedChangedFiles ? ["Pasted changed files replaced live GitHub file evidence."] : []),
+      ...(hasPastedChecks ? ["Pasted checks replaced live GitHub check evidence."] : []),
+      ...(hasPastedLogs ? ["Pasted logs replaced live GitHub log evidence."] : [])
     ]
   };
+
+  if (!replacesLiveGitHubAuthority) return merged;
+
+  return {
+    ...merged,
+    sourceProvenance: buildMetadataOnlyProvenance({
+      origin: "pasted_evidence",
+      input: merged,
+      capturedAt: new Date().toISOString()
+    })
+  };
+}
+
+function hasPastedAuthorityOverride(request: AnalyzeRequest): boolean {
+  return Boolean(
+    request.changedFiles?.trim() ||
+      request.checks?.trim() ||
+      request.logs?.trim()
+  );
 }
 
 function hasPastedEvidence(request: AnalyzeRequest): boolean {
@@ -1441,21 +1545,47 @@ async function fetchActionJobSummaries(
   limitations: string[],
   hasToken: boolean,
   headSha: string,
-  changedFiles: GitHubFileResponse[]
-): Promise<{ logs: LogSnippet[]; executionSuites: ExecutionSuiteObservation[] }> {
-  const runIds = Array.from(new Set(checkRuns
-    .filter((check) => shouldFetchActionJobMetadata(check, owner, repo))
+  changedFiles: GitHubFileResponse[],
+  checkRunCollectionComplete: boolean,
+  checkEvidenceRefsById: ReadonlyMap<number, string>,
+  availableCheckEvidenceRefs: readonly string[]
+): Promise<{ logs: LogSnippet[]; executionSuites: ExecutionSuiteObservation[]; workflowIdentitiesByCheckId: Map<number, WorkflowExecutionIdentity> }> {
+  const actionChecks: GitHubCheckRunResponse[] = [];
+  const retainedRunIds = new Set<string>();
+  let actionRunCapExceeded = false;
+  for (const check of checkRuns) {
+    const runId = actionRunIdFromCheckRun(check, owner, repo);
+    if (!runId) continue;
+    if (!retainedRunIds.has(runId) && retainedRunIds.size >= GITHUB_MAX_ACTION_RUNS) {
+      actionRunCapExceeded = true;
+      continue;
+    }
+    retainedRunIds.add(runId);
+    actionChecks.push(check);
+  }
+  const eligibleChecks = actionChecks.filter((check) => shouldFetchActionJobMetadata(check, owner, repo));
+  const runIds = Array.from(new Set(eligibleChecks
     .map((check) => actionRunIdFromCheckRun(check, owner, repo))
-    .filter((id): id is string => Boolean(id))))
-    .slice(0, GITHUB_MAX_ACTION_RUNS);
+    .filter((id): id is string => Boolean(id))));
 
-  if (runIds.length === 0) {
-    return { logs: [], executionSuites: [] };
+  if (actionChecks.length === 0) {
+    return { logs: [], executionSuites: [], workflowIdentitiesByCheckId: new Map() };
   }
 
-  const jobResults = await Promise.all(
-    runIds.map((runId) => fetchActionJobsForRun(owner, repo, runId, headers, hasToken, headSha, changedFiles))
-  );
+  const [jobResults, workflowIdentityResult] = await Promise.all([
+    Promise.all(runIds.map((runId) => fetchActionJobsForRun(owner, repo, runId, headers, hasToken, headSha, changedFiles))),
+    fetchWorkflowExecutionIdentities({
+      owner,
+      repo,
+      checks: actionChecks,
+      headers,
+      hasToken,
+      headSha,
+      checkRunCollectionComplete,
+      checkEvidenceRefsById,
+      availableCheckEvidenceRefs
+    })
+  ]);
   const logs: LogSnippet[] = [];
   const executionSuites: ExecutionSuiteObservation[] = [];
 
@@ -1475,8 +1605,200 @@ async function fetchActionJobSummaries(
   if (logs.length > 0) {
     limitations.push(githubActionsMetadataLimitation(logs, executionSuites));
   }
+  if (actionRunCapExceeded) {
+    limitations.push(`COLLECTOR_LIMITATION: GitHub workflow execution identity collection was capped at ${GITHUB_MAX_ACTION_RUNS} workflow runs.`);
+  }
+  limitations.push(...workflowIdentityResult.limitations);
 
-  return { logs, executionSuites };
+  return { logs, executionSuites, workflowIdentitiesByCheckId: workflowIdentityResult.identitiesByCheckId };
+}
+
+async function fetchWorkflowExecutionIdentities(input: {
+  owner: string;
+  repo: string;
+  checks: GitHubCheckRunResponse[];
+  headers: Record<string, string>;
+  hasToken: boolean;
+  headSha: string;
+  checkRunCollectionComplete: boolean;
+  checkEvidenceRefsById: ReadonlyMap<number, string>;
+  availableCheckEvidenceRefs: readonly string[];
+}): Promise<GitHubWorkflowIdentityFetchResult> {
+  const identitiesByCheckId = new Map<number, WorkflowExecutionIdentity>();
+  const limitations: string[] = [];
+  if (!input.checkRunCollectionComplete) {
+    return {
+      identitiesByCheckId,
+      limitations: ["COLLECTOR_LIMITATION: GitHub workflow execution identity remained incomplete because exact-head check-run pagination was unavailable or capped."]
+    };
+  }
+
+  const groups = new Map<string, { runId: number; runAttempt?: number; checks: GitHubCheckRunResponse[] }>();
+  let unassignedCheckCount = 0;
+  for (const check of input.checks) {
+    const locator = actionRunLocatorFromCheckRun(check, input.owner, input.repo);
+    if (!locator || typeof check.id !== "number" || !input.checkEvidenceRefsById.has(check.id)) {
+      unassignedCheckCount += 1;
+      continue;
+    }
+    const key = `${locator.runId}:${locator.runAttempt ?? "latest"}`;
+    const group = groups.get(key) ?? { ...locator, checks: [] };
+    group.checks.push(check);
+    groups.set(key, group);
+  }
+
+  for (const group of groups.values()) {
+    const result = await fetchWorkflowIdentityGroup({ ...input, ...group });
+    for (const [checkId, identity] of result.identitiesByCheckId) identitiesByCheckId.set(checkId, identity);
+    limitations.push(...result.limitations);
+  }
+  if (unassignedCheckCount > 0) {
+    limitations.push("COLLECTOR_LIMITATION: GitHub workflow execution identity remained incomplete for one or more retained Checks because an exact Check evidence reference was unavailable.");
+  }
+
+  return { identitiesByCheckId, limitations: Array.from(new Set(limitations)) };
+}
+
+async function fetchWorkflowIdentityGroup(input: {
+  owner: string;
+  repo: string;
+  checks: GitHubCheckRunResponse[];
+  headers: Record<string, string>;
+  hasToken: boolean;
+  headSha: string;
+  runId: number;
+  runAttempt?: number;
+  checkEvidenceRefsById: ReadonlyMap<number, string>;
+  availableCheckEvidenceRefs: readonly string[];
+}): Promise<GitHubWorkflowIdentityFetchResult> {
+  const identitiesByCheckId = new Map<number, WorkflowExecutionIdentity>();
+  const incomplete = (reason: string): GitHubWorkflowIdentityFetchResult => ({
+    identitiesByCheckId,
+    limitations: [`COLLECTOR_LIMITATION: GitHub workflow execution identity remained incomplete because ${reason}.`]
+  });
+  try {
+    let runAttempt = input.runAttempt;
+    if (!runAttempt) {
+      const runResponse = await githubFetch(
+        `https://api.github.com/repos/${input.owner}/${input.repo}/actions/runs/${input.runId}`,
+        input.headers,
+        GITHUB_ACTION_JOB_TIMEOUT_MS
+      );
+      if (!runResponse.ok) return incomplete(githubFailureReason(runResponse, input.hasToken));
+      const currentRun = await runResponse.json();
+      runAttempt = positiveGitHubInteger(currentRun?.run_attempt);
+    }
+    if (!runAttempt) return incomplete("the workflow run attempt number was unavailable");
+
+    const attemptResponse = await githubFetch(
+      `https://api.github.com/repos/${input.owner}/${input.repo}/actions/runs/${input.runId}/attempts/${runAttempt}`,
+      input.headers,
+      GITHUB_ACTION_JOB_TIMEOUT_MS
+    );
+    if (!attemptResponse.ok) return incomplete(githubFailureReason(attemptResponse, input.hasToken));
+    const runAttemptPayload = await attemptResponse.json();
+    const jobs: GitHubActionJobResponse[] = [];
+    let totalCount: number | undefined;
+    let jobsComplete = false;
+
+    for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
+      const response = await githubFetch(
+        `https://api.github.com/repos/${input.owner}/${input.repo}/actions/runs/${input.runId}/attempts/${runAttempt}/jobs?per_page=${GITHUB_PAGE_SIZE}&page=${page}`,
+        input.headers,
+        GITHUB_ACTION_JOB_TIMEOUT_MS
+      );
+      if (!response.ok) return incomplete(githubFailureReason(response, input.hasToken));
+      const payload = await response.json();
+      totalCount = typeof payload?.total_count === "number" ? payload.total_count : totalCount;
+      const pageJobs = Array.isArray(payload?.jobs) ? payload.jobs as GitHubActionJobResponse[] : [];
+      jobs.push(...pageJobs);
+      if (typeof totalCount === "number" && jobs.length >= totalCount) {
+        jobsComplete = true;
+        break;
+      }
+      if (pageJobs.length < GITHUB_PAGE_SIZE) break;
+    }
+    if (!jobsComplete) return incomplete("attempt-specific job pagination was unavailable or capped");
+
+    let incompleteCheckCount = 0;
+    for (const check of input.checks) {
+      if (typeof check.id !== "number") {
+        incompleteCheckCount += 1;
+        continue;
+      }
+      const matchingJobs = jobs.filter((job) =>
+        checkRunIdFromJob(job, input.owner, input.repo) === check.id
+      );
+      if (matchingJobs.length !== 1) {
+        incompleteCheckCount += 1;
+        continue;
+      }
+      const checkEvidenceRef = input.checkEvidenceRefsById.get(check.id);
+      if (!checkEvidenceRef) {
+        incompleteCheckCount += 1;
+        continue;
+      }
+      const observation = normalizeGitHubWorkflowObservationV2({
+        repository: { owner: input.owner, repo: input.repo },
+        requestedRunId: input.runId,
+        requestedRunAttempt: runAttempt,
+        initialHeadSha: input.headSha,
+        finalHeadSha: input.headSha,
+        collectionsComplete: true,
+        checkEvidenceRef,
+        availableCheckEvidenceRefs: input.availableCheckEvidenceRefs,
+        runAttempt: runAttemptPayload,
+        job: matchingJobs[0],
+        checkRun: check
+      });
+      if (observation.completeness !== "complete") {
+        incompleteCheckCount += 1;
+        continue;
+      }
+      identitiesByCheckId.set(check.id, {
+        version: 1,
+        kind: "workflow_execution_identity",
+        workflowPath: observation.workflowPath,
+        workflowName: observation.workflowName,
+        workflowId: observation.workflowId,
+        runId: observation.runId,
+        runAttempt: observation.runAttempt,
+        jobId: observation.jobId,
+        jobName: observation.jobName,
+        headSha: observation.headSha,
+        checkEvidenceRef: observation.checkEvidenceRef
+      });
+    }
+
+    const limitations = incompleteCheckCount > 0
+      ? ["COLLECTOR_LIMITATION: GitHub workflow execution identity remained incomplete for one or more retained Checks because no exact run-attempt/job/check/head join was available."]
+      : [];
+    return identitiesByCheckId.size > 0
+      ? { identitiesByCheckId, limitations }
+      : incomplete("no exact run-attempt/job/check/head join was available");
+  } catch {
+    return incomplete(`the request timed out after ${GITHUB_ACTION_JOB_TIMEOUT_MS} ms or the network failed`);
+  }
+}
+
+function checkRunIdFromJob(job: GitHubActionJobResponse, owner: string, repo: string): number {
+  try {
+    const url = new URL(job.check_run_url ?? "");
+    const match = url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/check-runs\/(\d+)$/);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname.toLowerCase() !== "api.github.com" ||
+      match?.[1]?.toLowerCase() !== owner.toLowerCase() ||
+      match?.[2]?.toLowerCase() !== repo.toLowerCase()
+    ) return 0;
+    return positiveGitHubInteger(Number(match[3])) ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function positiveGitHubInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 async function fetchActionJobsForRun(
@@ -1687,6 +2009,15 @@ function isExecutionActionStep(step: GitHubActionStepResponse): boolean {
 }
 
 function actionRunIdFromCheckRun(check: GitHubCheckRunResponse, owner: string, repo: string): string | null {
+  const locator = actionRunLocatorFromCheckRun(check, owner, repo);
+  return locator ? String(locator.runId) : null;
+}
+
+function actionRunLocatorFromCheckRun(
+  check: GitHubCheckRunResponse,
+  owner: string,
+  repo: string
+): { runId: number; runAttempt?: number } | null {
   const value = check.details_url || check.html_url;
   if (!value) return null;
 
@@ -1702,8 +2033,10 @@ function actionRunIdFromCheckRun(check: GitHubCheckRunResponse, owner: string, r
       return null;
     }
 
-    const match = url.pathname.match(/\/actions\/runs\/(\d+)(?:\/|$)/);
-    return match?.[1] ?? null;
+    const match = url.pathname.match(/\/actions\/runs\/(\d+)(?:\/attempts\/(\d+))?(?:\/|$)/);
+    const runId = positiveGitHubInteger(Number(match?.[1]));
+    const runAttempt = positiveGitHubInteger(Number(match?.[2]));
+    return runId ? { runId, ...(runAttempt ? { runAttempt } : {}) } : null;
   } catch {
     return null;
   }

@@ -20,7 +20,7 @@ import {
 } from "./server-report-store";
 import { createVerifiedAuthenticity } from "./report-authenticity";
 import { decodeTenantPersistedReport, projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
-import type { VerificationReport } from "./types";
+import type { PullRequestInput, VerificationReport } from "./types";
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
@@ -141,8 +141,7 @@ describe("server report store", () => {
         }]
       }]
     };
-    const report = generateVerificationReportV2({
-      input: {
+    const generationInput: PullRequestInput = {
         title: "Document reset",
         description: "Documents the reset command.",
         taskText: "Document the local reset command.",
@@ -162,15 +161,23 @@ describe("server report store", () => {
           evidenceCapturedAt: "2026-08-13T00:00:00.000Z",
           inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
         }
-      },
+      };
+    const binding = {
+      sourceKind: "provided_requirement" as const,
+      sourceIdentity: "manual:verification-contract:1",
+      sourceContent: JSON.stringify(contract),
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40)
+    };
+    const validationInput = {
+      ...generationInput,
+      verificationContractSourceV2: { kind: "provided_requirement" as const, contract },
+      verificationContractBindingV2: binding
+    };
+    const report = generateVerificationReportV2({
+      input: generationInput,
       contractSource: { kind: "provided_requirement", contract },
-      binding: {
-        sourceKind: "provided_requirement",
-        sourceIdentity: "manual:verification-contract:1",
-        sourceContent: JSON.stringify(contract),
-        headSha: "a".repeat(40),
-        baseSha: "b".repeat(40)
-      }
+      binding
     });
 
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
@@ -179,7 +186,8 @@ describe("server report store", () => {
       installationId: 321,
       repositoryId: 100,
       pullRequestNumber: 42,
-      headSha: "a".repeat(40)
+      headSha: "a".repeat(40),
+      validationInput
     });
     const persisted = JSON.parse(JSON.stringify(projectTenantPersistedReport(saved.report, signingSecret)));
     const decoded = decodeTenantPersistedReport(persisted, {
@@ -221,6 +229,7 @@ describe("server report store", () => {
     authorClaim.verificationContract.objectives[0]!.criteria[0]!.approval = "author_claim";
     authorClaim.requirements[0]!.status = "partial";
     authorClaim.proofGraph.nodes[0]!.status = "partial";
+    authorClaim.authenticity = createVerifiedAuthenticity(authorClaim, signingSecret);
     const authorClaimDecoded = decodeTenantPersistedReport(projectTenantPersistedReport(authorClaim, signingSecret), {
       signingSecret,
       createdAt: "2026-08-13T00:00:00.000Z"
@@ -236,6 +245,7 @@ describe("server report store", () => {
     unavailable.verificationContract.objectives[0]!.criterionResults[0]!.gapKinds = ["evidence_unavailable"];
     unavailable.requirements[0]!.status = "unclear";
     unavailable.proofGraph.nodes[0]!.status = "unclear";
+    unavailable.authenticity = createVerifiedAuthenticity(unavailable, signingSecret);
     const unavailableDecoded = decodeTenantPersistedReport(projectTenantPersistedReport(unavailable, signingSecret), {
       signingSecret,
       createdAt: "2026-08-13T00:00:00.000Z"
@@ -246,7 +256,7 @@ describe("server report store", () => {
     });
   });
 
-  it("fails closed for forged active return-value outcomes before signing and after persistence", () => {
+  it("fails closed for forged active return-value outcomes before signing and after persistence", async () => {
     const signingSecret = "test-report-signing-secret-that-is-long-enough";
     const contract = {
       version: 2,
@@ -268,8 +278,7 @@ describe("server report store", () => {
         }]
       }]
     };
-    const report = generateVerificationReportV2({
-      input: {
+    const generationInput: PullRequestInput = {
         title: "Repository visibility",
         description: "Returns the repository visibility label.",
         taskText: "Return the private repository label.",
@@ -286,15 +295,23 @@ describe("server report store", () => {
           evidenceCapturedAt: "2026-08-13T00:00:00.000Z",
           inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
         }
-      },
+      };
+    const binding = {
+      sourceKind: "provided_requirement" as const,
+      sourceIdentity: "manual:verification-contract:1",
+      sourceContent: JSON.stringify(contract),
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40)
+    };
+    const validationInput: PullRequestInput = {
+      ...generationInput,
+      verificationContractSourceV2: { kind: "provided_requirement", contract },
+      verificationContractBindingV2: binding
+    };
+    const report = generateVerificationReportV2({
+      input: generationInput,
       contractSource: { kind: "provided_requirement", contract },
-      binding: {
-        sourceKind: "provided_requirement",
-        sourceIdentity: "manual:verification-contract:1",
-        sourceContent: JSON.stringify(contract),
-        headSha: "a".repeat(40),
-        baseSha: "b".repeat(40)
-      }
+      binding
     });
     const forged = structuredClone(report);
     forged.verificationContract.objectives[0]!.criterionResults[0]!.state = "satisfied";
@@ -310,7 +327,16 @@ describe("server report store", () => {
       "Active verification-contract v2 report cannot be durably persisted without a valid attested evaluation."
     );
 
-    const persisted = projectTenantPersistedReport(report, signingSecret);
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_v2",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 42,
+      headSha: "a".repeat(40),
+      validationInput
+    });
+    const persisted = projectTenantPersistedReport(saved.report, signingSecret);
     const tampered = structuredClone(persisted);
     (tampered.verificationContract!.objectives[0]!.criterionResults[0]!.state as string) = "satisfied";
     expect(decodeTenantPersistedReport(tampered, { signingSecret, createdAt: report.createdAt })).toEqual({
@@ -336,8 +362,7 @@ describe("server report store", () => {
         }]
       }]
     };
-    const report = generateVerificationReportV2({
-      input: {
+    const generationInput: PullRequestInput = {
         title: "Document reset", description: "Documents the reset command.", taskText: "Document the local reset command.", taskSource: "issue",
         changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }], checks: [], logs: [],
         verificationCriterionEvidenceV2: { artifactBlobs: [{ path: "docs/reset.md", content: "Run npm test." }] },
@@ -346,12 +371,20 @@ describe("server report store", () => {
           changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) }, evidenceCapturedAt: "2026-08-13T00:00:00.000Z",
           inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
         }
-      },
+      };
+    const binding = { sourceKind: "provided_requirement" as const, sourceIdentity: "manual:verification-contract:1", sourceContent: JSON.stringify(source), headSha: "a".repeat(40), baseSha: "b".repeat(40) };
+    const validationInput: PullRequestInput = {
+      ...generationInput,
+      verificationContractSourceV2: { kind: "provided_requirement", contract: source },
+      verificationContractBindingV2: binding
+    };
+    const report = generateVerificationReportV2({
+      input: generationInput,
       contractSource: { kind: "provided_requirement", contract: source },
-      binding: { sourceKind: "provided_requirement", sourceIdentity: "manual:verification-contract:1", sourceContent: JSON.stringify(source), headSha: "a".repeat(40), baseSha: "b".repeat(40) }
+      binding
     });
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
-    const saved = await createVerifiedSavedReport(report, { tenantId: "tenant_v2", installationId: 321, repositoryId: 100, pullRequestNumber: 42, headSha: "a".repeat(40) });
+    const saved = await createVerifiedSavedReport(report, { tenantId: "tenant_v2", installationId: 321, repositoryId: 100, pullRequestNumber: 42, headSha: "a".repeat(40), validationInput });
     const tupleMismatch = resignPersistedTenantReport(projectTenantPersistedReport(saved.report, signingSecret), signingSecret);
     tupleMismatch.verificationContract!.source = { kind: "pr_description" };
     resignPersistedTenantReport(tupleMismatch, signingSecret);
@@ -421,7 +454,9 @@ describe("server report store", () => {
     for (const requirement of report.requirements) requirement.classificationBasis = "enhanced_plan";
     report.requirements[0]!.plannerAxisSubjects = ["documentation"];
     report.requirements[0]!.proofAxes = [{ subject: "documentation", polarity: "present", state: "incomplete", evidenceRefs: [] }];
+    for (const requirement of report.requirements) requirement.gaps = [];
     for (const node of report.proofGraph.nodes) node.classificationBasis = "enhanced_plan";
+    for (const node of report.proofGraph.nodes) node.gapSignals = [];
     report.reprompt.prompt = "Review the linked evidence.";
     (report.planner as unknown as Record<string, unknown>).rawPlan = "must-not-persist";
     const persisted = projectTenantPersistedReport(report, secret);
@@ -564,13 +599,15 @@ describe("server report store", () => {
     expect(validateTenantStoredReport(saved.report, process.env.AGENTPROOF_REPORT_SIGNING_SECRET!)).toEqual({ valid: true, errors: [] });
   });
 
-  it("does not promote a semantic suggestion into a deterministic tenant gap or next action", async () => {
+  it("does not replace the default-off deterministic next action with a semantic suggestion", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const report = generateVerificationReport(demoScenarios.clean);
     const requirement = report.requirements[0]!;
     const proofNode = report.proofGraph.nodes.find((node) => node.requirementId === requirement.requirementId)!;
     requirement.gaps = [];
     proofNode.gapSignals = [];
+    report.proofGraph.summary.requirementsWithGaps = report.proofGraph.nodes.filter((node) => node.gapSignals.length > 0).length;
+    report.proofGraph.summary.gapCount = report.proofGraph.nodes.reduce((count, node) => count + node.gapSignals.length, 0);
     report.semantic = {
       requirement_evidence_relations: [],
       requirement_assessments: [],
@@ -605,7 +642,8 @@ describe("server report store", () => {
     expect(saved.report.semantic).toEqual(report.semantic);
     expect(saved.report.requirements[0]?.gaps).toEqual([]);
     expect(saved.report.proofGraph.nodes[0]?.gapSignals).toEqual([]);
-    expect(saved.report.reprompt.prompt).toBe("Review the linked evidence.");
+    expect(saved.report.reprompt.prompt).toBe("Add or link a targeted test and its Check result for the requirement.");
+    expect(saved.report.reprompt.prompt).not.toContain("bounded additional reference");
   });
 
   it("retains only bounded unavailable semantic runtime state in a signed tenant report", async () => {

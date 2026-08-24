@@ -403,6 +403,262 @@ describe("exact test-relation subject binding", () => {
   });
 });
 
+describe("bounded v2 test-relation parser context", () => {
+  const bindings = [
+    {
+      version: 1 as const,
+      kind: "requirement_source_binding" as const,
+      id: "binding_subject",
+      requirementId: "req_subject",
+      spanId: "sp_1_1" as const,
+      seedId: "seed",
+      groupId: "grp_1" as const,
+      source: "issue" as const,
+      ordinal: 1
+    },
+    {
+      version: 1 as const,
+      kind: "requirement_source_binding" as const,
+      id: "binding_current",
+      requirementId: "req_current",
+      spanId: "sp_2_2" as const,
+      seedId: "seed",
+      groupId: "grp_1" as const,
+      source: "issue" as const,
+      ordinal: 2
+    }
+  ];
+
+  it("creates one changed-target antecedent candidate only from adjacent closed bindings", () => {
+    const candidate = evidenceRelation.boundedTestRelationCandidate({
+      testFile: {
+        path: "test/repository-name.test.js",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+expect(repositoryName('AgentProof')).toBe('agentproof');"
+        ].join("\n")
+      },
+      subject: "repositoryName",
+      requirementId: "req_current",
+      currentRequirementText: "Add focused tests.",
+      requirementTexts: new Map([
+        ["req_subject", "Add `repositoryName` behavior."],
+        ["req_current", "Add focused tests."]
+      ]),
+      targetMode: "changed_target",
+      relation: {
+        version: 1,
+        kind: "test_antecedent",
+        antecedentRequirementId: "req_subject",
+        currentSourceBindingRef: "binding_current",
+        antecedentSourceBindingRef: "binding_subject"
+      },
+      sourceBindings: bindings
+    });
+
+    expect(candidate).toMatchObject({
+      subjectSource: "test_antecedent",
+      directAssertionCount: 1,
+      subjectDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      importBindingDigest: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(JSON.stringify(candidate)).not.toContain("repositoryName");
+  });
+
+  it("rejects an imported subject that does not match the closed antecedent requirement", () => {
+    expect(evidenceRelation.boundedTestRelationCandidate({
+      testFile: {
+        path: "test/repository-name.test.js",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+expect(repositoryName('AgentProof')).toBe('agentproof');"
+        ].join("\n")
+      },
+      subject: "repositoryName",
+      requirementId: "req_current",
+      currentRequirementText: "Add focused tests.",
+      requirementTexts: new Map([
+        ["req_subject", "Add `repositorySlug` behavior."],
+        ["req_current", "Add focused tests."]
+      ]),
+      targetMode: "changed_target",
+      relation: {
+        version: 1,
+        kind: "test_antecedent",
+        antecedentRequirementId: "req_subject",
+        currentSourceBindingRef: "binding_current",
+        antecedentSourceBindingRef: "binding_subject"
+      },
+      sourceBindings: bindings
+    })).toBeNull();
+  });
+
+  it("changes candidate digests when the stable source identity changes", () => {
+    const input = {
+      testFile: {
+        path: "test/repository-name.test.js",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+expect(repositoryName('AgentProof')).toBe('agentproof');"
+        ].join("\n")
+      },
+      subject: "repositoryName",
+      requirementId: "req_current",
+      currentRequirementText: "Add focused tests.",
+      requirementTexts: new Map([
+        ["req_subject", "Add `repositoryName` behavior."],
+        ["req_current", "Add focused tests."]
+      ]),
+      targetMode: "changed_target" as const,
+      relation: {
+        version: 1 as const,
+        kind: "test_antecedent" as const,
+        antecedentRequirementId: "req_subject",
+        currentSourceBindingRef: "binding_current",
+        antecedentSourceBindingRef: "binding_subject"
+      }
+    };
+    const first = evidenceRelation.boundedTestRelationCandidate({ ...input, sourceBindings: bindings });
+    const replay = evidenceRelation.boundedTestRelationCandidate({
+      ...input,
+      sourceBindings: bindings.map((binding) => ({ ...binding, seedId: "different_seed" }))
+    });
+
+    expect(first).not.toBeNull();
+    expect(replay).not.toBeNull();
+    expect(replay?.subjectDigest).not.toBe(first?.subjectDigest);
+    expect(replay?.importBindingDigest).not.toBe(first?.importBindingDigest);
+  });
+
+  it("creates one changed-target subject-chain candidate only from three adjacent closed bindings", () => {
+    const candidate = evidenceRelation.boundedTestRelationCandidate({
+      testFile: {
+        path: "test/repository-name.test.js",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+expect(repositoryName('AgentProof')).toBe('agentproof');"
+        ].join("\n")
+      },
+      subject: "repositoryName",
+      requirementId: "req_current",
+      currentRequirementText: "Add focused tests.",
+      requirementTexts: new Map([
+        ["req_subject", "Add `repositoryName` behavior."],
+        ["req_current", "Add focused tests."]
+      ]),
+      targetMode: "changed_target",
+      relation: {
+        version: 1,
+        kind: "test_subject_chain",
+        subjectRequirementId: "req_subject",
+        bridgeRequirementId: "req_bridge",
+        currentSourceBindingRef: "binding_current",
+        subjectSourceBindingRef: "binding_subject",
+        bridgeSourceBindingRef: "binding_bridge"
+      },
+      sourceBindings: [
+        bindings[0]!,
+        { ...bindings[1]!, id: "binding_bridge", requirementId: "req_bridge", spanId: "sp_2_2", ordinal: 2 },
+        { ...bindings[1]!, ordinal: 3 }
+      ]
+    });
+
+    expect(candidate).toMatchObject({ subjectSource: "test_subject_chain", directAssertionCount: 1 });
+  });
+
+  it.each([
+    {
+      name: "non-adjacent source bindings",
+      sourceBindings: [{ ...bindings[1]!, ordinal: 3 }, bindings[0]!],
+      relation: {
+        version: 1 as const,
+        kind: "test_antecedent" as const,
+        antecedentRequirementId: "req_subject",
+        currentSourceBindingRef: "binding_current",
+        antecedentSourceBindingRef: "binding_subject"
+      }
+    },
+    {
+      name: "subjectless exact-head objective",
+      sourceBindings: bindings,
+      targetMode: "exact_head_target" as const,
+      relation: undefined
+    }
+  ])("rejects a $name", ({ sourceBindings, relation, targetMode = "changed_target" }) => {
+    expect(evidenceRelation.boundedTestRelationCandidate({
+      testFile: {
+        path: "test/repository-name.test.js",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+expect(repositoryName('AgentProof')).toBe('agentproof');"
+        ].join("\n")
+      },
+      subject: "repositoryName",
+      requirementId: "req_current",
+      currentRequirementText: "Add focused tests.",
+      requirementTexts: new Map([["req_current", "Add focused tests."]]),
+      targetMode: targetMode as "changed_target" | "exact_head_target",
+      relation,
+      sourceBindings
+    })).toBeNull();
+  });
+
+  it("requires an explicit current identifier for an exact-head candidate", () => {
+    expect(evidenceRelation.boundedTestRelationCandidate({
+      testFile: {
+        path: "test/repository-name.test.js",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+expect(repositoryName('AgentProof')).toBe('agentproof');"
+        ].join("\n")
+      },
+      subject: "repositoryName",
+      requirementId: "req_current",
+      currentRequirementText: "Add a regression test for `repositoryName`.",
+      requirementTexts: new Map([["req_current", "Add a regression test for `repositoryName`."]]),
+      targetMode: "exact_head_target",
+      sourceBindings: [{ ...bindings[1]!, ordinal: 1 }]
+    })).toMatchObject({ subjectSource: "current_requirement", directAssertionCount: 1 });
+  });
+
+  it("accepts an exact-head current subject from a Task 3 canonical bundle with source bindings empty and no relation", () => {
+    const canonical = {
+      version: 1 as const,
+      inputKind: "selected_source" as const,
+      sourceIdentityHash: "a".repeat(64),
+      sourceContentHash: "b".repeat(64),
+      requirements: [{
+        reportRequirementId: "req_current",
+        stableBindingKey: "stable_current",
+        source: "issue" as const,
+        authority: "authoritative" as const,
+        groupId: "grp_1",
+        ordinal: 1,
+        normalizedTextHash: "c".repeat(64),
+        text: "Add a regression test for `repositoryName`.",
+        priority: "must" as const,
+        sourceQuality: "explicit_acceptance_criteria" as const
+      }]
+    };
+    expect(evidenceRelation.boundedTestRelationCandidate({
+      testFile: {
+        path: "test/repository-name.test.js",
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+expect(repositoryName('AgentProof')).toBe('agentproof');"
+        ].join("\n")
+      },
+      subject: "repositoryName",
+      requirementId: "req_current",
+      currentRequirementText: "Add a regression test for `repositoryName`.",
+      requirementTexts: new Map([["req_current", "Add a regression test for `repositoryName`."]]),
+      currentSourceBinding: evidenceRelation.canonicalCurrentRequirementBinding(canonical, "req_current") ?? undefined,
+      targetMode: "exact_head_target",
+      sourceBindings: []
+    })).toMatchObject({ subjectSource: "current_requirement", directAssertionCount: 1 });
+  });
+});
+
 describe("bounded direct assertion literals", () => {
   const implementationFile = {
     path: "src/repositories/repository-slug.js",
@@ -420,6 +676,92 @@ describe("bounded direct assertion literals", () => {
     };
 
     expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile)).toBe(1);
+  });
+
+  it("does not treat a trailing unrelated call after an expect matcher as a direct assertion", () => {
+    const testFile = {
+      path: "test/repository-name.test.js",
+      patch: [
+        "+import { repositoryName } from '../src/repositories/name.js';",
+        "+expect(unrelated()).toBe(true); repositoryName(value);",
+        "+expect(unrelated()).toBe(true); repositoryName('AgentProof');"
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/repositories/name.js",
+      patch: "+export function repositoryName(value) { return String(value); }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "repositoryName")).toBe(0);
+  });
+
+  it.each([
+    "test.skip('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "it.todo('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.skip.each([['AgentProof']])('disabled', (value) => { expect(repositoryName(value)).toBe('agentproof'); });",
+    "it.todo.each([['AgentProof']])('disabled', (value) => { expect(repositoryName(value)).toBe('agentproof'); });",
+    "test.each([['AgentProof']]).skip('disabled', (value) => { expect(repositoryName(value)).toBe('agentproof'); });",
+    "test.each([\n+  ['AgentProof']\n+]).skip('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "it.each([\n+  ['AgentProof']\n+]).todo('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.each([\n+  ['AgentProof']\n+]).pending('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.each`\n+  value\n+  ${'AgentProof'}\n+`.skip('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "it.each`\n+  value\n+  ${'AgentProof'}\n+`.todo('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.each`\n+  value\n+  ${'AgentProof'}\n+`.pending('disabled', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "if (false) { expect(repositoryName('AgentProof')).toBe('agentproof'); }",
+    "test('unreachable return', () => {\n+  return;\n+  expect(repositoryName('AgentProof')).toBe('agentproof');\n+});",
+    "test('unreachable throw', () => {\n+  throw new Error('stop');\n+  expect(repositoryName('AgentProof')).toBe('agentproof');\n+});"
+  ])("does not count a disabled or unreachable assertion: %s", (assertion) => {
+    const testFile = {
+      path: "test/repository-name.test.js",
+      patch: [
+        "+import { repositoryName } from '../src/repositories/name.js';",
+        `+${assertion}`
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/repositories/name.js",
+      patch: "+export function repositoryName(value) { return String(value); }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "repositoryName")).toBe(0);
+  });
+
+  it.each([
+    "test.each([\n+  ['AgentProof']\n+])('formats names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });",
+    "test.each`\n+  value\n+  ${'AgentProof'}\n+`('formats names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+  ])("retains a non-disabled multiline parameterized assertion: %s", (assertion) => {
+    const testFile = {
+      path: "test/repository-name.test.js",
+      patch: [
+        "+import { repositoryName } from '../src/repositories/name.js';",
+        `+${assertion}`
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/repositories/name.js",
+      patch: "+export function repositoryName(value) { return String(value); }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "repositoryName")).toBe(1);
+  });
+
+  it.each([
+    "expect(wrapper(repositoryName('AgentProof'))).toBe('agentproof');",
+    "expect(() => repositoryName('AgentProof')).not.toThrow();"
+  ])("does not treat a nested wrapper or callback as a direct assertion: %s", (assertion) => {
+    const testFile = {
+      path: "test/repository-name.test.js",
+      patch: [
+        "+import { repositoryName } from '../src/repositories/name.js';",
+        `+${assertion}`
+      ].join("\n")
+    };
+    const implementationFile = {
+      path: "src/repositories/name.js",
+      patch: "+export function repositoryName(value) { return String(value); }"
+    };
+
+    expect(evidenceRelation.distinctDirectAssertionCallCount(testFile, implementationFile, "repositoryName")).toBe(0);
   });
 
   it("counts one selected subject binding even when the module import also includes an unrelated sibling", () => {

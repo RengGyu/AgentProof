@@ -1,4 +1,4 @@
-import { createHmac, generateKeyPairSync } from "crypto";
+import { createHash, createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAnalysisJobsForTests, getAnalysisJobsForTests } from "@/lib/analysis-jobs";
 import { clearAuditEventsForTests, getAuditEventsForTests } from "@/lib/audit-log";
@@ -2013,6 +2013,67 @@ describe("POST /api/github/webhook", () => {
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
+  it("saves a receipt-positive inline report with its server-built validation input", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE", "receipt_v2");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: true,
+      commentEnabled: false
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubGlobal("fetch", mockReceiptPositiveAutomationFetch());
+
+    const response = await POST(signedRequest(JSON.stringify(automationPayload()), {
+      event: "pull_request",
+      delivery: "delivery-receipt-v2-save-context",
+      secret: "secret"
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.analysis).toMatchObject({
+      status: "completed",
+      savedReport: { privacy: "summary-only" }
+    });
+  });
+
+  it("re-reads the final promotion switch before a save-disabled inline comment", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE", "receipt_v2");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({
+      saveReportsEnabled: false,
+      commentEnabled: true
+    }));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const fetchMock = mockReceiptPositiveAutomationFetch({ disablePromotionAtFinalAnchor: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(signedRequest(JSON.stringify(automationPayload()), {
+      event: "pull_request",
+      delivery: "delivery-receipt-v2-final-switch",
+      secret: "secret"
+    }));
+    const json = await response.json();
+    const commentCall = fetchMock.mock.calls.find(([url, init]) =>
+      String(url) === "https://api.github.com/repos/RengGyu/AgentProof/issues/7/comments" && init?.method === "POST"
+    );
+    const commentBody = JSON.parse(String(commentCall?.[1]?.body ?? "{}")) as { body?: string };
+
+    expect(response.status).toBe(200);
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(json.analysis.comment).toMatchObject({ action: "created" });
+    expect(commentBody.body).toContain("Targeted-test evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.");
+    expect(commentBody.body).toContain("Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.");
+  });
+
   it("requires durable audit before saved-report side effects when the gate is enabled", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -2910,6 +2971,106 @@ function mockAutomationFetch() {
     }
 
     return new Response(JSON.stringify({ message: `Unhandled ${method} ${href}` }), { status: 404 });
+  });
+}
+
+function mockReceiptPositiveAutomationFetch(options: { disablePromotionAtFinalAnchor?: boolean } = {}) {
+  const baseFetch = mockAutomationFetch();
+  const source = "export function repositoryName(value) { return String(value).toLowerCase(); }";
+  const blobSha = createHash("sha1")
+    .update(`blob ${Buffer.byteLength(source, "utf8")}\0`)
+    .update(source)
+    .digest("hex");
+  let pullMetadataReads = 0;
+
+  return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+      pullMetadataReads += 1;
+      if (options.disablePromotionAtFinalAnchor && pullMetadataReads === 3) {
+        vi.stubEnv("AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE", "off");
+      }
+      return jsonResponse({
+        title: "Repository name regression",
+        body: "Fixes #42",
+        url: href,
+        user: { login: "agent-author" },
+        base: { ref: "main", sha: "def456" },
+        head: { ref: "feature/name-test", sha: "abc123" }
+      });
+    }
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/issues/42") {
+      const contract = {
+        version: 2,
+        scope: "complete_objective_set",
+        objectives: [{
+          id: "repository_name_test",
+          objective: "Add focused regression tests for repositoryName(value).",
+          criteria: [{
+            id: "repository_name_case",
+            type: "artifact",
+            label: "Repository name regression test exists",
+            paths: ["test/repository-name.test.js"],
+            artifact: { kind: "test_case", testId: "formats names" }
+          }]
+        }]
+      };
+      return jsonResponse({
+        number: 42,
+        title: "AgentProof verification contract",
+        body: `## AgentProof verification\n\n\`\`\`agentproof-verification\n${JSON.stringify(contract)}\n\`\`\``,
+        html_url: "https://github.com/RengGyu/AgentProof/issues/42",
+        state: "open"
+      });
+    }
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7/files?per_page=100&page=1") {
+      return jsonResponse([
+        {
+          filename: "src/repositories/name.js",
+          additions: 1,
+          deletions: 0,
+          status: "modified",
+          patch: "+export function repositoryName(value) { return String(value).toLowerCase(); }"
+        },
+        {
+          filename: "test/repository-name.test.js",
+          additions: 2,
+          deletions: 0,
+          status: "added",
+          patch: [
+            "+import { repositoryName } from '../src/repositories/name.js';",
+            "+test('formats names', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+          ].join("\n")
+        }
+      ]);
+    }
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/contents/src/repositories/name.js?ref=abc123") {
+      return jsonResponse({
+        type: "file",
+        path: "src/repositories/name.js",
+        sha: blobSha,
+        encoding: "base64",
+        content: Buffer.from(source).toString("base64")
+      });
+    }
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/contents/package.json?ref=abc123") {
+      return jsonResponse({
+        encoding: "base64",
+        content: Buffer.from(JSON.stringify({ scripts: { test: "node --test" } })).toString("base64")
+      });
+    }
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof/actions/runs/1/jobs?per_page=100") {
+      return jsonResponse({
+        jobs: [{
+          name: "unit-tests",
+          status: "completed",
+          conclusion: "success",
+          html_url: "https://github.com/RengGyu/AgentProof/actions/runs/1/job/2",
+          steps: [{ name: "Run node --test", status: "completed", conclusion: "success" }]
+        }]
+      });
+    }
+    return baseFetch(url, init);
   });
 }
 

@@ -174,8 +174,10 @@ describe("openai verifier adapter", () => {
     const input = demoScenarios["missing-tests"];
     const report = generateVerificationReport(input);
     const invalid = structuredClone(report);
-    invalid.requirements[2].status = "met";
-    invalid.requirements[2].gaps = [];
+    const weakTestRequirement = invalid.requirements.find((requirement) => requirement.status !== "met");
+    expect(weakTestRequirement).toBeTruthy();
+    weakTestRequirement!.status = "met";
+    weakTestRequirement!.gaps = [];
     invalid.summary.confidence = 1;
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
@@ -222,8 +224,13 @@ describe("openai verifier adapter", () => {
       message: "Fabricated proof gap.",
       evidenceRefs: []
     });
-    invalid.proofGraph.summary.gapCount += 1;
-    invalid.proofGraph.summary.requirementsWithGaps += 1;
+    invalid.proofGraph.summary.gapCount = invalid.proofGraph.nodes.reduce(
+      (count, node) => count + node.gapSignals.length,
+      0
+    );
+    invalid.proofGraph.summary.requirementsWithGaps = invalid.proofGraph.nodes.filter(
+      (node) => node.gapSignals.length > 0
+    ).length;
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ output_text: JSON.stringify(invalid) }), {
         status: 200,

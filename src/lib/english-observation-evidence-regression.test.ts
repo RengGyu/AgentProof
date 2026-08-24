@@ -8,6 +8,17 @@ import { generateVerificationReport, generateVerificationReportV2FromInput } fro
 const HEAD_SHA = "a".repeat(40);
 const BASE_SHA = "b".repeat(40);
 
+function withReceiptV2<T>(run: () => T): T {
+  const previous = process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+  process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = "receipt_v2";
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
+    else process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = previous;
+  }
+}
+
 describe("frozen English observation evidence regressions", () => {
   it("extracts zero objectives from an evidence-inventory-only PR", () => {
     const report = generateVerificationReport(syntheticInput({
@@ -33,8 +44,8 @@ describe("frozen English observation evidence regressions", () => {
   });
 
   it.each([
-    { source: "selected issue text", taskSource: "issue" as const, expectedStatus: "met" as const, expectedEvidenceStatus: undefined },
-    { source: "PR-description fallback", taskSource: undefined, expectedStatus: "partial" as const, expectedEvidenceStatus: "met" as const }
+    { source: "selected issue text", taskSource: "issue" as const, expectedStatus: "missing" as const, expectedEvidenceStatus: undefined },
+    { source: "PR-description fallback", taskSource: undefined, expectedStatus: "missing" as const, expectedEvidenceStatus: "partial" as const }
   ])("resolves an unqualified test sibling only through its predecessor for $source", ({ taskSource, expectedStatus, expectedEvidenceStatus }) => {
     const report = generateVerificationReport(changedSiblingInput(taskSource));
     const [behavior, testSibling] = report.requirements;
@@ -50,8 +61,8 @@ describe("frozen English observation evidence regressions", () => {
       "targeted_test",
       "execution"
     ]);
-    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "incomplete" });
     expect(testSibling).toMatchObject({ status: expectedStatus });
     expect(testSibling?.evidenceStatus).toBe(expectedEvidenceStatus);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
@@ -140,8 +151,8 @@ describe("frozen English observation evidence regressions", () => {
     const testSibling = report.requirements.at(-1);
 
     expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_subject_chain" });
-    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "incomplete" });
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
@@ -184,8 +195,8 @@ describe("frozen English observation evidence regressions", () => {
     const testSibling = report.requirements.at(-1);
 
     expect(report.proofGraph.nodes.at(-1)?.deterministicRelation).toMatchObject({ kind: "test_subject_chain" });
-    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "incomplete" });
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
@@ -284,7 +295,7 @@ describe("frozen English observation evidence regressions", () => {
       "- Add a regression test for the existing `repositoryName` helper.",
       "- The test must confirm that the helper returns the repository name unchanged."
     ].join("\n");
-    const report = generateVerificationReport(input);
+    const report = withReceiptV2(() => generateVerificationReport(input));
     const [namedTest, semanticClaim] = report.requirements;
 
     expect(axis(namedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
@@ -292,8 +303,11 @@ describe("frozen English observation evidence regressions", () => {
     expect(axis(semanticClaim, "targeted_test")).toMatchObject({ state: "violated" });
     expect(axis(semanticClaim, "execution")).toMatchObject({ state: "incomplete" });
     expect(semanticClaim?.status).toBe("partial");
-    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
-    expect(report.proofGraph.testRelationReceipts?.[0]?.subjectRequirementId).toBe(namedTest?.requirementId);
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts[0]).toMatchObject({
+      version: 2,
+      requirementId: namedTest?.requirementId
+    });
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
@@ -316,7 +330,7 @@ describe("frozen English observation evidence regressions", () => {
   });
 
   it("supports a direct test-only regression of an unchanged helper only with exact receipts", () => {
-    const withExactTarget = generateVerificationReport(unchangedHelperInput());
+    const withExactTarget = withReceiptV2(() => generateVerificationReport(unchangedHelperInput()));
     const withoutExactTarget = generateVerificationReport(unchangedHelperInput({ resolvedHeadModules: [] }));
     const supported = withExactTarget.requirements.at(-1);
     const unsupported = withoutExactTarget.requirements.at(-1);
@@ -324,7 +338,7 @@ describe("frozen English observation evidence regressions", () => {
     expect(axis(supported, "targeted_test")).toMatchObject({ state: "satisfied" });
     expect(axis(supported, "execution")).toMatchObject({ state: "satisfied" });
     expect(withExactTarget.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
-    expect(withExactTarget.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(withExactTarget.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
     expect(axis(unsupported, "targeted_test")).toMatchObject({ state: "incomplete" });
     expect(axis(unsupported, "execution")).toMatchObject({ state: "incomplete" });
     expect(withoutExactTarget.proofGraph.exactHeadTargetReceipts).toBeUndefined();
@@ -334,7 +348,7 @@ describe("frozen English observation evidence regressions", () => {
   });
 
   it("keeps an unchanged mixed-binding helper receipt bound only to its named export", () => {
-    const report = generateVerificationReport(unchangedHelperInput({
+    const report = withReceiptV2(() => generateVerificationReport(unchangedHelperInput({
       testPatch: [
         "+import assert from 'node:assert/strict';",
         "+import { legacyLabel, repositoryName } from '../src/repositories/name.js';",
@@ -345,18 +359,18 @@ describe("frozen English observation evidence regressions", () => {
         "export function legacyLabel(value) { return String(value); }",
         "export function repositoryName(value) { return String(value).toLowerCase(); }"
       ].join("\n")
-    }));
+    })));
     const namedTest = report.requirements.at(-1);
 
     expect(axis(namedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
     expect(axis(namedTest, "execution")).toMatchObject({ state: "satisfied" });
     expect(report.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
-    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
   it("keeps an unchanged alias-bound helper receipt on its named export with an unrelated sibling import", () => {
-    const report = generateVerificationReport(unchangedHelperInput({
+    const report = withReceiptV2(() => generateVerificationReport(unchangedHelperInput({
       testPatch: [
         "+import assert from 'node:assert/strict';",
         "+import { legacyLabel, repositoryName as formatName } from '../src/repositories/name.js';",
@@ -367,13 +381,13 @@ describe("frozen English observation evidence regressions", () => {
         "export function legacyLabel(value) { return String(value); }",
         "export function repositoryName(value) { return String(value).toLowerCase(); }"
       ].join("\n")
-    }));
+    })));
     const namedTest = report.requirements.at(-1);
 
     expect(axis(namedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
     expect(axis(namedTest, "execution")).toMatchObject({ state: "satisfied" });
     expect(report.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
-    expect(report.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(report.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
@@ -506,8 +520,8 @@ describe("frozen English observation evidence regressions", () => {
     )!.id;
 
     expect(report.testing.ciStatus).toBe("failed");
-    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(testSibling, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(testSibling, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(testSibling, "execution")).toMatchObject({ state: "incomplete" });
     expect(testSibling?.evidenceRefs).not.toContain(failedCheckRef);
     expect(report.proofGraph.nodes[1]?.executionEvidenceRefs).not.toContain(failedCheckRef);
     expect(report.proofGraph.nodes[1]?.gapSignals.map((gap) => gap.kind)).not.toContain("failed_execution");
@@ -538,12 +552,14 @@ describe("frozen English observation evidence regressions", () => {
 
     expect(relationReport.proofGraph.sourceBindings).toHaveLength(2);
     expect(exactTargetReport.proofGraph.exactHeadTargetReceipts).toHaveLength(1);
-    expect(exactTargetReport.proofGraph.testRelationReceipts).toHaveLength(1);
+    expect(exactTargetReport.proofGraph.privateReceiptBundleV2?.testRelationReceipts).toHaveLength(1);
     expect(relationReport.proofGraph.failedCheckAssociations?.length).toBeGreaterThan(0);
     for (const privateField of [
       "sourceBindings",
       "exactHeadTargetReceipts",
       "testRelationReceipts",
+      "privateReceiptBundleV2",
+      "executionBindingReceipts",
       "failedCheckAssociations",
       "targetBlobSha",
       "canonicalBindingDigest",
@@ -624,7 +640,8 @@ describe("frozen English observation evidence regressions", () => {
           runAttempt: 1,
           jobId: 303,
           jobName: "test",
-          headSha: HEAD_SHA
+          headSha: HEAD_SHA,
+          checkEvidenceRef: "ev_4"
         }
       }]
     } as Partial<PullRequestInput> & { checks: Array<Record<string, unknown>> }) as PullRequestInput);
@@ -660,6 +677,55 @@ describe("frozen English observation evidence regressions", () => {
     expect(serializedAssociations).not.toContain("npm test failed");
   });
 
+  it("keeps a forged collector evidence reference global-only and unknown", () => {
+    const report = generateVerificationReport(syntheticInput({
+      title: "Configure validation workflow",
+      description: "Updates validation CI.",
+      taskText: [
+        "Acceptance criteria:",
+        "- Add the validation CI workflow.",
+        "- It must configure the validation CI workflow to use Node.js 22 and run npm test."
+      ].join("\n"),
+      changedFiles: [{
+        path: ".github/workflows/validation.yml",
+        status: "modified",
+        patch: "+ name: Validation CI\n+ uses: actions/setup-node@v4\n+ node-version: 22\n+ run: npm test"
+      }],
+      checks: [{
+        name: "Validation CI",
+        status: "failed",
+        summary: "Status: failed. npm test failed.",
+        workflowExecutionIdentity: {
+          version: 1,
+          kind: "workflow_execution_identity",
+          workflowPath: ".github/workflows/validation.yml",
+          workflowName: "Validation CI",
+          workflowId: 101,
+          runId: 202,
+          runAttempt: 1,
+          jobId: 303,
+          jobName: "test",
+          headSha: HEAD_SHA,
+          checkEvidenceRef: "ev_3"
+        }
+      }]
+    } as Partial<PullRequestInput> & { checks: Array<Record<string, unknown>> }) as PullRequestInput);
+    const continuation = report.requirements[1]!;
+    const failedCheckRef = report.evidenceIndex.find((item) => item.kind === "check")!.id;
+
+    expect(failedCheckRef).toBe("ev_4");
+    expect(axis(continuation, "execution")).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(report.proofGraph.failedCheckAssociations).toContainEqual({
+      version: 1,
+      kind: "failed_check_association",
+      requirementId: continuation.requirementId,
+      checkEvidenceRef: "ev_4",
+      state: "unknown",
+      basis: "identity_incomplete"
+    });
+    expect(report.testing.ciStatus).toBe("failed");
+  });
+
   it("does not inherit CI identity from competing workflow antecedents", () => {
     const ambiguousContinuation = generateVerificationReport(syntheticInput({
       title: "Configure validation workflows",
@@ -692,9 +758,9 @@ describe("frozen English observation evidence regressions", () => {
     const exactFinding = exactIdentity.requirements.at(-1);
 
     expect(exactIdentity.verificationContract.state).toBe("absent");
-    expect(exactFinding).toMatchObject({ status: "unclear", evidenceStatus: "met" });
-    expect(axis(exactFinding, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(exactFinding, "execution")).toMatchObject({ state: "satisfied" });
+    expect(exactFinding).toMatchObject({ status: "unclear", evidenceStatus: "partial" });
+    expect(axis(exactFinding, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(exactFinding, "execution")).toMatchObject({ state: "incomplete" });
     expect(exactIdentity.proofGraph.nodes.at(-1)).toMatchObject({
       caseCoverageReceipt: expect.objectContaining({
         version: 1,
