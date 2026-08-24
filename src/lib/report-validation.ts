@@ -1,4 +1,13 @@
-import type { VerificationReport } from "./types";
+import { createHash } from "crypto";
+import type {
+  CanonicalRequirementSetV1,
+  ChangedFile,
+  DeterministicRequirementRelation,
+  PullRequestInput,
+  RequirementSourceBinding,
+  ResolvedHeadModulePayload,
+  VerificationReport
+} from "./types";
 import { validateLlmSemanticCandidate } from "./llm-semantic-output";
 import {
   hasPassingEvidenceStatusPrefix,
@@ -7,15 +16,27 @@ import {
 } from "./evidence-status";
 import {
   artifactEvidenceMatchesAnyPath,
-  executionEvidenceMatchesAnyTestPath
+  boundedTestRelationCandidate,
+  canonicalCurrentRequirementBinding,
+  executionEvidenceMatchesAnyTestPath,
+  resolveExactHeadTarget
 } from "./evidence-relation";
+import { buildEvidenceIndexResult, deriveDeterministicRequirementRelations, isTestFile, selectCanonicalRequirements } from "./extractors";
 import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
+import {
+  canonicalVerificationBindingV2,
+  materializeVerificationContractV2,
+  parseVerificationContractV2,
+  type VerificationBindingInputV2,
+  type VerificationContractSourceInputV2
+} from "./verification-contract-v2";
 import {
   requirementProofAxisExpectations,
   requirementProofAxisExpectationsWithContext,
   type DeterministicProofContext
 } from "./verifier-proof-expectations";
 import { aggregateVerificationCriteriaV2 } from "./verification-contract-v2";
+import { canonicalRequirementSourceBindingV2, validatePrivateProofReceiptBundleV2 } from "./evidence-receipts";
 import {
   PROOF_AXIS_COLLECTION_BASES,
   PROOF_AXIS_SUBJECTS,
@@ -125,6 +146,173 @@ export interface ReportValidationOptions {
   mode?: "default" | "full" | "summary" | "tenant" | "legacy_read" | "v2_full" | "v2_summary" | "v2_tenant";
   requireFullProvenance?: boolean;
   requireSourceProvenance?: boolean;
+  receiptValidationContext?: VerificationValidationContextV2;
+}
+
+export interface VerificationValidationContextV2 {
+  canonicalRequirementSet: CanonicalRequirementSetV1;
+  canonicalRequirementDigest: string;
+  selectedRequirementSource?: Pick<PullRequestInput, "taskText" | "description" | "taskSource" | "requirementSourceIdentityHash">;
+  typedRequirementSource?: {
+    contractSource: VerificationContractSourceInputV2;
+    binding: VerificationBindingInputV2;
+  };
+  changedFileInventory: {
+    completeness: "complete" | "incomplete";
+    headSha: string;
+    files: readonly ChangedFile[];
+  };
+  resolvedHeadModules: readonly ResolvedHeadModulePayload[];
+  testBindings: readonly TransientTestEvidenceBindingV2[];
+  executionBindings: readonly TransientExecutionEvidenceBindingV2[];
+}
+
+export interface TransientTestEvidenceBindingV2 {
+  version: 2;
+  kind: "transient_test_evidence_binding";
+  evidenceRef: string;
+  headSha: string;
+  path: string;
+  pathDigest: string;
+  patchDigest: string;
+  identityDigest: string;
+}
+
+export interface TransientExecutionEvidenceBindingV2 {
+  version: 2;
+  kind: "transient_execution_evidence_binding";
+  evidenceRef: string;
+  headSha: string;
+  identityDigest: string;
+  suiteAssociations: readonly {
+    suiteDigest: string;
+    testEvidenceRefs: readonly string[];
+  }[];
+}
+
+/** Builds the raw, private context consumed by independent receipt validation. */
+export function createVerificationValidationContextV2(
+  input: PullRequestInput,
+  canonicalRequirementSet: CanonicalRequirementSetV1
+): VerificationValidationContextV2 {
+  const provenance = input.sourceProvenance;
+  const inventory = provenance?.changedFileInventory;
+  const headSha = provenance?.origin === "github_snapshot" && inventory?.headSha === provenance.headSha
+    ? provenance.headSha ?? ""
+    : "";
+  const transientEvidence = transientReceiptEvidenceBindings(input, headSha);
+  return {
+    canonicalRequirementSet,
+    canonicalRequirementDigest: canonicalRequirementDigestV2(canonicalRequirementSet),
+    ...(canonicalRequirementSet.inputKind === "selected_source" ? {
+      selectedRequirementSource: {
+        taskText: input.taskText,
+        description: input.description,
+        taskSource: input.taskSource,
+        requirementSourceIdentityHash: input.requirementSourceIdentityHash
+      }
+    } : {}),
+    ...(canonicalRequirementSet.inputKind === "typed_contract" && input.verificationContractSourceV2 && input.verificationContractBindingV2 ? {
+      typedRequirementSource: {
+        contractSource: input.verificationContractSourceV2,
+        binding: input.verificationContractBindingV2
+      }
+    } : {}),
+    changedFileInventory: {
+      completeness: provenance?.origin === "github_snapshot" && inventory?.completeness === "complete" && Boolean(headSha)
+        ? "complete"
+        : "incomplete",
+      headSha,
+      files: input.changedFiles
+    },
+    resolvedHeadModules: input.resolvedHeadModules ?? [],
+    testBindings: transientEvidence.testBindings,
+    executionBindings: transientEvidence.executionBindings
+  };
+}
+
+function transientReceiptEvidenceBindings(
+  input: PullRequestInput,
+  headSha: string
+): Pick<VerificationValidationContextV2, "testBindings" | "executionBindings"> {
+  const evidence = buildEvidenceIndexResult(
+    input.taskText,
+    input.description,
+    input.changedFiles,
+    input.checks,
+    input.logs,
+    input.taskSource
+  ).items;
+  const testBindings = evidence.flatMap((item): TransientTestEvidenceBindingV2[] => {
+    if (item.kind !== "test") return [];
+    const path = item.locator ?? item.label;
+    const file = input.changedFiles.find((candidate) => candidate.path.toLowerCase() === path.toLowerCase() && isTestFile(candidate.path));
+    if (!file) return [];
+    const pathDigest = receiptDigest(["v2", headSha, file.path]);
+    const patchDigest = receiptDigest(["v2", file.path, file.patch ?? ""]);
+    return [{
+      version: 2,
+      kind: "transient_test_evidence_binding",
+      evidenceRef: item.id,
+      headSha,
+      path: file.path,
+      pathDigest,
+      patchDigest,
+      identityDigest: receiptDigest(["v2", item.id, headSha, pathDigest, patchDigest])
+    }];
+  });
+  const testBindingsByPath = new Map(testBindings.map((binding) => [binding.path.toLowerCase(), binding]));
+  const executionBindings = evidence.flatMap((item): TransientExecutionEvidenceBindingV2[] => {
+    if ((item.kind !== "check" && item.kind !== "log") ||
+      !hasPassingEvidenceStatusPrefix(item.summary) ||
+      !isExecutionEvidenceSignal(item.label, item.summary, item.locator)) return [];
+    const suiteAssociations = (input.executionSuites ?? []).flatMap((suite) => {
+      if (suite.status !== "passed" || suite.headSha !== headSha || suite.scope !== "repository_discovery" ||
+        suite.executionSource !== item.label) return [];
+      const testEvidenceRefs = [...new Set(suite.testPaths.flatMap((path) => {
+        const binding = testBindingsByPath.get(path.toLowerCase());
+        return binding ? [binding.evidenceRef] : [];
+      }))].sort();
+      if (testEvidenceRefs.length === 0) return [];
+      return [{
+        suiteDigest: createHash("sha256").update(stableReceiptContextJson({
+          domain: "agentproof.transient-suite-binding.v2",
+          suite
+        }), "utf8").digest("hex"),
+        testEvidenceRefs
+      }];
+    });
+    if (suiteAssociations.length === 0) return [];
+    const normalizedAssociations = [...suiteAssociations].sort((left, right) => left.suiteDigest.localeCompare(right.suiteDigest));
+    return [{
+      version: 2,
+      kind: "transient_execution_evidence_binding",
+      evidenceRef: item.id,
+      headSha,
+      identityDigest: transientExecutionIdentityDigest(item.id, headSha, normalizedAssociations),
+      suiteAssociations: normalizedAssociations
+    }];
+  });
+  return { testBindings, executionBindings };
+}
+
+function transientExecutionIdentityDigest(
+  evidenceRef: string,
+  headSha: string,
+  suiteAssociations: TransientExecutionEvidenceBindingV2["suiteAssociations"]
+): string {
+  return createHash("sha256").update(stableReceiptContextJson({
+    domain: "agentproof.transient-execution-binding.v2",
+    evidenceRef,
+    headSha,
+    suiteAssociations
+  }), "utf8").digest("hex");
+}
+
+export function canonicalRequirementDigestV2(canonical: CanonicalRequirementSetV1): string {
+  return createHash("sha256")
+    .update(stableReceiptContextJson({ domain: "agentproof.receipt-validation-context.v2", canonical }), "utf8")
+    .digest("hex");
 }
 
 type RecordValue = Record<string, unknown>;
@@ -201,9 +389,16 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   if (mode === "tenant" || mode === "v2_tenant") {
     validatePrivateProofReceiptOmission(report, "tenant reports", errors);
   }
-  if (mode === "full") {
+  const isPrivateFullMode = mode === "full" || mode === "v2_full";
+  if (isPrivateFullMode) {
     validateFullReportProvenance(report, evidenceIds, errors);
-    validateFullReportSemantics(report, evidenceIds, errors);
+    validateObservationProofSemantics(report, evidenceIds, errors, mode === "v2_full");
+  }
+  if (mode === "v2_full") {
+    validatePrivateV2ReceiptSemantics(report, options.receiptValidationContext, errors);
+  }
+  if (mode === "full") {
+    validateLegacyOutcomeSemantics(report, evidenceIds, errors);
   }
   if (isV2) {
     validateVerificationContractV2(report, evidenceIds, mode, errors);
@@ -381,8 +576,9 @@ function validateVerificationContractV2(
     (objectiveIds.size !== requirements.length || objectiveIds.size !== nodes.length)) {
     errors.push("v2 objectives must cover every requirement and proof-graph node exactly once.");
   }
-  if ((state === "absent" || state === "invalid") && requirements.some((requirement) => requirement.status === "met")) {
-    errors.push("absent or invalid verification contracts cannot produce met requirements.");
+  if ((state === "absent" || state === "invalid") &&
+    (requirements.some((requirement) => requirement.status !== "unclear") || nodes.some((node) => node.status !== "unclear"))) {
+    errors.push("absent or invalid verification contracts must produce only unclear requirements and proof nodes.");
   }
 }
 
@@ -894,7 +1090,7 @@ function validateProofGraph(
     ["version", "nodes", "context", "summary"],
     "proofGraph",
     errors,
-    ["sourceBindings", "exactHeadTargetReceipts", "testRelationReceipts", "failedCheckAssociations"]
+    ["sourceBindings", "exactHeadTargetReceipts", "testRelationReceipts", "privateReceiptBundleV2", "executionBindingReceipts", "failedCheckAssociations"]
   );
   if (value.version !== 1) {
     errors.push("proofGraph.version must be 1.");
@@ -1006,8 +1202,297 @@ function validateProofGraph(
     nodes,
     errors
   );
+  validatePrivateProofReceiptAdmission(value, mode, errors);
   validateProofGraphSummary(value.summary, errors);
   validateProofGraphSummaryMatchesNodes(value.summary, nodes, mode === "summary", errors);
+}
+
+function validatePrivateProofReceiptAdmission(
+  proofGraph: RecordValue,
+  mode: ReportValidationOptions["mode"],
+  errors: string[]
+): void {
+  const hasBundle = Object.hasOwn(proofGraph, "privateReceiptBundleV2");
+  const hasExecutionBindings = Object.hasOwn(proofGraph, "executionBindingReceipts");
+  if (!hasBundle && !hasExecutionBindings) return;
+
+  if (mode !== "full" && mode !== "v2_full") {
+    errors.push("private v2 receipt fields are permitted only in full report validation.");
+    return;
+  }
+  if (!hasBundle) {
+    errors.push("proofGraph.executionBindingReceipts requires proofGraph.privateReceiptBundleV2.");
+    return;
+  }
+
+  for (const error of validatePrivateProofReceiptBundleV2(proofGraph.privateReceiptBundleV2)) {
+    errors.push(`proofGraph.privateReceiptBundleV2 ${error}`);
+  }
+  if (hasExecutionBindings && (!isRecord(proofGraph.privateReceiptBundleV2) ||
+    !sameJsonValue(proofGraph.executionBindingReceipts, proofGraph.privateReceiptBundleV2.executionBindingReceipts))) {
+    errors.push("proofGraph.executionBindingReceipts must exactly mirror the private v2 receipt bundle.");
+  }
+}
+
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+function validatePrivateV2ReceiptSemantics(
+  report: RecordValue,
+  context: VerificationValidationContextV2 | undefined,
+  errors: string[]
+): void {
+  const bundle = isRecord(report.proofGraph) && isRecord(report.proofGraph.privateReceiptBundleV2)
+    ? report.proofGraph.privateReceiptBundleV2
+    : undefined;
+  const relations = Array.isArray(bundle?.testRelationReceipts)
+    ? bundle.testRelationReceipts.filter((item): item is RecordValue => isRecord(item) && item.version === 2)
+    : [];
+  if (relations.length === 0) return;
+  if (!context) {
+    errors.push("v2 private receipt validation requires transient validation context.");
+    return;
+  }
+  const sourceHeadSha = isRecord(report.source) && isRecord(report.source.provenance) && typeof report.source.provenance.headSha === "string"
+    ? report.source.provenance.headSha
+    : "";
+  const suppliedCanonical = context.canonicalRequirementSet;
+  const canonical = recomputeCanonicalRequirementsV2(suppliedCanonical.inputKind, context);
+  if (!canonical) {
+    errors.push("private v2 receipt does not match transient validation context.");
+    return;
+  }
+  const inventory = context.changedFileInventory;
+  const changedFiles = Array.isArray(inventory?.files) ? inventory.files : [];
+  const changedPaths = new Set(changedFiles.map((file) => file.path.toLowerCase()));
+  const reportEvidenceById = new Map(Array.isArray(report.evidenceIndex)
+    ? report.evidenceIndex.filter(isRecord).flatMap((item) => typeof item.id === "string" ? [[item.id, item] as const] : [])
+    : []);
+  const sourceBindings = Array.isArray(bundle?.sourceBindings) ? bundle.sourceBindings.filter(isRecord) : [];
+  const targets = Array.isArray(bundle?.exactHeadTargetReceipts) ? bundle.exactHeadTargetReceipts.filter(isRecord) : [];
+  const executions = Array.isArray(bundle?.executionBindingReceipts) ? bundle.executionBindingReceipts.filter(isRecord) : [];
+  const sourceById = new Map(sourceBindings.map((binding) => [binding.id, binding]));
+  const targetById = new Map(targets.map((target) => [target.id, target]));
+  const executionById = new Map(executions.map((execution) => [execution.id, execution]));
+  const transientTestByRef = new Map(context.testBindings.map((binding) => [binding.evidenceRef, binding]));
+  const transientExecutionByRef = new Map(context.executionBindings.map((binding) => [binding.evidenceRef, binding]));
+  let canonicalBindings: RequirementSourceBinding[];
+  let derivedRelations: ReturnType<typeof deriveDeterministicRequirementRelations>["deterministicRelationsByRequirement"];
+  try {
+    canonicalBindings = canonical.requirements.map((unit) => canonicalRequirementSourceBindingV2(unit, canonical.sourceContentHash));
+    derivedRelations = deriveDeterministicRequirementRelations(canonical).deterministicRelationsByRequirement;
+  } catch {
+    errors.push("private v2 receipt does not match transient validation context.");
+    return;
+  }
+  const canonicalBindingById = new Map(canonicalBindings.map((binding) => [binding.id, binding]));
+  const canonicalTextById = new Map(canonical.requirements.map((unit) => [unit.reportRequirementId, unit.text]));
+
+  let invalid = context.canonicalRequirementDigest !== canonicalRequirementDigestV2(canonical) ||
+    !sameJsonValue(suppliedCanonical, canonical) ||
+    (suppliedCanonical.inputKind === "selected_source" && !context.selectedRequirementSource) ||
+    (suppliedCanonical.inputKind === "typed_contract" && !context.typedRequirementSource) ||
+    inventory?.completeness !== "complete" || inventory?.headSha !== sourceHeadSha ||
+    changedFiles.length === 0 || changedPaths.size !== changedFiles.length ||
+    transientTestByRef.size !== context.testBindings.length ||
+    transientExecutionByRef.size !== context.executionBindings.length ||
+    !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(sourceHeadSha);
+  for (const actual of sourceBindings) {
+    const expected = typeof actual.id === "string" ? canonicalBindingById.get(actual.id) : undefined;
+    if (!expected || !sameJsonValue(actual, expected)) invalid = true;
+  }
+  for (const relation of relations) {
+    const requirementId = typeof relation.requirementId === "string" ? relation.requirementId : "";
+    const testEvidenceRef = typeof relation.testEvidenceRef === "string" ? relation.testEvidenceRef : "";
+    const currentUnit = canonical.requirements.find((unit) => unit.reportRequirementId === requirementId);
+    const deterministicRelation = derivedRelations.get(requirementId);
+    const subject = canonicalReceiptSubject(canonical, requirementId, relation.subjectSource, deterministicRelation);
+    const candidateRelation = relation.subjectSource === "current_requirement" ? undefined : deterministicRelation;
+    const testBinding = transientTestByRef.get(testEvidenceRef);
+    const testFile = testBinding
+      ? changedFiles.find((file) => file.path.toLowerCase() === testBinding.path.toLowerCase() && isTestFile(file.path))
+      : undefined;
+    const testBindingClosed = Boolean(testBinding && testFile &&
+      testBinding.version === 2 && testBinding.kind === "transient_test_evidence_binding" &&
+      testBinding.headSha === sourceHeadSha &&
+      testBinding.pathDigest === receiptDigest(["v2", sourceHeadSha, testFile.path]) &&
+      testBinding.patchDigest === receiptDigest(["v2", testFile.path, testFile.patch ?? ""]) &&
+      testBinding.identityDigest === receiptDigest([
+        "v2", testBinding.evidenceRef, sourceHeadSha, testBinding.pathDigest, testBinding.patchDigest
+      ]));
+    const currentBinding = canonicalCurrentRequirementBinding(canonical, requirementId) ?? undefined;
+    const candidate = currentUnit && subject && testBindingClosed && testFile?.patch
+      ? boundedTestRelationCandidate({
+        testFile,
+        subject,
+        requirementId,
+        currentRequirementText: currentUnit.text,
+        requirementTexts: canonicalTextById,
+        currentSourceBinding: undefined,
+        targetMode: relation.targetMode as "changed_target" | "exact_head_target",
+        relation: candidateRelation,
+        sourceBindings: canonicalBindings
+      })
+      : null;
+    if (!candidate || relation.subjectSource !== candidate.subjectSource || relation.assertionShape !== "direct_argument" ||
+      relation.directAssertionCount !== candidate.directAssertionCount || relation.subjectDigest !== candidate.subjectDigest ||
+      relation.importBindingDigest !== candidate.importBindingDigest || !currentBinding || !sourceById.has(currentBinding.id)) {
+      invalid = true;
+      continue;
+    }
+    for (const bindingId of receiptRelationSourceBindingIds(candidateRelation, currentBinding.id)) {
+      if (!sourceById.has(bindingId)) invalid = true;
+    }
+
+    let targetRef = "";
+    if (relation.targetMode === "changed_target") {
+      const implementationEvidence = typeof relation.implementationEvidenceRef === "string"
+        ? reportEvidenceById.get(relation.implementationEvidenceRef)
+        : undefined;
+      const implementationPath = typeof implementationEvidence?.locator === "string"
+        ? implementationEvidence.locator
+        : typeof implementationEvidence?.label === "string" ? implementationEvidence.label : "";
+      if (!changedPaths.has(candidate.target.targetPath.toLowerCase()) ||
+        implementationPath.toLowerCase() !== candidate.target.targetPath.toLowerCase() ||
+        (implementationEvidence?.kind !== "diff" && implementationEvidence?.kind !== "changed_file") ||
+        relation.exactHeadTargetReceiptRef !== undefined) invalid = true;
+      targetRef = typeof relation.implementationEvidenceRef === "string" ? relation.implementationEvidenceRef : "";
+    } else {
+      const matchingModules = context.resolvedHeadModules.filter((module) =>
+        module.headSha === sourceHeadSha && module.path.toLowerCase() === candidate.target.targetPath.toLowerCase());
+      const resolved = matchingModules.length === 1 && testFile?.patch
+        ? resolveExactHeadTarget({
+          testPath: testFile.path,
+          testPatch: testFile.patch,
+          importSpecifier: candidate.target.importSpecifier,
+          headSha: sourceHeadSha,
+          target: matchingModules[0]!,
+          subject
+        })
+        : null;
+      const target = typeof relation.exactHeadTargetReceiptRef === "string" ? targetById.get(relation.exactHeadTargetReceiptRef) : undefined;
+      if (!resolved || changedPaths.has(candidate.target.targetPath.toLowerCase()) || relation.implementationEvidenceRef !== undefined ||
+        relation.exactHeadTargetReceiptRef !== resolved.receipt.id || !target || !sameJsonValue(target, resolved.receipt)) invalid = true;
+      targetRef = resolved?.receipt.id ?? "";
+    }
+
+    const execution = typeof relation.executionReceiptRef === "string" ? executionById.get(relation.executionReceiptRef) : undefined;
+    if (!execution || execution.requirementId !== requirementId || execution.testEvidenceRef !== testEvidenceRef ||
+      typeof execution.executionEvidenceRef !== "string") {
+      invalid = true;
+      continue;
+    }
+    const transientExecution = transientExecutionByRef.get(execution.executionEvidenceRef);
+    const executionClosed = execution.scope === "exact_test" &&
+      transientExecution?.version === 2 && transientExecution.kind === "transient_execution_evidence_binding" &&
+      transientExecution.headSha === sourceHeadSha &&
+      transientExecution.identityDigest === transientExecutionIdentityDigest(
+        transientExecution.evidenceRef,
+        transientExecution.headSha,
+        transientExecution.suiteAssociations
+      ) &&
+      transientExecution.suiteAssociations.some((association) =>
+        /^[a-f0-9]{64}$/.test(association.suiteDigest) && association.testEvidenceRefs.includes(testEvidenceRef));
+    const expectedHeadDigest = receiptDigest(["v2", sourceHeadSha, testEvidenceRef, execution.executionEvidenceRef]);
+    const expectedRelationId = `test_relation_v2_${receiptDigest([
+      requirementId,
+      relation.targetMode as string,
+      targetRef,
+      testEvidenceRef,
+      candidate.subjectDigest,
+      candidate.importBindingDigest,
+      typeof relation.executionReceiptRef === "string" ? relation.executionReceiptRef : ""
+    ]).slice(0, 24)}`;
+    const expectedExecutionId = `execution_binding_${receiptDigest([
+      requirementId,
+      testEvidenceRef,
+      execution.executionEvidenceRef,
+      expectedHeadDigest
+    ]).slice(0, 24)}`;
+    if (!executionClosed || execution.headBindingDigest !== expectedHeadDigest ||
+      execution.id !== expectedExecutionId || relation.id !== expectedRelationId) invalid = true;
+  }
+  if (invalid) errors.push("private v2 receipt does not match transient validation context.");
+}
+
+function recomputeCanonicalRequirementsV2(
+  inputKind: CanonicalRequirementSetV1["inputKind"],
+  context: VerificationValidationContextV2
+): CanonicalRequirementSetV1 | undefined {
+  try {
+    if (inputKind === "selected_source") {
+      return context.selectedRequirementSource
+        ? selectCanonicalRequirements({ kind: "selected_source", input: context.selectedRequirementSource })
+        : undefined;
+    }
+    const raw = context.typedRequirementSource;
+    if (!raw) return undefined;
+    const parsed = parseVerificationContractV2(raw.contractSource);
+    if (parsed.state !== "authoritative" && parsed.state !== "author_claim") return undefined;
+    const bindingDigest = canonicalVerificationBindingV2(raw.binding, parsed.contract);
+    const materialized = materializeVerificationContractV2(parsed, bindingDigest);
+    return selectCanonicalRequirements({ kind: "typed_contract", materialized, binding: raw.binding });
+  } catch {
+    return undefined;
+  }
+}
+
+function canonicalReceiptSubject(
+  canonical: CanonicalRequirementSetV1,
+  requirementId: string,
+  subjectSource: unknown,
+  relation: DeterministicRequirementRelation | undefined
+): string | undefined {
+  const current = canonical.requirements.find((unit) => unit.reportRequirementId === requirementId);
+  if (!current) return undefined;
+  if (subjectSource === "current_requirement") return uniqueCanonicalCodeSubject(current.text);
+  if (subjectSource === "test_antecedent" && relation?.kind === "test_antecedent") {
+    return uniqueCanonicalCodeSubject(canonical.requirements.find((unit) => unit.reportRequirementId === relation.antecedentRequirementId)?.text ?? "");
+  }
+  if (subjectSource === "test_subject_chain" && relation?.kind === "test_subject_chain") {
+    return uniqueCanonicalCodeSubject(canonical.requirements.find((unit) => unit.reportRequirementId === relation.subjectRequirementId)?.text ?? "");
+  }
+  return undefined;
+}
+
+function uniqueCanonicalCodeSubject(text: string): string | undefined {
+  const identifiers = new Set<string>();
+  for (const match of text.matchAll(/`([A-Za-z_$][\w$]*)`|\b([A-Za-z_$][\w$]*)\s*\(/g)) identifiers.add(match[1] ?? match[2]!);
+  for (const match of text.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)) {
+    const identifier = match[1]!;
+    if (/[a-z][A-Z]|[_$]/.test(identifier)) identifiers.add(identifier);
+  }
+  const generic = new Set(["assert", "check", "describe", "expect", "it", "spec", "test"]);
+  const selected = [...identifiers].filter((identifier) => !generic.has(identifier.toLowerCase()));
+  return selected.length === 1 ? selected[0] : undefined;
+}
+
+function receiptRelationSourceBindingIds(
+  relation: DeterministicRequirementRelation | undefined,
+  currentBindingId: string
+): string[] {
+  if (!relation) return [currentBindingId];
+  if (relation.kind === "test_antecedent") return [relation.antecedentSourceBindingRef, relation.currentSourceBindingRef];
+  if (relation.kind === "test_subject_chain") return [relation.subjectSourceBindingRef, relation.bridgeSourceBindingRef, relation.currentSourceBindingRef];
+  return [currentBindingId];
+}
+
+function stableReceiptContextJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableReceiptContextJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableReceiptContextJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function receiptDigest(parts: readonly string[]): string {
+  return createHash("sha256").update(parts.join("\0")).digest("hex");
 }
 
 function validateRequirementSourceBindings(
@@ -1953,6 +2438,8 @@ function validatePrivateProofReceiptOmission(
     "sourceBindings",
     "exactHeadTargetReceipts",
     "testRelationReceipts",
+    "privateReceiptBundleV2",
+    "executionBindingReceipts",
     "failedCheckAssociations"
   ]) {
     if (Object.hasOwn(report.proofGraph, collection)) {
@@ -1961,7 +2448,12 @@ function validatePrivateProofReceiptOmission(
   }
 }
 
-function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<string>, errors: string[]) {
+function validateObservationProofSemantics(
+  report: RecordValue,
+  evidenceIds: Set<string>,
+  errors: string[],
+  requirePromotionReceipt: boolean
+) {
   if (evidenceIds.size === 0) return;
 
   const summary = isRecord(report.summary) ? report.summary : null;
@@ -2028,12 +2520,8 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
     const requirementText = typeof item.requirementText === "string" ? item.requirementText : "";
     const proofNodeText = typeof proofNode?.requirementText === "string" ? proofNode.requirementText : "";
     const duplicateTextMatches = proofNode !== undefined && proofNodeText === requirementText;
-    const duplicateStatusMatches = proofNode !== undefined && proofNode.status === item.status;
     if (proofNode && !duplicateTextMatches) {
       errors.push(`proofGraph node requirementText must match requirements[${index}].requirementText.`);
-    }
-    if (axes && proofNode && !duplicateStatusMatches) {
-      errors.push(`requirements[${index}].status must match proofGraph node status.`);
     }
     if (axes) {
       validateFullRequirementProofAxes(
@@ -2046,69 +2534,17 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
         index,
         errors
       );
+      if (requirePromotionReceipt) {
+        validateRequirementLocalPromotionReceipts(report, item, proofNode, axes, index, errors);
+      }
     }
 
-    const matchingAuthorClaimPartial = item.status === "partial" &&
-      proofNode?.sourceQuality === "author_claim" &&
-      proofNode.status === "partial" &&
-      duplicateTextMatches;
-    if (item.sourceAuthority !== undefined || item.evidenceStatus !== undefined) {
-      if (item.sourceAuthority !== "pr_description" || proofNode?.sourceQuality !== "author_claim") {
-        errors.push(`requirements[${index}] sourceAuthority must match an author-claim proof node.`);
-      }
-      if (!axes || axes.length === 0) {
-        if (item.evidenceStatus !== item.status) {
-          errors.push(`requirements[${index}] evidenceStatus without proof axes must match status.`);
-        }
-      } else if (axes.every((axis) => axis.state === "satisfied") && item.evidenceStatus !== "met") {
+    if (item.evidenceStatus !== undefined && axes && axes.length > 0) {
+      if (axes.every((axis) => axis.state === "satisfied") && item.evidenceStatus !== "met") {
         errors.push(`requirements[${index}] evidenceStatus must be met when every proof axis is satisfied.`);
       } else if (item.evidenceStatus === "met" && axes.some((axis) => axis.state !== "satisfied")) {
         errors.push(`requirements[${index}] evidenceStatus cannot be met without every proof axis satisfied.`);
       }
-    }
-    if (
-      axes &&
-      axes.length > 0 &&
-      axes.every((axis) => axis.state === "satisfied") &&
-      item.status !== "met" &&
-      !matchingAuthorClaimPartial
-    ) {
-      errors.push(`requirements[${index}] status must agree with proofAxes; every satisfied authoritative axis requires met.`);
-    }
-
-    if (item.status === "met" && Array.isArray(item.gaps) && item.gaps.length > 0) {
-      errors.push(`requirements[${index}] cannot be met while evidence gaps are present.`);
-    }
-
-    if (item.status !== "met") {
-      return;
-    }
-
-    if (axes) {
-      if (axes.length === 0 || axes.some((axis) => axis.state !== "satisfied")) {
-        errors.push(`requirements[${index}] status must agree with proofAxes; met requires every axis satisfied.`);
-        if (axes.some((axis) => axis.subject === "execution" && axis.state !== "satisfied")) {
-          errors.push(`requirements[${index}] cannot be met without passing test, build, or CI execution evidence.`);
-        }
-      }
-      return;
-    }
-
-    const refs = getStringArray(item.evidenceRefs);
-    const hasPassingTestExecution = refs
-      .map((ref) => evidenceById.get(ref))
-      .some((evidence) => evidence ? isPassingTestExecutionEvidence(evidence) : false);
-
-    if (!hasPassingTestExecution) {
-      errors.push(`requirements[${index}] cannot be met without passing test, build, or CI execution evidence.`);
-    }
-
-    if (typeof item.requirementText !== "string" || !/\b(tests?|coverage|specs?)\b/i.test(item.requirementText)) {
-      return;
-    }
-
-    if (!hasPassingTestExecution) {
-      errors.push(`requirements[${index}] test requirement cannot be met without passing test execution evidence.`);
     }
   });
 
@@ -2130,6 +2566,81 @@ function validateFullReportSemantics(report: RecordValue, evidenceIds: Set<strin
       errors.push(`claims[${index}] execution claim cannot be supported without passing test or CI execution evidence.`);
     }
   });
+}
+
+function validateLegacyOutcomeSemantics(report: RecordValue, evidenceIds: Set<string>, errors: string[]) {
+  const evidenceById = collectEvidenceById(report.evidenceIndex);
+  const proofNodeByRequirement = new Map<string, RecordValue>();
+  if (isRecord(report.proofGraph) && Array.isArray(report.proofGraph.nodes)) {
+    for (const node of report.proofGraph.nodes) {
+      if (isRecord(node) && typeof node.requirementId === "string") proofNodeByRequirement.set(node.requirementId, node);
+    }
+  }
+  if (!Array.isArray(report.requirements)) return;
+  report.requirements.forEach((item, index) => {
+    if (!isRecord(item)) return;
+    const axes = Array.isArray(item.proofAxes) ? item.proofAxes.filter(isRecord) : null;
+    const proofNode = proofNodeByRequirement.get(typeof item.requirementId === "string" ? item.requirementId : "");
+    const duplicateTextMatches = proofNode !== undefined && proofNode.requirementText === item.requirementText;
+    if (axes && proofNode && proofNode.status !== item.status) errors.push(`requirements[${index}].status must match proofGraph node status.`);
+    const matchingAuthorClaimPartial = item.status === "partial" && proofNode?.sourceQuality === "author_claim" && proofNode.status === "partial" && duplicateTextMatches;
+    if (item.sourceAuthority !== undefined || item.evidenceStatus !== undefined) {
+      if (item.sourceAuthority !== "pr_description" || proofNode?.sourceQuality !== "author_claim") errors.push(`requirements[${index}] sourceAuthority must match an author-claim proof node.`);
+      if (!axes || axes.length === 0) {
+        if (item.evidenceStatus !== item.status) errors.push(`requirements[${index}] evidenceStatus without proof axes must match status.`);
+      }
+    }
+    if (axes && axes.length > 0 && axes.every((axis) => axis.state === "satisfied") && item.status !== "met" && !matchingAuthorClaimPartial) errors.push(`requirements[${index}] status must agree with proofAxes; every satisfied authoritative axis requires met.`);
+    if (item.status === "met" && Array.isArray(item.gaps) && item.gaps.length > 0) errors.push(`requirements[${index}] cannot be met while evidence gaps are present.`);
+    if (item.status !== "met") return;
+    if (axes) {
+      if (axes.length === 0 || axes.some((axis) => axis.state !== "satisfied")) {
+        errors.push(`requirements[${index}] status must agree with proofAxes; met requires every axis satisfied.`);
+        if (axes.some((axis) => axis.subject === "execution" && axis.state !== "satisfied")) errors.push(`requirements[${index}] cannot be met without passing test, build, or CI execution evidence.`);
+      }
+      return;
+    }
+    const hasPassingTestExecution = getStringArray(item.evidenceRefs).map((ref) => evidenceById.get(ref)).some((evidence) => evidence ? isPassingTestExecutionEvidence(evidence) : false);
+    if (!hasPassingTestExecution) errors.push(`requirements[${index}] cannot be met without passing test, build, or CI execution evidence.`);
+    if (typeof item.requirementText === "string" && /\b(tests?|coverage|specs?)\b/i.test(item.requirementText) && !hasPassingTestExecution) errors.push(`requirements[${index}] test requirement cannot be met without passing test execution evidence.`);
+  });
+}
+
+function validateRequirementLocalPromotionReceipts(report: RecordValue, requirement: RecordValue, node: RecordValue | undefined, axes: RecordValue[], requirementIndex: number, errors: string[]): void {
+  const targeted = axes.find((axis) => axis.subject === "targeted_test" && axis.state === "satisfied");
+  const execution = axes.find((axis) => axis.subject === "execution" && axis.state === "satisfied");
+  if (!targeted && !execution) return;
+  const requirementId = typeof requirement.requirementId === "string" ? requirement.requirementId : "";
+  const testRefs = getStringArray(targeted?.evidenceRefs);
+  const executionRefs = getStringArray(execution?.evidenceRefs);
+  const nodeTestRefs = getStringArray(node?.targetedTestEvidenceRefs);
+  const nodeExecutionRefs = getStringArray(node?.executionEvidenceRefs);
+  const bundle = isRecord(report.proofGraph) && isRecord(report.proofGraph.privateReceiptBundleV2)
+    ? report.proofGraph.privateReceiptBundleV2
+    : undefined;
+  const relations = Array.isArray(bundle?.testRelationReceipts) ? bundle.testRelationReceipts.filter(isRecord) : [];
+  const executionBindings = Array.isArray(bundle?.executionBindingReceipts) ? bundle.executionBindingReceipts.filter(isRecord) : [];
+  const sourceBindings = Array.isArray(bundle?.sourceBindings) ? bundle.sourceBindings.filter(isRecord) : [];
+  const exactTargets = Array.isArray(bundle?.exactHeadTargetReceipts) ? bundle.exactHeadTargetReceipts.filter(isRecord) : [];
+  const sourceHeadSha = isRecord(report.source) && isRecord(report.source.provenance) && typeof report.source.provenance.headSha === "string"
+    ? report.source.provenance.headSha
+    : undefined;
+  const closed = Boolean(targeted && execution) && relations.some((relation) => {
+    if (relation.version !== 2 || relation.kind !== "targeted_test_relation" || relation.requirementId !== requirementId ||
+      typeof relation.testEvidenceRef !== "string" || !testRefs.includes(relation.testEvidenceRef) || !nodeTestRefs.includes(relation.testEvidenceRef) ||
+      !sourceBindings.some((binding) => binding.requirementId === requirementId) || typeof relation.executionReceiptRef !== "string") {
+      return false;
+    }
+    const targetBound = relation.targetMode === "changed_target"
+      ? typeof relation.implementationEvidenceRef === "string" && getStringArray(node?.implementationEvidenceRefs).includes(relation.implementationEvidenceRef)
+      : relation.targetMode === "exact_head_target" && typeof relation.exactHeadTargetReceiptRef === "string" && exactTargets.some((target) =>
+        target.id === relation.exactHeadTargetReceiptRef && (sourceHeadSha === undefined || target.headSha === sourceHeadSha));
+    if (!targetBound) return false;
+    return executionBindings.some((binding) => binding.version === 2 && binding.kind === "execution_binding" &&
+      binding.id === relation.executionReceiptRef && binding.requirementId === requirementId && binding.testEvidenceRef === relation.testEvidenceRef &&
+      typeof binding.executionEvidenceRef === "string" && executionRefs.includes(binding.executionEvidenceRef) && nodeExecutionRefs.includes(binding.executionEvidenceRef));
+  });
+  if (!closed) errors.push(`requirements[${requirementIndex}] satisfied requirement-local targeted-test or execution observation requires a closed test-relation receipt.`);
 }
 
 function validateFullRequirementProofAxes(

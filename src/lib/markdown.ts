@@ -133,7 +133,7 @@ export function reportToGitHubComment(
 
     return `- **${requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}${evidence}${gaps}`;
   });
-  const riskLines = report.summary.topRisks.slice(0, 5).map((risk) => `- ${safeInlineText(risk)}`);
+  const riskLines = report.summary.topRisks.slice(0, 1).map((risk) => `- ${safeInlineText(risk)}`);
   const proofGapLines = report.proofGraph.nodes
     .flatMap((node) => node.gapSignals.map((gap) => ({ node, gap })))
     .filter(({ gap }) => gap.severity === "blocker" || gap.severity === "high" || gap.kind === "missing_execution")
@@ -152,7 +152,7 @@ export function reportToGitHubComment(
   const limitationLines = report.limitations.slice(0, 4).map((limitation) => `- ${safeInlineText(limitation)}`);
   const scopeLines = report.scope.suspected
     ? [
-        ...report.scope.reasons.slice(0, 5).map((reason) => `- ${safeInlineText(reason)}`),
+        ...report.scope.reasons.slice(0, 3).map((reason) => `- ${safeInlineText(reason)}`),
         ...provenanceLines(report.scope.provenance, "", { concise: true, limit: 3 }),
         ...(report.scope.evidenceRefs && report.scope.evidenceRefs.length > 0
           ? [`- Evidence: ${formatEvidenceRefs(report.scope.evidenceRefs, evidenceById)}`]

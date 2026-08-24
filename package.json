@@ -29,6 +29,12 @@
     "eval:promote:fixture": "node scripts/promote-eval-fixture.mjs",
     "eval:pack": "vitest run src/lib/evaluation-pack.test.ts scripts/build-eval-pack.test.mjs scripts/promote-eval-fixture.test.mjs",
     "eval:sentinels": "vitest run src/lib/reviewer-signal-sentinels.test.ts",
+    "eval:evidence:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-evidence-release-gate.mjs \"$@\"' --",
+    "eval:evidence:candidates": "test -n \"$AGENTPROOF_RELEASE_EVAL_CASES\" && test -n \"$AGENTPROOF_RELEASE_EVAL_OUTPUT\" && vitest run src/lib/release-evaluation-runner-cli.test.ts",
+    "eval:production-boundary:candidates": "test -n \"$AGENTPROOF_PRODUCTION_BOUNDARY_CASES\" && test -n \"$AGENTPROOF_PRODUCTION_BOUNDARY_OUTPUT\" && vitest run src/lib/production-boundary-evaluation-runner.test.ts",
+    "eval:production-boundary:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-production-boundary-release-gate.mjs \"$@\"' --",
+    "eval:toolchain:manifest": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/build-evaluation-toolchain-manifest.mjs \"$@\"' --",
+    "eval:production-authority:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-production-authority-release-cli.mjs \"$@\"' --",
     "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:strict": "AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
@@ -54,7 +60,7 @@
     "ajv": "^6.15.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.0.0",
-    "typescript": "^5.6.0",
+    "typescript": "5.9.3",
     "vitest": "^4.1.9"
   }
 }

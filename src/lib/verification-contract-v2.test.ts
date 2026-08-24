@@ -190,6 +190,6 @@ describe("parseVerificationContractV2", () => {
 
     expect(report.verificationContract.state).toBe("absent");
     expect(report.requirements.some((requirement) => requirement.status === "unclear")).toBe(true);
-    expect(report.requirements.some((requirement) => requirement.evidenceStatus === "met")).toBe(true);
+    expect(report.requirements.some((requirement) => requirement.evidenceStatus === "partial")).toBe(true);
   });
 });

@@ -1,0 +1,51 @@
+{
+  "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "workflowTask": "Acceptance criteria:\n- Add the verification CI workflow.\n- It must configure the verification CI workflow to run npm test.",
+  "prBody": "## Requirements\n- Add the verification CI workflow.\n- It must configure the verification CI workflow to run npm test.\n\n## Validation\n- npm test",
+  "linkedBody": "Closes #71\n\nImplementation notes only.",
+  "checkRun": {
+    "id": 6101,
+    "name": "unit-test",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "check_suite": { "id": 5101 },
+    "details_url": "https://github.com/opaque-owner/opaque-repo/actions/runs/4101/attempts/1/job/7101",
+    "output": { "summary": "The synthetic unit test failed." }
+  },
+  "runAttempt": {
+    "id": 4101,
+    "name": "Verification",
+    "path": ".github/workflows/verify.yml",
+    "workflow_id": 3101,
+    "run_attempt": 1,
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "check_suite_id": 5101
+  },
+  "job": {
+    "id": 7101,
+    "run_id": 4101,
+    "run_attempt": 1,
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "name": "unit-test",
+    "workflow_name": "Verification",
+    "check_run_url": "https://api.github.com/repos/opaque-owner/opaque-repo/check-runs/6101",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/opaque-owner/opaque-repo/actions/runs/4101/job/7101",
+    "steps": [{ "name": "Run npm test", "status": "completed", "conclusion": "failure" }]
+  },
+  "rows": [
+    { "id": "provided-task-precedence", "source": "provided", "identity": "complete", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "linked-issue-precedence", "source": "linked", "identity": "complete", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "pr-description-fallback", "source": "pr_description", "identity": "complete", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "complete-workflow-identity", "source": "provided", "identity": "complete", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "incomplete-workflow-identity", "source": "provided", "identity": "missing_path", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "rerun-attempt", "source": "provided", "identity": "rerun", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "head-drift", "source": "provided", "identity": "head_drift", "status": 400 },
+    { "id": "pagination-cap", "source": "provided", "identity": "pagination_cap", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "permission-unavailable", "source": "provided", "identity": "permission", "status": 200, "origin": "github_snapshot", "inventory": "complete" },
+    { "id": "mixed-pasted-live", "source": "provided", "identity": "mixed", "status": 200, "origin": "pasted_evidence", "inventory": "incomplete" }
+  ]
+}

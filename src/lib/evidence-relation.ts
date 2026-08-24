@@ -1,5 +1,12 @@
 import { createHash } from "crypto";
-import type { ExactHeadTargetReceipt, ResolvedHeadModulePayload } from "./types";
+import type {
+  CanonicalRequirementSetV1,
+  DeterministicRequirementRelation,
+  ExactHeadTargetReceipt,
+  RequirementSourceBinding,
+  ResolvedHeadModulePayload,
+  TestRelationReceiptV2
+} from "./types";
 
 const GENERIC_RELATION_TOKENS = new Set([
   "check",
@@ -79,7 +86,169 @@ export interface ExactHeadTargetResolution {
   receipt: ExactHeadTargetReceipt;
 }
 
-export type TestRelationSubjectSource = "current_requirement";
+export type TestRelationSubjectSource = TestRelationReceiptV2["subjectSource"];
+
+type StableRequirementBinding = Pick<
+  RequirementSourceBinding,
+  "id" | "requirementId" | "seedId" | "groupId" | "source" | "ordinal"
+>;
+
+/** Derives the current requirement's stable private identity from Task 3's canonical bundle. */
+export function canonicalCurrentRequirementBinding(
+  canonical: CanonicalRequirementSetV1,
+  requirementId: string
+): StableRequirementBinding | null {
+  const unit = canonical.requirements.find((candidate) => candidate.reportRequirementId === requirementId);
+  if (!unit) return null;
+  return {
+    id: `rsb_${unit.stableBindingKey}`,
+    requirementId: unit.reportRequirementId,
+    seedId: canonical.sourceContentHash,
+    groupId: unit.groupId as RequirementSourceBinding["groupId"],
+    source: unit.source,
+    ordinal: unit.ordinal
+  };
+}
+
+/**
+ * Transient parser output. Its target paths are used only to match collected
+ * evidence; a receipt receives the digests and references below, never these
+ * raw locations or the caller-provided subject identifier.
+ */
+export interface BoundedTestRelationCandidate {
+  target: DirectTestTargetCandidate;
+  subjectSource: TestRelationSubjectSource;
+  subjectDigest: string;
+  importBindingDigest: string;
+  directAssertionCount: number;
+}
+
+/**
+ * Produces one receipt-ready parser candidate only when a closed Task 3
+ * relation establishes the owner and a single exact static binding is called
+ * directly inside a live assertion. It consumes source bindings and never
+ * recreates them from source prose.
+ */
+export function boundedTestRelationCandidate(input: {
+  testFile: PatchFile;
+  subject: string;
+  requirementId: string;
+  currentRequirementText: string;
+  /** Canonical Task 3 requirement text keyed by its report requirement ID. */
+  requirementTexts: ReadonlyMap<string, string>;
+  /** Canonical selected-source binding for the current requirement, when relation bindings are absent. */
+  currentSourceBinding?: StableRequirementBinding;
+  targetMode: TestRelationReceiptV2["targetMode"];
+  relation?: DeterministicRequirementRelation;
+  sourceBindings: readonly RequirementSourceBinding[];
+}): BoundedTestRelationCandidate | null {
+  const context = closedTestRelationSubjectContext(input);
+  if (!context) return null;
+
+  const bindings = directAssertedTestBindings(input.testFile, input.subject);
+  if (bindings.length !== 1) return null;
+  const binding = bindings[0]!;
+  const target = {
+    testPath: normalizeRepositoryPath(input.testFile.path),
+    importSpecifier: binding.importSpecifier,
+    targetPath: binding.targetPath
+  };
+  return {
+    target,
+    subjectSource: context.subjectSource,
+    subjectDigest: sha256(["v2", input.requirementId, input.subject, ...context.stableBindingIdentity].join("\0")),
+    importBindingDigest: sha256([
+      "v2",
+      input.requirementId,
+      ...context.stableBindingIdentity,
+      binding.targetPath,
+      binding.importSpecifier,
+      binding.importKind,
+      binding.exportedName,
+      binding.localName
+    ].join("\0")),
+    directAssertionCount: Math.min(binding.distinctLiteralCaseCount, 8)
+  };
+}
+
+function closedTestRelationSubjectContext(input: {
+  subject: string;
+  requirementId: string;
+  currentRequirementText: string;
+  requirementTexts: ReadonlyMap<string, string>;
+  currentSourceBinding?: StableRequirementBinding;
+  targetMode: TestRelationReceiptV2["targetMode"];
+  relation?: DeterministicRequirementRelation;
+  sourceBindings: readonly RequirementSourceBinding[];
+}): { subjectSource: TestRelationSubjectSource; stableBindingIdentity: string[] } | null {
+  const allBindings = input.currentSourceBinding
+    ? [...input.sourceBindings, input.currentSourceBinding]
+    : [...input.sourceBindings];
+  const bindingsById = new Map(allBindings.map((binding) => [binding.id, binding]));
+  if (bindingsById.size !== allBindings.length) return null;
+  const currentBinding = input.currentSourceBinding?.requirementId === input.requirementId
+    ? input.currentSourceBinding
+    : input.sourceBindings.find((binding) => binding.requirementId === input.requirementId);
+  const currentText = input.requirementTexts.get(input.requirementId);
+  const explicitCurrentSubject = Boolean(
+    currentBinding &&
+    currentText === input.currentRequirementText &&
+    isExplicitCodeIdentifierReference(currentText, input.subject)
+  );
+  if (input.targetMode === "exact_head_target") {
+    return !input.relation && explicitCurrentSubject
+      ? { subjectSource: "current_requirement", stableBindingIdentity: stableBindingIdentity([currentBinding!]) }
+      : null;
+  }
+  if (!input.relation) {
+    return explicitCurrentSubject
+      ? { subjectSource: "current_requirement", stableBindingIdentity: stableBindingIdentity([currentBinding!]) }
+      : null;
+  }
+
+  if (input.relation.kind === "test_antecedent") {
+    const current = bindingsById.get(input.relation.currentSourceBindingRef);
+    const antecedent = bindingsById.get(input.relation.antecedentSourceBindingRef);
+    const antecedentText = input.requirementTexts.get(input.relation.antecedentRequirementId);
+    return current?.requirementId === input.requirementId &&
+      antecedent?.requirementId === input.relation.antecedentRequirementId &&
+      Boolean(antecedentText && isExplicitCodeIdentifierReference(antecedentText, input.subject)) &&
+      adjacentSourceBindings(antecedent, current)
+      ? { subjectSource: "test_antecedent", stableBindingIdentity: stableBindingIdentity([antecedent, current]) }
+      : null;
+  }
+  if (input.relation.kind === "test_subject_chain") {
+    const current = bindingsById.get(input.relation.currentSourceBindingRef);
+    const subject = bindingsById.get(input.relation.subjectSourceBindingRef);
+    const bridge = bindingsById.get(input.relation.bridgeSourceBindingRef);
+    const subjectText = input.requirementTexts.get(input.relation.subjectRequirementId);
+    return current?.requirementId === input.requirementId &&
+      subject?.requirementId === input.relation.subjectRequirementId &&
+      bridge?.requirementId === input.relation.bridgeRequirementId &&
+      Boolean(subjectText && isExplicitCodeIdentifierReference(subjectText, input.subject)) &&
+      adjacentSourceBindings(subject, bridge) && adjacentSourceBindings(bridge, current)
+      ? { subjectSource: "test_subject_chain", stableBindingIdentity: stableBindingIdentity([subject, bridge, current]) }
+      : null;
+  }
+  return null;
+}
+
+function stableBindingIdentity(bindings: readonly StableRequirementBinding[]): string[] {
+  return bindings.flatMap((binding) => [binding.id, binding.seedId]);
+}
+
+function adjacentSourceBindings(
+  earlier: StableRequirementBinding | undefined,
+  later: StableRequirementBinding | undefined
+): boolean {
+  return Boolean(
+    earlier && later &&
+    earlier.seedId === later.seedId &&
+    earlier.groupId === later.groupId &&
+    earlier.source === later.source &&
+    later.ordinal === earlier.ordinal + 1
+  );
+}
 
 /**
  * Binds an exact imported target to one explicit code identifier in the
@@ -88,7 +257,7 @@ export type TestRelationSubjectSource = "current_requirement";
 export function exactTestRelationSubjectSource(input: {
   currentRequirementText: string;
   target: Pick<ExactHeadTargetResolution, "bindingExportedName" | "bindingLocalName">;
-}): TestRelationSubjectSource | null {
+}): "current_requirement" | null {
   const bindingIdentifiers = new Set([
     input.target.bindingExportedName,
     input.target.bindingLocalName
@@ -202,7 +371,11 @@ function directAssertedTestBindings(testFile: PatchFile, subject?: string): Dire
   const entries = livePatchEntries(testFile.patch ?? "");
   const lines = entries.map((entry) => entry.line);
   const code = lines.join("\n");
-  if (/\bimport\s*\(/.test(code) || /\b(?:vi|jest)\s*\.\s*(?:doMock|mock)\s*\(/.test(code)) return [];
+  if (
+    /\bimport\s*\(/.test(code) ||
+    /\b(?:vi|jest)\s*\.\s*(?:doMock|mock)\s*\(/.test(code) ||
+    hasDisabledOrStaticallyUnreachableTestCode(patchCodeForDeclarationScan(testFile.patch ?? ""))
+  ) return [];
 
   const imported: Omit<DirectTestBinding, "distinctLiteralCaseCount">[] = [];
   const relativeImportStatementCount = relativeStaticImportExpressionCount(lines);
@@ -297,6 +470,81 @@ function directAssertedTestBindings(testFile: PatchFile, subject?: string): Dire
   return asserted.length === 1 ? asserted : [];
 }
 
+/**
+ * The receipt parser intentionally fails closed for patches containing a
+ * disabled test declaration or a compile-time unreachable branch. A bounded
+ * diff parser cannot prove that assertions inside those constructs execute,
+ * so none of the file's assertions may mint a positive receipt.
+ */
+function hasDisabledOrStaticallyUnreachableTestCode(code: string): boolean {
+  const masked = lexicalCodeMask(code);
+  const disabledDeclaration = hasDisabledTestDeclaration(masked);
+  const assertionAfterUnconditionalExit = /\b(?:return(?:\s+[^;\n}]*)?|throw\s+[^;\n}]*)\s*(?:;|\n)[\s\S]*\b(?:expect|assert(?:\s*\.\s*\w+)?)\s*\(/.test(masked);
+  return disabledDeclaration || assertionAfterUnconditionalExit ||
+    /\b(?:if|while)\s*\(\s*(?:false|0|null|undefined)\s*\)/.test(masked) ||
+    /\bfor\s*\([^;]*;\s*false\s*;[^)]*\)/.test(masked);
+}
+
+/**
+ * Recognizes bounded test declaration member chains without depending on line
+ * layout. Strings, comments, regexes, and tagged-template contents have
+ * already been masked, so only executable member tokens and balanced argument
+ * delimiters participate in the scan.
+ */
+function hasDisabledTestDeclaration(masked: string): boolean {
+  const declaration = /\b(describe|it|test|xdescribe|xit|xtest)\b/g;
+  for (const match of masked.matchAll(declaration)) {
+    if (match[1] === "xdescribe" || match[1] === "xit" || match[1] === "xtest") return true;
+    let cursor = (match.index ?? 0) + match[0].length;
+    const limit = Math.min(masked.length, cursor + 16_384);
+    let sawEach = false;
+    let steps = 0;
+    while (cursor < limit && steps < 32) {
+      steps += 1;
+      while (cursor < limit && /\s/.test(masked[cursor]!)) cursor += 1;
+      if (masked[cursor] === ".") {
+        cursor += 1;
+        while (cursor < limit && /\s/.test(masked[cursor]!)) cursor += 1;
+        const member = /^[A-Za-z_$][\w$]*/.exec(masked.slice(cursor, limit))?.[0];
+        if (!member) break;
+        cursor += member.length;
+        if (member === "skip" || member === "todo" || member === "pending") return true;
+        sawEach ||= member === "each";
+        continue;
+      }
+      const opener = masked[cursor];
+      if (opener === "(" || opener === "[" || opener === "{") {
+        const afterGroup = afterBalancedDeclarationGroup(masked, cursor, limit);
+        if (afterGroup === null) return sawEach;
+        cursor = afterGroup;
+        continue;
+      }
+      break;
+    }
+    // An overlong or unusually deep parameterized declaration is ambiguous to
+    // this bounded parser and therefore cannot mint a positive receipt.
+    if (sawEach && ((limit < masked.length && cursor >= limit) || steps >= 32)) return true;
+  }
+  return false;
+}
+
+function afterBalancedDeclarationGroup(source: string, start: number, limit: number): number | null {
+  const expectedClosers: string[] = [];
+  const closerFor: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
+  for (let cursor = start; cursor < limit; cursor += 1) {
+    const character = source[cursor]!;
+    const closer = closerFor[character];
+    if (closer) {
+      expectedClosers.push(closer);
+      continue;
+    }
+    if (character !== ")" && character !== "]" && character !== "}") continue;
+    if (expectedClosers.pop() !== character) return null;
+    if (expectedClosers.length === 0) return cursor + 1;
+  }
+  return null;
+}
+
 function relativeStaticImportExpressionCount(lines: readonly string[]): number {
   let count = 0;
   for (const line of lines) {
@@ -337,13 +585,25 @@ function directAssertionSignatures(lines: readonly string[], localName: string):
       if (
         matchIndex === undefined ||
         !isCodePosition(line, matchIndex) ||
-        !ranges.some(([start, end]) => matchIndex >= start && matchIndex < end)
+        !ranges.some(([start, end]) => isDirectAssertionArgumentCall(line, start, end, matchIndex, match[0]))
       ) continue;
       const signature = literalArgumentSignature(match[1].trim());
       if (signature !== null) signatures.add(signature);
     }
   }
   return signatures;
+}
+
+function isDirectAssertionArgumentCall(
+  line: string,
+  start: number,
+  end: number,
+  matchIndex: number,
+  call: string
+): boolean {
+  const argumentsText = line.slice(start, end);
+  const firstArgument = splitTopLevel(argumentsText, ",")?.[0]?.trim();
+  return firstArgument === call;
 }
 
 function countAddedDirectAssertionSignatures(
@@ -534,6 +794,7 @@ export function distinctDirectAssertionCallCount(
   subject?: string
 ): number {
   const entries = livePatchEntries(testFile.patch ?? "");
+  if (hasDisabledOrStaticallyUnreachableTestCode(patchCodeForDeclarationScan(testFile.patch ?? ""))) return 0;
   const bindings = importedBindingsForImplementation(testFile, implementationFile, subject);
   if (bindings.length !== 1) return 0;
   if (hasRawCommentInBindingCall(testFile.patch ?? "", bindings[0]!.localName)) return 0;
@@ -550,7 +811,7 @@ function assertionArgumentRanges(line: string): Array<readonly [number, number]>
     const openIndex = line.indexOf("(", matchIndex);
     const closeIndex = matchingClosingParenthesis(line, openIndex);
     if (closeIndex > openIndex) {
-      ranges.push([openIndex + 1, match[0].trimStart().startsWith("expect") ? line.length : closeIndex]);
+      ranges.push([openIndex + 1, closeIndex]);
     }
   }
   return ranges;
@@ -747,6 +1008,23 @@ function livePatchEntries(patch: string): Array<{ line: string; added: boolean }
   }
 
   return entries;
+}
+
+/** Preserves multiline delimiters for declaration-state scanning only. */
+function patchCodeForDeclarationScan(patch: string): string {
+  const rawLines = patch.replace(/\r\n/g, "\n").split("\n");
+  let hunkStateKnown = !rawLines.some((line) => line.startsWith("@@"));
+  const lines: string[] = [];
+  for (const rawLine of rawLines) {
+    if (rawLine.startsWith("@@")) {
+      const hunkHeader = rawLine.match(/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@(?:\s.*)?$/);
+      hunkStateKnown = hunkHeader?.[1] === "1";
+      continue;
+    }
+    if (!hunkStateKnown || rawLine.startsWith("-") || rawLine.startsWith("+++")) continue;
+    lines.push(rawLine.startsWith("+") || rawLine.startsWith(" ") ? rawLine.slice(1) : rawLine);
+  }
+  return lines.join("\n");
 }
 
 function livePatchLines(patch: string): string[] {

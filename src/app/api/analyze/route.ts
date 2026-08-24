@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
+import { normalizeAnalyzeRequest } from "@/lib/analyze-request";
 import {
   buildPullRequestInput,
   GITHUB_EVIDENCE_TIMING_PHASES,
@@ -9,20 +10,13 @@ import {
   type GitHubEvidenceTimingSink,
   type GitHubFetchFailureCode
 } from "@/lib/github";
-import { validateVerificationReport } from "@/lib/report-validation";
+import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
 import { redactSecrets } from "@/lib/redact";
-import type { AnalyzeRequest, DemoScenarioId } from "@/lib/types";
+import type { AnalyzeRequest } from "@/lib/types";
 
 const MAX_BODY_BYTES = 80_000;
-const DEMO_SCENARIOS = new Set<DemoScenarioId>([
-  "clean",
-  "scope-creep",
-  "missing-tests",
-  "failed-ci",
-  "vague-task"
-]);
 const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation"] as const;
 
 type AnalyzeTimingPhase = (typeof ANALYZE_TIMING_PHASES)[number];
@@ -99,7 +93,12 @@ export async function POST(request: Request) {
     const report = generateVerificationReportV2FromInput(input);
 
     timing.start("validation");
-    const validation = validateVerificationReport(report, { mode: "v2_full" });
+    const validation = resolveRuntimeReportValidation({
+      boundary: "generated_private_full",
+      input,
+      report,
+      requireV2: true
+    });
 
     if (!validation.valid) {
       return jsonNoStore(
@@ -112,7 +111,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return jsonNoStore({ report }, 200, timing, evidenceTiming);
+    return jsonNoStore({ report: validation.report }, 200, timing, evidenceTiming);
   } catch (error) {
     const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
     const guidance = analyzeFailureGuidance(error);
@@ -331,45 +330,4 @@ function parseJsonBody(rawText: string): unknown {
   } catch {
     throw new Error("Request body must be valid JSON.");
   }
-}
-
-function normalizeAnalyzeRequest(raw: unknown): AnalyzeRequest {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("Request body must be a JSON object.");
-  }
-
-  const value = raw as Record<string, unknown>;
-  const inputLimitations: string[] = [];
-  const demoScenario = typeof value.demoScenario === "string" && DEMO_SCENARIOS.has(value.demoScenario as DemoScenarioId)
-    ? (value.demoScenario as DemoScenarioId)
-    : undefined;
-
-  return {
-    demoScenario,
-    prUrl: cleanString(value.prUrl, 500, "PR URL", inputLimitations),
-    githubToken: cleanString(value.githubToken, 500, "GitHub token", inputLimitations),
-    taskText: cleanString(value.taskText, 8_000, "Task text", inputLimitations),
-    prDescription: cleanString(value.prDescription, 8_000, "PR description", inputLimitations),
-    changedFiles: cleanString(value.changedFiles, 12_000, "Changed files", inputLimitations),
-    checks: cleanString(value.checks, 8_000, "Checks", inputLimitations),
-    logs: cleanString(value.logs, 24_000, "Logs", inputLimitations),
-    inputLimitations
-  };
-}
-
-function cleanString(
-  value: unknown,
-  maxLength: number,
-  label: string,
-  inputLimitations: string[]
-): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  if (value.length > maxLength) {
-    inputLimitations.push(`${label} was truncated to ${maxLength} characters before analysis.`);
-  }
-
-  return value.slice(0, maxLength);
 }

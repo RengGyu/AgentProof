@@ -1,5 +1,5 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
-import { validateVerificationReport } from "@/lib/report-validation";
+import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
 import { redactSecrets } from "@/lib/redact";
 import { assertSlackReportNotificationConfigured, sendSlackReportSummary, SlackNotificationError } from "@/lib/slack";
 import { getTenantControlPlaneSettings } from "@/lib/tenant-control-plane";
@@ -57,7 +57,10 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "report is required." }, { status: 400 });
   }
 
-  const validation = validateVerificationReport(body.report, { mode: reportValidationMode(body.report) });
+  const validation = validateRuntimeReportBoundary({
+    boundary: isSummaryOnlyReport(body.report) ? "signed_summary_read" : "inbound_untrusted_full",
+    report: body.report
+  });
   if (!validation.valid) {
     return noStoreJson({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, { status: 422 });
   }
@@ -80,8 +83,8 @@ export async function POST(request: Request) {
   return noStoreJson({ sent: true });
 }
 
-function reportValidationMode(report: unknown): "full" | "summary" {
-  return isRecord(report) && Array.isArray(report.evidenceIndex) && report.evidenceIndex.length === 0 ? "summary" : "full";
+function isSummaryOnlyReport(report: unknown): boolean {
+  return isRecord(report) && Array.isArray(report.evidenceIndex) && report.evidenceIndex.length === 0;
 }
 
 function normalizeSlackReportUrl(value: string | undefined, requestUrl: string): string | undefined {

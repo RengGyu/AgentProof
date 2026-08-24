@@ -1,7 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { containsSecretPattern } from "./redact";
 import { createVerifiedAuthenticity, verifyVerifiedAuthenticity } from "./report-authenticity";
-import { validateVerificationReport, type ReportValidationResult } from "./report-validation";
+import { validateRuntimeReportBoundary } from "./report-runtime-validation";
+import type { ReportValidationResult } from "./report-validation";
 import { validateLlmSemanticCandidate, type LlmSemanticOutput } from "./llm-semantic-output";
 import {
   ALLOWED_TENANT_GAP_TEXTS,
@@ -100,10 +101,10 @@ export function validateTenantStoredReport(
   signingSecret: string
 ): ReportValidationResult {
   const errors: string[] = [];
-  const structural = validateVerificationReport(report, {
-    mode: isVerificationReportV2(report) ? "v2_tenant" : "tenant"
-  });
-  errors.push(...structural.errors);
+  const structural = isReport(report)
+    ? validateRuntimeReportBoundary({ boundary: "signed_summary_read", projection: "tenant", report })
+    : { valid: false as const, errors: ["Report must be an object."] };
+  if (!structural.valid) errors.push(...structural.errors);
 
   if (!isReport(report)) return { valid: false, errors };
   if (Buffer.byteLength(JSON.stringify(report), "utf8") > TENANT_REPORT_MAX_BYTES) {
@@ -171,7 +172,7 @@ function isVerificationReportV2(report: unknown): report is VerificationReportV2
 
 /** The only report object written to tenant Supabase rows. */
 export function projectTenantPersistedReport(report: VerificationReport, signingSecret: string): TenantPersistedReport {
-  const verificationContract = tenantVerificationContract(report);
+  const verificationContract = tenantVerificationContract(report, signingSecret);
   const unsigned = {
     version: 1 as const,
     analysisContext: tenantReportAnalysisContext(report),
@@ -219,12 +220,17 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
   };
 }
 
-function tenantVerificationContract(report: VerificationReport): TenantPersistedReport["verificationContract"] | undefined {
+function tenantVerificationContract(report: VerificationReport, signingSecret: string): TenantPersistedReport["verificationContract"] | undefined {
   if (!isVerificationReportV2(report)) return undefined;
   const contract = report.verificationContract as VerificationContractReportV2;
   if (contract.state === "authoritative" || contract.state === "author_claim") {
-    const validation = validateVerificationReport(report, { mode: "v2_full" });
-    if (!validation.valid) {
+    const validation = validateRuntimeReportBoundary({
+      boundary: "signed_summary_read",
+      projection: "tenant",
+      report
+    });
+    if (!validation.valid || report.authenticity?.trust !== "verified_agentproof" ||
+      !verifyVerifiedAuthenticity(report, signingSecret)) {
       throw new Error("Active verification-contract v2 report cannot be durably persisted without a valid attested evaluation.");
     }
   }

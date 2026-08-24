@@ -7,6 +7,7 @@ import {
   parseGitHubPullUrl,
   type GitHubEvidenceTimingPhase
 } from "./github";
+import { generateVerificationReportV2FromInput } from "./verifier";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -382,6 +383,64 @@ describe("buildPullRequestInput", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/contents/"))).toBe(false);
   });
 
+  it.each([
+    { name: "files", override: { changedFiles: "docs/pasted-reset.md" } },
+    { name: "checks", override: { checks: "pasted unit tests: passed" } },
+    { name: "logs", override: { logs: "pasted unit tests: passed" } }
+  ])("does not retain a live documentation-literal criterion after pasted $name replace the GitHub snapshot", async ({ override }) => {
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "reset",
+        objective: "Document the reset command.",
+        criteria: [{
+          id: "reset_literal",
+          type: "artifact",
+          label: "The reset guide contains the command.",
+          paths: ["docs/reset.md"],
+          artifact: { kind: "documentation_literal", literal: "Run npm test." }
+        }]
+      }]
+    };
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Document reset", body: "Fixes #42", url: "https://api.github.com/repos/acme/repo/pulls/12",
+        user: { login: "coding-agent" }, base: { ref: "main", sha: baseSha }, head: { ref: "agent/reset", sha: headSha }
+      }));
+      if (url.endsWith("/issues/42")) return Promise.resolve(Response.json({
+        title: "AgentProof verification contract",
+        body: `\`\`\`agentproof-verification\n${JSON.stringify(contract)}\n\`\`\``
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([
+        { filename: "docs/reset.md", additions: 1, deletions: 0, status: "modified", patch: "+Run npm test." }
+      ]));
+      if (url.includes("/commits/") && url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/contents/docs/reset.md") && url.includes(`ref=${headSha}`)) return Promise.resolve(Response.json({
+        encoding: "base64", content: Buffer.from("Stop the server.\nRun npm test.", "utf8").toString("base64")
+      }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      ...override
+    });
+    const report = generateVerificationReportV2FromInput(input);
+
+    expect(input.sourceProvenance?.origin).toBe("pasted_evidence");
+    expect(input.verificationContractSourceV2).toBeUndefined();
+    expect(input.verificationContractBindingV2).toBeUndefined();
+    expect(input.verificationCriterionEvidenceV2).toBeUndefined();
+    expect(report.verificationContract.objectives.flatMap((objective) => objective.criterionResults))
+      .not.toContainEqual(expect.objectContaining({ state: "satisfied" }));
+    expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
+  });
+
   it("changes only the opaque authority identity hash when an identical linked Issue is relinked", async () => {
     let linkedNumber = 1;
     const fetchMock = vi.fn((url: string) => {
@@ -682,7 +741,7 @@ describe("buildPullRequestInput", () => {
       2500,
       2000
     ]));
-    expect(timeoutSpy.mock.calls.filter(([timeoutMs]) => timeoutMs === 2500)).toHaveLength(2);
+    expect(timeoutSpy.mock.calls.filter(([timeoutMs]) => timeoutMs === 2500)).toHaveLength(3);
   });
 
   it("keeps primary check-run evidence when annotation and Actions job metadata time out", async () => {
@@ -1301,6 +1360,117 @@ describe("buildPullRequestInput", () => {
     expect(input.sourceProvenance?.executionSuites).toEqual(input.executionSuites);
     expect(input.limitations?.join(" ")).toContain("linked a passing generic test suite to changed test artifacts");
     expect(input.limitations?.join(" ")).not.toContain("success remains an unverified observation");
+  });
+
+  it("downgrades live provenance and execution authority when pasted changed files replace the GitHub inventory", async () => {
+    const headSha = "a".repeat(40);
+    const moduleSource = "export function repositoryName(value) { return String(value).toLowerCase(); }";
+    const blobSha = createHash("sha1").update(`blob ${Buffer.byteLength(moduleSource, "utf8")}\0`).update(moduleSource).digest("hex");
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Live inventory",
+        body: "Adds a test.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        base: { ref: "main", sha: "b".repeat(40) },
+        head: { ref: "agent/inventory", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{
+        filename: "test/repository-name-regression.test.js",
+        status: "added",
+        additions: 2,
+        deletions: 0,
+        patch: [
+          "+import { repositoryName } from '../src/repositories/name.js';",
+          "+test('live', () => { expect(repositoryName('AgentProof')).toBe('agentproof'); });"
+        ].join("\n")
+      }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({
+        total_count: 1,
+        check_runs: [{
+          name: "unit-tests",
+          status: "completed",
+          conclusion: "success",
+          details_url: "https://github.com/acme/repo/actions/runs/123456/job/999"
+        }]
+      }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/actions/runs/123456/jobs")) return Promise.resolve(Response.json({ jobs: [{
+        name: "unit-tests",
+        status: "completed",
+        conclusion: "success",
+        steps: [{ name: "Run node --test", status: "completed", conclusion: "success" }]
+      }] }));
+      if (url.includes("/contents/src/repositories/name.js?ref=")) return Promise.resolve(Response.json({
+        type: "file",
+        path: "src/repositories/name.js",
+        sha: blobSha,
+        encoding: "base64",
+        content: Buffer.from(moduleSource).toString("base64")
+      }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      changedFiles: "test/pasted.test.js"
+    });
+
+    expect(input.sourceProvenance?.origin).toBe("pasted_evidence");
+    expect(input.sourceProvenance?.inputFingerprint.coverage).toBe("pasted_metadata");
+    expect(input.sourceProvenance?.changedFileInventory?.completeness).not.toBe("complete");
+    expect(input.sourceProvenance?.executionSuites).toBeUndefined();
+    expect(input.executionSuites).toBeUndefined();
+    expect(input.resolvedHeadModules).toBeUndefined();
+  });
+
+  it("removes live execution suites when pasted checks replace GitHub checks", async () => {
+    const headSha = "c".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Live checks",
+        body: "Adds a test.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        base: { ref: "main", sha: "d".repeat(40) },
+        head: { ref: "agent/checks", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{
+        filename: "test/live.test.js",
+        status: "added",
+        additions: 1,
+        deletions: 0,
+        patch: "+ test('live', () => {})"
+      }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({
+        total_count: 1,
+        check_runs: [{
+          name: "unit-tests",
+          status: "completed",
+          conclusion: "success",
+          details_url: "https://github.com/acme/repo/actions/runs/123456/job/999"
+        }]
+      }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/actions/runs/123456/jobs")) return Promise.resolve(Response.json({ jobs: [{
+        name: "unit-tests",
+        status: "completed",
+        conclusion: "success",
+        steps: [{ name: "Run node --test", status: "completed", conclusion: "success" }]
+      }] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      checks: "pasted unit tests: passed"
+    });
+
+    expect(input.sourceProvenance?.origin).toBe("pasted_evidence");
+    expect(input.sourceProvenance?.inputFingerprint.coverage).toBe("pasted_metadata");
+    expect(input.sourceProvenance?.executionSuites).toBeUndefined();
+    expect(input.executionSuites).toBeUndefined();
+    expect(input.resolvedHeadModules).toBeUndefined();
   });
 
   it("collects one bounded unchanged module only after a direct changed-test target is selected", async () => {
@@ -2825,4 +2995,176 @@ describe("buildPullRequestInput", () => {
     expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe("incomplete");
     expect(JSON.stringify(input)).not.toContain("github_pat_1234567890abcdef1234567890");
   });
+
+  it("attaches a complete transient workflow identity only through the exact REST join", async () => {
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const checkRun = {
+      id: 6101,
+      name: "unit-test",
+      status: "completed",
+      conclusion: "failure",
+      head_sha: headSha,
+      check_suite: { id: 5101 },
+      details_url: "https://github.com/opaque-owner/opaque-repo/actions/runs/4101/attempts/2/job/7101"
+    };
+    const job = {
+      id: 7101,
+      run_id: 4101,
+      run_attempt: 2,
+      head_sha: headSha,
+      name: "unit-test",
+      workflow_name: "Verification",
+      check_run_url: "https://api.github.com/repos/opaque-owner/opaque-repo/check-runs/6101",
+      status: "completed",
+      conclusion: "failure",
+      steps: [{ name: "Run npm test", status: "completed", conclusion: "failure" }]
+    };
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/17")) return Promise.resolve(Response.json({
+        title: "Opaque replay",
+        body: "Adds verification.",
+        url: "https://api.github.com/repos/opaque-owner/opaque-repo/pulls/17",
+        base: { ref: "main", sha: baseSha },
+        head: { ref: "agent/verify", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes(`/commits/${headSha}/check-runs`)) {
+        return Promise.resolve(Response.json({ total_count: 1, check_runs: [checkRun] }));
+      }
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      if (url.includes("/check-runs/6101/annotations")) return Promise.resolve(Response.json([]));
+      if (url.includes("/actions/runs/4101/attempts/2/jobs")) {
+        return Promise.resolve(Response.json({ total_count: 1, jobs: [job] }));
+      }
+      if (url.endsWith("/actions/runs/4101/attempts/2")) return Promise.resolve(Response.json({
+        id: 4101,
+        name: "Verification",
+        path: ".github/workflows/verify.yml",
+        workflow_id: 3101,
+        run_attempt: 2,
+        head_sha: headSha,
+        check_suite_id: 5101
+      }));
+      if (url.includes("/actions/runs/4101/jobs")) {
+        return Promise.resolve(Response.json({ jobs: [job] }));
+      }
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/opaque-owner/opaque-repo/pull/17",
+      taskText: "Acceptance criteria: add the verification CI workflow."
+    });
+
+    expect(input.checks[0]?.workflowExecutionIdentity).toEqual({
+      version: 1,
+      kind: "workflow_execution_identity",
+      workflowPath: ".github/workflows/verify.yml",
+      workflowName: "Verification",
+      workflowId: 3101,
+      runId: 4101,
+      runAttempt: 2,
+      jobId: 7101,
+      jobName: "unit-test",
+      headSha,
+      checkEvidenceRef: "ev_3"
+    });
+    expect(JSON.stringify(input.sourceProvenance)).not.toContain("workflowExecutionIdentity");
+  });
+
+  it.each(["missing job head", "malformed job join"])(
+    "keeps an incomplete sibling Check global-only when the run also contains a complete Check: %s",
+    async (fault) => {
+      const headSha = "a".repeat(40);
+      const baseSha = "b".repeat(40);
+      const checks = [6101, 6102].map((id, index) => ({
+        id,
+        name: `unit-test-${index + 1}`,
+        status: "completed",
+        conclusion: "failure",
+        head_sha: headSha,
+        check_suite: { id: 5101 },
+        details_url: `https://github.com/opaque-owner/opaque-repo/actions/runs/4101/attempts/2/job/${7101 + index}`
+      }));
+      const jobs = [6101, 6102].map((checkId, index) => ({
+        id: 7101 + index,
+        run_id: 4101,
+        run_attempt: 2,
+        head_sha: fault === "missing job head" && index === 1 ? undefined : headSha,
+        name: `unit-test-${index + 1}`,
+        workflow_name: "Verification",
+        check_run_url: `https://api.github.com/repos/opaque-owner/opaque-repo/check-runs/${fault === "malformed job join" && index === 1 ? 9999 : checkId}`,
+        status: "completed",
+        conclusion: "failure",
+        steps: [{ name: "Run npm test", status: "completed", conclusion: "failure" }]
+      }));
+      const fetchMock = vi.fn((url: string) => {
+        if (url.endsWith("/pulls/17")) return Promise.resolve(Response.json({
+          title: "Opaque sibling replay",
+          body: "Adds verification.",
+          url: "https://api.github.com/repos/opaque-owner/opaque-repo/pulls/17",
+          base: { ref: "main", sha: baseSha },
+          head: { ref: "agent/verify", sha: headSha }
+        }));
+        if (url.includes("/files?")) return Promise.resolve(Response.json([{
+          filename: ".github/workflows/verify.yml",
+          status: "modified",
+          additions: 2,
+          deletions: 0,
+          patch: "+ name: Verification\n+ run: npm test"
+        }]));
+        if (url.includes(`/commits/${headSha}/check-runs`)) {
+          return Promise.resolve(Response.json({ total_count: 2, check_runs: checks }));
+        }
+        if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+        if (url.includes("/annotations")) return Promise.resolve(Response.json([]));
+        if (url.includes("/actions/runs/4101/attempts/2/jobs")) {
+          return Promise.resolve(Response.json({ total_count: 2, jobs }));
+        }
+        if (url.endsWith("/actions/runs/4101/attempts/2")) return Promise.resolve(Response.json({
+          id: 4101,
+          name: "Verification",
+          path: ".github/workflows/verify.yml",
+          workflow_id: 3101,
+          run_attempt: 2,
+          head_sha: headSha,
+          check_suite_id: 5101
+        }));
+        if (url.includes("/actions/runs/4101/jobs")) return Promise.resolve(Response.json({ jobs }));
+        return Promise.resolve(new Response("unexpected url", { status: 500 }));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const input = await buildPullRequestInput({
+        prUrl: "https://github.com/opaque-owner/opaque-repo/pull/17",
+        taskText: [
+          "Acceptance criteria:",
+          "- Add the verification CI workflow.",
+          "- It must configure the verification CI workflow to run npm test."
+        ].join("\n")
+      });
+      const report = generateVerificationReportV2FromInput(input);
+
+      expect(input.checks[0]?.workflowExecutionIdentity).toEqual(expect.objectContaining({ checkEvidenceRef: "ev_4" }));
+      expect(input.checks[1]?.workflowExecutionIdentity).toBeUndefined();
+      expect(input.limitations?.join(" ")).toContain("COLLECTOR_LIMITATION");
+      expect(report.testing.ciStatus).toBe("failed");
+      expect(report.proofGraph.failedCheckAssociations).toContainEqual(expect.objectContaining({
+        checkEvidenceRef: "ev_4",
+        state: "linked",
+        basis: "complete_identity_match"
+      }));
+      expect(report.proofGraph.failedCheckAssociations).toContainEqual(expect.objectContaining({
+        checkEvidenceRef: "ev_5",
+        state: "unknown",
+        basis: "identity_incomplete"
+      }));
+      expect(report.proofGraph.failedCheckAssociations).not.toContainEqual(expect.objectContaining({
+        checkEvidenceRef: "ev_5",
+        state: "linked"
+      }));
+    }
+  );
 });

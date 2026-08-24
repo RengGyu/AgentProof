@@ -1,5 +1,5 @@
 import { createUnverifiedAuthenticity } from "./report-authenticity";
-import { validateVerificationReport } from "./report-validation";
+import { validateRuntimeReportBoundary } from "./report-runtime-validation";
 import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, PublicProofGraph, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
 import type { VerificationContractReportV2 } from "./verification-contract-v2";
 import { redactSecrets } from "./redact";
@@ -55,7 +55,7 @@ export function encodeReportForShare(report: VerificationReport): string {
 export function decodeSharedReport(payload: string): VerificationReport {
   const shared = parseShareableReport(JSON.parse(decodeBase64Url(payload)) as unknown);
   const report = shareableToReport(shared);
-  const validation = validateVerificationReport(report, { mode: shared.version === 4 ? "v2_summary" : "summary" });
+  const validation = validateRuntimeReportBoundary({ boundary: "signed_summary_read", report });
   if (!validation.valid) {
     throw new Error("Shared report payload failed summary validation.");
   }

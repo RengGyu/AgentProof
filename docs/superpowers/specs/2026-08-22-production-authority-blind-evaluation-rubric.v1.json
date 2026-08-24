@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "rubricId": "production-authority-blind-evaluation-rubric.v1",
+  "purpose": "Measure implementation completeness without overriding AgentProof safety gates.",
+  "maximumScore": 100,
+  "releaseThreshold": 95,
+  "scoringMethod": {
+    "type": "all_or_nothing_per_criterion",
+    "awardRule": "Award the criterion's full points only when every requiredEvidenceSourceId exists, is authentic, is bound to the required candidate/tooling hashes, and passes its declared rule.",
+    "partialCredit": false,
+    "missingEvidence": "zero_points",
+    "scoringAuthority": "independent_release_assessor"
+  },
+  "evidenceSources": [
+    {
+      "id": "freeze_manifest",
+      "kind": "signed_manifest",
+      "requiredBindings": [
+        "requirementInputSha256",
+        "boundaryInputSha256",
+        "requirementOracleSha256",
+        "boundaryOracleSha256",
+        "runnerSha256",
+        "runnerSchemaSha256",
+        "aggregateEvaluatorSha256",
+        "boundaryRunnerSha256",
+        "boundarySchemaSha256",
+        "boundaryEvaluatorSha256",
+        "requirementRunnerBundleSha256",
+        "boundaryRunnerBundleSha256",
+        "runtimeImageDigest",
+        "mountedReadOnlyFileSetSha256",
+        "requirementResultSha256",
+        "boundaryResultSha256",
+        "requirementCorpusSummarySha256",
+        "boundaryCorpusSummarySha256",
+        "rubricExecutorSha256",
+        "rubricSha256",
+        "evaluationToolchainSourceClosureSha256",
+        "evaluationToolchainBundleSetSha256",
+        "sutExternalImportAllowlistSha256",
+        "runnerSandboxProfileSha256",
+        "packageScriptsSha256",
+        "lockfileSha256",
+        "nodeVersion",
+        "pnpmVersion",
+        "candidateSha",
+        "toolingEntrySetSha256",
+        "moduleEdgeSetSha256",
+        "nodeBuiltinAllowlistSha256",
+        "approvedNodeBuiltinUniverseSha256",
+        "parserArtifactBindingSha256",
+        "resolutionPolicySha256"
+      ],
+      "passRule": "The signed manifest has exact V2 keys; every declared file, resolved module edge, candidate SHA, exact Node-builtin allowlist and fixed six-ID universe, pinned TypeScript parser artifact, frozen resolution policy, reproducible bundle, SUT external-import allowlist, sandbox profile, script, lockfile, and runtime hash exactly matches the frozen record; no undeclared tooling dependency exists; exact canonical content-free summaries bind the requirement [0,0,4] and boundary [4,4,0] category-count tuples to their protected input hashes, yielding the combined [4,4,4] balance; both input corpora are at most 409600 serialized bytes with cases at most 98304 bytes; and both oracle files are at most 131072 bytes."
+    },
+    {
+      "id": "protected_aggregate",
+      "kind": "aggregate_evaluator_output",
+      "requiredBindings": [
+        "candidateSha",
+        "requirementInputSha256",
+        "requirementOracleSha256",
+        "aggregateEvaluatorSha256",
+        "requirementResultSha256",
+        "requirementCorpusSummarySha256"
+      ],
+      "passRule": "The frozen evaluator's releaseGatePasses(result) returns true; stdout matches its exact closed aggregate schema, including only the declared count/rate and p50/p95 nested groups; and no generic content, message, details, arbitrary nested object, raw source, path, patch, log, token, or receipt payload is present."
+    },
+    {
+      "id": "protected_boundary_aggregate",
+      "kind": "aggregate_boundary_evaluator_output",
+      "requiredBindings": [
+        "candidateSha",
+        "boundaryInputSha256",
+        "boundaryOracleSha256",
+        "boundaryEvaluatorSha256",
+        "boundaryResultSha256",
+        "boundaryCorpusSummarySha256"
+      ],
+      "passRule": "untrustedActiveV2AcceptanceCount, pastedEvidenceGithubAuthorityCount, falseBoundaryLocalPositiveCount, boundaryPrivacyLeakCount, and boundaryStructuralMismatchCount are all known integers equal to 0; stdout matches the exact scalar-counter schema; and no generic arbitrary-text or nested payload field is present."
+    },
+    {
+      "id": "runner_isolation_attestation",
+      "kind": "signed_ci_sandbox_attestation_set",
+      "requiredBindings": [
+        "candidateSha",
+        "requirementRunnerBundleSha256",
+        "boundaryRunnerBundleSha256",
+        "runnerSandboxProfileSha256",
+        "runtimeImageDigest",
+        "requirementInputSha256",
+        "boundaryInputSha256",
+        "mountedReadOnlyFileSetSha256",
+        "networkMode",
+        "requirementResultSha256",
+        "boundaryResultSha256",
+        "requirementCorpusSummarySha256",
+        "boundaryCorpusSummarySha256"
+      ],
+      "passRule": "Both signed CI runs are bound to the candidate and frozen runner/profile hashes; networkMode equals disabled; read-only mounts contain only the runner bundle, matching protected input, immutable candidate SUT tree, and runtime; only the result path is writable; no oracle, evaluator, rubric, development worktree, secret, or unrelated host path is mounted."
+    },
+    {
+      "id": "rubric_executor_regression",
+      "kind": "command",
+      "commands": [
+        "node --test scripts/evaluate-production-authority-release.test.mjs"
+      ],
+      "passRule": "Every command exits 0 and covers unknown, missing, duplicate, stale-hash, case-output, failed-binary-gate, dependency-closure, undeclared-import, forbidden-mount, enabled-network, and missing-or-mismatched sandbox-attestation inputs."
+    },
+    {
+      "id": "untrusted_authority_regression",
+      "kind": "command",
+      "commands": [
+        "pnpm vitest run src/lib/report-runtime-validation-authority.test.ts src/app/api/reports/route.test.ts src/app/api/llm/verify/route.test.ts src/app/api/github/comment/route.test.ts src/app/api/notifications/slack/route.test.ts"
+      ],
+      "passRule": "Every command exits 0; active authoritative and author-claim v2 reports are rejected at every untrusted caller, while valid generated-private v2 remains accepted."
+    },
+    {
+      "id": "generated_private_regression",
+      "kind": "command",
+      "commands": [
+        "pnpm vitest run src/lib/report-runtime-validation.test.ts src/lib/evidence-receipt-validation.test.ts"
+      ],
+      "passRule": "Every command exits 0 and a receipt-complete server-generated v2 positive remains valid only with transient context."
+    },
+    {
+      "id": "pasted_provenance_regression",
+      "kind": "command",
+      "commands": [
+        "pnpm vitest run src/lib/github-pasted-provenance.test.ts src/lib/github.test.ts"
+      ],
+      "passRule": "Every command exits 0 for files-only, checks-only, logs-only, combined pasted overrides, and pure-live controls using the closed transition table."
+    },
+    {
+      "id": "privacy_regression",
+      "kind": "command",
+      "commands": [
+        "pnpm vitest run src/lib/report-share.test.ts src/lib/tenant-report-validation.test.ts src/lib/release-evaluation-runner.test.ts"
+      ],
+      "passRule": "Every command exits 0; unknown projection fields, raw material, private collections, and private handles are rejected or counted as leaks."
+    },
+    {
+      "id": "contract_endpoint_replay",
+      "kind": "command",
+      "commands": [
+        "pnpm vitest run src/lib/verification-contract-v2-evaluation.test.ts src/app/api/analyze/github-replay.test.ts"
+      ],
+      "passRule": "Every command exits 0 and authoritative, author-claim, absent, invalid, pure-live, incomplete, and head-drift outcomes match the fixed contracts."
+    },
+    {
+      "id": "engineering_suite",
+      "kind": "command_set",
+      "commands": [
+        "pnpm test",
+        "pnpm typecheck",
+        "pnpm lint",
+        "pnpm build",
+        "git diff --check"
+      ],
+      "passRule": "Every command exits 0 at one clean immutable candidate SHA."
+    },
+    {
+      "id": "external_regression",
+      "kind": "command",
+      "commands": [
+        "pnpm eval:external:regression"
+      ],
+      "passRule": "The command exits 0 using authoritative, current external-pilot artifacts; missing artifacts fail the source."
+    },
+    {
+      "id": "production_smoke",
+      "kind": "command_set",
+      "commands": [
+        "pnpm smoke:production-regression",
+        "pnpm p0:beta-readiness"
+      ],
+      "passRule": "Every command exits 0, JSON readiness reports ok=true, and every artifact is current and bound to the candidate SHA."
+    },
+    {
+      "id": "independent_review",
+      "kind": "signed_review_record",
+      "requiredBindings": [
+        "candidateSha",
+        "reviewerIdentity",
+        "reviewState",
+        "reviewedDiffSha256"
+      ],
+      "passRule": "reviewState equals approved, the reviewed diff hash matches the immutable candidate, and the reviewer is independent of implementation."
+    }
+  ],
+  "binaryGates": [
+    {
+      "id": "protected_release_gate",
+      "requiredEvidenceSourceIds": ["protected_aggregate"],
+      "passCondition": "releaseGatePasses(result) === true"
+    },
+    {
+      "id": "protected_boundary_gate",
+      "requiredEvidenceSourceIds": ["protected_boundary_aggregate"],
+      "passCondition": "all required boundary aggregate metrics are known integers equal to 0"
+    },
+    {
+      "id": "frozen_tooling_integrity",
+      "requiredEvidenceSourceIds": ["freeze_manifest"],
+      "passCondition": "every independently signed closure, bundle, allowlist, profile, script, lockfile, and runtime binding exactly matches the frozen manifest"
+    },
+    {
+      "id": "runner_oracle_isolation",
+      "requiredEvidenceSourceIds": ["freeze_manifest", "runner_isolation_attestation", "rubric_executor_regression"],
+      "passCondition": "both signed sandbox attestations match the frozen profile, use networkMode disabled, and exclude all oracle/evaluator/rubric mounts"
+    },
+    {
+      "id": "aggregate_only_output",
+      "requiredEvidenceSourceIds": ["freeze_manifest", "rubric_executor_regression", "protected_aggregate", "protected_boundary_aggregate"],
+      "passCondition": "both protected outputs match their exact closed aggregate schemas and contain no forbidden arbitrary payload fields"
+    },
+    {
+      "id": "untrusted_active_v2",
+      "requiredEvidenceSourceIds": ["untrusted_authority_regression", "protected_boundary_aggregate"],
+      "passCondition": "all declared tests pass and untrustedActiveV2AcceptanceCount === 0"
+    },
+    {
+      "id": "pasted_authority",
+      "requiredEvidenceSourceIds": ["pasted_provenance_regression", "protected_boundary_aggregate"],
+      "passCondition": "all declared tests pass and pastedEvidenceGithubAuthorityCount === 0"
+    },
+    {
+      "id": "privacy",
+      "requiredEvidenceSourceIds": ["privacy_regression", "protected_aggregate", "protected_boundary_aggregate"],
+      "passCondition": "all declared tests pass, both protected leak counts equal 0, unknown projection fields are rejected, and every allowed string passes field-specific validation"
+    },
+    {
+      "id": "engineering",
+      "requiredEvidenceSourceIds": ["engineering_suite"],
+      "passCondition": "all declared commands pass at the candidate SHA"
+    },
+    {
+      "id": "contract_endpoint_compatibility",
+      "requiredEvidenceSourceIds": ["contract_endpoint_replay"],
+      "passCondition": "all declared tests pass"
+    },
+    {
+      "id": "external_regression_current",
+      "requiredEvidenceSourceIds": ["external_regression"],
+      "passCondition": "authoritative artifact is present and the command passes"
+    },
+    {
+      "id": "production_smoke_current",
+      "requiredEvidenceSourceIds": ["production_smoke"],
+      "passCondition": "all commands pass, readiness ok=true, and evidence is current"
+    },
+    {
+      "id": "independent_review_exact_sha",
+      "requiredEvidenceSourceIds": ["independent_review"],
+      "passCondition": "signed review is approved and bound to the candidate SHA"
+    }
+  ],
+  "scoreCategories": [
+    {
+      "id": "trust_boundary",
+      "label": "Trust-boundary correctness",
+      "weight": 30,
+      "criteria": [
+        {"id": "untrusted_v2_rejected", "points": 10, "requiredEvidenceSourceIds": ["untrusted_authority_regression", "protected_boundary_aggregate"]},
+        {"id": "generated_private_preserved", "points": 10, "requiredEvidenceSourceIds": ["generated_private_regression"]},
+        {"id": "contract_compatibility", "points": 10, "requiredEvidenceSourceIds": ["contract_endpoint_replay"]}
+      ]
+    },
+    {
+      "id": "provenance",
+      "label": "Provenance correctness",
+      "weight": 20,
+      "criteria": [
+        {"id": "all_pasted_forms_downgrade", "points": 8, "requiredEvidenceSourceIds": ["pasted_provenance_regression", "protected_boundary_aggregate"]},
+        {"id": "conflicting_authority_cleared", "points": 8, "requiredEvidenceSourceIds": ["pasted_provenance_regression", "protected_boundary_aggregate"]},
+        {"id": "pure_live_preserved", "points": 4, "requiredEvidenceSourceIds": ["pasted_provenance_regression", "contract_endpoint_replay"]}
+      ]
+    },
+    {
+      "id": "blind_evaluation",
+      "label": "Blind evaluation integrity",
+      "weight": 20,
+      "criteria": [
+        {"id": "frozen_hashes_match", "points": 5, "requiredEvidenceSourceIds": ["freeze_manifest"]},
+        {"id": "runner_oracle_isolation", "points": 5, "requiredEvidenceSourceIds": ["freeze_manifest", "runner_isolation_attestation", "rubric_executor_regression"]},
+        {"id": "closed_fail_closed_envelopes", "points": 5, "requiredEvidenceSourceIds": ["rubric_executor_regression", "protected_aggregate", "protected_boundary_aggregate"]},
+        {"id": "aggregate_only_output", "points": 5, "requiredEvidenceSourceIds": ["rubric_executor_regression", "protected_aggregate", "protected_boundary_aggregate"]}
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "weight": 15,
+      "criteria": [
+        {"id": "share_tenant_receipt_free", "points": 8, "requiredEvidenceSourceIds": ["privacy_regression", "protected_aggregate", "protected_boundary_aggregate"]},
+        {"id": "closed_projection_fields", "points": 4, "requiredEvidenceSourceIds": ["privacy_regression"]},
+        {"id": "aggregate_output_redacted", "points": 3, "requiredEvidenceSourceIds": ["rubric_executor_regression", "protected_aggregate", "protected_boundary_aggregate"]}
+      ]
+    },
+    {
+      "id": "regression_compatibility",
+      "label": "Regression and compatibility",
+      "weight": 10,
+      "criteria": [
+        {"id": "engineering_commands", "points": 5, "requiredEvidenceSourceIds": ["engineering_suite"]},
+        {"id": "endpoint_and_contract_replay", "points": 5, "requiredEvidenceSourceIds": ["contract_endpoint_replay", "external_regression"]}
+      ]
+    },
+    {
+      "id": "operational_readiness",
+      "label": "Operational readiness",
+      "weight": 5,
+      "criteria": [
+        {"id": "cli_metrics_and_smoke", "points": 3, "requiredEvidenceSourceIds": ["protected_aggregate", "production_smoke"]},
+        {"id": "rollback_and_review", "points": 2, "requiredEvidenceSourceIds": ["independent_review", "freeze_manifest"]}
+      ]
+    }
+  ],
+  "decisionBands": [
+    {"minimumScore": 95, "maximumScore": 100, "decision": "eligible_for_deployment_approval", "condition": "all_binary_gates_pass"},
+    {"minimumScore": 90, "maximumScore": 94, "decision": "conditional_candidate", "condition": "all_binary_gates_pass"},
+    {"minimumScore": 0, "maximumScore": 89, "decision": "no_go", "condition": "always"}
+  ],
+  "overrideRule": "Any failed, missing, stale, unauthenticated, hash-mismatched, or UNKNOWN binary gate forces NO-GO regardless of weighted score."
+}

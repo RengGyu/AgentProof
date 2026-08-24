@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment } from "@/lib/markdown";
 import { normalizeGitHubPullUrl, parseGitHubPullUrl } from "@/lib/github";
 import { utf8ByteLength } from "@/lib/http";
-import { validateVerificationReport } from "@/lib/report-validation";
+import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
 import { redactSecrets } from "@/lib/redact";
 import type { PostGitHubCommentRequest, VerificationReport } from "@/lib/types";
 
@@ -44,7 +44,10 @@ export async function POST(request: Request) {
       return jsonNoStore({ error: "PR URL, write token, and report are required." }, 400);
     }
 
-    const validation = validateVerificationReport(body.report, { mode: "full" });
+    const validation = validateRuntimeReportBoundary({
+      boundary: "inbound_untrusted_full",
+      report: body.report
+    });
     if (!validation.valid) {
       return jsonNoStore({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, 422);
     }

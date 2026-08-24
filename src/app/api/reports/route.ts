@@ -1,5 +1,5 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
-import { validateVerificationReport } from "@/lib/report-validation";
+import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
 import { redactSecrets } from "@/lib/redact";
 import { createSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
 import type { VerificationReport } from "@/lib/types";
@@ -26,7 +26,10 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "report is required." }, { status: 400 });
   }
 
-  const validation = validateVerificationReport(body.report, { mode: reportValidationMode(body.report) });
+  const validation = validateRuntimeReportBoundary({
+    boundary: isSummaryOnlyReport(body.report) ? "signed_summary_read" : "inbound_untrusted_full",
+    report: body.report
+  });
   if (!validation.valid) {
     return noStoreJson({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, { status: 422 });
   }
@@ -61,11 +64,8 @@ export async function POST(request: Request) {
   });
 }
 
-function reportValidationMode(report: unknown): "full" | "summary" | "v2_full" | "v2_summary" {
-  const summaryOnly = isRecord(report) && Array.isArray(report.evidenceIndex) && report.evidenceIndex.length === 0;
-  const v2 = isRecord(report) && report.reportSchemaVersion === "verification-report.v2";
-  if (v2) return summaryOnly ? "v2_summary" : "v2_full";
-  return summaryOnly ? "summary" : "full";
+function isSummaryOnlyReport(report: unknown): boolean {
+  return isRecord(report) && Array.isArray(report.evidenceIndex) && report.evidenceIndex.length === 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,5 +1,5 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
-import { validateVerificationReport } from "@/lib/report-validation";
+import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
 import { verifyReportWithOpenAI } from "@/lib/openai-verifier";
 import { redactSecrets } from "@/lib/redact";
 import { readUsageQuotaPlanCapabilities } from "@/lib/usage-quota";
@@ -49,7 +49,10 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "input and report are required." }, { status: 400 });
   }
 
-  const validation = validateVerificationReport(body.report, { mode: "full" });
+  const validation = validateRuntimeReportBoundary({
+    boundary: "inbound_untrusted_full",
+    report: body.report
+  });
   if (!validation.valid) {
     return noStoreJson({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, { status: 422 });
   }

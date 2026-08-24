@@ -33,7 +33,7 @@ describe("verification-contract v2 evaluation closure", () => {
 
     expect(report.verificationContract.state).toBe("absent");
     expect(report.requirements.some((requirement) => requirement.status === "unclear")).toBe(true);
-    expect(report.requirements.some((requirement) => requirement.evidenceStatus === "met")).toBe(true);
+    expect(report.requirements.some((requirement) => requirement.evidenceStatus === "partial")).toBe(true);
   });
 
   it("keeps no-contract guidance report-level while preserving local observation gaps", () => {
@@ -94,7 +94,12 @@ describe("verification-contract v2 evaluation closure", () => {
     });
 
     expect(report.verificationContract.state).toBe("author_claim");
-    expect(report.requirements[0]).toMatchObject({ status: "partial", gaps: [] });
+    expect(report.requirements[0]).toMatchObject({ status: "partial", evidenceStatus: "met", gaps: [] });
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    report.requirements[0]!.status = "met";
+    report.proofGraph.nodes[0]!.status = "met";
+    expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
   });
 
   it("keeps an authoritative contract unclear when its exact artifact was not collected", () => {

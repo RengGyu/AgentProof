@@ -93,6 +93,83 @@ describe("POST /api/analyze", () => {
     expect(JSON.stringify(json)).not.toContain(token);
   });
 
+  it.each([
+    { name: "checks", override: { checks: "pasted unit tests: passed" } },
+    { name: "logs", override: { logs: "pasted unit tests: passed" } }
+  ])("downgrades a live snapshot to pasted provenance when pasted $name override GitHub evidence", async ({ override }) => {
+    const headSha = "a".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Mixed source PR",
+        body: "Adds test coverage.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        base: { ref: "main", sha: "b".repeat(40) },
+        head: { ref: "agent/mixed", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{
+        filename: "test/live.test.js",
+        status: "added",
+        additions: 1,
+        deletions: 0,
+        patch: "+ test('live', () => {})"
+      }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({
+        total_count: 1,
+        check_runs: [{ name: "unit-tests", status: "completed", conclusion: "success" }]
+      }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(new Request("http://localhost/api/analyze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prUrl: "https://github.com/acme/repo/pull/12",
+        ...override
+      })
+    }));
+    const json = await response.json() as { report: VerificationReport };
+
+    expect(response.status).toBe(200);
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    expect(json.report.source.provenance?.origin).toBe("pasted_evidence");
+    expect(json.report.source.provenance?.inputFingerprint.coverage).toBe("pasted_metadata");
+    expect(json.report.source.provenance?.changedFileInventory?.completeness).not.toBe("complete");
+    expect(json.report.source.provenance?.executionSuites).toBeUndefined();
+  });
+
+  it.each([
+    {
+      name: "task documentation",
+      source: { taskText: "Document the local reset command." }
+    },
+    {
+      name: "PR-description documentation",
+      source: { prDescription: "### Acceptance criteria\nDocument the local reset command with reproducible steps." }
+    }
+  ])("returns a valid conservative report for pasted $name", async ({ source }) => {
+    const response = await POST(new Request("http://localhost/api/analyze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...source,
+        changedFiles: "docs/reset.md"
+      })
+    }));
+    const json = await response.json() as { report: VerificationReport };
+
+    expect(response.status).toBe(200);
+    expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    expect(json.report.requirements).not.toHaveLength(0);
+    for (const finding of json.report.requirements) {
+      expect(finding.proofAxes).not.toHaveLength(0);
+      expect(finding.proofAxes?.every((axis) => axis.state === "incomplete")).toBe(true);
+      expect(["partial", "unclear"]).toContain(finding.evidenceStatus);
+    }
+  });
+
   it("adds server timing on malformed JSON errors without echoing the raw body", async () => {
     const rawBody = "{\"taskText\":\"token ghp_secret_should_not_leak\"";
     const response = await POST(

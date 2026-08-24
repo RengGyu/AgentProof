@@ -554,7 +554,7 @@ describe("requirement relation regression matrix", () => {
     expect(spans[2]?.immediateParentSpanId).toBeNull();
   });
 
-  it("inherits proof context only for the truly nested child and not the following sibling", () => {
+  it("inherits proof context only for the nested child while receipt-less local axes remain incomplete by default", () => {
     const input = linkedInput({
       taskText: [
         "Acceptance criteria:",
@@ -597,11 +597,12 @@ describe("requirement relation regression matrix", () => {
       "execution"
     ]);
     expect(nestedTest?.proofAxes).toEqual(base.requirements[1]?.proofAxes);
-    expect(axis(nestedTest, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(nestedTest, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(nestedTest, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(nestedTest, "execution")).toMatchObject({ state: "incomplete" });
     expect(nestedTest?.plannerAxisSubjects).toBeUndefined();
     expect(report.proofGraph.nodes[1]?.targetedTestEvidenceRefs.length).toBeGreaterThan(0);
     expect(report.proofGraph.nodes[1]?.executionEvidenceRefs.length).toBeGreaterThan(0);
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
     expect(documentationSibling?.proofAxes?.map((item) => item.subject)).toEqual([
       "documentation"
     ]);
@@ -646,7 +647,7 @@ describe("requirement relation regression matrix", () => {
       ].join("\n"),
       check: "invoice reference tests"
     }
-  ])("links a referential test-only sibling to $name without adding implementation proof", (fixture) => {
+  ])("links a referential test-only sibling to $name without promoting receipt-less local axes by default", (fixture) => {
     const report = finalizeAllAuthoritative(linkedInput({
       taskText: fixture.taskText,
       changedFiles: [
@@ -673,10 +674,11 @@ describe("requirement relation regression matrix", () => {
       status: testFinding?.status
     }).toEqual({
       subjects: ["targeted_test", "execution"],
-      targetedTestState: "satisfied",
-      executionState: "satisfied",
-      status: "met"
+      targetedTestState: "incomplete",
+      executionState: "incomplete",
+      status: "missing"
     });
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
   });
 
   it("keeps a non-English test sibling sentence-local in the English-only relation pass", () => {
@@ -691,7 +693,7 @@ describe("requirement relation regression matrix", () => {
       .toEqual(requirementProofAxisExpectations(requirements.at(-1)!.text));
   });
 
-  it("keeps selected-source behavior and test-only proof deterministic when the planner suggests implementation", () => {
+  it("keeps selected-source behavior deterministic while default-off blocks receipt-less test promotion", () => {
     const report = finalizeAllAuthoritative(linkedInput({
       taskText: [
         "## Requirements",
@@ -754,11 +756,13 @@ describe("requirement relation regression matrix", () => {
 
     expect(axis(visibilityBehavior, "implementation")).toMatchObject({ state: "satisfied" });
     expect(focusedTests?.proofAxes?.map((item) => item.subject)).toEqual(["targeted_test", "execution"]);
-    expect(axis(focusedTests, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(focusedTests, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(focusedTests, "execution")).toMatchObject({ state: "incomplete" });
     expect(focusedTests?.gaps.join(" ")).not.toMatch(/implementation evidence/i);
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
   });
 
-  it("caps a PR-description test requirement at partial without rejecting satisfied proof axes", () => {
+  it("caps PR-description implementation proof while default-off leaves the receipt-less test requirement missing", () => {
     const report = finalizeAllAuthoritative(linkedInput({
       taskSource: undefined,
       taskText: "",
@@ -813,13 +817,14 @@ describe("requirement relation regression matrix", () => {
       evidenceStatus: requirement.evidenceStatus,
       sourceAuthority: requirement.sourceAuthority
     }))).toEqual([
-      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" },
-      { status: "partial", evidenceStatus: "met", sourceAuthority: "pr_description" }
+      { status: "partial", evidenceStatus: "partial", sourceAuthority: "pr_description" },
+      { status: "missing", evidenceStatus: "partial", sourceAuthority: "pr_description" }
     ]);
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("keeps an explicit-subject test-only objective independent from implementation proof", () => {
+  it("keeps a receipt-less explicit-subject changed-target observation incomplete by default", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
       changedFiles: [
@@ -835,11 +840,12 @@ describe("requirement relation regression matrix", () => {
     const finding = report.requirements[0];
 
     expect(axis(finding, "implementation")).toBeUndefined();
-    expect(axis(finding, "targeted_test")).toMatchObject({ state: "satisfied" });
-    expect(axis(finding, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(finding, "targeted_test")).toMatchObject({ state: "incomplete" });
+    expect(axis(finding, "execution")).toMatchObject({ state: "incomplete" });
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
   });
 
-  it("keeps combined behavior-and-test wording on all three proof axes", () => {
+  it("keeps combined behavior-and-test axes but promotes only implementation by default", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: retry failed synchronization jobs and add regression tests.",
       changedFiles: [
@@ -855,10 +861,11 @@ describe("requirement relation regression matrix", () => {
     const finding = report.requirements[0];
 
     expect(axis(finding, "implementation")).toMatchObject({ polarity: "present", state: "satisfied" });
-    expect(axis(finding, "targeted_test")).toMatchObject({ polarity: "present", state: "satisfied" });
-    expect(axis(finding, "execution")).toMatchObject({ polarity: "present", state: "satisfied" });
-    expect(finding?.status).toBe("met");
+    expect(axis(finding, "targeted_test")).toMatchObject({ polarity: "present", state: "incomplete" });
+    expect(axis(finding, "execution")).toMatchObject({ polarity: "present", state: "incomplete" });
+    expect(finding?.status).not.toBe("met");
     expect(finding?.evidenceRefs.length).toBeGreaterThan(0);
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
     expect(validateVerificationReport(report, { mode: "full" })).toEqual({ valid: true, errors: [] });
   });
 
@@ -877,10 +884,10 @@ describe("requirement relation regression matrix", () => {
     expect(documentation.requirements[0]?.proofAxes).toEqual([
       expect.objectContaining({ subject: "documentation", state: "satisfied" })
     ]);
-    expect(ci.requirements[0]).toMatchObject({ status: "met" });
+    expect(ci.requirements[0]).toMatchObject({ status: "partial" });
     expect(ci.requirements[0]?.proofAxes).toEqual([
       expect.objectContaining({ subject: "ci_configuration", state: "satisfied" }),
-      expect.objectContaining({ subject: "execution", state: "satisfied" })
+      expect.objectContaining({ subject: "execution", state: "incomplete" })
     ]);
     expect(validateVerificationReport(documentation, { mode: "full" })).toEqual({ valid: true, errors: [] });
     expect(validateVerificationReport(ci, { mode: "full" })).toEqual({ valid: true, errors: [] });
@@ -955,7 +962,7 @@ describe("requirement relation regression matrix", () => {
       state: "satisfied"
     });
     expect(axis(finding, "targeted_test")).toMatchObject({ state: "violated" });
-    expect(axis(finding, "execution")).toMatchObject({ state: "satisfied" });
+    expect(axis(finding, "execution")).toMatchObject({ state: "incomplete" });
     expect(finding?.status).not.toBe("met");
   });
 
@@ -993,7 +1000,7 @@ describe("requirement relation regression matrix", () => {
     expect(axis(finding, "execution")?.state).not.toBe("satisfied");
   });
 
-  it("keeps execution incomplete when the targeted test exists but only an unrelated check passes", () => {
+  it("keeps both local axes incomplete by default when only the targeted test artifact is relevant", () => {
     const report = generateVerificationReport(linkedInput({
       taskText: "Acceptance criteria: add regression tests for retry queue synchronization.",
       changedFiles: [
@@ -1008,8 +1015,9 @@ describe("requirement relation regression matrix", () => {
     }));
     const finding = report.requirements[0];
 
-    expect(axis(finding, "targeted_test")).toMatchObject({ state: "satisfied" });
+    expect(axis(finding, "targeted_test")).toMatchObject({ state: "incomplete" });
     expect(axis(finding, "execution")).toMatchObject({ state: "incomplete", evidenceRefs: [] });
+    expect(report.proofGraph.testRelationReceipts ?? []).toHaveLength(0);
     expect(finding?.status).not.toBe("met");
   });
 

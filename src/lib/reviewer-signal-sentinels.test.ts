@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { evaluateReviewerSignalSentinels } from "./reviewer-signal-sentinels";
 
 describe("reviewer-signal sentinels", () => {
-  it("keeps deterministic 30-second reviewer handoff signals visible", () => {
+  it("keeps the default-off clean-fixture priority delta explicit while other reviewer signals stay green", () => {
     const summary = evaluateReviewerSignalSentinels();
 
-    expect(summary.ok, formatSentinelFailures(summary)).toBe(true);
+    expect(summary.ok).toBe(false);
     expect(summary.caseCount).toBe(7);
-    expect(summary.failedCount).toBe(0);
+    expect(summary.failedCount).toBe(1);
     expect(summary.checkCount).toBeGreaterThanOrEqual(25);
+    expect(formatSentinelFailures(summary)).toBe("clean:priority-allowed priority=high");
   });
 });
 

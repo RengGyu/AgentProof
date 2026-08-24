@@ -1,5 +1,5 @@
 import { buildLlmVerifierPackage } from "./llm-package";
-import { validateVerificationReport } from "./report-validation";
+import { validateRuntimeReportBoundary } from "./report-runtime-validation";
 import { redactSecrets } from "./redact";
 import type { PullRequestInput, VerificationReport } from "./types";
 
@@ -72,7 +72,10 @@ export async function verifyReportWithOpenAI(
 
   report = normalizeOpenAIReport(report);
 
-  const validation = validateVerificationReport(report, { mode: "full" });
+  const validation = validateRuntimeReportBoundary({
+    boundary: "inbound_untrusted_full",
+    report: report as VerificationReport
+  });
   if (!validation.valid) {
     throw new Error(`OpenAI verifier output failed validation: ${validation.errors.map(redactSecrets).join(" ")}`);
   }

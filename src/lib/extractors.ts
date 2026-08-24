@@ -13,8 +13,11 @@ import type {
   RequirementSourceRole,
   RequirementSourceBinding,
   RequirementSpanId,
-  RequirementSpanSeedExtractionResult
+  RequirementSpanSeedExtractionResult,
+  CanonicalRequirementSetV1,
+  CanonicalRequirementUnitV1
 } from "./types";
+import type { MaterializedVerificationContractV2, VerificationBindingInputV2 } from "./verification-contract-v2";
 import { createHash } from "crypto";
 import { hasPassingEvidenceStatusPrefix, isExecutionEvidenceSignal } from "./evidence-status";
 import { compactText } from "./redact";
@@ -113,6 +116,167 @@ export interface RequirementExtractionResult {
   contexts: RequirementContextSignal[];
   omittedRequirementCount: number;
 }
+
+export type CanonicalRequirementInputV1 =
+  | { kind: "selected_source"; input: Pick<PullRequestInput, "taskText" | "description" | "taskSource" | "requirementSourceIdentityHash"> }
+  | { kind: "typed_contract"; materialized: MaterializedVerificationContractV2; binding: VerificationBindingInputV2 };
+type CanonicalSelectedSourceInputV1 = Pick<PullRequestInput, "taskText" | "description" | "taskSource" | "requirementSourceIdentityHash">;
+
+interface CanonicalSelectedSourceBundleV1 {
+  canonical: CanonicalRequirementSetV1;
+  contexts: RequirementContextSignal[];
+  omittedRequirementCount: number;
+  overflow: boolean;
+  manualFallbackRequired: boolean;
+  structureByRequirementId: ReadonlyMap<string, {
+    spanId: RequirementSpanId;
+    immediateParentSpanId: RequirementSpanId | null;
+    sourceSection: string | null;
+    start: number;
+    end: number;
+    contextRoles: RequirementSourceRole[];
+  }>;
+}
+
+const canonicalBundles = new WeakMap<CanonicalRequirementSetV1, CanonicalSelectedSourceBundleV1>();
+
+export function selectCanonicalRequirements(input: CanonicalRequirementInputV1): CanonicalRequirementSetV1 {
+  if (input.kind === "typed_contract") return canonicalTypedContract(input.materialized, input.binding);
+  return canonicalSelectedSource(input.input).canonical;
+}
+/** One selected-source scan for BASE callers that need requirements and contexts. */
+export function selectCanonicalSelectedSourceBundle(input: CanonicalSelectedSourceInputV1): CanonicalSelectedSourceBundleV1 {
+  return canonicalSelectedSource(input);
+}
+
+export function toReportRequirements(canonical: CanonicalRequirementSetV1): Requirement[] {
+  const bundle = canonicalBundles.get(canonical);
+  return canonical.requirements.map((unit) => {
+    const structure = bundle?.structureByRequirementId.get(unit.reportRequirementId);
+    return {
+      id: unit.reportRequirementId,
+      source: unit.source,
+      text: unit.text,
+      keywords: unit.sourceQuality === "manual_check" ? [] : extractKeywords(unit.text),
+      priority: unit.priority,
+      role: "core_requirement",
+      sourceQuality: unit.authority === "author_claim" ? "author_claim" : unit.sourceQuality,
+      sourceSection: structure?.sourceSection ?? (canonical.inputKind === "typed_contract" ? "AgentProof verification" : null),
+      contextRoles: structure?.contextRoles ?? []
+    };
+  });
+}
+
+export function toRequirementExtractionResult(
+  bundle: CanonicalSelectedSourceBundleV1
+): RequirementExtractionResult {
+  const requirements = toReportRequirements(bundle.canonical);
+  if (requirements.length > 0) {
+    return {
+      requirements,
+      contexts: bundle.contexts,
+      omittedRequirementCount: bundle.omittedRequirementCount
+    };
+  }
+  return {
+    requirements: bundle.manualFallbackRequired ? [{
+      id: "req_1",
+      source: "manual",
+      text: "Original requirement is too vague to verify automatically.",
+      keywords: [],
+      priority: "must",
+      role: "core_requirement",
+      sourceQuality: "manual_check",
+      sourceSection: null,
+      contextRoles: bundle.contexts.map((context) => context.role).filter(uniqueRole).slice(0, 8)
+    }] : [],
+    contexts: bundle.contexts,
+    omittedRequirementCount: 0
+  };
+}
+
+function canonicalTypedContract(
+  materialized: MaterializedVerificationContractV2,
+  binding: VerificationBindingInputV2
+): CanonicalRequirementSetV1 {
+  const source = binding.sourceKind === "linked_issue" ? "issue" : binding.sourceKind === "pr_description" ? "pr_description" : "task";
+  const sourceIdentityHash = digest({ domain: "agentproof.canonical-source-identity.v1", sourceKind: binding.sourceKind, sourceIdentity: binding.sourceIdentity });
+  const sourceContentHash = digest({
+    domain: "agentproof.canonical-typed-content.v1", state: materialized.state,
+    objectives: materialized.objectives.map((objective) => ({
+      requirementId: objective.requirementId, objective: objective.objective,
+      criteria: objective.criteria.map((criterion) => ({ criterionId: criterion.criterionId, source: criterion.source }))
+    }))
+  });
+  const requirements = materialized.objectives.map((objective, index) => {
+    const reportRequirementId = `vc_o${index + 1}`;
+    if (objective.requirementId !== reportRequirementId || objective.state !== materialized.state) {
+      throw new Error("Invalid materialized verification contract objective ordering.");
+    }
+    const text = objective.objective;
+    const normalizedTextHash = digest({ domain: "agentproof.canonical-text.v1", text: normalizeCanonicalText(text) });
+    return canonicalUnit({ inputKind: "typed_contract", sourceIdentityHash, sourceContentHash, reportRequirementId, source, authority: objective.state, groupId: `vc_grp_${index + 1}`, ordinal: index + 1, normalizedTextHash, text, priority: "must", sourceQuality: objective.state === "author_claim" ? "author_claim" : "explicit_acceptance_criteria" });
+  });
+  if (new Set(requirements.map((requirement) => requirement.reportRequirementId)).size !== requirements.length) throw new Error("Duplicate materialized verification objective IDs.");
+  return { version: 1, inputKind: "typed_contract", sourceIdentityHash, sourceContentHash, requirements };
+}
+
+function canonicalSelectedSource(input: CanonicalSelectedSourceInputV1): CanonicalSelectedSourceBundleV1 {
+  const taskText = redactSecrets(input.taskText);
+  const description = redactSecrets(input.description);
+  const hasTask = taskText.trim().length > 0;
+  const sourceText = hasTask ? taskText : description;
+  const source: Requirement["source"] = hasTask ? input.taskSource ?? "task" : "pr_description";
+  const isPrBody = !hasTask;
+  const rawCandidates = selectSpanCandidates(spanCandidatesFromSource(sourceText, source, isPrBody), isPrBody)
+    .filter((candidate) => candidate.text.trim().length > 12)
+    .filter((candidate) => !isPrBody || (
+      !isPurePrEvidenceInventory(candidate.text) &&
+      !AUTHOR_EVIDENCE_SECTION_PATTERN.test(candidate.sourceSection ?? "") &&
+      isEligibleUnlinkedPrObjective({ text: normalizeSourceLine(candidate.text), source: "pr_description", role: "author_claim", sourceQuality: "author_claim", sourceSection: candidate.sourceSection })
+    ))
+    .filter((candidate) => isPrBody || !isVagueRequirementLine(normalizeSourceLine(candidate.text), /acceptance criteria|must|required|given|when|then/i.test(cleanRequirementSourceText(sourceText))));
+  const groupMap = new Map<number, number>();
+  const candidates = rawCandidates.map((candidate) => ({ ...candidate, group: groupMap.get(candidate.group) ?? (groupMap.set(candidate.group, groupMap.size + 1), groupMap.size) }));
+  const allSpans = toRequirementSourceSpans(candidates, sourceText, isPrBody);
+  const spans = allSpans.slice(0, 8);
+  const contexts = toContextSignals([
+    ...(hasTask ? classifyRequirementSource(taskText.trim(), source, false) : []),
+    ...(description.trim() ? classifyRequirementSource(description.trim(), "pr_description", true) : [])
+  ]);
+  const sourceContentHash = digest({ domain: "agentproof.canonical-selected-content.v1", source, authority: isPrBody ? "author_claim" : "authoritative", requirements: spans.map((span) => ({ groupId: span.groupId, ordinal: span.ordinal, text: digest({ domain: "agentproof.canonical-text.v1", text: normalizeCanonicalText(span.text) }), priority: span.priority, sourceQuality: span.sourceQuality })) });
+  const sourceIdentityHash = /^[a-f0-9]{64}$/.test(input.requirementSourceIdentityHash ?? "")
+    ? input.requirementSourceIdentityHash!
+    : digest({ domain: "agentproof.canonical-source-identity.v1", inputKind: "selected_source", source, sourceContentHash });
+  const structureByRequirementId = new Map<string, CanonicalSelectedSourceBundleV1["structureByRequirementId"] extends ReadonlyMap<string, infer V> ? V : never>();
+  const requirements = spans.map((span, index) => {
+    const reportRequirementId = `req_${index + 1}`;
+    const text = normalizeCanonicalText(span.text);
+    const normalizedTextHash = digest({ domain: "agentproof.canonical-text.v1", text });
+    structureByRequirementId.set(reportRequirementId, { spanId: span.id, immediateParentSpanId: span.immediateParentSpanId, sourceSection: span.sourceSection, start: span.start, end: span.end, contextRoles: [] });
+    return canonicalUnit({ inputKind: "selected_source", sourceIdentityHash, sourceContentHash, reportRequirementId, source: span.source as CanonicalRequirementUnitV1["source"], authority: isPrBody ? "author_claim" : "authoritative", groupId: span.groupId, ordinal: span.ordinal, normalizedTextHash, text, priority: span.priority, sourceQuality: span.sourceQuality });
+  });
+  const canonical: CanonicalRequirementSetV1 = { version: 1, inputKind: "selected_source", sourceIdentityHash, sourceContentHash, requirements };
+  const bundle = {
+    canonical,
+    contexts,
+    omittedRequirementCount: Math.max(0, allSpans.length - spans.length),
+    overflow: allSpans.length > MAX_REQUIREMENT_SOURCE_SPANS,
+    manualFallbackRequired: hasTask,
+    structureByRequirementId
+  };
+  canonicalBundles.set(canonical, bundle);
+  return bundle;
+}
+
+function canonicalUnit(value: Omit<CanonicalRequirementUnitV1, "stableBindingKey"> & { inputKind: CanonicalRequirementSetV1["inputKind"]; sourceIdentityHash: string; sourceContentHash: string }): CanonicalRequirementUnitV1 {
+  const { inputKind, sourceIdentityHash, sourceContentHash, ...unit } = value;
+  return { ...unit, stableBindingKey: digest({ domain: "agentproof.canonical-requirement-binding.v1", inputKind, sourceIdentityHash, sourceContentHash, reportRequirementId: unit.reportRequirementId, source: unit.source, authority: unit.authority, groupId: unit.groupId, ordinal: unit.ordinal, normalizedTextHash: unit.normalizedTextHash }) };
+}
+
+function normalizeCanonicalText(value: string): string { return normalizeSentence(value.trim().replace(/^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)/, "")).replace(/\s+/g, " ").trim(); }
+function stableJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") { const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)); return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(",")}}`; } return JSON.stringify(value); }
+function digest(value: unknown): string { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
 export interface EvidenceIndexResult { items: EvidenceItem[]; omittedByKind: Partial<Record<EvidenceItem["kind"], number>>; }
 
 const MAX_REQUIREMENT_SOURCE_SPANS = 12;
@@ -165,11 +329,9 @@ export function extractRequirementSpanSeed(
       : "provided_requirement";
   const candidates = spanCandidatesFromSource(sourceText, source, isPrBody);
   const selectedCandidates = selectSpanCandidates(candidates, isPrBody);
-
   if (selectedCandidates.length > MAX_REQUIREMENT_SOURCE_SPANS) {
     return { eligible: false, overflow: true, seed: null };
   }
-
   const spans = toRequirementSourceSpans(selectedCandidates, sourceText, isPrBody);
   const contexts = extractRequirementEvidence(taskText, prDescription, taskSource).contexts
     .filter((context) => context.source === source)
@@ -199,11 +361,39 @@ export interface DeterministicRequirementRelations {
   sourceBindingsByRef: ReadonlyMap<string, RequirementSourceBinding>;
 }
 
+function canonicalSpanExtraction(
+  canonical: CanonicalRequirementSetV1,
+  bundle: CanonicalSelectedSourceBundleV1 | undefined
+): RequirementSpanSeedExtractionResult {
+  if (!bundle) return { eligible: false, overflow: false, seed: null };
+  const spans = canonical.requirements.map((unit) => {
+    const structure = bundle.structureByRequirementId.get(unit.reportRequirementId);
+    if (!structure) throw new Error("Canonical requirement structural binding is missing.");
+    return {
+      id: structure.spanId,
+      groupId: unit.groupId as RequirementSourceSpan["groupId"],
+      ordinal: unit.ordinal,
+      immediateParentSpanId: structure.immediateParentSpanId,
+      source: unit.source,
+      authority: unit.authority === "author_claim" ? "pr_author_claim" : "authoritative",
+      sourceQuality: unit.sourceQuality,
+      sourceSection: structure.sourceSection,
+      start: structure.start,
+      end: structure.end,
+      text: unit.text,
+      priority: unit.priority
+    } satisfies RequirementSourceSpan;
+  });
+  return { eligible: spans.length > 0, overflow: false, seed: { version: 1, analysisContext: spans[0]?.source === "issue" ? "linked_issue" : spans[0]?.source === "pr_description" ? "unlinked_pr" : "provided_requirement", spans, contexts: bundle.contexts, seedHash: canonical.sourceContentHash } };
+}
+
 /** Derives BASE-only proof relations from ordered spans in the selected authoritative source. */
 export function deriveDeterministicRequirementRelations(
-  input: Pick<PullRequestInput, "taskText" | "description" | "taskSource">,
-  requirements: readonly Requirement[]
+  input: CanonicalRequirementSetV1 | Pick<PullRequestInput, "taskText" | "description" | "taskSource">,
+  suppliedRequirements?: readonly Requirement[]
 ): DeterministicRequirementRelations {
+  const canonical = "inputKind" in input ? input : undefined;
+  const requirements = canonical ? toReportRequirements(canonical) : suppliedRequirements ?? [];
   const proofExpectationsByRequirement = new Map<string, RequirementProofExpectations>();
   const evidenceContextRequirementIdsByRequirement = new Map<string, readonly string[]>();
   const deterministicRelationsByRequirement = new Map<string, DeterministicRequirementRelation>();
@@ -212,14 +402,7 @@ export function deriveDeterministicRequirementRelations(
     proofExpectationsByRequirement.set(requirement.id, requirementProofAxisExpectations(requirement.text));
   }
 
-  const spanExtraction = extractRequirementSpanSeed(input.taskText, input.description, input.taskSource);
-  const spans = spanExtraction.seed?.spans ?? [];
-  if (
-    spans.length !== requirements.length ||
-    spans.some((span, index) =>
-      normalizedRelationText(span.text) !== normalizedRelationText(requirements[index]?.text ?? "")
-    )
-  ) {
+  if (canonical?.inputKind === "typed_contract") {
     return {
       proofExpectationsByRequirement,
       evidenceContextRequirementIdsByRequirement,
@@ -227,6 +410,13 @@ export function deriveDeterministicRequirementRelations(
       sourceBindingsByRef
     };
   }
+  const bundle = canonical ? canonicalBundles.get(canonical) : undefined;
+  const legacyInput = input as Pick<PullRequestInput, "taskText" | "description" | "taskSource">;
+  const spanExtraction = canonical
+    ? canonicalSpanExtraction(canonical, bundle)
+    : extractRequirementSpanSeed(legacyInput.taskText, legacyInput.description, legacyInput.taskSource);
+  const spans = spanExtraction.seed?.spans ?? [];
+  if (spans.length !== requirements.length) return { proofExpectationsByRequirement, evidenceContextRequirementIdsByRequirement, deterministicRelationsByRequirement, sourceBindingsByRef };
 
   for (let index = 0; index < requirements.length; index += 1) {
     const requirement = requirements[index]!;
@@ -258,7 +448,8 @@ export function deriveDeterministicRequirementRelations(
       spans,
       requirements,
       index,
-      sourceBindingSeedId(spanExtraction.seed!)
+      sourceBindingSeedId(spanExtraction.seed!),
+      canonical?.requirements.map((unit) => `rsb_${unit.stableBindingKey}`)
     );
     if (testContext.kind === "none") continue;
     proofExpectationsByRequirement.set(
@@ -325,7 +516,8 @@ function deterministicTestAntecedentContext(
   spans: readonly RequirementSourceSpan[],
   requirements: readonly Requirement[],
   index: number,
-  seedHash: string
+  seedHash: string,
+  sourceBindingRefs?: readonly string[]
 ): (
   | (Extract<DeterministicProofContext, { kind: "test_antecedent" }> & { antecedentIndex: number; seedId: string })
   | (Extract<DeterministicProofContext, { kind: "test_subject_chain" }> & { subjectIndex: number; bridgeIndex: number; seedId: string })
@@ -365,9 +557,9 @@ function deterministicTestAntecedentContext(
       subjectIndex,
       bridgeIndex,
       seedId,
-      currentSourceBindingRef: `rsb_${span.id}`,
-      subjectSourceBindingRef: `rsb_${subjectSpan.id}`,
-      bridgeSourceBindingRef: `rsb_${bridgeSpan.id}`
+      currentSourceBindingRef: sourceBindingRefs?.[index] ?? `rsb_${span.id}`,
+      subjectSourceBindingRef: sourceBindingRefs?.[subjectIndex] ?? `rsb_${subjectSpan.id}`,
+      bridgeSourceBindingRef: sourceBindingRefs?.[bridgeIndex] ?? `rsb_${bridgeSpan.id}`
     };
   }
 
@@ -388,8 +580,8 @@ function deterministicTestAntecedentContext(
     requirementId: requirements[antecedentIndex]!.id,
     antecedentIndex,
     seedId,
-    currentSourceBindingRef: `rsb_${span.id}`,
-    antecedentSourceBindingRef: `rsb_${spans[antecedentIndex]!.id}`
+    currentSourceBindingRef: sourceBindingRefs?.[index] ?? `rsb_${span.id}`,
+    antecedentSourceBindingRef: sourceBindingRefs?.[antecedentIndex] ?? `rsb_${spans[antecedentIndex]!.id}`
   };
 }
 
@@ -402,6 +594,7 @@ function isSubjectlessEnglishTestObjective(text: string): boolean {
 }
 
 function sourceBindingSeedId(seed: NonNullable<RequirementSpanSeedExtractionResult["seed"]>): string {
+  if (seed.seedHash) return seed.seedHash;
   return createHash("sha256").update(JSON.stringify({
     version: seed.version,
     analysisContext: seed.analysisContext,
@@ -855,79 +1048,9 @@ export function extractRequirementEvidence(
   prDescription: string,
   taskSource: PullRequestInput["taskSource"] = "task"
 ): RequirementExtractionResult {
-  const taskRaw = redactSecrets(taskText).trim();
-  const prRaw = redactSecrets(prDescription).trim();
-  const taskSourceType: Requirement["source"] = taskRaw ? taskSource ?? "task" : "manual";
-  const taskLines = taskRaw ? classifyRequirementSource(taskRaw, taskSourceType, false) : [];
-  const prLines = prRaw ? classifyRequirementSource(prRaw, "pr_description", true) : [];
-  const sourceOfTruthLines = taskLines.length > 0 ? taskLines : [];
-  const sourceText = cleanRequirementSourceText(taskRaw || prRaw);
-  const sourceHasAcceptanceLanguage = /acceptance criteria|must|required|given|when|then/i.test(sourceText);
-  const contexts = toContextSignals([...taskLines, ...prLines]);
-  const coreCandidates = sourceOfTruthLines.filter((line) => line.role === "core_requirement");
-  const promotedProblemCandidates = coreCandidates.length === 0 && taskLines.length > 0
-    ? promoteProblemContexts(taskLines)
-    : [];
-  const authorIntentCandidates = taskLines.length === 0
-    ? prLines
-      .filter((line) => line.role === "author_claim")
-      .filter((line) => !AUTHOR_EVIDENCE_SECTION_PATTERN.test(line.sourceSection ?? ""))
-      .filter((line) => !isIssueTemplateNoiseLine(line.text))
-      .filter((line) => !isPurePrEvidenceInventory(line.text))
-      .filter(isEligibleUnlinkedPrObjective)
-      .map((line) => ({ ...line, role: "core_requirement" as const, sourceQuality: "author_claim" as const }))
-    : [];
-  const allRequirementCandidates = (coreCandidates.length > 0
-    ? coreCandidates
-    : promotedProblemCandidates.length > 0
-      ? promotedProblemCandidates
-      : authorIntentCandidates)
-    .filter((line) => line.text.length > 12)
-    .filter((line) => !isVagueRequirementLine(line.text, sourceHasAcceptanceLanguage))
-  const requirementCandidates = allRequirementCandidates.slice(0, 8);
-  const fencedContextKeywords = extractKeywords(collectUsefulFencedContent(taskRaw || prRaw));
-
-  const requirements = requirementCandidates
-    .map((line, index) => ({
-      id: `req_${index + 1}`,
-      source: line.source,
-      text: normalizeSentence(line.text),
-      keywords: mergeKeywords(
-        extractKeywords(line.text),
-        mergeKeywords(contextKeywordsForRequirement(line, contexts), fencedContextKeywords)
-      ),
-      priority: priorityForRequirement(line.text),
-      role: "core_requirement",
-      sourceQuality: line.sourceQuality,
-      sourceSection: line.sourceSection ?? null,
-      contextRoles: contextRolesForRequirement(line, contexts)
-    })) satisfies Requirement[];
-
-  if (requirements.length > 0) {
-    return {
-      requirements,
-      contexts,
-      omittedRequirementCount: Math.max(0, allRequirementCandidates.length - requirements.length)
-    };
-  }
-
-  return {
-    requirements: taskRaw
-      ? [{
-          id: "req_1",
-          source: "manual",
-          text: "Original requirement is too vague to verify automatically.",
-          keywords: [],
-          priority: "must",
-          role: "core_requirement",
-          sourceQuality: "manual_check",
-          sourceSection: null,
-          contextRoles: contexts.map((context) => context.role).filter(uniqueRole).slice(0, 8)
-        }]
-      : [],
-    contexts,
-    omittedRequirementCount: 0
-  };
+  return toRequirementExtractionResult(
+    canonicalSelectedSource({ taskText, description: prDescription, taskSource })
+  );
 }
 
 function isEligibleUnlinkedPrObjective(line: ClassifiedRequirementLine): boolean {

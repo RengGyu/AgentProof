@@ -1,7 +1,7 @@
 import { reportToGitHubComment } from "./markdown";
 import { redactSecrets } from "./redact";
 import { createVerifiedSavedReport, getSavedReportStoreStatus } from "./server-report-store";
-import type { VerificationReport } from "./types";
+import type { PullRequestInput, VerificationReport } from "./types";
 
 const AGENTPROOF_APP_COMMENT_MARKER = "<!-- agentproof:github-app:evidence-check:v1 -->";
 const COMMENTS_PAGE_SIZE = 100;
@@ -35,6 +35,7 @@ export async function createAutomationSavedReport(
     repositoryId?: number;
     pullRequestNumber?: number;
     headSha?: string;
+    validationInput?: PullRequestInput;
   }
 ): Promise<AutomationSavedReportResult | undefined> {
   if (!/^(1|true|yes|on)$/i.test(process.env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS?.trim() ?? "")) {
@@ -42,7 +43,14 @@ export async function createAutomationSavedReport(
   }
 
   const status = getSavedReportStoreStatus();
-  const saved = await createVerifiedSavedReport(report, { tenantId: options.tenantId, installationId: options.installationId, repositoryId: options.repositoryId, pullRequestNumber: options.pullRequestNumber, headSha: options.headSha });
+  const saved = await createVerifiedSavedReport(report, {
+    tenantId: options.tenantId,
+    installationId: options.installationId,
+    repositoryId: options.repositoryId,
+    pullRequestNumber: options.pullRequestNumber,
+    headSha: options.headSha,
+    validationInput: options.validationInput
+  });
   const url = new URL(`/reports/${saved.id}`, options.requestUrl);
   if (saved.accessToken) {
     url.searchParams.set("key", saved.accessToken);

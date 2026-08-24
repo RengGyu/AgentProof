@@ -52,3 +52,62 @@ Return findings first, ordered by severity, with file paths and exact suggested 
 - Confirm Recent reports reload locally and Clear removes them.
 - Preview a GitHub PR comment and verify it is short, marker-based, and does not include raw evidence.
 - Check that long file paths and evidence summaries do not overflow on mobile.
+
+## Receipt-Gated Promotion and Authority Boundary Checks
+
+Use these checks when a candidate changes requirement-local proof, pasted
+evidence, report import, or sharing behavior. They complement the general
+demo checklist; they do not authorize protected evaluation or production
+deployment.
+
+### Automated checks
+
+```bash
+pnpm vitest run \
+  src/lib/report-runtime-validation-authority.test.ts \
+  src/lib/github-pasted-provenance.test.ts \
+  src/lib/evidence-receipts.test.ts \
+  src/lib/proof-promotion-policy.test.ts \
+  src/lib/report-validation.test.ts
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+Confirm all commands exit successfully. The focused suite proves these
+boundaries:
+
+- the default promotion mode remains `off`; a local test/execution claim is
+  not promoted merely because evidence was collected;
+- only a complete private receipt pair can support the opt-in `receipt_v2`
+  path;
+- pasted changed files, checks, or logs cannot retain GitHub-complete
+  authority or a locally satisfied test/execution axis;
+- an inbound untrusted full v2 report cannot carry an active contract outcome;
+- share and tenant projections omit private receipt collections and execution
+  bindings.
+
+### Manual preview checks
+
+- On desktop and mobile, run the five demo scenarios and confirm their
+  priority, gap, and re-prompt signals remain distinct.
+- In manual mode, paste changed-file/check/log evidence and confirm the report
+  stays conservative: it must not present that pasted input as GitHub-complete
+  proof or as a requirement-local `Supported` result.
+- Analyze a public PR URL without a token. If GitHub evidence is unavailable,
+  confirm the report says so instead of inferring a passing test result.
+- Create and open a share link. Confirm it contains summary information only,
+  never raw diffs, logs, assertion text, receipt IDs, or execution bindings.
+- Confirm `GET /api/analyze` returns `405`; this endpoint must fail closed for
+  a non-analysis request.
+
+### Stop and report a blocker when
+
+- a requirement-local test or execution result is shown as supported without
+  a complete, source-bound receipt path;
+- pasted input is described as live GitHub-complete evidence;
+- an import/publication path accepts an active v2 contract from an untrusted
+  full report;
+- a share/tenant screen exposes raw evidence, private receipts, assertions,
+  workflow identities, or secret-like data;
+- a mobile layout hides the top risk, evidence gap, or next agent action.
