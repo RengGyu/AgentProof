@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
+import * as acorn from "acorn";
+import ts from "typescript";
 import {
   buildEvaluationToolchainManifestV2,
   canonicalSha256,
@@ -15,7 +19,8 @@ const manifestKeys = [
   "version", "policyId", "candidateSha", "toolingEntries", "toolingEntrySetSha256",
   "sourceFiles", "evaluationToolchainSourceClosureSha256", "moduleEdges", "moduleEdgeSetSha256",
   "nodeBuiltins", "nodeBuiltinAllowlistSha256", "approvedNodeBuiltinUniverseSha256",
-  "sutExternalImports", "sutExternalImportAllowlistSha256", "parserArtifact", "resolutionPolicy",
+  "toolingBuiltinImports", "evaluationToolchainBuiltinAllowlistSha256",
+  "sutExternalImports", "sutExternalImportAllowlistSha256", "parserArtifacts", "resolutionPolicy",
   "resolutionPolicySha256", "bundles", "evaluationToolchainBundleSetSha256", "runnerSandboxProfile",
   "packageScripts", "lockfile", "runtime"
 ];
@@ -39,15 +44,20 @@ describe("build-evaluation-toolchain-manifest", () => {
       { importerPath: "tools/runner.mjs", kind: "runtime_import", specifier: "typescript", targetKind: "parser_artifact", targetRef: "typescript" }
     ]);
     assert.deepEqual(first.nodeBuiltins, ["node:crypto"]);
+    assert.deepEqual(first.toolingBuiltinImports, ["node:crypto"]);
     assert.equal(first.toolingEntrySetSha256, canonicalSha256(first.toolingEntries));
     assert.equal(first.moduleEdgeSetSha256, canonicalSha256(first.moduleEdges));
     assert.equal(first.nodeBuiltinAllowlistSha256, canonicalSha256(first.nodeBuiltins));
+    assert.equal(first.evaluationToolchainBuiltinAllowlistSha256, canonicalSha256(first.toolingBuiltinImports));
     assert.equal(first.approvedNodeBuiltinUniverseSha256, canonicalSha256([
       "node:crypto", "node:fs", "node:path", "node:perf_hooks", "node:url", "node:util"
     ]));
-    assert.equal(first.parserArtifact.id, "typescript");
-    assert.equal(first.parserArtifact.version, "5.9.3");
-    assert.ok(!JSON.stringify(first.parserArtifact).includes(root));
+    assert.deepEqual(first.parserArtifacts, runtimeParserArtifacts());
+    assert.equal(
+      first.evaluationToolchainSourceClosureSha256,
+      canonicalSha256({ sourceFiles: first.sourceFiles, parserArtifacts: first.parserArtifacts })
+    );
+    assert.ok(!JSON.stringify(first.parserArtifacts).includes(root));
     assert.equal(validateEvaluationToolchainManifestV2(first), true);
     assert.deepEqual(verifyEvaluationToolchainManifestV2({ rootDir: root, config, manifest: first }), first);
   }));
@@ -62,7 +72,7 @@ describe("build-evaluation-toolchain-manifest", () => {
       (manifest) => { manifest.moduleEdges[0].specifier = "./other.mjs"; },
       (manifest) => { manifest.moduleEdges[0].targetRef = "tools/runner.mjs"; },
       (manifest) => { manifest.nodeBuiltins = []; },
-      (manifest) => { manifest.parserArtifact.entrySha256 = "f".repeat(64); },
+      (manifest) => { manifest.parserArtifacts[0].entrySha256 = "f".repeat(64); },
       (manifest) => { manifest.resolutionPolicy.target = "ES2023"; },
       (manifest) => { manifest.bundles[0].sha256 = "f".repeat(64); },
       (manifest) => { manifest.runnerSandboxProfile.sha256 = "f".repeat(64); },
@@ -88,9 +98,10 @@ describe("build-evaluation-toolchain-manifest", () => {
       (manifest) => { manifest.moduleEdges.reverse(); },
       (manifest) => { manifest.moduleEdges[0].targetRef = "src/unbound.ts"; },
       (manifest) => { manifest.nodeBuiltins = ["node:os"]; },
+      (manifest) => { manifest.evaluationToolchainSourceClosureSha256 = canonicalSha256(manifest.sourceFiles); },
       (manifest) => { manifest.bundles = manifest.bundles.filter((bundle) => bundle.id !== "authority_cli_bootstrap"); },
       (manifest) => { manifest.bundles.find((bundle) => bundle.id === "authority_cli_bootstrap").path = "tools/helper.mjs"; },
-      (manifest) => { manifest.parserArtifact.loadedBindingSha256 = "f".repeat(64); },
+      (manifest) => { manifest.parserArtifacts[0].version = "8.16.0"; },
       (manifest) => { manifest.resolutionPolicySha256 = "f".repeat(64); }
     ]) {
       const changed = structuredClone(frozen);
@@ -130,17 +141,45 @@ describe("build-evaluation-toolchain-manifest", () => {
     expectCode(() => validateEvaluationToolchainManifestV2(changedEdge), "MANIFEST_BINDING_INVALID");
 
     const changedParser = structuredClone(frozen);
-    changedParser.parserArtifact.entryPath = "lib/other.js";
-    changedParser.parserArtifact.entrySha256 = "f".repeat(64);
-    changedParser.parserArtifact.loadedBindingSha256 = canonicalSha256({
-      id: changedParser.parserArtifact.id,
-      version: changedParser.parserArtifact.version,
-      entryPath: changedParser.parserArtifact.entryPath,
-      entrySha256: changedParser.parserArtifact.entrySha256,
-      packageJsonPath: changedParser.parserArtifact.packageJsonPath,
-      packageJsonSha256: changedParser.parserArtifact.packageJsonSha256
+    changedParser.parserArtifacts[0].entrySha256 = "f".repeat(64);
+    changedParser.evaluationToolchainSourceClosureSha256 = canonicalSha256({
+      sourceFiles: changedParser.sourceFiles,
+      parserArtifacts: changedParser.parserArtifacts
     });
     expectCode(() => validateEvaluationToolchainManifestV2(changedParser), "MANIFEST_BINDING_INVALID");
+  }));
+
+  it("rejects missing, duplicate, unknown, unsorted, malformed, and mismatched parser artifacts", () => withToolTree(({ root, config }) => {
+    const frozen = buildEvaluationToolchainManifestV2({ rootDir: root, config });
+    for (const mutate of [
+      (manifest) => { delete manifest.parserArtifacts; },
+      (manifest) => { manifest.parserArtifacts.push(structuredClone(manifest.parserArtifacts[0])); },
+      (manifest) => { manifest.parserArtifacts[0].id = "babel"; },
+      (manifest) => { manifest.parserArtifacts.reverse(); },
+      (manifest) => { manifest.parserArtifacts[0].extra = true; },
+      (manifest) => { manifest.parserArtifacts[0].version = "8.16.0"; },
+      (manifest) => { manifest.parserArtifacts[0].entrySha256 = "f".repeat(64); }
+    ]) {
+      const changed = structuredClone(frozen);
+      mutate(changed);
+      expectCode(() => validateEvaluationToolchainManifestV2(changed), "MANIFEST_BINDING_INVALID");
+    }
+  }));
+
+  it("rejects missing, duplicate, unknown, unsafe, unsorted, and stale tooling built-in allowances", () => withToolTree(({ root, config }) => {
+    const frozen = buildEvaluationToolchainManifestV2({ rootDir: root, config });
+    for (const mutate of [
+      (manifest) => { delete manifest.toolingBuiltinImports; },
+      (manifest) => { manifest.toolingBuiltinImports.push("node:crypto"); },
+      (manifest) => { manifest.toolingBuiltinImports = ["node:fs", "node:crypto"]; },
+      (manifest) => { manifest.toolingBuiltinImports = ["node:os"]; },
+      (manifest) => { manifest.toolingBuiltinImports = ["node:child_process"]; },
+      (manifest) => { manifest.evaluationToolchainBuiltinAllowlistSha256 = "f".repeat(64); }
+    ]) {
+      const changed = structuredClone(frozen);
+      mutate(changed);
+      expectCode(() => validateEvaluationToolchainManifestV2(changed), "MANIFEST_BINDING_INVALID");
+    }
   }));
 
   it("requires the exact used Node-builtin allowlist", () => withToolTree(({ root, config }) => {
@@ -155,20 +194,41 @@ describe("build-evaluation-toolchain-manifest", () => {
     );
   }));
 
-  it("rejects a direct Acorn dependency in every root dependency section", () => withToolTree(({ root, config }) => {
-    for (const section of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
-      const packageJson = {
-        devDependencies: { typescript: "5.9.3" },
-        [section]: {
-          ...(section === "devDependencies" ? { typescript: "5.9.3" } : {}),
-          acorn: "8.17.0"
-        }
-      };
-      writeFileSync(join(root, "package.json"), JSON.stringify(packageJson));
-      expectCode(
-        () => buildEvaluationToolchainManifestV2({ rootDir: root, config }),
-        "PARSER_BINDING_INVALID"
-      );
+  it("binds bare Acorn and TypeScript imports only as their parser artifacts", () => withToolTree(({ root, config }) => {
+    writeFileSync(join(root, "tools", "runner.mjs"), [
+      'import * as acorn from "acorn";',
+      'import ts from "typescript";',
+      'void acorn; void ts;'
+    ].join("\n"));
+    const parserOnly = buildEvaluationToolchainManifestV2({
+      rootDir: root,
+      config: { ...config, nodeBuiltins: [], toolingFiles: ["tools/runner.mjs"] }
+    });
+    assert.deepEqual(parserOnly.moduleEdges, [
+      { importerPath: "tools/runner.mjs", kind: "runtime_import", specifier: "acorn", targetKind: "parser_artifact", targetRef: "acorn" },
+      { importerPath: "tools/runner.mjs", kind: "runtime_import", specifier: "typescript", targetKind: "parser_artifact", targetRef: "typescript" }
+    ]);
+  }));
+
+  it("requires Acorn 8.17.0 as the direct development parser dependency", () => withToolTree(({ root, config }) => {
+    writeFileSync(join(root, "package.json"), JSON.stringify({
+      devDependencies: { acorn: "8.17.0", typescript: "5.9.3" },
+      scripts: { "eval:z": "node z.mjs", "eval:a": "node a.mjs" }
+    }));
+    assert.doesNotThrow(() => buildEvaluationToolchainManifestV2({ rootDir: root, config }));
+
+    for (const [label, packageJson] of [
+      ["missing", { devDependencies: { typescript: "5.9.3" } }],
+      ["range", { devDependencies: { acorn: "^8.17.0", typescript: "5.9.3" } }],
+      ["runtime", { dependencies: { acorn: "8.17.0" }, devDependencies: { typescript: "5.9.3" } }],
+      ["optional", { optionalDependencies: { acorn: "8.17.0" }, devDependencies: { typescript: "5.9.3" } }],
+      ["peer", { peerDependencies: { acorn: "8.17.0" }, devDependencies: { typescript: "5.9.3" } }]
+    ]) {
+      writeFileSync(join(root, "package.json"), JSON.stringify({
+        ...packageJson,
+        scripts: { "eval:z": "node z.mjs", "eval:a": "node a.mjs" }
+      }));
+      expectCode(() => buildEvaluationToolchainManifestV2({ rootDir: root, config }), "PARSER_BINDING_INVALID", label);
     }
   }));
 
@@ -195,6 +255,35 @@ describe("build-evaluation-toolchain-manifest", () => {
     assert.equal(manifest.moduleEdges.filter((edge) => edge.targetKind === "tooling").length, 2);
   }));
 
+  it("closes declared JavaScript, CommonJS, and TSX dependencies with package mode evidence", () => withToolTree(({ root, config }) => {
+    writeFileSync(join(root, "tools", "package.json"), JSON.stringify({ type: "module" }));
+    writeFileSync(join(root, "tools", "runner.js"), 'import "./helper.js";\n');
+    writeFileSync(join(root, "tools", "helper.js"), "export {};\n");
+    writeFileSync(join(root, "tools", "script.cjs"), 'require("./helper.cjs");\n');
+    writeFileSync(join(root, "tools", "helper.cjs"), "void 0;\n");
+    writeFileSync(join(root, "tools", "view.tsx"), 'import "./widget"; export const view = <div />;\n');
+    writeFileSync(join(root, "tools", "widget.tsx"), "export {};\n");
+    const expanded = {
+      ...config,
+      toolingEntries: ["tools/runner.js", "tools/script.cjs", "tools/view.tsx"],
+      toolingFiles: [
+        "tools/helper.cjs", "tools/helper.js", "tools/package.json", "tools/runner.js",
+        "tools/script.cjs", "tools/view.tsx", "tools/widget.tsx"
+      ],
+      nodeBuiltins: []
+    };
+
+    const manifest = buildEvaluationToolchainManifestV2({ rootDir: root, config: expanded });
+
+    assert.deepEqual(manifest.sourceFiles.map((file) => file.path), expanded.toolingFiles);
+    assert.deepEqual(manifest.moduleEdges.map((edge) => [edge.importerPath, edge.targetRef]), [
+      ["tools/runner.js", "tools/helper.js"],
+      ["tools/script.cjs", "tools/helper.cjs"],
+      ["tools/view.tsx", "tools/widget.tsx"]
+    ]);
+    assert.equal(validateEvaluationToolchainManifestV2(manifest), true);
+  }));
+
   it("emits only bounded JSON when the CLI cannot build a manifest", () => withToolTree(({ root, config }) => {
     const configPath = join(root, "config.json");
     const outputPath = join(root, "manifest.json");
@@ -214,6 +303,7 @@ describe("build-evaluation-toolchain-manifest", () => {
     assert.equal(result.stderr.includes(root), false);
     assert.equal(readFileSync(configPath, "utf8").includes(root), false);
   }));
+
 });
 
 function withToolTree(run) {
@@ -233,7 +323,7 @@ function withToolTree(run) {
     writeFileSync(join(root, "dist", "boundary.bundle.mjs"), "export {};\n");
     writeFileSync(join(root, "sandbox-profile.json"), JSON.stringify(sandboxProfile()));
     writeFileSync(join(root, "package.json"), JSON.stringify({
-      devDependencies: { typescript: "5.9.3" },
+      devDependencies: { acorn: "8.17.0", typescript: "5.9.3" },
       scripts: { "eval:z": "node z.mjs", "eval:a": "node a.mjs" }
     }));
     writeFileSync(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
@@ -277,4 +367,17 @@ function sandboxProfile() {
     readOnlyMountKinds: ["candidate_sut", "protected_input", "runner_bundle", "runtime_profile"],
     writableMountKinds: ["result"]
   };
+}
+
+function runtimeParserArtifacts() {
+  return [
+    { id: "acorn", version: acorn.version, entrySha256: entrySha256("acorn") },
+    { id: "typescript", version: ts.version, entrySha256: entrySha256("typescript") }
+  ];
+}
+
+function entrySha256(id) {
+  return createHash("sha256")
+    .update(readFileSync(fileURLToPath(import.meta.resolve(id))))
+    .digest("hex");
 }

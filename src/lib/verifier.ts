@@ -74,7 +74,11 @@ import type {
   WorkflowExecutionIdentity
 } from "./types";
 import { tenantReportAnalysisContext } from "./tenant-report-language";
-import { mayPromoteObservedAxis, readRequirementLocalPromotionMode } from "./proof-promotion-policy";
+import {
+  mayPromoteObservedAxis,
+  readRequirementLocalPromotionMode,
+  type RequirementLocalPromotionMode
+} from "./proof-promotion-policy";
 
 const MAX_MISSING_TEST_FINDINGS = 100;
 const MAX_FINDING_PROVENANCE_ITEMS = 5;
@@ -84,7 +88,14 @@ const MAX_SCOPE_FINDINGS = 100;
 const MAX_FAILED_CHECK_ASSOCIATIONS = 50;
 const MAX_FAILED_CHECK_ASSOCIATIONS_PER_REQUIREMENT = 8;
 
-export function generateVerificationReport(input: PullRequestInput): VerificationReport {
+export interface InternalVerificationReportGenerationOptions {
+  requirementLocalPromotionMode?: RequirementLocalPromotionMode;
+}
+
+export function generateVerificationReport(
+  input: PullRequestInput,
+  options: InternalVerificationReportGenerationOptions = {}
+): VerificationReport {
   const bundle = selectCanonicalSelectedSourceBundle(input);
   const canonical = bundle.canonical;
   const requirementEvidence = toRequirementExtractionResult(bundle);
@@ -98,7 +109,7 @@ export function generateVerificationReport(input: PullRequestInput): Verificatio
     deterministicRelationsByRequirement: deterministicRelations.deterministicRelationsByRequirement,
     sourceBindingsByRef: deterministicRelations.sourceBindingsByRef,
     canonicalRequirementSet: canonical
-  });
+  }, options);
 }
 
 export interface VerificationReportV2GenerationInput {
@@ -111,7 +122,10 @@ export interface VerificationReportV2GenerationInput {
  * Strict-contract report generation is deliberately separate from legacy v1.
  * The v2 evaluator has no ambient Check-name or prose-based path to `met`.
  */
-export function generateVerificationReportV2(args: VerificationReportV2GenerationInput): VerificationReportV2 {
+export function generateVerificationReportV2(
+  args: VerificationReportV2GenerationInput,
+  options: InternalVerificationReportGenerationOptions = {}
+): VerificationReportV2 {
   const parsed = parseVerificationContractV2(args.input.sourceProvenance?.origin === "pasted_evidence"
     ? { kind: "provided_requirement", contract: undefined }
     : args.contractSource);
@@ -123,7 +137,7 @@ export function generateVerificationReportV2(args: VerificationReportV2Generatio
       requirements: toReportRequirements(canonical),
       contexts: [],
       canonicalRequirementSet: canonical
-    });
+    }, options);
     const evidence = verificationCriterionEvidenceForInput(args.input, report.evidenceIndex);
     const results = materialized.objectives.flatMap((objective) =>
       objective.criteria.map((criterion) => ({
@@ -136,7 +150,7 @@ export function generateVerificationReportV2(args: VerificationReportV2Generatio
     return applyStrictContractOutcomeV2(report, contract);
   }
 
-  const report = generateVerificationReport(args.input);
+  const report = generateVerificationReport(args.input, options);
   return applyStrictContractOutcomeV2(
     report,
     toVerificationContractReportV2(parsed, null)
@@ -193,11 +207,14 @@ function verificationCriterionEvidenceForInput(
 }
 
 /** Production entrypoint: raw contract source and binding remain transient on the input. */
-export function generateVerificationReportV2FromInput(input: PullRequestInput): VerificationReportV2 {
+export function generateVerificationReportV2FromInput(
+  input: PullRequestInput,
+  options: InternalVerificationReportGenerationOptions = {}
+): VerificationReportV2 {
   const source = input.verificationContractSourceV2;
   const binding = input.verificationContractBindingV2;
   if (source && binding) {
-    return generateVerificationReportV2({ input, contractSource: source, binding });
+    return generateVerificationReportV2({ input, contractSource: source, binding }, options);
   }
   return generateVerificationReportV2({
     input,
@@ -209,7 +226,7 @@ export function generateVerificationReportV2FromInput(input: PullRequestInput): 
       headSha: input.sourceProvenance?.headSha ?? "",
       baseSha: input.sourceProvenance?.baseSha ?? ""
     }
-  });
+  }, options);
 }
 
 function applyStrictContractOutcomeV2(
@@ -557,7 +574,8 @@ export function buildVerifierEvidenceLookup(evidenceIndex: readonly EvidenceItem
 /** Reuses the deterministic evidence engine for a server-authorized requirement set. */
 export function generateVerificationReportFromRequirements(
   input: PullRequestInput,
-  selection: DeterministicRequirementReportSelection
+  selection: DeterministicRequirementReportSelection,
+  options: InternalVerificationReportGenerationOptions = {}
 ): VerificationReport {
   const evidenceBuild = buildEvidenceIndexResult(
     input.taskText,
@@ -595,7 +613,8 @@ export function generateVerificationReportFromRequirements(
     selection.sourceBindingsByRef,
     selection.canonicalRequirementSet,
     evidenceLookup,
-    relevanceIndex
+    relevanceIndex,
+    options.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode()
   );
   const proofGraph = proofBuild.proofGraph;
   const proofAdjustedRequirementFindings = applyProofGraphToRequirements(rawRequirementFindings, proofGraph, proofBuild.proofAxesByRequirement);
@@ -1186,7 +1205,8 @@ function buildProofGraph(
   sourceBindingsByRef: ReadonlyMap<string, RequirementSourceBinding> | undefined,
   canonicalRequirementSet: CanonicalRequirementSetV1 | undefined,
   evidenceLookup: VerifierEvidenceLookup,
-  relevanceIndex: RequirementEvidenceRelevanceIndex
+  relevanceIndex: RequirementEvidenceRelevanceIndex,
+  requirementLocalPromotionMode: RequirementLocalPromotionMode
 ): { proofGraph: ProofGraph; proofAxesByRequirement: Map<string, RequirementProofAxis[]> } {
   const findingByRequirement = new Map(findings.map((finding) => [finding.requirementId, finding]));
   const selfReportedTestGapRefs = selfReportedTestGapEvidenceRefs(evidenceIndex);
@@ -1460,7 +1480,8 @@ function buildProofGraph(
       proofAxes,
       requirement.id,
       v2TestRelationReceiptsById,
-      executionBindingReceiptsById
+      executionBindingReceiptsById,
+      requirementLocalPromotionMode
     );
     if (implementationPatchEvidenceUnavailable) {
       gapSignals.push({
@@ -1789,7 +1810,8 @@ function downgradeUnreceiptedRequirementLocalAxes(
   axes: RequirementProofAxis[],
   requirementId: string,
   receipts: ReadonlyMap<string, TestRelationReceiptV2>,
-  executionBindings: ReadonlyMap<string, ExecutionBindingReceiptV2>
+  executionBindings: ReadonlyMap<string, ExecutionBindingReceiptV2>,
+  mode: RequirementLocalPromotionMode
 ): Set<"targeted_test" | "execution"> {
   const targeted = axes.find((axis) => axis.subject === "targeted_test");
   const execution = axes.find((axis) => axis.subject === "execution");
@@ -1810,7 +1832,6 @@ function downgradeUnreceiptedRequirementLocalAxes(
       })
       .map((receipt) => receipt.id)
     : [];
-  const mode = readRequirementLocalPromotionMode();
   const receiptsValidated = receiptRefs.length > 0;
   const downgraded = new Set<"targeted_test" | "execution">();
   for (const [axisName, axis] of [["targeted_test", targeted], ["execution", execution]] as const) {

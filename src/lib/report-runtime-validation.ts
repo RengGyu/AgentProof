@@ -3,7 +3,7 @@ import {
   createVerificationValidationContextV2,
   validateVerificationReport
 } from "./report-validation";
-import { readRequirementLocalPromotionMode } from "./proof-promotion-policy";
+import { readRequirementLocalPromotionMode, type RequirementLocalPromotionMode } from "./proof-promotion-policy";
 import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 import {
@@ -35,6 +35,7 @@ export type RuntimeReportBoundaryInput =
       report: VerificationReport;
       requireSourceProvenance?: boolean;
       requireV2?: boolean;
+      requirementLocalPromotionMode?: RequirementLocalPromotionMode;
     }
   | {
       boundary: "inbound_untrusted_full" | "signed_summary_read";
@@ -95,19 +96,22 @@ export function resolveRuntimeReportValidation(input: {
   report: VerificationReport;
   requireSourceProvenance?: boolean;
   requireV2?: boolean;
+  requirementLocalPromotionMode?: RequirementLocalPromotionMode;
 }): RuntimeReportValidation {
   return validateRuntimeReportBoundary({
     boundary: "generated_private_full",
     input: input.input,
     report: input.report,
     ...(input.requireSourceProvenance ? { requireSourceProvenance: true } : {}),
-    ...(input.requireV2 ? { requireV2: true } : {})
+    ...(input.requireV2 ? { requireV2: true } : {}),
+    ...(input.requirementLocalPromotionMode ? { requirementLocalPromotionMode: input.requirementLocalPromotionMode } : {})
   });
 }
 
 function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, { boundary: "generated_private_full" }>): RuntimeReportValidation {
   const v2 = isVerificationReportV2(input.report);
-  if (v2 && readRequirementLocalPromotionMode() === "off" &&
+  const requirementLocalPromotionMode = input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode();
+  if (v2 && requirementLocalPromotionMode === "off" &&
     (hasReceiptGatedPositive(input.report) || hasPrivateV2Receipts(input.report))) {
     return validateGeneratedFallback(input, true);
   }
@@ -133,8 +137,12 @@ function validateGeneratedFallback(
   v2: boolean
 ): RuntimeReportValidation {
   const fallback = v2 || input.requireV2
-    ? generateVerificationReportV2FromInput(input.input)
-    : generateVerificationReport(input.input);
+    ? generateVerificationReportV2FromInput(input.input, {
+        requirementLocalPromotionMode: input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode()
+      })
+    : generateVerificationReport(input.input, {
+        requirementLocalPromotionMode: input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode()
+      });
   const fallbackIsV2 = isVerificationReportV2(fallback);
   const fallbackValidation = validateVerificationReport(fallback, {
     mode: fallbackIsV2 ? "v2_full" : "full",

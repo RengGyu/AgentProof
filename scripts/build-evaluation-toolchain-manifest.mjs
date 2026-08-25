@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, posix, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import * as acorn from "acorn";
 import ts from "typescript";
 import {
   APPROVED_NODE_BUILTINS_V1,
@@ -12,7 +13,7 @@ import {
   toolchainFailure
 } from "./toolchain-closure-policy.mjs";
 import { resolveToolingModuleEdges } from "./tooling-module-resolution.mjs";
-import { scanToolingSource } from "./tooling-source-scan.mjs";
+import { resolveToolingSourceDescriptor, scanToolingSource } from "./tooling-source-scan.mjs";
 
 const CONFIG_KEYS = [
   "version", "candidateSha", "nodeBuiltins", "toolingEntries", "toolingFiles", "sutExternalImports", "bundleFiles",
@@ -22,13 +23,14 @@ const MANIFEST_KEYS = [
   "version", "policyId", "candidateSha", "toolingEntries", "toolingEntrySetSha256",
   "sourceFiles", "evaluationToolchainSourceClosureSha256", "moduleEdges", "moduleEdgeSetSha256",
   "nodeBuiltins", "nodeBuiltinAllowlistSha256", "approvedNodeBuiltinUniverseSha256",
-  "sutExternalImports", "sutExternalImportAllowlistSha256", "parserArtifact", "resolutionPolicy",
+  "toolingBuiltinImports", "evaluationToolchainBuiltinAllowlistSha256",
+  "sutExternalImports", "sutExternalImportAllowlistSha256", "parserArtifacts", "resolutionPolicy",
   "resolutionPolicySha256", "bundles", "evaluationToolchainBundleSetSha256", "runnerSandboxProfile",
   "packageScripts", "lockfile", "runtime"
 ];
 const PROFILE_KEYS = ["version", "networkMode", "readOnlyMountKinds", "writableMountKinds"];
 const RUNTIME_KEYS = ["version", "nodeVersion", "pnpmVersion", "runtimeImageDigest"];
-const PARSER_KEYS = ["id", "version", "entryPath", "entrySha256", "packageJsonPath", "packageJsonSha256", "loadedBindingSha256"];
+const PARSER_ARTIFACT_KEYS = ["id", "version", "entrySha256"];
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANDIDATE_SHA = /^[a-f0-9]{40}$/;
 const READ_ONLY_MOUNT_KINDS = ["candidate_sut", "protected_input", "runner_bundle", "runtime_profile"];
@@ -37,13 +39,14 @@ const AUTHORITY_CLI_BOOTSTRAP_V1 = Object.freeze({
   id: "authority_cli_bootstrap",
   path: "scripts/evaluate-production-authority-release-cli.mjs"
 });
+const BUILDER_REPOSITORY_ROOT = realpathSync(resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), ".."));
 
 export function buildEvaluationToolchainManifestV2({ rootDir, config }) {
   const root = absoluteRoot(rootDir);
   const normalized = normalizedConfig(config);
   const packageJson = parseJson(readBounded(root, normalized.packageJsonPath));
   requirePinnedParser(packageJson);
-  const parserArtifact = derivedParserArtifact();
+  const parserArtifacts = derivedParserArtifacts();
   const visited = new Set();
   const edges = new Map();
 
@@ -78,15 +81,17 @@ export function buildEvaluationToolchainManifestV2({ rootDir, config }) {
     toolingEntries: normalized.toolingEntries,
     toolingEntrySetSha256: canonicalSha256(normalized.toolingEntries),
     sourceFiles,
-    evaluationToolchainSourceClosureSha256: canonicalSha256(sourceFiles),
+    evaluationToolchainSourceClosureSha256: canonicalSha256({ sourceFiles, parserArtifacts }),
     moduleEdges,
     moduleEdgeSetSha256: canonicalSha256(moduleEdges),
     nodeBuiltins: normalized.nodeBuiltins,
     nodeBuiltinAllowlistSha256: canonicalSha256(normalized.nodeBuiltins),
     approvedNodeBuiltinUniverseSha256: canonicalSha256(APPROVED_NODE_BUILTINS_V1),
+    toolingBuiltinImports: normalized.nodeBuiltins,
+    evaluationToolchainBuiltinAllowlistSha256: canonicalSha256(normalized.nodeBuiltins),
     sutExternalImports: normalized.sutExternalImports,
     sutExternalImportAllowlistSha256: canonicalSha256(normalized.sutExternalImports),
-    parserArtifact,
+    parserArtifacts,
     resolutionPolicy: FROZEN_TOOLING_RESOLUTION_POLICY_V1,
     resolutionPolicySha256: canonicalSha256(FROZEN_TOOLING_RESOLUTION_POLICY_V1),
     bundles,
@@ -118,8 +123,9 @@ export function validateEvaluationToolchainManifestV2(manifest) {
     !SHA256.test(manifest.evaluationToolchainSourceClosureSha256) || !isResolvedEdges(manifest.moduleEdges, manifest.sourceFiles, manifest.sutExternalImports) ||
     !SHA256.test(manifest.moduleEdgeSetSha256) || !isApprovedBuiltins(manifest.nodeBuiltins) ||
     !SHA256.test(manifest.nodeBuiltinAllowlistSha256) || !SHA256.test(manifest.approvedNodeBuiltinUniverseSha256) ||
+    !isApprovedBuiltins(manifest.toolingBuiltinImports) || !SHA256.test(manifest.evaluationToolchainBuiltinAllowlistSha256) ||
     !isSortedUniquePaths(manifest.sutExternalImports) || !SHA256.test(manifest.sutExternalImportAllowlistSha256) ||
-    !isParserArtifact(manifest.parserArtifact) || stableJson(manifest.resolutionPolicy) !== stableJson(FROZEN_TOOLING_RESOLUTION_POLICY_V1) ||
+    !isParserArtifacts(manifest.parserArtifacts) || stableJson(manifest.resolutionPolicy) !== stableJson(FROZEN_TOOLING_RESOLUTION_POLICY_V1) ||
     !SHA256.test(manifest.resolutionPolicySha256) || !isBundles(manifest.bundles) ||
     !SHA256.test(manifest.evaluationToolchainBundleSetSha256) || !isFileHashObject(manifest.runnerSandboxProfile) ||
     !isPackageScripts(manifest.packageScripts) || !isFileHashObject(manifest.lockfile) || !isRuntimeRecord(manifest.runtime)) {
@@ -130,13 +136,17 @@ export function validateEvaluationToolchainManifestV2(manifest) {
   if (!manifest.toolingEntries.every((path) => sourcePaths.has(path)) ||
     !sameArray(manifest.nodeBuiltins, usedNodeBuiltins(manifest.moduleEdges)) ||
     manifest.toolingEntrySetSha256 !== canonicalSha256(manifest.toolingEntries) ||
-    manifest.evaluationToolchainSourceClosureSha256 !== canonicalSha256(manifest.sourceFiles) ||
+    manifest.evaluationToolchainSourceClosureSha256 !== canonicalSha256({
+      sourceFiles: manifest.sourceFiles,
+      parserArtifacts: manifest.parserArtifacts
+    }) ||
     manifest.moduleEdgeSetSha256 !== canonicalSha256(manifest.moduleEdges) ||
     manifest.nodeBuiltinAllowlistSha256 !== canonicalSha256(manifest.nodeBuiltins) ||
     manifest.approvedNodeBuiltinUniverseSha256 !== canonicalSha256(APPROVED_NODE_BUILTINS_V1) ||
+    !sameArray(manifest.toolingBuiltinImports, usedNodeBuiltins(manifest.moduleEdges)) ||
+    manifest.evaluationToolchainBuiltinAllowlistSha256 !== canonicalSha256(manifest.toolingBuiltinImports) ||
     manifest.sutExternalImportAllowlistSha256 !== canonicalSha256(manifest.sutExternalImports) ||
-    manifest.parserArtifact.loadedBindingSha256 !== parserBindingSha256(manifest.parserArtifact) ||
-    stableJson(manifest.parserArtifact) !== stableJson(derivedParserArtifact()) ||
+    stableJson(manifest.parserArtifacts) !== stableJson(derivedParserArtifacts()) ||
     manifest.resolutionPolicySha256 !== canonicalSha256(FROZEN_TOOLING_RESOLUTION_POLICY_V1) ||
     manifest.evaluationToolchainBundleSetSha256 !== canonicalSha256(manifest.bundles) ||
     manifest.packageScripts.sha256 !== canonicalSha256(manifest.packageScripts.entries)) {
@@ -161,13 +171,25 @@ function walkToolingClosure(root, config, path, visited, edges) {
   if (visited.has(path)) return;
   visited.add(path);
   const source = readBounded(root, path).toString("utf8");
-  const scanned = scanToolingSource({ path, source });
-  const resolved = resolveToolingModuleEdges({
+  const sourceDescriptor = resolveToolingSourceDescriptor({ rootDir: root, path });
+  if (sourceDescriptor.controllingPackagePath) {
+    if (!config.toolingFiles.includes(sourceDescriptor.controllingPackagePath)) fail("MANIFEST_BINDING_INVALID");
+    walkToolingClosure(root, config, sourceDescriptor.controllingPackagePath, visited, edges);
+  }
+  const scanned = scanToolingSource({
+    path,
+    source,
+    sourceMode: sourceDescriptor.sourceMode
+  }, { includeModuleEdges: true });
+  const parserEdges = scanned.moduleEdges
+    .filter((edge) => isParserSpecifier(edge.specifier))
+    .map((edge) => ({ ...edge, targetKind: "parser_artifact", targetRef: edge.specifier }));
+  const resolved = [...resolveToolingModuleEdges({
     rootDir: root,
-    moduleEdges: scanned.moduleEdges,
+    moduleEdges: scanned.moduleEdges.filter((edge) => !isParserSpecifier(edge.specifier)),
     toolingFiles: config.toolingFiles,
     sutExternalImports: config.sutExternalImports
-  });
+  }), ...parserEdges];
   for (const edge of resolved) {
     edges.set(edgeKey(edge), edge);
     if (edge.targetKind === "tooling") walkToolingClosure(root, config, edge.targetRef, visited, edges);
@@ -239,60 +261,42 @@ function normalizedPath(value) {
 
 function requirePinnedParser(packageJson) {
   if (!packageJson || typeof packageJson !== "object" || packageJson.devDependencies?.typescript !== "5.9.3" ||
-    ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].some((section) =>
+    packageJson.devDependencies?.acorn !== "8.17.0" ||
+    ["dependencies", "optionalDependencies", "peerDependencies"].some((section) =>
       isRecord(packageJson[section]) && Object.hasOwn(packageJson[section], "acorn")
     )) {
     fail("PARSER_BINDING_INVALID");
   }
 }
 
-function derivedParserArtifact() {
+function derivedParserArtifacts() {
   try {
-    const entry = realpathSync(fileURLToPath(import.meta.resolve("typescript")));
-    const packageJsonFile = realpathSync(fileURLToPath(import.meta.resolve("typescript/package.json")));
-    const packageRoot = dirname(packageJsonFile);
-    const packageRaw = readFileSync(packageJsonFile);
-    const packageJson = JSON.parse(packageRaw.toString("utf8"));
-    const expectedMain = realpathSync(resolve(packageRoot, packageJson.main));
-    if (packageJson.name !== "typescript" || packageJson.version !== "5.9.3" || expectedMain !== entry || ts.version !== "5.9.3") {
-      fail("PARSER_BINDING_INVALID");
-    }
-    const parserArtifact = {
-      id: "typescript",
-      version: "5.9.3",
-      entryPath: parserRelativePath(packageRoot, entry),
-      entrySha256: sha256(readFileSync(entry)),
-      packageJsonPath: parserRelativePath(packageRoot, packageJsonFile),
-      packageJsonSha256: sha256(packageRaw)
-    };
-    return { ...parserArtifact, loadedBindingSha256: parserBindingSha256(parserArtifact) };
+    if (acorn.version !== "8.17.0" || ts.version !== "5.9.3") fail("PARSER_BINDING_INVALID");
+    return [
+      parserArtifact("acorn", acorn.version),
+      parserArtifact("typescript", ts.version)
+    ];
   } catch (error) {
     if (error instanceof ToolchainClosureError) throw error;
     fail("PARSER_BINDING_INVALID");
   }
 }
 
-function parserRelativePath(root, target) {
-  const path = relative(root, target).split(sep).join("/");
-  if (!isSafePath(path)) fail("PARSER_BINDING_INVALID");
-  return path;
+function parserArtifact(id, version) {
+  const entry = realpathSync(fileURLToPath(import.meta.resolve(id)));
+  if (!inside(BUILDER_REPOSITORY_ROOT, entry)) fail("PARSER_BINDING_INVALID");
+  return { id, version, entrySha256: sha256(readFileSync(entry)) };
 }
 
-function parserBindingSha256(artifact) {
-  return canonicalSha256({
-    id: artifact.id,
-    version: artifact.version,
-    entryPath: artifact.entryPath,
-    entrySha256: artifact.entrySha256,
-    packageJsonPath: artifact.packageJsonPath,
-    packageJsonSha256: artifact.packageJsonSha256
-  });
+function inside(root, target) {
+  return target === root || target.startsWith(`${root}${sep}`);
 }
 
-function isParserArtifact(value) {
-  return hasExactKeys(value, PARSER_KEYS) && value.id === "typescript" && value.version === "5.9.3" &&
-    isSafePath(value.entryPath) && SHA256.test(value.entrySha256) && isSafePath(value.packageJsonPath) &&
-    SHA256.test(value.packageJsonSha256) && SHA256.test(value.loadedBindingSha256);
+function isParserArtifacts(value) {
+  return Array.isArray(value) && value.length === 2 && isStrictlySorted(value.map((artifact) => artifact?.id)) &&
+    value.every((artifact) => hasExactKeys(artifact, PARSER_ARTIFACT_KEYS) &&
+      (artifact.id === "acorn" || artifact.id === "typescript") && isBoundedText(artifact.version) &&
+      SHA256.test(artifact.entrySha256));
 }
 
 function isResolvedEdges(value, sourceFiles, sutExternalImports) {
@@ -308,7 +312,11 @@ function validEdgeTarget(edge, sourcePaths, sutPaths) {
   if (edge.targetKind === "tooling") return sourcePaths.has(edge.targetRef) && isBoundRelativeTarget(edge);
   if (edge.targetKind === "sut_external") return sutPaths.has(edge.targetRef) && isBoundRelativeTarget(edge);
   if (edge.targetKind === "node_builtin") return edge.targetRef === normalizeNodeBuiltinSpecifier(edge.specifier);
-  return edge.targetKind === "parser_artifact" && edge.specifier === "typescript" && edge.targetRef === "typescript";
+  return edge.targetKind === "parser_artifact" && isParserSpecifier(edge.specifier) && edge.targetRef === edge.specifier;
+}
+
+function isParserSpecifier(value) {
+  return value === "acorn" || value === "typescript";
 }
 
 function isBoundRelativeTarget(edge) {
@@ -316,12 +324,16 @@ function isBoundRelativeTarget(edge) {
   const literalTarget = posix.normalize(posix.join(posix.dirname(edge.importerPath), edge.specifier));
   if (!isSafePath(literalTarget)) return false;
   if (edge.importerPath.endsWith(".mjs")) return edge.specifier.endsWith(".mjs") && literalTarget === edge.targetRef;
-  return edge.importerPath.endsWith(".ts") &&
+  if (edge.importerPath.endsWith(".js")) return edge.specifier.endsWith(".js") && literalTarget === edge.targetRef;
+  if (edge.importerPath.endsWith(".cjs")) return edge.specifier.endsWith(".cjs") && literalTarget === edge.targetRef;
+  return (edge.importerPath.endsWith(".ts") || edge.importerPath.endsWith(".tsx")) &&
     (literalTarget === edge.targetRef || stripTypeScriptExtension(literalTarget) === stripTypeScriptExtension(edge.targetRef));
 }
 
 function stripTypeScriptExtension(path) {
-  return path.endsWith(".d.ts") ? path.slice(0, -5) : path.endsWith(".ts") ? path.slice(0, -3) : path;
+  if (path.endsWith(".d.ts")) return path.slice(0, -5);
+  if (path.endsWith(".tsx")) return path.slice(0, -4);
+  return path.endsWith(".ts") ? path.slice(0, -3) : path;
 }
 
 function usedNodeBuiltins(edges) {

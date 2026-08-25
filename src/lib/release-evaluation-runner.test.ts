@@ -23,6 +23,62 @@ describe("release evaluation candidate runner", () => {
     expect(result.cases[0]!.actual.requirements[0]!.executionReceiptIds).toHaveLength(1);
   });
 
+  it("runs receipt-complete evaluation without mutating ambient promotion or signing state", () => {
+    const promotionKey = "AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE";
+    const signingKey = "AGENTPROOF_REPORT_SIGNING_SECRET";
+    const originalEnv = process.env;
+    const previousPromotion = originalEnv[promotionKey];
+    const previousSigning = originalEnv[signingKey];
+    originalEnv[promotionKey] = "off";
+    originalEnv[signingKey] = "ambient-signing-sentinel";
+    const mutations: string[] = [];
+    process.env = new Proxy(originalEnv, {
+      set(target, property, value) {
+        if (property === promotionKey || property === signingKey) mutations.push(`set:${String(property)}`);
+        return Reflect.set(target, property, value);
+      },
+      deleteProperty(target, property) {
+        if (property === promotionKey || property === signingKey) mutations.push(`delete:${String(property)}`);
+        return Reflect.deleteProperty(target, property);
+      }
+    });
+
+    try {
+      const result = runReleaseCandidateCorpusV1(receiptCompleteDevelopmentCorpus());
+
+      expect(result.cases[0]!.actual.requirements[0]!.testReceiptIds).toHaveLength(1);
+      expect(result.cases[0]!.actual.requirements[0]!.executionReceiptIds).toHaveLength(1);
+      expect(process.env[promotionKey]).toBe("off");
+      expect(process.env[signingKey]).toBe("ambient-signing-sentinel");
+      expect(mutations).toEqual([]);
+    } finally {
+      process.env = originalEnv;
+      restoreEnv(promotionKey, previousPromotion);
+      restoreEnv(signingKey, previousSigning);
+    }
+  });
+
+  it("prepares a valid private-free tenant projection with an explicit signing secret", () => {
+    const signingKey = "AGENTPROOF_REPORT_SIGNING_SECRET";
+    const previousSigning = process.env[signingKey];
+    delete process.env[signingKey];
+    const signingSecret = "explicit-projection-secret-that-is-long-enough";
+
+    try {
+      const report = verifier.generateVerificationReportV2FromInput(exactHeadInput());
+      const tenantReport = prepareTenantDetailReportForStorage(report, "verified_agentproof", signingSecret);
+      const tenantProjection = projectTenantPersistedReport(tenantReport, signingSecret);
+
+      expect(validateTenantPersistedReport(tenantProjection, signingSecret)).toEqual({ valid: true, errors: [] });
+      const serialized = JSON.stringify(tenantProjection);
+      expect(serialized).not.toContain("privateReceiptBundleV2");
+      expect(serialized).not.toContain("testRelationReceipts");
+      expect(serialized).not.toContain("executionBindingReceipts");
+    } finally {
+      restoreEnv(signingKey, previousSigning);
+    }
+  });
+
   it("downgrades a receipt-less local positive rather than emitting a positive candidate axis", () => {
     const result = runReleaseCandidateCorpusV1(receiptlessDevelopmentCorpus());
 
@@ -101,15 +157,15 @@ describe("release evaluation candidate runner", () => {
     expect(countSerializedProjectionLeaksV1(sharePayload, JSON.stringify(tenantWithUnknownKey), signingSecret, new Set())).toBeGreaterThan(0);
   });
 
-  it("emits an opaque incomplete case, restores mode, and continues after one generation failure", () => {
+  it("emits an opaque incomplete case, preserves mode, and continues after one generation failure", () => {
     const previousMode = process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
     process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = "sentinel-mode";
     const original = verifier.generateVerificationReportV2FromInput;
-    const generation = vi.spyOn(verifier, "generateVerificationReportV2FromInput").mockImplementation((input) => {
-      if (process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE === "receipt_v2" && input.title === "generated-private failure") {
+    const generation = vi.spyOn(verifier, "generateVerificationReportV2FromInput").mockImplementation((input, options) => {
+      if (options?.requirementLocalPromotionMode === "receipt_v2" && input.title === "generated-private failure") {
         throw new Error("raw private generation error");
       }
-      return original(input);
+      return original(input, options);
     });
     const first = receiptCompleteDevelopmentCorpus().cases[0]!;
     const failing = { ...first, caseId: "opaque-failed", input: { ...first.input, title: "generated-private failure" } };
@@ -153,6 +209,11 @@ function mutateSharePayload(payload: string, mutate: (share: Record<string, unkn
   const share = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
   mutate(share);
   return Buffer.from(JSON.stringify(share), "utf8").toString("base64url");
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
 }
 
 function receiptCompleteDevelopmentCorpus(): ReleaseCandidateCorpusV1 {

@@ -836,7 +836,12 @@ function prepareSummaryReportForStorage(
  * raw GitHub response, PR/Issue body, or unbounded generated prose is written
  * to the saved-report row.
  */
-export function prepareTenantDetailReportForStorage(report: VerificationReport, trust: "verified_agentproof" | "imported_unverified"): VerificationReport {
+export function prepareTenantDetailReportForStorage(
+  report: VerificationReport,
+  trust: "verified_agentproof" | "imported_unverified",
+  signingSecret?: string
+): VerificationReport {
+  const resolvedSigningSecret = signingSecret ?? requireReportSigningSecret();
   const analysisContext = tenantReportAnalysisContext(report);
   const proofNodesByRequirement = new Map(report.proofGraph.nodes.map((node) => [node.requirementId, node]));
   const objectiveLabels = new Map(report.requirements.map((item) => [item.requirementId, tenantObjectiveLabel(item.requirementText)]));
@@ -927,9 +932,9 @@ export function prepareTenantDetailReportForStorage(report: VerificationReport, 
     });
   }
   safe.authenticity = trust === "verified_agentproof"
-    ? createVerifiedAuthenticity(safe, requireReportSigningSecret())
+    ? createVerifiedAuthenticity(safe, resolvedSigningSecret)
     : createStoredUnverifiedAuthenticity(safe, "imported_unverified");
-  const validation = validateTenantStoredReport(safe, requireReportSigningSecret());
+  const validation = validateTenantStoredReport(safe, resolvedSigningSecret);
   if (!validation.valid) {
     throw new SavedReportStoreError(`Tenant saved report failed validation: ${validation.errors.join("; ")}`);
   }
