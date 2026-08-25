@@ -147,22 +147,18 @@ function runCandidateCase(candidate: ReleaseCandidateCaseV1, nextReceiptHandle: 
 }
 
 function generateReceiptValidatedReport(input: PullRequestInput): VerificationReport {
-  const previousMode = process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
-  process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = "receipt_v2";
-  try {
-    const report = generateVerificationReportV2FromInput(input);
-    const validation = validateRuntimeReportBoundary({
-      boundary: "generated_private_full",
-      input,
-      report,
-      requireV2: true
-    });
-    if (!validation.valid) throw new Error("Release candidate report failed generated-private validation.");
-    return validation.report;
-  } finally {
-    if (previousMode === undefined) delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
-    else process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = previousMode;
-  }
+  const report = generateVerificationReportV2FromInput(input, {
+    requirementLocalPromotionMode: "receipt_v2"
+  });
+  const validation = validateRuntimeReportBoundary({
+    boundary: "generated_private_full",
+    input,
+    report,
+    requireV2: true,
+    requirementLocalPromotionMode: "receipt_v2"
+  });
+  if (!validation.valid) throw new Error("Release candidate report failed generated-private validation.");
+  return validation.report;
 }
 
 function safeAxisStates(
@@ -195,16 +191,9 @@ function projectionPrivateReceiptLeakCount(report: VerificationReport): number {
   const signingSecret = randomBytes(32).toString("hex");
   const privateHandles = privateReceiptHandleSet(report.proofGraph.privateReceiptBundleV2);
   const sharePayload = encodeReportForShare(report);
-  const previousSigningSecret = process.env.AGENTPROOF_REPORT_SIGNING_SECRET;
-  process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
-  try {
-    const tenantReport = prepareTenantDetailReportForStorage(report, "verified_agentproof");
-    const tenantJson = JSON.stringify(projectTenantPersistedReport(tenantReport, signingSecret));
-    return countSerializedProjectionLeaksV1(sharePayload, tenantJson, signingSecret, privateHandles);
-  } finally {
-    if (previousSigningSecret === undefined) delete process.env.AGENTPROOF_REPORT_SIGNING_SECRET;
-    else process.env.AGENTPROOF_REPORT_SIGNING_SECRET = previousSigningSecret;
-  }
+  const tenantReport = prepareTenantDetailReportForStorage(report, "verified_agentproof", signingSecret);
+  const tenantJson = JSON.stringify(projectTenantPersistedReport(tenantReport, signingSecret));
+  return countSerializedProjectionLeaksV1(sharePayload, tenantJson, signingSecret, privateHandles);
 }
 
 export function countSerializedProjectionLeaksV1(

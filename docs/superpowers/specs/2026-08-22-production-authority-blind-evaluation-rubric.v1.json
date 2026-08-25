@@ -52,7 +52,7 @@
         "parserArtifactBindingSha256",
         "resolutionPolicySha256"
       ],
-      "passRule": "The signed manifest has exact V2 keys; every declared file, resolved module edge, candidate SHA, exact Node-builtin allowlist and fixed six-ID universe, pinned TypeScript parser artifact, frozen resolution policy, reproducible bundle, SUT external-import allowlist, sandbox profile, script, lockfile, and runtime hash exactly matches the frozen record; no undeclared tooling dependency exists; exact canonical content-free summaries bind the requirement [0,0,4] and boundary [4,4,0] category-count tuples to their protected input hashes, yielding the combined [4,4,4] balance; both input corpora are at most 409600 serialized bytes with cases at most 98304 bytes; and both oracle files are at most 131072 bytes."
+      "passRule": "The signed manifest has exact V2 keys; every declared file, resolved module edge, candidate SHA, exact Node-builtin allowlist and fixed six-ID universe, pinned Acorn and TypeScript parser artifacts, exact tooling built-in allowlist and its canonical hash, frozen resolution policy, reproducible bundle, SUT external-import allowlist, sandbox profile, script, lockfile, and runtime hash exactly matches the frozen record; no undeclared tooling dependency exists; exact canonical content-free summaries bind the requirement [0,0,4] and boundary [4,4,0] category-count tuples to their protected input hashes, yielding the combined [4,4,4] balance; both input corpora are at most 409600 serialized bytes with cases at most 98304 bytes; and both oracle files are at most 131072 bytes."
     },
     {
       "id": "protected_aggregate",

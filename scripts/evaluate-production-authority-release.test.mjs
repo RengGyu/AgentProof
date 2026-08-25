@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
-import { dirname, relative, sep } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
+import * as acorn from "acorn";
 import ts from "typescript";
 import {
   evaluateProductionAuthorityRelease,
@@ -116,6 +116,25 @@ describe("evaluate-production-authority-release", () => {
       const value = fixture();
       mutateAndResign(value, "freeze_manifest", (source) => { source.bindings[name] = hex("f", name === "candidateSha" ? 40 : 64); });
       assert.throws(() => assess(value), /stale evidence binding/);
+    }
+  });
+
+  it("rejects parser-artifact and tooling built-in mutations before scoring", () => {
+    assert.equal(assess(fixture()).decision, "eligible_for_deployment_approval");
+    for (const mutate of [
+      (manifest) => { delete manifest.parserArtifacts; },
+      (manifest) => { manifest.parserArtifacts.reverse(); },
+      (manifest) => { manifest.parserArtifacts[0].version = "8.16.0"; },
+      (manifest) => { manifest.parserArtifacts[0].entrySha256 = hex("f"); },
+      (manifest) => { delete manifest.toolingBuiltinImports; },
+      (manifest) => { manifest.toolingBuiltinImports = ["node:child_process"]; },
+      (manifest) => { manifest.toolingBuiltinImports = ["node:fs", "node:crypto"]; },
+      (manifest) => { manifest.toolingBuiltinImports = ["node:crypto", "node:crypto"]; },
+      (manifest) => { manifest.evaluationToolchainBuiltinAllowlistSha256 = hex("f"); }
+    ]) {
+      const value = fixture();
+      mutate(value.manifest);
+      assert.throws(() => assess(value), (error) => error?.code === "MANIFEST_BINDING_INVALID");
     }
   });
 
@@ -245,6 +264,7 @@ describe("evaluate-production-authority-release", () => {
       source.result.commands[0].exitCode = 1;
     });
 
+    const parserHashes = value.manifest.parserArtifacts.map((artifact) => artifact.entrySha256);
     const result = assess(value);
     assert.equal(result.score, 95);
     assert.ok(result.binaryGates.every((gate) => gate.state === "passed"));
@@ -256,6 +276,9 @@ describe("evaluate-production-authority-release", () => {
     assert.ok(!JSON.stringify(result).includes("attestations"));
     assert.ok(!JSON.stringify(result).includes("corpusSummaries"));
     assert.ok(!JSON.stringify(result).includes("summarySha256"));
+    assert.ok(!JSON.stringify(result).includes("parserArtifacts"));
+    assert.ok(!JSON.stringify(result).includes("entrySha256"));
+    assert.ok(parserHashes.every((hash) => !JSON.stringify(result).includes(hash)));
   });
 });
 
@@ -348,7 +371,7 @@ function bindingValue(name, context) {
     moduleEdgeSetSha256: context.manifest.moduleEdgeSetSha256,
     nodeBuiltinAllowlistSha256: context.manifest.nodeBuiltinAllowlistSha256,
     approvedNodeBuiltinUniverseSha256: context.manifest.approvedNodeBuiltinUniverseSha256,
-    parserArtifactBindingSha256: context.manifest.parserArtifact.loadedBindingSha256,
+    parserArtifactBindingSha256: canonicalSha(context.manifest.parserArtifacts),
     resolutionPolicySha256: context.manifest.resolutionPolicySha256,
     evaluationToolchainSourceClosureSha256: context.manifest.evaluationToolchainSourceClosureSha256,
     evaluationToolchainBundleSetSha256: context.manifest.evaluationToolchainBundleSetSha256,
@@ -467,7 +490,8 @@ function frozenManifest(rubricSha256, candidateSha) {
   ];
   const sutExternalImports = ["src/lib/verifier.ts"];
   const packageEntries = [{ name: "eval:production-authority:release", command: "node scripts/evaluate-production-authority-release.mjs" }];
-  const parserArtifact = runtimeParserArtifact();
+  const parserArtifacts = runtimeParserArtifacts();
+  const toolingBuiltinImports = [];
   const resolutionPolicy = {
     version: 1,
     module: "ESNext",
@@ -490,7 +514,7 @@ function frozenManifest(rubricSha256, candidateSha) {
     toolingEntries,
     toolingEntrySetSha256: canonicalSha(toolingEntries),
     sourceFiles,
-    evaluationToolchainSourceClosureSha256: canonicalSha(sourceFiles),
+    evaluationToolchainSourceClosureSha256: canonicalSha({ sourceFiles, parserArtifacts }),
     moduleEdges,
     moduleEdgeSetSha256: canonicalSha(moduleEdges),
     nodeBuiltins,
@@ -498,11 +522,13 @@ function frozenManifest(rubricSha256, candidateSha) {
     approvedNodeBuiltinUniverseSha256: canonicalSha([
       "node:crypto", "node:fs", "node:path", "node:perf_hooks", "node:url", "node:util"
     ]),
+    toolingBuiltinImports,
+    evaluationToolchainBuiltinAllowlistSha256: canonicalSha(toolingBuiltinImports),
     bundles,
     evaluationToolchainBundleSetSha256: canonicalSha(bundles),
     sutExternalImports,
     sutExternalImportAllowlistSha256: canonicalSha(sutExternalImports),
-    parserArtifact,
+    parserArtifacts,
     resolutionPolicy,
     resolutionPolicySha256: canonicalSha(resolutionPolicy),
     runnerSandboxProfile: { path: "sandbox-profile.json", sha256: hex("7") },
@@ -522,19 +548,15 @@ function canonicalSha(value) {
   return createHash("sha256").update(stableJson(value)).digest("hex");
 }
 
-function runtimeParserArtifact() {
-  const entry = realpathSync(fileURLToPath(import.meta.resolve("typescript")));
-  const packageJsonFile = realpathSync(fileURLToPath(import.meta.resolve("typescript/package.json")));
-  const packageRoot = dirname(packageJsonFile);
-  const artifact = {
-    id: "typescript",
-    version: ts.version,
-    entryPath: relative(packageRoot, entry).split(sep).join("/"),
-    entrySha256: createHash("sha256").update(readFileSync(entry)).digest("hex"),
-    packageJsonPath: relative(packageRoot, packageJsonFile).split(sep).join("/"),
-    packageJsonSha256: createHash("sha256").update(readFileSync(packageJsonFile)).digest("hex")
-  };
-  return { ...artifact, loadedBindingSha256: canonicalSha(artifact) };
+function runtimeParserArtifacts() {
+  return [
+    { id: "acorn", version: acorn.version, entrySha256: parserEntrySha256("acorn") },
+    { id: "typescript", version: ts.version, entrySha256: parserEntrySha256("typescript") }
+  ];
+}
+
+function parserEntrySha256(id) {
+  return createHash("sha256").update(readFileSync(fileURLToPath(import.meta.resolve(id)))).digest("hex");
 }
 
 function stableJson(value) {

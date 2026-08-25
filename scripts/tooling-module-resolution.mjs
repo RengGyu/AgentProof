@@ -26,12 +26,27 @@ function resolveEdge(root, declared, edge) {
 
   const importer = declared.absoluteByPath.get(edge.importerPath);
   if (edge.importerPath.endsWith(".mjs")) return resolveEsmRelative(root, declared, edge, importer);
-  if (edge.importerPath.endsWith(".ts")) return resolveTypeScriptRelative(root, declared, edge, importer);
+  if (edge.importerPath.endsWith(".js") || edge.importerPath.endsWith(".cjs")) {
+    return resolveExplicitJavaScriptRelative(root, declared, edge, importer);
+  }
+  if (edge.importerPath.endsWith(".ts") || edge.importerPath.endsWith(".tsx")) {
+    return resolveTypeScriptRelative(root, declared, edge, importer);
+  }
   fail("MODULE_RESOLUTION_FAILED");
 }
 
 function resolveEsmRelative(root, declared, edge, importer) {
   if (!edge.specifier.endsWith(".mjs")) fail("MODULE_RESOLUTION_FAILED");
+  return resolveExplicitRelative(root, declared, edge, importer);
+}
+
+function resolveExplicitJavaScriptRelative(root, declared, edge, importer) {
+  const expectedExtension = edge.importerPath.endsWith(".cjs") ? ".cjs" : ".js";
+  if (!edge.specifier.endsWith(expectedExtension)) fail("MODULE_RESOLUTION_FAILED");
+  return resolveExplicitRelative(root, declared, edge, importer);
+}
+
+function resolveExplicitRelative(root, declared, edge, importer) {
   const candidate = resolve(dirname(importer), edge.specifier);
   if (!inside(root, candidate)) fail("MODULE_OUTSIDE_CLOSURE");
   return classifiedEdge(edge, declared, requiredTarget(candidate));
@@ -59,7 +74,9 @@ function sameTypeScriptModuleTarget(root, literalTarget, targetRef) {
 }
 
 function stripTypeScriptExtension(path) {
-  return path.endsWith(".d.ts") ? path.slice(0, -5) : path.endsWith(".ts") ? path.slice(0, -3) : path;
+  if (path.endsWith(".d.ts")) return path.slice(0, -5);
+  if (path.endsWith(".tsx")) return path.slice(0, -4);
+  return path.endsWith(".ts") ? path.slice(0, -3) : path;
 }
 
 function classifiedEdge(edge, declared, target) {
