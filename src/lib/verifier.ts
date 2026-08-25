@@ -40,10 +40,8 @@ import {
   type VerificationBindingInputV2,
   type VerificationContractSourceInputV2
 } from "./verification-contract-v2";
-import {
-  evaluateVerificationCriterionV2,
-  type VerificationCriterionEvidenceV2
-} from "./verification-criterion-evaluator-v2";
+import { evaluateMaterializedCriterionV2, exactHeadArtifactEvidenceItemsV2, type VerificationCriterionEvidenceV2 } from "./verification-criterion-evaluator-v2";
+import { buildV2CriterionOwnedAxes, stableV2ObservationAxes } from "./criterion-axis-v2";
 import { requirementProofAxisExpectations, requirementProofExpectations, type RequirementProofExpectations } from "./verifier-proof-expectations";
 import type {
   CheckRun,
@@ -133,21 +131,34 @@ export function generateVerificationReportV2(
     const bindingDigest = canonicalVerificationBindingV2(args.binding, parsed.contract);
     const materialized = materializeVerificationContractV2(parsed, bindingDigest);
     const canonical = selectCanonicalRequirements({ kind: "typed_contract", materialized, binding: args.binding });
-    const report = generateVerificationReportFromRequirements(args.input, {
+    const baseReport = generateVerificationReportFromRequirements(args.input, {
       requirements: toReportRequirements(canonical),
       contexts: [],
       canonicalRequirementSet: canonical
     }, options);
+    const report = appendExactHeadArtifactEvidenceV2(baseReport, args.input, materialized);
     const evidence = verificationCriterionEvidenceForInput(args.input, report.evidenceIndex);
-    const results = materialized.objectives.flatMap((objective) =>
+    const evaluated = materialized.objectives.flatMap((objective) =>
       objective.criteria.map((criterion) => ({
-        ...evaluateVerificationCriterionV2(criterion.source, evidence),
-        criterionId: criterion.criterionId
+        ...evaluateMaterializedCriterionV2({
+          criterion,
+          bindingDigest,
+          evidence
+        })
       }))
     );
-    const contract = toVerificationContractReportV2(parsed, args.binding.sourceKind, materialized, results);
-    assertCanonicalV2Closure(canonical, materialized, contract, report);
-    return applyStrictContractOutcomeV2(report, contract);
+    const axes = buildV2CriterionOwnedAxes({
+      materialized,
+      observations: new Map(report.requirements.map((requirement) => [
+        requirement.requirementId,
+        requirement.proofAxes ?? []
+      ])),
+      evaluations: evaluated
+    });
+    const reportWithOwnedAxes = applyV2CriterionOwnedAxes(report, axes.axesByRequirement);
+    const contract = toVerificationContractReportV2(parsed, args.binding.sourceKind, materialized, axes.evaluations);
+    assertCanonicalV2Closure(canonical, materialized, contract, reportWithOwnedAxes);
+    return applyStrictContractOutcomeV2(reportWithOwnedAxes, contract);
   }
 
   const report = generateVerificationReport(args.input, options);
@@ -155,6 +166,27 @@ export function generateVerificationReportV2(
     report,
     toVerificationContractReportV2(parsed, null)
   );
+}
+
+function applyV2CriterionOwnedAxes(
+  report: VerificationReport,
+  axesByRequirement: ReadonlyMap<string, readonly RequirementProofAxis[]>
+): VerificationReport {
+  return {
+    ...report,
+    requirements: report.requirements.map((requirement) => {
+      const proofAxes = axesByRequirement.get(requirement.requirementId);
+      if (!proofAxes) return requirement;
+      return {
+        ...requirement,
+        proofAxes: [...proofAxes],
+        evidenceRefs: uniqueRefs([
+          ...requirement.evidenceRefs,
+          ...proofAxes.filter((axis) => axis.role === "criterion").flatMap((axis) => axis.evidenceRefs)
+        ]).slice(0, 12)
+      };
+    })
+  };
 }
 
 function assertCanonicalV2Closure(
@@ -188,21 +220,50 @@ function verificationCriterionEvidenceForInput(
   const headSha = provenance?.headSha ?? "";
   const completeInventory = provenance?.origin === "github_snapshot" &&
     inventory?.version === 1 && inventory.completeness === "complete" &&
-    inventory.headSha === headSha && Boolean(headSha);
+    inventory.headSha === headSha && Boolean(headSha) &&
+    !input.changedFiles.some((file) => file.status === "renamed" && !file.previousPath);
   const evidenceRefsByPath: Record<string, string[]> = {};
+  const artifactEvidenceRefsByPath: Record<string, string[]> = {};
   for (const evidence of evidenceIndex) {
     const path = evidence.locator;
     if (!path) continue;
     evidenceRefsByPath[path] = [...(evidenceRefsByPath[path] ?? []), evidence.id];
+    if (evidence.kind === "artifact") {
+      artifactEvidenceRefsByPath[path] = [...(artifactEvidenceRefsByPath[path] ?? []), evidence.id];
+    }
   }
   return {
     headSha,
     artifactBlobs: input.verificationCriterionEvidenceV2?.artifactBlobs ?? [],
     changedFileInventory: {
       completeness: completeInventory ? "complete" : "incomplete",
-      paths: input.changedFiles.map((file) => file.path)
+      paths: input.changedFiles.map((file) => file.path),
+      previousPaths: input.changedFiles.flatMap((file) => file.previousPath ? [file.previousPath] : [])
     },
-    evidenceRefsByPath
+    evidenceRefsByPath,
+    artifactEvidenceRefsByPath
+  };
+}
+
+function appendExactHeadArtifactEvidenceV2(
+  report: VerificationReport,
+  input: PullRequestInput,
+  materialized: ReturnType<typeof materializeVerificationContractV2>
+): VerificationReport {
+  const declaredPaths = materialized.objectives.flatMap((objective) => objective.criteria.flatMap((criterion) =>
+    criterion.source.type === "artifact" && criterion.source.artifact.kind === "documentation_literal"
+      ? criterion.source.paths
+      : []
+  ));
+  const artifacts = exactHeadArtifactEvidenceItemsV2({
+    existingEvidenceIds: report.evidenceIndex.map((item) => item.id),
+    artifactBlobs: input.verificationCriterionEvidenceV2?.artifactBlobs ?? [],
+    headSha: input.sourceProvenance?.headSha ?? "",
+    declaredPaths
+  });
+  return artifacts.length === 0 ? report : {
+    ...report,
+    evidenceIndex: [...report.evidenceIndex, ...artifacts]
   };
 }
 
@@ -242,12 +303,21 @@ function applyStrictContractOutcomeV2(
     return {
       ...requirement,
       evidenceStatus: requirement.evidenceStatus ?? requirement.status,
+      ...(requirement.proofAxes?.some((axis) => axis.role === "criterion") ? {} : {
+        proofAxes: stableV2ObservationAxes(requirement.requirementId, requirement.proofAxes ?? [])
+      }),
       status: outcome.status
     };
   });
+  // The proof graph records observations. A typed contract may cap the
+  // requirement outcome at unclear, but its node must retain evidenceStatus.
+  const evidenceStatusByRequirement = new Map(requirements.map((requirement) => [
+    requirement.requirementId,
+    requirement.evidenceStatus ?? requirement.status
+  ]));
   const nodes = report.proofGraph.nodes.map((node) => ({
     ...node,
-    status: (outcomes.get(node.requirementId) ?? strictContractOutcomeForRequirement(contract, node.requirementId)).status
+    status: evidenceStatusByRequirement.get(node.requirementId) ?? node.status
   }));
   const requirementsWithGaps = nodes.filter((node) => node.gapSignals.length > 0).length;
   const gapCount = nodes.reduce((count, node) => count + node.gapSignals.length, 0);

@@ -345,7 +345,12 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
     if (item.classificationBasis !== undefined && item.classificationBasis !== "deterministic" && item.classificationBasis !== "enhanced_plan") errors.push("tenant persisted requirement classification basis is invalid.");
     validateTenantPlannerAxisSubjects(item.plannerAxisSubjects, item.proofAxes, errors);
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
-    if (item.proofAxes !== undefined) validatePersistedProofAxes(item.proofAxes, evidenceIds, errors);
+    if (item.proofAxes !== undefined) validatePersistedProofAxes(
+      item.proofAxes,
+      evidenceIds,
+      errors,
+      report.reportSchemaVersion === "verification-report.v2"
+    );
     if (!Array.isArray(item.gaps) || item.gaps.length > MAX_TENANT_GAPS || item.gaps.some((gap) => typeof gap !== "string" || !ALLOWED_TENANT_GAP_TEXTS.has(gap))) errors.push("tenant persisted requirement gaps are invalid.");
   }
   validateTenantVerificationContractOutcome(report, evidenceIds, errors);
@@ -427,17 +432,23 @@ function validateTenantVerificationContractOutcome(
     const states: Array<"satisfied" | "violated" | "incomplete" | "unavailable"> = [];
     for (const [index, criterion] of item.criteria.entries()) {
       const result = item.criterionResults[index];
-      if (!isTenantVerificationCriterion(criterion, item.requirementId, index, state) || !isTenantVerificationResult(result, item.requirementId, index, evidenceIds, requirementEvidenceRefs)) {
+      const criterionItem = criterion as Record<string, unknown>;
+      if (!isTenantVerificationCriterion(criterion, item.requirementId, index, state) || !isTenantVerificationResult(
+        result,
+        item.requirementId,
+        index,
+        evidenceIds,
+        requirementEvidenceRefs,
+        criterionItem.type === "absence"
+      )) {
         errors.push("tenant v2 contract outcomes are invalid.");
         continue;
       }
-      const criterionItem = criterion as Record<string, unknown>;
       const resultItem = result as Record<string, unknown>;
       const resultState = resultItem.state as "satisfied" | "violated" | "incomplete" | "unavailable";
       if (resultState === "satisfied" &&
         (criterionItem.type === "return_value" ||
-          (criterionItem.type === "artifact" && criterionItem.artifactKind !== "documentation_literal") ||
-          criterionItem.type === "absence")) {
+          (criterionItem.type === "artifact" && criterionItem.artifactKind !== "documentation_literal"))) {
         errors.push("tenant v2 contract outcomes are invalid.");
       }
       states.push(resultState);
@@ -478,7 +489,8 @@ function isTenantVerificationResult(
   requirementId: string,
   index: number,
   evidenceIds: Set<string>,
-  requirementEvidenceRefs: unknown[]
+  requirementEvidenceRefs: unknown[],
+  allowRefFreeSatisfied = false
 ): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
@@ -488,7 +500,7 @@ function isTenantVerificationResult(
     !Array.isArray(item.proofAxisRefs) || item.proofAxisRefs.length > MAX_TENANT_EVIDENCE_REFS || item.proofAxisRefs.some((reference) => typeof reference !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(reference)) || new Set(item.proofAxisRefs).size !== item.proofAxisRefs.length ||
     !Array.isArray(item.evidenceRefs) || item.evidenceRefs.length > MAX_TENANT_EVIDENCE_REFS || item.evidenceRefs.some((reference) => typeof reference !== "string" || !evidenceIds.has(reference) || !requirementEvidenceRefs.includes(reference)) || new Set(item.evidenceRefs).size !== item.evidenceRefs.length ||
     !Array.isArray(item.gapKinds) || item.gapKinds.length > MAX_TENANT_GAPS || item.gapKinds.some((kind) => typeof kind !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(kind)) || new Set(item.gapKinds).size !== item.gapKinds.length) return false;
-  return item.state !== "satisfied" || (item.evidenceRefs.length > 0 && item.gapKinds.length === 0);
+  return item.state !== "satisfied" || ((allowRefFreeSatisfied || item.evidenceRefs.length > 0) && item.gapKinds.length === 0);
 }
 
 function validateSemanticRuntimeState(value: unknown, semantic: unknown, errors: string[]) {
@@ -730,7 +742,12 @@ function validateEvidenceRefs(value: unknown, evidenceIds: Set<string>, errors: 
   if (!Array.isArray(value) || value.length > MAX_TENANT_EVIDENCE_REFS || value.some((reference) => typeof reference !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(reference) || !evidenceIds.has(reference))) errors.push("tenant persisted evidence references are invalid.");
 }
 
-function validatePersistedProofAxes(value: unknown, evidenceIds: Set<string>, errors: string[]) {
+function validatePersistedProofAxes(
+  value: unknown,
+  evidenceIds: Set<string>,
+  errors: string[],
+  requireV2Metadata: boolean
+) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 12) {
     errors.push("tenant persisted proof axes are invalid.");
     return;
@@ -742,7 +759,12 @@ function validatePersistedProofAxes(value: unknown, evidenceIds: Set<string>, er
       continue;
     }
     const item = axis as Record<string, unknown>;
-    if (Object.keys(item).some((key) => !["subject", "polarity", "state", "evidenceRefs", "collectionBasis"].includes(key))) errors.push("tenant persisted proof axis has disallowed fields.");
+    if (Object.keys(item).some((key) => !["axisId", "role", "criterionId", "subject", "polarity", "state", "evidenceRefs", "collectionBasis"].includes(key))) errors.push("tenant persisted proof axis has disallowed fields.");
+    if (requireV2Metadata && (typeof item.axisId !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.axisId) ||
+      (item.role !== "criterion" && item.role !== "observation"))) errors.push("tenant persisted v2 proof axis ownership is invalid.");
+    if (item.role === "criterion" && (typeof item.criterionId !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.criterionId))) errors.push("tenant persisted criterion proof axis ownership is invalid.");
+    if (item.role === "observation" && item.criterionId !== undefined) errors.push("tenant persisted observation proof axis ownership is invalid.");
+    if (item.role === undefined && (item.axisId !== undefined || item.criterionId !== undefined)) errors.push("tenant persisted proof axis ownership is invalid.");
     if (!isProofAxisSubject(item.subject)) errors.push("tenant persisted proof axis subject is invalid.");
     if (item.polarity !== "present" && item.polarity !== "absent") errors.push("tenant persisted proof axis polarity is invalid.");
     if (item.state !== "satisfied" && item.state !== "violated" && item.state !== "incomplete") errors.push("tenant persisted proof axis state is invalid.");
@@ -751,7 +773,7 @@ function validatePersistedProofAxes(value: unknown, evidenceIds: Set<string>, er
       errors.push("tenant persisted proof axis collection basis is incompatible with its subject.");
     }
     validateEvidenceRefs(item.evidenceRefs, evidenceIds, errors);
-    const key = `${String(item.subject)}:${String(item.polarity)}`;
+    const key = item.role === "criterion" ? `criterion:${String(item.axisId)}` : `${String(item.subject)}:${String(item.polarity)}`;
     if (seen.has(key)) errors.push("tenant persisted proof axis is duplicated.");
     seen.add(key);
   }
@@ -759,6 +781,9 @@ function validatePersistedProofAxes(value: unknown, evidenceIds: Set<string>, er
 
 function copyProofAxes(axes: RequirementProofAxis[]): RequirementProofAxis[] {
   return axes.map((axis) => ({
+    ...(axis.axisId ? { axisId: axis.axisId } : {}),
+    ...(axis.role ? { role: axis.role } : {}),
+    ...(axis.criterionId ? { criterionId: axis.criterionId } : {}),
     subject: axis.subject,
     polarity: axis.polarity,
     state: axis.state,
@@ -771,7 +796,7 @@ function isPriority(value: unknown): value is PriorityLevel { return value === "
 function isRequirementStatus(value: unknown): value is RequirementStatus { return value === "met" || value === "partial" || value === "missing" || value === "unclear"; }
 function isCheckStatus(value: unknown): value is CheckStatus { return value === "passed" || value === "failed" || value === "pending" || value === "unknown"; }
 function isAnalysisContext(value: unknown): value is TenantReportAnalysisContext { return value === "linked_issue" || value === "unlinked_pr" || value === "provided_requirement"; }
-function isEvidenceKind(value: unknown): value is EvidenceKind { return value === "task" || value === "pr_description" || value === "diff" || value === "changed_file" || value === "check" || value === "log" || value === "test" || value === "inference"; }
+function isEvidenceKind(value: unknown): value is EvidenceKind { return value === "task" || value === "pr_description" || value === "diff" || value === "changed_file" || value === "check" || value === "log" || value === "test" || value === "artifact" || value === "inference"; }
 function stableJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") { const record = value as Record<string, unknown>; return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`; } return JSON.stringify(value); }
 function sha256(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function sameDigest(value: unknown, expected: string): boolean { if (typeof value !== "string") return false; const left = Buffer.from(value, "utf8"); const right = Buffer.from(expected, "utf8"); return left.length === right.length && timingSafeEqual(left, right); }

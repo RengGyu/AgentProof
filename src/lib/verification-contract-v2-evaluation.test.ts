@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canonicalVerificationBindingV2,
   parseVerificationContractV2
@@ -28,6 +28,10 @@ const documentationContract = {
 };
 
 describe("verification-contract v2 evaluation closure", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("keeps an exact no-contract helper objective unclear while retaining observed evidence", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
 
@@ -67,21 +71,45 @@ describe("verification-contract v2 evaluation closure", () => {
     expect(report.requirements[0]?.gaps).not.toContain("Approved verification contract is missing.");
   });
 
-  it("materializes an authoritative documentation criterion only with its exact-head artifact", () => {
+  it("keeps an authoritative documentation criterion unavailable while static capabilities are default-off", () => {
     const report = generateVerificationReportV2({
       input: contractInput(),
       contractSource: { kind: "provided_requirement", contract: documentationContract },
       binding: bindingFor("provided_requirement", JSON.stringify(documentationContract))
     });
 
-    expect(report.requirements[0]).toMatchObject({ status: "met", gaps: [] });
+    expect(report.requirements[0]).toMatchObject({ status: "unclear", gaps: [] });
     expect(report.verificationContract.objectives[0]?.criterionResults).toEqual([
-      expect.objectContaining({ state: "satisfied", evidenceRefs: expect.any(Array) })
+      expect.objectContaining({ state: "unavailable", evidenceRefs: expect.any(Array) })
     ]);
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("caps an otherwise satisfied PR-description contract at partial", () => {
+  it("uses an exact-head artifact receipt for an unchanged documentation path", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "documentation_literal");
+    const input = contractInput({
+      changedFiles: [],
+      verificationCriterionEvidenceV2: {
+        artifactBlobs: [{ path: "docs/reset.md", headSha: HEAD_SHA, content: "Stop the server.\nRun npm test." }]
+      }
+    });
+    const report = generateVerificationReportV2({
+      input,
+      contractSource: { kind: "provided_requirement", contract: documentationContract },
+      binding: bindingFor("provided_requirement", JSON.stringify(documentationContract))
+    });
+
+    const artifact = report.evidenceIndex.find((item) => item.kind === "artifact");
+    expect(artifact).toMatchObject({ locator: "docs/reset.md" });
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({
+      state: "satisfied",
+      evidenceRefs: [artifact?.id]
+    });
+    expect(validateVerificationReport(report, { mode: "v2_full" }).errors)
+      .toContain("v2 satisfied static criterion requires a transient criterion plan.");
+  });
+
+  it("keeps a PR-description static criterion unclear while static capabilities are default-off", () => {
     const sourceContent = contractEnvelope(documentationContract);
     const report = generateVerificationReportV2({
       input: contractInput(),
@@ -94,11 +122,10 @@ describe("verification-contract v2 evaluation closure", () => {
     });
 
     expect(report.verificationContract.state).toBe("author_claim");
-    expect(report.requirements[0]).toMatchObject({ status: "partial", evidenceStatus: "met", gaps: [] });
+    expect(report.requirements[0]).toMatchObject({ status: "unclear", evidenceStatus: "met", gaps: [] });
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
 
-    report.requirements[0]!.status = "met";
-    report.proofGraph.nodes[0]!.status = "met";
+    report.requirements[0]!.status = "partial";
     expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
   });
 
@@ -146,7 +173,7 @@ describe("verification-contract v2 evaluation closure", () => {
     expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({ state: "unavailable" });
   });
 
-  it("satisfies a complete exact-head absence criterion without inventing a changed-file match", () => {
+  it("keeps a complete exact-head absence criterion unavailable while static capabilities are default-off", () => {
     const absenceContract = runtimeAbsenceContract();
     const report = generateVerificationReportV2({
       input: contractInput({ verificationCriterionEvidenceV2: undefined }),
@@ -154,16 +181,57 @@ describe("verification-contract v2 evaluation closure", () => {
       binding: bindingFor("provided_requirement", JSON.stringify(absenceContract))
     });
 
-    expect(report.requirements[0]?.status).toBe("met");
+    expect(report.requirements[0]?.status).toBe("unclear");
     expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({
-      state: "satisfied",
+      state: "unavailable",
       evidenceRefs: []
     });
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
 
     const forged = structuredClone(report);
-    delete forged.source.provenance?.changedFileInventory;
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.state = "satisfied";
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.gapKinds = [];
     expect(validateVerificationReport(forged, { mode: "v2_full" }).valid).toBe(false);
+  });
+
+  it("treats a renamed-away prohibited path as a path-change violation", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "path_change_absence");
+    const absenceContract = runtimeAbsenceContract();
+    const input = contractInput({
+      changedFiles: [{
+        path: "src/other/new.ts",
+        status: "renamed",
+        previousPath: "src/runtime/old.ts"
+      } as PullRequestInput["changedFiles"][number]]
+    });
+    const report = generateVerificationReportV2({
+      input,
+      contractSource: { kind: "provided_requirement", contract: absenceContract },
+      binding: bindingFor("provided_requirement", JSON.stringify(absenceContract))
+    });
+
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({
+      state: "violated",
+      gapKinds: ["forbidden_implementation_present"]
+    });
+  });
+
+  it("keeps a renamed path unavailable when GitHub did not provide its previous path", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "path_change_absence");
+    const absenceContract = runtimeAbsenceContract();
+    const input = contractInput({
+      changedFiles: [{ path: "src/other/new.ts", status: "renamed" }]
+    });
+    const report = generateVerificationReportV2({
+      input,
+      contractSource: { kind: "provided_requirement", contract: absenceContract },
+      binding: bindingFor("provided_requirement", JSON.stringify(absenceContract))
+    });
+
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({
+      state: "unavailable",
+      gapKinds: ["evidence_unavailable"]
+    });
   });
 
   it("does not grant a live met outcome to a return-value contract without an attested observation", () => {
@@ -197,6 +265,44 @@ describe("verification-contract v2 evaluation closure", () => {
     expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({ state: "unavailable" });
   });
 
+  it.each(["test_case", "workflow_job", "return_value"])(
+    "keeps every deferred criterion unavailable when %s is requested through the environment",
+    (requestedCapability) => {
+      vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", requestedCapability);
+      const deferredContract = deferredCapabilitiesContract();
+      const report = generateVerificationReportV2({
+        input: contractInput({
+          changedFiles: [
+            { path: "src/repositories/repository-visibility.js", status: "modified" },
+            { path: "test/repository-visibility.test.js", status: "modified" },
+            { path: ".github/workflows/ci.yml", status: "modified" }
+          ],
+          checks: [{ name: "CI / test", status: "passed", summary: "The GitHub Actions job passed." }],
+          executionSuites: [{
+            headSha: HEAD_SHA,
+            status: "passed",
+            executionSource: "GitHub Actions job: test",
+            runner: "node_test",
+            scope: "repository_discovery",
+            testPaths: ["test/repository-visibility.test.js"]
+          }]
+        }),
+        contractSource: { kind: "provided_requirement", contract: deferredContract },
+        binding: bindingFor("provided_requirement", JSON.stringify(deferredContract))
+      });
+
+      expect(report.requirements[0]?.status).not.toBe("met");
+      expect(report.verificationContract.objectives[0]?.criterionResults.map(({ state, evidenceRefs }) => ({
+        state,
+        evidenceRefs
+      }))).toEqual([
+        { state: "unavailable", evidenceRefs: [] },
+        { state: "unavailable", evidenceRefs: [] },
+        { state: "unavailable", evidenceRefs: [] }
+      ]);
+    }
+  );
+
   it("rejects malformed contracts with report-level contract guidance", () => {
     const report = generateVerificationReportV2({
       input: contractInput(),
@@ -229,7 +335,42 @@ describe("verification-contract v2 evaluation closure", () => {
       binding: bindingFor("provided_requirement", JSON.stringify(documentationContract))
     });
     const forged = structuredClone(report);
-    forged.verificationContract.objectives[0]!.criterionResults[0]!.evidenceRefs = [];
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.state = "satisfied";
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.gapKinds = [];
+
+    expect(validateVerificationReport(forged, { mode: "v2_full" }).valid).toBe(false);
+  });
+
+  it("rejects a criterion result that reuses another criterion's proof axis", () => {
+    const contract = {
+      ...documentationContract,
+      objectives: [{
+        ...documentationContract.objectives[0]!,
+        criteria: [
+          documentationContract.objectives[0]!.criteria[0]!,
+          {
+            id: "second_literal",
+            type: "artifact" as const,
+            label: "The reset document includes the stop command.",
+            paths: ["docs/reset.md"],
+            artifact: { kind: "documentation_literal" as const, literal: "Stop the server." }
+          }
+        ]
+      }]
+    };
+    const report = generateVerificationReportV2({
+      input: contractInput({
+        verificationCriterionEvidenceV2: {
+          artifactBlobs: [{ path: "docs/reset.md", content: "Stop the server.\nRun npm test." }]
+        }
+      }),
+      contractSource: { kind: "provided_requirement", contract },
+      binding: bindingFor("provided_requirement", JSON.stringify(contract))
+    });
+    const forged = structuredClone(report);
+    forged.verificationContract.objectives[0]!.criterionResults[1]!.proofAxisRefs = [
+      ...forged.verificationContract.objectives[0]!.criterionResults[0]!.proofAxisRefs
+    ];
 
     expect(validateVerificationReport(forged, { mode: "v2_full" }).valid).toBe(false);
   });
@@ -286,6 +427,45 @@ function runtimeAbsenceContract() {
         prohibitedKind: "path_change",
         scope: [{ kind: "prefix", path: "src/runtime/" }]
       }]
+    }]
+  };
+}
+
+function deferredCapabilitiesContract() {
+  return {
+    version: 2,
+    scope: "complete_objective_set",
+    objectives: [{
+      id: "visibility",
+      objective: "Keep repository visibility behavior verified.",
+      criteria: [
+        {
+          id: "visibility_test",
+          type: "artifact",
+          label: "The exact visibility test passes.",
+          paths: ["test/repository-visibility.test.js"],
+          artifact: { kind: "test_case", testId: "repositoryVisibilityLabel returns the private label" }
+        },
+        {
+          id: "ci_job",
+          type: "artifact",
+          label: "The CI test job succeeds.",
+          paths: [".github/workflows/ci.yml"],
+          artifact: { kind: "workflow_job", workflowName: "CI", jobName: "test" }
+        },
+        {
+          id: "private_label",
+          type: "return_value",
+          label: "The private branch returns the expected label.",
+          adapter: {
+            id: "node_export_scalar.v1",
+            modulePath: "src/repositories/repository-visibility.js",
+            exportName: "repositoryVisibilityLabel",
+            moduleFormat: "esm"
+          },
+          cases: [{ id: "private", input: true, expected: "Private repository" }]
+        }
+      ]
     }]
   };
 }

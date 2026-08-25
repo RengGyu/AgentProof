@@ -7,11 +7,11 @@ const HEAD_SHA = "a".repeat(40);
 const BASE_SHA = "b".repeat(40);
 
 describe("inbound untrusted v2 authority", () => {
-  it("rejects an authoritative artifact result without receipt-gated axes", () => {
+  it("rejects an authoritative artifact contract without receipt-gated axes", () => {
     const report = authoritativeArtifactReport("raw-authoritative-artifact-marker");
 
     expect(report.verificationContract.state).toBe("authoritative");
-    expect(report.verificationContract.objectives[0]?.criterionResults[0]?.state).toBe("satisfied");
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]?.state).toBe("unavailable");
     expect(hasSatisfiedReceiptGatedAxis(report)).toBe(false);
     expect(validateRuntimeReportBoundary({
       boundary: "inbound_untrusted_full",
@@ -22,11 +22,11 @@ describe("inbound untrusted v2 authority", () => {
     });
   });
 
-  it("rejects an author-claim absence result without receipt-gated axes", () => {
+  it("rejects an author-claim absence contract without receipt-gated axes", () => {
     const report = authorClaimAbsenceReport("raw-author-claim-absence-marker");
 
     expect(report.verificationContract.state).toBe("author_claim");
-    expect(report.verificationContract.objectives[0]?.criterionResults[0]?.state).toBe("satisfied");
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]?.state).toBe("unavailable");
     expect(hasSatisfiedReceiptGatedAxis(report)).toBe(false);
     expect(validateRuntimeReportBoundary({
       boundary: "inbound_untrusted_full",

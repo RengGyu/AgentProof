@@ -649,6 +649,7 @@ function DetailedEvidence({ detail, demoMode }: { detail: DashboardReportDetail 
   const report = detail.report;
   const semantic = report?.semantic;
   const requirementCards = toDashboardRequirementViewModels({
+    report,
     requirements: report?.requirements,
     semantic,
     semanticAnalysis: report?.semanticAnalysis,

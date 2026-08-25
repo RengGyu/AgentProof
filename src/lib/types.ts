@@ -35,6 +35,7 @@ export type EvidenceKind =
   | "check"
   | "log"
   | "test"
+  | "artifact"
   | "inference";
 
 export interface AnalyzeRequest {
@@ -87,7 +88,7 @@ export interface PullRequestInput {
    * transient: raw artifact content is never included in reports or telemetry.
    */
   verificationCriterionEvidenceV2?: {
-    artifactBlobs: Array<{ path: string; content: string }>;
+    artifactBlobs: Array<{ path: string; headSha?: string; content: string }>;
   };
   changedFiles: ChangedFile[];
   checks: CheckRun[];
@@ -171,6 +172,8 @@ export interface ReportAuthenticity {
 
 export interface ChangedFile {
   path: string;
+  /** Original path for a GitHub rename; transient inventory evidence only. */
+  previousPath?: string;
   additions?: number;
   deletions?: number;
   status?: "added" | "modified" | "removed" | "renamed";
@@ -347,6 +350,12 @@ export type RequirementProofPolarity = "present" | "absent";
 export type RequirementProofState = "satisfied" | "violated" | "incomplete";
 
 export interface RequirementProofAxis {
+  /** Stable v2 ownership ID. Omitted only for legacy v1 reads. */
+  axisId?: string;
+  /** v2 keeps typed-contract proof separate from prose-derived observations. */
+  role?: "criterion" | "observation";
+  /** Required for a v2 criterion axis and prohibited for an observation axis. */
+  criterionId?: string;
   subject: RequirementProofSubject;
   polarity: RequirementProofPolarity;
   state: RequirementProofState;

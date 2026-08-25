@@ -2,6 +2,7 @@ import { sanitizeReportForShare } from "./report-share";
 import type { AnalysisQueueAlert } from "./analysis-job-alerts";
 import type { AnalysisJobQueueSummary } from "./analysis-jobs";
 import type { VerificationReport } from "./types";
+import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
 
 export interface SlackWebhookPayload {
   text: string;
@@ -28,6 +29,13 @@ export const SLACK_NOTIFICATION_TIMEOUT_MS = 5000;
 
 export function reportToSlackPayload(report: VerificationReport, reportUrl?: string): SlackWebhookPayload {
   const safeReport = sanitizeReportForShare(report);
+  const v2Report = isVerificationReportV2(safeReport) ? safeReport : undefined;
+  const outcomeLines = v2Report
+    ? v2Report.requirements.slice(0, 3).flatMap((requirement) => {
+      const presentation = deriveRequirementPresentationV2(v2Report, requirement.requirementId);
+      return [`- ${presentation.outcomeLabel}`, `  Observed evidence: ${presentation.observationLabel}`];
+    }).join("\n")
+    : "";
   const topRisks = safeReport.summary.topRisks.slice(0, 3).map((risk) => `- ${risk}`).join("\n");
   const priorities = safeReport.reviewPriority
     .slice(0, 3)
@@ -51,6 +59,13 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
           text: truncateSlackText(neutralizeSlackMentions(safeReport.summary.oneLine), 3000)
         }
       },
+      ...(outcomeLines ? [{
+        type: "section",
+        text: {
+          type: "plain_text",
+          text: truncateSlackText(`Requirement outcomes\n${outcomeLines}`, 3000)
+        }
+      }] : []),
       {
         type: "section",
         fields: [

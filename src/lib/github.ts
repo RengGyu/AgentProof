@@ -107,6 +107,7 @@ interface GitHubIssueResponse {
 
 interface GitHubFileResponse {
   filename: string;
+  previous_filename?: string;
   additions: number;
   deletions: number;
   status: ChangedFile["status"];
@@ -378,6 +379,9 @@ async function fetchGitHubPullRequest(
     )
   ]);
   const taskEvidenceText = taskText.trim() ? taskText : linkedIssueTask?.taskText ?? "";
+  if (files.some((file) => file.status === "renamed" && !file.previous_filename)) {
+    limitations.push("GitHub changed-file evidence may be incomplete because a renamed file lacks its previous path.");
+  }
   const checkEvidenceRefs = assignGitHubCheckEvidenceRefs(
     taskEvidenceText,
     String(pr.body ?? ""),
@@ -486,6 +490,7 @@ async function fetchGitHubPullRequest(
     ...(verificationCriterionEvidenceV2 ? { verificationCriterionEvidenceV2 } : {}),
     changedFiles: files.map((file) => ({
       path: file.filename,
+      ...(file.previous_filename ? { previousPath: file.previous_filename } : {}),
       additions: file.additions,
       deletions: file.deletions,
       status: file.status,
@@ -668,7 +673,7 @@ async function collectVerificationContractArtifactEvidenceV2(input: {
     return undefined;
   }
 
-  const artifactBlobs: Array<{ path: string; content: string }> = [];
+  const artifactBlobs: Array<{ path: string; headSha: string; content: string }> = [];
   for (const path of paths) {
     try {
       const response = await githubFetch(
@@ -685,7 +690,7 @@ async function collectVerificationContractArtifactEvidenceV2(input: {
         input.limitations.push("A contract-declared documentation artifact was unavailable or exceeded the bounded content limit; affected criteria are unavailable.");
         continue;
       }
-      artifactBlobs.push({ path, content });
+      artifactBlobs.push({ path, headSha: input.headSha, content });
     } catch {
       input.limitations.push("A contract-declared documentation artifact could not be collected at the analyzed head; affected criteria are unavailable.");
     }
@@ -776,7 +781,7 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseS
     version: 1, origin, url: normalizeGitHubPullUrl(input.url ?? "") ?? undefined, headSha, baseSha,
     baseBranch: input.baseBranch ?? undefined, headBranch: input.headBranch ?? undefined, taskSource: input.taskSource ?? undefined,
     textLengths: { task: input.taskText.length, description: input.description.length },
-    changedFiles: [...input.changedFiles].map((file) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, patchLength: file.patch?.length ?? 0 })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    changedFiles: [...input.changedFiles].map((file) => ({ path: file.path, previousPath: file.previousPath, status: file.status, additions: file.additions, deletions: file.deletions, patchLength: file.patch?.length ?? 0 })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     checks: [...input.checks].map((check) => ({ name: check.name, status: check.status, summaryLength: check.summary?.length ?? 0, urlHost: safeUrlHost(check.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     logs: [...input.logs].map((log) => ({ source: log.source, status: log.status, textLength: log.text.length, urlHost: safeUrlHost(log.url) })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     executionSuites: [...(input.executionSuites ?? [])].map((suite) => ({
@@ -814,7 +819,7 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseS
 
 function hasIncompleteChangedFileInventory(limitations: string[] | undefined): boolean {
   return (limitations ?? []).some((limitation) =>
-    /changed-file evidence (?:unavailable|was capped)|changed-file fetch failed|file evidence may be incomplete|patch text|diff evidence is unavailable/i.test(limitation)
+    /changed-file evidence (?:unavailable|was capped)|changed-file fetch failed|file evidence may be incomplete|renamed file lacks its previous path|patch text|diff evidence is unavailable/i.test(limitation)
   );
 }
 

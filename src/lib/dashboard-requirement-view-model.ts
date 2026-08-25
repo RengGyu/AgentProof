@@ -5,6 +5,7 @@ import type { RequirementAuthority, RequirementProofAxis, RequirementStatus } fr
 import type { VerificationContractStateV2 } from "./verification-contract-v2";
 import { tenantRemediationTextForGap } from "./tenant-report-language";
 import { isProhibitedEvidenceRequestText } from "./semantic-text-policy";
+import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
 
 export type RequirementExplanationState = "assessment" | "guidance" | "unavailable" | "none";
 
@@ -47,14 +48,18 @@ interface RequirementInput {
 }
 
 interface RequirementViewModelInput {
+  /** Dashboard detail is intentionally a bounded projection; runtime v2 shape is checked before use. */
+  report?: unknown;
   requirements?: RequirementInput[];
   semantic?: LlmSemanticOutput;
   semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
   verificationContract?: { state: VerificationContractStateV2; gaps?: unknown[] };
 }
 
-export function toDashboardRequirementViewModels({ requirements = [], semantic, semanticAnalysis, verificationContract }: RequirementViewModelInput): DashboardRequirementViewModel[] {
+export function toDashboardRequirementViewModels({ report, requirements = [], semantic, semanticAnalysis, verificationContract }: RequirementViewModelInput): DashboardRequirementViewModel[] {
+  const v2Report = report && isVerificationReportV2(report) ? report : undefined;
   return requirements.map((requirement) => {
+    const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, requirement.requirementId) : undefined;
     const assessments = semantic?.requirement_assessments.filter((item) => item.requirement_id === requirement.requirementId) ?? [];
     const gaps = semantic?.evidence_gaps.filter((item) => item.requirement_id === requirement.requirementId) ?? [];
     const remediation = semantic?.remediation_requests.filter((item) => item.requirement_id === requirement.requirementId) ?? [];
@@ -91,10 +96,12 @@ export function toDashboardRequirementViewModels({ requirements = [], semantic, 
       objectiveText: boundedObjectiveText(assessment?.requirement_summary ?? requirement.requirementText, requirement.requirementId),
       status: requirement.status,
       coverageStatus: requirement.evidenceStatus ?? requirement.status,
-      coverageHeading: verificationContract ? "Observed evidence" : "Evidence coverage",
-      coverageLabel: toRequirementCoverageLabel(requirement.evidenceStatus ?? requirement.status),
-      coverageMeaning: toCoverageMeaning(requirement.evidenceStatus ?? requirement.status),
-      ...strictContractOutcomePresentation(requirement.status, verificationContract),
+      coverageHeading: presentation || verificationContract ? "Observed evidence" : "Evidence coverage",
+      coverageLabel: presentation?.observationLabel ?? toRequirementCoverageLabel(requirement.evidenceStatus ?? requirement.status),
+      coverageMeaning: toCoverageMeaning(presentation?.observedEvidence ?? requirement.evidenceStatus ?? requirement.status),
+      ...(presentation
+        ? { outcomeLabel: presentation.outcomeLabel, outcomeMeaning: presentation.outcomeBasis }
+        : strictContractOutcomePresentation(requirement.status, verificationContract)),
       ...(requirement.sourceAuthority === "pr_description" ? {
         sourceAuthorityLabel: "PR description",
         sourceAuthorityMeaning: "Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation."
