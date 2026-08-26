@@ -347,7 +347,8 @@ function isChangedFile(value) {
 }
 
 function isActiveV2Report(value) {
-  return hasOnlyKeys(value, REPORT_KEYS) && value.reportSchemaVersion === "verification-report.v2" && isRecord(value.verificationContract) && ["authoritative", "author_claim"].includes(value.verificationContract.state);
+  return hasExactKeys(value, ["reportSchemaVersion", "verificationContract"]) && value.reportSchemaVersion === "verification-report.v2" &&
+    hasExactKeys(value.verificationContract, ["state"]) && ["authoritative", "author_claim"].includes(value.verificationContract.state);
 }
 
 function parsePastedOverride(value) {

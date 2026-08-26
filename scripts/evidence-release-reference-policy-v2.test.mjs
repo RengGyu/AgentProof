@@ -217,6 +217,15 @@ if (process.env.AGENTPROOF_REFERENCE_POLICY_FIXTURES !== "1") describe("closed r
     assert.equal(result.cases[7].reference.provenanceOrigin, "github_snapshot");
     assert.ok(!JSON.stringify(result).includes("Required heading"));
   });
+
+  it("admits only the minimal closed inbound-rejection marker", () => {
+    const boundary = boundaryCorpus();
+    boundary.cases[0].report.verificationContract.unknown = true;
+    assert.equal(buildReferencePolicySealV2({ evidenceCorpus: evidenceCorpus(), boundaryCorpus: boundary }), null);
+    const withRawField = boundaryCorpus();
+    withRawField.cases[0].report.summary = "safe-looking raw source";
+    assert.equal(buildReferencePolicySealV2({ evidenceCorpus: evidenceCorpus(), boundaryCorpus: withRawField }), null);
+  });
 });
 
 export { boundaryCorpus, evidenceCorpus };

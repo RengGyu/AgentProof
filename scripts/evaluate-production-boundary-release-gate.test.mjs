@@ -6,9 +6,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
-  evaluateProductionBoundaryReleaseGate,
+  evaluateProductionBoundaryReleaseGateV1,
+  evaluateProductionBoundaryReleaseGateV2,
   productionBoundaryReleaseGatePasses
 } from "./evaluate-production-boundary-release-gate.mjs";
+import { buildReferencePolicySealV2, deriveBoundaryReferenceV2 } from "./evidence-release-reference-policy-v2.mjs";
+import { boundaryCorpus, evidenceCorpus } from "./evidence-release-reference-policy-v2.test.mjs";
 
 const ZERO = {
   untrustedActiveV2AcceptanceCount: 0,
@@ -19,10 +22,29 @@ const ZERO = {
 };
 
 describe("evaluate-production-boundary-release-gate", () => {
+  it("derives sealed V2 boundary results in memory and returns aggregate-only metrics", () => {
+    const cases = boundaryCorpus();
+    const seal = buildReferencePolicySealV2({ evidenceCorpus: evidenceCorpus(), boundaryCorpus: cases });
+    const reference = deriveBoundaryReferenceV2(cases, seal);
+    const candidates = { version: 2, cases: reference.cases.map(({ caseId, reference: actual }) => ({ caseId, ...actual })) };
+    const result = evaluateProductionBoundaryReleaseGateV2({ cases, seal, candidates });
+    assert.deepEqual(result, ZERO);
+    assert.ok(!JSON.stringify(result).includes(cases.cases[0].caseId));
+    assert.equal(productionBoundaryReleaseGatePasses(result), true);
+  });
+
+  it("fails V2 closed for case-set or seal drift", () => {
+    const cases = boundaryCorpus();
+    const seal = buildReferencePolicySealV2({ evidenceCorpus: evidenceCorpus(), boundaryCorpus: cases });
+    const reference = deriveBoundaryReferenceV2(cases, seal);
+    const candidates = { version: 2, cases: reference.cases.map(({ caseId, reference: actual }) => ({ caseId, ...actual })) };
+    assert.deepEqual(evaluateProductionBoundaryReleaseGateV2({ cases, seal, candidates: { ...candidates, cases: candidates.cases.slice(1) } }), unknownResult());
+    assert.deepEqual(evaluateProductionBoundaryReleaseGateV2({ cases, seal: { ...seal, boundaryCorpusSha256: opaqueCaseId("drift") }, candidates }), unknownResult());
+  });
   it("fails closed for non-digest case handles", () => {
     const oracle = { ...oracleCase("human-readable-case"), caseId: "human-readable-case" };
     const candidate = { ...candidateCase("human-readable-case"), caseId: "human-readable-case" };
-    assert.deepEqual(evaluateProductionBoundaryReleaseGate({
+    assert.deepEqual(evaluateProductionBoundaryReleaseGateV1({
       oracle: oracleCorpus([oracle]),
       candidates: candidateCorpus([candidate])
     }), unknownResult());
@@ -42,7 +64,7 @@ describe("evaluate-production-boundary-release-gate", () => {
       })
     ]);
 
-    const result = evaluateProductionBoundaryReleaseGate({ oracle: oracleCorpus(cases), candidates });
+    const result = evaluateProductionBoundaryReleaseGateV1({ oracle: oracleCorpus(cases), candidates });
     assert.deepEqual(result, {
       untrustedActiveV2AcceptanceCount: 1,
       pastedEvidenceGithubAuthorityCount: 1,
@@ -68,8 +90,8 @@ describe("evaluate-production-boundary-release-gate", () => {
     ];
 
     for (const input of malformed) {
-      assert.deepEqual(evaluateProductionBoundaryReleaseGate(input), unknownResult());
-      assert.equal(productionBoundaryReleaseGatePasses(evaluateProductionBoundaryReleaseGate(input)), false);
+      assert.deepEqual(evaluateProductionBoundaryReleaseGateV1(input), unknownResult());
+      assert.equal(productionBoundaryReleaseGatePasses(evaluateProductionBoundaryReleaseGateV1(input)), false);
     }
   });
 
@@ -80,16 +102,13 @@ describe("evaluate-production-boundary-release-gate", () => {
       candidateCorpus([candidateCase("opaque-one")]),
       candidateCorpus([candidateCase("opaque-one"), candidateCase("opaque-two"), candidateCase("opaque-three")])
     ]) {
-      assert.deepEqual(evaluateProductionBoundaryReleaseGate({ oracle, candidates }), unknownResult());
+      assert.deepEqual(evaluateProductionBoundaryReleaseGateV1({ oracle, candidates }), unknownResult());
     }
   });
 
-  it("emits aggregate-only JSON and exits zero for a clean exact fixture", () => {
-    const caseId = opaqueCaseId("cli clean secret id");
-    const result = runCli(
-      oracleCorpus([oracleCase(caseId, "pasted_merge")]),
-      candidateCorpus([candidateCase(caseId)])
-    );
+  it("emits aggregate-only V2 JSON and exits zero for a sealed exact fixture", () => {
+    const { cases, seal, candidates, caseId } = v2Fixture();
+    const result = runCli(cases, seal, candidates);
 
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.output, ZERO);
@@ -97,21 +116,25 @@ describe("evaluate-production-boundary-release-gate", () => {
     assert.equal(result.stdout.trim().split("\n").length, 1);
   });
 
-  it("exits non-zero without explicit paths and for unknown or non-zero metrics without printing case IDs", () => {
+  it("rejects V1/--oracle and exits non-zero for unknown or non-zero V2 metrics without printing case IDs", () => {
     const noPaths = spawnSync(process.execPath, [scriptPath()], { encoding: "utf8" });
     assert.notEqual(noPaths.status, 0);
 
-    const caseId = opaqueCaseId("cli failure secret id");
-    const nonZero = runCli(
-      oracleCorpus([oracleCase(caseId, "inbound_untrusted_v2", expected({ disposition: "rejected" }))]),
-      candidateCorpus([candidateCase(caseId, { disposition: "accepted" })])
-    );
+    const { cases, seal, candidates, caseId } = v2Fixture();
+    const oracle = spawnSync(process.execPath, [scriptPath(), "--oracle", "ignored.json", "--candidates", "ignored.json"], { encoding: "utf8" });
+    assert.equal(oracle.status, 1);
+    assert.deepEqual(JSON.parse(oracle.stdout.trim()), unknownResult());
+
+    const nonZeroCandidates = structuredClone(candidates);
+    const rejectedIndex = cases.cases.findIndex((item) => item.kind === "inbound_untrusted_v2");
+    nonZeroCandidates.cases[rejectedIndex].disposition = "accepted";
+    const nonZero = runCli(cases, seal, nonZeroCandidates);
     assert.equal(nonZero.status, 1);
     assert.equal(nonZero.output.untrustedActiveV2AcceptanceCount, 1);
     assert.ok(!nonZero.stdout.includes(caseId));
     assert.ok(!nonZero.stderr.includes(caseId));
 
-    const malformed = runCli({ version: 1 }, candidateCorpus([candidateCase(caseId)]));
+    const malformed = runCli({ version: 1 }, seal, candidates);
     assert.equal(malformed.status, 1);
     assert.deepEqual(malformed.output, unknownResult());
     assert.ok(!malformed.stdout.includes(caseId));
@@ -150,14 +173,28 @@ function unknownResult() {
   return Object.fromEntries(Object.keys(ZERO).map((key) => [key, "UNKNOWN"]));
 }
 
-function runCli(oracle, candidates) {
+function v2Fixture() {
+  const cases = boundaryCorpus();
+  const seal = buildReferencePolicySealV2({ evidenceCorpus: evidenceCorpus(), boundaryCorpus: cases });
+  const reference = deriveBoundaryReferenceV2(cases, seal);
+  return {
+    cases,
+    seal,
+    caseId: cases.cases[0].caseId,
+    candidates: { version: 2, cases: reference.cases.map(({ caseId, reference: actual }) => ({ caseId, ...actual })) }
+  };
+}
+
+function runCli(cases, seal, candidates) {
   const root = mkdtempSync(join(tmpdir(), "agentproof-boundary-evaluator-"));
   try {
-    const oraclePath = join(root, "oracle.json");
+    const casesPath = join(root, "cases.json");
+    const sealPath = join(root, "seal.json");
     const candidatesPath = join(root, "candidates.json");
-    writeFileSync(oraclePath, JSON.stringify(oracle));
+    writeFileSync(casesPath, JSON.stringify(cases));
+    writeFileSync(sealPath, JSON.stringify(seal));
     writeFileSync(candidatesPath, JSON.stringify(candidates));
-    const child = spawnSync(process.execPath, [scriptPath(), "--oracle", oraclePath, "--candidates", candidatesPath], {
+    const child = spawnSync(process.execPath, [scriptPath(), "--cases", casesPath, "--seal", sealPath, "--candidates", candidatesPath], {
       encoding: "utf8"
     });
     return {

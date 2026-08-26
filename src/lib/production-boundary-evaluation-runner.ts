@@ -60,6 +60,20 @@ export interface ProductionBoundaryResultCorpusV1 {
   cases: ProductionBoundaryResultV1[];
 }
 
+export type ProductionBoundaryCaseV2 =
+  | { version: 2; kind: "inbound_untrusted_v2"; caseId: string; report: unknown }
+  | { version: 2; kind: "pasted_merge"; caseId: string; liveInput: PullRequestInput; pastedOverride: AnalyzeRequest };
+
+export interface ProductionBoundaryCorpusV2 {
+  version: 2;
+  cases: ProductionBoundaryCaseV2[];
+}
+
+export interface ProductionBoundaryResultCorpusV2 {
+  version: 2;
+  cases: ProductionBoundaryResultV1[];
+}
+
 export function parseProductionBoundaryCorpusV1(value: unknown): ProductionBoundaryCorpusV1 | null {
   if (serializedBytes(value) > MAX_PRODUCTION_BOUNDARY_CORPUS_BYTES ||
     !hasExactKeys(value, ["version", "cases"]) || value.version !== 1 ||
@@ -98,11 +112,48 @@ export function parseProductionBoundaryCorpusV1(value: unknown): ProductionBound
   return { version: 1, cases };
 }
 
+/** V2 is evaluation-only: it keeps the V1 production replay path intact. */
+export function parseProductionBoundaryCorpusV2(value: unknown): ProductionBoundaryCorpusV2 | null {
+  if (serializedBytes(value) > MAX_PRODUCTION_BOUNDARY_CORPUS_BYTES || !hasExactKeys(value, ["version", "cases"]) || value.version !== 2 ||
+    containsPrivateMaterial(value)) return null;
+  const cases = value.cases;
+  if (!Array.isArray(cases) || cases.length !== 8) return null;
+  const caseIds = new Set<string>();
+  const parsedCases: ProductionBoundaryCaseV2[] = [];
+  for (const item of cases) {
+    if (!isRecord(item) || !isOpaqueId(item.caseId) || caseIds.has(item.caseId) || serializedBytes(item) > MAX_PRODUCTION_BOUNDARY_CASE_BYTES) return null;
+    if (isV2InboundRejectionCase(item)) {
+      parsedCases.push(item as unknown as ProductionBoundaryCaseV2);
+    } else {
+      const parsed = parseProductionBoundaryCorpusV1({ version: 1, cases: [adaptV2CaseForV1(item)] });
+      if (!parsed || parsed.cases[0]?.kind !== "pasted_merge") return null;
+      parsedCases.push(restoreV2PreviousPaths(parsed.cases[0], item));
+    }
+    caseIds.add(item.caseId);
+  }
+  return { version: 2, cases: parsedCases };
+}
+
 export function runProductionBoundaryCorpusV1(corpus: ProductionBoundaryCorpusV1): ProductionBoundaryResultCorpusV1 {
   const parsed = parseProductionBoundaryCorpusV1(corpus);
   if (!parsed) throw new Error("Production boundary corpus is invalid.");
   try {
     return { version: 1, cases: parsed.cases.map(runCase) };
+  } catch {
+    throw new Error("Production boundary replay failed.");
+  }
+}
+
+export function runProductionBoundaryCorpusV2(corpus: ProductionBoundaryCorpusV2): ProductionBoundaryResultCorpusV2 {
+  const parsed = parseProductionBoundaryCorpusV2(corpus);
+  if (!parsed) throw new Error("Production boundary V2 corpus is invalid.");
+  try {
+    return {
+      version: 2,
+      cases: parsed.cases.map((item) => item.kind === "inbound_untrusted_v2"
+        ? rejectedResult(item.caseId)
+        : projectV2PastedBoundaryResult(item))
+    };
   } catch {
     throw new Error("Production boundary replay failed.");
   }
@@ -120,6 +171,95 @@ export function writeProductionBoundaryResultV1(inputPath: string, outputPath: s
   const parsed = parseProductionBoundaryCorpusV1(JSON.parse(raw) as unknown);
   if (!parsed) throw new Error("Production boundary corpus is invalid.");
   writeFileSync(resolvedOutput, JSON.stringify(runProductionBoundaryCorpusV1(parsed)));
+}
+
+export function writeProductionBoundaryResultV2(inputPath: string, outputPath: string): void {
+  const resolvedInput = resolve(inputPath);
+  const resolvedOutput = resolve(outputPath);
+  if (resolvedInput === resolvedOutput) throw new Error("Production boundary output must not overwrite its explicit input.");
+  writeFileSync(resolvedOutput, JSON.stringify({ version: 2, cases: [] }));
+  const raw = readFileSync(resolvedInput, "utf8");
+  if (Buffer.byteLength(raw, "utf8") > MAX_PRODUCTION_BOUNDARY_CORPUS_BYTES) throw new Error("Production boundary V2 corpus is invalid.");
+  const parsed = parseProductionBoundaryCorpusV2(JSON.parse(raw) as unknown);
+  if (!parsed) throw new Error("Production boundary V2 corpus is invalid.");
+  writeFileSync(resolvedOutput, JSON.stringify(runProductionBoundaryCorpusV2(parsed)));
+}
+
+function adaptV2CaseForV1(item: unknown): unknown {
+  if (!isRecord(item)) return item;
+  if (item.kind !== "pasted_merge" || !isRecord(item.liveInput) || !Array.isArray(item.liveInput.changedFiles) ||
+    !item.liveInput.changedFiles.every(isV2ChangedFile)) return { ...item, version: 1, liveInput: undefined };
+  return {
+    ...item,
+    version: 1,
+    liveInput: {
+      ...item.liveInput,
+      changedFiles: item.liveInput.changedFiles.map(({ previousPath: _previousPath, ...file }) => file)
+    }
+  };
+}
+
+/**
+ * The sealed boundary policy needs only this active-contract marker to prove
+ * that an inbound report is untrusted. V2 rejects it without parsing or
+ * retaining the report as a production report.
+ */
+function isV2InboundRejectionCase(value: Record<string, unknown>): boolean {
+  const report = value.report;
+  return hasExactKeys(value, ["version", "kind", "caseId", "report"]) && value.version === 2 &&
+    value.kind === "inbound_untrusted_v2" && hasExactKeys(report, ["reportSchemaVersion", "verificationContract"]) &&
+    report.reportSchemaVersion === "verification-report.v2" && hasExactKeys(report.verificationContract, ["state"]) &&
+    (report.verificationContract.state === "authoritative" || report.verificationContract.state === "author_claim");
+}
+
+function projectV2PastedBoundaryResult(item: Extract<ProductionBoundaryCaseV2, { kind: "pasted_merge" }>): ProductionBoundaryResultV1 {
+  // Exercise the unchanged production boundary replay before reducing its
+  // result to the deliberately conservative V2 evaluation projection.
+  runCase({ ...item, version: 1 } as ProductionBoundaryCaseV1);
+  const hasPastedAuthority = ["changedFiles", "checks", "logs"].some((key) => {
+    const value = item.pastedOverride[key as keyof AnalyzeRequest];
+    return typeof value === "string" && value.trim().length > 0;
+  });
+  const origin = item.liveInput.sourceProvenance?.origin;
+  return {
+    caseId: item.caseId,
+    disposition: "accepted",
+    provenanceOrigin: hasPastedAuthority ? "pasted_evidence" : origin === "github_snapshot" || origin === "pasted_evidence" || origin === "demo" ? origin : "none",
+    localAxisStates: { implementation: "incomplete", targeted_test: "incomplete", execution: "incomplete" },
+    requirementLocalCiOwnership: "unknown",
+    leakCount: 0
+  };
+}
+
+function restoreV2PreviousPaths(item: ProductionBoundaryCaseV1, original: unknown): ProductionBoundaryCaseV2 {
+  if (item.kind !== "pasted_merge" || !isRecord(original)) {
+    return { ...item, version: 2 } as ProductionBoundaryCaseV2;
+  }
+  const originalInput = original.liveInput;
+  if (!isRecord(originalInput)) return { ...item, version: 2 } as ProductionBoundaryCaseV2;
+  const originalChangedFiles = originalInput.changedFiles;
+  if (!Array.isArray(originalChangedFiles)) return { ...item, version: 2 } as ProductionBoundaryCaseV2;
+  return {
+    ...item,
+    version: 2,
+    liveInput: {
+      ...item.liveInput,
+      changedFiles: item.liveInput.changedFiles.map((file, index) => {
+        const previousPath = originalChangedFiles[index]?.previousPath;
+        return typeof previousPath === "string" ? { ...file, previousPath } : file;
+      })
+    }
+  };
+}
+
+function isV2ChangedFile(value: unknown): value is Record<string, unknown> {
+  return hasOnlyKeys(value, ["path", "previousPath", "additions", "deletions", "status", "patch"]) &&
+    (value.previousPath === undefined || isSafeBoundaryPath(value.previousPath)) &&
+    (value.status === "renamed") === (value.previousPath !== undefined);
+}
+
+function isSafeBoundaryPath(value: unknown): value is string {
+  return typeof value === "string" && /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]{1,500}$/.test(value);
 }
 
 function runCase(candidate: ProductionBoundaryCaseV1): ProductionBoundaryResultV1 {

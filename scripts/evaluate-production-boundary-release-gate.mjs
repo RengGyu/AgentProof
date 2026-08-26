@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { deriveBoundaryReferenceV2 } from "./evidence-release-reference-policy-v2.mjs";
 
 const UNKNOWN = "UNKNOWN";
 const MAX_ORACLE_BYTES = 131_072;
@@ -22,7 +23,8 @@ const ORIGINS = new Set(["github_snapshot", "pasted_evidence", "demo", "none"]);
 const OWNERSHIP = new Set(["associated", "local", "unknown"]);
 const POSITIVE_OWNERSHIP = new Set(["associated", "local"]);
 
-export function evaluateProductionBoundaryReleaseGate({ oracle, candidates }) {
+/** Development-only V1 comparator. The release CLI never calls this path. */
+export function evaluateProductionBoundaryReleaseGateV1({ oracle, candidates }) {
   if (!isOracleCorpus(oracle) || !isCandidateCorpus(candidates)) return unknownResult();
   const candidateById = new Map();
   for (const candidate of candidates.cases) {
@@ -72,6 +74,51 @@ export function evaluateProductionBoundaryReleaseGate({ oracle, candidates }) {
   };
 }
 
+/**
+ * Release-only V2 comparison. The expected boundary result is derived from
+ * the sealed corpus in memory, not read from a manually authored oracle.
+ */
+export function evaluateProductionBoundaryReleaseGateV2({ cases, seal, candidates }) {
+  const reference = deriveBoundaryReferenceV2(cases, seal);
+  if (!reference || !isCandidateCorpusV2(candidates, new Set(reference.cases.map((item) => item.caseId)))) return unknownResult();
+  const candidatesById = new Map(candidates.cases.map((item) => [item.caseId, item]));
+  const candidateCases = reference.cases.map((item) => candidatesById.get(item.caseId));
+  if (candidateCases.some((item) => !item)) return unknownResult();
+
+  let untrustedActiveV2AcceptanceCount = 0;
+  let pastedEvidenceGithubAuthorityCount = 0;
+  let falseBoundaryLocalPositiveCount = 0;
+  let boundaryPrivacyLeakCount = 0;
+  let boundaryStructuralMismatchCount = 0;
+
+  for (let index = 0; index < reference.cases.length; index += 1) {
+    const expected = reference.cases[index].reference;
+    const candidate = candidateCases[index];
+    if (expected.disposition === "rejected" && candidate.disposition === "accepted") untrustedActiveV2AcceptanceCount += 1;
+    if (expected.disposition === "accepted" && expected.provenanceOrigin !== "github_snapshot" && candidate.provenanceOrigin === "github_snapshot") {
+      pastedEvidenceGithubAuthorityCount += 1;
+    }
+    for (const axis of AXIS_KEYS) {
+      if (expected.localAxisStates[axis] !== "satisfied" && candidate.localAxisStates[axis] === "satisfied") {
+        falseBoundaryLocalPositiveCount += 1;
+      }
+    }
+    if (!POSITIVE_OWNERSHIP.has(expected.requirementLocalCiOwnership) && POSITIVE_OWNERSHIP.has(candidate.requirementLocalCiOwnership)) {
+      falseBoundaryLocalPositiveCount += 1;
+    }
+    boundaryPrivacyLeakCount += candidate.leakCount;
+    if (!sameResult(expected, candidate)) boundaryStructuralMismatchCount += 1;
+  }
+
+  return {
+    untrustedActiveV2AcceptanceCount,
+    pastedEvidenceGithubAuthorityCount,
+    falseBoundaryLocalPositiveCount,
+    boundaryPrivacyLeakCount,
+    boundaryStructuralMismatchCount
+  };
+}
+
 export function productionBoundaryReleaseGatePasses(result) {
   return hasExactKeys(result, METRIC_KEYS) && METRIC_KEYS.every((key) => result[key] === 0);
 }
@@ -87,6 +134,17 @@ function isCandidateCorpus(value) {
   return serializedBytes(value) <= MAX_CANDIDATE_BYTES && hasExactKeys(value, ["version", "cases"]) && value.version === 1 &&
     Array.isArray(value.cases) && value.cases.length > 0 && value.cases.length <= MAX_CASES && value.cases.every((item) =>
       hasExactKeys(item, RESULT_KEYS) && isOpaqueId(item.caseId) && isResultFields(item));
+}
+
+function isCandidateCorpusV2(value, caseIds) {
+  if (serializedBytes(value) > MAX_CANDIDATE_BYTES || !hasExactKeys(value, ["version", "cases"]) || value.version !== 2 ||
+    !Array.isArray(value.cases) || value.cases.length !== caseIds.size) return false;
+  const seen = new Set();
+  for (const item of value.cases) {
+    if (!hasExactKeys(item, RESULT_KEYS) || !isOpaqueId(item.caseId) || !caseIds.has(item.caseId) || seen.has(item.caseId) || !isResultFields(item)) return false;
+    seen.add(item.caseId);
+  }
+  return true;
 }
 
 function isExpected(value) {
@@ -128,17 +186,18 @@ function serializedBytes(value) {
 }
 
 function parseCliPaths(argv) {
-  if (argv.length !== 4) return null;
+  if (argv.length !== 6) return null;
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const path = argv[index + 1];
-    if ((flag !== "--oracle" && flag !== "--candidates") || typeof path !== "string" || path.length === 0 || values.has(flag)) return null;
+    if ((flag !== "--cases" && flag !== "--seal" && flag !== "--candidates") || typeof path !== "string" || path.length === 0 || values.has(flag)) return null;
     values.set(flag, path);
   }
-  const oracle = values.get("--oracle");
+  const cases = values.get("--cases");
+  const seal = values.get("--seal");
   const candidates = values.get("--candidates");
-  return oracle && candidates ? { oracle, candidates } : null;
+  return cases && seal && candidates ? { cases, seal, candidates } : null;
 }
 
 function readJson(path, maxBytes) {
@@ -152,8 +211,9 @@ function runCli() {
   try {
     const paths = parseCliPaths(process.argv.slice(2));
     if (paths) {
-      result = evaluateProductionBoundaryReleaseGate({
-        oracle: readJson(paths.oracle, MAX_ORACLE_BYTES),
+      result = evaluateProductionBoundaryReleaseGateV2({
+        cases: readJson(paths.cases, MAX_CANDIDATE_BYTES),
+        seal: readJson(paths.seal, MAX_ORACLE_BYTES),
         candidates: readJson(paths.candidates, MAX_CANDIDATE_BYTES)
       });
     }
