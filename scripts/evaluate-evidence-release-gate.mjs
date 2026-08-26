@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { deriveEvidenceReferenceV2 } from "./evidence-release-reference-policy-v2.mjs";
 
 const UNKNOWN = "UNKNOWN";
 const POSITIVE_AXIS_STATE = "satisfied";
@@ -21,6 +22,8 @@ const METRICS_WITH_FAILURE_STAGE_KEYS = [...METRICS_KEYS, "failureStage"];
 const PARTIAL_METRICS_WITH_FAILURE_STAGE_KEYS = [...PARTIAL_METRICS_KEYS, "failureStage"];
 const GITHUB_METRICS_KEYS = ["requests", "pages", "retries"];
 const FAILURE_STAGES = new Set(["report_generation", "requirement_projection", "privacy_projection"]);
+const V2_AXIS_SUBJECTS = new Set(["implementation", "documentation", "ci_configuration", "targeted_test", "execution", "visual", "interaction"]);
+const V2_RECEIPT_ID = /^receipt_[a-z0-9]{8}$/;
 
 /**
  * Compares a single opaque oracle case with its candidate result. This
@@ -62,7 +65,7 @@ export function diffEvidenceReleaseCase(oracleCase, candidateCase) {
  * opaque receipt handles for ownership checks; no identifiers or diffs are
  * returned here.
  */
-export function evaluateEvidenceReleaseGate({ oracle, candidates }) {
+export function evaluateEvidenceReleaseGateV1({ oracle, candidates }) {
   if (!isValidOracleCorpus(oracle)) return unavailableReleaseGateResult();
 
   const oracleCases = arrayOrEmpty(oracle?.cases);
@@ -98,6 +101,103 @@ export function evaluateEvidenceReleaseGate({ oracle, candidates }) {
     githubRetryCount: percentileMetric(candidateCases, (metrics) => metrics.github?.retries),
     providerCallCount: sumMetric(candidateCases, (metrics) => metrics.providerCallCount)
   };
+}
+
+/** Release-only V2 evaluator. Its reference is derived, never supplied. */
+export function evaluateEvidenceReleaseGateV2({ cases, seal, candidates }) {
+  const reference = deriveEvidenceReferenceV2(cases, seal);
+  if (!reference || !isValidCandidateCorpusV2(candidates, new Set(reference.cases.map((item) => item.caseId)))) return unavailableReleaseGateResult();
+  const byId = new Map(candidates.cases.map((item) => [item.caseId, item]));
+  const candidateCases = reference.cases.map((item) => byId.get(item.caseId));
+  const complete = candidateCases.every(Boolean);
+  if (!complete) return unavailableReleaseGateResult();
+  const structuralMismatchCount = reference.cases.reduce((count, item, index) =>
+    count + (sameJsonValue(item.reference.contract, candidateCases[index].actual.contract) &&
+      sameJsonValue(referenceObjectivesV2(item.reference.objectives), candidateCases[index].actual.objectives) &&
+      validV2Ownership(candidateCases[index].actual) ? 0 : 1), 0);
+  const receiptReuse = countV2ReceiptReuse(candidateCases);
+  const privacyLeak = countV2PrivacyLeaks(candidateCases);
+  const localCi = candidateCases.reduce((count, item) => count + item.actual.criterionLocalCi.length, 0);
+  return {
+    totalCases: reference.cases.length,
+    structuralMismatchCount,
+    falseSupportedCount: countV2FalseSupported(reference.cases, candidateCases),
+    falseRequirementLocalCiAssociationCount: localCi,
+    crossRequirementReceiptReuseCount: receiptReuse,
+    privacyLeakCount: privacyLeak,
+    unexpectedFailure: booleanMetric(candidateCases, (metrics) => metrics.unexpectedFailure),
+    durationMs: percentileMetric(candidateCases, (metrics) => metrics.durationMs),
+    githubRequestCount: percentileMetric(candidateCases, (metrics) => metrics.github?.requests),
+    githubPageCount: percentileMetric(candidateCases, (metrics) => metrics.github?.pages),
+    githubRetryCount: percentileMetric(candidateCases, (metrics) => metrics.github?.retries),
+    providerCallCount: sumMetric(candidateCases, (metrics) => metrics.providerCallCount)
+  };
+}
+
+function referenceObjectivesV2(objectives) {
+  return objectives.map((objective) => ({ ...objective, criteria: objective.criteria.map(({ requirementId, ...criterion }) => criterion) }));
+}
+
+function countV2FalseSupported(referenceCases, candidateCases) {
+  let count = 0;
+  for (let index = 0; index < referenceCases.length; index += 1) {
+    const expected = referenceObjectivesV2(referenceCases[index].reference.objectives);
+    const actual = candidateCases[index].actual.objectives;
+    for (let objectiveIndex = 0; objectiveIndex < Math.min(expected.length, actual.length); objectiveIndex += 1) {
+      for (let criterionIndex = 0; criterionIndex < Math.min(expected[objectiveIndex].criteria.length, actual[objectiveIndex].criteria.length); criterionIndex += 1) {
+        if (expected[objectiveIndex].criteria[criterionIndex].state !== "satisfied" && actual[objectiveIndex].criteria[criterionIndex].state === "satisfied") count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+function isValidCandidateCorpusV2(value, caseIds) {
+  if (!hasExactKeys(value, ["version", "cases"]) || value.version !== 2 || !Array.isArray(value.cases) || value.cases.length !== caseIds.size) return false;
+  const seen = new Set();
+  return value.cases.every((item) => {
+    if (!hasExactKeys(item, ["version", "caseId", "actual", "metrics"]) || item.version !== 2 || !hasText(item.caseId) || seen.has(item.caseId) || !caseIds.has(item.caseId) || !isValidActualV2(item.actual) || !isValidMetrics(item.metrics)) return false;
+    seen.add(item.caseId); return true;
+  });
+}
+
+function isValidActualV2(value) {
+  return hasExactKeys(value, ["contract", "objectives", "axes", "receipts", "criterionLocalCi", "projection"]) &&
+    hasExactKeys(value.contract, ["sourceKind", "state"]) && ["linked_issue", "provided_requirement", "pr_description"].includes(value.contract.sourceKind) && ["authoritative", "author_claim"].includes(value.contract.state) &&
+    Array.isArray(value.objectives) && value.objectives.length > 0 && value.objectives.every((objective) => hasExactKeys(objective, ["requirementId", "outcome", "criteria"]) && hasText(objective.requirementId) && ["met", "partial", "missing", "unclear"].includes(objective.outcome) && Array.isArray(objective.criteria) && objective.criteria.length > 0 && objective.criteria.every((criterion) => hasExactKeys(criterion, ["criterionId", "capability", "requiredEvidence", "state"]) && hasText(criterion.criterionId) && ["documentation_literal", "path_change_absence", "test_case", "workflow_job", "return_value"].includes(criterion.capability) && Array.isArray(criterion.requiredEvidence) && criterion.requiredEvidence.every(hasText) && ["satisfied", "violated", "unavailable"].includes(criterion.state))) &&
+    Array.isArray(value.axes) && Array.isArray(value.receipts) && Array.isArray(value.criterionLocalCi) && hasExactKeys(value.projection, PROJECTION_KEYS) && isNonNegativeInteger(value.projection.privateReceiptLeakCount) && validV2Ownership(value);
+}
+
+function validV2Ownership(actual) {
+  const criterionOwner = new Map();
+  const objectiveIds = new Set();
+  for (const objective of actual.objectives ?? []) for (const criterion of objective.criteria ?? []) {
+    if (criterionOwner.has(criterion.criterionId)) return false;
+    criterionOwner.set(criterion.criterionId, objective.requirementId);
+    objectiveIds.add(objective.requirementId);
+  }
+  const criteria = new Map(actual.objectives.flatMap((objective) => objective.criteria.map((criterion) => [criterion.criterionId, criterion])));
+  return actual.axes.every((axis) => {
+    if (!hasExactKeys(axis, axis.role === "criterion" ? ["requirementId", "criterionId", "role", "subject", "state"] : ["requirementId", "role", "subject", "state"]) || !objectiveIds.has(axis.requirementId) || !V2_AXIS_SUBJECTS.has(axis.subject) || !["satisfied", "violated", "incomplete"].includes(axis.state)) return false;
+    if (axis.role === "observation") return true;
+    const criterion = criteria.get(axis.criterionId);
+    return axis.role === "criterion" && criterionOwner.get(axis.criterionId) === axis.requirementId && criterion.requiredEvidence.includes(axis.subject) &&
+      !(criterion.state === "unavailable" && axis.subject === "execution" && axis.state === "satisfied");
+  }) && actual.receipts.every((receipt) => hasExactKeys(receipt, receipt.criterionId === undefined ? ["id", "requirementId", "kind"] : ["id", "requirementId", "criterionId", "kind"]) && V2_RECEIPT_ID.test(receipt.id) && objectiveIds.has(receipt.requirementId) && ["test", "execution"].includes(receipt.kind) && (receipt.criterionId === undefined || criterionOwner.get(receipt.criterionId) === receipt.requirementId)) &&
+    actual.criterionLocalCi.every((item) => hasExactKeys(item, ["requirementId", "criterionId", "association"]) && criterionOwner.get(item.criterionId) === item.requirementId && ["local", "associated"].includes(item.association));
+}
+
+function countV2ReceiptReuse(candidateCases) {
+  const counts = new Map();
+  for (const candidate of candidateCases) for (const receipt of candidate.actual.receipts) {
+    counts.set(receipt.id, (counts.get(receipt.id) ?? 0) + 1);
+  }
+  return [...counts.values()].reduce((count, value) => count + Math.max(0, value - 1), 0);
+}
+
+function countV2PrivacyLeaks(candidateCases) {
+  if (candidateCases.some((item) => FAILURE_STAGES.has(item.metrics.failureStage))) return UNKNOWN;
+  return candidateCases.reduce((count, item) => count + item.actual.projection.privateReceiptLeakCount, 0);
 }
 
 /**
@@ -465,10 +565,10 @@ function readArguments(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const name = argv[index];
     const value = argv[index + 1];
-    if ((name !== "--oracle" && name !== "--candidates") || !value) return null;
+    if ((name !== "--cases" && name !== "--seal" && name !== "--candidates") || !value || values.has(name)) return null;
     values.set(name, value);
   }
-  return values.has("--oracle") && values.has("--candidates") ? values : null;
+  return values.size === 3 && values.has("--cases") && values.has("--seal") && values.has("--candidates") ? values : null;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -476,9 +576,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const args = readArguments(process.argv.slice(2));
     if (!args) throw new Error("invalid arguments");
-    const oracle = JSON.parse(readFileSync(args.get("--oracle"), "utf8"));
+    const cases = JSON.parse(readFileSync(args.get("--cases"), "utf8"));
+    const seal = JSON.parse(readFileSync(args.get("--seal"), "utf8"));
     const candidates = JSON.parse(readFileSync(args.get("--candidates"), "utf8"));
-    result = evaluateEvidenceReleaseGate({ oracle, candidates });
+    result = evaluateEvidenceReleaseGateV2({ cases, seal, candidates });
   } catch {
     result = unavailableReleaseGateResult();
   }
