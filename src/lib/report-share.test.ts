@@ -3,7 +3,7 @@ import { reportToMarkdown } from "./markdown";
 import { buildShareUrl, decodeSharedReport, encodeReportForShare, sanitizeReportForShare, SUMMARY_ONLY_LIMITATION } from "./report-share";
 import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
-import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { ProofGraph, PublicProofGraph } from "./types";
 
 const PLANNER_INPUT_HASH = "0123456789abcdef".repeat(4);
@@ -164,6 +164,128 @@ describe("report share", () => {
     expect((envelope.verificationContract as Record<string, unknown>).gaps).toBeUndefined();
     expect(JSON.stringify(decoded)).not.toContain("verificationBindingDigest");
     expect(validateVerificationReport(decoded, { mode: "v2_summary" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("redacts a secret-like v2 criterion label before portable sharing", () => {
+    const secret = "ghp_abcdefghijklmnopqrstuvwxyz123456";
+    const contract = {
+      version: 2 as const,
+      scope: "complete_objective_set" as const,
+      objectives: [{
+        id: "reset_docs",
+        objective: "Document the local reset command.",
+        criteria: [{
+          id: "reset_literal",
+          type: "artifact" as const,
+          label: `Do not share ${secret}.`,
+          paths: ["docs/reset.md"],
+          artifact: { kind: "documentation_literal" as const, literal: "Run npm test." }
+        }]
+      }]
+    };
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Document reset",
+        description: "",
+        taskText: "Document the local reset command.",
+        taskSource: "issue",
+        changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }],
+        checks: [],
+        logs: []
+      },
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:share-redaction",
+        sourceContent: JSON.stringify(contract),
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    const payload = encodeReportForShare(report);
+    const envelope = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+    const decoded = decodeSharedReport(payload);
+    const sanitized = sanitizeReportForShare(report);
+    const serialized = JSON.stringify({ envelope, decoded, sanitized });
+
+    expect(serialized).not.toContain(secret);
+    expect(serialized).toContain("[redacted]");
+  });
+
+  it.each([
+    ["test_case", {
+      id: "visibility_test_case",
+      type: "artifact",
+      label: "The visibility test case passes.",
+      paths: ["test/repository-visibility.test.js"],
+      artifact: { kind: "test_case", testId: "repository visibility private path" }
+    }],
+    ["workflow_job", {
+      id: "visibility_workflow",
+      type: "artifact",
+      label: "The visibility workflow job passes.",
+      paths: [".github/workflows/ci.yml"],
+      artifact: { kind: "workflow_job", workflowName: "CI", jobName: "test" }
+    }],
+    ["return_value", {
+      id: "visibility_return_value",
+      type: "return_value",
+      label: "The visibility helper returns the expected value.",
+      adapter: {
+        id: "node_export_scalar.v1",
+        modulePath: "src/repositories/repository-visibility.js",
+        exportName: "repositoryVisibilityLabel",
+        moduleFormat: "esm"
+      },
+      cases: [{ id: "private", input: true, expected: "Private repository" }]
+    }]
+  ])("rejects a portable v2 payload that upgrades %s to satisfied", (_kind, criterion) => {
+    const contract = {
+      version: 2 as const,
+      scope: "complete_objective_set" as const,
+      objectives: [{
+        id: "visibility_tests",
+        objective: "Cover repository visibility.",
+        criteria: [criterion]
+      }]
+    };
+    const report = generateVerificationReportV2({
+      input: {
+        title: "Cover repository visibility",
+        description: "",
+        taskText: "Cover repository visibility.",
+        taskSource: "issue",
+        changedFiles: [{ path: "test/repository-visibility.test.js", status: "modified", patch: "+test" }],
+        checks: [],
+        logs: []
+      },
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:summary-deferred-upgrade",
+        sourceContent: JSON.stringify(contract),
+        headSha: "c".repeat(40),
+        baseSha: "d".repeat(40)
+      }
+    });
+    const envelope = JSON.parse(Buffer.from(encodeReportForShare(report), "base64url").toString("utf8")) as Record<string, unknown>;
+    const requirement = (envelope.requirements as Array<Record<string, unknown>>)[0]!;
+    const objective = ((envelope.verificationContract as Record<string, unknown>).objectives as Array<Record<string, unknown>>)[0]!;
+    const result = (objective.criterionResults as Array<Record<string, unknown>>)[0]!;
+    const axisIds = result.proofAxisRefs as string[];
+
+    requirement.status = "met";
+    result.state = "satisfied";
+    result.evidenceRefs = [];
+    result.gapKinds = [];
+    for (const axis of requirement.proofAxes as Array<Record<string, unknown>>) {
+      if (axisIds.includes(axis.axisId as string)) axis.state = "satisfied";
+    }
+
+    const forgedPayload = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+
+    expect(() => decodeSharedReport(forgedPayload)).toThrow("Shared report payload failed summary validation.");
   });
 
   it("emits an exact version-3 envelope with neutral hashless planning provenance", () => {

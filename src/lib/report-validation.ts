@@ -711,6 +711,10 @@ function validateVerificationContractV2(
         // Portable summaries deliberately remove all evidence references. They
         // remain explicitly unverified and cannot pass the full/private mode.
         if (mode === "v2_summary") {
+          if (criterion.type === "return_value" ||
+            (criterion.type === "artifact" && criterion.artifactKind !== "documentation_literal")) {
+            errors.push(`${path}.criterionResults[${criterionIndex}] summary cannot claim a deferred criterion is satisfied.`);
+          }
           if (!Array.isArray(result.evidenceRefs) || result.evidenceRefs.length !== 0) {
             errors.push(`${path}.criterionResults[${criterionIndex}] summary evidence references must be omitted.`);
           }

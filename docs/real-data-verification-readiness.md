@@ -2,12 +2,12 @@
 
 ## Decision boundary
 
-Status: `CANDIDATE_COMMIT_REQUIRED`.
+Status: `CANDIDATE_REVIEW_AND_EVALUATION_REQUIRED`.
 
-The current worktree has local engineering evidence, but no immutable candidate
-commit, exact-SHA independent review, or deployment evidence. A real-data check
-remains `NO_GO` until an authorized commit exists and a release operator
-confirms that the deployed SHA is that commit. This document prepares a
+An immutable candidate commit exists, but the exact candidate SHA still needs
+independent review, protected holdout evaluation, and deployment evidence. A
+real-data check remains `NO_GO` until those gates pass and a release operator
+confirms that the deployed SHA is that candidate. This document prepares a
 controlled live check; it is not evidence that one has run.
 
 AgentProof remains an evidence-report product. The live check must not enable

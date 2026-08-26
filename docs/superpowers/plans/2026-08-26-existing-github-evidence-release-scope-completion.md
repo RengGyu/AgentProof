@@ -60,7 +60,12 @@
   passed.
 - GitHub/provenance/runtime/privacy/output focused pack — exit 0; 7 files,
   168 passed.
-- Final `pnpm test` — exit 0; 163 files, 2,214 passed, 2 skipped.
+- TDD RED: a portable v2 criterion label retained a secret-like value in the
+  share envelope, decoded report, and sanitized report.
+- TDD RED: a forged portable v2 payload could upgrade each deferred criterion
+  to `satisfied` and its requirement to `met`.
+- Share/privacy follow-up focused pack — exit 0; 3 files, 124 passed.
+- Latest `pnpm test` — exit 0; 163 files, 2,218 passed, 2 skipped.
 - Final `pnpm typecheck` — exit 0.
 - Final `pnpm lint` — exit 0.
 - Final `pnpm build` — exit 0; production build and 56 static pages generated.
@@ -90,6 +95,11 @@
 - Existing share, storage, Markdown, Slack, runtime-authority, and mixed
   pasted/live provenance regressions passed in the 168-test focused pack and
   the full suite.
+- Portable v2 criterion labels now use the existing secret redactor in every
+  encoded, decoded, and sanitized share projection.
+- Portable v2 summaries reject forged `satisfied` states for `test_case`,
+  `workflow_job`, and `return_value`; only the approved static kinds retain the
+  existing portable-summary behavior.
 - No new raw source, artifact payload, log, token, receipt, or workflow tuple is
   persisted or added to a reduced projection by this change.
 - Fresh live production leakage evidence remains `UNKNOWN` until deployment
@@ -102,10 +112,11 @@
   (scope 35, safety 30, regression evidence 25, handoff clarity 10). This score
   is not release evidence.
 - Release decision: `NO_GO`.
-- Candidate status: `CANDIDATE_COMMIT_REQUIRED`; the current worktree has no
-  immutable SHA, so its local results cannot be release evidence for a later
-  commit.
+- Candidate status: `CANDIDATE_REVIEW_AND_EVALUATION_REQUIRED`; an exact SHA
+  must be checked by CI after every follow-up commit, then reviewed and
+  evaluated before deployment.
 - Still `UNKNOWN`: protected holdout result for the exact candidate SHA,
-  exact-head GitHub CI, independent review, deployment state, credentialed
-  production smoke, and live latency/failure metrics.
-- No commit, push, deployment, or production configuration change was made.
+  exact-head GitHub CI for the follow-up candidate, deployment state,
+  credentialed production smoke, and live latency/failure metrics.
+- The branch may be committed and pushed as a PR candidate, but it must not be
+  merged or deployed until the remaining gates are directly evidenced.

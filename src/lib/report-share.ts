@@ -236,7 +236,10 @@ function portableVerificationContract(contract: VerificationContractReportV2): O
     ...structuredClone(portable),
     objectives: portable.objectives.map((objective) => ({
       ...objective,
-      criteria: objective.criteria.map((criterion) => ({ ...criterion })),
+      criteria: objective.criteria.map((criterion) => ({
+        ...criterion,
+        label: redactSecrets(criterion.label)
+      })),
       criterionResults: objective.criterionResults.map((result) => ({
         ...result,
         proofAxisRefs: [...result.proofAxisRefs],
