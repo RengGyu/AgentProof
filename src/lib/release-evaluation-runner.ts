@@ -6,7 +6,7 @@ import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
 import { prepareTenantDetailReportForStorage } from "./server-report-store";
 import { projectTenantPersistedReport, validateTenantPersistedReport } from "./tenant-report-validation";
-import type { PullRequestInput, RequirementFinding, VerificationReport } from "./types";
+import type { PullRequestInput, RequirementFinding, VerificationReport, VerificationReportV2 } from "./types";
 import { generateVerificationReportV2FromInput } from "./verifier";
 import {
   RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2,
@@ -62,7 +62,13 @@ export interface ReleaseCandidateResultV1 {
     requirements: ReleaseCandidateRequirementResultV1[];
     projection: { privateReceiptLeakCount: number };
   };
-  metrics: { unexpectedFailure: boolean; durationMs: number; failureStage?: ReleaseCandidateFailureStage };
+  metrics: {
+    unexpectedFailure: boolean;
+    durationMs: number;
+    github: { requests: number; pages: number; retries: number };
+    providerCallCount: number;
+    failureStage?: ReleaseCandidateFailureStage;
+  };
 }
 
 export interface ReleaseCandidateResultCorpusV1 {
@@ -149,12 +155,17 @@ function runCandidateCase(candidate: ReleaseCandidateCaseV1, nextReceiptHandle: 
       version: 1,
       caseId: candidate.caseId,
       actual: {
-        sourceKind: report.analysisContext ?? "provided_requirement",
+        sourceKind: releaseSourceKind(report),
         authority: report.requirements[0]?.sourceAuthority ?? "authoritative",
         requirements,
         projection: { privateReceiptLeakCount }
       },
-      metrics: { unexpectedFailure: false, durationMs: performance.now() - startedAt }
+      metrics: {
+        unexpectedFailure: false,
+        durationMs: performance.now() - startedAt,
+        github: { requests: 0, pages: 0, retries: 0 },
+        providerCallCount: 0
+      }
     };
   } catch {
     return failedCandidateCase(candidate, performance.now() - startedAt, failureStage);
@@ -189,6 +200,7 @@ function safeAxisStates(
     execution: "incomplete"
   };
   for (const axis of requirement.proofAxes ?? []) {
+    if (axis.role === "criterion" && axis.subject === "implementation") continue;
     if (axis.subject === "implementation" || axis.subject === "targeted_test" || axis.subject === "execution") {
       states[axis.subject] = axis.state;
     }
@@ -196,6 +208,12 @@ function safeAxisStates(
   if (testReceiptCount === 0 && states.targeted_test === "satisfied") states.targeted_test = "incomplete";
   if (executionReceiptCount === 0 && states.execution === "satisfied") states.execution = "incomplete";
   return states;
+}
+
+function releaseSourceKind(report: VerificationReport): string {
+  const contract = (report as Partial<VerificationReportV2>).verificationContract;
+  if (contract?.state === "authoritative" && contract.source) return contract.source.kind;
+  return report.analysisContext ?? "provided_requirement";
 }
 
 function localCiAssociation(requirement: RequirementFinding): "associated" | "local" | "unknown" {
@@ -297,7 +315,13 @@ function failedCandidateCase(
       })),
       projection: { privateReceiptLeakCount: 1 }
     },
-    metrics: { unexpectedFailure: true, durationMs, failureStage }
+    metrics: {
+      unexpectedFailure: true,
+      durationMs,
+      github: { requests: 0, pages: 0, retries: 0 },
+      providerCallCount: 0,
+      failureStage
+    }
   };
 }
 

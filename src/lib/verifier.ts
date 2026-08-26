@@ -1818,7 +1818,15 @@ function guardPastedRequirementProof(
   const hasBoundedObservation = axes.some((axis) => axis.evidenceRefs.length > 0);
   for (const axis of axes) {
     axis.state = "incomplete";
-    if (axis.subject === "execution") axis.evidenceRefs = [];
+    if (axis.polarity === "absent") {
+      axis.collectionBasis = "incomplete_changed_file_inventory";
+    } else if (axis.collectionBasis === "complete_changed_file_inventory") {
+      axis.collectionBasis = "incomplete_changed_file_inventory";
+    }
+    if (axis.subject === "execution") {
+      axis.evidenceRefs = [];
+      delete axis.collectionBasis;
+    }
   }
 
   return {

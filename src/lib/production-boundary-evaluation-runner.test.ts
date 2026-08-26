@@ -327,6 +327,54 @@ describe("production boundary evaluation runner", () => {
     }
   }));
 
+  it("keeps pasted absence-axis state and collection basis invariant-compatible", () => {
+    const contract = {
+      version: 2 as const,
+      scope: "complete_objective_set" as const,
+      objectives: [{
+        id: "runtime_scope",
+        objective: "Do not modify runtime code.",
+        criteria: [{
+          id: "runtime_absence",
+          type: "absence" as const,
+          label: "No runtime path changes.",
+          prohibitedKind: "path_change" as const,
+          scope: [{ kind: "prefix" as const, path: "src/runtime/" }]
+        }]
+      }]
+    };
+    const sourceContent = JSON.stringify(contract);
+    const input: PullRequestInput = {
+      ...liveInput(),
+      taskText: "Acceptance criteria: do not change implementation code.",
+      verificationContractSourceV2: { kind: "provided_requirement", contract },
+      verificationContractBindingV2: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "synthetic:boundary:absence",
+        sourceContent,
+        headSha: HEAD_SHA,
+        baseSha: BASE_SHA
+      }
+    };
+
+    const result = runProductionBoundaryCorpusV1({
+      version: 1,
+      cases: [{
+        version: 1,
+        kind: "pasted_merge",
+        caseId: opaqueCaseId("pasted absence invariant"),
+        liveInput: input,
+        pastedOverride: { changedFiles: "src/runtime/changed.ts" }
+      }]
+    });
+
+    expect(result.cases[0]).toMatchObject({
+      disposition: "accepted",
+      provenanceOrigin: "pasted_evidence",
+      localAxisStates: { implementation: "incomplete" }
+    });
+  });
+
   it.each([
     ["merge", () => vi.mocked(mergePastedEvidenceForAnalysis).mockImplementationOnce(() => { throw new Error("synthetic merge failure"); })],
     ["generation", () => vi.mocked(generateVerificationReportV2FromInput).mockImplementationOnce(() => { throw new Error("synthetic generation failure"); })],

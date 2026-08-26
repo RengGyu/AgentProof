@@ -78,13 +78,70 @@ describe("release evaluation candidate runner", () => {
     try {
       const result = runReleaseCandidateCorpusV1(staticCapabilityDevelopmentCorpus());
 
-      expect(result.cases[0]!.actual.requirements.map((requirement) => requirement.outcome)).toEqual(["met", "met"]);
+      expect(result.cases[0]!.actual.requirements.map((requirement) => requirement.outcome)).toEqual(["met", "met", "unclear"]);
+      expect(result.cases[0]!.actual.requirements[1]!.axisStates.implementation).toBe("violated");
+      expect(result.cases[0]!.actual.requirements[2]!.axisStates.targeted_test).toBe("incomplete");
+      expect(result.cases[0]!.metrics).toMatchObject({
+        github: { requests: 0, pages: 0, retries: 0 },
+        providerCallCount: 0
+      });
       expect(process.env[capabilityKey]).toBe("test_case");
       expect(mutations).toEqual([]);
     } finally {
       process.env = originalEnv;
       restoreEnv(capabilityKey, previousCapabilities);
     }
+  });
+
+  it("keeps a PR-description author claim in the report source vocabulary", () => {
+    const corpus = staticCapabilityDevelopmentCorpus();
+    const input = corpus.cases[0]!.input;
+    const contractSource = input.verificationContractSourceV2;
+    if (contractSource?.kind !== "provided_requirement") throw new Error("Expected the development contract fixture.");
+    const sourceContent = [
+      "## AgentProof verification",
+      "",
+      "```agentproof-verification",
+      JSON.stringify(contractSource.contract),
+      "```"
+    ].join("\n");
+    input.verificationContractSourceV2 = {
+      kind: "pr_description",
+      title: "AgentProof verification contract",
+      body: sourceContent
+    };
+    input.verificationContractBindingV2 = {
+      ...input.verificationContractBindingV2!,
+      sourceKind: "pr_description",
+      sourceContent
+    };
+
+    const result = runReleaseCandidateCorpusV1(corpus);
+
+    expect(result.cases[0]!.actual.sourceKind).toBe("unlinked_pr");
+  });
+
+  it("uses report source vocabulary when a PR-description contract is invalid", () => {
+    const corpus = staticCapabilityDevelopmentCorpus();
+    const input = corpus.cases[0]!.input;
+    input.taskSource = undefined;
+    input.taskText = "";
+    input.description = "Acceptance criteria: document the local reset command.";
+    input.verificationContractSourceV2 = {
+      kind: "pr_description",
+      title: "AgentProof verification contract",
+      body: "This description does not contain a typed verification contract."
+    };
+    input.verificationContractBindingV2 = {
+      ...input.verificationContractBindingV2!,
+      sourceKind: "pr_description",
+      sourceContent: input.verificationContractSourceV2.body
+    };
+    corpus.cases[0]!.requirementOrdinals = [0];
+
+    const result = runReleaseCandidateCorpusV1(corpus);
+
+    expect(result.cases[0]!.actual.sourceKind).toBe("unlinked_pr");
   });
 
   it("prepares a valid private-free tenant projection with an explicit signing secret", () => {
@@ -283,13 +340,24 @@ function staticCapabilityDevelopmentCorpus(): ReleaseCandidateCorpusV1 {
       },
       {
         id: "runtime_scope",
-        objective: "Do not modify runtime code.",
+        objective: "Preserve the declared runtime scope.",
         criteria: [{
           id: "no_runtime_change",
           type: "absence",
           label: "No runtime path changes.",
           prohibitedKind: "path_change",
           scope: [{ kind: "prefix", path: "src/runtime/" }]
+        }]
+      },
+      {
+        id: "targeted_test",
+        objective: "Add a targeted regression test.",
+        criteria: [{
+          id: "targeted_case",
+          type: "artifact",
+          label: "The exact targeted test case is present.",
+          paths: ["test/reset.test.ts"],
+          artifact: { kind: "test_case", testId: "reset command regression" }
         }]
       }
     ]
@@ -326,7 +394,7 @@ function staticCapabilityDevelopmentCorpus(): ReleaseCandidateCorpusV1 {
   };
   return {
     version: 1,
-    cases: [{ version: 1, caseId: "opaque-static-capabilities", input, requirementOrdinals: [0, 1] }]
+    cases: [{ version: 1, caseId: "opaque-static-capabilities", input, requirementOrdinals: [0, 1, 2] }]
   };
 }
 

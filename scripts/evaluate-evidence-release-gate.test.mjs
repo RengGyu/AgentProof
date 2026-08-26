@@ -338,7 +338,7 @@ describe("evaluate-evidence-release-gate", () => {
         cwd: new URL("../", import.meta.url).pathname,
         encoding: "utf8"
       });
-      assert.equal(evaluator.status, 1, evaluator.stderr);
+      assert.equal(evaluator.status, 0, evaluator.stderr);
       assert.equal(JSON.parse(evaluator.stdout.split("\n").find((line) => line.startsWith("{"))).totalCases, 1);
       assert.ok(!evaluator.stdout.includes(caseId));
 
