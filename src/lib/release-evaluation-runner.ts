@@ -8,6 +8,10 @@ import { prepareTenantDetailReportForStorage } from "./server-report-store";
 import { projectTenantPersistedReport, validateTenantPersistedReport } from "./tenant-report-validation";
 import type { PullRequestInput, RequirementFinding, VerificationReport } from "./types";
 import { generateVerificationReportV2FromInput } from "./verifier";
+import {
+  RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2,
+  type VerificationCapabilityV2
+} from "./verification-capability-policy-v2";
 
 const PRIVATE_RECEIPT_COLLECTION_KEYS = new Set([
   "sourceBindings",
@@ -19,6 +23,13 @@ const PRIVATE_RECEIPT_COLLECTION_KEYS = new Set([
 ]);
 const MAX_RELEASE_CANDIDATE_REQUIREMENTS = 12;
 export const MAX_RELEASE_CANDIDATE_INPUT_BYTES = 400_000;
+export const RELEASE_CANDIDATE_FAILURE_STAGES = [
+  "report_generation",
+  "requirement_projection",
+  "privacy_projection"
+] as const;
+export type ReleaseCandidateFailureStage = (typeof RELEASE_CANDIDATE_FAILURE_STAGES)[number];
+const RELEASE_CAPABILITIES = new Set<VerificationCapabilityV2>(RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2);
 
 export interface ReleaseCandidateCaseV1 {
   version: 1;
@@ -51,7 +62,7 @@ export interface ReleaseCandidateResultV1 {
     requirements: ReleaseCandidateRequirementResultV1[];
     projection: { privateReceiptLeakCount: number };
   };
-  metrics: { unexpectedFailure: boolean; durationMs: number };
+  metrics: { unexpectedFailure: boolean; durationMs: number; failureStage?: ReleaseCandidateFailureStage };
 }
 
 export interface ReleaseCandidateResultCorpusV1 {
@@ -108,8 +119,10 @@ export function writeReleaseCandidateResultV1(inputPath: string, outputPath: str
 
 function runCandidateCase(candidate: ReleaseCandidateCaseV1, nextReceiptHandle: () => string): ReleaseCandidateResultV1 {
   const startedAt = performance.now();
+  let failureStage: ReleaseCandidateFailureStage = "report_generation";
   try {
     const report = generateReceiptValidatedReport(candidate.input);
+    failureStage = "requirement_projection";
     const privateReceipts = report.proofGraph.privateReceiptBundleV2;
     const testReceiptCounts = countReceipts(privateReceipts?.testRelationReceipts ?? []);
     const executionReceiptCounts = countReceipts(privateReceipts?.executionBindingReceipts ?? []);
@@ -130,6 +143,8 @@ function runCandidateCase(candidate: ReleaseCandidateCaseV1, nextReceiptHandle: 
       };
     });
 
+    failureStage = "privacy_projection";
+    const privateReceiptLeakCount = projectionPrivateReceiptLeakCount(report);
     return {
       version: 1,
       caseId: candidate.caseId,
@@ -137,25 +152,27 @@ function runCandidateCase(candidate: ReleaseCandidateCaseV1, nextReceiptHandle: 
         sourceKind: report.analysisContext ?? "provided_requirement",
         authority: report.requirements[0]?.sourceAuthority ?? "authoritative",
         requirements,
-        projection: { privateReceiptLeakCount: projectionPrivateReceiptLeakCount(report) }
+        projection: { privateReceiptLeakCount }
       },
       metrics: { unexpectedFailure: false, durationMs: performance.now() - startedAt }
     };
   } catch {
-    return failedCandidateCase(candidate, performance.now() - startedAt);
+    return failedCandidateCase(candidate, performance.now() - startedAt, failureStage);
   }
 }
 
 function generateReceiptValidatedReport(input: PullRequestInput): VerificationReport {
   const report = generateVerificationReportV2FromInput(input, {
-    requirementLocalPromotionMode: "receipt_v2"
+    requirementLocalPromotionMode: "receipt_v2",
+    verificationCapabilitiesV2: RELEASE_CAPABILITIES
   });
   const validation = validateRuntimeReportBoundary({
     boundary: "generated_private_full",
     input,
     report,
     requireV2: true,
-    requirementLocalPromotionMode: "receipt_v2"
+    requirementLocalPromotionMode: "receipt_v2",
+    verificationCapabilitiesV2: RELEASE_CAPABILITIES
   });
   if (!validation.valid) throw new Error("Release candidate report failed generated-private validation.");
   return validation.report;
@@ -258,7 +275,11 @@ function opaqueHandles(count: number, nextReceiptHandle: () => string): string[]
   return Array.from({ length: count }, nextReceiptHandle);
 }
 
-function failedCandidateCase(candidate: ReleaseCandidateCaseV1, durationMs: number): ReleaseCandidateResultV1 {
+function failedCandidateCase(
+  candidate: ReleaseCandidateCaseV1,
+  durationMs: number,
+  failureStage: ReleaseCandidateFailureStage
+): ReleaseCandidateResultV1 {
   return {
     version: 1,
     caseId: candidate.caseId,
@@ -276,7 +297,7 @@ function failedCandidateCase(candidate: ReleaseCandidateCaseV1, durationMs: numb
       })),
       projection: { privateReceiptLeakCount: 1 }
     },
-    metrics: { unexpectedFailure: true, durationMs }
+    metrics: { unexpectedFailure: true, durationMs, failureStage }
   };
 }
 

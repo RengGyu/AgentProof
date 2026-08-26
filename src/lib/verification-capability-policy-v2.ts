@@ -8,10 +8,12 @@ export const VERIFICATION_CAPABILITIES_V2 = [
 
 export type VerificationCapabilityV2 = (typeof VERIFICATION_CAPABILITIES_V2)[number];
 
-const RELEASE_ELIGIBLE_CAPABILITY_SET = new Set<string>([
+export const RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2 = [
   "documentation_literal",
   "path_change_absence"
-] satisfies VerificationCapabilityV2[]);
+] as const satisfies readonly VerificationCapabilityV2[];
+
+const RELEASE_ELIGIBLE_CAPABILITY_SET = new Set<string>(RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2);
 
 /**
  * A malformed policy is fail-closed as a whole. This keeps production default

@@ -58,6 +58,35 @@ describe("release evaluation candidate runner", () => {
     }
   });
 
+  it("pins the exact release static capabilities without mutating ambient capability state", () => {
+    const capabilityKey = "AGENTPROOF_VERIFICATION_CAPABILITIES_V2";
+    const originalEnv = process.env;
+    const previousCapabilities = originalEnv[capabilityKey];
+    originalEnv[capabilityKey] = "test_case";
+    const mutations: string[] = [];
+    process.env = new Proxy(originalEnv, {
+      set(target, property, value) {
+        if (property === capabilityKey) mutations.push(`set:${String(property)}`);
+        return Reflect.set(target, property, value);
+      },
+      deleteProperty(target, property) {
+        if (property === capabilityKey) mutations.push(`delete:${String(property)}`);
+        return Reflect.deleteProperty(target, property);
+      }
+    });
+
+    try {
+      const result = runReleaseCandidateCorpusV1(staticCapabilityDevelopmentCorpus());
+
+      expect(result.cases[0]!.actual.requirements.map((requirement) => requirement.outcome)).toEqual(["met", "met"]);
+      expect(process.env[capabilityKey]).toBe("test_case");
+      expect(mutations).toEqual([]);
+    } finally {
+      process.env = originalEnv;
+      restoreEnv(capabilityKey, previousCapabilities);
+    }
+  });
+
   it("prepares a valid private-free tenant projection with an explicit signing secret", () => {
     const signingKey = "AGENTPROOF_REPORT_SIGNING_SECRET";
     const previousSigning = process.env[signingKey];
@@ -192,9 +221,11 @@ describe("release evaluation candidate runner", () => {
           }],
           projection: { privateReceiptLeakCount: 1 }
         },
-        metrics: { unexpectedFailure: true }
+        metrics: { unexpectedFailure: true, failureStage: "report_generation" }
       });
-      expect(JSON.stringify(result.cases[0])).not.toContain("raw private generation error");
+      const serializedFailure = JSON.stringify(result.cases[0]);
+      expect(serializedFailure).not.toContain("raw private generation error");
+      expect(serializedFailure).not.toMatch(/"(?:error|message|stack)"/);
       expect(result.cases[1]!.metrics.unexpectedFailure).toBe(false);
       expect(process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE).toBe("sentinel-mode");
     } finally {
@@ -229,6 +260,73 @@ function receiptlessDevelopmentCorpus(): ReleaseCandidateCorpusV1 {
   return {
     version: 1,
     cases: [{ version: 1, caseId: "opaque-receiptless", input, requirementOrdinals: [0] }]
+  };
+}
+
+function staticCapabilityDevelopmentCorpus(): ReleaseCandidateCorpusV1 {
+  const headSha = "d".repeat(40);
+  const baseSha = "e".repeat(40);
+  const contract = {
+    version: 2,
+    scope: "complete_objective_set",
+    objectives: [
+      {
+        id: "reset_doc",
+        objective: "Document the local reset command.",
+        criteria: [{
+          id: "reset_literal",
+          type: "artifact",
+          label: "The reset document includes the exact test command.",
+          paths: ["docs/reset.md"],
+          artifact: { kind: "documentation_literal", literal: "Run npm test." }
+        }]
+      },
+      {
+        id: "runtime_scope",
+        objective: "Do not modify runtime code.",
+        criteria: [{
+          id: "no_runtime_change",
+          type: "absence",
+          label: "No runtime path changes.",
+          prohibitedKind: "path_change",
+          scope: [{ kind: "prefix", path: "src/runtime/" }]
+        }]
+      }
+    ]
+  } as const;
+  const sourceContent = JSON.stringify(contract);
+  const input: PullRequestInput = {
+    title: "Document reset without runtime changes",
+    description: "Documents the reset command.",
+    taskText: "Document the reset command and do not modify runtime code.",
+    taskSource: "issue",
+    changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }],
+    checks: [],
+    logs: [],
+    verificationCriterionEvidenceV2: {
+      artifactBlobs: [{ path: "docs/reset.md", headSha, content: "Stop the server.\nRun npm test." }]
+    },
+    sourceProvenance: {
+      version: 1,
+      origin: "github_snapshot",
+      headSha,
+      baseSha,
+      changedFileInventory: { version: 1, completeness: "complete", headSha },
+      evidenceCapturedAt: "2026-08-26T00:00:00.000Z",
+      inputFingerprint: { version: 1, algorithm: "sha256", value: "f".repeat(64), coverage: "github_metadata" }
+    },
+    verificationContractSourceV2: { kind: "provided_requirement", contract },
+    verificationContractBindingV2: {
+      sourceKind: "provided_requirement",
+      sourceIdentity: "manual:release-static-capabilities:1",
+      sourceContent,
+      headSha,
+      baseSha
+    }
+  };
+  return {
+    version: 1,
+    cases: [{ version: 1, caseId: "opaque-static-capabilities", input, requirementOrdinals: [0, 1] }]
   };
 }
 

@@ -17,7 +17,10 @@ const AXIS_STATE_KEYS = ["implementation", "targeted_test", "execution"];
 const PROJECTION_KEYS = ["privateReceiptLeakCount"];
 const METRICS_KEYS = ["unexpectedFailure", "durationMs", "github", "providerCallCount"];
 const PARTIAL_METRICS_KEYS = ["unexpectedFailure", "durationMs"];
+const METRICS_WITH_FAILURE_STAGE_KEYS = [...METRICS_KEYS, "failureStage"];
+const PARTIAL_METRICS_WITH_FAILURE_STAGE_KEYS = [...PARTIAL_METRICS_KEYS, "failureStage"];
 const GITHUB_METRICS_KEYS = ["requests", "pages", "retries"];
+const FAILURE_STAGES = new Set(["report_generation", "requirement_projection", "privacy_projection"]);
 
 /**
  * Compares a single opaque oracle case with its candidate result. This
@@ -222,9 +225,12 @@ function isValidProjection(projection) {
 }
 
 function isValidMetrics(metrics) {
-  if (!hasExactKeys(metrics, METRICS_KEYS) && !hasExactKeys(metrics, PARTIAL_METRICS_KEYS)) return false;
+  if (!hasExactKeys(metrics, METRICS_KEYS) && !hasExactKeys(metrics, PARTIAL_METRICS_KEYS) &&
+    !hasExactKeys(metrics, METRICS_WITH_FAILURE_STAGE_KEYS) &&
+    !hasExactKeys(metrics, PARTIAL_METRICS_WITH_FAILURE_STAGE_KEYS)) return false;
   return typeof metrics.unexpectedFailure === "boolean" &&
     isNonNegativeNumber(metrics.durationMs) &&
+    (metrics.failureStage === undefined || (metrics.unexpectedFailure && FAILURE_STAGES.has(metrics.failureStage))) &&
     (metrics.github === undefined || (hasExactKeys(metrics.github, GITHUB_METRICS_KEYS) &&
       GITHUB_METRICS_KEYS.every((key) => isNonNegativeNumber(metrics.github[key])))) &&
     (metrics.providerCallCount === undefined || isNonNegativeNumber(metrics.providerCallCount));
@@ -345,6 +351,7 @@ function countCrossRequirementReceiptReuse(candidateCases) {
 function countPrivacyLeaks(oracleCases, candidateCases) {
   let count = 0;
   for (let index = 0; index < oracleCases.length; index += 1) {
+    if (FAILURE_STAGES.has(candidateCases[index]?.metrics?.failureStage)) return UNKNOWN;
     const projection = candidateCases[index]?.actual?.projection;
     if (!isRecord(projection) || !Number.isInteger(projection.privateReceiptLeakCount) || projection.privateReceiptLeakCount < 0) {
       return UNKNOWN;

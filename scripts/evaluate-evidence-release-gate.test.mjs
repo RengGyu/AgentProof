@@ -94,6 +94,31 @@ describe("evaluate-evidence-release-gate", () => {
     assert.ok(!JSON.stringify(result).includes("receipt-reused"));
   });
 
+  it("accepts bounded failure stages without fabricating privacy results or exposing case diagnostics", () => {
+    const oracle = { version: 1, cases: [oracleCase("opaque-failure-stage", [expectedRequirement("oracle_req", 0)])] };
+    const candidates = cleanCandidates("opaque-failure-stage");
+    candidates.cases[0].actual.projection.privateReceiptLeakCount = 1;
+    candidates.cases[0].metrics = {
+      unexpectedFailure: true,
+      durationMs: 4,
+      failureStage: "report_generation"
+    };
+
+    const result = evaluateEvidenceReleaseGate({ oracle, candidates });
+
+    assert.deepEqual(result.unexpectedFailure, { count: 1, rate: 1 });
+    assert.equal(result.privacyLeakCount, "UNKNOWN");
+    assert.ok(!JSON.stringify(result).includes("report_generation"));
+    assert.ok(!JSON.stringify(result).includes("opaque-failure-stage"));
+
+    candidates.cases[0].actual.projection.privateReceiptLeakCount = 99;
+    assert.equal(evaluateEvidenceReleaseGate({ oracle, candidates }).privacyLeakCount, "UNKNOWN");
+
+    const legacy = cleanCandidates("opaque-failure-stage");
+    legacy.cases[0].metrics = { unexpectedFailure: false, durationMs: 4 };
+    assert.deepEqual(evaluateEvidenceReleaseGate({ oracle, candidates: legacy }).unexpectedFailure, { count: 0, rate: 0 });
+  });
+
   it("reports uncollected runtime metrics as UNKNOWN instead of fabricated zeroes", () => {
     const result = evaluateEvidenceReleaseGate({
       oracle: { version: 1, cases: [oracleCase("opaque-unmeasured", [expectedRequirement("oracle_req", 0)])] },

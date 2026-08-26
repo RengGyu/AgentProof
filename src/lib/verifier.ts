@@ -77,6 +77,7 @@ import {
   readRequirementLocalPromotionMode,
   type RequirementLocalPromotionMode
 } from "./proof-promotion-policy";
+import type { VerificationCapabilityV2 } from "./verification-capability-policy-v2";
 
 const MAX_MISSING_TEST_FINDINGS = 100;
 const MAX_FINDING_PROVENANCE_ITEMS = 5;
@@ -88,6 +89,7 @@ const MAX_FAILED_CHECK_ASSOCIATIONS_PER_REQUIREMENT = 8;
 
 export interface InternalVerificationReportGenerationOptions {
   requirementLocalPromotionMode?: RequirementLocalPromotionMode;
+  verificationCapabilitiesV2?: ReadonlySet<VerificationCapabilityV2>;
 }
 
 export function generateVerificationReport(
@@ -143,7 +145,8 @@ export function generateVerificationReportV2(
         ...evaluateMaterializedCriterionV2({
           criterion,
           bindingDigest,
-          evidence
+          evidence,
+          ...(options.verificationCapabilitiesV2 ? { capabilities: options.verificationCapabilitiesV2 } : {})
         })
       }))
     );

@@ -203,7 +203,8 @@ export interface TransientExecutionEvidenceBindingV2 {
 /** Builds the raw, private context consumed by independent receipt validation. */
 export function createVerificationValidationContextV2(
   input: PullRequestInput,
-  canonicalRequirementSet: CanonicalRequirementSetV1
+  canonicalRequirementSet: CanonicalRequirementSetV1,
+  capabilities: ReadonlySet<VerificationCapabilityV2> = readEnabledVerificationCapabilitiesV2()
 ): VerificationValidationContextV2 {
   const provenance = input.sourceProvenance;
   const inventory = provenance?.changedFileInventory;
@@ -211,7 +212,7 @@ export function createVerificationValidationContextV2(
     ? provenance.headSha ?? ""
     : "";
   const transientEvidence = transientReceiptEvidenceBindings(input, headSha);
-  const typedCriterionPlan = createTypedCriterionPlanV2(input);
+  const typedCriterionPlan = createTypedCriterionPlanV2(input, capabilities);
   return {
     canonicalRequirementSet,
     canonicalRequirementDigest: canonicalRequirementDigestV2(canonicalRequirementSet),
@@ -243,7 +244,10 @@ export function createVerificationValidationContextV2(
   };
 }
 
-function createTypedCriterionPlanV2(input: PullRequestInput): VerificationValidationContextV2["typedCriterionPlan"] | undefined {
+function createTypedCriterionPlanV2(
+  input: PullRequestInput,
+  capabilities: ReadonlySet<VerificationCapabilityV2>
+): VerificationValidationContextV2["typedCriterionPlan"] | undefined {
   if (!input.verificationContractSourceV2 || !input.verificationContractBindingV2) return undefined;
   const parsed = parseVerificationContractV2(input.verificationContractSourceV2);
   if (parsed.state !== "authoritative" && parsed.state !== "author_claim") return undefined;
@@ -296,7 +300,7 @@ function createTypedCriterionPlanV2(input: PullRequestInput): VerificationValida
       evidenceRefsByPath,
       artifactEvidenceRefsByPath
     },
-    capabilities: readEnabledVerificationCapabilitiesV2()
+    capabilities
   };
 }
 
