@@ -6,7 +6,9 @@ import { projectTenantPersistedReport, validateTenantPersistedReport } from "./t
 import {
   MAX_RELEASE_CANDIDATE_INPUT_BYTES,
   countSerializedProjectionLeaksV1,
+  parseReleaseCandidateCorpusV2,
   parseReleaseCandidateCorpusV1,
+  runReleaseCandidateCorpusV2,
   runReleaseCandidateCorpusV1,
   type ReleaseCandidateCorpusV1
 } from "./release-evaluation-runner";
@@ -14,6 +16,126 @@ import type { PullRequestInput } from "./types";
 import * as verifier from "./verifier";
 
 describe("release evaluation candidate runner", () => {
+  it("projects every contract objective and criterion without authored ordinals", () => {
+    const result = runReleaseCandidateCorpusV2(staticCapabilityV2Corpus());
+
+    expect(result).toMatchObject({ version: 2, cases: [{ version: 2 }] });
+    expect(result.cases[0]!.actual.objectives.map((item) => item.requirementId)).toEqual(["vc_o1", "vc_o2", "vc_o3"]);
+    expect(result.cases[0]!.actual.objectives.flatMap((item) => item.criteria.map((criterion) => criterion.criterionId)))
+      .toEqual(["vc_o1_c1", "vc_o2_c1", "vc_o3_c1"]);
+  });
+
+  it("keeps deferred criteria unavailable and exposes only opaque receipt handles", () => {
+    const result = runReleaseCandidateCorpusV2(staticCapabilityV2Corpus());
+    const actual = result.cases[0]!.actual;
+
+    expect(actual.objectives[2]!.criteria[0]).toMatchObject({ capability: "test_case", state: "unavailable" });
+    expect(actual.receipts.every((receipt) => /^receipt_[0-9a-z]{8}$/.test(receipt.id))).toBe(true);
+    expect(JSON.stringify(actual)).not.toContain("repositoryName");
+  });
+
+  it("preserves criterion ownership and derives no local-CI result from observations", () => {
+    const actual = runReleaseCandidateCorpusV2(staticCapabilityV2Corpus()).cases[0]!.actual;
+    const criteria = new Map(actual.objectives.flatMap((objective) => objective.criteria.map((criterion) => [criterion.criterionId, criterion])));
+
+    for (const axis of actual.axes) {
+      if (axis.role === "observation") expect(axis.criterionId).toBeUndefined();
+      else {
+        const criterion = criteria.get(axis.criterionId!);
+        expect(criterion).toBeDefined();
+        expect(criterion!.requiredEvidence).toContain(axis.subject);
+      }
+    }
+    expect(actual.criterionLocalCi).toEqual([]);
+  });
+
+  it("returns an opaque bounded failure when V2 report generation fails", () => {
+    const original = verifier.generateVerificationReportV2FromInput;
+    const generation = vi.spyOn(verifier, "generateVerificationReportV2FromInput").mockImplementation((input, options) => {
+      if (options?.requirementLocalPromotionMode === "receipt_v2" && input.title === "v2 generation failure") throw new Error("private failure detail");
+      return original(input, options);
+    });
+    const corpus = staticCapabilityV2Corpus();
+    corpus.cases[0]!.input = { ...corpus.cases[0]!.input, title: "v2 generation failure" };
+
+    try {
+      const result = runReleaseCandidateCorpusV2(corpus);
+      expect(result.cases[0]!.metrics).toMatchObject({ unexpectedFailure: true, failureStage: "report_generation" });
+      expect(result.cases[0]!.actual).toMatchObject({ objectives: [], projection: { privateReceiptLeakCount: 1 } });
+      expect(JSON.stringify(result)).not.toContain("private failure detail");
+    } finally {
+      generation.mockRestore();
+    }
+  });
+
+  it("rejects closed V2 envelopes with authored expectations, ordinals, duplicates, unknown keys, or inactive contracts", () => {
+    const corpus = staticCapabilityV2Corpus();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, expected: {} })).toBeNull();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, cases: [{ ...corpus.cases[0], requirementOrdinals: [0] }] })).toBeNull();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, cases: [corpus.cases[0], corpus.cases[0]] })).toBeNull();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, extra: true })).toBeNull();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, cases: [{ ...corpus.cases[0], input: { ...corpus.cases[0]!.input, verificationContractSourceV2: undefined } }] })).toBeNull();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, cases: [{ ...corpus.cases[0], input: { ...corpus.cases[0]!.input, verificationContractSourceV2: { ...corpus.cases[0]!.input.verificationContractSourceV2!, extra: true } } }] })).toBeNull();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, cases: [{ ...corpus.cases[0], input: { ...corpus.cases[0]!.input, verificationContractBindingV2: { ...corpus.cases[0]!.input.verificationContractBindingV2!, headSha: "not-a-sha" } } }] })).toBeNull();
+  });
+
+  it("rejects V2 nested authored data, unknown fields, oversized values, and malformed evidence", () => {
+    const corpus = staticCapabilityV2Corpus();
+    const input = corpus.cases[0]!.input;
+    const withInput = (next: object) => ({ ...corpus, cases: [{ ...corpus.cases[0], input: { ...input, ...next } }] });
+
+    expect(parseReleaseCandidateCorpusV2(withInput({ expected: {} }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ requirementOrdinals: [0] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ arbitrary: true }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ taskText: "x".repeat(8_001) }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ changedFiles: Array.from({ length: 121 }, () => input.changedFiles[0]) }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ changedFiles: [{ ...input.changedFiles[0], arbitrary: true }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ changedFiles: [{ ...input.changedFiles[0], path: 1 }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ sourceProvenance: { ...input.sourceProvenance!, inputFingerprint: { ...input.sourceProvenance!.inputFingerprint, value: "not-a-digest" } } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ verificationCriterionEvidenceV2: { artifactBlobs: [{ ...input.verificationCriterionEvidenceV2!.artifactBlobs[0], content: "x".repeat(65_537) }] } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ verificationCriterionEvidenceV2: { artifactBlobs: [{ ...input.verificationCriterionEvidenceV2!.artifactBlobs[0], arbitrary: true }] } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(corpus)).not.toBeNull();
+  });
+
+  it("rejects unknown and oversized V2 values in every nested execution collection", () => {
+    const corpus = staticCapabilityV2Corpus();
+    const input = corpus.cases[0]!.input;
+    const withInput = (next: object) => ({ ...corpus, cases: [{ ...corpus.cases[0], input: { ...input, ...next } }] });
+    const suite = { headSha: "a".repeat(40), status: "passed", executionSource: "unit", runner: "node_test", scope: "explicit_paths", testPaths: ["test/unit.test.ts"] };
+    const module = { version: 1, kind: "resolved_head_module", headSha: "a".repeat(40), path: "src/unit.ts", blobSha: "b".repeat(40), source: "export {};" };
+
+    expect(parseReleaseCandidateCorpusV2(withInput({ checks: [{ name: "unit", status: "passed", expected: {} }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ checks: [{ name: "unit", status: "passed", summary: "x".repeat(8_001) }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ logs: [{ source: "unit", text: "ok", arbitrary: true }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ logs: [{ source: "unit", text: "x".repeat(24_001) }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ executionSuites: [{ ...suite, expected: {} }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ executionSuites: [{ ...suite, executionSource: "x".repeat(501) }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ resolvedHeadModules: [{ ...module, arbitrary: true }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ resolvedHeadModules: [{ ...module, source: "x".repeat(65_537) }] }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ sourceProvenance: { ...input.sourceProvenance!, executionSuites: [{ ...suite, expected: {} }] } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ sourceProvenance: { ...input.sourceProvenance!, executionSuites: [{ ...suite, executionSource: "x".repeat(501) }] } }))).toBeNull();
+    expect(runReleaseCandidateCorpusV2(corpus).cases).toHaveLength(1);
+  });
+
+  it("rejects NUL and UTF-8 oversized V2 contract source and binding text", () => {
+    const corpus = staticCapabilityV2Corpus();
+    const input = corpus.cases[0]!.input;
+    const contract = (input.verificationContractSourceV2 as { contract: unknown }).contract;
+    const body = `## AgentProof verification\n\n\`\`\`agentproof-verification\n${JSON.stringify(contract)}\n\`\`\``;
+    const linked = {
+      ...input,
+      verificationContractSourceV2: { kind: "linked_issue" as const, title: "AgentProof verification contract", body },
+      verificationContractBindingV2: { ...input.verificationContractBindingV2!, sourceKind: "linked_issue" as const, sourceContent: body }
+    };
+    const withInput = (next: object) => ({ ...corpus, cases: [{ ...corpus.cases[0], input: { ...linked, ...next } }] });
+
+    expect(parseReleaseCandidateCorpusV2(withInput({ verificationContractSourceV2: { ...linked.verificationContractSourceV2, title: "AgentProof verification contract\0" } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ verificationContractSourceV2: { ...linked.verificationContractSourceV2, body: `${body}${" ".repeat(24_001)}` } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ verificationContractBindingV2: { ...linked.verificationContractBindingV2, sourceIdentity: "id\0" } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2(withInput({ verificationContractBindingV2: { ...linked.verificationContractBindingV2, sourceContent: "😀".repeat(6_001) } }))).toBeNull();
+    expect(parseReleaseCandidateCorpusV2({ ...corpus, cases: [{ ...corpus.cases[0], input: linked }] })).not.toBeNull();
+  });
+
   it("runs a receipt-complete case through generated-private validation and emits opaque IDs", () => {
     const result = runReleaseCandidateCorpusV1(receiptCompleteDevelopmentCorpus());
 
@@ -395,6 +517,14 @@ function staticCapabilityDevelopmentCorpus(): ReleaseCandidateCorpusV1 {
   return {
     version: 1,
     cases: [{ version: 1, caseId: "opaque-static-capabilities", input, requirementOrdinals: [0, 1, 2] }]
+  };
+}
+
+function staticCapabilityV2Corpus() {
+  const development = staticCapabilityDevelopmentCorpus();
+  return {
+    version: 2 as const,
+    cases: development.cases.map(({ input }) => ({ version: 2 as const, caseId: "1".repeat(64), input }))
   };
 }
 
