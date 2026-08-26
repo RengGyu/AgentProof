@@ -11,6 +11,7 @@ import {
 const UNKNOWN = "UNKNOWN";
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANDIDATE_SHA = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
+const V2_RUBRIC_ID = "production-authority-closed-reference-rubric.v2";
 const EVIDENCE_KEYS = [
   "version", "candidateSha", "assessedAt", "rubricSha256", "toolchainManifestSha256", "evidenceSources"
 ];
@@ -28,19 +29,38 @@ const BOUNDARY_AGGREGATE_KEYS = [
   "untrustedActiveV2AcceptanceCount", "pastedEvidenceGithubAuthorityCount", "falseBoundaryLocalPositiveCount",
   "boundaryPrivacyLeakCount", "boundaryStructuralMismatchCount"
 ];
-const CORPUS_SUMMARY_KEYS = ["inputSha256", "categoryCounts", "summarySha256"];
-const EXPECTED_CATEGORY_COUNTS = {
-  requirement: [0, 0, 4],
-  boundary: [4, 4, 0]
-};
-const ATTESTATION_KEYS = [
-  "version", "surface", "candidateSha", "runnerBundleSha256", "runnerSandboxProfileSha256",
-  "runtimeImageDigest", "inputSha256", "mountedReadOnlyFileSetSha256", "networkMode",
-  "readOnlyMounts", "writableMounts", "resultSha256"
+const V2_SEAL_KEYS = [
+  "version", "policyId", "capabilities", "referencePolicySha256", "evidenceCorpusSha256", "evidenceCaseCount",
+  "boundaryCorpusSha256", "boundaryCaseCount", "coverageSummary", "coverageSummarySha256"
 ];
-const READ_ONLY_ALLOWED = ["candidate_sut", "protected_input", "runner_bundle", "runtime_profile"];
+const COVERAGE_SUMMARY_KEYS = ["version", "evidenceCaseCount", "boundaryCaseCount", "entries"];
+const REQUIRED_COVERAGE_NAMES = [
+  "absence:current_path_violated", "absence:previous_path_violated", "absence:satisfied", "absence:unavailable",
+  "boundary:empty_override_live", "boundary:inbound_author_claim_rejected", "boundary:inbound_authoritative_rejected", "boundary:incomplete_live_conservative",
+  "boundary:pasted_changed_files", "boundary:pasted_checks", "boundary:pasted_logs", "boundary:privacy_zero", "boundary:text_only_override_live",
+  "contract:multi_objective", "deferred:return_value", "deferred:test_case", "deferred:workflow_job",
+  "documentation:satisfied", "documentation:unavailable", "documentation:violated",
+  "source:linked_authoritative", "source:pr_author_claim", "source:provided_authoritative"
+];
+const V2_BINDING_NAMES = [
+  "candidateSha", "referencePolicySha256", "referencePolicySealSha256", "evidenceCorpusSha256", "boundaryCorpusSha256", "coverageSummarySha256",
+  "requirementResultSha256", "boundaryResultSha256", "requirementRunnerBundleSha256", "boundaryRunnerBundleSha256",
+  "requirementEvaluatorBundleSha256", "boundaryEvaluatorBundleSha256", "referencePolicyBundleSha256",
+  "runnerSandboxProfileSha256", "evaluatorSandboxProfileSha256", "requirementRunnerMountSetSha256", "boundaryRunnerMountSetSha256",
+  "requirementEvaluatorMountSetSha256", "boundaryEvaluatorMountSetSha256", "toolingEntrySetSha256", "moduleEdgeSetSha256",
+  "nodeBuiltinAllowlistSha256", "approvedNodeBuiltinUniverseSha256", "parserArtifactBindingSha256", "resolutionPolicySha256",
+  "evaluationToolchainSourceClosureSha256", "evaluationToolchainBundleSetSha256", "sutExternalImportAllowlistSha256",
+  "packageScriptsSha256", "lockfileSha256", "nodeVersion", "pnpmVersion", "runtimeImageDigest"
+];
+const ATTESTATION_KEYS = [
+  "version", "role", "candidateSha", "bundleSha256", "sandboxProfileSha256", "runtimeImageDigest", "inputSha256",
+  "resultSha256", "referencePolicySha256", "referencePolicySealSha256", "mountedReadOnlyFileSetSha256", "networkMode",
+  "readOnlyMounts", "writableMounts"
+];
+const RUNNER_READ_ONLY = ["candidate_sut", "protected_input", "runner_bundle", "runtime_profile"];
+const EVALUATOR_READ_ONLY = ["protected_input", "policy_seal", "candidate_result", "reference_policy", "evaluator_bundle", "runtime_profile"];
 const KNOWN_MOUNT_KINDS = new Set([
-  ...READ_ONLY_ALLOWED, "result", "oracle", "evaluator", "rubric", "development_worktree", "secret", "host"
+  ...RUNNER_READ_ONLY, ...EVALUATOR_READ_ONLY, "result", "aggregate_result", "oracle", "evaluator", "rubric", "development_worktree", "secret", "host"
 ]);
 const DECISIONS = new Set(["eligible_for_deployment_approval", "conditional_candidate", "no_go"]);
 const EVIDENCE_SOURCE_KINDS = new Map([
@@ -88,7 +108,7 @@ export function evaluateProductionAuthorityRelease({ rubric, evidence, frozenMan
   const sourceById = new Map(evidence.evidenceSources.map((source) => [source.id, source]));
   const stateById = new Map(rubric.evidenceSources.map((definition) => [
     definition.id,
-    evaluateEvidenceSource(definition, sourceById.get(definition.id), evidence, frozenManifest)
+    evaluateEvidenceSource(definition, sourceById.get(definition.id), evidence, frozenManifest, sourceById.get("freeze_manifest")?.result?.seal)
   ]));
   const binaryGates = rubric.binaryGates.map((gate) => ({
     id: gate.id,
@@ -152,8 +172,9 @@ export function signedEvidencePayload(source) {
   };
 }
 
-export function validateRequirementAggregate(aggregate) {
-  if (!hasExactKeys(aggregate, REQUIREMENT_AGGREGATE_KEYS) || aggregate.totalCases !== 4 ||
+export function validateRequirementAggregate(aggregate, expectedTotalCases) {
+  if (!Number.isSafeInteger(expectedTotalCases) || expectedTotalCases <= 0 ||
+    !hasExactKeys(aggregate, REQUIREMENT_AGGREGATE_KEYS) || aggregate.totalCases !== expectedTotalCases ||
     !REQUIREMENT_AGGREGATE_KEYS.slice(1, 6).every((key) => isCountOrUnknown(aggregate[key])) ||
     aggregate.structuralMismatchCount > aggregate.totalCases ||
     !isCountRateGroup(aggregate.unexpectedFailure, aggregate.totalCases) ||
@@ -176,7 +197,7 @@ function validateRubric(rubric) {
     "version", "rubricId", "purpose", "maximumScore", "releaseThreshold", "scoringMethod",
     "evidenceSources", "binaryGates", "scoreCategories", "decisionBands", "overrideRule"
   ];
-  if (!hasExactKeys(rubric, topKeys) || rubric.version !== 1 || !isLabel(rubric.rubricId) ||
+  if (!hasExactKeys(rubric, topKeys) || rubric.version !== 2 || rubric.rubricId !== V2_RUBRIC_ID ||
     !isBoundedText(rubric.purpose) || !isBoundedText(rubric.overrideRule) ||
     !Number.isSafeInteger(rubric.maximumScore) || rubric.maximumScore <= 0 ||
     !Number.isSafeInteger(rubric.releaseThreshold) || rubric.releaseThreshold < 0 ||
@@ -203,6 +224,9 @@ function validateRubric(rubric) {
   }
   if (evidenceIds.size !== EVIDENCE_SOURCE_KINDS.size || [...EVIDENCE_SOURCE_KINDS.keys()].some((id) => !evidenceIds.has(id))) {
     throw new Error("release rubric evidence-source set is incomplete");
+  }
+  if (!sameArray(rubric.evidenceSources.find((source) => source.id === "freeze_manifest")?.requiredBindings, V2_BINDING_NAMES)) {
+    throw new Error("release rubric V2 bindings are incomplete");
   }
   const gateIds = new Set();
   for (const gate of rubric.binaryGates) {
@@ -276,10 +300,10 @@ function validateTrustedSigners(value) {
 }
 
 function validateEvidenceEnvelope(evidence, rubric, rubricSha256, manifest, signerById) {
-  if (!hasExactKeys(evidence, EVIDENCE_KEYS) || evidence.version !== 1 || !CANDIDATE_SHA.test(evidence.candidateSha) ||
+  if (!hasExactKeys(evidence, EVIDENCE_KEYS) || evidence.version !== 2 || !CANDIDATE_SHA.test(evidence.candidateSha) ||
     !isIsoTime(evidence.assessedAt) || !SHA256.test(evidence.rubricSha256) || !SHA256.test(evidence.toolchainManifestSha256) ||
     !Array.isArray(evidence.evidenceSources)) throw new Error("release assessment evidence schema is invalid");
-  const frozenRubricSha256 = manifest.bundles.find((bundle) => bundle.id === "rubric")?.sha256;
+  const frozenRubricSha256 = manifest.authorityRubric.sha256;
   if (evidence.rubricSha256 !== rubricSha256 || evidence.rubricSha256 !== frozenRubricSha256 ||
     evidence.toolchainManifestSha256 !== canonicalSha256(manifest)) {
     throw new Error("stale tooling or rubric hash");
@@ -348,6 +372,13 @@ function validateBindings(bindings, names, evidence, manifest) {
     evaluationToolchainBundleSetSha256: manifest.evaluationToolchainBundleSetSha256,
     sutExternalImportAllowlistSha256: manifest.sutExternalImportAllowlistSha256,
     runnerSandboxProfileSha256: manifest.runnerSandboxProfile.sha256,
+    evaluatorSandboxProfileSha256: manifest.evaluatorSandboxProfile.sha256,
+    referencePolicySha256: manifest.referencePolicy.sha256,
+    referencePolicyBundleSha256: manifest.bundles.find((bundle) => bundle.id === "reference_policy")?.sha256,
+    requirementRunnerBundleSha256: manifest.bundles.find((bundle) => bundle.id === "requirement_runner")?.sha256,
+    boundaryRunnerBundleSha256: manifest.bundles.find((bundle) => bundle.id === "boundary_runner")?.sha256,
+    requirementEvaluatorBundleSha256: manifest.bundles.find((bundle) => bundle.id === "requirement_evaluator")?.sha256,
+    boundaryEvaluatorBundleSha256: manifest.bundles.find((bundle) => bundle.id === "boundary_evaluator")?.sha256,
     packageScriptsSha256: manifest.packageScripts.sha256,
     lockfileSha256: manifest.lockfile.sha256,
     nodeVersion: manifest.runtime.nodeVersion,
@@ -368,12 +399,12 @@ function verifyDetachedSignature(publicKey, source) {
   }
 }
 
-function evaluateEvidenceSource(definition, source, evidence, manifest) {
+function evaluateEvidenceSource(definition, source, evidence, manifest, seal) {
   switch (definition.id) {
     case "freeze_manifest":
       return evaluateFreezeManifest(source, evidence, manifest);
     case "protected_aggregate":
-      return evaluateRequirementAggregate(source.result);
+      return evaluateRequirementAggregate(source.result, seal);
     case "protected_boundary_aggregate":
       return evaluateBoundaryAggregate(source.result);
     case "runner_isolation_attestation":
@@ -386,29 +417,22 @@ function evaluateEvidenceSource(definition, source, evidence, manifest) {
 }
 
 function evaluateFreezeManifest(source, evidence, manifest) {
-  if (!hasExactKeys(source.result, ["manifestSha256", "corpusSummaries"]) || !SHA256.test(source.result.manifestSha256) ||
-    !hasExactKeys(source.result.corpusSummaries, ["requirement", "boundary"]) ||
-    !Object.values(source.result.corpusSummaries).every(isCorpusSummary)) {
+  if (!hasExactKeys(source.result, ["manifestSha256", "seal"]) || !SHA256.test(source.result.manifestSha256) ||
+    !isReferencePolicySeal(source.result.seal)) {
     throw new Error("freeze manifest evidence schema is invalid");
   }
   if (source.result.manifestSha256 !== evidence.toolchainManifestSha256) return "failed";
   const bindings = source.bindings;
-  const summaries = source.result.corpusSummaries;
-  const summariesMatch = Object.entries(EXPECTED_CATEGORY_COUNTS).every(([surface, expectedCounts]) => {
-    const summary = summaries[surface];
-    const inputBinding = `${surface}InputSha256`;
-    const summaryBinding = `${surface}CorpusSummarySha256`;
-    return sameArray(summary.categoryCounts, expectedCounts) &&
-      summary.inputSha256 === bindings[inputBinding] &&
-      summary.summarySha256 === bindings[summaryBinding] &&
-      summary.summarySha256 === canonicalSha256({
-        version: 1,
-        inputSha256: summary.inputSha256,
-        categoryCounts: summary.categoryCounts
-      });
-  });
-  const combinedCounts = summaries.requirement.categoryCounts.map((count, index) =>
-    count + summaries.boundary.categoryCounts[index]);
+  if (new Set([
+    bindings.requirementRunnerMountSetSha256, bindings.boundaryRunnerMountSetSha256,
+    bindings.requirementEvaluatorMountSetSha256, bindings.boundaryEvaluatorMountSetSha256
+  ]).size !== 4) return "failed";
+  const seal = source.result.seal;
+  const sealMatches = seal.referencePolicySha256 === bindings.referencePolicySha256 &&
+    seal.evidenceCorpusSha256 === bindings.evidenceCorpusSha256 &&
+    seal.boundaryCorpusSha256 === bindings.boundaryCorpusSha256 &&
+    seal.coverageSummarySha256 === bindings.coverageSummarySha256 &&
+    canonicalSha256(seal) === bindings.referencePolicySealSha256;
   const comparisons = {
     candidateSha: manifest.candidateSha,
     toolingEntrySetSha256: manifest.toolingEntrySetSha256,
@@ -421,27 +445,43 @@ function evaluateFreezeManifest(source, evidence, manifest) {
     evaluationToolchainBundleSetSha256: manifest.evaluationToolchainBundleSetSha256,
     sutExternalImportAllowlistSha256: manifest.sutExternalImportAllowlistSha256,
     runnerSandboxProfileSha256: manifest.runnerSandboxProfile.sha256,
+    evaluatorSandboxProfileSha256: manifest.evaluatorSandboxProfile.sha256,
     packageScriptsSha256: manifest.packageScripts.sha256,
     lockfileSha256: manifest.lockfile.sha256,
     nodeVersion: manifest.runtime.nodeVersion,
     pnpmVersion: manifest.runtime.pnpmVersion,
     requirementRunnerBundleSha256: manifest.bundles.find((bundle) => bundle.id === "requirement_runner")?.sha256,
-    boundaryRunnerBundleSha256: manifest.bundles.find((bundle) => bundle.id === "boundary_runner")?.sha256
+    boundaryRunnerBundleSha256: manifest.bundles.find((bundle) => bundle.id === "boundary_runner")?.sha256,
+    requirementEvaluatorBundleSha256: manifest.bundles.find((bundle) => bundle.id === "requirement_evaluator")?.sha256,
+    boundaryEvaluatorBundleSha256: manifest.bundles.find((bundle) => bundle.id === "boundary_evaluator")?.sha256,
+    referencePolicyBundleSha256: manifest.bundles.find((bundle) => bundle.id === "reference_policy")?.sha256,
+    referencePolicySha256: manifest.referencePolicy.sha256
   };
   return Object.entries(comparisons).every(([key, value]) => bindings[key] === value) &&
-    summariesMatch && sameArray(combinedCounts, [4, 4, 4]) ? "passed" : "failed";
+    sealMatches ? "passed" : "failed";
 }
 
-function isCorpusSummary(value) {
-  return hasExactKeys(value, CORPUS_SUMMARY_KEYS) && SHA256.test(value.inputSha256) &&
-    Array.isArray(value.categoryCounts) && value.categoryCounts.length === 3 &&
-    value.categoryCounts.every((count) => Number.isSafeInteger(count) && count >= 0) &&
-    SHA256.test(value.summarySha256);
+function isReferencePolicySeal(value) {
+  return hasExactKeys(value, V2_SEAL_KEYS) && value.version === 2 && value.policyId === "agentproof-static-reference.v1" &&
+    sameArray(value.capabilities, ["documentation_literal", "path_change_absence"]) && SHA256.test(value.referencePolicySha256) &&
+    SHA256.test(value.evidenceCorpusSha256) && value.evidenceCaseCount === 12 &&
+    SHA256.test(value.boundaryCorpusSha256) && value.boundaryCaseCount === 8 &&
+    isCoverageSummary(value.coverageSummary) && value.coverageSummary.evidenceCaseCount === value.evidenceCaseCount &&
+    value.coverageSummary.boundaryCaseCount === value.boundaryCaseCount && SHA256.test(value.coverageSummarySha256) &&
+    value.coverageSummarySha256 === canonicalSha256(value.coverageSummary);
 }
 
-function evaluateRequirementAggregate(result) {
+function isCoverageSummary(value) {
+  return hasExactKeys(value, COVERAGE_SUMMARY_KEYS) && value.version === 2 && value.evidenceCaseCount === 12 &&
+    value.boundaryCaseCount === 8 && Array.isArray(value.entries) && value.entries.length === REQUIRED_COVERAGE_NAMES.length &&
+    value.entries.every((entry, index) => hasExactKeys(entry, ["name", "count"]) && isLabel(entry.name) &&
+      Number.isSafeInteger(entry.count) && entry.count > 0 && entry.count <= 288 &&
+      entry.name === REQUIRED_COVERAGE_NAMES[index]);
+}
+
+function evaluateRequirementAggregate(result, seal) {
   if (!hasExactKeys(result, ["aggregate"])) throw new Error("requirement aggregate evidence schema is invalid");
-  validateRequirementAggregate(result.aggregate);
+  validateRequirementAggregate(result.aggregate, seal.evidenceCaseCount);
   if (containsUnknown(result.aggregate)) return "unknown";
   return releaseGatePasses(result.aggregate) ? "passed" : "failed";
 }
@@ -454,44 +494,31 @@ function evaluateBoundaryAggregate(result) {
 }
 
 function evaluateSandboxAttestations(result, bindings, evidence, manifest) {
-  if (!hasExactKeys(result, ["attestations"]) || !Array.isArray(result.attestations) || result.attestations.length !== 2) {
+  if (!hasExactKeys(result, ["attestations"]) || !Array.isArray(result.attestations) || result.attestations.length !== 4) {
     throw new Error("sandbox attestation schema is invalid");
   }
-  const bySurface = new Map();
+  const byRole = new Map();
   for (const attestation of result.attestations) {
     validateSandboxAttestationSchema(attestation);
-    if (bySurface.has(attestation.surface)) throw new Error("sandbox attestation schema is invalid");
-    bySurface.set(attestation.surface, attestation);
+    if (byRole.has(attestation.role)) throw new Error("sandbox attestation schema is invalid");
+    byRole.set(attestation.role, attestation);
   }
-  if (!bySurface.has("requirement") || !bySurface.has("boundary")) throw new Error("sandbox attestation schema is invalid");
-  const expectedBySurface = {
-    requirement: {
-      runnerBundleSha256: bindings.requirementRunnerBundleSha256,
-      inputSha256: bindings.requirementInputSha256,
-      resultSha256: bindings.requirementResultSha256
-    },
-    boundary: {
-      runnerBundleSha256: bindings.boundaryRunnerBundleSha256,
-      inputSha256: bindings.boundaryInputSha256,
-      resultSha256: bindings.boundaryResultSha256
-    }
+  const expectedByRole = {
+    requirement_runner: { kind: "runner", inputSha256: bindings.evidenceCorpusSha256, resultSha256: bindings.requirementResultSha256, bundleSha256: bindings.requirementRunnerBundleSha256, mountSetSha256: bindings.requirementRunnerMountSetSha256 },
+    boundary_runner: { kind: "runner", inputSha256: bindings.boundaryCorpusSha256, resultSha256: bindings.boundaryResultSha256, bundleSha256: bindings.boundaryRunnerBundleSha256, mountSetSha256: bindings.boundaryRunnerMountSetSha256 },
+    requirement_evaluator: { kind: "evaluator", inputSha256: bindings.evidenceCorpusSha256, resultSha256: bindings.requirementResultSha256, bundleSha256: bindings.requirementEvaluatorBundleSha256, mountSetSha256: bindings.requirementEvaluatorMountSetSha256 },
+    boundary_evaluator: { kind: "evaluator", inputSha256: bindings.boundaryCorpusSha256, resultSha256: bindings.boundaryResultSha256, bundleSha256: bindings.boundaryEvaluatorBundleSha256, mountSetSha256: bindings.boundaryEvaluatorMountSetSha256 }
   };
-  return [...bySurface].every(([surface, attestation]) => sandboxAttestationPasses(
-    attestation,
-    expectedBySurface[surface],
-    bindings,
-    evidence,
-    manifest
-  )) ? "passed" : "failed";
+  return Object.entries(expectedByRole).every(([role, expected]) => sandboxAttestationPasses(byRole.get(role), expected, bindings, evidence, manifest)) ? "passed" : "failed";
 }
 
 function validateSandboxAttestationSchema(attestation) {
   if (!hasExactKeys(attestation, ATTESTATION_KEYS) || attestation.version !== 1 ||
-    (attestation.surface !== "requirement" && attestation.surface !== "boundary") ||
-    !CANDIDATE_SHA.test(attestation.candidateSha) || !SHA256.test(attestation.runnerBundleSha256) ||
-    !SHA256.test(attestation.runnerSandboxProfileSha256) || !/^sha256:[a-f0-9]{64}$/.test(attestation.runtimeImageDigest) ||
-    !SHA256.test(attestation.inputSha256) || !SHA256.test(attestation.mountedReadOnlyFileSetSha256) ||
-    (attestation.networkMode !== "disabled" && attestation.networkMode !== "enabled") ||
+    !["requirement_runner", "boundary_runner", "requirement_evaluator", "boundary_evaluator"].includes(attestation.role) ||
+    !CANDIDATE_SHA.test(attestation.candidateSha) || !SHA256.test(attestation.bundleSha256) || !SHA256.test(attestation.sandboxProfileSha256) ||
+    !/^sha256:[a-f0-9]{64}$/.test(attestation.runtimeImageDigest) || !SHA256.test(attestation.inputSha256) || !SHA256.test(attestation.resultSha256) ||
+    !SHA256.test(attestation.referencePolicySha256) || !SHA256.test(attestation.referencePolicySealSha256) || !SHA256.test(attestation.mountedReadOnlyFileSetSha256) ||
+    attestation.networkMode !== "disabled" ||
     !isMountList(attestation.readOnlyMounts, true) || !isMountList(attestation.writableMounts, false) ||
     !SHA256.test(attestation.resultSha256)) {
     throw new Error("sandbox attestation schema is invalid");
@@ -500,23 +527,29 @@ function validateSandboxAttestationSchema(attestation) {
 
 function sandboxAttestationPasses(attestation, expected, bindings, evidence, manifest) {
   const mountByKind = new Map(attestation.readOnlyMounts.map((mount) => [mount.kind, mount.binding]));
-  const frozenBundleSha256 = manifest.bundles.find((bundle) => bundle.id === `${attestation.surface}_runner`)?.sha256;
+  const isRunner = expected.kind === "runner";
+  const readOnlyKinds = isRunner ? RUNNER_READ_ONLY : EVALUATOR_READ_ONLY;
+  const writableKind = isRunner ? "result" : "aggregate_result";
+  const profileSha256 = isRunner ? manifest.runnerSandboxProfile.sha256 : manifest.evaluatorSandboxProfile.sha256;
   return attestation.candidateSha === evidence.candidateSha &&
-    attestation.runnerBundleSha256 === expected.runnerBundleSha256 &&
-    attestation.runnerBundleSha256 === frozenBundleSha256 &&
-    attestation.runnerSandboxProfileSha256 === manifest.runnerSandboxProfile.sha256 &&
+    attestation.bundleSha256 === expected.bundleSha256 && attestation.sandboxProfileSha256 === profileSha256 &&
     attestation.runtimeImageDigest === manifest.runtime.runtimeImageDigest &&
     attestation.inputSha256 === expected.inputSha256 &&
-    attestation.mountedReadOnlyFileSetSha256 === bindings.mountedReadOnlyFileSetSha256 &&
+    attestation.resultSha256 === expected.resultSha256 && attestation.referencePolicySha256 === bindings.referencePolicySha256 &&
+    attestation.referencePolicySealSha256 === bindings.referencePolicySealSha256 && attestation.mountedReadOnlyFileSetSha256 === expected.mountSetSha256 &&
+    attestation.mountedReadOnlyFileSetSha256 === canonicalSha256({
+      role: attestation.role,
+      readOnlyMounts: attestation.readOnlyMounts,
+      writableMounts: attestation.writableMounts
+    }) &&
     attestation.networkMode === "disabled" &&
-    attestation.readOnlyMounts.length === READ_ONLY_ALLOWED.length &&
-    READ_ONLY_ALLOWED.every((kind) => mountByKind.has(kind)) &&
-    mountByKind.get("candidate_sut") === evidence.candidateSha &&
-    mountByKind.get("protected_input") === expected.inputSha256 &&
-    mountByKind.get("runner_bundle") === expected.runnerBundleSha256 &&
-    mountByKind.get("runtime_profile") === manifest.runnerSandboxProfile.sha256 &&
-    attestation.writableMounts.length === 1 && attestation.writableMounts[0].kind === "result" &&
-    attestation.resultSha256 === expected.resultSha256;
+    attestation.readOnlyMounts.length === readOnlyKinds.length && readOnlyKinds.every((kind) => mountByKind.has(kind)) &&
+    mountByKind.get("protected_input") === expected.inputSha256 && mountByKind.get("runtime_profile") === profileSha256 &&
+    (isRunner
+      ? mountByKind.get("candidate_sut") === evidence.candidateSha && mountByKind.get("runner_bundle") === expected.bundleSha256
+      : mountByKind.get("policy_seal") === bindings.referencePolicySealSha256 && mountByKind.get("candidate_result") === expected.resultSha256 &&
+        mountByKind.get("reference_policy") === bindings.referencePolicySha256 && mountByKind.get("evaluator_bundle") === expected.bundleSha256) &&
+    attestation.writableMounts.length === 1 && attestation.writableMounts[0].kind === writableKind;
 }
 
 function isMountList(value, withBinding) {
@@ -615,7 +648,7 @@ function isKnownReferences(value, known) {
 }
 
 function sameArray(actual, expected) {
-  return Array.isArray(expected) && actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+  return Array.isArray(actual) && Array.isArray(expected) && actual.length === expected.length && actual.every((value, index) => value === expected[index]);
 }
 
 function isUniqueLabels(value) {

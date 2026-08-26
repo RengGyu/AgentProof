@@ -21,7 +21,7 @@ const manifestKeys = [
   "nodeBuiltins", "nodeBuiltinAllowlistSha256", "approvedNodeBuiltinUniverseSha256",
   "toolingBuiltinImports", "evaluationToolchainBuiltinAllowlistSha256",
   "sutExternalImports", "sutExternalImportAllowlistSha256", "parserArtifacts", "resolutionPolicy",
-  "resolutionPolicySha256", "bundles", "evaluationToolchainBundleSetSha256", "runnerSandboxProfile",
+  "resolutionPolicySha256", "bundles", "evaluationToolchainBundleSetSha256", "runnerSandboxProfile", "evaluatorSandboxProfile", "referencePolicy", "authorityRubric",
   "packageScripts", "lockfile", "runtime"
 ];
 
@@ -76,6 +76,9 @@ describe("build-evaluation-toolchain-manifest", () => {
       (manifest) => { manifest.resolutionPolicy.target = "ES2023"; },
       (manifest) => { manifest.bundles[0].sha256 = "f".repeat(64); },
       (manifest) => { manifest.runnerSandboxProfile.sha256 = "f".repeat(64); },
+      (manifest) => { manifest.evaluatorSandboxProfile.sha256 = "f".repeat(64); },
+      (manifest) => { manifest.referencePolicy.sha256 = "f".repeat(64); },
+      (manifest) => { manifest.authorityRubric.sha256 = "f".repeat(64); },
       (manifest) => { manifest.packageScripts.entries[0].command = "node changed.mjs"; },
       (manifest) => { manifest.lockfile.sha256 = "f".repeat(64); },
       (manifest) => { manifest.runtime.runtimeImageDigest = `sha256:${"f".repeat(64)}`; }
@@ -131,6 +134,11 @@ describe("build-evaluation-toolchain-manifest", () => {
       }),
       "MANIFEST_BINDING_INVALID"
     );
+  }));
+
+  it("rejects any non-built-in import from the separately bound reference policy", () => withToolTree(({ root, config }) => {
+    writeFileSync(join(root, "tools", "reference-policy.mjs"), 'import "./helper.mjs";\nexport const policy = 1;\n');
+    expectCode(() => buildEvaluationToolchainManifestV2({ rootDir: root, config }), "MANIFEST_BINDING_INVALID");
   }));
 
   it("rejects self-consistent edge and parser mutations that do not match their real binding", () => withToolTree(({ root, config }) => {
@@ -309,7 +317,7 @@ describe("build-evaluation-toolchain-manifest", () => {
 function withToolTree(run) {
   const root = mkdtempSync(join(tmpdir(), "agentproof-toolchain-manifest-"));
   try {
-    for (const directory of ["tools", "src", "dist", "scripts"]) mkdirSync(join(root, directory));
+    for (const directory of ["tools", "src", "dist", "scripts", "docs"]) mkdirSync(join(root, directory));
     writeFileSync(join(root, "tools", "runner.mjs"), [
       'import { helper } from "./helper.mjs";',
       'import { createHash } from "crypto";',
@@ -321,7 +329,13 @@ function withToolTree(run) {
     writeFileSync(join(root, "src", "verifier.ts"), "export type Verifier = never;\n");
     writeFileSync(join(root, "dist", "runner.bundle.mjs"), "export {};\n");
     writeFileSync(join(root, "dist", "boundary.bundle.mjs"), "export {};\n");
-    writeFileSync(join(root, "sandbox-profile.json"), JSON.stringify(sandboxProfile()));
+    writeFileSync(join(root, "dist", "requirement-evaluator.bundle.mjs"), "export {};\n");
+    writeFileSync(join(root, "dist", "boundary-evaluator.bundle.mjs"), "export {};\n");
+    writeFileSync(join(root, "dist", "reference-policy.bundle.mjs"), "export {};\n");
+    writeFileSync(join(root, "tools", "reference-policy.mjs"), "export const policy = 1;\n");
+    writeFileSync(join(root, "docs", "authority-rubric.v2.json"), "{\"version\":2}\n");
+    writeFileSync(join(root, "runner-sandbox-profile.json"), JSON.stringify(sandboxProfile()));
+    writeFileSync(join(root, "evaluator-sandbox-profile.json"), JSON.stringify(evaluatorSandboxProfile()));
     writeFileSync(join(root, "package.json"), JSON.stringify({
       devDependencies: { acorn: "8.17.0", typescript: "5.9.3" },
       scripts: { "eval:z": "node z.mjs", "eval:a": "node a.mjs" }
@@ -350,9 +364,15 @@ function manifestConfig() {
     bundleFiles: [
       { id: "requirement_runner", path: "dist/runner.bundle.mjs" },
       { id: "boundary_runner", path: "dist/boundary.bundle.mjs" },
+      { id: "requirement_evaluator", path: "dist/requirement-evaluator.bundle.mjs" },
+      { id: "boundary_evaluator", path: "dist/boundary-evaluator.bundle.mjs" },
+      { id: "reference_policy", path: "dist/reference-policy.bundle.mjs" },
       { id: "authority_cli_bootstrap", path: "scripts/evaluate-production-authority-release-cli.mjs" }
     ],
-    sandboxProfilePath: "sandbox-profile.json",
+    runnerSandboxProfilePath: "runner-sandbox-profile.json",
+    evaluatorSandboxProfilePath: "evaluator-sandbox-profile.json",
+    referencePolicyPath: "tools/reference-policy.mjs",
+    authorityRubricPath: "docs/authority-rubric.v2.json",
     packageJsonPath: "package.json",
     packageScriptNames: ["eval:z", "eval:a"],
     lockfilePath: "pnpm-lock.yaml",
@@ -366,6 +386,15 @@ function sandboxProfile() {
     networkMode: "disabled",
     readOnlyMountKinds: ["candidate_sut", "protected_input", "runner_bundle", "runtime_profile"],
     writableMountKinds: ["result"]
+  };
+}
+
+function evaluatorSandboxProfile() {
+  return {
+    version: 1,
+    networkMode: "disabled",
+    readOnlyMountKinds: ["protected_input", "policy_seal", "candidate_result", "reference_policy", "evaluator_bundle", "runtime_profile"],
+    writableMountKinds: ["aggregate_result"]
   };
 }
 

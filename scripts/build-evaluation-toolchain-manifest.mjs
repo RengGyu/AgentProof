@@ -17,7 +17,8 @@ import { resolveToolingSourceDescriptor, scanToolingSource } from "./tooling-sou
 
 const CONFIG_KEYS = [
   "version", "candidateSha", "nodeBuiltins", "toolingEntries", "toolingFiles", "sutExternalImports", "bundleFiles",
-  "sandboxProfilePath", "packageJsonPath", "packageScriptNames", "lockfilePath", "runtimePath"
+  "runnerSandboxProfilePath", "evaluatorSandboxProfilePath", "referencePolicyPath",
+  "authorityRubricPath", "packageJsonPath", "packageScriptNames", "lockfilePath", "runtimePath"
 ];
 const MANIFEST_KEYS = [
   "version", "policyId", "candidateSha", "toolingEntries", "toolingEntrySetSha256",
@@ -26,6 +27,7 @@ const MANIFEST_KEYS = [
   "toolingBuiltinImports", "evaluationToolchainBuiltinAllowlistSha256",
   "sutExternalImports", "sutExternalImportAllowlistSha256", "parserArtifacts", "resolutionPolicy",
   "resolutionPolicySha256", "bundles", "evaluationToolchainBundleSetSha256", "runnerSandboxProfile",
+  "evaluatorSandboxProfile", "referencePolicy", "authorityRubric",
   "packageScripts", "lockfile", "runtime"
 ];
 const PROFILE_KEYS = ["version", "networkMode", "readOnlyMountKinds", "writableMountKinds"];
@@ -35,6 +37,9 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const CANDIDATE_SHA = /^[a-f0-9]{40}$/;
 const READ_ONLY_MOUNT_KINDS = ["candidate_sut", "protected_input", "runner_bundle", "runtime_profile"];
 const WRITABLE_MOUNT_KINDS = ["result"];
+const EVALUATOR_READ_ONLY_MOUNT_KINDS = ["protected_input", "policy_seal", "candidate_result", "reference_policy", "evaluator_bundle", "runtime_profile"];
+const EVALUATOR_WRITABLE_MOUNT_KINDS = ["aggregate_result"];
+const REQUIRED_BUNDLE_IDS = ["authority_cli_bootstrap", "boundary_evaluator", "boundary_runner", "reference_policy", "requirement_evaluator", "requirement_runner"];
 const AUTHORITY_CLI_BOOTSTRAP_V1 = Object.freeze({
   id: "authority_cli_bootstrap",
   path: "scripts/evaluate-production-authority-release-cli.mjs"
@@ -58,11 +63,25 @@ export function buildEvaluationToolchainManifestV2({ rootDir, config }) {
     .filter((edge) => edge.targetKind === "node_builtin")
     .map((edge) => edge.targetRef))].sort();
   if (!sameArray(normalized.nodeBuiltins, usedNodeBuiltins)) fail("MANIFEST_BINDING_INVALID");
+  if (candidateRunnerReachesReferencePolicy(moduleEdges, normalized.referencePolicyPath)) {
+    fail("MANIFEST_BINDING_INVALID");
+  }
+
+  const referencePolicyRaw = readBounded(root, normalized.referencePolicyPath);
+  const referencePolicyDescriptor = resolveToolingSourceDescriptor({ rootDir: root, path: normalized.referencePolicyPath });
+  const referencePolicyEdges = scanToolingSource({
+    path: normalized.referencePolicyPath,
+    source: referencePolicyRaw.toString("utf8"),
+    sourceMode: referencePolicyDescriptor.sourceMode
+  }, { includeModuleEdges: true }).moduleEdges;
+  if (referencePolicyEdges.some((edge) => !normalizeNodeBuiltinSpecifier(edge.specifier))) fail("MANIFEST_BINDING_INVALID");
 
   const sourceFiles = normalized.toolingFiles.map((path) => fileRecord(root, path));
   const bundles = normalized.bundleFiles.map(({ id, path }) => ({ id, ...fileRecord(root, path) }));
-  const profileRaw = readBounded(root, normalized.sandboxProfilePath);
-  validateSandboxProfile(parseJson(profileRaw));
+  const runnerProfileRaw = readBounded(root, normalized.runnerSandboxProfilePath);
+  validateSandboxProfile(parseJson(runnerProfileRaw), "runner");
+  const evaluatorProfileRaw = readBounded(root, normalized.evaluatorSandboxProfilePath);
+  validateSandboxProfile(parseJson(evaluatorProfileRaw), "evaluator");
   const scripts = normalized.packageScriptNames.map((name) => {
     const command = packageJson?.scripts?.[name];
     if (typeof command !== "string" || command.length === 0 || command.length > 1024 || /[\r\n\0]/.test(command)) {
@@ -96,7 +115,10 @@ export function buildEvaluationToolchainManifestV2({ rootDir, config }) {
     resolutionPolicySha256: canonicalSha256(FROZEN_TOOLING_RESOLUTION_POLICY_V1),
     bundles,
     evaluationToolchainBundleSetSha256: canonicalSha256(bundles),
-    runnerSandboxProfile: { path: normalized.sandboxProfilePath, sha256: sha256(profileRaw) },
+    runnerSandboxProfile: { path: normalized.runnerSandboxProfilePath, sha256: sha256(runnerProfileRaw) },
+    evaluatorSandboxProfile: { path: normalized.evaluatorSandboxProfilePath, sha256: sha256(evaluatorProfileRaw) },
+    referencePolicy: fileRecord(root, normalized.referencePolicyPath),
+    authorityRubric: fileRecord(root, normalized.authorityRubricPath),
     packageScripts: { entries: scripts, sha256: canonicalSha256(scripts) },
     lockfile: fileRecord(root, normalized.lockfilePath),
     runtime: {
@@ -128,6 +150,7 @@ export function validateEvaluationToolchainManifestV2(manifest) {
     !isParserArtifacts(manifest.parserArtifacts) || stableJson(manifest.resolutionPolicy) !== stableJson(FROZEN_TOOLING_RESOLUTION_POLICY_V1) ||
     !SHA256.test(manifest.resolutionPolicySha256) || !isBundles(manifest.bundles) ||
     !SHA256.test(manifest.evaluationToolchainBundleSetSha256) || !isFileHashObject(manifest.runnerSandboxProfile) ||
+    !isFileHashObject(manifest.evaluatorSandboxProfile) || !isFileHashObject(manifest.referencePolicy) || !isFileHashObject(manifest.authorityRubric) ||
     !isPackageScripts(manifest.packageScripts) || !isFileHashObject(manifest.lockfile) || !isRuntimeRecord(manifest.runtime)) {
     fail("MANIFEST_BINDING_INVALID");
   }
@@ -155,9 +178,11 @@ export function validateEvaluationToolchainManifestV2(manifest) {
   return true;
 }
 
-export function validateSandboxProfile(profile) {
+export function validateSandboxProfile(profile, kind = "runner") {
+  const expectedReadOnly = kind === "evaluator" ? EVALUATOR_READ_ONLY_MOUNT_KINDS : READ_ONLY_MOUNT_KINDS;
+  const expectedWritable = kind === "evaluator" ? EVALUATOR_WRITABLE_MOUNT_KINDS : WRITABLE_MOUNT_KINDS;
   if (!hasExactKeys(profile, PROFILE_KEYS) || profile.version !== 1 || profile.networkMode !== "disabled" ||
-    !sameArray(profile.readOnlyMountKinds, READ_ONLY_MOUNT_KINDS) || !sameArray(profile.writableMountKinds, WRITABLE_MOUNT_KINDS)) {
+    !sameArray(profile.readOnlyMountKinds, expectedReadOnly) || !sameArray(profile.writableMountKinds, expectedWritable)) {
     fail("SANDBOX_EVIDENCE_INCOMPLETE");
   }
   return true;
@@ -205,7 +230,9 @@ function normalizedConfig(config) {
   const toolingEntries = normalizedUniquePaths(config.toolingEntries);
   const toolingFiles = normalizedUniquePaths(config.toolingFiles);
   const sutExternalImports = normalizedUniquePaths(config.sutExternalImports);
-  if (!toolingEntries.every((entry) => toolingFiles.includes(entry)) || sutExternalImports.some((path) => toolingFiles.includes(path))) {
+  const referencePolicyPath = normalizedPath(config.referencePolicyPath);
+  if (!toolingEntries.every((entry) => toolingFiles.includes(entry)) ||
+    sutExternalImports.some((path) => toolingFiles.includes(path))) {
     fail("MANIFEST_BINDING_INVALID");
   }
   const nodeBuiltins = normalizedNodeBuiltins(config.nodeBuiltins);
@@ -216,7 +243,10 @@ function normalizedConfig(config) {
     toolingFiles,
     sutExternalImports,
     bundleFiles: normalizedBundles(config.bundleFiles),
-    sandboxProfilePath: normalizedPath(config.sandboxProfilePath),
+    runnerSandboxProfilePath: normalizedPath(config.runnerSandboxProfilePath),
+    evaluatorSandboxProfilePath: normalizedPath(config.evaluatorSandboxProfilePath),
+    referencePolicyPath,
+    authorityRubricPath: normalizedPath(config.authorityRubricPath),
     packageJsonPath: normalizedPath(config.packageJsonPath),
     packageScriptNames: normalizedLabels(config.packageScriptNames),
     lockfilePath: normalizedPath(config.lockfilePath),
@@ -236,7 +266,10 @@ function normalizedBundles(values) {
     fail("MANIFEST_BINDING_INVALID");
   }
   const result = values.map(({ id, path }) => ({ id, path: normalizedPath(path) })).sort((left, right) => compareText(left.id, right.id));
-  if (!isStrictlySorted(result.map((item) => item.id)) || !hasAuthorityCliBootstrap(result)) fail("MANIFEST_BINDING_INVALID");
+  if (!isStrictlySorted(result.map((item) => item.id)) || !sameArray(result.map((item) => item.id), REQUIRED_BUNDLE_IDS) ||
+    result.find((bundle) => bundle.id === AUTHORITY_CLI_BOOTSTRAP_V1.id)?.path !== AUTHORITY_CLI_BOOTSTRAP_V1.path) {
+    fail("MANIFEST_BINDING_INVALID");
+  }
   return result;
 }
 
@@ -354,6 +387,26 @@ function edgeKey(edge) {
   return [edge?.importerPath, edge?.kind, edge?.specifier, edge?.targetKind, edge?.targetRef].join("\0");
 }
 
+function isCandidateRunner(path) {
+  return path === "src/lib/release-evaluation-runner.ts" || path === "src/lib/production-boundary-evaluation-runner.ts";
+}
+
+function candidateRunnerReachesReferencePolicy(edges, referencePolicyPath) {
+  const pending = edges.filter((edge) => isCandidateRunner(edge.importerPath)).map((edge) => edge.importerPath);
+  const visited = new Set();
+  while (pending.length > 0) {
+    const importerPath = pending.pop();
+    if (visited.has(importerPath)) continue;
+    visited.add(importerPath);
+    for (const edge of edges) {
+      if (edge.importerPath !== importerPath) continue;
+      if (edge.targetRef === referencePolicyPath) return true;
+      if (edge.targetKind === "tooling") pending.push(edge.targetRef);
+    }
+  }
+  return false;
+}
+
 function isApprovedBuiltins(value) {
   return Array.isArray(value) && value.every((item) => APPROVED_NODE_BUILTINS_V1.includes(item)) && isStrictlySortedOrEmpty(value);
 }
@@ -361,12 +414,8 @@ function isApprovedBuiltins(value) {
 function isBundles(value) {
   return Array.isArray(value) && value.length > 0 && isStrictlySorted(value.map((item) => item?.id)) &&
     value.every((item) => hasExactKeys(item, ["id", "path", "sha256"]) && isLabel(item.id) && isSafePath(item.path) && SHA256.test(item.sha256)) &&
-    hasAuthorityCliBootstrap(value);
-}
-
-function hasAuthorityCliBootstrap(bundles) {
-  return bundles.some((bundle) => bundle?.id === AUTHORITY_CLI_BOOTSTRAP_V1.id &&
-    bundle.path === AUTHORITY_CLI_BOOTSTRAP_V1.path);
+    sameArray(value.map((item) => item.id), REQUIRED_BUNDLE_IDS) &&
+    value.find((bundle) => bundle.id === AUTHORITY_CLI_BOOTSTRAP_V1.id)?.path === AUTHORITY_CLI_BOOTSTRAP_V1.path;
 }
 
 function isPackageScripts(value) {
