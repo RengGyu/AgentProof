@@ -3,13 +3,17 @@
 **Depends on:** Phases 0–2 and
 `2026-08-26-existing-github-evidence-release-scope-design.md`
 
-**Status:** Release evaluation specification
+**Status:** Release evaluation specification; V2 closed-reference migration in
+progress
 
 **Release state:** `NO_GO` until all binary gates pass
 
 ## Implementation evaluation record
 
-**State:** Not started; this file defines release evaluation only.
+**State:** The V2 release-evaluation implementation is locally complete, but
+no protected corpus, current production smoke, independent exact-SHA review,
+or deployment evidence exists. This remains a specification, not a release
+record.
 
 - The current candidate scope contains only the existing static documentation
   and path-absence capabilities. Non-static Phase 3 capabilities are deferred.
@@ -84,9 +88,11 @@ No fixture may inject a precomputed criterion result.
 
 ## 5. Protected holdout
 
-Freeze input-only cases and a separate expected oracle after runner/evaluator
-interfaces are fixed. Implementation workers receive neither expected outcomes
-nor failing case contents.
+Freeze input-only cases and a V2 reference-policy seal after runner/evaluator
+interfaces are fixed. The seal binds corpus hashes, exact case counts, and the
+input-derived named coverage summary; it contains no per-case expected result.
+Implementation workers receive neither derived outcomes nor failing case
+contents.
 
 Minimum categories:
 
@@ -108,19 +114,22 @@ Reuse the sealed contracts and custody boundary already defined by:
   `2026-08-22-production-authority-blind-evaluation-design.md`.
 
 The independent reviewer is the holdout custodian and creates the input-only
-corpus and separate oracle outside the implementation worktree. The candidate
-runner receives only input and the immutable candidate tree; the evaluator
-alone receives candidate results plus oracle. Both run in the frozen,
-no-network, read-only-mount sandbox described by those specifications. The
-signed aggregate artifact binds candidate SHA, runner/toolchain manifest hash,
-input hash, result hash, oracle hash, sandbox profile, and aggregate gate
-counts. Implementation workers receive aggregate results only.
+requirement and boundary corpora plus the V2 seal outside the implementation
+worktree. The candidate runner receives only input and the immutable candidate
+tree; the evaluator alone receives protected input, the seal, candidate
+results, and the reference-policy bundle. Both run in a frozen no-network
+sandbox. Four signed attestations cover the requirement/boundary runners and
+evaluators, with distinct exact mount sets. The signed aggregate artifact
+binds candidate SHA, V2 policy/seal/corpus/coverage hashes, runner and
+evaluator bundle/profile hashes, result hashes, and aggregate gate counts.
+Implementation workers receive aggregate results only.
 
 This phase extends the existing closed candidate result schema only with the
 enabled capability tokens and criterion-owned result/axis states required by
-this program. It does not introduce another runner, evaluator, or oracle
-format. Any required tooling/schema change invalidates the freeze and requires
-an independently recreated corpus and oracle.
+this program. It does not introduce another runner, evaluator, or per-case
+expected-result format. Any required tooling/schema change invalidates the
+freeze and requires independently recreated input-only corpora, V2 seal, and
+derived coverage.
 
 ## 6. Binary release gates
 

@@ -3,7 +3,9 @@
 **Date:** 2026-08-25
 
 **Status:** Phases 0–2 implemented and locally verified on the isolated branch;
-the former Phase 3 expansion is deferred and Phase 4 is the next active phase
+the former Phase 3 expansion is deferred. Phase 4 has a locally verified V2
+closed-reference evaluation implementation, but remains `NO_GO` until a fresh
+protected evaluation and production gates exist.
 
 **Current scope:**
 `2026-08-26-existing-github-evidence-release-scope-design.md`. It supersedes
@@ -29,7 +31,7 @@ that exists from planned work.
 | Phase 1 | implemented | default-deny capability policy and criterion-axis closure tests | any enabled non-static capability |
 | Phase 2 | implemented | exact-head artifact and rename-aware absence tests | broad product correctness or release readiness |
 | Phase 3 | deferred | historical architecture only; excluded by the current scope | test, workflow, or return-value promotion |
-| Phase 4 | not started | release gates defined only | release approval |
+| Phase 4 | implementation locally verified | closed V2 reference policy, sealed corpus contract, and authority-gate regressions | protected holdout, production smoke, independent exact-SHA review, and release approval |
 
 The Phase 0–2 branch evidence was: `pnpm test` (163 files, 2,205 passed, 2
 skipped), `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check`.
@@ -167,6 +169,12 @@ context before the report is signed.
 | 2 | `2026-08-25-phase-2-static-evaluator-closure-design.md` | Correct documentation and absence evaluation across runtime and storage | Static types only after gates |
 | 3 | `2026-08-26-existing-github-evidence-release-scope-design.md` | Freeze the release scope to existing GitHub evidence and defer non-static promotion | Deferred types stay unavailable |
 | 4 | `2026-08-25-phase-4-release-closure-design.md` | Reuse existing replay, holdout, production smoke, privacy, and reviewer gates | Static release decision only |
+
+The Phase 4 holdout protocol is versioned by
+`2026-08-26-closed-reference-oracle-v2-design.md`: V1 authored oracle tuples
+are historical/development-only and cannot authorize release. V2 derives the
+reference projection from sealed input-only corpora and permits release-positive
+evaluation only for `documentation_literal` and `path_change_absence`.
 
 Each phase is a separate reviewable work package. A later phase may not repair
 or bypass a failed earlier phase.

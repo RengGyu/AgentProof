@@ -1,5 +1,12 @@
 # Executable Release Evaluation — Pre-freeze Design
 
+> **Release-authority status: historical V1 only.** This document preserves the
+> original pre-freeze boundary for development regression work. It cannot
+> authorize release evaluation. The current release path is the closed,
+> input-derived V2 reference policy in
+> `2026-08-26-closed-reference-oracle-v2-design.md`; it receives input corpora
+> and a seal, not an authored expected oracle.
+
 ## Purpose lock
 
 AgentProof remains an evidence-report product. This release evaluation proves
@@ -24,7 +31,7 @@ The existing `eval/evidence-release-holdout.v1.json` is not release evidence:
 its schema is incompatible with the evaluator. It remains a failed development
 artifact and must not be adapted in place or used to claim a holdout result.
 
-## Boundary
+## Historical V1 boundary
 
 ```text
 protected case payload (input only) -> candidate runner -> candidate result
@@ -37,7 +44,7 @@ generate a report. The frozen oracle must live outside the implementation
 worktree and be injected only by protected CI after the runner contract is
 fixed.
 
-## Contracts
+## Historical V1 contracts
 
 ### Candidate case payload v1
 
@@ -153,19 +160,21 @@ must:
 - Evaluator receives an input-compatible synthetic development corpus and
   reports its full case count. This is plumbing coverage, not holdout evidence.
 
-## Freeze handoff criteria
+## Historical V1 freeze handoff criteria
 
-Only after all pre-freeze tests pass may an independent reviewer create the
-protected oracle and candidate case payload. The reviewer receives the above
-contracts but no development regressions or preferred outcomes. The reviewer
-publishes only the case count, category balance, schema version, and hash.
+Only after all pre-freeze tests passed could an independent reviewer create the
+protected oracle and candidate case payload. That V1 process is invalidated for
+release authority because it used manually authored expected tuples. A new V2
+custodian creates input-only corpora and a sealed, derived coverage summary;
+the candidate never receives a reference projection.
 
 ## Post-freeze sequence
 
 1. Fix production runtime authority and pasted-log provenance defects under
    ordinary RED/GREEN regression tests.
 2. Run the candidate runner against the protected payload.
-3. Run the evaluator with the protected oracle.
+3. Run the V2 evaluator with the protected input corpus, seal, and candidate
+   result; it derives the reference projection in memory.
 4. Keep any failing frozen case out of implementation prompts; classify it as
    a new regression only after an independent decision.
 5. Restore authoritative external-pilot artifacts, complete P0 manual labels,
