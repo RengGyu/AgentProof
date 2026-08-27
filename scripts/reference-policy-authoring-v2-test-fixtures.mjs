@@ -32,6 +32,6 @@ export function validAuthoringFixtureV2() {
     evidenceCorpus: { version: 2, cases: Array.from({ length: 12 }, (_, index) => ({ version: 2, caseId: sha(index + 1), input: input(index) })) },
     boundaryCorpus: { version: 2, cases: Array.from({ length: 8 }, (_, index) => index < 2
       ? { version: 2, kind: "inbound_untrusted_v2", caseId: sha(index + 20), report: { reportSchemaVersion: "verification-report.v2", verificationContract: { state: index === 0 ? "authoritative" : "author_claim" } } }
-      : { version: 2, kind: "pasted_merge", caseId: sha(index + 20), liveInput: input(index), pastedOverride: index === 2 ? {} : index === 3 ? { changedFiles: "README.md" } : index === 4 ? { checks: "check" } : index === 5 ? { logs: "log" } : index === 6 ? { taskText: "text" } : { inputLimitations: ["incomplete"] } }) }
+      : { version: 2, kind: "pasted_merge", caseId: sha(index + 20), liveInput: input(index), pastedOverride: index === 2 ? {} : index === 3 ? { prUrl: "https://example.test/pr/1", changedFiles: "README.md" } : index === 4 ? { prUrl: "https://example.test/pr/2", checks: "check" } : index === 5 ? { prUrl: "https://example.test/pr/3", logs: "log" } : index === 6 ? { prUrl: "https://example.test/pr/4", prDescription: "text" } : { prUrl: "https://example.test/pr/5", inputLimitations: ["incomplete"] } }) }
   };
 }

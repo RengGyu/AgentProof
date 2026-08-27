@@ -24,7 +24,12 @@ function schemaErrors(document, validate, value) {
   return (validate.errors ?? []).map((error) => {
     const pointer = error.keyword === "required" ? `${error.dataPath}/${error.params.missingProperty}` : error.dataPath;
     return { document, caseIndex: caseIndex(pointer), pointer: pointer.slice(0, 256), code: errorCode(error) };
-  });
+  }).filter((error) => !isDraftBoundaryBranchError(document, value, error));
+}
+
+function isDraftBoundaryBranchError(document, value, error) {
+  if (document !== "boundary" || value?.cases?.[error.caseIndex]?.kind !== null) return false;
+  return error.pointer === `/cases/${error.caseIndex}` || /\/(report|liveInput|pastedOverride)$/.test(error.pointer);
 }
 
 function errorCode(error) {

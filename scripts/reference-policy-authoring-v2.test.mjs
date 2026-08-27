@@ -20,6 +20,12 @@ describe("public reference-policy authoring schema", () => {
     }
   });
 
+  it("uses all public pasted-override fields across synthetic boundary coverage", () => {
+    const overrides = validAuthoringFixtureV2().boundaryCorpus.cases.slice(2).map((item) => item.pastedOverride);
+    for (const key of ["prUrl", "prDescription", "changedFiles", "checks", "logs", "inputLimitations"]) assert.ok(overrides.some((value) => Object.hasOwn(value, key)), key);
+    assert.deepEqual(overrides[0], {});
+  });
+
   it("returns bounded value-free structural diagnostics", () => {
     const mutations = [
       ["missing required", "required_field", (v) => { delete v.evidenceCorpus.cases[0].input.title; }],
@@ -56,6 +62,7 @@ describe("public reference-policy authoring schema", () => {
       assert.equal(result.valid, false, name);
       assert.ok(result.errors.some((error) => error.code === code), `${name}: ${JSON.stringify(result.errors)}`);
       assert.equal(JSON.stringify(result).includes("SENTINEL"), false, name);
+      if (name === "unknown field") assert.equal(JSON.stringify(result).includes("untrusted_secret"), false);
     }
   });
 
@@ -67,6 +74,9 @@ describe("public reference-policy authoring schema", () => {
     assert.notEqual(draft.boundaryCorpus.cases[0], draft.boundaryCorpus.cases[1]);
     const result = validateReferencePolicySchemaV2(draft);
     assert.equal(result.valid, false);
-    assert.ok(result.errors.every((error) => error.pointer.startsWith("/cases/")));
+    assert.equal(result.errors.length, 40);
+    assert.ok(result.errors.every((error) => error.document === "evidence"
+      ? /\/cases\/\d+\/(caseId|input)$/.test(error.pointer)
+      : /\/cases\/\d+\/(caseId|kind)$/.test(error.pointer)));
   });
 });
