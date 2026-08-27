@@ -12,6 +12,17 @@ import {
 import { evaluateReportQualityGate } from "./smoke-analyze-pr-url.mjs";
 
 describe("smoke-real-pr-evaluation", () => {
+  it("pins public regression cases to their selected linked-issue source", () => {
+    expect(DEFAULT_REAL_PR_EVALUATION_CASES).toHaveLength(6);
+
+    for (const testCase of DEFAULT_REAL_PR_EVALUATION_CASES) {
+      expect(testCase.expectations).toEqual(expect.objectContaining({
+        analysisContext: "linked_issue",
+        minRequirementCount: 1
+      }));
+    }
+  });
+
   it("runs every real PR evaluation case through analyze and summary-only save smoke", async () => {
     let savedId = 0;
     const fetchMock = vi.fn(async (url, init = {}) => {
@@ -666,6 +677,7 @@ function reportFixture(prUrl) {
   return {
     analysisId: "ap_real_pr_smoke",
     createdAt: "2026-06-26T00:00:00.000Z",
+    analysisContext: "linked_issue",
     source: {
       title: `Report for ${prUrl}`,
       url: prUrl

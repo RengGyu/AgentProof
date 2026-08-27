@@ -304,6 +304,13 @@ export function assertReportExpectations(report, expectations = {}) {
     checks.push({ name: "priorityIn", expected: expectations.priorityIn.join("|") });
   }
 
+  if (typeof expectations.analysisContext === "string" && report.analysisContext !== expectations.analysisContext) {
+    throw smokeError(`Expected analysisContext ${expectations.analysisContext}, received ${report.analysisContext ?? "unknown"}.`);
+  }
+  if (typeof expectations.analysisContext === "string") {
+    checks.push({ name: "analysisContext", expected: expectations.analysisContext });
+  }
+
   const requirementCount = Array.isArray(report.requirements) ? report.requirements.length : 0;
   if (typeof expectations.minRequirementCount === "number" && requirementCount < expectations.minRequirementCount) {
     throw smokeError(`Expected at least ${expectations.minRequirementCount} requirements, received ${requirementCount}.`);
