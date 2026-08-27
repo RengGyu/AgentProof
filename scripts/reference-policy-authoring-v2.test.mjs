@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createReferencePolicyDraftValuesV2, validateReferencePolicyAuthoringV2, validateReferencePolicySchemaV2 } from "./reference-policy-authoring-v2.mjs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { createReferencePolicyDraftValuesV2, runReferencePolicyAuthoringCliV2, validateReferencePolicyAuthoringV2, validateReferencePolicyFilesV2, validateReferencePolicySchemaV2 } from "./reference-policy-authoring-v2.mjs";
 import { validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
+
+const cli = fileURLToPath(new URL("./reference-policy-authoring-v2-cli.mjs", import.meta.url));
+
+function temporaryDirectory() { return mkdtempSync(join(tmpdir(), "agentproof-authoring-v2-")); }
+function runCli(command, args) { return spawnSync(process.execPath, [cli, command, ...args], { encoding: "utf8" }); }
+function writeCorpus(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8"); }
+function cliArgs(evidence, boundary) { return ["--evidence-cases", evidence, "--boundary-cases", boundary]; }
 
 describe("public reference-policy authoring schema", () => {
   it("accepts only the closed 12/8 public subset", () => {
@@ -140,5 +152,163 @@ describe("public reference-policy authoring schema", () => {
     assert.equal(result.truncated, true);
     assert.deepEqual(result, validateReferencePolicyAuthoringV2(fixture));
     assert.ok(result.errors.every((error) => Object.keys(error).every((key) => ["document", "caseIndex", "path", "code"].includes(key))));
+  });
+});
+
+describe("reference-policy authoring CLI", () => {
+  it("initializes two owner-only draft files without exposing their paths", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    try {
+      const result = runCli("init", cliArgs(evidence, boundary));
+      assert.equal(result.status, 0);
+      assert.equal(result.stdout, '{"version":2,"status":"initialized","evidenceCaseCount":12,"boundaryCaseCount":8}\n');
+      assert.equal(result.stderr, "");
+      assert.equal(JSON.parse(readFileSync(evidence, "utf8")).cases.length, 12);
+      assert.equal(JSON.parse(readFileSync(boundary, "utf8")).cases.length, 8);
+      assert.equal(statSync(evidence).mode & 0o777, 0o600);
+      assert.equal(statSync(boundary).mode & 0o777, 0o600);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("refuses unsafe init arguments without clobbering existing files", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    try {
+      writeFileSync(evidence, "preserve", "utf8");
+      for (const args of [
+        cliArgs(evidence, boundary),
+        cliArgs(boundary, boundary),
+        ["--boundary-cases", boundary, "--evidence-cases", evidence],
+        ["--evidence-cases", evidence, "--evidence-cases", boundary],
+        [...cliArgs(evidence, boundary), "--unknown"]
+      ]) {
+        const result = runCli("init", args);
+        assert.equal(result.status, 2);
+        assert.equal(result.stdout, "");
+        assert.equal(result.stderr.includes(evidence), false);
+        assert.equal(result.stderr.includes(boundary), false);
+        assert.equal(readFileSync(evidence, "utf8"), "preserve");
+        assert.equal(existsSync(boundary), false);
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("cleans up only its own partial init output after a target failure", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "missing-parent", "boundary.json");
+    try {
+      const result = runCli("init", cliArgs(evidence, boundary));
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, "");
+      assert.equal(existsSync(evidence), false);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("does not leave a first draft behind when the second target directory is unwritable", () => {
+    const directory = temporaryDirectory();
+    const blocked = join(directory, "blocked");
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(blocked, "boundary.json");
+    try {
+      mkdirSync(blocked);
+      chmodSync(blocked, 0o500);
+      const result = runCli("init", cliArgs(evidence, boundary));
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, "");
+      assert.equal(existsSync(evidence), false);
+      assert.equal(existsSync(boundary), false);
+    } finally {
+      chmodSync(blocked, 0o700);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("returns bounded validation diagnostics without leaking authored values", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    try {
+      const fixture = validAuthoringFixtureV2();
+      writeCorpus(evidence, fixture.evidenceCorpus);
+      writeCorpus(boundary, fixture.boundaryCorpus);
+      let result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 0);
+      assert.equal(result.stdout, '{"version":2,"status":"valid","stage":"complete","errors":[],"truncated":false}\n');
+      assert.equal(result.stderr, "");
+
+      writeFileSync(evidence, '{"broken"', "utf8");
+      result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, '{"version":2,"status":"invalid","stage":"syntax","errors":[{"document":"evidence","path":"","code":"syntax_invalid"}],"truncated":false}\n');
+      assert.equal(result.stderr, "");
+
+      writeCorpus(evidence, fixture.evidenceCorpus);
+      writeFileSync(boundary, '{"broken"', "utf8");
+      result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, '{"version":2,"status":"invalid","stage":"syntax","errors":[{"document":"boundary","path":"","code":"syntax_invalid"}],"truncated":false}\n');
+      assert.equal(result.stderr, "");
+
+      fixture.evidenceCorpus.cases[0].input.title = "UNIQUE_AUTHORING_SENTINEL";
+      fixture.evidenceCorpus.untrusted_secret_key = "UNIQUE_AUTHORING_SENTINEL";
+      writeCorpus(evidence, fixture.evidenceCorpus);
+      writeCorpus(boundary, validAuthoringFixtureV2().boundaryCorpus);
+      result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 1);
+      assert.equal(JSON.parse(result.stdout).stage, "schema");
+      assert.equal(`${result.stdout}${result.stderr}`.includes("UNIQUE_AUTHORING_SENTINEL"), false);
+      assert.equal(`${result.stdout}${result.stderr}`.includes("untrusted_secret_key"), false);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("returns semantic and coverage diagnostics from valid JSON files", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    try {
+      const semantic = validAuthoringFixtureV2();
+      semantic.evidenceCorpus.cases[1].caseId = semantic.evidenceCorpus.cases[0].caseId;
+      writeCorpus(evidence, semantic.evidenceCorpus);
+      writeCorpus(boundary, semantic.boundaryCorpus);
+      let result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 1);
+      assert.equal(JSON.parse(result.stdout).stage, "cross_field");
+      assert.equal(result.stderr, "");
+
+      const coverage = validAuthoringFixtureV2();
+      coverage.evidenceCorpus.cases[5].input.verificationCriterionEvidenceV2.artifactBlobs[0].content = "public";
+      writeCorpus(evidence, coverage.evidenceCorpus);
+      writeCorpus(boundary, coverage.boundaryCorpus);
+      result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 1);
+      assert.equal(JSON.parse(result.stdout).stage, "coverage");
+      assert.equal(JSON.parse(result.stdout).errors[0].coverageName, "documentation:violated");
+      assert.equal(result.stderr, "");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("uses fixed failures for invalid validation invocation and internal exceptions", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "missing.json");
+    const boundary = join(directory, "boundary.json");
+    const stdout = { value: "", write(value) { this.value += value; } };
+    const stderr = { value: "", write(value) { this.value += value; } };
+    try {
+      const result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, "");
+      assert.equal(result.stderr, "REFERENCE_POLICY_VALIDATE_FAILED\n");
+
+      writeCorpus(evidence, validAuthoringFixtureV2().evidenceCorpus);
+      writeCorpus(boundary, validAuthoringFixtureV2().boundaryCorpus);
+      assert.equal(runReferencePolicyAuthoringCliV2("validate", cliArgs(evidence, boundary), { stdout, stderr, validator() { throw new Error("UNIQUE_INTERNAL_MESSAGE"); } }), 3);
+      assert.equal(stdout.value, '{"version":2,"status":"invalid","stage":"internal","errors":[{"code":"internal_validation_failure"}],"truncated":false}\n');
+      assert.equal(stderr.value.includes("UNIQUE_INTERNAL_MESSAGE"), false);
+      assert.deepEqual(validateReferencePolicyFilesV2({ evidencePath: evidence, boundaryPath: boundary }, { validator() { throw new Error("UNIQUE_INTERNAL_MESSAGE"); } }), { exitCode: 3, diagnostic: { version: 2, status: "invalid", stage: "internal", errors: [{ code: "internal_validation_failure" }], truncated: false } });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

@@ -1,5 +1,6 @@
 import Ajv from "ajv";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { inspectReferencePolicyInputsV2 } from "./evidence-release-reference-policy-v2.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../schemas/reference-policy/holdout-authoring-v2.schema.json", import.meta.url)));
@@ -34,6 +35,80 @@ export function createReferencePolicyDraftValuesV2() {
   const evidenceSlot = { version: 2, caseId: "", input: null };
   const boundarySlot = { version: 2, kind: null, caseId: "" };
   return { evidenceCorpus: { version: 2, cases: Array.from({ length: 12 }, () => ({ ...evidenceSlot })) }, boundaryCorpus: { version: 2, cases: Array.from({ length: 8 }, () => ({ ...boundarySlot })) } };
+}
+
+export function initReferencePolicyDraftsV2({ evidencePath, boundaryPath }) {
+  if (existsSync(evidencePath) || existsSync(boundaryPath)) throw new Error("init_failed");
+  const drafts = createReferencePolicyDraftValuesV2();
+  const created = [];
+  try {
+    writeFileSync(evidencePath, `${JSON.stringify(drafts.evidenceCorpus, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    created.push(evidencePath);
+    writeFileSync(boundaryPath, `${JSON.stringify(drafts.boundaryCorpus, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    created.push(boundaryPath);
+    return { evidenceCaseCount: 12, boundaryCaseCount: 8 };
+  } catch (error) {
+    for (const path of created) {
+      try { unlinkSync(path); } catch {}
+    }
+    throw error;
+  }
+}
+
+export function validateReferencePolicyFilesV2({ evidencePath, boundaryPath }, { validator = validateReferencePolicyAuthoringV2 } = {}) {
+  const corpora = {};
+  for (const [document, path, key] of [["evidence", evidencePath, "evidenceCorpus"], ["boundary", boundaryPath, "boundaryCorpus"]]) {
+    let text;
+    try { text = readFileSync(path, "utf8"); } catch { return { exitCode: 2 }; }
+    try { corpora[key] = JSON.parse(text); } catch (error) {
+      if (error instanceof SyntaxError) return { exitCode: 1, diagnostic: syntaxDiagnostic(document) };
+      return { exitCode: 3, diagnostic: internalDiagnosticV2() };
+    }
+  }
+  try {
+    const diagnostic = validator(corpora);
+    return { exitCode: diagnostic.status === "valid" ? 0 : 1, diagnostic };
+  } catch { return { exitCode: 3, diagnostic: internalDiagnosticV2() }; }
+}
+
+export function runReferencePolicyAuthoringCliV2(command, args, { stdout = process.stdout, stderr = process.stderr, validator = validateReferencePolicyAuthoringV2 } = {}) {
+  const paths = parseAuthoringArgs(args);
+  if (!paths) {
+    stderr.write(`REFERENCE_POLICY_${command === "init" ? "INIT" : "VALIDATE"}_FAILED\n`);
+    return 2;
+  }
+  if (command === "init") {
+    try {
+      const counts = initReferencePolicyDraftsV2(paths);
+      stdout.write(`${JSON.stringify({ version: 2, status: "initialized", ...counts })}\n`);
+      return 0;
+    } catch {
+      stderr.write("REFERENCE_POLICY_INIT_FAILED\n");
+      return 2;
+    }
+  }
+  if (command !== "validate") {
+    stderr.write("REFERENCE_POLICY_VALIDATE_FAILED\n");
+    return 2;
+  }
+  const result = validateReferencePolicyFilesV2(paths, { validator });
+  if (result.exitCode === 2) {
+    stderr.write("REFERENCE_POLICY_VALIDATE_FAILED\n");
+  } else {
+    stdout.write(`${JSON.stringify(result.diagnostic)}\n`);
+  }
+  return result.exitCode;
+}
+
+function parseAuthoringArgs(args) {
+  if (args.length !== 4 || args[0] !== "--evidence-cases" || args[2] !== "--boundary-cases") return null;
+  const evidencePath = resolve(args[1]);
+  const boundaryPath = resolve(args[3]);
+  return evidencePath === boundaryPath ? null : { evidencePath, boundaryPath };
+}
+
+function syntaxDiagnostic(document) {
+  return { version: 2, status: "invalid", stage: "syntax", errors: [{ document, path: "", code: "syntax_invalid" }], truncated: false };
 }
 
 function schemaErrors(document, validate, value) {
