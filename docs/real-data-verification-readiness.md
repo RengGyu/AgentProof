@@ -2,13 +2,13 @@
 
 ## Decision boundary
 
-Status: `READY_FOR_CANDIDATE_DEPLOYMENT`.
+Status: `CANDIDATE_REVIEW_AND_EVALUATION_REQUIRED`.
 
-The local frozen-toolchain gate and two independent reviews are fresh for the
-current uncommitted worktree. A real-data check remains `NO_GO` until this
-exact worktree becomes a candidate commit and a release operator confirms that
-the deployed SHA is that commit. This document prepares a controlled live
-check; it is not evidence that one has run.
+An immutable candidate commit exists, but the exact candidate SHA still needs
+independent review, protected holdout evaluation, and deployment evidence. A
+real-data check remains `NO_GO` until those gates pass and a release operator
+confirms that the deployed SHA is that candidate. This document prepares a
+controlled live check; it is not evidence that one has run.
 
 AgentProof remains an evidence-report product. The live check must not enable
 anonymous report viewing, auto-merge, LLM-only promotion, public comments, or
@@ -34,9 +34,9 @@ full-report persistence.
 
 ## Fresh local evidence for the candidate commit
 
-Run these commands again after committing, and record the resulting commit
-SHA next to their output. The current uncommitted worktree passed them on
-2026-08-25; that result cannot be transferred to a different commit.
+Run these commands again after committing, and record the resulting commit SHA
+next to their output. Do not reuse test counts, dates, reviews, or deployment
+claims from an uncommitted worktree.
 
 ```bash
 pnpm test
@@ -52,11 +52,9 @@ node --test scripts/evaluate-production-boundary-release-gate.test.mjs
 git diff --check
 ```
 
-Expected current results: 160 test files passed (2,185 tests, 2 skipped),
-typecheck/lint/build passed, grammar scan passed (7), production closure passed
-(1), manifest passed (13), authority assessment passed (16), evidence gate
-passed (17), and boundary gate passed (6). These are local engineering checks,
-not a live GitHub or production result.
+Expected result: every command exits zero for the exact candidate SHA. Record
+the observed test count and tool output at that time. These are local
+engineering checks, not a live GitHub or production result.
 
 ## Safe handoff from the owner
 

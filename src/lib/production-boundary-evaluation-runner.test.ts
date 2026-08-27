@@ -13,8 +13,11 @@ import {
   MAX_PRODUCTION_BOUNDARY_CASE_BYTES,
   MAX_PRODUCTION_BOUNDARY_CORPUS_BYTES,
   parseProductionBoundaryCorpusV1,
+  parseProductionBoundaryCorpusV2,
   runProductionBoundaryCorpusV1,
+  runProductionBoundaryCorpusV2,
   writeProductionBoundaryResultV1,
+  writeProductionBoundaryResultV2,
   type ProductionBoundaryCorpusV1
 } from "./production-boundary-evaluation-runner";
 
@@ -47,6 +50,85 @@ if (configuredInputPath || configuredOutputPath) {
 }
 
 describe("production boundary evaluation runner", () => {
+  it("requires the sealed V2 boundary corpus shape and rejects private material before replay", () => {
+    const cases = Array.from({ length: 8 }, (_, index) => ({
+      ...pastedCase(`v2 boundary ${index}`),
+      version: 2 as const,
+      caseId: opaqueCaseId(`v2 boundary ${index}`)
+    }));
+    const corpus = { version: 2 as const, cases };
+    expect(parseProductionBoundaryCorpusV2(corpus)).not.toBeNull();
+    expect(parseProductionBoundaryCorpusV2({ ...corpus, unknown: true })).toBeNull();
+    expect(parseProductionBoundaryCorpusV2({ ...corpus, cases: cases.slice(0, 7) })).toBeNull();
+    expect(parseProductionBoundaryCorpusV2({ ...corpus, cases: [{ ...cases[0], expected: {} }, ...cases.slice(1)] })).toBeNull();
+    expect(parseProductionBoundaryCorpusV2({ ...corpus, cases: [{ ...cases[0], pastedOverride: { taskText: "BEGIN PRIVATE SOURCE" } }, ...cases.slice(1)] })).toBeNull();
+  });
+
+  it("replays V2 pasted cases through the unchanged production boundary calls", () => {
+    const cases = Array.from({ length: 8 }, (_, index) => ({
+      ...pastedCase(`v2 replay ${index}`),
+      version: 2 as const,
+      caseId: opaqueCaseId(`v2 replay ${index}`),
+      pastedOverride: index === 0 ? { changedFiles: "src/pasted.ts" } : {}
+    }));
+    const result = runProductionBoundaryCorpusV2({ version: 2, cases });
+    expect(result.version).toBe(2);
+    expect(result.cases).toHaveLength(8);
+    expect(result.cases[0]).toMatchObject({ provenanceOrigin: "pasted_evidence", requirementLocalCiOwnership: "unknown" });
+  });
+
+  it("safely rejects the minimal sealed inbound V2 marker without requiring a full report", () => {
+    const inbound = {
+      version: 2 as const,
+      kind: "inbound_untrusted_v2" as const,
+      caseId: opaqueCaseId("minimal inbound marker"),
+      report: { reportSchemaVersion: "verification-report.v2", verificationContract: { state: "authoritative" } }
+    };
+    const pasted = Array.from({ length: 7 }, (_, index) => ({
+      ...pastedCase(`minimal inbound companion ${index}`),
+      version: 2 as const,
+      caseId: opaqueCaseId(`minimal inbound companion ${index}`)
+    }));
+    const corpus = { version: 2 as const, cases: [inbound, ...pasted] };
+    expect(parseProductionBoundaryCorpusV2(corpus)).not.toBeNull();
+    expect(runProductionBoundaryCorpusV2(corpus).cases[0]).toMatchObject({
+      disposition: "rejected",
+      provenanceOrigin: "none",
+      requirementLocalCiOwnership: "unknown"
+    });
+  });
+
+  it("accepts a sealed V2 rename previous path without widening V1", () => {
+    const corpus = v2Corpus("rename", (item, index) => index === 0 ? {
+      ...item,
+      liveInput: {
+        ...item.liveInput,
+        changedFiles: [{ path: "src/current.ts", previousPath: "src/previous.ts", status: "renamed" }]
+      }
+    } : item);
+    expect(parseProductionBoundaryCorpusV1({ version: 1, cases: [{ ...corpus.cases[0], version: 1 }] })).toBeNull();
+    expect(parseProductionBoundaryCorpusV2(corpus)).not.toBeNull();
+    expect(runProductionBoundaryCorpusV2(corpus).cases).toHaveLength(8);
+  });
+
+  it("clears a stale V2 result before parse or replay failure", () => {
+    const root = mkdtempSync(join(tmpdir(), "agentproof-boundary-v2-failure-"));
+    const inputPath = join(root, "input.json");
+    const outputPath = join(root, "output.json");
+    try {
+      writeFileSync(outputPath, JSON.stringify({ version: 2, cases: [{ stale: true }] }));
+      writeFileSync(inputPath, JSON.stringify({ version: 2, cases: [] }));
+      expect(() => writeProductionBoundaryResultV2(inputPath, outputPath)).toThrow("Production boundary V2 corpus is invalid");
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual({ version: 2, cases: [] });
+
+      writeFileSync(inputPath, JSON.stringify(v2Corpus("replay failure")));
+      vi.mocked(mergePastedEvidenceForAnalysis).mockImplementationOnce(() => { throw new Error("synthetic merge failure"); });
+      expect(() => writeProductionBoundaryResultV2(inputPath, outputPath)).toThrow("Production boundary replay failed");
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual({ version: 2, cases: [] });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("accepts only lowercase sha256 case handles", () => {
     expect(parseProductionBoundaryCorpusV1({
       version: 1,
@@ -327,6 +409,54 @@ describe("production boundary evaluation runner", () => {
     }
   }));
 
+  it("keeps pasted absence-axis state and collection basis invariant-compatible", () => {
+    const contract = {
+      version: 2 as const,
+      scope: "complete_objective_set" as const,
+      objectives: [{
+        id: "runtime_scope",
+        objective: "Do not modify runtime code.",
+        criteria: [{
+          id: "runtime_absence",
+          type: "absence" as const,
+          label: "No runtime path changes.",
+          prohibitedKind: "path_change" as const,
+          scope: [{ kind: "prefix" as const, path: "src/runtime/" }]
+        }]
+      }]
+    };
+    const sourceContent = JSON.stringify(contract);
+    const input: PullRequestInput = {
+      ...liveInput(),
+      taskText: "Acceptance criteria: do not change implementation code.",
+      verificationContractSourceV2: { kind: "provided_requirement", contract },
+      verificationContractBindingV2: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "synthetic:boundary:absence",
+        sourceContent,
+        headSha: HEAD_SHA,
+        baseSha: BASE_SHA
+      }
+    };
+
+    const result = runProductionBoundaryCorpusV1({
+      version: 1,
+      cases: [{
+        version: 1,
+        kind: "pasted_merge",
+        caseId: opaqueCaseId("pasted absence invariant"),
+        liveInput: input,
+        pastedOverride: { changedFiles: "src/runtime/changed.ts" }
+      }]
+    });
+
+    expect(result.cases[0]).toMatchObject({
+      disposition: "accepted",
+      provenanceOrigin: "pasted_evidence",
+      localAxisStates: { implementation: "incomplete" }
+    });
+  });
+
   it.each([
     ["merge", () => vi.mocked(mergePastedEvidenceForAnalysis).mockImplementationOnce(() => { throw new Error("synthetic merge failure"); })],
     ["generation", () => vi.mocked(generateVerificationReportV2FromInput).mockImplementationOnce(() => { throw new Error("synthetic generation failure"); })],
@@ -421,6 +551,19 @@ describe("production boundary evaluation runner", () => {
 
 function pastedCorpus(): ProductionBoundaryCorpusV1 {
   return { version: 1, cases: [pastedCase("opaque-pasted")] };
+}
+
+function v2Corpus(
+  label: string,
+  transform: (item: Extract<ProductionBoundaryCorpusV1["cases"][number], { kind: "pasted_merge" }>, index: number) => Extract<ProductionBoundaryCorpusV1["cases"][number], { kind: "pasted_merge" }> = (item) => item
+) {
+  return {
+    version: 2 as const,
+    cases: Array.from({ length: 8 }, (_, index) => {
+      const item = transform(pastedCase(`${label} ${index}`), index);
+      return { ...item, version: 2 as const };
+    })
+  };
 }
 
 function pastedCase(caseId: string): Extract<ProductionBoundaryCorpusV1["cases"][number], { kind: "pasted_merge" }> {

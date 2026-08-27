@@ -108,6 +108,9 @@ function toShareableReport(report: VerificationReport): ShareableReportV3 | Shar
       ...(requirement.plannerAxisSubjects ? { plannerAxisSubjects: [...requirement.plannerAxisSubjects] } : {}),
       ...(requirement.proofAxes ? {
         proofAxes: requirement.proofAxes.map((axis) => ({
+          ...(axis.axisId ? { axisId: axis.axisId } : {}),
+          ...(axis.role ? { role: axis.role } : {}),
+          ...(axis.criterionId ? { criterionId: axis.criterionId } : {}),
           subject: axis.subject,
           polarity: axis.polarity,
           state: axis.state,
@@ -233,10 +236,13 @@ function portableVerificationContract(contract: VerificationContractReportV2): O
     ...structuredClone(portable),
     objectives: portable.objectives.map((objective) => ({
       ...objective,
-      criteria: objective.criteria.map((criterion) => ({ ...criterion })),
+      criteria: objective.criteria.map((criterion) => ({
+        ...criterion,
+        label: redactSecrets(criterion.label)
+      })),
       criterionResults: objective.criterionResults.map((result) => ({
         ...result,
-        proofAxisRefs: [],
+        proofAxisRefs: [...result.proofAxisRefs],
         evidenceRefs: [],
         gapKinds: [...result.gapKinds]
       }))

@@ -1,6 +1,7 @@
 import { getExecutionEvidenceItems, statusFromEvidenceSummary } from "./execution-evidence";
 import { redactSecrets } from "./redact";
 import type { VerificationReport } from "./types";
+import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
 
 export const AGENTPROOF_COMMENT_MARKER = "<!-- agentproof:evidence-check:v1 -->";
 const MAX_GITHUB_COMMENT_LENGTH = 12_000;
@@ -9,6 +10,7 @@ export function reportToMarkdown(report: VerificationReport): string {
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex);
   const strictContract = strictContractPresentation(report);
+  const v2Report = isVerificationReportV2(report) ? report : undefined;
   const lines = [
     `# AgentProof Evidence Report`,
     "",
@@ -29,13 +31,17 @@ export function reportToMarkdown(report: VerificationReport): string {
     "",
     `## Requirement Coverage`,
     "",
-    ...report.requirements.flatMap((requirement) => [
-      `- **${strictContract ? "OUTCOME: " : ""}${requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}`,
-      strictContract ? `  - Observed evidence status: ${safeInlineText(requirement.evidenceStatus ?? requirement.status).toUpperCase()}` : undefined,
+    ...report.requirements.flatMap((requirement) => {
+      const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, requirement.requirementId) : undefined;
+      return [
+      `- **${presentation?.outcomeLabel ?? `${strictContract ? "OUTCOME: " : ""}${requirement.status.toUpperCase()}`}** ${safeInlineText(requirement.requirementText)}`,
+      presentation ? `  - Outcome basis: ${presentation.outcomeBasis}` : undefined,
+      presentation ? `  - Observed evidence: ${presentation.observationLabel}` : undefined,
       requirement.reviewerNote ? `  - Evidence note: ${safeInlineText(requirement.reviewerNote)}` : undefined,
       requirement.gaps.length > 0 ? `  - Gaps: ${requirement.gaps.map(safeInlineText).join("; ")}` : undefined,
       ...evidenceLines(requirement.evidenceRefs, evidenceById, "  ")
-    ]),
+      ];
+    }),
     "",
     `## Requirement Proof Graph`,
     "",
@@ -125,13 +131,17 @@ export function reportToGitHubComment(
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex, 5);
   const strictContract = strictContractPresentation(report);
+  const v2Report = isVerificationReportV2(report) ? report : undefined;
   const requirementLines = report.requirements.slice(0, 8).map((requirement) => {
+    const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, requirement.requirementId) : undefined;
     const evidence = requirement.evidenceRefs.length > 0
       ? ` Evidence: ${formatEvidenceRefs(requirement.evidenceRefs, evidenceById)}`
       : "";
     const gaps = requirement.gaps.length > 0 ? ` Gap: ${requirement.gaps.map(safeInlineText).join("; ")}` : "";
 
-    return `- **${requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}${evidence}${gaps}`;
+    const observation = presentation ? ` Observed evidence: ${presentation.observationLabel}.` : "";
+    const basis = presentation ? ` Outcome basis: ${presentation.outcomeBasis}.` : "";
+    return `- **${presentation?.outcomeLabel ?? requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}${observation}${basis}${evidence}${gaps}`;
   });
   const riskLines = report.summary.topRisks.slice(0, 1).map((risk) => `- ${safeInlineText(risk)}`);
   const proofGapLines = report.proofGraph.nodes

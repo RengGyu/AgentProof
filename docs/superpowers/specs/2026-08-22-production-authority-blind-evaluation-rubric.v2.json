@@ -1,0 +1,53 @@
+{
+  "version": 2,
+  "rubricId": "production-authority-closed-reference-rubric.v2",
+  "purpose": "Authorize deployment only from a sealed closed-reference V2 evaluation.",
+  "maximumScore": 100,
+  "releaseThreshold": 100,
+  "scoringMethod": {
+    "type": "all_or_nothing_per_criterion",
+    "awardRule": "Award points only when every signed V2 evidence source is authentic, exact, and passed.",
+    "partialCredit": false,
+    "missingEvidence": "zero_points",
+    "scoringAuthority": "independent_release_assessor"
+  },
+  "evidenceSources": [
+    {
+      "id": "freeze_manifest",
+      "kind": "signed_manifest",
+      "requiredBindings": ["candidateSha","referencePolicySha256","referencePolicySealSha256","evidenceCorpusSha256","boundaryCorpusSha256","coverageSummarySha256","requirementResultSha256","boundaryResultSha256","requirementRunnerBundleSha256","boundaryRunnerBundleSha256","requirementEvaluatorBundleSha256","boundaryEvaluatorBundleSha256","referencePolicyBundleSha256","runnerSandboxProfileSha256","evaluatorSandboxProfileSha256","requirementRunnerMountSetSha256","boundaryRunnerMountSetSha256","requirementEvaluatorMountSetSha256","boundaryEvaluatorMountSetSha256","toolingEntrySetSha256","moduleEdgeSetSha256","nodeBuiltinAllowlistSha256","approvedNodeBuiltinUniverseSha256","parserArtifactBindingSha256","resolutionPolicySha256","evaluationToolchainSourceClosureSha256","evaluationToolchainBundleSetSha256","sutExternalImportAllowlistSha256","packageScriptsSha256","lockfileSha256","nodeVersion","pnpmVersion","runtimeImageDigest"],
+      "passRule": "A signed V2 seal binds the closed reference policy, named coverage, corpus hashes, exact case counts, tooling, bundles, profiles, mount sets, and candidate results."
+    },
+    {"id":"protected_aggregate","kind":"aggregate_evaluator_output","requiredBindings":["candidateSha","requirementResultSha256","evidenceCorpusSha256","referencePolicySealSha256"],"passRule":"The sealed requirement aggregate is exact and all blocking counts are zero."},
+    {"id":"protected_boundary_aggregate","kind":"aggregate_boundary_evaluator_output","requiredBindings":["candidateSha","boundaryResultSha256","boundaryCorpusSha256","referencePolicySealSha256"],"passRule":"The sealed boundary aggregate is exact and all blocking counts are zero."},
+    {"id":"runner_isolation_attestation","kind":"signed_ci_sandbox_attestation_set","requiredBindings":["candidateSha","referencePolicySha256","referencePolicySealSha256","evidenceCorpusSha256","boundaryCorpusSha256","requirementResultSha256","boundaryResultSha256","requirementRunnerBundleSha256","boundaryRunnerBundleSha256","requirementEvaluatorBundleSha256","boundaryEvaluatorBundleSha256","runnerSandboxProfileSha256","evaluatorSandboxProfileSha256","requirementRunnerMountSetSha256","boundaryRunnerMountSetSha256","requirementEvaluatorMountSetSha256","boundaryEvaluatorMountSetSha256","runtimeImageDigest"],"passRule":"Four signed no-network V2 attestations use only their exact runner or evaluator mount contract."},
+    {"id":"rubric_executor_regression","kind":"command","commands":["node --test scripts/evaluate-production-authority-release.test.mjs"],"passRule":"The authority regression suite passes."},
+    {"id":"untrusted_authority_regression","kind":"command","commands":["pnpm vitest run src/lib/report-runtime-validation-authority.test.ts"],"passRule":"The untrusted authority regression passes."},
+    {"id":"generated_private_regression","kind":"command","commands":["pnpm vitest run src/lib/report-runtime-validation.test.ts"],"passRule":"The generated-private regression passes."},
+    {"id":"pasted_provenance_regression","kind":"command","commands":["pnpm vitest run src/lib/github-pasted-provenance.test.ts"],"passRule":"The pasted provenance regression passes."},
+    {"id":"privacy_regression","kind":"command","commands":["pnpm vitest run src/lib/report-share.test.ts"],"passRule":"The privacy regression passes."},
+    {"id":"contract_endpoint_replay","kind":"command","commands":["pnpm vitest run src/lib/verification-contract-v2-evaluation.test.ts"],"passRule":"The endpoint replay passes."},
+    {"id":"engineering_suite","kind":"command_set","commands":["pnpm test","pnpm typecheck","pnpm lint","pnpm build","git diff --check"],"passRule":"Every engineering command passes."},
+    {"id":"external_regression","kind":"command","commands":["pnpm eval:external:regression"],"passRule":"The external regression passes."},
+    {"id":"production_smoke","kind":"command_set","commands":["pnpm smoke:production-regression","pnpm p0:beta-readiness"],"passRule":"The current production smoke passes."},
+    {"id":"independent_review","kind":"signed_review_record","requiredBindings":["candidateSha","reviewerIdentity","reviewState","reviewedDiffSha256"],"passRule":"An independent reviewer approved the exact candidate."}
+  ],
+  "binaryGates": [
+    {"id":"protected_release_gate","requiredEvidenceSourceIds":["protected_aggregate"],"passCondition":"The requirement aggregate passes."},
+    {"id":"protected_boundary_gate","requiredEvidenceSourceIds":["protected_boundary_aggregate"],"passCondition":"The boundary aggregate passes."},
+    {"id":"frozen_tooling_integrity","requiredEvidenceSourceIds":["freeze_manifest"],"passCondition":"The V2 sealed tooling binding passes."},
+    {"id":"runner_oracle_isolation","requiredEvidenceSourceIds":["freeze_manifest","runner_isolation_attestation","rubric_executor_regression"],"passCondition":"Four V2 isolated attestations pass."},
+    {"id":"aggregate_only_output","requiredEvidenceSourceIds":["freeze_manifest","rubric_executor_regression","protected_aggregate","protected_boundary_aggregate"],"passCondition":"Aggregate output is closed."},
+    {"id":"untrusted_active_v2","requiredEvidenceSourceIds":["untrusted_authority_regression","protected_boundary_aggregate"],"passCondition":"Untrusted V2 reports remain rejected."},
+    {"id":"pasted_authority","requiredEvidenceSourceIds":["pasted_provenance_regression","protected_boundary_aggregate"],"passCondition":"Pasted authority remains downgraded."},
+    {"id":"privacy","requiredEvidenceSourceIds":["privacy_regression","protected_aggregate","protected_boundary_aggregate"],"passCondition":"Private material is absent."},
+    {"id":"engineering","requiredEvidenceSourceIds":["engineering_suite"],"passCondition":"Engineering checks pass."},
+    {"id":"contract_endpoint_compatibility","requiredEvidenceSourceIds":["contract_endpoint_replay"],"passCondition":"Endpoint replay passes."},
+    {"id":"external_regression_current","requiredEvidenceSourceIds":["external_regression"],"passCondition":"External regression is current."},
+    {"id":"production_smoke_current","requiredEvidenceSourceIds":["production_smoke"],"passCondition":"Production smoke is current."},
+    {"id":"independent_review_exact_sha","requiredEvidenceSourceIds":["independent_review"],"passCondition":"Independent review is exact."}
+  ],
+  "scoreCategories": [{"id":"closed_reference_v2","label":"Closed reference V2","weight":100,"criteria":[{"id":"all_required_evidence","points":100,"requiredEvidenceSourceIds":["freeze_manifest","protected_aggregate","protected_boundary_aggregate","runner_isolation_attestation","rubric_executor_regression","untrusted_authority_regression","generated_private_regression","pasted_provenance_regression","privacy_regression","contract_endpoint_replay","engineering_suite","external_regression","production_smoke","independent_review"]}]}],
+  "decisionBands": [{"minimumScore":0,"maximumScore":99,"decision":"no_go","condition":"always"},{"minimumScore":100,"maximumScore":100,"decision":"eligible_for_deployment_approval","condition":"all_binary_gates_pass"}],
+  "overrideRule":"No score or override can bypass a failed, unknown, or unauthenticated V2 binary gate."
+}

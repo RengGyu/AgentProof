@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment, reportToMarkdown } from "./markdown";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
-import { generateVerificationReportV2FromInput } from "./verifier";
+import { generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
+import type { PullRequestInput } from "./types";
 
 describe("reportToGitHubComment", () => {
   it("omits private proof receipts from Markdown and GitHub comments", () => {
@@ -75,6 +76,61 @@ describe("reportToGitHubComment", () => {
     expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
     expect(comment.match(/Approved verification contract is missing\./g)).toHaveLength(1);
     expect(output).not.toContain("Outcome was not assessed against an approved verification contract.");
+  });
+
+  it("uses the strict v2 outcome rather than high observed coverage on every Markdown surface", () => {
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set",
+      objectives: [{
+        id: "visibility_label",
+        objective: "Return a repository visibility label.",
+        criteria: [{
+          id: "boolean_labels",
+          type: "return_value",
+          label: "Return the label for each visibility value.",
+          adapter: {
+            id: "node_export_scalar.v1",
+            modulePath: "src/repositories/repository-visibility.js",
+            exportName: "repositoryVisibilityLabel",
+            moduleFormat: "esm"
+          },
+          cases: [{ id: "private", input: true, expected: "Private repository" }]
+        }]
+      }]
+    };
+    const input: PullRequestInput = {
+      title: "Add repository visibility label",
+      description: "Adds a visibility helper and focused tests.",
+      taskText: "Return a repository visibility label.",
+      taskSource: "issue",
+      changedFiles: [{
+        path: "src/repositories/repository-visibility.js",
+        status: "added",
+        patch: "+ export const repositoryVisibilityLabel = () => 'Private repository';"
+      }],
+      checks: [{ name: "repository visibility tests", status: "passed", summary: "Repository visibility tests passed." }],
+      logs: [],
+    };
+    const report = generateVerificationReportV2({
+      input,
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:markdown-v2",
+        sourceContent: JSON.stringify(contract),
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
+
+    expect(report.requirements[0]).toMatchObject({ status: "unclear", evidenceStatus: "partial" });
+    expect(output).toContain("Unclear against approved contract");
+    expect(output).toContain("Required criterion evidence was incomplete or unavailable.");
+    expect(output).toContain("Observed evidence: Partially supported");
+    expect(output).not.toContain("OUTCOME: MET");
   });
 
   it("renders enhanced planning as neutral policy copy only", () => {

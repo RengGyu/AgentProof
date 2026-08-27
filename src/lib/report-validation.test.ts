@@ -179,7 +179,7 @@ describe("validateVerificationReport", () => {
     expect(absentRequirement.proofAxes?.every((axis) => axis.state === "satisfied")).toBe(true);
     expect(absentRequirement.evidenceStatus).toBe("met");
     expect(absentRequirement.status).toBe("unclear");
-    expect(absentNode.status).toBe("unclear");
+    expect(absentNode.status).toBe("met");
     const context = v2ReceiptValidationContext(absent);
     expect(validateVerificationReport(absent, { mode: "v2_full", receiptValidationContext: context })).toEqual({ valid: true, errors: [] });
 
@@ -193,7 +193,6 @@ describe("validateVerificationReport", () => {
 
     for (const report of [absent, invalid]) {
       report.requirements[1]!.status = "partial";
-      report.proofGraph.nodes.find((node) => node.requirementId === report.requirements[1]!.requirementId)!.status = "partial";
       expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
     }
   });

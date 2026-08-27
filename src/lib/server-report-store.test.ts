@@ -126,6 +126,7 @@ describe("server report store", () => {
 
   it("round-trips an active authoritative documentation contract without retaining its source details", async () => {
     const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_VERIFICATION_CAPABILITIES_V2 = "documentation_literal";
     const contract = {
       version: 2,
       scope: "complete_objective_set",
@@ -150,7 +151,7 @@ describe("server report store", () => {
         checks: [],
         logs: [],
         verificationCriterionEvidenceV2: {
-          artifactBlobs: [{ path: "docs/reset.md", content: "Run npm test." }]
+          artifactBlobs: [{ path: "docs/reset.md", headSha: "a".repeat(40), content: "Run npm test." }]
         },
         sourceProvenance: {
           version: 1,
@@ -218,9 +219,15 @@ describe("server report store", () => {
       evidenceIndex: [],
       verificationContract: {
         state: "authoritative",
-        objectives: [{ criterionResults: [{ state: "satisfied", proofAxisRefs: [], evidenceRefs: [] }] }]
+        objectives: [{ criterionResults: [{
+          state: "satisfied",
+          proofAxisRefs: ["ax_vc_o1_vc_o1_c1_documentation_present"],
+          evidenceRefs: []
+        }] }]
       }
     });
+    const summarySerialized = JSON.stringify(summary.report);
+    expect(summarySerialized).not.toContain("Run npm test.");
 
     const authorClaim = structuredClone(saved.report) as typeof report;
     authorClaim.verificationContract.state = "author_claim";
@@ -228,7 +235,9 @@ describe("server report store", () => {
     authorClaim.verificationContract.objectives[0]!.state = "author_claim";
     authorClaim.verificationContract.objectives[0]!.criteria[0]!.approval = "author_claim";
     authorClaim.requirements[0]!.status = "partial";
-    authorClaim.proofGraph.nodes[0]!.status = "partial";
+    authorClaim.requirements[0]!.sourceAuthority = "pr_description";
+    authorClaim.proofGraph.nodes[0]!.sourceQuality = "author_claim";
+    authorClaim.proofGraph.nodes[0]!.status = "met";
     authorClaim.authenticity = createVerifiedAuthenticity(authorClaim, signingSecret);
     const authorClaimDecoded = decodeTenantPersistedReport(projectTenantPersistedReport(authorClaim, signingSecret), {
       signingSecret,
@@ -244,7 +253,12 @@ describe("server report store", () => {
     unavailable.verificationContract.objectives[0]!.criterionResults[0]!.evidenceRefs = [];
     unavailable.verificationContract.objectives[0]!.criterionResults[0]!.gapKinds = ["evidence_unavailable"];
     unavailable.requirements[0]!.status = "unclear";
-    unavailable.proofGraph.nodes[0]!.status = "unclear";
+    unavailable.requirements[0]!.proofAxes?.forEach((axis) => {
+      if (axis.role !== "criterion") return;
+      axis.state = "incomplete";
+      delete axis.collectionBasis;
+    });
+    unavailable.proofGraph.nodes[0]!.status = "met";
     unavailable.authenticity = createVerifiedAuthenticity(unavailable, signingSecret);
     const unavailableDecoded = decodeTenantPersistedReport(projectTenantPersistedReport(unavailable, signingSecret), {
       signingSecret,
@@ -254,6 +268,89 @@ describe("server report store", () => {
       status: "valid",
       report: { requirements: [{ status: "unclear" }] }
     });
+  });
+
+  it("round-trips a fully validated satisfied path-absence result without inventing evidence references", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    process.env.AGENTPROOF_VERIFICATION_CAPABILITIES_V2 = "path_change_absence";
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const contract = {
+      version: 2,
+      scope: "complete_objective_set" as const,
+      objectives: [{
+        id: "runtime_scope",
+        objective: "Do not change runtime code.",
+        criteria: [{
+          id: "no_runtime_change",
+          type: "absence" as const,
+          label: "No runtime paths change.",
+          prohibitedKind: "path_change" as const,
+          scope: [{ kind: "prefix" as const, path: "src/runtime/" }]
+        }]
+      }]
+    };
+    const generationInput: PullRequestInput = {
+      title: "Document reset",
+      description: "",
+      taskText: "Do not change runtime code.",
+      taskSource: "issue",
+      changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }],
+      checks: [],
+      logs: [],
+      sourceProvenance: {
+        version: 1,
+        origin: "github_snapshot",
+        headSha,
+        baseSha,
+        changedFileInventory: { version: 1, completeness: "complete", headSha },
+        evidenceCapturedAt: "2026-08-25T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+      }
+    };
+    const binding = {
+      sourceKind: "provided_requirement" as const,
+      sourceIdentity: "manual:verification-contract:absence",
+      sourceContent: JSON.stringify(contract),
+      headSha,
+      baseSha
+    };
+    const validationInput = {
+      ...generationInput,
+      verificationContractSourceV2: { kind: "provided_requirement" as const, contract },
+      verificationContractBindingV2: binding
+    };
+    const report = generateVerificationReportV2({
+      input: generationInput,
+      contractSource: validationInput.verificationContractSourceV2,
+      binding
+    });
+
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({
+      state: "satisfied",
+      evidenceRefs: []
+    });
+    const saved = await createVerifiedSavedReport(report, {
+      tenantId: "tenant_v2",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 42,
+      headSha,
+      validationInput
+    });
+    const persisted = projectTenantPersistedReport(saved.report, signingSecret);
+    const decoded = decodeTenantPersistedReport(persisted, {
+      signingSecret,
+      createdAt: "2026-08-25T00:00:00.000Z"
+    });
+
+    expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(decoded).toMatchObject({
+      status: "valid",
+      report: { verificationContract: { objectives: [{ criterionResults: [{ state: "satisfied", evidenceRefs: [] }] }] } }
+    });
+    expect(JSON.stringify(persisted)).not.toContain("src/runtime/");
   });
 
   it("fails closed for forged active return-value outcomes before signing and after persistence", async () => {
@@ -365,7 +462,7 @@ describe("server report store", () => {
     const generationInput: PullRequestInput = {
         title: "Document reset", description: "Documents the reset command.", taskText: "Document the local reset command.", taskSource: "issue",
         changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }], checks: [], logs: [],
-        verificationCriterionEvidenceV2: { artifactBlobs: [{ path: "docs/reset.md", content: "Run npm test." }] },
+        verificationCriterionEvidenceV2: { artifactBlobs: [{ path: "docs/reset.md", headSha: "a".repeat(40), content: "Run npm test." }] },
         sourceProvenance: {
           version: 1, origin: "github_snapshot", headSha: "a".repeat(40), baseSha: "b".repeat(40),
           changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) }, evidenceCapturedAt: "2026-08-13T00:00:00.000Z",

@@ -1203,6 +1203,9 @@ function unavailableStoredReport(saved: Omit<StoredServerReport, "report">): Sto
 
 function copyProofAxes(axes: RequirementProofAxis[]): RequirementProofAxis[] {
   return axes.map((axis) => ({
+    ...(axis.axisId ? { axisId: axis.axisId } : {}),
+    ...(axis.role ? { role: axis.role } : {}),
+    ...(axis.criterionId ? { criterionId: axis.criterionId } : {}),
     subject: axis.subject,
     polarity: axis.polarity,
     state: axis.state,

@@ -14,12 +14,14 @@ import {
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const toolingEntries = [
   "scripts/build-evaluation-toolchain-manifest.mjs",
+  "scripts/evidence-release-reference-policy-v2.mjs",
   "scripts/evaluate-production-authority-release.mjs",
   "src/lib/production-boundary-evaluation-runner.ts",
   "src/lib/release-evaluation-runner.ts"
 ];
 const toolingFiles = [
   "scripts/build-evaluation-toolchain-manifest.mjs",
+  "scripts/evidence-release-reference-policy-v2.mjs",
   "scripts/evaluate-evidence-release-gate.mjs",
   "scripts/evaluate-production-authority-release.mjs",
   "scripts/evaluate-production-boundary-release-gate.mjs",
@@ -39,6 +41,7 @@ const sutExternalImports = [
   "src/lib/server-report-store.ts",
   "src/lib/tenant-report-validation.ts",
   "src/lib/types.ts",
+  "src/lib/verification-capability-policy-v2.ts",
   "src/lib/verification-contract-v2.ts",
   "src/lib/verifier.ts"
 ];
@@ -51,17 +54,27 @@ describe("evaluation-toolchain-production-closure", () => {
         ...toolingFiles,
         ...sutExternalImports,
         "scripts/evaluate-production-authority-release-cli.mjs",
+        "docs/superpowers/specs/2026-08-22-production-authority-blind-evaluation-rubric.v2.json",
         "package.json",
         "pnpm-lock.yaml"
       ]) copyIntoFixture(root, path);
       mkdirSync(join(root, "dist"), { recursive: true });
       writeFileSync(join(root, "dist", "requirement.bundle.mjs"), "export {};\n");
       writeFileSync(join(root, "dist", "boundary.bundle.mjs"), "export {};\n");
-      writeFileSync(join(root, "sandbox-profile.json"), JSON.stringify({
+      writeFileSync(join(root, "dist", "requirement-evaluator.bundle.mjs"), "export {};\n");
+      writeFileSync(join(root, "dist", "boundary-evaluator.bundle.mjs"), "export {};\n");
+      writeFileSync(join(root, "dist", "reference-policy.bundle.mjs"), "export {};\n");
+      writeFileSync(join(root, "runner-sandbox-profile.json"), JSON.stringify({
         version: 1,
         networkMode: "disabled",
         readOnlyMountKinds: ["candidate_sut", "protected_input", "runner_bundle", "runtime_profile"],
         writableMountKinds: ["result"]
+      }));
+      writeFileSync(join(root, "evaluator-sandbox-profile.json"), JSON.stringify({
+        version: 1,
+        networkMode: "disabled",
+        readOnlyMountKinds: ["protected_input", "policy_seal", "candidate_result", "reference_policy", "evaluator_bundle", "runtime_profile"],
+        writableMountKinds: ["aggregate_result"]
       }));
       writeFileSync(join(root, "runtime.json"), JSON.stringify({
         version: 1,
@@ -79,9 +92,15 @@ describe("evaluation-toolchain-production-closure", () => {
         bundleFiles: [
           { id: "requirement_runner", path: "dist/requirement.bundle.mjs" },
           { id: "boundary_runner", path: "dist/boundary.bundle.mjs" },
+          { id: "requirement_evaluator", path: "dist/requirement-evaluator.bundle.mjs" },
+          { id: "boundary_evaluator", path: "dist/boundary-evaluator.bundle.mjs" },
+          { id: "reference_policy", path: "dist/reference-policy.bundle.mjs" },
           { id: "authority_cli_bootstrap", path: "scripts/evaluate-production-authority-release-cli.mjs" }
         ],
-        sandboxProfilePath: "sandbox-profile.json",
+        runnerSandboxProfilePath: "runner-sandbox-profile.json",
+        evaluatorSandboxProfilePath: "evaluator-sandbox-profile.json",
+        referencePolicyPath: "scripts/evidence-release-reference-policy-v2.mjs",
+        authorityRubricPath: "docs/superpowers/specs/2026-08-22-production-authority-blind-evaluation-rubric.v2.json",
         packageJsonPath: "package.json",
         packageScriptNames: [
           "eval:evidence:candidates",
@@ -102,6 +121,15 @@ describe("evaluation-toolchain-production-closure", () => {
       assert.equal(validateEvaluationToolchainManifestV2(first), true);
       assert.deepEqual(verifyEvaluationToolchainManifestV2({ rootDir: root, config, manifest: first }), first);
       assert.equal(first.moduleEdges.some((edge) => edge.targetKind === "sut_external" && !sutExternalImports.includes(edge.targetRef)), false);
+
+      writeFileSync(join(root, "src", "lib", "release-evaluation-runner.ts"), [
+        'import "../../scripts/build-reference-policy-seal-v2.mjs";',
+        'export {};'
+      ].join("\n"));
+      assert.throws(
+        () => buildEvaluationToolchainManifestV2({ rootDir: root, config }),
+        (error) => error?.code === "MODULE_RESOLUTION_FAILED"
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

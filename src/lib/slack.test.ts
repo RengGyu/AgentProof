@@ -6,7 +6,8 @@ import {
   neutralizeSlackMentions,
   reportToSlackPayload
 } from "./slack";
-import { generateVerificationReport } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2 } from "./verifier";
+import type { PullRequestInput } from "./types";
 
 describe("slack helpers", () => {
   it("renders enhanced planning as neutral policy copy only", () => {
@@ -59,6 +60,51 @@ describe("slack helpers", () => {
     expect(payloadText).toContain("@​channel");
     expect(payloadText).toContain("Test/build:");
     expect(payloadText).toContain("summary report");
+  });
+
+  it("keeps a strict v2 outcome separate from supported observations", () => {
+    const input: PullRequestInput = {
+      title: "Return an isolated label",
+      description: "",
+      taskText: "Return an isolated label.",
+      taskSource: "issue",
+      changedFiles: [{ path: "src/label.ts", status: "added", patch: "+ export const label = () => 'ok';" }],
+      checks: [{ name: "label tests", status: "passed", summary: "label tests passed" }],
+      logs: [],
+    };
+    const contract = {
+        version: 2,
+        scope: "complete_objective_set",
+        objectives: [{
+          id: "label",
+          objective: "Return an isolated label.",
+          criteria: [{
+            id: "label_value",
+            type: "return_value",
+            label: "Return the expected label.",
+            adapter: { id: "node_export_scalar.v1", modulePath: "src/label.ts", exportName: "label", moduleFormat: "esm" },
+            cases: [{ id: "expected", input: true, expected: "ok" }]
+          }]
+        }]
+      };
+    const report = generateVerificationReportV2({
+      input,
+      contractSource: { kind: "provided_requirement", contract },
+      binding: {
+        sourceKind: "provided_requirement",
+        sourceIdentity: "manual:slack-v2",
+        sourceContent: JSON.stringify(contract),
+        headSha: "a".repeat(40),
+        baseSha: "b".repeat(40)
+      }
+    });
+
+    const payload = JSON.stringify(reportToSlackPayload(report));
+
+    expect(report.requirements[0]).toMatchObject({ status: "unclear", evidenceStatus: "partial" });
+    expect(payload).toContain("Unclear against approved contract");
+    expect(payload).toContain("Observed evidence: Partially supported");
+    expect(payload).not.toContain("Supported against approved contract");
   });
 
   it("escapes Slack markdown link delimiters in report URLs", () => {

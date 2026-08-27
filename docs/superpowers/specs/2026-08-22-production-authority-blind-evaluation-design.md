@@ -1,11 +1,20 @@
 # AgentProof production authority and blind release evaluation design
 
 **Date:** 2026-08-22
-**Status:** proposed implementation specification
-**Evaluation contract:** `production-authority-blind-evaluation-rubric.v1`
+**Status:** historical V1 implementation specification; superseded for release
+authority by `2026-08-26-closed-reference-oracle-v2-design.md`
+**Evaluation contract:** V1 is development-only. The only release-authority
+contract is `production-authority-closed-reference-rubric.v2`.
 **Predecessor:** `2026-08-21-executable-release-evaluation-pre-freeze-design.md`
 
 ## 1. Purpose lock
+
+> **V1 compatibility boundary.** The V1 oracle, V1 corpora, V1 rubric, and
+> their authored expected tuples remain readable only for development
+> regressions. They cannot satisfy a release gate. Current release authority
+> requires the V2 policy, seal, evidence and boundary corpora, named coverage,
+> four runner/evaluator attestations, separate runner/evaluator profiles, and
+> the V2 rubric described in the superseding design.
 
 AgentProof remains an evidence-report product for AI-generated pull requests.
 It does not become a general code reviewer or merge gate. Deterministic GitHub

@@ -11,6 +11,7 @@ import {
   materializeVerificationContractV2,
   parseVerificationContractV2
 } from "./verification-contract-v2";
+import type { VerificationCapabilityV2 } from "./verification-capability-policy-v2";
 
 export type RuntimeReportBoundary =
   | "generated_private_full"
@@ -36,6 +37,7 @@ export type RuntimeReportBoundaryInput =
       requireSourceProvenance?: boolean;
       requireV2?: boolean;
       requirementLocalPromotionMode?: RequirementLocalPromotionMode;
+      verificationCapabilitiesV2?: ReadonlySet<VerificationCapabilityV2>;
     }
   | {
       boundary: "inbound_untrusted_full" | "signed_summary_read";
@@ -97,6 +99,7 @@ export function resolveRuntimeReportValidation(input: {
   requireSourceProvenance?: boolean;
   requireV2?: boolean;
   requirementLocalPromotionMode?: RequirementLocalPromotionMode;
+  verificationCapabilitiesV2?: ReadonlySet<VerificationCapabilityV2>;
 }): RuntimeReportValidation {
   return validateRuntimeReportBoundary({
     boundary: "generated_private_full",
@@ -104,7 +107,8 @@ export function resolveRuntimeReportValidation(input: {
     report: input.report,
     ...(input.requireSourceProvenance ? { requireSourceProvenance: true } : {}),
     ...(input.requireV2 ? { requireV2: true } : {}),
-    ...(input.requirementLocalPromotionMode ? { requirementLocalPromotionMode: input.requirementLocalPromotionMode } : {})
+    ...(input.requirementLocalPromotionMode ? { requirementLocalPromotionMode: input.requirementLocalPromotionMode } : {}),
+    ...(input.verificationCapabilitiesV2 ? { verificationCapabilitiesV2: input.verificationCapabilitiesV2 } : {})
   });
 }
 
@@ -120,7 +124,7 @@ function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, 
   }
   const validation = validateVerificationReport(input.report, {
     mode: v2 ? "v2_full" : "full",
-    ...(v2 ? { receiptValidationContext: createRuntimeValidationContextV2(input.input) } : {}),
+    ...(v2 ? { receiptValidationContext: createRuntimeValidationContextV2(input.input, input.verificationCapabilitiesV2) } : {}),
     ...(input.requireSourceProvenance ? { requireSourceProvenance: true } : {})
   });
   if (validation.valid) {
@@ -138,7 +142,8 @@ function validateGeneratedFallback(
 ): RuntimeReportValidation {
   const fallback = v2 || input.requireV2
     ? generateVerificationReportV2FromInput(input.input, {
-        requirementLocalPromotionMode: input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode()
+        requirementLocalPromotionMode: input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode(),
+        ...(input.verificationCapabilitiesV2 ? { verificationCapabilitiesV2: input.verificationCapabilitiesV2 } : {})
       })
     : generateVerificationReport(input.input, {
         requirementLocalPromotionMode: input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode()
@@ -146,7 +151,7 @@ function validateGeneratedFallback(
   const fallbackIsV2 = isVerificationReportV2(fallback);
   const fallbackValidation = validateVerificationReport(fallback, {
     mode: fallbackIsV2 ? "v2_full" : "full",
-    ...(fallbackIsV2 ? { receiptValidationContext: createRuntimeValidationContextV2(input.input) } : {}),
+    ...(fallbackIsV2 ? { receiptValidationContext: createRuntimeValidationContextV2(input.input, input.verificationCapabilitiesV2) } : {}),
     ...(input.requireSourceProvenance ? { requireSourceProvenance: true } : {})
   });
   if (!fallbackValidation.valid) return { valid: false, errors: fallbackValidation.errors };
@@ -154,7 +159,10 @@ function validateGeneratedFallback(
   return { valid: true, report: fallback, usedDeterministicFallback: true };
 }
 
-function createRuntimeValidationContextV2(input: PullRequestInput) {
+function createRuntimeValidationContextV2(
+  input: PullRequestInput,
+  capabilities?: ReadonlySet<VerificationCapabilityV2>
+) {
   const source = input.verificationContractSourceV2;
   const binding = input.verificationContractBindingV2;
   if (source && binding) {
@@ -165,11 +173,11 @@ function createRuntimeValidationContextV2(input: PullRequestInput) {
         canonicalVerificationBindingV2(binding, parsed.contract)
       );
       const canonical = selectCanonicalRequirements({ kind: "typed_contract", materialized, binding });
-      return createVerificationValidationContextV2(input, canonical);
+      return createVerificationValidationContextV2(input, canonical, capabilities);
     }
   }
   const canonical = selectCanonicalRequirements({ kind: "selected_source", input });
-  return createVerificationValidationContextV2(input, canonical);
+  return createVerificationValidationContextV2(input, canonical, capabilities);
 }
 
 function hasActiveV2ContractAuthority(report: VerificationReport): boolean {

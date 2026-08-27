@@ -1,6 +1,7 @@
 import { redactSecrets } from "./redact";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
+import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
 
 const EXPORT_SCHEMA_VERSION = "agentproof.dashboard-report-export.v1";
 
@@ -19,6 +20,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
   assertCopyEligible(detail);
   const exported = toDashboardReportExport(detail);
   const requirementCards = toDashboardRequirementViewModels({
+    report: detail.report,
     requirements: detail.report?.requirements,
     semantic: detail.report?.semantic,
     semanticAnalysis: detail.report?.semanticAnalysis,
@@ -124,6 +126,7 @@ function readableAnalysisContext(value: "linked_issue" | "unlinked_pr" | "provid
 function toDashboardReportExport(detail: DashboardExportDetail) {
   const report = detail.report;
   const semantic = report?.semantic;
+  const v2Report = report && isVerificationReportV2(report) ? report : undefined;
   return {
     schema_version: EXPORT_SCHEMA_VERSION,
     repository: safeText(detail.repositoryFullName) ?? "Unavailable",
@@ -141,13 +144,22 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       verification_policy: "Strict verification contract",
       verification_outcome_note: verificationOutcomeNote(report.verificationContract.state)
     } : {}),
-    requirements: (report?.requirements ?? []).map((item) => ({
-      id: safeText(item.requirementId) ?? "Unavailable",
-      coverage: safeText(item.evidenceStatus ?? item.status) ?? "unclear",
-      ...(item.sourceAuthority ? { source_authority: item.sourceAuthority } : {}),
-      evidence_ids: item.evidenceRefs.map((reference) => safeText(reference) ?? "Unavailable"),
-      evidence_gaps: item.gaps.map((gap) => safeText(gap) ?? "Unavailable")
-    })),
+    requirements: (report?.requirements ?? []).map((item) => {
+      const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, item.requirementId) : undefined;
+      return {
+        id: safeText(item.requirementId) ?? "Unavailable",
+        coverage: safeText(presentation?.observedEvidence ?? item.evidenceStatus ?? item.status) ?? "unclear",
+        ...(presentation ? {
+          outcome: presentation.outcome,
+          outcome_label: presentation.outcomeLabel,
+          outcome_basis: presentation.outcomeBasis,
+          observed_evidence_label: presentation.observationLabel
+        } : {}),
+        ...(item.sourceAuthority ? { source_authority: item.sourceAuthority } : {}),
+        evidence_ids: item.evidenceRefs.map((reference) => safeText(reference) ?? "Unavailable"),
+        evidence_gaps: item.gaps.map((gap) => safeText(gap) ?? "Unavailable")
+      };
+    }),
     checks: {
       ci: safeText(report?.testing?.ciStatus) ?? "unavailable",
       lint: safeText(report?.testing?.lintStatus) ?? "unavailable",

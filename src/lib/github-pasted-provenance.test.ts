@@ -16,6 +16,7 @@ const LOCAL_AXIS_SUBJECTS = new Set<RequirementProofAxis["subject"]>([
   "targeted_test",
   "execution"
 ]);
+const LOCAL_AXIS_ORDER = ["implementation", "targeted_test", "execution"] as const;
 
 describe("pasted evidence authority transitions", () => {
   it.each([
@@ -33,7 +34,7 @@ describe("pasted evidence authority transitions", () => {
       const merged = mergePastedEvidenceForAnalysis(live, request);
       const report = generateVerificationReportV2FromInput(merged);
       const finding = report.requirements[0];
-      const localAxes = (finding?.proofAxes ?? []).filter((axis) => LOCAL_AXIS_SUBJECTS.has(axis.subject));
+      const localAxes = localObservationAxes(finding?.proofAxes ?? []);
 
       expect(merged.sourceProvenance).toMatchObject({
         origin: "pasted_evidence",
@@ -68,7 +69,7 @@ describe("pasted evidence authority transitions", () => {
     const live = livePositiveInput();
     const merged = mergePastedEvidenceForAnalysis(live, {});
     const report = generateVerificationReportV2FromInput(merged);
-    const localAxes = (report.requirements[0]?.proofAxes ?? []).filter((axis) => LOCAL_AXIS_SUBJECTS.has(axis.subject));
+    const localAxes = localObservationAxes(report.requirements[0]?.proofAxes ?? []);
 
     expect(merged).toEqual(live);
     expect(merged.sourceProvenance).toMatchObject({
@@ -354,6 +355,12 @@ function withReceiptV2<T>(run: () => T): T {
     if (previous === undefined) delete process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE;
     else process.env.AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE = previous;
   }
+}
+
+function localObservationAxes(axes: readonly RequirementProofAxis[]): RequirementProofAxis[] {
+  return axes
+    .filter((axis) => LOCAL_AXIS_SUBJECTS.has(axis.subject) && axis.role !== "criterion")
+    .sort((left, right) => LOCAL_AXIS_ORDER.indexOf(left.subject as typeof LOCAL_AXIS_ORDER[number]) - LOCAL_AXIS_ORDER.indexOf(right.subject as typeof LOCAL_AXIS_ORDER[number]));
 }
 
 function gitBlobSha(source: string): string {

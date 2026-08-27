@@ -25,8 +25,11 @@ import { buildEvidenceIndexResult, deriveDeterministicRequirementRelations, isTe
 import { evidenceOverlapsCanonicalRequirement } from "./requirement-relevance";
 import {
   canonicalVerificationBindingV2,
+  criterionAxisIdV2,
   materializeVerificationContractV2,
   parseVerificationContractV2,
+  validateCriterionAxisClosureV2,
+  type MaterializedVerificationContractV2,
   type VerificationBindingInputV2,
   type VerificationContractSourceInputV2
 } from "./verification-contract-v2";
@@ -44,6 +47,8 @@ import {
   isProofAxisCollectionBasisAllowed,
   isProofAxisSubject,
 } from "./proof-contract";
+import { exactHeadArtifactEvidenceItemsV2, type VerificationCriterionEvidenceV2 } from "./verification-criterion-evaluator-v2";
+import { readEnabledVerificationCapabilitiesV2, type VerificationCapabilityV2 } from "./verification-capability-policy-v2";
 
 const PRIORITIES = new Set(["low", "medium", "high", "blocker"]);
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
@@ -53,7 +58,7 @@ const PROOF_AXIS_STATES = new Set(["satisfied", "violated", "incomplete"]);
 const PROOF_AXIS_SUBJECT_SET = new Set<string>(PROOF_AXIS_SUBJECTS);
 const PROOF_COLLECTION_BASES = new Set<string>(PROOF_AXIS_COLLECTION_BASES);
 const CHECK_STATUSES = new Set(["passed", "failed", "pending", "unknown"]);
-const EVIDENCE_KINDS = new Set(["task", "pr_description", "diff", "changed_file", "check", "log", "test", "inference"]);
+const EVIDENCE_KINDS = new Set(["task", "pr_description", "diff", "changed_file", "check", "log", "test", "artifact", "inference"]);
 const TARGET_AGENTS = new Set(["codex", "claude_code", "cursor", "copilot"]);
 const CLASSIFICATION_BASES = new Set(["deterministic", "enhanced_plan"]);
 const REQUIREMENT_CONTEXT_ROLES = new Set([
@@ -157,6 +162,11 @@ export interface VerificationValidationContextV2 {
     contractSource: VerificationContractSourceInputV2;
     binding: VerificationBindingInputV2;
   };
+  typedCriterionPlan?: {
+    materialized: MaterializedVerificationContractV2;
+    evidence: VerificationCriterionEvidenceV2;
+    capabilities: ReadonlySet<VerificationCapabilityV2>;
+  };
   changedFileInventory: {
     completeness: "complete" | "incomplete";
     headSha: string;
@@ -193,7 +203,8 @@ export interface TransientExecutionEvidenceBindingV2 {
 /** Builds the raw, private context consumed by independent receipt validation. */
 export function createVerificationValidationContextV2(
   input: PullRequestInput,
-  canonicalRequirementSet: CanonicalRequirementSetV1
+  canonicalRequirementSet: CanonicalRequirementSetV1,
+  capabilities: ReadonlySet<VerificationCapabilityV2> = readEnabledVerificationCapabilitiesV2()
 ): VerificationValidationContextV2 {
   const provenance = input.sourceProvenance;
   const inventory = provenance?.changedFileInventory;
@@ -201,6 +212,7 @@ export function createVerificationValidationContextV2(
     ? provenance.headSha ?? ""
     : "";
   const transientEvidence = transientReceiptEvidenceBindings(input, headSha);
+  const typedCriterionPlan = createTypedCriterionPlanV2(input, capabilities);
   return {
     canonicalRequirementSet,
     canonicalRequirementDigest: canonicalRequirementDigestV2(canonicalRequirementSet),
@@ -218,6 +230,7 @@ export function createVerificationValidationContextV2(
         binding: input.verificationContractBindingV2
       }
     } : {}),
+    ...(typedCriterionPlan ? { typedCriterionPlan } : {}),
     changedFileInventory: {
       completeness: provenance?.origin === "github_snapshot" && inventory?.completeness === "complete" && Boolean(headSha)
         ? "complete"
@@ -228,6 +241,66 @@ export function createVerificationValidationContextV2(
     resolvedHeadModules: input.resolvedHeadModules ?? [],
     testBindings: transientEvidence.testBindings,
     executionBindings: transientEvidence.executionBindings
+  };
+}
+
+function createTypedCriterionPlanV2(
+  input: PullRequestInput,
+  capabilities: ReadonlySet<VerificationCapabilityV2>
+): VerificationValidationContextV2["typedCriterionPlan"] | undefined {
+  if (!input.verificationContractSourceV2 || !input.verificationContractBindingV2) return undefined;
+  const parsed = parseVerificationContractV2(input.verificationContractSourceV2);
+  if (parsed.state !== "authoritative" && parsed.state !== "author_claim") return undefined;
+  const materialized = materializeVerificationContractV2(
+    parsed,
+    canonicalVerificationBindingV2(input.verificationContractBindingV2, parsed.contract)
+  );
+  const baseEvidence = buildEvidenceIndexResult(
+    input.taskText,
+    input.description,
+    input.changedFiles,
+    input.checks,
+    input.logs,
+    input.taskSource
+  ).items;
+  const declaredPaths = materialized.objectives.flatMap((objective) => objective.criteria.flatMap((criterion) =>
+    criterion.source.type === "artifact" && criterion.source.artifact.kind === "documentation_literal"
+      ? criterion.source.paths
+      : []
+  ));
+  const evidence = [...baseEvidence, ...exactHeadArtifactEvidenceItemsV2({
+    existingEvidenceIds: baseEvidence.map((item) => item.id),
+    artifactBlobs: input.verificationCriterionEvidenceV2?.artifactBlobs ?? [],
+    headSha: input.sourceProvenance?.headSha ?? "",
+    declaredPaths
+  })];
+  const evidenceRefsByPath: Record<string, string[]> = {};
+  const artifactEvidenceRefsByPath: Record<string, string[]> = {};
+  for (const item of evidence) {
+    const path = item.locator;
+    if (!path) continue;
+    evidenceRefsByPath[path] = [...(evidenceRefsByPath[path] ?? []), item.id];
+    if (item.kind === "artifact") artifactEvidenceRefsByPath[path] = [...(artifactEvidenceRefsByPath[path] ?? []), item.id];
+  }
+  const provenance = input.sourceProvenance;
+  const inventory = provenance?.changedFileInventory;
+  const completeInventory = provenance?.origin === "github_snapshot" && inventory?.completeness === "complete" &&
+    inventory.headSha === provenance.headSha && Boolean(provenance.headSha) &&
+    !input.changedFiles.some((file) => file.status === "renamed" && !file.previousPath);
+  return {
+    materialized,
+    evidence: {
+      headSha: provenance?.headSha ?? "",
+      artifactBlobs: input.verificationCriterionEvidenceV2?.artifactBlobs ?? [],
+      changedFileInventory: {
+        completeness: completeInventory ? "complete" : "incomplete",
+        paths: input.changedFiles.map((file) => file.path),
+        previousPaths: input.changedFiles.flatMap((file) => file.previousPath ? [file.previousPath] : [])
+      },
+      evidenceRefsByPath,
+      artifactEvidenceRefsByPath
+    },
+    capabilities
   };
 }
 
@@ -395,6 +468,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     validateObservationProofSemantics(report, evidenceIds, errors, mode === "v2_full");
   }
   if (mode === "v2_full") {
+    validatePrivateV2CriterionPlanSemantics(report, options.receiptValidationContext, errors);
     validatePrivateV2ReceiptSemantics(report, options.receiptValidationContext, errors);
   }
   if (mode === "full") {
@@ -405,6 +479,116 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/** Recomputes the active typed plan from transient input without using verifier output. */
+function validatePrivateV2CriterionPlanSemantics(
+  report: RecordValue,
+  context: VerificationValidationContextV2 | undefined,
+  errors: string[]
+): void {
+  const plan = context?.typedCriterionPlan;
+  if (!plan) {
+    if (hasSatisfiedStaticCriterion(report)) {
+      errors.push("v2 satisfied static criterion requires a transient criterion plan.");
+    }
+    return;
+  }
+  const contract = isRecord(report.verificationContract) ? report.verificationContract : undefined;
+  if (!contract || (contract.state !== "authoritative" && contract.state !== "author_claim")) {
+    errors.push("v2 typed contract report does not match the transient criterion plan.");
+    return;
+  }
+  const objectives = Array.isArray(contract.objectives) ? contract.objectives : [];
+  if (objectives.length !== plan.materialized.objectives.length) {
+    errors.push("v2 typed contract report does not match the transient criterion plan.");
+    return;
+  }
+  for (const [objectiveIndex, materializedObjective] of plan.materialized.objectives.entries()) {
+    const objective = objectives[objectiveIndex];
+    if (!isRecord(objective) || objective.requirementId !== materializedObjective.requirementId || objective.state !== materializedObjective.state ||
+      !Array.isArray(objective.criteria) || !Array.isArray(objective.criterionResults) ||
+      objective.criteria.length !== materializedObjective.criteria.length || objective.criterionResults.length !== materializedObjective.criteria.length) {
+      errors.push("v2 typed contract report does not match the transient criterion plan.");
+      continue;
+    }
+    for (const [criterionIndex, materializedCriterion] of materializedObjective.criteria.entries()) {
+      const criterion = objective.criteria[criterionIndex];
+      const result = objective.criterionResults[criterionIndex];
+      if (!isRecord(criterion) || !isRecord(result) || !sameMaterializedCriterionPlan(materializedCriterion, criterion)) {
+        errors.push("v2 typed contract report does not match the transient criterion plan.");
+        continue;
+      }
+      const expected = independentlyEvaluateTypedCriterion(materializedCriterion, plan.evidence, plan.capabilities);
+      if (result.state !== expected.state || !sameStringArray(getStringArray(result.evidenceRefs), expected.evidenceRefs) ||
+        !sameStringArray(getStringArray(result.gapKinds), expected.gapKinds)) {
+        errors.push(`v2 criterion ${materializedCriterion.criterionId} does not match independent transient evaluation.`);
+      }
+    }
+  }
+}
+
+function hasSatisfiedStaticCriterion(report: RecordValue): boolean {
+  const contract = isRecord(report.verificationContract) ? report.verificationContract : undefined;
+  if (!contract || !Array.isArray(contract.objectives)) return false;
+  return contract.objectives.some((objective) => {
+    if (!isRecord(objective) || !Array.isArray(objective.criteria) || !Array.isArray(objective.criterionResults)) return false;
+    const criteria = objective.criteria as unknown[];
+    const results = objective.criterionResults as unknown[];
+    return criteria.some((criterion, index) => isRecord(criterion) && isRecord(results[index]) &&
+      results[index]!.state === "satisfied" &&
+      (criterion.type === "absence" || (criterion.type === "artifact" && criterion.artifactKind === "documentation_literal")));
+  });
+}
+
+function sameMaterializedCriterionPlan(
+  materialized: MaterializedVerificationContractV2["objectives"][number]["criteria"][number],
+  reportCriterion: RecordValue
+): boolean {
+  const source = materialized.source;
+  return reportCriterion.criterionId === materialized.criterionId && reportCriterion.required === true &&
+    reportCriterion.approval === materialized.approval && reportCriterion.label === materialized.label &&
+    reportCriterion.type === source.type && sameStringArray(getStringArray(reportCriterion.requiredEvidence), materialized.requiredEvidence) &&
+    (source.type !== "artifact" || reportCriterion.artifactKind === source.artifact.kind) &&
+    (source.type !== "absence" || reportCriterion.absenceKind === source.prohibitedKind);
+}
+
+function independentlyEvaluateTypedCriterion(
+  criterion: MaterializedVerificationContractV2["objectives"][number]["criteria"][number],
+  evidence: VerificationCriterionEvidenceV2,
+  capabilities: ReadonlySet<VerificationCapabilityV2>
+): { state: "satisfied" | "violated" | "incomplete" | "unavailable"; evidenceRefs: string[]; gapKinds: string[] } {
+  const source = criterion.source;
+  if (source.type === "artifact" && source.artifact.kind === "documentation_literal") {
+    const artifact = source.artifact;
+    const blobs = new Map(evidence.artifactBlobs
+      .filter((blob) => blob.headSha === evidence.headSha && Buffer.byteLength(blob.content, "utf8") <= 64 * 1024)
+      .map((blob) => [blob.path, blob.content]));
+    const evidenceRefs = uniqueStrings(source.paths
+      .filter((path) => blobs.has(path))
+      .flatMap((path) => evidence.artifactEvidenceRefsByPath?.[path] ?? []));
+    if (!capabilities.has("documentation_literal") || source.paths.some((path) => !blobs.has(path)) || evidenceRefs.length === 0) {
+      return { state: "unavailable", evidenceRefs, gapKinds: ["evidence_unavailable"] };
+    }
+    return source.paths.every((path) => normalizeNewlines(blobs.get(path)!).includes(normalizeNewlines(artifact.literal)))
+      ? { state: "satisfied", evidenceRefs, gapKinds: [] }
+      : { state: "violated", evidenceRefs, gapKinds: ["missing_implementation"] };
+  }
+  if (source.type === "absence") {
+    if (!capabilities.has("path_change_absence") || evidence.changedFileInventory.completeness !== "complete") {
+      return { state: "unavailable", evidenceRefs: [], gapKinds: ["evidence_unavailable"] };
+    }
+    const paths = uniqueStrings([
+      ...evidence.changedFileInventory.paths,
+      ...(evidence.changedFileInventory.previousPaths ?? [])
+    ]);
+    const prohibited = paths.filter((path) => source.scope.some((scope) => scope.kind === "exact" ? path === scope.path : path.startsWith(scope.path)));
+    const evidenceRefs = uniqueStrings(prohibited.flatMap((path) => evidence.evidenceRefsByPath[path] ?? []));
+    return prohibited.length === 0
+      ? { state: "satisfied", evidenceRefs: [], gapKinds: [] }
+      : { state: "violated", evidenceRefs, gapKinds: ["forbidden_implementation_present"] };
+  }
+  return { state: "unavailable", evidenceRefs: [], gapKinds: ["evidence_unavailable"] };
 }
 
 function validateVerificationContractV2(
@@ -519,6 +703,8 @@ function validateVerificationContractV2(
       }
       if (!Array.isArray(criterion.requiredEvidence) || criterion.requiredEvidence.length === 0) {
         errors.push(`${criterionPath}.requiredEvidence must be nonempty.`);
+      } else if (!sameStringArray(criterion.requiredEvidence, expectedRequiredEvidenceForReportCriterion(criterion))) {
+        errors.push(`${criterionPath}.requiredEvidence must match the closed criterion type.`);
       }
       if (result.state !== "satisfied" && result.state !== "violated" && result.state !== "incomplete" && result.state !== "unavailable") {
         errors.push(`${path}.criterionResults[${criterionIndex}].state is invalid.`);
@@ -529,6 +715,10 @@ function validateVerificationContractV2(
         // Portable summaries deliberately remove all evidence references. They
         // remain explicitly unverified and cannot pass the full/private mode.
         if (mode === "v2_summary") {
+          if (criterion.type === "return_value" ||
+            (criterion.type === "artifact" && criterion.artifactKind !== "documentation_literal")) {
+            errors.push(`${path}.criterionResults[${criterionIndex}] summary cannot claim a deferred criterion is satisfied.`);
+          }
           if (!Array.isArray(result.evidenceRefs) || result.evidenceRefs.length !== 0) {
             errors.push(`${path}.criterionResults[${criterionIndex}] summary evidence references must be omitted.`);
           }
@@ -567,8 +757,11 @@ function validateVerificationContractV2(
     const expectedStatus = aggregateVerificationCriteriaV2(state, states);
     const requirement = requirements.find((item) => item.requirementId === objective.requirementId);
     const node = nodes.find((item) => item.requirementId === objective.requirementId);
-    if (requirement?.status !== expectedStatus || node?.status !== expectedStatus) {
-      errors.push(`${path} status must be derived only from its criterion results.`);
+    if (requirement?.status !== expectedStatus) {
+      errors.push(`${path} outcome status must be derived only from its criterion results.`);
+    }
+    if (node?.status !== requirement?.evidenceStatus) {
+      errors.push(`${path} proof-node status must remain the requirement observation status.`);
     }
   }
 
@@ -576,9 +769,109 @@ function validateVerificationContractV2(
     (objectiveIds.size !== requirements.length || objectiveIds.size !== nodes.length)) {
     errors.push("v2 objectives must cover every requirement and proof-graph node exactly once.");
   }
-  if ((state === "absent" || state === "invalid") &&
-    (requirements.some((requirement) => requirement.status !== "unclear") || nodes.some((node) => node.status !== "unclear"))) {
-    errors.push("absent or invalid verification contracts must produce only unclear requirements and proof nodes.");
+  validateV2CriterionAxisOwnership(contract, requirements, errors);
+  if ((state === "absent" || state === "invalid") && requirements.some((requirement) => requirement.status !== "unclear")) {
+    errors.push("absent or invalid verification contracts must produce only unclear requirement outcomes.");
+  }
+}
+
+function expectedRequiredEvidenceForReportCriterion(criterion: RecordValue): string[] {
+  if (criterion.type === "return_value") return ["implementation", "targeted_test", "execution"];
+  if (criterion.type === "absence") return ["implementation"];
+  if (criterion.artifactKind === "documentation_literal") return ["documentation"];
+  if (criterion.artifactKind === "workflow_job") return ["ci_configuration", "execution"];
+  if (criterion.artifactKind === "test_case") return ["targeted_test", "execution"];
+  return [];
+}
+
+function sameStringArray(value: unknown[], expected: readonly string[]): boolean {
+  return value.length === expected.length && value.every((item, index) => item === expected[index]);
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function normalizeNewlines(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+function validateV2CriterionAxisOwnership(
+  contract: RecordValue,
+  requirements: readonly RecordValue[],
+  errors: string[]
+): void {
+  const state = contract.state;
+  const objectives = Array.isArray(contract.objectives) ? contract.objectives.filter(isRecord) : [];
+  const axes = requirements.flatMap((requirement) => Array.isArray(requirement.proofAxes)
+    ? requirement.proofAxes.filter(isRecord)
+    : []);
+  const hasActiveContract = state === "authoritative" || state === "author_claim";
+
+  for (const [index, axis] of axes.entries()) {
+    const path = `v2 proof axis ${index}`;
+    if (typeof axis.axisId !== "string" || (axis.role !== "criterion" && axis.role !== "observation")) {
+      errors.push(`${path} requires v2 axisId and role.`);
+      continue;
+    }
+    if (axis.role === "criterion" && typeof axis.criterionId !== "string") errors.push(`${path} criterion ownership is missing.`);
+    if (axis.role === "observation" && axis.criterionId !== undefined) errors.push(`${path} observation ownership is invalid.`);
+  }
+  if (!hasActiveContract) {
+    if (axes.some((axis) => axis.role === "criterion")) errors.push("absent or invalid contracts cannot contain criterion-owned proof axes.");
+    return;
+  }
+
+  const references: Array<{ criterionId: string; requirementId: string; requiredEvidence: Array<"implementation" | "documentation" | "ci_configuration" | "targeted_test" | "execution" | "visual" | "interaction">; proofAxisRefs: string[] }> = [];
+  const resultByCriterionId = new Map<string, RecordValue>();
+  for (const objective of objectives) {
+    const requirementId = typeof objective.requirementId === "string" ? objective.requirementId : "";
+    const criteria = Array.isArray(objective.criteria) ? objective.criteria : [];
+    const results = Array.isArray(objective.criterionResults) ? objective.criterionResults : [];
+    for (let index = 0; index < criteria.length; index += 1) {
+      const criterion = criteria[index];
+      const result = results[index];
+      if (!isRecord(criterion) || !isRecord(result) || typeof criterion.criterionId !== "string" || !Array.isArray(criterion.requiredEvidence) || !Array.isArray(result.proofAxisRefs)) continue;
+      const requiredEvidence = criterion.requiredEvidence.filter(isProofAxisSubject);
+      if (requiredEvidence.length !== criterion.requiredEvidence.length) {
+        errors.push(`verificationContract objective ${requirementId} has an invalid requiredEvidence subject.`);
+        continue;
+      }
+      references.push({
+        criterionId: criterion.criterionId,
+        requirementId,
+        requiredEvidence,
+        proofAxisRefs: result.proofAxisRefs.filter((value): value is string => typeof value === "string")
+      });
+      resultByCriterionId.set(criterion.criterionId, result);
+    }
+  }
+  const closure = validateCriterionAxisClosureV2({
+    criteria: references,
+    axes: axes.flatMap((axis) => {
+      if (typeof axis.axisId !== "string" || (axis.role !== "criterion" && axis.role !== "observation") ||
+        !isProofAxisSubject(axis.subject) || (axis.polarity !== "present" && axis.polarity !== "absent")) return [];
+      return [{
+        axisId: axis.axisId,
+        role: axis.role,
+        ...(typeof axis.criterionId === "string" ? { criterionId: axis.criterionId } : {}),
+        subject: axis.subject,
+        polarity: axis.polarity
+      }];
+    })
+  });
+  if (!closure.ok) errors.push("verificationContract criterion proof-axis ownership is invalid.");
+  for (const reference of references) {
+    const result = resultByCriterionId.get(reference.criterionId);
+    const expectedState = result?.state === "satisfied" ? "satisfied" : result?.state === "violated" ? "violated" : "incomplete";
+    const owned = axes.filter((axis) => reference.proofAxisRefs.includes(axis.axisId as string));
+    if (owned.length !== reference.proofAxisRefs.length || owned.some((axis) => axis.state !== expectedState)) {
+      errors.push(`verificationContract criterion ${reference.criterionId} result does not agree with its owned proof axes.`);
+    }
+    for (const subject of reference.requiredEvidence) {
+      const expected = criterionAxisIdV2(reference.requirementId, reference.criterionId, subject, "present");
+      if (!reference.proofAxisRefs.includes(expected)) errors.push(`verificationContract criterion ${reference.criterionId} is missing canonical axis ${expected}.`);
+    }
   }
 }
 
@@ -945,6 +1238,7 @@ function validateRequirementProofAxes(value: unknown, path: string, evidenceIds:
   if (axes.length === 0) errors.push(`${path} must contain at least one axis when present.`);
   const seen = new Set<string>();
   const seenSubjects = new Set<string>();
+  const seenAxisIds = new Set<string>();
 
   for (const [index, item] of axes.entries()) {
     const itemPath = `${path}[${index}]`;
@@ -952,7 +1246,7 @@ function validateRequirementProofAxes(value: unknown, path: string, evidenceIds:
       errors.push(`${itemPath} must be an object.`);
       continue;
     }
-    requireKeys(item, ["subject", "polarity", "state", "evidenceRefs"], itemPath, errors, ["collectionBasis"]);
+    requireKeys(item, ["subject", "polarity", "state", "evidenceRefs"], itemPath, errors, ["axisId", "role", "criterionId", "collectionBasis"]);
     validateEnum(item.subject, `${itemPath}.subject`, PROOF_AXIS_SUBJECT_SET, errors);
     validateEnum(item.polarity, `${itemPath}.polarity`, PROOF_AXIS_POLARITIES, errors);
     validateEnum(item.state, `${itemPath}.state`, PROOF_AXIS_STATES, errors);
@@ -960,15 +1254,33 @@ function validateRequirementProofAxes(value: unknown, path: string, evidenceIds:
     if ("collectionBasis" in item) {
       validateEnum(item.collectionBasis, `${itemPath}.collectionBasis`, PROOF_COLLECTION_BASES, errors);
     }
+    if (item.axisId !== undefined) {
+      validateString(item.axisId, `${itemPath}.axisId`, LIMITS.shortText, errors);
+      if (typeof item.axisId === "string") {
+        if (seenAxisIds.has(item.axisId)) errors.push(`${itemPath}.axisId duplicates a proof axis ID.`);
+        seenAxisIds.add(item.axisId);
+      }
+    }
+    if (item.role !== undefined && item.role !== "criterion" && item.role !== "observation") {
+      errors.push(`${itemPath}.role is invalid.`);
+    }
+    if (item.role === "criterion" && typeof item.criterionId !== "string") {
+      errors.push(`${itemPath}.criterion role requires criterionId.`);
+    }
+    if (item.role === "observation" && item.criterionId !== undefined) {
+      errors.push(`${itemPath}.observation role cannot include criterionId.`);
+    }
     if (isProofAxisSubject(item.subject) && isProofAxisCollectionBasis(item.collectionBasis) && !isProofAxisCollectionBasisAllowed(item.subject, item.collectionBasis)) {
       errors.push(`${itemPath}.collectionBasis is incompatible with its proof axis subject.`);
     }
     if (typeof item.subject === "string" && typeof item.polarity === "string") {
-      const key = `${item.subject}:${item.polarity}`;
-      if (seen.has(key)) errors.push(`${itemPath} duplicates proof axis ${key}.`);
-      seen.add(key);
-      if (seenSubjects.has(item.subject)) errors.push(`${itemPath} duplicates proof axis subject ${item.subject}.`);
-      seenSubjects.add(item.subject);
+      if (item.role !== "criterion") {
+        const key = `${item.subject}:${item.polarity}`;
+        if (seen.has(key)) errors.push(`${itemPath} duplicates proof axis ${key}.`);
+        seen.add(key);
+        if (seenSubjects.has(item.subject)) errors.push(`${itemPath} duplicates proof axis subject ${item.subject}.`);
+        seenSubjects.add(item.subject);
+      }
       if (item.polarity === "absent" && item.subject !== "implementation") {
         errors.push(`${itemPath} uses an unsupported absent polarity.`);
       }
@@ -2515,7 +2827,9 @@ function validateObservationProofSemantics(
   report.requirements.forEach((item, index) => {
     if (!isRecord(item)) return;
 
-    const axes = Array.isArray(item.proofAxes) ? item.proofAxes.filter(isRecord) : null;
+    const axes = Array.isArray(item.proofAxes)
+      ? item.proofAxes.filter(isRecord).filter((axis) => axis.role !== "criterion")
+      : null;
     const proofNode = proofNodeByRequirement.get(typeof item.requirementId === "string" ? item.requirementId : "");
     const requirementText = typeof item.requirementText === "string" ? item.requirementText : "";
     const proofNodeText = typeof proofNode?.requirementText === "string" ? proofNode.requirementText : "";

@@ -7,7 +7,7 @@ import {
   resolveRuntimeReportValidation,
   validateRuntimeReportBoundary
 } from "./report-runtime-validation";
-import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { PullRequestInput } from "./types";
 
 const input = {
@@ -69,6 +69,92 @@ describe("resolveRuntimeReportValidation", () => {
       report,
       requireV2: true
     })).toMatchObject({ valid: true, usedDeterministicFallback: false });
+  });
+
+  it("rejects a typed criterion whose report-safe label no longer matches the server-built plan", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "");
+    const typedInput = typedDocumentationInput();
+    const report = generateVerificationReportV2FromInput(typedInput);
+    const forged = structuredClone(report);
+    forged.verificationContract.objectives[0]!.criteria[0]!.label = "A different criterion";
+
+    const result = validateRuntimeReportBoundary({
+      boundary: "generated_private_full",
+      input: typedInput,
+      report: forged,
+      requireV2: true
+    });
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.errors.join("\n")).toContain("does not match the transient criterion plan");
+  });
+
+  it("rejects a forged changed-file reference in place of exact-head artifact evidence", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "documentation_literal");
+    const typedInput = typedDocumentationInput();
+    const report = generateVerificationReportV2FromInput(typedInput);
+    const forged = structuredClone(report);
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.evidenceRefs = ["ev_2"];
+
+    const result = validateRuntimeReportBoundary({
+      boundary: "generated_private_full",
+      input: typedInput,
+      report: forged,
+      requireV2: true
+    });
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.errors.join("\n")).toContain("independent transient evaluation");
+  });
+
+  it("accepts an independently recomputed documentation literal positive", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "documentation_literal");
+    const typedInput = typedDocumentationInput();
+    const report = generateVerificationReportV2FromInput(typedInput);
+
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({ state: "satisfied" });
+    expect(validateRuntimeReportBoundary({
+      boundary: "generated_private_full",
+      input: typedInput,
+      report,
+      requireV2: true
+    })).toMatchObject({ valid: true, usedDeterministicFallback: false });
+  });
+
+  it("accepts an independently recomputed complete changed-path absence positive", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "path_change_absence");
+    const typedInput = typedAbsenceInput();
+    const report = generateVerificationReportV2FromInput(typedInput);
+
+    expect(report.verificationContract.objectives[0]?.criterionResults[0]).toMatchObject({ state: "satisfied" });
+    expect(validateRuntimeReportBoundary({
+      boundary: "generated_private_full",
+      input: typedInput,
+      report,
+      requireV2: true
+    })).toMatchObject({ valid: true, usedDeterministicFallback: false });
+  });
+
+  it("accepts a server-generated typed report when validation receives the same source separately", () => {
+    vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "");
+    const validationInput = typedDocumentationInput();
+    const reportInput = { ...validationInput };
+    delete reportInput.verificationContractSourceV2;
+    delete reportInput.verificationContractBindingV2;
+    const report = generateVerificationReportV2({
+      input: reportInput,
+      contractSource: validationInput.verificationContractSourceV2!,
+      binding: validationInput.verificationContractBindingV2!
+    });
+
+    const result = validateRuntimeReportBoundary({
+      boundary: "generated_private_full",
+      input: validationInput,
+      report,
+      requireV2: true
+    });
+    if (!result.valid) throw new Error(result.errors.join("\n"));
+    expect(result).toMatchObject({ valid: true, usedDeterministicFallback: false });
   });
 
   it("rejects a generated positive draft when its transient context no longer closes the receipt", () => {
@@ -222,5 +308,102 @@ function exactHeadReceiptInput(): PullRequestInput {
       blobSha: createHash("sha1").update(`blob ${Buffer.byteLength(source, "utf8")}\0`).update(source).digest("hex"),
       source
     }]
+  };
+}
+
+function typedDocumentationInput(): PullRequestInput {
+  const headSha = "d".repeat(40);
+  const baseSha = "e".repeat(40);
+  const contract = {
+    version: 2,
+    scope: "complete_objective_set" as const,
+    objectives: [{
+      id: "reset_docs",
+      objective: "Document the local reset command.",
+      criteria: [{
+        id: "reset_literal",
+        type: "artifact" as const,
+        label: "The reset command is documented.",
+        paths: ["docs/reset.md"],
+        artifact: { kind: "documentation_literal" as const, literal: "Run npm test." }
+      }]
+    }]
+  };
+  const sourceContent = JSON.stringify(contract);
+  return {
+    title: "Document reset",
+    description: "",
+    taskText: "Document the local reset command.",
+    taskSource: "issue",
+    changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }],
+    checks: [],
+    logs: [],
+    verificationContractSourceV2: { kind: "provided_requirement", contract },
+    verificationContractBindingV2: {
+      sourceKind: "provided_requirement",
+      sourceIdentity: "manual:verification-contract:runtime",
+      sourceContent,
+      headSha,
+      baseSha
+    },
+    verificationCriterionEvidenceV2: {
+      artifactBlobs: [{ path: "docs/reset.md", headSha, content: "Run npm test." }]
+    },
+    sourceProvenance: {
+      version: 1,
+      origin: "github_snapshot",
+      headSha,
+      baseSha,
+      changedFileInventory: { version: 1, completeness: "complete", headSha },
+      evidenceCapturedAt: "2026-08-25T00:00:00.000Z",
+      inputFingerprint: { version: 1, algorithm: "sha256", value: "f".repeat(64), coverage: "github_metadata" }
+    }
+  };
+}
+
+function typedAbsenceInput(): PullRequestInput {
+  const headSha = "1".repeat(40);
+  const baseSha = "2".repeat(40);
+  const contract = {
+    version: 2,
+    scope: "complete_objective_set" as const,
+    objectives: [{
+      id: "runtime_scope",
+      objective: "Do not modify runtime code.",
+      criteria: [{
+        id: "no_runtime_change",
+        type: "absence" as const,
+        label: "No runtime path changes.",
+        prohibitedKind: "path_change" as const,
+        scope: [{ kind: "prefix" as const, path: "src/runtime/" }]
+      }]
+    }]
+  };
+  const sourceContent = JSON.stringify(contract);
+  return {
+    title: "Document reset without runtime changes",
+    description: "",
+    taskText: "Do not modify runtime code.",
+    taskSource: "issue",
+    changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+Run npm test." }],
+    checks: [],
+    logs: [],
+    verificationContractSourceV2: { kind: "provided_requirement", contract },
+    verificationContractBindingV2: {
+      sourceKind: "provided_requirement",
+      sourceIdentity: "manual:verification-contract:absence-runtime",
+      sourceContent,
+      headSha,
+      baseSha
+    },
+    sourceProvenance: {
+      version: 1,
+      origin: "github_snapshot",
+      headSha,
+      baseSha,
+      changedFileInventory: { version: 1, completeness: "complete", headSha },
+      evidenceCapturedAt: "2026-08-26T00:00:00.000Z",
+      inputFingerprint: { version: 1, algorithm: "sha256", value: "3".repeat(64), coverage: "github_metadata" }
+    }
   };
 }

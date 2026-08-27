@@ -1,5 +1,9 @@
 # Executable Release Evaluation — Pre-freeze Implementation Plan
 
+> **Historical V1 plan.** Its oracle-based steps are retained for development
+> regression context only. They cannot authorize a release; see
+> `2026-08-26-closed-reference-oracle-v2.md` for the active sealed V2 path.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a fail-closed candidate-result runner and comparator envelope without creating, reading, or scoring a protected holdout.

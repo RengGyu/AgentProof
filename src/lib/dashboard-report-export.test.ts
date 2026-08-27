@@ -87,6 +87,12 @@ describe("dashboard report export", () => {
       verification_policy: "Strict verification contract",
       verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."
     });
+    expect(json.requirements[0]).toMatchObject({
+      outcome: "unclear",
+      outcome_label: "Unclear — approved verification contract missing",
+      outcome_basis: "No approved verification contract defined the requirement outcome.",
+      observed_evidence_label: "Partially supported"
+    });
     expect(json.requirements[0].evidence_gaps).toEqual([
       "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
       "User-facing interaction needs component or browser evidence beyond logic and suite execution."

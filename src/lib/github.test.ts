@@ -357,7 +357,7 @@ describe("buildPullRequestInput", () => {
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
 
     expect(input.verificationCriterionEvidenceV2).toEqual({
-      artifactBlobs: [{ path: "docs/reset.md", content: "Stop the server.\nRun npm test." }]
+      artifactBlobs: [{ path: "docs/reset.md", headSha, content: "Stop the server.\nRun npm test." }]
     });
     const contentUrls = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes("/contents/"));
     expect(contentUrls).toEqual([`https://api.github.com/repos/acme/repo/contents/docs/reset.md?ref=${headSha}`]);

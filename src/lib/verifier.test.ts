@@ -8,7 +8,8 @@ import {
   buildVerifierEvidenceLookup,
   generateVerificationReport,
   generateVerificationReportFromRequirements,
-  generateVerificationReportV2
+  generateVerificationReportV2,
+  generateVerificationReportV2FromInput
 } from "./verifier";
 import type { EvidenceItem, PullRequestInput, Requirement, VerificationReport } from "./types";
 
@@ -705,6 +706,23 @@ describe("generateVerificationReport", () => {
     ]));
   });
 
+  it("keeps proof-node status as the observation when v2 overlays an unclear contract outcome", () => {
+    const input: PullRequestInput = {
+      title: "Improve repository overview",
+      description: "Adds a reviewer action helper.",
+      taskText: "The repository overview should be more useful for reviewers.",
+      taskSource: "issue",
+      changedFiles: [{ path: "src/repositories/OverviewAction.js", status: "modified", patch: "+ export const overviewActionLabel = () => 'Review repository';" }],
+      checks: [{ name: "repository overview tests", status: "passed", summary: "Repository overview tests passed." }],
+      logs: []
+    };
+    const observation = generateVerificationReport(input);
+    const strict = generateVerificationReportV2FromInput(input);
+
+    expect(strict.requirements[0]).toMatchObject({ status: "unclear" });
+    expect(strict.proofGraph.nodes[0]?.status).toBe(observation.proofGraph.nodes[0]?.status);
+  });
+
   it("keeps an explicit return-value contract unavailable until an attested executor result exists", () => {
     const contract = {
       version: 2,
@@ -756,7 +774,7 @@ describe("generateVerificationReport", () => {
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
   });
 
-  it("produces met for an authoritative documentation contract with exact head evidence", () => {
+  it("keeps authoritative documentation unavailable until the static capability is enabled", () => {
     const contract = {
       version: 2,
       scope: "complete_objective_set",
@@ -809,15 +827,16 @@ describe("generateVerificationReport", () => {
       }
     });
 
-    expect(report.requirements[0]).toMatchObject({ status: "met", gaps: [] });
+    expect(report.requirements[0]).toMatchObject({ status: "unclear", gaps: [] });
     expect(report.verificationContract.objectives[0]?.criterionResults).toEqual([
-      expect.objectContaining({ state: "satisfied" })
+      expect.objectContaining({ state: "unavailable" })
     ]);
     expect(JSON.stringify(report)).not.toContain("Stop the server.");
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
 
     const forged = structuredClone(report);
-    forged.verificationContract.objectives[0]!.criterionResults[0]!.evidenceRefs = [];
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.state = "satisfied";
+    forged.verificationContract.objectives[0]!.criterionResults[0]!.gapKinds = [];
     expect(validateVerificationReport(forged, { mode: "v2_full" }).valid).toBe(false);
 
     const forgedReturnValue = structuredClone(report);

@@ -25,6 +25,7 @@ import { getExecutionEvidenceItems } from "@/lib/execution-evidence";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
 import { buildShareUrl } from "@/lib/report-share";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
+import { deriveRequirementPresentationV2, isVerificationReportV2 } from "@/lib/requirement-presentation-v2";
 
 interface ReportViewProps {
   report: VerificationReport;
@@ -44,6 +45,13 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     [report.proofGraph.nodes]
   );
   const executionEvidence = useMemo(() => getExecutionEvidenceItems(report.evidenceIndex), [report.evidenceIndex]);
+  const requirementPresentationById = useMemo(() => {
+    if (!isVerificationReportV2(report)) return new Map();
+    return new Map(report.requirements.map((requirement) => [
+      requirement.requirementId,
+      deriveRequirementPresentationV2(report, requirement.requirementId)
+    ]));
+  }, [report]);
   const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | "share" | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [commentToken, setCommentToken] = useState("");
@@ -64,8 +72,10 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     return counts;
   }, [report.requirements]);
   const verificationAnswer = useMemo(
-    () => getVerificationAnswer(report.summary.priority, report.summary.evidenceCoverage, report.testing.ciStatus),
-    [report.summary.evidenceCoverage, report.summary.priority, report.testing.ciStatus]
+    () => isVerificationReportV2(report)
+      ? getStrictVerificationAnswer([...requirementPresentationById.values()])
+      : getVerificationAnswer(report.summary.priority, report.summary.evidenceCoverage, report.testing.ciStatus),
+    [report, report.summary.evidenceCoverage, report.summary.priority, report.testing.ciStatus, requirementPresentationById]
   );
   const firstPriorityFiles = useMemo(
     () =>
@@ -322,14 +332,16 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                 {requirementStats.partial + requirementStats.missing + requirementStats.unclear} need verification
               </span>
             </div>
-            {report.requirements.map((requirement) => (
-              <div className="requirement" key={requirement.requirementId}>
+            {report.requirements.map((requirement) => {
+              const presentation = requirementPresentationById.get(requirement.requirementId);
+              return <div className="requirement" key={requirement.requirementId}>
                 <div className="requirement-status">
-                  <StatusChip status={requirement.status} />
+                  <StatusChip status={presentation?.outcome ?? requirement.status} />
                   <span>{Math.round(requirement.confidence * 100)}% confidence</span>
                 </div>
                 <div className="requirement-body">
                   <p>{requirement.requirementText}</p>
+                  {presentation ? <p className="muted small requirement-note"><span>Outcome:</span> {presentation.outcomeLabel}<br /><span>Outcome basis:</span> {presentation.outcomeBasis}<br /><span>Observed evidence:</span> {presentation.observationLabel}</p> : null}
                   <p className="muted small requirement-note">
                     <span>Evidence note:</span> {requirement.reviewerNote}
                   </p>
@@ -349,8 +361,8 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                     isSummaryMode={isSummaryMode}
                   />
                 </div>
-              </div>
-            ))}
+              </div>;
+            })}
           </div>
 
           <div className="card section-card">
@@ -888,6 +900,20 @@ function getVerificationAnswer(priority: PriorityLevel, evidenceCoverage: number
   return {
     title: "Mostly supported by available evidence",
     body: "The report found aligned proof, but this remains a human decision handoff rather than an approval."
+  };
+}
+
+function getStrictVerificationAnswer(presentations: Array<ReturnType<typeof deriveRequirementPresentationV2>>) {
+  const primary = presentations.find((item) => item.outcome !== "met") ?? presentations[0];
+  if (!primary) {
+    return {
+      title: "No requirement outcome available",
+      body: "No strict contract requirement outcome was produced."
+    };
+  }
+  return {
+    title: primary.outcomeLabel,
+    body: `${primary.outcomeBasis} Observed evidence: ${primary.observationLabel}.`
   };
 }
 
