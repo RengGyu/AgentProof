@@ -125,4 +125,20 @@ describe("public reference-policy authoring schema", () => {
       : []).find((criterion) => criterion.type === "return_value");
     assert.ok(Object.hasOwn(returnCriterion.cases[0], "expected"));
   });
+
+  it("marks schema diagnostics truncated when more than 50 unique errors exist", () => {
+    const fixture = validAuthoringFixtureV2();
+    for (const item of fixture.evidenceCorpus.cases) {
+      for (const key of ["title", "description", "taskText", "changedFiles", "checks"]) delete item.input[key];
+    }
+    const structural = validateReferencePolicySchemaV2(fixture);
+    assert.equal(structural.errors.length, 50);
+    assert.equal(structural.truncated, true);
+    const result = validateReferencePolicyAuthoringV2(fixture);
+    assert.equal(result.stage, "schema");
+    assert.equal(result.errors.length, 50);
+    assert.equal(result.truncated, true);
+    assert.deepEqual(result, validateReferencePolicyAuthoringV2(fixture));
+    assert.ok(result.errors.every((error) => Object.keys(error).every((key) => ["document", "caseIndex", "path", "code"].includes(key))));
+  });
 });

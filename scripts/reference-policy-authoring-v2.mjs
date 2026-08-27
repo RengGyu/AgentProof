@@ -11,12 +11,12 @@ const KEYWORD_CODES = Object.freeze({ required: "required_field", additionalProp
 
 export function validateReferencePolicySchemaV2({ evidenceCorpus, boundaryCorpus }) {
   const errors = [...schemaErrors("evidence", validateEvidence, evidenceCorpus), ...schemaErrors("boundary", validateBoundary, boundaryCorpus)];
-  return errors.length === 0 ? { valid: true, errors: [] } : { valid: false, errors: boundedErrors(errors) };
+  return errors.length === 0 ? { valid: true, errors: [] } : { valid: false, ...boundedErrors(errors) };
 }
 
 export function validateReferencePolicyAuthoringV2(value) {
   const structural = validateReferencePolicySchemaV2(value);
-  if (!structural.valid) return invalidDiagnostic("schema", structural.errors);
+  if (!structural.valid) return invalidDiagnostic("schema", structural.errors, structural.truncated);
   try {
     const semantic = inspectReferencePolicyInputsV2(value);
     if (!semantic.ok) return invalidDiagnostic(semantic.stage, semantic.errors);
@@ -61,7 +61,7 @@ function errorCode(error) {
 }
 
 function caseIndex(pointer) { const match = pointer.match(/^\/cases\/(\d+)/); return match ? Number(match[1]) : -1; }
-function invalidDiagnostic(stage, errors) {
+function invalidDiagnostic(stage, errors, truncated = errors.length > 50) {
   return {
     version: 2,
     status: "invalid",
@@ -73,11 +73,12 @@ function invalidDiagnostic(stage, errors) {
       code,
       ...(coverageName ? { coverageName } : {})
     })),
-    truncated: errors.length > 50
+    truncated
   };
 }
 function boundedErrors(errors) {
   const seen = new Map();
   for (const error of errors) seen.set(`${error.document}\u0000${error.caseIndex}\u0000${error.pointer}\u0000${error.code}`, error);
-  return [...seen.values()].sort((left, right) => left.document.localeCompare(right.document) || left.caseIndex - right.caseIndex || left.pointer.localeCompare(right.pointer) || left.code.localeCompare(right.code)).slice(0, 50);
+  const ordered = [...seen.values()].sort((left, right) => left.document.localeCompare(right.document) || left.caseIndex - right.caseIndex || left.pointer.localeCompare(right.pointer) || left.code.localeCompare(right.code));
+  return { errors: ordered.slice(0, 50), truncated: ordered.length > 50 };
 }
