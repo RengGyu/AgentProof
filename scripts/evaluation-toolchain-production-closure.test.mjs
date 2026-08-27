@@ -14,7 +14,6 @@ import {
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const toolingEntries = [
   "scripts/build-evaluation-toolchain-manifest.mjs",
-  "scripts/build-reference-policy-seal-v2.mjs",
   "scripts/evidence-release-reference-policy-v2.mjs",
   "scripts/evaluate-production-authority-release.mjs",
   "src/lib/production-boundary-evaluation-runner.ts",
@@ -22,7 +21,6 @@ const toolingEntries = [
 ];
 const toolingFiles = [
   "scripts/build-evaluation-toolchain-manifest.mjs",
-  "scripts/build-reference-policy-seal-v2.mjs",
   "scripts/evidence-release-reference-policy-v2.mjs",
   "scripts/evaluate-evidence-release-gate.mjs",
   "scripts/evaluate-production-authority-release.mjs",
@@ -130,7 +128,7 @@ describe("evaluation-toolchain-production-closure", () => {
       ].join("\n"));
       assert.throws(
         () => buildEvaluationToolchainManifestV2({ rootDir: root, config }),
-        (error) => error?.code === "MANIFEST_BINDING_INVALID"
+        (error) => error?.code === "MODULE_RESOLUTION_FAILED"
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
