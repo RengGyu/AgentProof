@@ -22,7 +22,7 @@ describe("public reference-policy authoring schema", () => {
 
   it("uses all public pasted-override fields across synthetic boundary coverage", () => {
     const overrides = validAuthoringFixtureV2().boundaryCorpus.cases.slice(2).map((item) => item.pastedOverride);
-    for (const key of ["prUrl", "prDescription", "changedFiles", "checks", "logs", "inputLimitations"]) assert.ok(overrides.some((value) => Object.hasOwn(value, key)), key);
+    for (const key of ["prUrl", "taskText", "prDescription", "changedFiles", "checks", "logs", "inputLimitations"]) assert.ok(overrides.some((value) => Object.hasOwn(value, key)), key);
     assert.deepEqual(overrides[0], {});
   });
 
@@ -78,5 +78,14 @@ describe("public reference-policy authoring schema", () => {
     assert.ok(result.errors.every((error) => error.document === "evidence"
       ? /\/cases\/\d+\/(caseId|input)$/.test(error.pointer)
       : /\/cases\/\d+\/(caseId|kind)$/.test(error.pointer)));
+  });
+
+  it("keeps unknown-field diagnostics for a draft-like boundary case", () => {
+    const draft = createReferencePolicyDraftValuesV2();
+    draft.boundaryCorpus.cases[0].untrusted_boundary_field = "SENTINEL_BOUNDARY";
+    const result = validateReferencePolicySchemaV2(draft);
+    assert.ok(result.errors.some((error) => error.document === "boundary" && error.caseIndex === 0 && error.code === "unknown_field"));
+    assert.equal(JSON.stringify(result).includes("untrusted_boundary_field"), false);
+    assert.equal(JSON.stringify(result).includes("SENTINEL_BOUNDARY"), false);
   });
 });

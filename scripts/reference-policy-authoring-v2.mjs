@@ -29,7 +29,7 @@ function schemaErrors(document, validate, value) {
 
 function isDraftBoundaryBranchError(document, value, error) {
   if (document !== "boundary" || value?.cases?.[error.caseIndex]?.kind !== null) return false;
-  return error.pointer === `/cases/${error.caseIndex}` || /\/(report|liveInput|pastedOverride)$/.test(error.pointer);
+  return error.code === "wrong_type" && error.pointer === `/cases/${error.caseIndex}` || /\/(report|liveInput|pastedOverride)$/.test(error.pointer);
 }
 
 function errorCode(error) {
