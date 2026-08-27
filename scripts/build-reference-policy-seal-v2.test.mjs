@@ -23,6 +23,47 @@ function runDirect(args, dependencies) {
   return { status, stdout: stdout.value, stderr: stderr.value };
 }
 
+function protectedSealValues(fixture) {
+  const inputs = fixture.evidenceCorpus.cases.map(({ input }) => input);
+  const sourceValues = inputs.flatMap(({ verificationContractSourceV2: source, verificationContractBindingV2: binding }) => [
+    source.title,
+    source.body,
+    binding.sourceIdentity,
+    binding.sourceContent
+  ]);
+  const contractValues = inputs.flatMap(({ verificationContractSourceV2: source }) => {
+    const contract = source.contract ?? JSON.parse(source.body.match(/```agentproof-verification\n([\s\S]+)\n```/)[1]);
+    return contract.objectives.flatMap((objective) => [
+      objective.objective,
+      ...objective.criteria.flatMap((criterion) => [
+        criterion.label,
+        ...(criterion.paths ?? []),
+        criterion.artifact?.literal,
+        criterion.adapter?.modulePath,
+        criterion.adapter?.exportName
+      ])
+    ]);
+  });
+  return [...new Set([
+    ...fixture.evidenceCorpus.cases.map(({ caseId }) => caseId),
+    ...fixture.boundaryCorpus.cases.map(({ caseId }) => caseId),
+    ...inputs.flatMap((input) => [
+      input.title,
+      input.description,
+      input.taskText,
+      input.sourceProvenance.evidenceCapturedAt,
+      input.sourceProvenance.inputFingerprint.value,
+      input.sourceProvenance.headSha,
+      input.sourceProvenance.baseSha,
+      ...input.changedFiles.flatMap(({ path, previousPath }) => [path, previousPath]),
+      ...input.verificationCriterionEvidenceV2.artifactBlobs.flatMap(({ path, headSha, content }) => [path, headSha, content])
+    ]),
+    ...sourceValues,
+    ...contractValues,
+    ...fixture.boundaryCorpus.cases.flatMap(({ pastedOverride = {} }) => [pastedOverride.prUrl])
+  ].filter(Boolean))];
+}
+
 describe("build reference policy seal v2 CLI", () => {
   it("writes the exact deterministic V2 seal from public authoring files", () => {
     const root = temporaryDirectory();
@@ -47,29 +88,8 @@ describe("build reference policy seal v2 CLI", () => {
       assert.equal(sealA, readFileSync(outputB, "utf8"));
       assert.equal(sealA, JSON.stringify(buildReferencePolicySealV2(fixture)));
       assert.match(sealA, /"referencePolicySha256":"[a-f0-9]{64}"/);
-      const caseIds = [...fixture.evidenceCorpus.cases, ...fixture.boundaryCorpus.cases].map(({ caseId }) => caseId);
-      for (const privateValue of [
-        ...caseIds,
-        "Synthetic pull request",
-        "Synthetic description",
-        "Synthetic task",
-        "AgentProof verification contract",
-        "AgentProof verification",
-        "README.md",
-        "src/a.mjs",
-        "src/old.mjs",
-        "new.mjs",
-        "synthetic",
-        "https://example.test/pr/1",
-        "https://example.test/pr/2",
-        "https://example.test/pr/3",
-        "https://example.test/pr/4",
-        "https://example.test/pr/5",
-        '"literal":"public"',
-        "syntax_invalid",
-        "coverage_missing"
-      ]) {
-        assert.equal(sealA.includes(privateValue), false, privateValue);
+      for (const privateValue of [...protectedSealValues(fixture), "syntax_invalid", "coverage_missing"]) {
+        assert.equal(sealA.includes(JSON.stringify(privateValue)), false, privateValue);
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

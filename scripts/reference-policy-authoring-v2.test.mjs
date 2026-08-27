@@ -15,6 +15,29 @@ function runCli(command, args) { return spawnSync(process.execPath, [cli, comman
 function runCliWithFileSizeLimit(command, args) { return spawnSync("/bin/sh", ["-c", "ulimit -f 0; exec \"$@\"", "sh", process.execPath, cli, command, ...args], { encoding: "utf8" }); }
 function writeCorpus(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8"); }
 function cliArgs(evidence, boundary) { return ["--evidence-cases", evidence, "--boundary-cases", boundary]; }
+function protectedStreamValues(fixture) {
+  const inputs = fixture.evidenceCorpus.cases.map(({ input }) => input);
+  return [...new Set([
+    ...fixture.evidenceCorpus.cases.map(({ caseId }) => caseId),
+    ...fixture.boundaryCorpus.cases.map(({ caseId }) => caseId),
+    ...inputs.flatMap((input) => [
+      input.title,
+      input.description,
+      input.taskText,
+      input.sourceProvenance.evidenceCapturedAt,
+      input.sourceProvenance.inputFingerprint.value,
+      input.sourceProvenance.headSha,
+      input.sourceProvenance.baseSha,
+      ...input.changedFiles.flatMap(({ path, previousPath }) => [path, previousPath]),
+      ...input.verificationCriterionEvidenceV2.artifactBlobs.flatMap(({ path, headSha, content }) => [path, headSha, content]),
+      input.verificationContractBindingV2.sourceIdentity,
+      input.verificationContractBindingV2.sourceContent,
+      input.verificationContractSourceV2.title,
+      input.verificationContractSourceV2.body
+    ]),
+    ...fixture.boundaryCorpus.cases.flatMap(({ pastedOverride = {} }) => Object.values(pastedOverride).flat())
+  ].filter((value) => typeof value === "string" && value.length > 0))];
+}
 
 describe("public reference-policy authoring schema", () => {
   it("accepts only the closed 12/8 public subset", () => {
@@ -163,8 +186,6 @@ describe("reference-policy authoring CLI", () => {
     const boundary = join(directory, "boundary.json");
     const output = join(directory, "seal.json");
     const fixture = validAuthoringFixtureV2();
-    const corpusText = `${JSON.stringify(fixture.evidenceCorpus)}${JSON.stringify(fixture.boundaryCorpus)}`;
-    const caseIds = [...fixture.evidenceCorpus.cases, ...fixture.boundaryCorpus.cases].map(({ caseId }) => caseId);
     try {
       const initialized = runCli("init", cliArgs(evidence, boundary));
       assert.equal(initialized.status, 0);
@@ -183,10 +204,9 @@ describe("reference-policy authoring CLI", () => {
       assert.equal(JSON.parse(sealed.stdout).status, "sealed");
       assert.equal(sealed.stderr, "");
       assert.deepEqual(readdirSync(directory).sort(), ["boundary.json", "evidence.json", "seal.json"]);
-      for (const value of ["Synthetic pull request", "Synthetic description", "Synthetic task", "README.md", ...caseIds]) {
+      for (const value of protectedStreamValues(fixture)) {
         assert.equal(`${initialized.stdout}${initialized.stderr}${validated.stdout}${validated.stderr}${sealed.stdout}${sealed.stderr}`.includes(value), false, value);
       }
-      assert.equal(`${initialized.stdout}${initialized.stderr}${validated.stdout}${validated.stderr}${sealed.stdout}${sealed.stderr}`.includes(corpusText), false);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

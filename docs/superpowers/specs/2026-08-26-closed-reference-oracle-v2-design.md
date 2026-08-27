@@ -345,9 +345,10 @@ and different from both inputs. These commands never read a candidate tree or
 candidate result, write a per-case expected projection, or provide a completed
 example corpus.
 
-Running the command twice on identical bytes must produce byte-identical seal
-JSON. Invalid coverage, unsupported cases, existing output, hash drift, or a
-V1 input fails before any seal is written.
+Running only `seal` twice against identical bytes and different empty output
+paths must produce byte-identical seal JSON. Invalid coverage, unsupported
+cases, existing output, hash drift, or a V1 input fails before any seal is
+written.
 
 ## 10. Coverage preflight
 
