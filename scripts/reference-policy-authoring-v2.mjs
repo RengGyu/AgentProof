@@ -1,5 +1,5 @@
 import Ajv from "ajv";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectReferencePolicyInputsV2 } from "./evidence-release-reference-policy-v2.mjs";
 
@@ -9,6 +9,7 @@ ajv.addSchema(schema);
 const validateEvidence = ajv.getSchema(`${schema.$id}#/definitions/evidenceCorpusV2`);
 const validateBoundary = ajv.getSchema(`${schema.$id}#/definitions/boundaryCorpusV2`);
 const KEYWORD_CODES = Object.freeze({ required: "required_field", additionalProperties: "unknown_field", type: "wrong_type", const: "wrong_constant", enum: "wrong_constant", minItems: "out_of_bounds", maxItems: "out_of_bounds", minLength: "out_of_bounds", maxLength: "out_of_bounds", minimum: "out_of_bounds", maximum: "out_of_bounds", oneOf: "wrong_type" });
+const MAX_AUTHORING_FILE_BYTES = 4 * 1024 * 1024;
 
 export function validateReferencePolicySchemaV2({ evidenceCorpus, boundaryCorpus }) {
   const errors = [...schemaErrors("evidence", validateEvidence, evidenceCorpus), ...schemaErrors("boundary", validateBoundary, boundaryCorpus)];
@@ -42,10 +43,8 @@ export function initReferencePolicyDraftsV2({ evidencePath, boundaryPath }) {
   const drafts = createReferencePolicyDraftValuesV2();
   const created = [];
   try {
-    writeFileSync(evidencePath, `${JSON.stringify(drafts.evidenceCorpus, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
-    created.push(evidencePath);
-    writeFileSync(boundaryPath, `${JSON.stringify(drafts.boundaryCorpus, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
-    created.push(boundaryPath);
+    writeExclusiveDraft(evidencePath, `${JSON.stringify(drafts.evidenceCorpus, null, 2)}\n`, created);
+    writeExclusiveDraft(boundaryPath, `${JSON.stringify(drafts.boundaryCorpus, null, 2)}\n`, created);
     return { evidenceCaseCount: 12, boundaryCaseCount: 8 };
   } catch (error) {
     for (const path of created) {
@@ -56,10 +55,12 @@ export function initReferencePolicyDraftsV2({ evidencePath, boundaryPath }) {
 }
 
 export function validateReferencePolicyFilesV2({ evidencePath, boundaryPath }, { validator = validateReferencePolicyAuthoringV2 } = {}) {
+  let texts;
+  try {
+    texts = [readBoundedAuthoringFile(evidencePath), readBoundedAuthoringFile(boundaryPath)];
+  } catch { return { exitCode: 2 }; }
   const corpora = {};
-  for (const [document, path, key] of [["evidence", evidencePath, "evidenceCorpus"], ["boundary", boundaryPath, "boundaryCorpus"]]) {
-    let text;
-    try { text = readFileSync(path, "utf8"); } catch { return { exitCode: 2 }; }
+  for (const [document, text, key] of [["evidence", texts[0], "evidenceCorpus"], ["boundary", texts[1], "boundaryCorpus"]]) {
     try { corpora[key] = JSON.parse(text); } catch (error) {
       if (error instanceof SyntaxError) return { exitCode: 1, diagnostic: syntaxDiagnostic(document) };
       return { exitCode: 3, diagnostic: internalDiagnosticV2() };
@@ -67,8 +68,30 @@ export function validateReferencePolicyFilesV2({ evidencePath, boundaryPath }, {
   }
   try {
     const diagnostic = validator(corpora);
+    if (diagnostic?.stage === "internal") return { exitCode: 3, diagnostic: internalDiagnosticV2() };
     return { exitCode: diagnostic.status === "valid" ? 0 : 1, diagnostic };
   } catch { return { exitCode: 3, diagnostic: internalDiagnosticV2() }; }
+}
+
+function writeExclusiveDraft(path, content, created) {
+  const descriptor = openSync(path, "wx", 0o600);
+  created.push(path);
+  try { writeFileSync(descriptor, content, "utf8"); } finally { closeSync(descriptor); }
+}
+
+function readBoundedAuthoringFile(path) {
+  const descriptor = openSync(path, "r");
+  try {
+    const { size } = fstatSync(descriptor);
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_AUTHORING_FILE_BYTES) throw new Error("read_failed");
+    const bytes = Buffer.allocUnsafe(size);
+    for (let offset = 0; offset < size;) {
+      const read = readSync(descriptor, bytes, offset, size - offset, offset);
+      if (read === 0) throw new Error("read_failed");
+      offset += read;
+    }
+    return bytes.toString("utf8");
+  } finally { closeSync(descriptor); }
 }
 
 export function runReferencePolicyAuthoringCliV2(command, args, { stdout = process.stdout, stderr = process.stderr, validator = validateReferencePolicyAuthoringV2 } = {}) {

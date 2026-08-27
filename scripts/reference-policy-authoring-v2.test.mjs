@@ -12,6 +12,7 @@ const cli = fileURLToPath(new URL("./reference-policy-authoring-v2-cli.mjs", imp
 
 function temporaryDirectory() { return mkdtempSync(join(tmpdir(), "agentproof-authoring-v2-")); }
 function runCli(command, args) { return spawnSync(process.execPath, [cli, command, ...args], { encoding: "utf8" }); }
+function runCliWithFileSizeLimit(command, args) { return spawnSync("/bin/sh", ["-c", "ulimit -f 0; exec \"$@\"", "sh", process.execPath, cli, command, ...args], { encoding: "utf8" }); }
 function writeCorpus(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8"); }
 function cliArgs(evidence, boundary) { return ["--evidence-cases", evidence, "--boundary-cases", boundary]; }
 
@@ -208,6 +209,33 @@ describe("reference-policy authoring CLI", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("removes a partially written exclusively created draft", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    try {
+      const result = runCliWithFileSizeLimit("init", cliArgs(evidence, boundary));
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, "");
+      assert.equal(existsSync(evidence), false);
+      assert.equal(existsSync(boundary), false);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("preserves a boundary-only pre-existing target", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    try {
+      writeFileSync(boundary, "preserve-boundary", "utf8");
+      const result = runCli("init", cliArgs(evidence, boundary));
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, "");
+      assert.equal(existsSync(evidence), false);
+      assert.equal(readFileSync(boundary, "utf8"), "preserve-boundary");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("does not leave a first draft behind when the second target directory is unwritable", () => {
     const directory = temporaryDirectory();
     const blocked = join(directory, "blocked");
@@ -309,6 +337,35 @@ describe("reference-policy authoring CLI", () => {
       assert.equal(stdout.value, '{"version":2,"status":"invalid","stage":"internal","errors":[{"code":"internal_validation_failure"}],"truncated":false}\n');
       assert.equal(stderr.value.includes("UNIQUE_INTERNAL_MESSAGE"), false);
       assert.deepEqual(validateReferencePolicyFilesV2({ evidencePath: evidence, boundaryPath: boundary }, { validator() { throw new Error("UNIQUE_INTERNAL_MESSAGE"); } }), { exitCode: 3, diagnostic: { version: 2, status: "invalid", stage: "internal", errors: [{ code: "internal_validation_failure" }], truncated: false } });
+
+      stdout.value = "";
+      assert.equal(runReferencePolicyAuthoringCliV2("validate", cliArgs(evidence, boundary), { stdout, stderr, validator() { return { status: "invalid", stage: "internal", errors: [{ code: "UNIQUE_INTERNAL_RETURN" }] }; } }), 3);
+      assert.equal(stdout.value, '{"version":2,"status":"invalid","stage":"internal","errors":[{"code":"internal_validation_failure"}],"truncated":false}\n');
+      assert.equal(stdout.value.includes("UNIQUE_INTERNAL_RETURN"), false);
     } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("reads both files within bounds before parsing either document", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    try {
+      writeFileSync(evidence, '{"broken"', "utf8");
+      writeFileSync(boundary, "x".repeat(4 * 1024 * 1024 + 1), "utf8");
+      const result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, "");
+      assert.equal(result.stderr, "REFERENCE_POLICY_VALIDATE_FAILED\n");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("does not leak NUL-bearing direct CLI arguments", () => {
+    const stdout = { value: "", write(value) { this.value += value; } };
+    const stderr = { value: "", write(value) { this.value += value; } };
+    const nulPath = `UNIQUE_NUL_PATH${String.fromCharCode(0)}SECRET`;
+    assert.equal(runReferencePolicyAuthoringCliV2("validate", ["--evidence-cases", nulPath, "--boundary-cases", "boundary.json"], { stdout, stderr }), 2);
+    assert.equal(stdout.value, "");
+    assert.equal(stderr.value, "REFERENCE_POLICY_VALIDATE_FAILED\n");
+    assert.equal(`${stdout.value}${stderr.value}`.includes("UNIQUE_NUL_PATH"), false);
   });
 });
