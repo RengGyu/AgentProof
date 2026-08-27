@@ -23,6 +23,14 @@ describe("smoke-real-pr-evaluation", () => {
     }
   });
 
+  it("keeps visual evidence expectations only for the current visual source case", () => {
+    const visualCase = DEFAULT_REAL_PR_EVALUATION_CASES.find((testCase) => testCase.id === "PR-9");
+    const executionCase = DEFAULT_REAL_PR_EVALUATION_CASES.find((testCase) => testCase.id === "PR-12");
+
+    expect(visualCase?.expectations.requireVisualUnverified).toBe(true);
+    expect(executionCase?.expectations.requireVisualUnverified).toBeUndefined();
+  });
+
   it("runs every real PR evaluation case through analyze and summary-only save smoke", async () => {
     let savedId = 0;
     const fetchMock = vi.fn(async (url, init = {}) => {
