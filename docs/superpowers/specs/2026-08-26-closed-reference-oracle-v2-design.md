@@ -324,20 +324,26 @@ output.
 
 ## 9. Custodian seal creation
 
-The holdout custodian uses one candidate-independent command:
+The holdout custodian follows the closed public authoring contract in
+[`2026-08-27-public-holdout-authoring-contract-v2-design.md`](2026-08-27-public-holdout-authoring-contract-v2-design.md)
+and its versioned
+[`holdout-authoring-v2.schema.json`](../../../schemas/reference-policy/holdout-authoring-v2.schema.json).
+The custodian uses these candidate-independent commands in order:
 
 ```text
-node scripts/build-reference-policy-seal-v2.mjs \
-  --evidence-cases <path> \
-  --boundary-cases <path> \
-  --output <new-path>
+pnpm eval:reference:init
+pnpm eval:reference:validate
+pnpm eval:reference:seal
 ```
 
-The command parses both input-only corpora, runs the total reference policy,
-derives the named coverage summary, calculates canonical hashes, and writes
-one `ReferencePolicySealV2`. The output path must be new and different from
-both inputs. It never reads a candidate tree or candidate result and never
-writes a per-case expected projection.
+The broad `PullRequestInput`, `AnalyzeRequest`, and `VerificationReport` names
+in this document are conceptual only. For authoring, they are superseded by
+the closed public subset in that schema and design. It initializes protected
+drafts, validates both input-only corpora through the authoritative reference
+policy, then writes one `ReferencePolicySealV2`. The output path must be new
+and different from both inputs. These commands never read a candidate tree or
+candidate result, write a per-case expected projection, or provide a completed
+example corpus.
 
 Running the command twice on identical bytes must produce byte-identical seal
 JSON. Invalid coverage, unsupported cases, existing output, hash drift, or a

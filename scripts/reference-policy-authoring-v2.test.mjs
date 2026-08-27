@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -157,6 +157,39 @@ describe("public reference-policy authoring schema", () => {
 });
 
 describe("reference-policy authoring CLI", () => {
+  it("authors a sealed synthetic public subset through the published init validate seal contract without leaking corpus values", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    const output = join(directory, "seal.json");
+    const fixture = validAuthoringFixtureV2();
+    const corpusText = `${JSON.stringify(fixture.evidenceCorpus)}${JSON.stringify(fixture.boundaryCorpus)}`;
+    const caseIds = [...fixture.evidenceCorpus.cases, ...fixture.boundaryCorpus.cases].map(({ caseId }) => caseId);
+    try {
+      const initialized = runCli("init", cliArgs(evidence, boundary));
+      assert.equal(initialized.status, 0);
+      assert.equal(JSON.parse(initialized.stdout).status, "initialized");
+      assert.equal(initialized.stderr, "");
+
+      writeCorpus(evidence, fixture.evidenceCorpus);
+      writeCorpus(boundary, fixture.boundaryCorpus);
+      const validated = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(validated.status, 0);
+      assert.equal(JSON.parse(validated.stdout).status, "valid");
+      assert.equal(validated.stderr, "");
+
+      const sealed = spawnSync(process.execPath, ["scripts/build-reference-policy-seal-v2.mjs", ...cliArgs(evidence, boundary), "--output", output], { encoding: "utf8" });
+      assert.equal(sealed.status, 0);
+      assert.equal(JSON.parse(sealed.stdout).status, "sealed");
+      assert.equal(sealed.stderr, "");
+      assert.deepEqual(readdirSync(directory).sort(), ["boundary.json", "evidence.json", "seal.json"]);
+      for (const value of ["Synthetic pull request", "Synthetic description", "Synthetic task", "README.md", ...caseIds]) {
+        assert.equal(`${initialized.stdout}${initialized.stderr}${validated.stdout}${validated.stderr}${sealed.stdout}${sealed.stderr}`.includes(value), false, value);
+      }
+      assert.equal(`${initialized.stdout}${initialized.stderr}${validated.stdout}${validated.stderr}${sealed.stdout}${sealed.stderr}`.includes(corpusText), false);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("initializes two owner-only draft files without exposing their paths", () => {
     const directory = temporaryDirectory();
     const evidence = join(directory, "evidence.json");

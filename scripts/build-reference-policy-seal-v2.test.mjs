@@ -47,15 +47,30 @@ describe("build reference policy seal v2 CLI", () => {
       assert.equal(sealA, readFileSync(outputB, "utf8"));
       assert.equal(sealA, JSON.stringify(buildReferencePolicySealV2(fixture)));
       assert.match(sealA, /"referencePolicySha256":"[a-f0-9]{64}"/);
+      const caseIds = [...fixture.evidenceCorpus.cases, ...fixture.boundaryCorpus.cases].map(({ caseId }) => caseId);
       for (const privateValue of [
-        fixture.evidenceCorpus.cases[0].caseId,
+        ...caseIds,
         "Synthetic pull request",
+        "Synthetic description",
         "Synthetic task",
+        "AgentProof verification contract",
+        "AgentProof verification",
         "README.md",
+        "src/a.mjs",
+        "src/old.mjs",
+        "new.mjs",
+        "synthetic",
+        "https://example.test/pr/1",
+        "https://example.test/pr/2",
+        "https://example.test/pr/3",
+        "https://example.test/pr/4",
+        "https://example.test/pr/5",
         '"literal":"public"',
         "syntax_invalid",
         "coverage_missing"
-      ]) assert.equal(sealA.includes(privateValue), false, privateValue);
+      ]) {
+        assert.equal(sealA.includes(privateValue), false, privateValue);
+      }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
@@ -112,9 +127,11 @@ describe("build reference policy seal v2 CLI", () => {
       writeCorpus(boundary, fixture.boundaryCorpus);
       writeFileSync(output, "preserve-existing", "utf8");
 
+      const unknownOutput = join(root, "unknown.json");
+      const unreadableOutput = join(root, "read.json");
       for (const args of [
-        ["--unknown", evidence, "--boundary-cases", boundary, "--output", join(root, "unknown.json")],
-        sealArgs(join(root, "missing.json"), boundary, join(root, "read.json")),
+        ["--unknown", evidence, "--boundary-cases", boundary, "--output", unknownOutput],
+        sealArgs(join(root, "missing.json"), boundary, unreadableOutput),
         sealArgs(evidence, boundary, output),
         sealArgs(evidence, boundary, evidence)
       ]) {
@@ -124,6 +141,8 @@ describe("build reference policy seal v2 CLI", () => {
         assert.equal(result.stderr, "REFERENCE_POLICY_SEAL_FAILED\n");
       }
       assert.equal(readFileSync(output, "utf8"), "preserve-existing");
+      assert.equal(existsSync(unknownOutput), false);
+      assert.equal(existsSync(unreadableOutput), false);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
