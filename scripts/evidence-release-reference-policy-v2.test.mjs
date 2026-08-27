@@ -7,9 +7,11 @@ import {
   deriveBoundaryReferenceV2,
   deriveCoverageSummaryV2,
   deriveEvidenceReferenceV2,
+  inspectReferencePolicyInputsV2,
   parseReferencePolicySealV2,
   referencePolicySha256V2
 } from "./evidence-release-reference-policy-v2.mjs";
+import { validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
 
 const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -225,6 +227,117 @@ if (process.env.AGENTPROOF_REFERENCE_POLICY_FIXTURES !== "1") describe("closed r
     const withRawField = boundaryCorpus();
     withRawField.cases[0].report.summary = "safe-looking raw source";
     assert.equal(buildReferencePolicySealV2({ evidenceCorpus: evidenceCorpus(), boundaryCorpus: withRawField }), null);
+  });
+
+  it("reports bounded authoring failures without changing conservative unavailable semantics", () => {
+    const fixture = validAuthoringFixtureV2();
+
+    const duplicate = structuredClone(fixture);
+    duplicate.evidenceCorpus.cases[1].caseId = duplicate.evidenceCorpus.cases[0].caseId;
+    assert.equal(inspectReferencePolicyInputsV2(duplicate).errors[0].code, "duplicate_identity");
+    assert.equal(buildReferencePolicySealV2(duplicate), null);
+
+    const mismatch = structuredClone(fixture);
+    mismatch.evidenceCorpus.cases[0].input.verificationContractBindingV2.sourceKind = "linked_issue";
+    assert.equal(inspectReferencePolicyInputsV2(mismatch).errors[0].code, "source_binding_mismatch");
+
+    const renamed = structuredClone(fixture);
+    renamed.evidenceCorpus.cases[3].input.changedFiles = [{ path: "docs/a.md", previousPath: "private/a.md" }];
+    assert.notEqual(inspectReferencePolicyInputsV2(renamed).stage, "cross_field");
+    const renameSeal = buildReferencePolicySealV2(renamed);
+    assert.ok(renameSeal);
+    assert.equal(deriveEvidenceReferenceV2(renamed.evidenceCorpus, renameSeal).cases[3].reference.objectives[0].criteria[0].state, "unavailable");
+
+    const headMismatch = structuredClone(fixture);
+    headMismatch.evidenceCorpus.cases[3].input.sourceProvenance.headSha = "c".repeat(40);
+    assert.notEqual(inspectReferencePolicyInputsV2(headMismatch).stage, "cross_field");
+    const headSeal = buildReferencePolicySealV2(headMismatch);
+    assert.ok(headSeal);
+    assert.equal(deriveEvidenceReferenceV2(headMismatch.evidenceCorpus, headSeal).cases[3].reference.objectives[0].criteria[0].state, "unavailable");
+  });
+
+  it("reports duplicate case, objective, criterion, and artifact identities from parser branches", () => {
+    const mutations = [
+      ["case", (value) => { value.evidenceCorpus.cases[1].caseId = value.evidenceCorpus.cases[0].caseId; }],
+      ["objective", (value) => {
+        const objectives = value.evidenceCorpus.cases[0].input.verificationContractSourceV2.contract.objectives;
+        objectives[1].id = objectives[0].id;
+      }],
+      ["criterion", (value) => {
+        const objectives = value.evidenceCorpus.cases[0].input.verificationContractSourceV2.contract.objectives;
+        objectives[1].criteria[0].id = objectives[0].criteria[0].id;
+      }],
+      ["artifact", (value) => {
+        const blobs = value.evidenceCorpus.cases[0].input.verificationCriterionEvidenceV2.artifactBlobs;
+        blobs.push(structuredClone(blobs[0]));
+      }]
+    ];
+    for (const [name, mutate] of mutations) {
+      const fixture = validAuthoringFixtureV2();
+      mutate(fixture);
+      const result = inspectReferencePolicyInputsV2(fixture);
+      assert.equal(result.stage, "cross_field", name);
+      assert.equal(result.errors[0].code, "duplicate_identity", name);
+    }
+  });
+
+  it("reports semantic count, envelope, privacy, and UTF-8 byte bounds without values", () => {
+    const cases = [
+      ["criteria", "out_of_bounds", (value) => {
+        value.evidenceCorpus.cases[0].input.verificationContractSourceV2.contract.objectives = Array.from({ length: 7 }, (_, objectiveIndex) => ({
+          id: `objective_${objectiveIndex}`,
+          objective: "objective",
+          criteria: Array.from({ length: objectiveIndex === 6 ? 1 : 4 }, (_, criterionIndex) => ({ id: `item_${objectiveIndex}_${criterionIndex}`, type: "artifact", label: "item", paths: ["README.md"], artifact: { kind: "documentation_literal", literal: "public" } }))
+        }));
+      }],
+      ["envelope", "contract_envelope_invalid", (value) => { value.evidenceCorpus.cases[1].input.verificationContractSourceV2.body = "SENTINEL malformed envelope"; }],
+      ["private", "private_material_rejected", (value) => {
+        const criterion = value.evidenceCorpus.cases[9].input.verificationContractSourceV2.contract.objectives[0].criteria[0];
+        criterion.cases[0].expected = `sk-${"SENTINEL".repeat(3)}`;
+      }],
+      ["input bytes", "out_of_bounds", (value) => {
+        value.evidenceCorpus.cases[0].input.verificationCriterionEvidenceV2.artifactBlobs = Array.from({ length: 8 }, (_, index) => ({ path: `docs/${index}.md`, content: "🙂".repeat(16_384) }));
+      }],
+      ["contract bytes", "out_of_bounds", (value) => {
+        value.evidenceCorpus.cases[0].input.verificationContractSourceV2.contract.objectives = Array.from({ length: 12 }, (_, objectiveIndex) => ({
+          id: `objective_${objectiveIndex}`,
+          objective: "🙂".repeat(125),
+          criteria: Array.from({ length: 4 }, (_, criterionIndex) => ({ id: `item_${objectiveIndex}_${criterionIndex}`, type: "artifact", label: "🙂".repeat(60), paths: ["README.md"], artifact: { kind: "documentation_literal", literal: "public" } }))
+        }));
+      }],
+      ["corpus bytes", "out_of_bounds", (value) => {
+        for (const item of value.evidenceCorpus.cases) item.input.verificationCriterionEvidenceV2.artifactBlobs = Array.from({ length: 8 }, (_, index) => ({ path: `docs/${index}.md`, content: "🙂".repeat(16_384) }));
+      }]
+    ];
+    for (const [name, code, mutate] of cases) {
+      const fixture = validAuthoringFixtureV2();
+      mutate(fixture);
+      const result = inspectReferencePolicyInputsV2(fixture);
+      assert.equal(result.stage, "cross_field", name);
+      assert.ok(result.errors.some((error) => error.code === code), `${name}: ${JSON.stringify(result.errors)}`);
+      assert.equal(JSON.stringify(result).includes("SENTINEL"), false, name);
+      assert.ok(result.errors.length <= 50, name);
+    }
+  });
+
+  it("reports missing named coverage and orders value-free diagnostics stably", () => {
+    const incomplete = validAuthoringFixtureV2();
+    incomplete.evidenceCorpus.cases[5].input.verificationCriterionEvidenceV2.artifactBlobs[0].content = "public";
+    const missing = inspectReferencePolicyInputsV2(incomplete);
+    assert.equal(missing.stage, "coverage");
+    assert.ok(missing.errors.some((error) => error.code === "coverage_missing" && error.coverageName === "documentation:violated"));
+
+    const duplicates = validAuthoringFixtureV2();
+    duplicates.evidenceCorpus.cases[1].caseId = duplicates.evidenceCorpus.cases[0].caseId;
+    duplicates.boundaryCorpus.cases[1].caseId = duplicates.boundaryCorpus.cases[0].caseId;
+    const first = inspectReferencePolicyInputsV2(duplicates);
+    const second = inspectReferencePolicyInputsV2(duplicates);
+    assert.deepEqual(first, second);
+    assert.deepEqual(first.errors.map(({ document, code }) => ({ document, code })), [
+      { document: "boundary", code: "duplicate_identity" },
+      { document: "evidence", code: "duplicate_identity" }
+    ]);
+    assert.equal(JSON.stringify(first).includes(duplicates.evidenceCorpus.cases[0].caseId), false);
   });
 });
 

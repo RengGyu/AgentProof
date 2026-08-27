@@ -1,5 +1,6 @@
 import Ajv from "ajv";
 import { readFileSync } from "node:fs";
+import { inspectReferencePolicyInputsV2 } from "./evidence-release-reference-policy-v2.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../schemas/reference-policy/holdout-authoring-v2.schema.json", import.meta.url)));
 const ajv = new Ajv({ allErrors: true, jsonPointers: true, strictDefaults: true });
@@ -11,6 +12,22 @@ const KEYWORD_CODES = Object.freeze({ required: "required_field", additionalProp
 export function validateReferencePolicySchemaV2({ evidenceCorpus, boundaryCorpus }) {
   const errors = [...schemaErrors("evidence", validateEvidence, evidenceCorpus), ...schemaErrors("boundary", validateBoundary, boundaryCorpus)];
   return errors.length === 0 ? { valid: true, errors: [] } : { valid: false, errors: boundedErrors(errors) };
+}
+
+export function validateReferencePolicyAuthoringV2(value) {
+  const structural = validateReferencePolicySchemaV2(value);
+  if (!structural.valid) return invalidDiagnostic("schema", structural.errors);
+  try {
+    const semantic = inspectReferencePolicyInputsV2(value);
+    if (!semantic.ok) return invalidDiagnostic(semantic.stage, semantic.errors);
+    return { version: 2, status: "valid", stage: "complete", errors: [], truncated: false };
+  } catch {
+    return internalDiagnosticV2();
+  }
+}
+
+export function internalDiagnosticV2() {
+  return { version: 2, status: "invalid", stage: "internal", errors: [{ code: "internal_validation_failure" }], truncated: false };
 }
 
 export function createReferencePolicyDraftValuesV2() {
@@ -44,6 +61,21 @@ function errorCode(error) {
 }
 
 function caseIndex(pointer) { const match = pointer.match(/^\/cases\/(\d+)/); return match ? Number(match[1]) : -1; }
+function invalidDiagnostic(stage, errors) {
+  return {
+    version: 2,
+    status: "invalid",
+    stage,
+    errors: errors.slice(0, 50).map(({ document, caseIndex: index, pointer, path, code, coverageName }) => ({
+      ...(document ? { document } : {}),
+      ...(Number.isInteger(index) && index >= 0 ? { caseIndex: index } : {}),
+      ...(pointer !== undefined || path !== undefined ? { path: (pointer ?? path).slice(0, 256) } : {}),
+      code,
+      ...(coverageName ? { coverageName } : {})
+    })),
+    truncated: errors.length > 50
+  };
+}
 function boundedErrors(errors) {
   const seen = new Map();
   for (const error of errors) seen.set(`${error.document}\u0000${error.caseIndex}\u0000${error.pointer}\u0000${error.code}`, error);

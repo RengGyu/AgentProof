@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createReferencePolicyDraftValuesV2, validateReferencePolicySchemaV2 } from "./reference-policy-authoring-v2.mjs";
+import { createReferencePolicyDraftValuesV2, validateReferencePolicyAuthoringV2, validateReferencePolicySchemaV2 } from "./reference-policy-authoring-v2.mjs";
 import { validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
 
 describe("public reference-policy authoring schema", () => {
@@ -87,5 +87,42 @@ describe("public reference-policy authoring schema", () => {
     assert.ok(result.errors.some((error) => error.document === "boundary" && error.caseIndex === 0 && error.code === "unknown_field"));
     assert.equal(JSON.stringify(result).includes("untrusted_boundary_field"), false);
     assert.equal(JSON.stringify(result).includes("SENTINEL_BOUNDARY"), false);
+  });
+
+  it("composes schema, semantic, and coverage validation into bounded diagnostics", () => {
+    const fixture = validAuthoringFixtureV2();
+    assert.deepEqual(validateReferencePolicyAuthoringV2(fixture), { version: 2, status: "valid", stage: "complete", errors: [], truncated: false });
+
+    const structural = structuredClone(fixture);
+    structural.evidenceCorpus.cases[0].input.changedFiles[0].path = "/SENTINEL_PATH";
+    const schemaResult = validateReferencePolicyAuthoringV2(structural);
+    assert.equal(schemaResult.stage, "schema");
+    assert.ok(schemaResult.errors.some((error) => error.code === "invalid_safe_path"));
+    assert.ok(schemaResult.errors.every((error) => !Object.hasOwn(error, "pointer") && error.path.length <= 256));
+    assert.equal(JSON.stringify(schemaResult).includes("SENTINEL"), false);
+
+    const semantic = structuredClone(fixture);
+    semantic.evidenceCorpus.cases[1].caseId = semantic.evidenceCorpus.cases[0].caseId;
+    const semanticResult = validateReferencePolicyAuthoringV2(semantic);
+    assert.equal(semanticResult.stage, "cross_field");
+    assert.equal(semanticResult.errors[0].code, "duplicate_identity");
+
+    const incomplete = structuredClone(fixture);
+    incomplete.evidenceCorpus.cases[5].input.verificationCriterionEvidenceV2.artifactBlobs[0].content = "public";
+    const coverageResult = validateReferencePolicyAuthoringV2(incomplete);
+    assert.equal(coverageResult.stage, "coverage");
+    assert.ok(coverageResult.errors.some((error) => error.coverageName === "documentation:violated"));
+  });
+
+  it("keeps authored return expectations in input and out of validation output", () => {
+    const fixture = validAuthoringFixtureV2();
+    const result = validateReferencePolicyAuthoringV2(fixture);
+    assert.equal(result.status, "valid");
+    assert.equal(JSON.stringify(result).includes('"expected"'), false);
+
+    const returnCriterion = fixture.evidenceCorpus.cases.flatMap((item) => item.input.verificationContractSourceV2.kind === "provided_requirement"
+      ? item.input.verificationContractSourceV2.contract.objectives.flatMap((objective) => objective.criteria)
+      : []).find((criterion) => criterion.type === "return_value");
+    assert.ok(Object.hasOwn(returnCriterion.cases[0], "expected"));
   });
 });

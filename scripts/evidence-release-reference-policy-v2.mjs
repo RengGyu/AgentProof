@@ -51,6 +51,23 @@ export function deriveCoverageSummaryV2(evidenceCorpus, boundaryCorpus) {
   const evidence = parseEvidenceCorpus(evidenceCorpus);
   const boundary = parseBoundaryCorpus(boundaryCorpus);
   if (!evidence || !boundary) return null;
+  return coverageSummaryFromParsed(evidence, boundary);
+}
+
+export function inspectReferencePolicyInputsV2({ evidenceCorpus, boundaryCorpus }) {
+  const errors = [];
+  const evidence = parseEvidenceCorpus(evidenceCorpus, { document: "evidence", errors });
+  const boundary = parseBoundaryCorpus(boundaryCorpus, { document: "boundary", errors });
+  if (!evidence || !boundary) return errors.length > 0
+    ? { ok: false, stage: "cross_field", errors: boundedErrors(errors) }
+    : { ok: false, stage: "internal", errors: [{ code: "internal_validation_failure" }] };
+  const coverageSummary = coverageSummaryFromParsed(evidence, boundary);
+  const missing = missingRequiredCoverage(coverageSummary);
+  if (missing.length > 0) return { ok: false, stage: "coverage", errors: missing.map((coverageName) => ({ code: "coverage_missing", coverageName })) };
+  return { ok: true, stage: "complete", errors: [], coverageSummary };
+}
+
+function coverageSummaryFromParsed(evidence, boundary) {
   const counts = new Map();
   for (const item of evidence.cases) addEvidenceCoverage(counts, deriveEvidenceCase(item), item.input);
   for (const item of boundary.cases) addBoundaryCoverage(counts, item);
@@ -60,7 +77,7 @@ export function deriveCoverageSummaryV2(evidenceCorpus, boundaryCorpus) {
 export function buildReferencePolicySealV2({ evidenceCorpus, boundaryCorpus }) {
   const evidence = parseEvidenceCorpus(evidenceCorpus);
   const boundary = parseBoundaryCorpus(boundaryCorpus);
-  const coverage = deriveCoverageSummaryV2(evidence, boundary);
+  const coverage = evidence && boundary ? coverageSummaryFromParsed(evidence, boundary) : null;
   if (!evidence || !boundary || !coverage || !hasNamedCoverage(coverage, [...REQUIRED_EVIDENCE_COVERAGE, ...REQUIRED_BOUNDARY_COVERAGE])) return null;
   return {
     version: 2,
@@ -98,13 +115,22 @@ export function deriveBoundaryReferenceV2(corpus, seal) {
   return { version: 2, cases: boundary.cases.map((item) => ({ caseId: item.caseId, reference: deriveBoundaryCase(item) })) };
 }
 
-function parseEvidenceCorpus(value) {
-  if (serializedBytes(value) > MAX_INPUT_BYTES * 12 + 8_192 || !hasExactKeys(value, ["version", "cases"]) || value.version !== 2 || !Array.isArray(value.cases) || value.cases.length !== 12 || containsPrivateMaterial(value)) return null;
+function parseEvidenceCorpus(value, context) {
+  if (serializedBytes(value) > MAX_INPUT_BYTES * 12 + 8_192) return reject(context, { path: "", code: "out_of_bounds" });
+  if (!hasExactKeys(value, ["version", "cases"])) return reject(context, { path: "", code: "wrong_constant" });
+  if (value.version !== 2) return reject(context, { path: "/version", code: "wrong_constant" });
+  if (!Array.isArray(value.cases) || value.cases.length !== 12) return reject(context, { path: "/cases", code: "out_of_bounds" });
+  if (containsPrivateMaterial(value)) return reject(context, { path: "", code: "private_material_rejected" });
   const ids = new Set();
   const cases = [];
-  for (const item of value.cases) {
-    if (!hasExactKeys(item, ["version", "caseId", "input"]) || item.version !== 2 || !isCaseId(item.caseId) || ids.has(item.caseId)) return null;
-    const input = parseInput(item.input);
+  for (let index = 0; index < value.cases.length; index += 1) {
+    const item = value.cases[index];
+    const itemContext = childContext(context, `/cases/${index}`, index);
+    if (!hasExactKeys(item, ["version", "caseId", "input"])) return reject(itemContext, { path: itemContext?.path ?? "", code: "wrong_constant" });
+    if (item.version !== 2) return reject(itemContext, { path: `${itemContext.path}/version`, code: "wrong_constant" });
+    if (!isCaseId(item.caseId)) return reject(itemContext, { path: `${itemContext.path}/caseId`, code: "invalid_sha" });
+    if (ids.has(item.caseId)) return reject(itemContext, { path: `${itemContext.path}/caseId`, code: "duplicate_identity" });
+    const input = parseInput(item.input, childContext(itemContext, `${itemContext.path}/input`));
     if (!input) return null;
     ids.add(item.caseId);
     cases.push({ version: 2, caseId: item.caseId, input });
@@ -112,49 +138,76 @@ function parseEvidenceCorpus(value) {
   return { version: 2, cases };
 }
 
-function parseBoundaryCorpus(value) {
-  if (serializedBytes(value) > 819_200 || !hasExactKeys(value, ["version", "cases"]) || value.version !== 2 || !Array.isArray(value.cases) || value.cases.length !== 8 || containsPrivateMaterial(value)) return null;
+function parseBoundaryCorpus(value, context) {
+  if (serializedBytes(value) > 819_200) return reject(context, { path: "", code: "out_of_bounds" });
+  if (!hasExactKeys(value, ["version", "cases"])) return reject(context, { path: "", code: "wrong_constant" });
+  if (value.version !== 2) return reject(context, { path: "/version", code: "wrong_constant" });
+  if (!Array.isArray(value.cases) || value.cases.length !== 8) return reject(context, { path: "/cases", code: "out_of_bounds" });
+  if (containsPrivateMaterial(value)) return reject(context, { path: "", code: "private_material_rejected" });
   const ids = new Set();
   const cases = [];
-  for (const item of value.cases) {
-    if (!isRecord(item) || item.version !== 2 || !isCaseId(item.caseId) || ids.has(item.caseId)) return null;
+  for (let index = 0; index < value.cases.length; index += 1) {
+    const item = value.cases[index];
+    const itemContext = childContext(context, `/cases/${index}`, index);
+    if (!isRecord(item)) return reject(itemContext, { path: itemContext?.path ?? "", code: "wrong_type" });
+    if (item.version !== 2) return reject(itemContext, { path: `${itemContext.path}/version`, code: "wrong_constant" });
+    if (!isCaseId(item.caseId)) return reject(itemContext, { path: `${itemContext.path}/caseId`, code: "invalid_sha" });
+    if (ids.has(item.caseId)) return reject(itemContext, { path: `${itemContext.path}/caseId`, code: "duplicate_identity" });
     if (item.kind === "inbound_untrusted_v2") {
-      if (!hasExactKeys(item, ["version", "kind", "caseId", "report"]) || !isActiveV2Report(item.report)) return null;
+      if (!hasExactKeys(item, ["version", "kind", "caseId", "report"]) || !isActiveV2Report(item.report)) return reject(itemContext, { path: itemContext.path, code: "wrong_constant" });
       cases.push({ version: 2, kind: item.kind, caseId: item.caseId, report: item.report });
     } else if (item.kind === "pasted_merge") {
-      if (!hasExactKeys(item, ["version", "kind", "caseId", "liveInput", "pastedOverride"])) return null;
-      const liveInput = parseInput(item.liveInput);
-      const pastedOverride = parsePastedOverride(item.pastedOverride);
+      if (!hasExactKeys(item, ["version", "kind", "caseId", "liveInput", "pastedOverride"])) return reject(itemContext, { path: itemContext.path, code: "wrong_constant" });
+      const liveInput = parseInput(item.liveInput, childContext(itemContext, `${itemContext.path}/liveInput`));
+      const pastedOverride = parsePastedOverride(item.pastedOverride, childContext(itemContext, `${itemContext.path}/pastedOverride`));
       if (!liveInput || !pastedOverride) return null;
       cases.push({ version: 2, kind: item.kind, caseId: item.caseId, liveInput, pastedOverride });
-    } else return null;
+    } else return reject(itemContext, { path: `${itemContext.path}/kind`, code: "wrong_constant" });
     ids.add(item.caseId);
   }
   return { version: 2, cases };
 }
 
-function parseInput(value) {
-  if (serializedBytes(value) > MAX_INPUT_BYTES || !hasOnlyKeys(value, INPUT_KEYS) || !isText(value.title, 500) || !isText(value.description, 8_000) || !isText(value.taskText, 8_000) ||
-    !Array.isArray(value.changedFiles) || value.changedFiles.length > 120 || !Array.isArray(value.checks) || value.checks.length > 60 || !Array.isArray(value.logs) || value.logs.length > 200 ||
-    !isSourceProvenance(value.sourceProvenance) || !isBinding(value.verificationContractBindingV2)) return null;
-  if (!value.changedFiles.every(isChangedFile) || !value.checks.every(isBoundedRecord) || !value.logs.every(isBoundedRecord) || !isOptionalString(value.url, 500) || !isOptionalString(value.author, 500) ||
-    !isOptionalString(value.baseBranch, 500) || !isOptionalString(value.headBranch, 500) || (value.taskSource !== undefined && value.taskSource !== "task" && value.taskSource !== "issue") ||
-    !isOptionalDigest(value.requirementSourceIdentityHash) || !isStringArray(value.limitations, 32, 1_000) || !isArray(value.executionSuites, 12) || !isArray(value.resolvedHeadModules, 120)) return null;
-  const parsedSource = parseContractSource(value.verificationContractSourceV2);
-  const artifacts = parseArtifacts(value.verificationCriterionEvidenceV2);
+function parseInput(value, context) {
+  if (serializedBytes(value) > MAX_INPUT_BYTES) return reject(context, { path: context?.path ?? "", code: "out_of_bounds" });
+  if (!hasOnlyKeys(value, INPUT_KEYS)) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  for (const [key, max] of [["title", 500], ["description", 8_000], ["taskText", 8_000]]) {
+    if (!isText(value[key], max)) return reject(context, { path: `${context?.path ?? ""}/${key}`, code: textErrorCode(value[key], max) });
+  }
+  for (const [key, max] of [["changedFiles", 120], ["checks", 60], ["logs", 200]]) {
+    if (!Array.isArray(value[key]) || value[key].length > max) return reject(context, { path: `${context?.path ?? ""}/${key}`, code: "out_of_bounds" });
+  }
+  if (!isSourceProvenance(value.sourceProvenance, childContext(context, `${context?.path ?? ""}/sourceProvenance`))) return null;
+  if (!isBinding(value.verificationContractBindingV2, childContext(context, `${context?.path ?? ""}/verificationContractBindingV2`))) return null;
+  for (let index = 0; index < value.changedFiles.length; index += 1) if (!isChangedFile(value.changedFiles[index], childContext(context, `${context?.path ?? ""}/changedFiles/${index}`))) return null;
+  if (!value.checks.every(isBoundedRecord) || !value.logs.every(isBoundedRecord)) return reject(context, { path: context?.path ?? "", code: "out_of_bounds" });
+  for (const [key, max] of [["url", 500], ["author", 500], ["baseBranch", 500], ["headBranch", 500]]) {
+    if (!isOptionalString(value[key], max)) return reject(context, { path: `${context?.path ?? ""}/${key}`, code: textErrorCode(value[key], max) });
+  }
+  if (value.taskSource !== undefined && value.taskSource !== "task" && value.taskSource !== "issue") return reject(context, { path: `${context?.path ?? ""}/taskSource`, code: "wrong_constant" });
+  if (!isOptionalDigest(value.requirementSourceIdentityHash)) return reject(context, { path: `${context?.path ?? ""}/requirementSourceIdentityHash`, code: "invalid_sha" });
+  if (!isStringArray(value.limitations, 32, 1_000) || !isArray(value.executionSuites, 12) || !isArray(value.resolvedHeadModules, 120)) return reject(context, { path: context?.path ?? "", code: "out_of_bounds" });
+  const parsedSource = parseContractSource(value.verificationContractSourceV2, childContext(context, `${context?.path ?? ""}/verificationContractSourceV2`));
+  const artifacts = parseArtifacts(value.verificationCriterionEvidenceV2, childContext(context, `${context?.path ?? ""}/verificationCriterionEvidenceV2`));
+  if (parsedSource && parsedSource.sourceKind !== value.verificationContractBindingV2.sourceKind) reject(context, { path: `${context?.path ?? ""}/verificationContractBindingV2/sourceKind`, code: "source_binding_mismatch" });
   if (!parsedSource || !artifacts || parsedSource.sourceKind !== value.verificationContractBindingV2.sourceKind) return null;
   return { ...value, verificationContractSourceV2: parsedSource.source, verificationContractBindingV2: { ...value.verificationContractBindingV2 }, verificationCriterionEvidenceV2: { artifactBlobs: artifacts } };
 }
 
-function parseContractSource(value) {
-  if (!isRecord(value) || typeof value.kind !== "string") return null;
+function parseContractSource(value, context) {
+  if (!isRecord(value) || typeof value.kind !== "string") return reject(context, { path: context?.path ?? "", code: "wrong_type" });
   if (value.kind === "provided_requirement") {
-    if (!hasExactKeys(value, ["kind", "contract"])) return null;
-    const contract = parseContract(value.contract);
+    if (!hasExactKeys(value, ["kind", "contract"])) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+    const contract = parseContract(value.contract, childContext(context, `${context?.path ?? ""}/contract`));
     return contract ? { sourceKind: value.kind, state: "authoritative", contract, source: { kind: value.kind, contract } } : null;
   }
-  if ((value.kind !== "linked_issue" && value.kind !== "pr_description") || !hasExactKeys(value, ["kind", "title", "body"]) || !isText(value.title, 500) || !isText(value.body, 24_000)) return null;
-  const contract = parseContract(extractContractEnvelope(value.title, value.body));
+  if (value.kind !== "linked_issue" && value.kind !== "pr_description") return reject(context, { path: `${context?.path ?? ""}/kind`, code: "wrong_constant" });
+  if (!hasExactKeys(value, ["kind", "title", "body"])) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  if (!isText(value.title, 500)) return reject(context, { path: `${context?.path ?? ""}/title`, code: textErrorCode(value.title, 500) });
+  if (!isText(value.body, 24_000)) return reject(context, { path: `${context?.path ?? ""}/body`, code: textErrorCode(value.body, 24_000) });
+  const envelope = extractContractEnvelope(value.title, value.body);
+  if (!envelope) return reject(context, { path: `${context?.path ?? ""}/body`, code: "contract_envelope_invalid" });
+  const contract = parseContract(envelope, childContext(context, `${context?.path ?? ""}/body`));
   if (!contract) return null;
   return { sourceKind: value.kind, state: value.kind === "pr_description" ? "author_claim" : "authoritative", contract, source: { kind: value.kind, title: value.title, body: value.body } };
 }
@@ -170,21 +223,33 @@ function extractContractEnvelope(title, body) {
   try { return JSON.parse(normalized.slice(open.length, -close.length)); } catch { return null; }
 }
 
-function parseContract(value) {
-  if (!hasExactKeys(value, ["version", "scope", "objectives"]) || value.version !== 2 || value.scope !== "complete_objective_set" || !Array.isArray(value.objectives) || value.objectives.length < 1 || value.objectives.length > 12 || serializedBytes(value) > 16_384) return null;
+function parseContract(value, context) {
+  if (serializedBytes(value) > 16_384) return reject(context, { path: context?.path ?? "", code: "out_of_bounds" });
+  if (!hasExactKeys(value, ["version", "scope", "objectives"])) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  if (value.version !== 2) return reject(context, { path: `${context?.path ?? ""}/version`, code: "wrong_constant" });
+  if (value.scope !== "complete_objective_set") return reject(context, { path: `${context?.path ?? ""}/scope`, code: "wrong_constant" });
+  if (!Array.isArray(value.objectives) || value.objectives.length < 1 || value.objectives.length > 12) return reject(context, { path: `${context?.path ?? ""}/objectives`, code: "out_of_bounds" });
   const objectiveIds = new Set();
   const criterionIds = new Set();
   const objectives = [];
   let totalCriteria = 0;
-  for (const objective of value.objectives) {
-    if (!hasExactKeys(objective, ["id", "objective", "criteria"]) || !isIdentifier(objective.id) || !isText(objective.objective, 500) || !Array.isArray(objective.criteria) || objective.criteria.length < 1 || objective.criteria.length > 4 || objectiveIds.has(objective.id)) return null;
+  for (let objectiveIndex = 0; objectiveIndex < value.objectives.length; objectiveIndex += 1) {
+    const objective = value.objectives[objectiveIndex];
+    const objectiveContext = childContext(context, `${context?.path ?? ""}/objectives/${objectiveIndex}`);
+    if (!hasExactKeys(objective, ["id", "objective", "criteria"])) return reject(objectiveContext, { path: objectiveContext?.path ?? "", code: "wrong_constant" });
+    if (!isIdentifier(objective.id)) return reject(objectiveContext, { path: `${objectiveContext.path}/id`, code: "invalid_identifier" });
+    if (!isText(objective.objective, 500)) return reject(objectiveContext, { path: `${objectiveContext.path}/objective`, code: textErrorCode(objective.objective, 500) });
+    if (!Array.isArray(objective.criteria) || objective.criteria.length < 1 || objective.criteria.length > 4) return reject(objectiveContext, { path: `${objectiveContext.path}/criteria`, code: "out_of_bounds" });
+    if (objectiveIds.has(objective.id)) return reject(objectiveContext, { path: `${objectiveContext.path}/id`, code: "duplicate_identity" });
     objectiveIds.add(objective.id);
     totalCriteria += objective.criteria.length;
-    if (totalCriteria > 24) return null;
+    if (totalCriteria > 24) return reject(objectiveContext, { path: `${objectiveContext.path}/criteria`, code: "out_of_bounds" });
     const criteria = [];
-    for (const value of objective.criteria) {
-      const criterion = parseCriterion(value);
-      if (!criterion || criterionIds.has(criterion.id)) return null;
+    for (let criterionIndex = 0; criterionIndex < objective.criteria.length; criterionIndex += 1) {
+      const criterionContext = childContext(objectiveContext, `${objectiveContext.path}/criteria/${criterionIndex}`);
+      const criterion = parseCriterion(objective.criteria[criterionIndex], criterionContext);
+      if (!criterion) return null;
+      if (criterionIds.has(criterion.id)) return reject(criterionContext, { path: `${criterionContext.path}/id`, code: "duplicate_identity" });
       criterionIds.add(criterion.id);
       criteria.push(criterion);
     }
@@ -193,32 +258,52 @@ function parseContract(value) {
   return { version: 2, scope: "complete_objective_set", objectives };
 }
 
-function parseCriterion(value) {
-  if (!isRecord(value) || !isIdentifier(value.id) || !isText(value.label, 240)) return null;
+function parseCriterion(value, context) {
+  if (!isRecord(value)) return reject(context, { path: context?.path ?? "", code: "wrong_type" });
+  if (!isIdentifier(value.id)) return reject(context, { path: `${context?.path ?? ""}/id`, code: "invalid_identifier" });
+  if (!isText(value.label, 240)) return reject(context, { path: `${context?.path ?? ""}/label`, code: textErrorCode(value.label, 240) });
   if (value.type === "absence") {
-    if (!hasExactKeys(value, ["id", "type", "label", "prohibitedKind", "scope"]) || value.prohibitedKind !== "path_change" || !Array.isArray(value.scope) || value.scope.length < 1 || value.scope.length > 8 || !value.scope.every((scope) => hasExactKeys(scope, ["kind", "path"]) && (scope.kind === "exact" || scope.kind === "prefix") && isSafePath(scope.path) && (scope.kind !== "prefix" || scope.path.endsWith("/")))) return null;
+    if (!hasExactKeys(value, ["id", "type", "label", "prohibitedKind", "scope"]) || value.prohibitedKind !== "path_change") return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+    if (!Array.isArray(value.scope) || value.scope.length < 1 || value.scope.length > 8) return reject(context, { path: `${context?.path ?? ""}/scope`, code: "out_of_bounds" });
+    for (let index = 0; index < value.scope.length; index += 1) {
+      const scope = value.scope[index];
+      const path = `${context?.path ?? ""}/scope/${index}`;
+      if (!hasExactKeys(scope, ["kind", "path"]) || (scope.kind !== "exact" && scope.kind !== "prefix")) return reject(context, { path, code: "wrong_constant" });
+      if (!isSafePath(scope.path) || scope.kind === "prefix" && !scope.path.endsWith("/")) return reject(context, { path: `${path}/path`, code: "invalid_safe_path" });
+    }
     return { id: value.id, type: "absence", label: value.label, prohibitedKind: "path_change", scope: value.scope.map((scope) => ({ kind: scope.kind, path: scope.path })) };
   }
   if (value.type === "artifact") {
-    if (!hasExactKeys(value, ["id", "type", "label", "paths", "artifact"]) || !Array.isArray(value.paths) || value.paths.length < 1 || value.paths.length > 16 || !value.paths.every(isSafePath) || !isRecord(value.artifact)) return null;
+    if (!hasExactKeys(value, ["id", "type", "label", "paths", "artifact"]) || !isRecord(value.artifact)) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+    if (!Array.isArray(value.paths) || value.paths.length < 1 || value.paths.length > 16) return reject(context, { path: `${context?.path ?? ""}/paths`, code: "out_of_bounds" });
+    for (let index = 0; index < value.paths.length; index += 1) if (!isSafePath(value.paths[index])) return reject(context, { path: `${context?.path ?? ""}/paths/${index}`, code: "invalid_safe_path" });
     if (value.artifact.kind === "documentation_literal" && hasExactKeys(value.artifact, ["kind", "literal"]) && isText(value.artifact.literal, 200)) return { id: value.id, type: "artifact", label: value.label, paths: [...value.paths], artifact: { kind: "documentation_literal", literal: value.artifact.literal } };
     if (value.artifact.kind === "test_case" && hasExactKeys(value.artifact, ["kind", "testId"]) && isText(value.artifact.testId, 200)) return { id: value.id, type: "artifact", label: value.label, paths: [...value.paths], artifact: { kind: "test_case", testId: value.artifact.testId } };
     if (value.artifact.kind === "workflow_job" && hasOnlyKeys(value.artifact, ["kind", "workflowName", "jobName", "runtimeName", "runtimeVersion", "packageScript"]) && isText(value.artifact.workflowName, 200) && isText(value.artifact.jobName, 200) && isOptionalString(value.artifact.runtimeName, 200) && isOptionalString(value.artifact.runtimeVersion, 200) && isOptionalString(value.artifact.packageScript, 200)) return { id: value.id, type: "artifact", label: value.label, paths: [...value.paths], artifact: { ...value.artifact } };
-    return null;
+    return reject(context, { path: `${context?.path ?? ""}/artifact`, code: "wrong_constant" });
   }
   if (value.type === "return_value") {
-    if (!hasExactKeys(value, ["id", "type", "label", "adapter", "cases"]) || !isAdapter(value.adapter) || !Array.isArray(value.cases) || value.cases.length < 1 || value.cases.length > 8 || !value.cases.every(isReturnCase)) return null;
+    if (!hasExactKeys(value, ["id", "type", "label", "adapter", "cases"]) || !isAdapter(value.adapter)) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+    if (!Array.isArray(value.cases) || value.cases.length < 1 || value.cases.length > 8) return reject(context, { path: `${context?.path ?? ""}/cases`, code: "out_of_bounds" });
+    if (!value.cases.every(isReturnCase)) return reject(context, { path: `${context?.path ?? ""}/cases`, code: "wrong_constant" });
     return { id: value.id, type: "return_value", label: value.label, adapter: { ...value.adapter }, cases: value.cases.map((item) => ({ ...item })) };
   }
-  return null;
+  return reject(context, { path: `${context?.path ?? ""}/type`, code: "wrong_constant" });
 }
 
-function parseArtifacts(value) {
-  if (!hasExactKeys(value, ["artifactBlobs"]) || !Array.isArray(value.artifactBlobs) || value.artifactBlobs.length > 8) return null;
+function parseArtifacts(value, context) {
+  if (!hasExactKeys(value, ["artifactBlobs"])) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  if (!Array.isArray(value.artifactBlobs) || value.artifactBlobs.length > 8) return reject(context, { path: `${context?.path ?? ""}/artifactBlobs`, code: "out_of_bounds" });
   const paths = new Set();
   const artifacts = [];
-  for (const blob of value.artifactBlobs) {
-    if (!hasOnlyKeys(blob, ["path", "headSha", "content"]) || !isSafePath(blob.path) || !isOptionalGitSha(blob.headSha) || !isText(blob.content, MAX_ARTIFACT_BYTES) || paths.has(blob.path)) return null;
+  for (let index = 0; index < value.artifactBlobs.length; index += 1) {
+    const blob = value.artifactBlobs[index];
+    const path = `${context?.path ?? ""}/artifactBlobs/${index}`;
+    if (!hasOnlyKeys(blob, ["path", "headSha", "content"])) return reject(context, { path, code: "wrong_constant" });
+    if (!isSafePath(blob.path)) return reject(context, { path: `${path}/path`, code: "invalid_safe_path" });
+    if (!isOptionalGitSha(blob.headSha)) return reject(context, { path: `${path}/headSha`, code: "invalid_sha" });
+    if (!isText(blob.content, MAX_ARTIFACT_BYTES)) return reject(context, { path: `${path}/content`, code: textErrorCode(blob.content, MAX_ARTIFACT_BYTES) });
+    if (paths.has(blob.path)) return reject(context, { path: `${path}/path`, code: "duplicate_identity" });
     paths.add(blob.path);
     artifacts.push({ path: blob.path, ...(blob.headSha ? { headSha: blob.headSha } : {}), content: blob.content });
   }
@@ -315,6 +400,11 @@ function hasNamedCoverage(summary, required) {
   return required.every((name) => names.has(name));
 }
 
+function missingRequiredCoverage(summary) {
+  const names = new Set(summary.entries.filter((entry) => entry.count > 0).map((entry) => entry.name));
+  return [...REQUIRED_EVIDENCE_COVERAGE, ...REQUIRED_BOUNDARY_COVERAGE].filter((name) => !names.has(name));
+}
+
 function isCoverageSummary(value) {
   return hasExactKeys(value, ["version", "evidenceCaseCount", "boundaryCaseCount", "entries"]) && value.version === 2 && value.evidenceCaseCount === 12 && value.boundaryCaseCount === 8 &&
     Array.isArray(value.entries) && value.entries.length === COVERAGE_NAMES.length && value.entries.every((entry, index) => hasExactKeys(entry, ["name", "count"]) && entry.name === COVERAGE_NAMES[index] && Number.isSafeInteger(entry.count) && entry.count > 0 && entry.count <= 288);
@@ -334,16 +424,42 @@ function aggregateOutcome(sourceState, states) {
   return "unclear";
 }
 
-function isBinding(value) {
-  return hasExactKeys(value, ["sourceKind", "sourceIdentity", "sourceContent", "headSha", "baseSha"]) && ["provided_requirement", "linked_issue", "pr_description"].includes(value.sourceKind) && isText(value.sourceIdentity, 500) && isText(value.sourceContent, 24_000) && isGitSha(value.headSha) && isGitSha(value.baseSha);
+function isBinding(value, context) {
+  if (!hasExactKeys(value, ["sourceKind", "sourceIdentity", "sourceContent", "headSha", "baseSha"])) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  if (!["provided_requirement", "linked_issue", "pr_description"].includes(value.sourceKind)) return reject(context, { path: `${context?.path ?? ""}/sourceKind`, code: "wrong_constant" });
+  if (!isText(value.sourceIdentity, 500)) return reject(context, { path: `${context?.path ?? ""}/sourceIdentity`, code: textErrorCode(value.sourceIdentity, 500) });
+  if (!isText(value.sourceContent, 24_000)) return reject(context, { path: `${context?.path ?? ""}/sourceContent`, code: textErrorCode(value.sourceContent, 24_000) });
+  if (!isGitSha(value.headSha)) return reject(context, { path: `${context?.path ?? ""}/headSha`, code: "invalid_sha" });
+  if (!isGitSha(value.baseSha)) return reject(context, { path: `${context?.path ?? ""}/baseSha`, code: "invalid_sha" });
+  return true;
 }
 
-function isSourceProvenance(value) {
-  return hasOnlyKeys(value, ["version", "origin", "headSha", "baseSha", "changedFileInventory", "executionSuites", "evidenceCapturedAt", "inputFingerprint"]) && value.version === 1 && ["github_snapshot", "pasted_evidence", "demo"].includes(value.origin) && isOptionalGitSha(value.headSha) && isOptionalGitSha(value.baseSha) && isText(value.evidenceCapturedAt, 100) && hasExactKeys(value.inputFingerprint, ["version", "algorithm", "value", "coverage"]) && value.inputFingerprint.version === 1 && value.inputFingerprint.algorithm === "sha256" && isDigest(value.inputFingerprint.value) && ["github_metadata", "pasted_metadata", "demo_fixture"].includes(value.inputFingerprint.coverage) && (value.changedFileInventory === undefined || hasOnlyKeys(value.changedFileInventory, ["version", "completeness", "headSha"]) && value.changedFileInventory.version === 1 && ["complete", "incomplete"].includes(value.changedFileInventory.completeness) && isOptionalGitSha(value.changedFileInventory.headSha));
+function isSourceProvenance(value, context) {
+  if (!hasOnlyKeys(value, ["version", "origin", "headSha", "baseSha", "changedFileInventory", "executionSuites", "evidenceCapturedAt", "inputFingerprint"])) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  if (value.version !== 1) return reject(context, { path: `${context?.path ?? ""}/version`, code: "wrong_constant" });
+  if (!["github_snapshot", "pasted_evidence", "demo"].includes(value.origin)) return reject(context, { path: `${context?.path ?? ""}/origin`, code: "wrong_constant" });
+  if (!isOptionalGitSha(value.headSha)) return reject(context, { path: `${context?.path ?? ""}/headSha`, code: "invalid_sha" });
+  if (!isOptionalGitSha(value.baseSha)) return reject(context, { path: `${context?.path ?? ""}/baseSha`, code: "invalid_sha" });
+  if (!isText(value.evidenceCapturedAt, 100)) return reject(context, { path: `${context?.path ?? ""}/evidenceCapturedAt`, code: textErrorCode(value.evidenceCapturedAt, 100) });
+  if (!hasExactKeys(value.inputFingerprint, ["version", "algorithm", "value", "coverage"])) return reject(context, { path: `${context?.path ?? ""}/inputFingerprint`, code: "wrong_constant" });
+  if (value.inputFingerprint.version !== 1 || value.inputFingerprint.algorithm !== "sha256" || !["github_metadata", "pasted_metadata", "demo_fixture"].includes(value.inputFingerprint.coverage)) return reject(context, { path: `${context?.path ?? ""}/inputFingerprint`, code: "wrong_constant" });
+  if (!isDigest(value.inputFingerprint.value)) return reject(context, { path: `${context?.path ?? ""}/inputFingerprint/value`, code: "invalid_sha" });
+  if (value.changedFileInventory !== undefined) {
+    const path = `${context?.path ?? ""}/changedFileInventory`;
+    if (!hasOnlyKeys(value.changedFileInventory, ["version", "completeness", "headSha"]) || value.changedFileInventory.version !== 1 || !["complete", "incomplete"].includes(value.changedFileInventory.completeness)) return reject(context, { path, code: "wrong_constant" });
+    if (!isOptionalGitSha(value.changedFileInventory.headSha)) return reject(context, { path: `${path}/headSha`, code: "invalid_sha" });
+  }
+  return true;
 }
 
-function isChangedFile(value) {
-  return hasOnlyKeys(value, ["path", "previousPath", "additions", "deletions", "status", "patch"]) && isSafePath(value.path) && isOptionalSafePath(value.previousPath) && isOptionalNonNegative(value.additions) && isOptionalNonNegative(value.deletions) && (value.status === undefined || ["added", "modified", "removed", "renamed"].includes(value.status)) && isOptionalString(value.patch, 12_000);
+function isChangedFile(value, context) {
+  if (!hasOnlyKeys(value, ["path", "previousPath", "additions", "deletions", "status", "patch"])) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  if (!isSafePath(value.path)) return reject(context, { path: `${context?.path ?? ""}/path`, code: "invalid_safe_path" });
+  if (!isOptionalSafePath(value.previousPath)) return reject(context, { path: `${context?.path ?? ""}/previousPath`, code: "invalid_safe_path" });
+  if (!isOptionalNonNegative(value.additions) || !isOptionalNonNegative(value.deletions)) return reject(context, { path: context?.path ?? "", code: "out_of_bounds" });
+  if (value.status !== undefined && !["added", "modified", "removed", "renamed"].includes(value.status)) return reject(context, { path: `${context?.path ?? ""}/status`, code: "wrong_constant" });
+  if (!isOptionalString(value.patch, 12_000)) return reject(context, { path: `${context?.path ?? ""}/patch`, code: textErrorCode(value.patch, 12_000) });
+  return true;
 }
 
 function isActiveV2Report(value) {
@@ -351,8 +467,13 @@ function isActiveV2Report(value) {
     hasExactKeys(value.verificationContract, ["state"]) && ["authoritative", "author_claim"].includes(value.verificationContract.state);
 }
 
-function parsePastedOverride(value) {
-  if (!hasOnlyKeys(value, OVERRIDE_KEYS) || !["prUrl", "taskText", "prDescription", "changedFiles", "checks", "logs"].every((key) => isOptionalString(value[key], key === "logs" ? 24_000 : key === "changedFiles" ? 12_000 : 8_000)) || !isStringArray(value.inputLimitations, 32, 1_000)) return null;
+function parsePastedOverride(value, context) {
+  if (!hasOnlyKeys(value, OVERRIDE_KEYS)) return reject(context, { path: context?.path ?? "", code: "wrong_constant" });
+  for (const key of ["prUrl", "taskText", "prDescription", "changedFiles", "checks", "logs"]) {
+    const max = key === "logs" ? 24_000 : key === "changedFiles" ? 12_000 : 8_000;
+    if (!isOptionalString(value[key], max)) return reject(context, { path: `${context?.path ?? ""}/${key}`, code: textErrorCode(value[key], max) });
+  }
+  if (!isStringArray(value.inputLimitations, 32, 1_000)) return reject(context, { path: `${context?.path ?? ""}/inputLimitations`, code: "out_of_bounds" });
   return { ...value };
 }
 
@@ -391,6 +512,32 @@ function isBoundedRecord(value) { return isRecord(value) && serializedBytes(valu
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function hasExactKeys(value, keys) { return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 function hasOnlyKeys(value, keys) { return isRecord(value) && Object.keys(value).every((key) => keys.includes(key)); }
+
+function childContext(context, path, caseIndex = context?.caseIndex) {
+  return { document: context?.document, caseIndex, path, errors: context?.errors };
+}
+
+function reject(context, error) {
+  if (context?.errors) context.errors.push({
+    document: context.document,
+    ...(Number.isInteger(context.caseIndex) ? { caseIndex: context.caseIndex } : {}),
+    ...error,
+    path: (error.path ?? context.path ?? "").slice(0, 256)
+  });
+  return null;
+}
+
+function boundedErrors(errors) {
+  const seen = new Map();
+  for (const error of errors) seen.set(`${error.document}\u0000${error.caseIndex ?? -1}\u0000${error.path}\u0000${error.code}`, error);
+  return [...seen.values()].sort((left, right) => left.document.localeCompare(right.document) || (left.caseIndex ?? -1) - (right.caseIndex ?? -1) || left.path.localeCompare(right.path) || left.code.localeCompare(right.code)).slice(0, 50);
+}
+
+function textErrorCode(value, max) {
+  if (typeof value !== "string") return "wrong_type";
+  if (value.includes("\0")) return "wrong_constant";
+  return Buffer.byteLength(value, "utf8") > max ? "out_of_bounds" : "wrong_constant";
+}
 
 function containsPrivateMaterial(value, key = "") {
   if (/(?:^|_)(?:token|password|credential|authorization|cookie|private_key)(?:$|_)/i.test(key)) return true;
