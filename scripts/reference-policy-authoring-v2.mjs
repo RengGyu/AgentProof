@@ -1,7 +1,7 @@
 import Ajv from "ajv";
-import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, fsyncSync, openSync, readFileSync, readSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { inspectReferencePolicyInputsV2 } from "./evidence-release-reference-policy-v2.mjs";
+import { buildReferencePolicySealV2, inspectReferencePolicyInputsV2 } from "./evidence-release-reference-policy-v2.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../schemas/reference-policy/holdout-authoring-v2.schema.json", import.meta.url)));
 const ajv = new Ajv({ allErrors: true, jsonPointers: true, strictDefaults: true });
@@ -55,6 +55,16 @@ export function initReferencePolicyDraftsV2({ evidencePath, boundaryPath }) {
 }
 
 export function validateReferencePolicyFilesV2({ evidencePath, boundaryPath }, { validator = validateReferencePolicyAuthoringV2 } = {}) {
+  const loaded = loadReferencePolicyFilesV2({ evidencePath, boundaryPath });
+  if (!loaded.corpora) return loaded;
+  try {
+    const diagnostic = validator(loaded.corpora);
+    if (diagnostic?.stage === "internal") return { exitCode: 3, diagnostic: internalDiagnosticV2() };
+    return { exitCode: diagnostic.status === "valid" ? 0 : 1, diagnostic };
+  } catch { return { exitCode: 3, diagnostic: internalDiagnosticV2() }; }
+}
+
+function loadReferencePolicyFilesV2({ evidencePath, boundaryPath }) {
   let texts;
   try {
     texts = [readBoundedAuthoringFile(evidencePath), readBoundedAuthoringFile(boundaryPath)];
@@ -66,11 +76,7 @@ export function validateReferencePolicyFilesV2({ evidencePath, boundaryPath }, {
       return { exitCode: 3, diagnostic: internalDiagnosticV2() };
     }
   }
-  try {
-    const diagnostic = validator(corpora);
-    if (diagnostic?.stage === "internal") return { exitCode: 3, diagnostic: internalDiagnosticV2() };
-    return { exitCode: diagnostic.status === "valid" ? 0 : 1, diagnostic };
-  } catch { return { exitCode: 3, diagnostic: internalDiagnosticV2() }; }
+  return { corpora };
 }
 
 function writeExclusiveDraft(path, content, created) {
@@ -92,6 +98,49 @@ function readBoundedAuthoringFile(path) {
     }
     return bytes.toString("utf8");
   } finally { closeSync(descriptor); }
+}
+
+export function writeNewJsonExclusive(path, value, { markCreated }) {
+  const descriptor = openSync(path, "wx", 0o600);
+  try {
+    markCreated();
+    writeFileSync(descriptor, JSON.stringify(value), "utf8");
+    fsyncSync(descriptor);
+  } finally { closeSync(descriptor); }
+}
+
+export function sealReferencePolicyFilesV2(
+  { evidencePath, boundaryPath, outputPath },
+  {
+    validator = validateReferencePolicyAuthoringV2,
+    builder = buildReferencePolicySealV2,
+    writer = writeNewJsonExclusive,
+    remover = unlinkSync
+  } = {}
+) {
+  const loaded = loadReferencePolicyFilesV2({ evidencePath, boundaryPath });
+  if (!loaded.corpora) return loaded;
+
+  let seal;
+  try {
+    const diagnostic = validator(loaded.corpora);
+    if (diagnostic.status !== "valid") return diagnostic.stage === "internal"
+      ? { exitCode: 3, diagnostic: internalDiagnosticV2() }
+      : { exitCode: 1, diagnostic };
+    seal = builder(loaded.corpora);
+    if (!seal) return { exitCode: 3, diagnostic: internalDiagnosticV2() };
+  } catch { return { exitCode: 3, diagnostic: internalDiagnosticV2() }; }
+
+  let outputOwnedByInvocation = false;
+  try {
+    writer(outputPath, seal, { markCreated() { outputOwnedByInvocation = true; } });
+  } catch {
+    if (outputOwnedByInvocation) {
+      try { remover(outputPath); } catch {}
+    }
+    return { exitCode: 2 };
+  }
+  return { exitCode: 0, diagnostic: { version: 2, status: "sealed" } };
 }
 
 export function runReferencePolicyAuthoringCliV2(command, args, { stdout = process.stdout, stderr = process.stderr, validator = validateReferencePolicyAuthoringV2 } = {}) {
@@ -123,11 +172,41 @@ export function runReferencePolicyAuthoringCliV2(command, args, { stdout = proce
   return result.exitCode;
 }
 
+export function runReferencePolicySealCliV2(
+  args,
+  {
+    stdout = process.stdout,
+    stderr = process.stderr,
+    validator = validateReferencePolicyAuthoringV2,
+    builder = buildReferencePolicySealV2,
+    writer = writeNewJsonExclusive,
+    remover = unlinkSync
+  } = {}
+) {
+  const paths = parseSealArgs(args);
+  if (!paths) {
+    stderr.write("REFERENCE_POLICY_SEAL_FAILED\n");
+    return 2;
+  }
+  const result = sealReferencePolicyFilesV2(paths, { validator, builder, writer, remover });
+  if (result.exitCode === 2) stderr.write("REFERENCE_POLICY_SEAL_FAILED\n");
+  else stdout.write(`${JSON.stringify(result.diagnostic)}\n`);
+  return result.exitCode;
+}
+
 function parseAuthoringArgs(args) {
   if (args.length !== 4 || args[0] !== "--evidence-cases" || args[2] !== "--boundary-cases") return null;
   const evidencePath = resolve(args[1]);
   const boundaryPath = resolve(args[3]);
   return evidencePath === boundaryPath ? null : { evidencePath, boundaryPath };
+}
+
+function parseSealArgs(args) {
+  if (args.length !== 6 || args[0] !== "--evidence-cases" || args[2] !== "--boundary-cases" || args[4] !== "--output") return null;
+  const evidencePath = resolve(args[1]);
+  const boundaryPath = resolve(args[3]);
+  const outputPath = resolve(args[5]);
+  return new Set([evidencePath, boundaryPath, outputPath]).size === 3 ? { evidencePath, boundaryPath, outputPath } : null;
 }
 
 function syntaxDiagnostic(document) {
