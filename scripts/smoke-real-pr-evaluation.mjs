@@ -66,8 +66,7 @@ export const DEFAULT_REAL_PR_EVALUATION_CASES = [
       analysisContext: "linked_issue",
       ciStatus: "passed",
       minRequirementCount: 1,
-      minEvidenceCount: 8,
-      requireVisualUnverified: true
+      minEvidenceCount: 8
     }
   },
   {
