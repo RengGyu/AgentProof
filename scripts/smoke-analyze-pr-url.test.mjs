@@ -442,6 +442,39 @@ describe("smoke-analyze-pr-url", () => {
     expect(() => assertReportExpectations(report, { requireVisualUnverified: true }))
       .toThrow("Visual/mobile requirements were marked met without browser, screenshot, or visual QA evidence");
   });
+
+  it("requires the declared source context before accepting smoke expectations", () => {
+    const report = {
+      ...reportFixture(),
+      analysisContext: "linked_issue"
+    };
+
+    expect(assertReportExpectations(report, {
+      analysisContext: "linked_issue",
+      minRequirementCount: 1
+    }).checks).toEqual([
+      { name: "analysisContext", expected: "linked_issue" },
+      { name: "minRequirementCount", expected: 1 }
+    ]);
+
+    const fallbackReport = {
+      ...report,
+      analysisContext: "unlinked_pr"
+    };
+
+    expect(assertReportExpectations(fallbackReport, {
+      analysisContext: "unlinked_pr",
+      minRequirementCount: 1
+    }).checks).toEqual([
+      { name: "analysisContext", expected: "unlinked_pr" },
+      { name: "minRequirementCount", expected: 1 }
+    ]);
+
+    expect(() => assertReportExpectations(fallbackReport, {
+      analysisContext: "linked_issue",
+      minRequirementCount: 1
+    })).toThrow("Expected analysisContext linked_issue, received unlinked_pr.");
+  });
 });
 
 function jsonResponse(payload, status = 200) {
