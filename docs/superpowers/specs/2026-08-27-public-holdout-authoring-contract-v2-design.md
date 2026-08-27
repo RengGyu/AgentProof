@@ -308,6 +308,12 @@ JSON syntax -> schema -> cross-field/privacy -> coverage
 Later stages do not run when an earlier stage fails. The command performs no
 write and emits no derived reference result.
 
+Before parsing, the commands bound the evidence file at 5,856,768 bytes and
+the boundary file at 1,867,776 bytes. Each transport bound is the authoritative
+semantic corpus ceiling plus a fixed 1,048,576-byte allowance for ordinary JSON
+serialization and indentation. The authoritative parser still enforces the
+4,808,192-byte evidence and 819,200-byte boundary ceilings on parsed values.
+
 Exit codes are fixed:
 
 | Exit | Meaning |

@@ -9,7 +9,9 @@ ajv.addSchema(schema);
 const validateEvidence = ajv.getSchema(`${schema.$id}#/definitions/evidenceCorpusV2`);
 const validateBoundary = ajv.getSchema(`${schema.$id}#/definitions/boundaryCorpusV2`);
 const KEYWORD_CODES = Object.freeze({ required: "required_field", additionalProperties: "unknown_field", type: "wrong_type", const: "wrong_constant", enum: "wrong_constant", minItems: "out_of_bounds", maxItems: "out_of_bounds", minLength: "out_of_bounds", maxLength: "out_of_bounds", minimum: "out_of_bounds", maximum: "out_of_bounds", oneOf: "wrong_type" });
-const MAX_AUTHORING_FILE_BYTES = 4 * 1024 * 1024;
+const AUTHORING_JSON_FORMATTING_ALLOWANCE_BYTES = 1_048_576;
+const MAX_EVIDENCE_AUTHORING_FILE_BYTES = 4_808_192 + AUTHORING_JSON_FORMATTING_ALLOWANCE_BYTES;
+const MAX_BOUNDARY_AUTHORING_FILE_BYTES = 819_200 + AUTHORING_JSON_FORMATTING_ALLOWANCE_BYTES;
 
 export function validateReferencePolicySchemaV2({ evidenceCorpus, boundaryCorpus }) {
   const errors = [...schemaErrors("evidence", validateEvidence, evidenceCorpus), ...schemaErrors("boundary", validateBoundary, boundaryCorpus)];
@@ -67,7 +69,10 @@ export function validateReferencePolicyFilesV2({ evidencePath, boundaryPath }, {
 function loadReferencePolicyFilesV2({ evidencePath, boundaryPath }) {
   let texts;
   try {
-    texts = [readBoundedAuthoringFile(evidencePath), readBoundedAuthoringFile(boundaryPath)];
+    texts = [
+      readBoundedAuthoringFile(evidencePath, MAX_EVIDENCE_AUTHORING_FILE_BYTES),
+      readBoundedAuthoringFile(boundaryPath, MAX_BOUNDARY_AUTHORING_FILE_BYTES)
+    ];
   } catch { return { exitCode: 2 }; }
   const corpora = {};
   for (const [document, text, key] of [["evidence", texts[0], "evidenceCorpus"], ["boundary", texts[1], "boundaryCorpus"]]) {
@@ -85,11 +90,11 @@ function writeExclusiveDraft(path, content, created) {
   try { writeFileSync(descriptor, content, "utf8"); } finally { closeSync(descriptor); }
 }
 
-function readBoundedAuthoringFile(path) {
+function readBoundedAuthoringFile(path, maxBytes) {
   const descriptor = openSync(path, "r");
   try {
     const { size } = fstatSync(descriptor);
-    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_AUTHORING_FILE_BYTES) throw new Error("read_failed");
+    if (!Number.isSafeInteger(size) || size < 0 || size > maxBytes) throw new Error("read_failed");
     const bytes = Buffer.allocUnsafe(size);
     for (let offset = 0; offset < size;) {
       const read = readSync(descriptor, bytes, offset, size - offset, offset);

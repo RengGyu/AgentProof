@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 import { buildReferencePolicySealV2 } from "./evidence-release-reference-policy-v2.mjs";
 import * as authoring from "./reference-policy-authoring-v2.mjs";
-import { protectedAuthoringFixtureValuesV2, validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
+import { assertNoProtectedAuthoringFixtureValuesV2, validAuthoringFixtureV2, validLargeAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
 
 const INTERNAL_DIAGNOSTIC = '{"version":2,"status":"invalid","stage":"internal","errors":[{"code":"internal_validation_failure"}],"truncated":false}\n';
 
@@ -47,9 +47,27 @@ describe("build reference policy seal v2 CLI", () => {
       assert.equal(sealA, readFileSync(outputB, "utf8"));
       assert.equal(sealA, JSON.stringify(buildReferencePolicySealV2(fixture)));
       assert.match(sealA, /"referencePolicySha256":"[a-f0-9]{64}"/);
-      for (const privateValue of [...protectedAuthoringFixtureValuesV2(fixture), "syntax_invalid", "coverage_missing"]) {
-        assert.equal(sealA.includes(JSON.stringify(privateValue)), false, privateValue);
-      }
+      assertNoProtectedAuthoringFixtureValuesV2(fixture, [JSON.parse(sealA)]);
+      for (const privateValue of ["syntax_invalid", "coverage_missing"]) assert.equal(sealA.includes(privateValue), false, privateValue);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("seals a valid public evidence file above 4 MiB", () => {
+    const root = temporaryDirectory();
+    try {
+      const fixture = validLargeAuthoringFixtureV2();
+      const evidence = join(root, "evidence.json");
+      const boundary = join(root, "boundary.json");
+      const output = join(root, "seal.json");
+      writeCorpus(evidence, fixture.evidenceCorpus);
+      writeCorpus(boundary, fixture.boundaryCorpus);
+      assert.ok(statSync(evidence).size > 4_808_192);
+
+      const result = run(sealArgs(evidence, boundary, output));
+      assert.equal(result.status, 0);
+      assert.equal(result.stdout, '{"version":2,"status":"sealed"}\n');
+      assert.equal(result.stderr, "");
+      assert.equal(statSync(output).mode & 0o777, 0o600);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
@@ -132,7 +150,7 @@ describe("build reference policy seal v2 CLI", () => {
       const boundary = join(root, "boundary.json");
       const output = join(root, "seal.json");
       writeFileSync(evidence, '{"UNIQUE_SYNTAX_VALUE"', "utf8");
-      writeFileSync(boundary, "x".repeat(4 * 1024 * 1024 + 1), "utf8");
+      writeFileSync(boundary, "x".repeat(819_200 + 1_048_576 + 1), "utf8");
       const result = run(sealArgs(evidence, boundary, output));
       assert.equal(result.status, 2);
       assert.equal(result.stdout, "");

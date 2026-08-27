@@ -1,9 +1,21 @@
+import assert from "node:assert/strict";
+
 const sha = (index) => index.toString(16).padStart(64, "0");
 const gitSha = "a".repeat(40);
-// The seal's aggregate capability summary may name the closed capability, and
-// valid public-command output has the fixed diagnostic stage. Every other
-// string leaf in these synthetic corpora is treated as protected.
-const ALLOWED_PUBLIC_OUTPUT_VALUES = new Set(["complete", "documentation_literal"]);
+// Only these complete structural value leaves are intentionally emitted by the
+// valid init/validate/seal protocol. Substrings inside any other output leaf are
+// still checked against every synthetic fixture string.
+const ALLOWED_STRUCTURAL_OUTPUT_VALUES = new Set([
+  "initialized", "valid", "complete", "sealed",
+  "agentproof-static-reference.v1", "documentation_literal", "path_change_absence",
+  "source:provided_authoritative", "source:linked_authoritative", "source:pr_author_claim",
+  "contract:multi_objective", "documentation:satisfied", "documentation:violated", "documentation:unavailable",
+  "absence:satisfied", "absence:current_path_violated", "absence:previous_path_violated", "absence:unavailable",
+  "deferred:test_case", "deferred:workflow_job", "deferred:return_value",
+  "boundary:inbound_authoritative_rejected", "boundary:inbound_author_claim_rejected",
+  "boundary:empty_override_live", "boundary:pasted_changed_files", "boundary:pasted_checks", "boundary:pasted_logs",
+  "boundary:text_only_override_live", "boundary:incomplete_live_conservative", "boundary:privacy_zero"
+]);
 
 function contract(kind = "documentation_literal", multiObjective = false) {
   const criterion = kind === "absence"
@@ -40,11 +52,34 @@ export function validAuthoringFixtureV2() {
   };
 }
 
+export function validLargeAuthoringFixtureV2() {
+  const fixture = validAuthoringFixtureV2();
+  for (const [caseIndex, item] of fixture.evidenceCorpus.cases.entries()) {
+    for (let blobIndex = 1; blobIndex < 8; blobIndex += 1) {
+      item.input.verificationCriterionEvidenceV2.artifactBlobs.push({
+        path: `padding/${caseIndex}-${blobIndex}.txt`,
+        content: "\u0001".repeat(9_470)
+      });
+    }
+  }
+  return fixture;
+}
+
 export function protectedAuthoringFixtureValuesV2(fixture) {
   const values = new Set();
   collectStringLeaves(fixture.evidenceCorpus, values);
   collectStringLeaves(fixture.boundaryCorpus, values);
-  return [...values].filter((value) => !ALLOWED_PUBLIC_OUTPUT_VALUES.has(value)).sort();
+  return [...values].sort();
+}
+
+export function assertNoProtectedAuthoringFixtureValuesV2(fixture, outputValues) {
+  const outputStrings = new Set();
+  collectStringLeaves(outputValues, outputStrings);
+  const protectedValues = protectedAuthoringFixtureValuesV2(fixture);
+  for (const outputString of outputStrings) {
+    if (ALLOWED_STRUCTURAL_OUTPUT_VALUES.has(outputString)) continue;
+    for (const protectedValue of protectedValues) assert.equal(outputString.includes(protectedValue), false, protectedValue);
+  }
 }
 
 function collectStringLeaves(value, values) {

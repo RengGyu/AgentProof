@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createReferencePolicyDraftValuesV2, runReferencePolicyAuthoringCliV2, validateReferencePolicyAuthoringV2, validateReferencePolicyFilesV2, validateReferencePolicySchemaV2 } from "./reference-policy-authoring-v2.mjs";
-import { protectedAuthoringFixtureValuesV2, validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
+import { assertNoProtectedAuthoringFixtureValuesV2, validAuthoringFixtureV2, validLargeAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
 
 const cli = fileURLToPath(new URL("./reference-policy-authoring-v2-cli.mjs", import.meta.url));
 
@@ -156,6 +156,15 @@ describe("public reference-policy authoring schema", () => {
 });
 
 describe("reference-policy authoring CLI", () => {
+  it("detects a protected fixture value embedded in a longer output string", () => {
+    const fixture = validAuthoringFixtureV2();
+    const protectedValue = fixture.evidenceCorpus.cases[0].input.taskText;
+    assert.throws(
+      () => assertNoProtectedAuthoringFixtureValuesV2(fixture, [{ status: `prefix:${protectedValue}:suffix` }]),
+      /Synthetic task/
+    );
+  });
+
   it("authors a sealed synthetic public subset through the published init validate seal contract without leaking corpus values", () => {
     const directory = temporaryDirectory();
     const evidence = join(directory, "evidence.json");
@@ -180,9 +189,29 @@ describe("reference-policy authoring CLI", () => {
       assert.equal(JSON.parse(sealed.stdout).status, "sealed");
       assert.equal(sealed.stderr, "");
       assert.deepEqual(readdirSync(directory).sort(), ["boundary.json", "evidence.json", "seal.json"]);
-      for (const value of protectedAuthoringFixtureValuesV2(fixture)) {
-        assert.equal(`${initialized.stdout}${initialized.stderr}${validated.stdout}${validated.stderr}${sealed.stdout}${sealed.stderr}`.includes(JSON.stringify(value)), false, value);
-      }
+      assertNoProtectedAuthoringFixtureValuesV2(fixture, [
+        JSON.parse(initialized.stdout),
+        JSON.parse(validated.stdout),
+        JSON.parse(sealed.stdout)
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("validates a public evidence file above 4 MiB and within semantic bounds", () => {
+    const directory = temporaryDirectory();
+    const evidence = join(directory, "evidence.json");
+    const boundary = join(directory, "boundary.json");
+    const fixture = validLargeAuthoringFixtureV2();
+    try {
+      writeCorpus(evidence, fixture.evidenceCorpus);
+      writeCorpus(boundary, fixture.boundaryCorpus);
+      assert.ok(statSync(evidence).size > 4_808_192);
+      assert.ok(Buffer.byteLength(JSON.stringify(fixture.evidenceCorpus)) <= 4_808_192);
+
+      const result = runCli("validate", cliArgs(evidence, boundary));
+      assert.equal(result.status, 0);
+      assert.equal(result.stdout, '{"version":2,"status":"valid","stage":"complete","errors":[],"truncated":false}\n');
+      assert.equal(result.stderr, "");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -379,12 +408,17 @@ describe("reference-policy authoring CLI", () => {
     const evidence = join(directory, "evidence.json");
     const boundary = join(directory, "boundary.json");
     try {
-      writeFileSync(evidence, '{"broken"', "utf8");
-      writeFileSync(boundary, "x".repeat(4 * 1024 * 1024 + 1), "utf8");
-      const result = runCli("validate", cliArgs(evidence, boundary));
-      assert.equal(result.status, 2);
-      assert.equal(result.stdout, "");
-      assert.equal(result.stderr, "REFERENCE_POLICY_VALIDATE_FAILED\n");
+      for (const [evidenceText, boundaryText] of [
+        ['{"broken"', "x".repeat(819_200 + 1_048_576 + 1)],
+        ["x".repeat(4_808_192 + 1_048_576 + 1), '{"broken"']
+      ]) {
+        writeFileSync(evidence, evidenceText, "utf8");
+        writeFileSync(boundary, boundaryText, "utf8");
+        const result = runCli("validate", cliArgs(evidence, boundary));
+        assert.equal(result.status, 2);
+        assert.equal(result.stdout, "");
+        assert.equal(result.stderr, "REFERENCE_POLICY_VALIDATE_FAILED\n");
+      }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
