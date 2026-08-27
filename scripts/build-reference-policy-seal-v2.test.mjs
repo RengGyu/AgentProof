@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 import { buildReferencePolicySealV2 } from "./evidence-release-reference-policy-v2.mjs";
 import * as authoring from "./reference-policy-authoring-v2.mjs";
-import { validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
+import { protectedAuthoringFixtureValuesV2, validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
 
 const INTERNAL_DIAGNOSTIC = '{"version":2,"status":"invalid","stage":"internal","errors":[{"code":"internal_validation_failure"}],"truncated":false}\n';
 
@@ -21,47 +21,6 @@ function runDirect(args, dependencies) {
   const stderr = { value: "", write(value) { this.value += value; } };
   const status = authoring.runReferencePolicySealCliV2(args, { stdout, stderr, ...dependencies });
   return { status, stdout: stdout.value, stderr: stderr.value };
-}
-
-function protectedSealValues(fixture) {
-  const inputs = fixture.evidenceCorpus.cases.map(({ input }) => input);
-  const sourceValues = inputs.flatMap(({ verificationContractSourceV2: source, verificationContractBindingV2: binding }) => [
-    source.title,
-    source.body,
-    binding.sourceIdentity,
-    binding.sourceContent
-  ]);
-  const contractValues = inputs.flatMap(({ verificationContractSourceV2: source }) => {
-    const contract = source.contract ?? JSON.parse(source.body.match(/```agentproof-verification\n([\s\S]+)\n```/)[1]);
-    return contract.objectives.flatMap((objective) => [
-      objective.objective,
-      ...objective.criteria.flatMap((criterion) => [
-        criterion.label,
-        ...(criterion.paths ?? []),
-        criterion.artifact?.literal,
-        criterion.adapter?.modulePath,
-        criterion.adapter?.exportName
-      ])
-    ]);
-  });
-  return [...new Set([
-    ...fixture.evidenceCorpus.cases.map(({ caseId }) => caseId),
-    ...fixture.boundaryCorpus.cases.map(({ caseId }) => caseId),
-    ...inputs.flatMap((input) => [
-      input.title,
-      input.description,
-      input.taskText,
-      input.sourceProvenance.evidenceCapturedAt,
-      input.sourceProvenance.inputFingerprint.value,
-      input.sourceProvenance.headSha,
-      input.sourceProvenance.baseSha,
-      ...input.changedFiles.flatMap(({ path, previousPath }) => [path, previousPath]),
-      ...input.verificationCriterionEvidenceV2.artifactBlobs.flatMap(({ path, headSha, content }) => [path, headSha, content])
-    ]),
-    ...sourceValues,
-    ...contractValues,
-    ...fixture.boundaryCorpus.cases.flatMap(({ pastedOverride = {} }) => [pastedOverride.prUrl])
-  ].filter(Boolean))];
 }
 
 describe("build reference policy seal v2 CLI", () => {
@@ -88,7 +47,7 @@ describe("build reference policy seal v2 CLI", () => {
       assert.equal(sealA, readFileSync(outputB, "utf8"));
       assert.equal(sealA, JSON.stringify(buildReferencePolicySealV2(fixture)));
       assert.match(sealA, /"referencePolicySha256":"[a-f0-9]{64}"/);
-      for (const privateValue of [...protectedSealValues(fixture), "syntax_invalid", "coverage_missing"]) {
+      for (const privateValue of [...protectedAuthoringFixtureValuesV2(fixture), "syntax_invalid", "coverage_missing"]) {
         assert.equal(sealA.includes(JSON.stringify(privateValue)), false, privateValue);
       }
     } finally { rmSync(root, { recursive: true, force: true }); }

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createReferencePolicyDraftValuesV2, runReferencePolicyAuthoringCliV2, validateReferencePolicyAuthoringV2, validateReferencePolicyFilesV2, validateReferencePolicySchemaV2 } from "./reference-policy-authoring-v2.mjs";
-import { validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
+import { protectedAuthoringFixtureValuesV2, validAuthoringFixtureV2 } from "./reference-policy-authoring-v2-test-fixtures.mjs";
 
 const cli = fileURLToPath(new URL("./reference-policy-authoring-v2-cli.mjs", import.meta.url));
 
@@ -15,30 +15,6 @@ function runCli(command, args) { return spawnSync(process.execPath, [cli, comman
 function runCliWithFileSizeLimit(command, args) { return spawnSync("/bin/sh", ["-c", "ulimit -f 0; exec \"$@\"", "sh", process.execPath, cli, command, ...args], { encoding: "utf8" }); }
 function writeCorpus(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8"); }
 function cliArgs(evidence, boundary) { return ["--evidence-cases", evidence, "--boundary-cases", boundary]; }
-function protectedStreamValues(fixture) {
-  const inputs = fixture.evidenceCorpus.cases.map(({ input }) => input);
-  return [...new Set([
-    ...fixture.evidenceCorpus.cases.map(({ caseId }) => caseId),
-    ...fixture.boundaryCorpus.cases.map(({ caseId }) => caseId),
-    ...inputs.flatMap((input) => [
-      input.title,
-      input.description,
-      input.taskText,
-      input.sourceProvenance.evidenceCapturedAt,
-      input.sourceProvenance.inputFingerprint.value,
-      input.sourceProvenance.headSha,
-      input.sourceProvenance.baseSha,
-      ...input.changedFiles.flatMap(({ path, previousPath }) => [path, previousPath]),
-      ...input.verificationCriterionEvidenceV2.artifactBlobs.flatMap(({ path, headSha, content }) => [path, headSha, content]),
-      input.verificationContractBindingV2.sourceIdentity,
-      input.verificationContractBindingV2.sourceContent,
-      input.verificationContractSourceV2.title,
-      input.verificationContractSourceV2.body
-    ]),
-    ...fixture.boundaryCorpus.cases.flatMap(({ pastedOverride = {} }) => Object.values(pastedOverride).flat())
-  ].filter((value) => typeof value === "string" && value.length > 0))];
-}
-
 describe("public reference-policy authoring schema", () => {
   it("accepts only the closed 12/8 public subset", () => {
     const fixture = validAuthoringFixtureV2();
@@ -204,8 +180,8 @@ describe("reference-policy authoring CLI", () => {
       assert.equal(JSON.parse(sealed.stdout).status, "sealed");
       assert.equal(sealed.stderr, "");
       assert.deepEqual(readdirSync(directory).sort(), ["boundary.json", "evidence.json", "seal.json"]);
-      for (const value of protectedStreamValues(fixture)) {
-        assert.equal(`${initialized.stdout}${initialized.stderr}${validated.stdout}${validated.stderr}${sealed.stdout}${sealed.stderr}`.includes(value), false, value);
+      for (const value of protectedAuthoringFixtureValuesV2(fixture)) {
+        assert.equal(`${initialized.stdout}${initialized.stderr}${validated.stdout}${validated.stderr}${sealed.stdout}${sealed.stderr}`.includes(JSON.stringify(value)), false, value);
       }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });

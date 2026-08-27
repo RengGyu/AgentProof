@@ -1,5 +1,9 @@
 const sha = (index) => index.toString(16).padStart(64, "0");
 const gitSha = "a".repeat(40);
+// The seal's aggregate capability summary may name the closed capability, and
+// valid public-command output has the fixed diagnostic stage. Every other
+// string leaf in these synthetic corpora is treated as protected.
+const ALLOWED_PUBLIC_OUTPUT_VALUES = new Set(["complete", "documentation_literal"]);
 
 function contract(kind = "documentation_literal", multiObjective = false) {
   const criterion = kind === "absence"
@@ -34,4 +38,17 @@ export function validAuthoringFixtureV2() {
       ? { version: 2, kind: "inbound_untrusted_v2", caseId: sha(index + 20), report: { reportSchemaVersion: "verification-report.v2", verificationContract: { state: index === 0 ? "authoritative" : "author_claim" } } }
       : { version: 2, kind: "pasted_merge", caseId: sha(index + 20), liveInput: input(index), pastedOverride: index === 2 ? {} : index === 3 ? { prUrl: "https://example.test/pr/1", changedFiles: "README.md" } : index === 4 ? { prUrl: "https://example.test/pr/2", checks: "check" } : index === 5 ? { prUrl: "https://example.test/pr/3", logs: "log" } : index === 6 ? { prUrl: "https://example.test/pr/4", taskText: "text", prDescription: "text" } : { prUrl: "https://example.test/pr/5", inputLimitations: ["incomplete"] } }) }
   };
+}
+
+export function protectedAuthoringFixtureValuesV2(fixture) {
+  const values = new Set();
+  collectStringLeaves(fixture.evidenceCorpus, values);
+  collectStringLeaves(fixture.boundaryCorpus, values);
+  return [...values].filter((value) => !ALLOWED_PUBLIC_OUTPUT_VALUES.has(value)).sort();
+}
+
+function collectStringLeaves(value, values) {
+  if (typeof value === "string") values.add(value);
+  else if (Array.isArray(value)) for (const item of value) collectStringLeaves(item, values);
+  else if (value && typeof value === "object") for (const item of Object.values(value)) collectStringLeaves(item, values);
 }
