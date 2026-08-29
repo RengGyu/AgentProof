@@ -104,6 +104,7 @@ describe("slack helpers", () => {
     expect(report.requirements[0]).toMatchObject({ status: "unclear", evidenceStatus: "partial" });
     expect(payload).toContain("Unclear against approved contract");
     expect(payload).toContain("Observed evidence: Partially supported");
+    expect(payload).toContain("Evidence details are omitted from this portable summary.");
     expect(payload).not.toContain("Supported against approved contract");
   });
 

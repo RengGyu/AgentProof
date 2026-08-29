@@ -22,6 +22,9 @@ export interface DashboardRequirementViewModel {
   /** Strict-contract reports separately state whether the objective outcome was assessed. */
   outcomeLabel?: string;
   outcomeMeaning?: string;
+  /** Summary surfaces distinguish omitted private evidence from a requirement with no recorded references. */
+  evidenceVisibility?: "available" | "not_recorded" | "omitted_for_summary";
+  evidenceVisibilityLabel?: string;
   sourceAuthorityLabel?: string;
   sourceAuthorityMeaning?: string;
   evidenceRefs: string[];
@@ -100,7 +103,12 @@ export function toDashboardRequirementViewModels({ report, requirements = [], se
       coverageLabel: presentation?.observationLabel ?? toRequirementCoverageLabel(requirement.evidenceStatus ?? requirement.status),
       coverageMeaning: toCoverageMeaning(presentation?.observedEvidence ?? requirement.evidenceStatus ?? requirement.status),
       ...(presentation
-        ? { outcomeLabel: presentation.outcomeLabel, outcomeMeaning: presentation.outcomeBasis }
+        ? {
+            outcomeLabel: presentation.outcomeLabel,
+            outcomeMeaning: presentation.outcomeBasis,
+            evidenceVisibility: presentation.evidenceVisibility,
+            evidenceVisibilityLabel: presentation.evidenceVisibilityLabel
+          }
         : strictContractOutcomePresentation(requirement.status, verificationContract)),
       ...(requirement.sourceAuthority === "pr_description" ? {
         sourceAuthorityLabel: "PR description",

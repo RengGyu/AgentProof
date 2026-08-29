@@ -101,6 +101,9 @@ function conciseRequirementMarkdown(
     ...(item.outcomeLabel && item.outcomeMeaning ? [`  - Requirement outcome: ${item.outcomeLabel}`, `  - Outcome basis: ${item.outcomeMeaning}`] : []),
     ...(item.sourceAuthorityLabel ? [`  - Requirement source: ${item.sourceAuthorityLabel}`] : []),
     ...(item.sourceAuthorityMeaning ? [`  - Source authority: ${item.sourceAuthorityMeaning}`] : []),
+    ...(item.evidenceVisibility === "omitted_for_summary" && item.evidenceVisibilityLabel
+      ? [`  - Evidence visibility: ${item.evidenceVisibilityLabel}`]
+      : []),
     `  - What the evidence shows: ${item.explanation.text}`,
     ...(item.primaryGap ? [`  - Key gap: ${item.primaryGap}`] : []),
     ...(item.nextAction ? [`  - Next: ${item.nextAction}`] : []),
@@ -110,8 +113,8 @@ function conciseRequirementMarkdown(
     "  <summary>Evidence details</summary>",
     "",
     `  Requirement ID: ${item.requirementId}`,
-    `  Evidence IDs: ${references.join(", ") || "Unavailable"}`,
-    `  Locations: ${locations.join(", ") || "Unavailable"}`,
+    `  Evidence IDs: ${references.join(", ") || (item.evidenceVisibility === "omitted_for_summary" ? "Omitted from portable summary" : "Unavailable")}`,
+    `  Locations: ${locations.join(", ") || (item.evidenceVisibility === "omitted_for_summary" ? "Omitted from portable summary" : "Unavailable")}`,
     "",
     "  </details>"
   ];
@@ -153,7 +156,8 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
           outcome: presentation.outcome,
           outcome_label: presentation.outcomeLabel,
           outcome_basis: presentation.outcomeBasis,
-          observed_evidence_label: presentation.observationLabel
+          observed_evidence_label: presentation.observationLabel,
+          evidence_visibility: presentation.evidenceVisibility
         } : {}),
         ...(item.sourceAuthority ? { source_authority: item.sourceAuthority } : {}),
         evidence_ids: item.evidenceRefs.map((reference) => safeText(reference) ?? "Unavailable"),

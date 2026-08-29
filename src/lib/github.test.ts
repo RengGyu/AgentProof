@@ -200,6 +200,65 @@ describe("buildPullRequestInput", () => {
     })).rejects.toThrow(`GitHub pull request ${anchor} changed`);
   });
 
+  it("fails closed instead of falling back when the PR source body drifts during collection", async () => {
+    let pullReads = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        pullReads += 1;
+        return Promise.resolve(Response.json({
+          title: "Source snapshot PR",
+          body: pullReads === 1 ? "Document the reset behavior." : "Document a different reset behavior.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: "def456" },
+          head: { ref: "agent/source-snapshot", sha: "abc123" }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      changedFiles: "src/fallback-should-not-be-used.ts"
+    })).rejects.toThrow("GitHub pull request source changed while AgentProof was collecting evidence.");
+  });
+
+  it("fails closed when the selected linked Issue source drifts during collection", async () => {
+    let issueReads = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Fix expired reset links",
+          body: "Fixes #42",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: "def456" },
+          head: { ref: "agent/reset", sha: "abc123" }
+        }));
+      }
+      if (url.endsWith("/issues/42")) {
+        issueReads += 1;
+        return Promise.resolve(Response.json({
+          title: "Reject expired password reset links",
+          body: issueReads === 1
+            ? "Acceptance criteria: reject expired reset links."
+            : "Acceptance criteria: reject reset links after a different expiry window."
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12"
+    })).rejects.toThrow("GitHub pull request source changed while AgentProof was collecting evidence.");
+  });
+
   it("redacts token-looking values from GitHub check and status summaries", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
@@ -313,6 +372,36 @@ describe("buildPullRequestInput", () => {
     expect(input.limitations?.join(" ") ?? "").not.toContain("No original task text");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/issues/42"))).toBe(true);
     expect(JSON.stringify(input.requirementSourceIdentityHash)).not.toContain("42");
+  });
+
+  it("marks a compacted linked Issue source as incomplete without retaining its tail", async () => {
+    const hiddenTail = "LINKED_ISSUE_SOURCE_TAIL_MUST_NOT_BE_RETAINED";
+    const longBody = `${"A".repeat(5_100)}${hiddenTail}`;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Long linked Issue source",
+          body: "Fixes #42",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: "def456" },
+          head: { ref: "agent/long-source", sha: "abc123" }
+        }));
+      }
+      if (url.endsWith("/issues/42")) {
+        return Promise.resolve(Response.json({ title: "Long source", body: longBody }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      return Promise.resolve(new Response("unexpected url", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    expect(input.limitations?.join(" ")).toContain("Linked issue source text was truncated");
+    expect(input.limitations?.join(" ")).toContain("cannot establish a complete objective set");
+    expect(JSON.stringify(input)).not.toContain(hiddenTail);
   });
 
   it("collects only an authoritative contract's documentation path at the exact PR head", async () => {

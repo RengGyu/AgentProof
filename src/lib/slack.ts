@@ -33,7 +33,13 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
   const outcomeLines = v2Report
     ? v2Report.requirements.slice(0, 3).flatMap((requirement) => {
       const presentation = deriveRequirementPresentationV2(v2Report, requirement.requirementId);
-      return [`- ${presentation.outcomeLabel}`, `  Observed evidence: ${presentation.observationLabel}`];
+      return [
+        `- ${presentation.outcomeLabel}`,
+        `  Observed evidence: ${presentation.observationLabel}`,
+        ...(presentation.evidenceVisibility === "omitted_for_summary"
+          ? [`  ${presentation.evidenceVisibilityLabel}`]
+          : [])
+      ];
     }).join("\n")
     : "";
   const topRisks = safeReport.summary.topRisks.slice(0, 3).map((risk) => `- ${risk}`).join("\n");

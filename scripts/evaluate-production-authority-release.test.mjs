@@ -554,6 +554,7 @@ function requirementAggregate() {
     totalCases: 12,
     structuralMismatchCount: 0,
     falseSupportedCount: 0,
+    falseMetCount: 0,
     falseRequirementLocalCiAssociationCount: 0,
     crossRequirementReceiptReuseCount: 0,
     privacyLeakCount: 0,

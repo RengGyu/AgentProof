@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "./dashboard-report-export";
+import { sanitizeReportForShare } from "./report-share";
 import { generateVerificationReportV2FromInput } from "./verifier";
 
 const detail = {
@@ -98,6 +99,18 @@ describe("dashboard report export", () => {
       "User-facing interaction needs component or browser evidence beyond logic and suite execution."
     ]);
     expect(JSON.stringify(json.requirements[0])).not.toContain("Approved verification contract is missing.");
+  });
+
+  it("labels references omitted from a portable summary instead of treating them as unavailable", () => {
+    const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    strictDetail.report = sanitizeReportForShare(generatedSearchEmptyStateReport());
+
+    const markdown = dashboardReportToMarkdown(strictDetail);
+    const json = JSON.parse(dashboardReportToJson(strictDetail));
+
+    expect(markdown).toContain("Evidence visibility: Evidence details are omitted from this portable summary.");
+    expect(markdown).toContain("Evidence IDs: Omitted from portable summary");
+    expect(json.requirements[0]).toMatchObject({ evidence_visibility: "omitted_for_summary" });
   });
 
   it("renders a verified authoritative outcome as contract-supported", () => {

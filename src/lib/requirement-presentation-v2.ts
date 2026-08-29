@@ -5,10 +5,15 @@ export interface RequirementPresentationV2 {
   requirementId: string;
   outcome: RequirementStatus;
   observedEvidence: RequirementStatus;
+  /** States whether references can be shown on this report surface, never whether evidence exists in private storage. */
+  evidenceVisibility: "available" | "not_recorded" | "omitted_for_summary";
+  evidenceVisibilityLabel: string;
   authority: VerificationContractStateV2;
   outcomeLabel: string;
   outcomeBasis: string;
   observationLabel: string;
+  /** Bounded contract/criterion gap kind, never a raw evidence excerpt. */
+  reasonCode: string | null;
   primaryGap: string | null;
 }
 
@@ -30,17 +35,36 @@ export function deriveRequirementPresentationV2(
   const authority = report.verificationContract.state;
   const outcome = safeOutcome(authority, requirement.status);
   const observedEvidence = requirement.evidenceStatus ?? requirement.status;
+  const evidenceVisibility = evidenceVisibilityFor(report, requirement.evidenceRefs.length);
 
+  const reasonCode = primaryGap(report, requirementId);
   return {
     requirementId,
     outcome,
     observedEvidence,
+    evidenceVisibility,
+    evidenceVisibilityLabel: evidenceVisibilityLabel(evidenceVisibility),
     authority,
     outcomeLabel: outcomeLabel(authority, outcome),
     outcomeBasis: outcomeBasis(authority, outcome),
     observationLabel: observationLabel(observedEvidence),
-    primaryGap: primaryGap(report, requirementId)
+    reasonCode,
+    primaryGap: reasonCode
   };
+}
+
+function evidenceVisibilityFor(
+  report: VerificationReportV2,
+  requirementEvidenceRefCount: number
+): RequirementPresentationV2["evidenceVisibility"] {
+  if (report.authenticity?.trust === "portable_unverified") return "omitted_for_summary";
+  return requirementEvidenceRefCount > 0 ? "available" : "not_recorded";
+}
+
+function evidenceVisibilityLabel(visibility: RequirementPresentationV2["evidenceVisibility"]): string {
+  if (visibility === "omitted_for_summary") return "Evidence details are omitted from this portable summary.";
+  if (visibility === "available") return "Evidence references are available in this report.";
+  return "No evidence references are listed for this requirement.";
 }
 
 function safeOutcome(authority: VerificationContractStateV2, outcome: RequirementStatus): RequirementStatus {

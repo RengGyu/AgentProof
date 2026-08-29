@@ -87,6 +87,17 @@ export class GitHubPullRequestHeadChangedError extends Error {
   }
 }
 
+/**
+ * The requirement-bearing PR or Issue text changed while evidence was being
+ * collected. It intentionally exposes no source text, hashes, or identifiers.
+ */
+export class GitHubPullRequestSourceChangedError extends Error {
+  constructor() {
+    super("GitHub pull request source changed while AgentProof was collecting evidence.");
+    this.name = "GitHubPullRequestSourceChangedError";
+  }
+}
+
 export interface GitHubPullRequestSnapshotOptions {
   expectedHeadSha?: string;
   expectedBaseSha?: string;
@@ -103,6 +114,18 @@ interface GitHubIssueResponse {
   title?: string;
   body?: string | null;
   pull_request?: unknown;
+}
+
+interface GitHubPullRequestSourceSnapshot {
+  title: string;
+  body: string;
+}
+
+interface GitHubPullRequestFinalSnapshot {
+  headSha: string;
+  baseSha: string;
+  title?: string;
+  body?: string;
 }
 
 interface GitHubFileResponse {
@@ -240,7 +263,7 @@ export async function buildPullRequestInput(
         return mergePastedEvidenceForAnalysis(live, request);
       }
     } catch (error) {
-      if (error instanceof GitHubPullRequestHeadChangedError) {
+      if (error instanceof GitHubPullRequestHeadChangedError || error instanceof GitHubPullRequestSourceChangedError) {
         throw error;
       }
 
@@ -351,11 +374,12 @@ async function fetchGitHubPullRequest(
   const pr = await prResponse.json();
   const initialHeadSha = requireGitHubHeadSha(pr, "initial");
   const initialBaseSha = requireGitHubBaseSha(pr, "initial");
+  const initialPrSource = captureInitialPullRequestSource(pr, parsed.number);
   assertExpectedAnchor(snapshotOptions.expectedHeadSha, initialHeadSha, "initial", "head");
   assertExpectedAnchor(snapshotOptions.expectedBaseSha, initialBaseSha, "initial", "base");
   const limitations: string[] = [];
   const linkedIssueTask = await resolveLinkedIssueTaskText({
-    prBody: String(pr.body ?? ""),
+    prBody: initialPrSource.body,
     repository: { owner: parsed.owner, repo: parsed.repo },
     headers,
     limitations,
@@ -384,7 +408,7 @@ async function fetchGitHubPullRequest(
   }
   const checkEvidenceRefs = assignGitHubCheckEvidenceRefs(
     taskEvidenceText,
-    String(pr.body ?? ""),
+    initialPrSource.body,
     files.length,
     checkRuns
   );
@@ -433,20 +457,12 @@ async function fetchGitHubPullRequest(
     );
   }
 
-  const finalAnchor = await fetchGitHubPullRequestAnchorFromApi(
-    `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
-    headers,
-    hasToken
-  );
-  assertExpectedAnchor(initialHeadSha, finalAnchor.headSha, "final", "head");
-  assertExpectedAnchor(initialBaseSha, finalAnchor.baseSha, "final", "base");
-
   const verificationContractSourceV2 = taskText.trim()
     ? undefined
     : linkedIssueTask?.contractSource ?? {
       kind: "pr_description" as const,
-      title: pr.title ?? `PR #${parsed.number}`,
-      body: redactSecrets(pr.body ?? "")
+      title: initialPrSource.title,
+      body: redactSecrets(initialPrSource.body)
     };
   const verificationContractBindingV2 = taskText.trim()
     ? undefined
@@ -459,7 +475,7 @@ async function fetchGitHubPullRequest(
       : {
         sourceKind: "pr_description" as const,
         sourceIdentity: `github:pr_description:${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}#${parsed.number}`,
-        sourceContent: redactSecrets(pr.body ?? ""),
+        sourceContent: redactSecrets(initialPrSource.body),
         headSha: initialHeadSha,
         baseSha: initialBaseSha
       };
@@ -472,10 +488,22 @@ async function fetchGitHubPullRequest(
     limitations
   });
 
+  const finalSnapshot = await fetchGitHubPullRequestSnapshotFromApi(
+    `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`,
+    headers,
+    hasToken
+  );
+  assertExpectedAnchor(initialHeadSha, finalSnapshot.headSha, "final", "head");
+  assertExpectedAnchor(initialBaseSha, finalSnapshot.baseSha, "final", "base");
+  assertPullRequestSourceUnchanged(initialPrSource, finalSnapshot);
+  if (linkedIssueTask) {
+    await assertLinkedIssueSourceUnchanged(linkedIssueTask, headers, hasToken);
+  }
+
   const input: PullRequestInput = {
     url: safePrUrl,
-    title: pr.title ?? `PR #${parsed.number}`,
-    description: redactSecrets(pr.body ?? ""),
+    title: initialPrSource.title,
+    description: redactSecrets(initialPrSource.body),
     author: pr.user?.login,
     baseBranch: pr.base?.ref,
     headBranch: pr.head?.ref,
@@ -716,11 +744,11 @@ function decodeBoundedGitHubTextContent(value: unknown): string | null {
   }
 }
 
-async function fetchGitHubPullRequestAnchorFromApi(
+async function fetchGitHubPullRequestSnapshotFromApi(
   url: string,
   headers: Record<string, string>,
   hasToken: boolean
-): Promise<{ headSha: string; baseSha: string }> {
+): Promise<GitHubPullRequestFinalSnapshot> {
   let response: Response;
   try {
     response = await githubFetch(url, headers);
@@ -739,8 +767,34 @@ async function fetchGitHubPullRequestAnchorFromApi(
   const pr = await response.json();
   return {
     headSha: requireGitHubHeadSha(pr, "final"),
-    baseSha: requireGitHubBaseSha(pr, "final")
+    baseSha: requireGitHubBaseSha(pr, "final"),
+    ...captureFinalPullRequestSource(pr)
   };
+}
+
+function captureInitialPullRequestSource(value: unknown, pullNumber: number): GitHubPullRequestSourceSnapshot {
+  const record = value && typeof value === "object" ? value as { title?: unknown; body?: unknown } : {};
+  return {
+    title: typeof record.title === "string" ? record.title : `PR #${pullNumber}`,
+    body: typeof record.body === "string" ? record.body : ""
+  };
+}
+
+function captureFinalPullRequestSource(value: unknown): Partial<GitHubPullRequestSourceSnapshot> {
+  const record = value && typeof value === "object" ? value as { title?: unknown; body?: unknown } : {};
+  return {
+    ...(typeof record.title === "string" ? { title: record.title } : {}),
+    ...(typeof record.body === "string" || record.body === null ? { body: record.body ?? "" } : {})
+  };
+}
+
+function assertPullRequestSourceUnchanged(
+  initial: GitHubPullRequestSourceSnapshot,
+  final: Partial<GitHubPullRequestSourceSnapshot>
+): void {
+  if ((final.title !== undefined && final.title !== initial.title) || (final.body !== undefined && final.body !== initial.body)) {
+    throw new GitHubPullRequestSourceChangedError();
+  }
 }
 
 export async function fetchGitHubPullRequestHead(prUrl: string, token: string | undefined, evidenceTiming?: GitHubEvidenceTimingSink): Promise<string | null> {
@@ -1099,7 +1153,8 @@ export function mergePastedEvidenceForAnalysis(live: PullRequestInput, request: 
 
 function hasPastedAuthorityOverride(request: AnalyzeRequest): boolean {
   return Boolean(
-    request.changedFiles?.trim() ||
+    request.prDescription?.trim() ||
+      request.changedFiles?.trim() ||
       request.checks?.trim() ||
       request.logs?.trim()
   );
@@ -1121,6 +1176,7 @@ async function resolveLinkedIssueTaskText(input: {
   limitations: string[];
   hasToken: boolean;
 }): Promise<{
+  reference: SupportedIssueReference;
   taskText: string;
   identityHash: string;
   contractSource: { kind: "linked_issue"; title: string; body: string };
@@ -1152,7 +1208,12 @@ async function resolveLinkedIssueTaskText(input: {
     return null;
   }
 
+  if (result.truncated) {
+    input.limitations.push("Linked issue source text was truncated; it cannot establish a complete objective set.");
+  }
+
   return {
+    reference,
     taskText: result.taskText,
     identityHash: requirementSourceIdentityHash(
       `github_issue:${reference.owner.toLowerCase()}/${reference.repo.toLowerCase()}#${reference.number}`
@@ -1168,6 +1229,24 @@ async function resolveLinkedIssueTaskText(input: {
   };
 }
 
+async function assertLinkedIssueSourceUnchanged(
+  initial: {
+    reference: SupportedIssueReference;
+    contractSource: { kind: "linked_issue"; title: string; body: string };
+  },
+  headers: Record<string, string>,
+  hasToken: boolean
+): Promise<void> {
+  const final = await fetchLinkedIssue(initial.reference, headers, hasToken);
+  if (
+    final.status !== "ok" ||
+    final.title !== initial.contractSource.title ||
+    final.body !== initial.contractSource.body
+  ) {
+    throw new GitHubPullRequestSourceChangedError();
+  }
+}
+
 function requirementSourceIdentityHash(canonicalIdentity: string): string {
   return createHash("sha256").update(canonicalIdentity, "utf8").digest("hex");
 }
@@ -1176,7 +1255,7 @@ async function fetchLinkedIssue(
   reference: SupportedIssueReference,
   headers: Record<string, string>,
   hasToken: boolean
-): Promise<{ status: "ok"; taskText: string; title: string; body: string } | { status: "failed"; limitation: string }> {
+): Promise<{ status: "ok"; taskText: string; title: string; body: string; truncated: boolean } | { status: "failed"; limitation: string }> {
   const ref = formatIssueReference(reference);
   let response: Response;
 
@@ -1208,8 +1287,10 @@ async function fetchLinkedIssue(
     };
   }
 
-  const title = compactText(redactSecrets(issue.title ?? ""), 300);
-  const body = compactText(redactSecrets(issue.body ?? ""), 5000);
+  const rawTitle = redactSecrets(issue.title ?? "");
+  const rawBody = redactSecrets(issue.body ?? "");
+  const title = compactText(rawTitle, 300);
+  const body = compactText(rawBody, 5000);
   const taskText = [`Linked issue ${ref}: ${title}`, body].filter((part) => part.trim()).join("\n\n");
 
   if (!taskText.trim()) {
@@ -1219,7 +1300,13 @@ async function fetchLinkedIssue(
     };
   }
 
-  return { status: "ok", taskText, title, body };
+  return {
+    status: "ok",
+    taskText,
+    title,
+    body,
+    truncated: rawTitle.trim().length > 300 || rawBody.trim().length > 5000
+  };
 }
 
 function githubLinkedIssueFailureReason(response: Response, hasToken: boolean): string {
