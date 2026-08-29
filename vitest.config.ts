@@ -16,6 +16,7 @@ export default defineConfig({
       "scripts/smoke-real-pr-evaluation.test.mjs",
       "scripts/external-pr-pilot-smoke.test.mjs",
       "scripts/external-pr-pilot-labels.test.mjs",
+      "scripts/external-pr-batch-smoke.test.mjs",
       "scripts/reviewer-validation-fixture.test.mjs",
       "scripts/p0-beta-readiness.test.mjs",
       "scripts/llm-proof-planner-eval-metadata.test.mjs",

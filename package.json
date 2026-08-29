@@ -17,6 +17,7 @@
     "smoke:real-prs": "node scripts/smoke-real-pr-evaluation.mjs",
     "smoke:production-regression": "node scripts/smoke-real-pr-evaluation.mjs",
     "smoke:external-pr-pilot": "node scripts/external-pr-pilot-smoke.mjs",
+    "smoke:external-pr-batch": "node scripts/external-pr-batch-smoke.mjs",
     "smoke:github-comment": "node scripts/smoke-github-comment.mjs",
     "smoke:github-webhook": "node scripts/smoke-github-webhook.mjs",
     "smoke:github-webhook-live": "node scripts/smoke-github-webhook-live.mjs",

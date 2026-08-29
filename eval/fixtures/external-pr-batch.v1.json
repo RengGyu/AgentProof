@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "external-pr-batch.v1",
+  "privacy": "external-pr-batch-metadata-only",
+  "purpose": "Collect summary-only runtime observations for a diverse set of public external pull requests. This file is not an oracle and contains no expected outcomes.",
+  "cases": [
+    { "id": "external-pr-batch-typescript-64032", "source": { "repository": "microsoft/TypeScript", "pullRequestNumber": 64032, "url": "https://github.com/microsoft/TypeScript/pull/64032" } },
+    { "id": "external-pr-batch-deno-36592", "source": { "repository": "denoland/deno", "pullRequestNumber": 36592, "url": "https://github.com/denoland/deno/pull/36592" } },
+    { "id": "external-pr-batch-typescript-64042", "source": { "repository": "microsoft/TypeScript", "pullRequestNumber": 64042, "url": "https://github.com/microsoft/TypeScript/pull/64042" } },
+    { "id": "external-pr-batch-ruff-28022", "source": { "repository": "astral-sh/ruff", "pullRequestNumber": 28022, "url": "https://github.com/astral-sh/ruff/pull/28022" } },
+    { "id": "external-pr-batch-django-21820", "source": { "repository": "django/django", "pullRequestNumber": 21820, "url": "https://github.com/django/django/pull/21820" } },
+    { "id": "external-pr-batch-scikit-learn-34815", "source": { "repository": "scikit-learn/scikit-learn", "pullRequestNumber": 34815, "url": "https://github.com/scikit-learn/scikit-learn/pull/34815" } },
+    { "id": "external-pr-batch-rust-161012", "source": { "repository": "rust-lang/rust", "pullRequestNumber": 161012, "url": "https://github.com/rust-lang/rust/pull/161012" } },
+    { "id": "external-pr-batch-maven-12659", "source": { "repository": "apache/maven", "pullRequestNumber": 12659, "url": "https://github.com/apache/maven/pull/12659" } },
+    { "id": "external-pr-batch-home-assistant-179202", "source": { "repository": "home-assistant/core", "pullRequestNumber": 179202, "url": "https://github.com/home-assistant/core/pull/179202" } },
+    { "id": "external-pr-batch-grafana-131171", "source": { "repository": "grafana/grafana", "pullRequestNumber": 131171, "url": "https://github.com/grafana/grafana/pull/131171" } },
+    { "id": "external-pr-batch-nuxt-36181", "source": { "repository": "nuxt/nuxt", "pullRequestNumber": 36181, "url": "https://github.com/nuxt/nuxt/pull/36181" } },
+    { "id": "external-pr-batch-dotnet-132351", "source": { "repository": "dotnet/runtime", "pullRequestNumber": 132351, "url": "https://github.com/dotnet/runtime/pull/132351" } },
+    { "id": "external-pr-batch-spring-36045", "source": { "repository": "spring-projects/spring-framework", "pullRequestNumber": 36045, "url": "https://github.com/spring-projects/spring-framework/pull/36045" } },
+    { "id": "external-pr-batch-svelte-18729", "source": { "repository": "sveltejs/svelte", "pullRequestNumber": 18729, "url": "https://github.com/sveltejs/svelte/pull/18729" } },
+    { "id": "external-pr-batch-typescript-64045", "source": { "repository": "microsoft/TypeScript", "pullRequestNumber": 64045, "url": "https://github.com/microsoft/TypeScript/pull/64045" } },
+    { "id": "external-pr-batch-django-21836", "source": { "repository": "django/django", "pullRequestNumber": 21836, "url": "https://github.com/django/django/pull/21836" } },
+    { "id": "external-pr-batch-ruff-27910", "source": { "repository": "astral-sh/ruff", "pullRequestNumber": 27910, "url": "https://github.com/astral-sh/ruff/pull/27910" } },
+    { "id": "external-pr-batch-typescript-64048", "source": { "repository": "microsoft/TypeScript", "pullRequestNumber": 64048, "url": "https://github.com/microsoft/TypeScript/pull/64048" } },
+    { "id": "external-pr-batch-dotnet-132794", "source": { "repository": "dotnet/runtime", "pullRequestNumber": 132794, "url": "https://github.com/dotnet/runtime/pull/132794" } },
+    { "id": "external-pr-batch-prometheus-19497", "source": { "repository": "prometheus/prometheus", "pullRequestNumber": 19497, "url": "https://github.com/prometheus/prometheus/pull/19497" } },
+    { "id": "external-pr-batch-kubernetes-141071", "source": { "repository": "kubernetes/kubernetes", "pullRequestNumber": 141071, "url": "https://github.com/kubernetes/kubernetes/pull/141071" } },
+    { "id": "external-pr-batch-django-21845", "source": { "repository": "django/django", "pullRequestNumber": 21845, "url": "https://github.com/django/django/pull/21845" } },
+    { "id": "external-pr-batch-kafka-23284", "source": { "repository": "apache/kafka", "pullRequestNumber": 23284, "url": "https://github.com/apache/kafka/pull/23284" } },
+    { "id": "external-pr-batch-flutter-190874", "source": { "repository": "flutter/flutter", "pullRequestNumber": 190874, "url": "https://github.com/flutter/flutter/pull/190874" } },
+    { "id": "external-pr-batch-kubernetes-141358", "source": { "repository": "kubernetes/kubernetes", "pullRequestNumber": 141358, "url": "https://github.com/kubernetes/kubernetes/pull/141358" } }
+  ]
+}
