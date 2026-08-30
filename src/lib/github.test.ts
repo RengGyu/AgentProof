@@ -167,6 +167,34 @@ describe("buildPullRequestInput", () => {
     });
   });
 
+  it("preserves explicit repository visibility only for a live GitHub snapshot", async () => {
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Public PR",
+          body: "Adds validation.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: baseSha, repo: { private: false } },
+          head: { ref: "agent/validation", sha: headSha }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = await buildPullRequestInput({
+      prUrl: "https://github.com/acme/repo/pull/12",
+      taskText: "Acceptance criteria: add validation."
+    });
+
+    expect(input.repositoryPrivate).toBe(false);
+  });
+
   it.each([
     { anchor: "head" as const, finalHeadSha: "changed123", finalBaseSha: "def456" },
     { anchor: "base" as const, finalHeadSha: "abc123", finalBaseSha: "changed456" }

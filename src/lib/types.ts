@@ -76,6 +76,8 @@ export interface PullRequestInput {
   author?: string;
   baseBranch?: string;
   headBranch?: string;
+  /** Transient live-GitHub visibility fact; unknown visibility is never public. */
+  repositoryPrivate?: boolean;
   taskSource?: "task" | "issue";
   /** Transient SHA-256 identity for the selected requirement-authority object. */
   requirementSourceIdentityHash?: string;

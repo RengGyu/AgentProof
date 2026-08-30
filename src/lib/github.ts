@@ -375,6 +375,7 @@ async function fetchGitHubPullRequest(
   const initialHeadSha = requireGitHubHeadSha(pr, "initial");
   const initialBaseSha = requireGitHubBaseSha(pr, "initial");
   const initialPrSource = captureInitialPullRequestSource(pr, parsed.number);
+  const repositoryPrivate = githubRepositoryPrivate(pr);
   assertExpectedAnchor(snapshotOptions.expectedHeadSha, initialHeadSha, "initial", "head");
   assertExpectedAnchor(snapshotOptions.expectedBaseSha, initialBaseSha, "initial", "base");
   const limitations: string[] = [];
@@ -507,6 +508,7 @@ async function fetchGitHubPullRequest(
     author: pr.user?.login,
     baseBranch: pr.base?.ref,
     headBranch: pr.head?.ref,
+    ...(repositoryPrivate === undefined ? {} : { repositoryPrivate }),
     taskSource: taskText.trim() ? "task" : linkedIssueTask ? "issue" : undefined,
     taskText: taskText.trim() ? redactSecrets(taskText) : linkedIssueTask?.taskText ?? "",
     requirementSourceIdentityHash: taskText.trim()
@@ -778,6 +780,16 @@ function captureInitialPullRequestSource(value: unknown, pullNumber: number): Gi
     title: typeof record.title === "string" ? record.title : `PR #${pullNumber}`,
     body: typeof record.body === "string" ? record.body : ""
   };
+}
+
+function githubRepositoryPrivate(value: unknown): boolean | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const base = (value as { base?: unknown }).base;
+  if (!base || typeof base !== "object") return undefined;
+  const repository = (base as { repo?: unknown }).repo;
+  if (!repository || typeof repository !== "object") return undefined;
+  const privateValue = (repository as { private?: unknown }).private;
+  return typeof privateValue === "boolean" ? privateValue : undefined;
 }
 
 function captureFinalPullRequestSource(value: unknown): Partial<GitHubPullRequestSourceSnapshot> {

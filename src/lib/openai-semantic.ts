@@ -8,6 +8,7 @@ import {
 } from "./llm-semantic-package";
 import { extractOpenAIResponseText } from "./openai-verifier";
 import { HYBRID_PLANNER_MAX_OUTPUT_BYTES } from "./hybrid-planner";
+import type { GeneralPrSemanticObserverPackageV2 } from "./general-pr-semantic-observer";
 import { redactSecrets } from "./redact";
 import type {
   HybridPlannerTransportRequest,
@@ -58,6 +59,35 @@ export interface OpenAISemanticOptions {
 export interface OpenAISemanticResult {
   output: LlmSemanticOutput;
   validation: LlmSemanticValidationResult;
+}
+
+/** Sends the already bounded observer package; validation remains with the observer. */
+export async function submitGeneralPrSemanticObservationWithOpenAI(
+  semanticPackage: GeneralPrSemanticObserverPackageV2,
+  options: Pick<OpenAISemanticOptions, "apiKey" | "fetchFn">
+): Promise<unknown> {
+  const response = await fetchOpenAIResponse(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: openAIHeaders(options.apiKey),
+    body: JSON.stringify({
+      model: semanticPackage.request.model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: semanticPackage.system }] },
+        { role: "user", content: [{ type: "input_text", text: JSON.stringify(semanticPackage.input) }] }
+      ],
+      text: { format: semanticPackage.request.responseFormat },
+      store: false,
+      max_output_tokens: semanticPackage.request.maxOutputTokens
+    }),
+    signal: AbortSignal.timeout(semanticPackage.request.timeoutMs)
+  }, options.fetchFn);
+  const text = extractOpenAIResponseText(await parseOpenAIResponseJson(response));
+  if (!text) throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI observer response did not contain text output.");
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI observer response was not valid JSON.");
+  }
 }
 
 /** One-shot hybrid planner POST. Validation/finalization stay in the shared orchestrator. */

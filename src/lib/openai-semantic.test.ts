@@ -4,11 +4,14 @@ import {
   retrieveHybridPlannerWithOpenAI,
   retrieveMissingSemanticsWithOpenAIBackground,
   retrieveSemanticsWithOpenAIBackground,
+  submitGeneralPrSemanticObservationWithOpenAI,
   submitHybridPlannerWithOpenAI,
   submitMissingSemanticsWithOpenAIBackground,
   submitSemanticsWithOpenAIBackground
 } from "./openai-semantic";
 import { extractRequirementSpanSeed } from "./extractors";
+import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import { buildGeneralPrSemanticObserverPackageV2 } from "./general-pr-semantic-observer";
 import { bindHybridPlannerSeedHash, buildHybridPlannerPackage, buildHybridPlannerPlan } from "./hybrid-planner";
 import {
   buildLlmSemanticPackage,
@@ -18,6 +21,39 @@ import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
 describe("OpenAI semantic adapter", () => {
+  it("sends a bounded general-PR observer package with strict JSON and no retention", async () => {
+    const input = {
+      title: "Return Ready when checks pass",
+      description: "The service must return Ready when checks pass.",
+      taskText: "",
+      changedFiles: [{ path: "src/status.ts", status: "modified" as const }],
+      checks: [],
+      logs: []
+    };
+    const semanticPackage = buildGeneralPrSemanticObserverPackageV2(
+      input,
+      buildGeneralPrObservationSeedV2(input),
+      { model: "gpt-test", promptVersion: "test.v1", inputFieldPolicyVersion: "test-fields.v1" }
+    );
+    if (!semanticPackage) throw new Error("fixture must build a semantic package");
+    const fetchMock = vi.fn(async () => Response.json({ output_text: "{}" }));
+
+    await expect(submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    })).resolves.toEqual({});
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body).toMatchObject({
+      model: "gpt-test",
+      store: false,
+      max_output_tokens: 3200,
+      text: { format: { type: "json_schema", strict: true, name: "agentproof_general_pr_observer_v2" } }
+    });
+    expect(JSON.stringify(body)).not.toContain("src/status.ts");
+  });
+
   it("submits one strict hybrid planner response with store false and no repair request", async () => {
     const { input, seed, plannerPackage, plan } = hybridFixture();
     const fetchMock = vi.fn().mockResolvedValue(Response.json({

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
 import { normalizeAnalyzeRequest } from "@/lib/analyze-request";
 import {
+  buildGitHubPullRequestInput,
   buildPullRequestInput,
   GITHUB_EVIDENCE_TIMING_PHASES,
   GitHubFetchError,
@@ -10,6 +11,7 @@ import {
   type GitHubEvidenceTimingSink,
   type GitHubFetchFailureCode
 } from "@/lib/github";
+import { submitGeneralPrSemanticObservationWithOpenAI } from "@/lib/openai-semantic";
 import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
 import { generateVerificationReportV2FromInput } from "@/lib/verifier";
@@ -91,10 +93,18 @@ export async function POST(request: Request) {
       : await buildPullRequestInput(body, evidenceTiming);
 
     timing.start("report");
+    const observationMode = generalPrObservationService.resolveGeneralPrObservationModeV2(
+      process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
+    );
+    const publicPrUrl = body.prUrl?.trim();
+    const observerApiKey = process.env.OPENAI_API_KEY?.trim();
+    const observerModel = process.env.OPENAI_MODEL?.trim();
+    const publicShadowObserver = observationMode === "shadow" &&
+      input.repositoryPrivate === false &&
+      input.sourceProvenance?.origin === "github_snapshot" &&
+      Boolean(publicPrUrl && observerApiKey && observerModel);
     const observed = await generalPrObservationService.runGeneralPrObservationNowV2({
-      mode: generalPrObservationService.resolveGeneralPrObservationModeV2(
-        process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
-      ),
+      mode: observationMode,
       input,
       generateReport: generateVerificationReportV2FromInput,
       // The existing runtime gate remains the final authority below. This
@@ -105,7 +115,33 @@ export async function POST(request: Request) {
           input: candidateInput,
           report: candidateReport,
           requireV2: true
-        }).valid
+        }).valid,
+      ...(publicShadowObserver && publicPrUrl && observerApiKey && observerModel ? {
+        semantic: {
+          provider: {
+            observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+              apiKey: observerApiKey
+            })
+          },
+          providerAvailable: true,
+          privateRepository: false,
+          readCurrentInput: async () => {
+            try {
+              return await buildGitHubPullRequestInput(publicPrUrl, body.githubToken, body.taskText ?? "", undefined, {
+                expectedHeadSha: input.sourceProvenance?.headSha,
+                expectedBaseSha: input.sourceProvenance?.baseSha
+              });
+            } catch {
+              return null;
+            }
+          },
+          modelProfile: {
+            model: observerModel,
+            promptVersion: "general-pr-observer.v2",
+            inputFieldPolicyVersion: "general-pr-observer-fields.v1"
+          }
+        }
+      } : {})
     });
     const report = observed.report;
 
