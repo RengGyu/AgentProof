@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "candidateManifest": "eval/general-pr-observation-candidate-manifest.v1.json",
+  "sourceCommit": "65fa428d6dae3e2024494c5a84dbff86a12889d7",
+  "commands": {
+    "test": {
+      "passedFiles": 167,
+      "passedTests": 2258,
+      "skippedTests": 2
+    },
+    "typecheck": "passed",
+    "build": "passed",
+    "diffCheck": "passed"
+  },
+  "rawPublicPrSourceStored": false
+}

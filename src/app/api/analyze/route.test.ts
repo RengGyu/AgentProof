@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { validateVerificationReport } from "@/lib/report-validation";
+import * as generalPrObservationService from "@/lib/general-pr-observation-service";
 import type { VerificationReport } from "@/lib/types";
 
 afterEach(() => {
@@ -48,6 +49,37 @@ function expectNoGitHubEvidenceTiming(response: Response) {
 }
 
 describe("POST /api/analyze", () => {
+  it("runs configured shadow observations without adding private observations to the response", async () => {
+    const previousMode = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "shadow";
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          taskText: "Acceptance criteria: document the reset procedure.",
+          changedFiles: "docs/reset.md"
+        })
+      }));
+      const json = await response.json() as { report: VerificationReport; observation?: unknown };
+
+      expect(response.status).toBe(200);
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow" }));
+      expect(json.observation).toBeUndefined();
+      expect(JSON.stringify(json)).not.toContain("ledgerDigest");
+      expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    } finally {
+      observationSpy.mockRestore();
+      if (previousMode === undefined) {
+        delete process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+      } else {
+        process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = previousMode;
+      }
+    }
+  });
+
   it("rejects invalid PR URLs before producing a report", async () => {
     const response = await POST(
       new Request("http://localhost/api/analyze", {

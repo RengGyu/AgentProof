@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "AgentProof general PR observation blind label v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "reviewerId", "observationKind", "state", "rubricHash"],
+  "properties": {
+    "version": { "const": 1 },
+    "caseId": { "$ref": "#/definitions/hash" },
+    "sourceHash": { "$ref": "#/definitions/hash" },
+    "contentHash": { "$ref": "#/definitions/hash" },
+    "headHash": { "$ref": "#/definitions/hash" },
+    "inventoryHash": { "$ref": "#/definitions/hash" },
+    "normalizerHash": { "$ref": "#/definitions/hash" },
+    "reviewerId": { "$ref": "#/definitions/hash" },
+    "observationKind": { "enum": ["test_coverage", "scope_mapping"] },
+    "state": {
+      "enum": [
+        "covered_by_verified_relation", "verified_test_failed", "related_test_observed", "missing_targeted_test",
+        "test_not_applicable", "relation_unresolved", "execution_unresolved", "collection_unavailable",
+        "mapped_by_verified_relation", "plausibly_mapped", "unmapped", "out_of_scope_by_contract"
+      ]
+    },
+    "rubricHash": { "$ref": "#/definitions/hash" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "observationKind": { "const": "test_coverage" } } },
+      "then": { "properties": { "state": { "enum": ["covered_by_verified_relation", "verified_test_failed", "related_test_observed", "missing_targeted_test", "test_not_applicable", "relation_unresolved", "execution_unresolved", "collection_unavailable"] } } }
+    },
+    {
+      "if": { "properties": { "observationKind": { "const": "scope_mapping" } } },
+      "then": { "properties": { "state": { "enum": ["mapped_by_verified_relation", "plausibly_mapped", "unmapped", "out_of_scope_by_contract", "collection_unavailable"] } } }
+    }
+  ],
+  "definitions": { "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
+}

@@ -11,6 +11,7 @@ import {
   type GitHubFetchFailureCode
 } from "@/lib/github";
 import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
+import * as generalPrObservationService from "@/lib/general-pr-observation-service";
 import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
 import { redactSecrets } from "@/lib/redact";
@@ -90,7 +91,23 @@ export async function POST(request: Request) {
       : await buildPullRequestInput(body, evidenceTiming);
 
     timing.start("report");
-    const report = generateVerificationReportV2FromInput(input);
+    const observed = await generalPrObservationService.runGeneralPrObservationNowV2({
+      mode: generalPrObservationService.resolveGeneralPrObservationModeV2(
+        process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
+      ),
+      input,
+      generateReport: generateVerificationReportV2FromInput,
+      // The existing runtime gate remains the final authority below. This
+      // preflight merely prevents shadow collection for an invalid report.
+      validateDeterministicReport: (candidateInput, candidateReport) =>
+        resolveRuntimeReportValidation({
+          boundary: "generated_private_full",
+          input: candidateInput,
+          report: candidateReport,
+          requireV2: true
+        }).valid
+    });
+    const report = observed.report;
 
     timing.start("validation");
     const validation = resolveRuntimeReportValidation({

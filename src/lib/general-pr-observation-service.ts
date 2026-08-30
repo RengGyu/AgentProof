@@ -1,0 +1,194 @@
+import { createHash } from "node:crypto";
+import { buildObjectiveEvidenceRelationLedgerV1 } from "./objective-evidence-relation-ledger";
+import { buildGeneralPrObservationSeedV2, validateGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import {
+  runGeneralPrSemanticObserverV2,
+  type GeneralPrSemanticObserverModelProfileV2,
+  type GeneralPrSemanticObserverProviderV2
+} from "./general-pr-semantic-observer";
+import type { GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
+import { evaluateScopeMappingObservationV2 } from "./scope-mapping-observation";
+import { evaluateTestCoverageObservationV2 } from "./test-coverage-observation";
+import type { PullRequestInput, VerificationReport } from "./types";
+
+export interface GeneralPrObservationBundleV2 {
+  version: 2;
+  seedHash: string;
+  ledgerDigest: string;
+  objectives: Array<{
+    id: string;
+    sourceSpanIds: string[];
+    authority: "authoritative" | "author_claim";
+    admissionBasis: "explicit_structure" | "semantic_proposal";
+    state: "observed" | "hypothesis";
+  }>;
+  testCoverage: ReturnType<typeof evaluateTestCoverageObservationV2>[];
+  scopeMappings: ReturnType<typeof evaluateScopeMappingObservationV2>[];
+  semanticState: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+}
+
+export interface RunGeneralPrObservationNowOptionsV2 {
+  mode: "disabled" | "shadow" | "advisory";
+  input: PullRequestInput;
+  generateReport: (input: PullRequestInput) => VerificationReport;
+  validateDeterministicReport: (input: PullRequestInput, report: VerificationReport) => boolean;
+  semantic?: {
+    provider?: GeneralPrSemanticObserverProviderV2;
+    providerAvailable: boolean;
+    privateRepository?: boolean;
+    privateRepositoryConsent?: boolean;
+    providerRetentionApproved?: boolean;
+    timeoutMs?: number;
+    readCurrentInput: () => Promise<PullRequestInput | null>;
+    modelProfile: GeneralPrSemanticObserverModelProfileV2;
+  };
+}
+
+const UNCONFIGURED_MODEL_PROFILE: GeneralPrSemanticObserverModelProfileV2 = {
+  model: "deployment-unconfigured",
+  promptVersion: "general-pr-observer.v2",
+  inputFieldPolicyVersion: "general-pr-observer-fields.v1"
+};
+
+/**
+ * This observation pipeline is deliberately default-off. An unknown value
+ * must not silently enable a new source of report findings.
+ */
+export function resolveGeneralPrObservationModeV2(
+  configuredValue: string | undefined
+): "disabled" | "shadow" | "advisory" {
+  if (configuredValue === "shadow" || configuredValue === "advisory") {
+    return configuredValue;
+  }
+
+  return "disabled";
+}
+
+export async function runGeneralPrObservationNowV2(
+  options: RunGeneralPrObservationNowOptionsV2
+): Promise<{ report: VerificationReport; bundle: GeneralPrObservationBundleV2 | null }> {
+  // The deterministic report is always the first and authoritative product output.
+  const report = options.generateReport(options.input);
+  if (!options.validateDeterministicReport(options.input, report)) return { report, bundle: null };
+  if (options.mode === "disabled") return { report, bundle: null };
+  const seed = buildGeneralPrObservationSeedV2(options.input);
+  if (!validateGeneralPrObservationSeedV2(seed).valid || seed.parseState !== "complete") return { report, bundle: null };
+  const semantic = await runGeneralPrSemanticObserverV2({
+    mode: options.mode,
+    input: options.input,
+    seed,
+    provider: options.semantic?.provider,
+    providerAvailable: options.semantic?.providerAvailable ?? false,
+    privateRepository: options.semantic?.privateRepository,
+    privateRepositoryConsent: options.semantic?.privateRepositoryConsent,
+    providerRetentionApproved: options.semantic?.providerRetentionApproved,
+    timeoutMs: options.semantic?.timeoutMs,
+    // A semantic call is never accepted without a caller-provided freshness
+    // read. The null fallback is a fail-closed unavailable result.
+    readCurrentInput: options.semantic?.readCurrentInput ?? (async () => null),
+    modelProfile: options.semantic?.modelProfile ?? UNCONFIGURED_MODEL_PROFILE
+  });
+  const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semantic.proposal, semantic.state);
+  return { report, bundle };
+}
+
+export function finalizeDeterministicGeneralPrObservationsV2(
+  seed: ReturnType<typeof buildGeneralPrObservationSeedV2>,
+  semanticProposal: GeneralPrSemanticProposalV2 | null = null,
+  semanticState: GeneralPrObservationBundleV2["semanticState"] = "unavailable"
+): GeneralPrObservationBundleV2 {
+  const deterministicObjectives = seed.spans.flatMap((span) => {
+    if (span.deterministicRole !== "objective_candidate") return [];
+    const source = seed.sources.find((candidate) => candidate.id === span.sourceUnitId);
+    if (!source || source.roleCeiling !== "objective") return [];
+    return [{
+      id: `gpo_${digest({ domain: "agentproof.general-pr.objective.v2", seedHash: seed.seedHash, spanId: span.id }).slice(0, 24)}`,
+      sourceSpanIds: [span.id],
+      authority: source.authority,
+      admissionBasis: "explicit_structure" as const,
+      state: "observed" as const
+    }];
+  });
+  const semanticObjectives = semanticProposal === null ? [] : Object.values(semanticProposal.objectiveGroups).flatMap((group) => {
+    if (group.disposition !== "candidate") return [];
+    const spans = group.spanIds.map((spanId) => seed.spans.find((span) => span.id === spanId));
+    const source = spans[0] ? seed.sources.find((candidate) => candidate.id === spans[0]!.sourceUnitId) : undefined;
+    if (!source || spans.some((span) => !span || span.sourceUnitId !== spans[0]!.sourceUnitId)) return [];
+    return [{
+      id: group.groupId,
+      sourceSpanIds: [...group.spanIds],
+      authority: source.authority,
+      admissionBasis: "semantic_proposal" as const,
+      state: "hypothesis" as const
+    }];
+  });
+  const objectives = [...deterministicObjectives, ...semanticObjectives];
+  const semanticObjectiveIds = new Set(semanticObjectives.map((objective) => objective.id));
+  const semanticEdges = semanticProposal === null ? [] : semanticProposal.evidenceRelationProposals.flatMap((proposal) => {
+    if (proposal.proposal === "unresolved" || !semanticObjectiveIds.has(proposal.objectiveGroupId)) return [];
+    const atom = seed.evidenceAtoms.find((candidate) => candidate.id === proposal.evidenceId);
+    if (!atom) return [];
+    return [{
+      fromNodeId: proposal.objectiveGroupId,
+      toNodeId: atom.id,
+      kind: proposal.proposal === "contradicts" ? "semantic_contradicts" as const : "semantic_supports" as const,
+      level: "hypothesis" as const,
+      basis: "semantic_proposal" as const,
+      subjectDigest: seed.seedHash,
+      evidenceRefs: [atom.id],
+      completeness: atom.completeness
+    }];
+  });
+  const ledger = buildObjectiveEvidenceRelationLedgerV1({
+    nodes: [
+      ...objectives.map((objective) => ({ version: 1 as const, id: objective.id, kind: "objective_group" as const, subjectDigest: seed.seedHash })),
+      ...seed.changeClusters.map((cluster) => ({ version: 1 as const, id: cluster.id, kind: "change_cluster" as const, subjectDigest: seed.seedHash })),
+      ...seed.testArtifacts.map((artifact) => ({ version: 1 as const, id: artifact.id, kind: "test_artifact" as const, subjectDigest: seed.seedHash })),
+      ...seed.evidenceAtoms.map((atom) => ({ version: 1 as const, id: atom.id, kind: "evidence_atom" as const, subjectDigest: seed.seedHash }))
+    ],
+    edges: semanticEdges
+  });
+  const inventoryComplete = seed.completeness === "complete";
+  const semanticTestProposals = new Map((semanticProposal?.testApplicabilityProposals ?? []).map((proposal) => [`${proposal.objectiveGroupId}:${proposal.changeClusterId}`, proposal]));
+  const semanticScopeProposals = new Map((semanticProposal?.scopeMappingProposals ?? []).map((proposal) => [`${proposal.objectiveGroupId}:${proposal.changeClusterId}`, proposal]));
+  const testCoverage = objectives.flatMap((objective) => seed.changeClusters.map((cluster) => {
+    const proposal = objective.state === "hypothesis" ? semanticTestProposals.get(`${objective.id}:${cluster.id}`) : undefined;
+    return evaluateTestCoverageObservationV2({
+      objectiveId: objective.id,
+      changeClusterId: cluster.id,
+      applicability: proposal?.proposal === "likely_expected"
+        ? "hypothesized_required"
+        : proposal?.proposal === "likely_not_applicable"
+          ? "hypothesized_not_applicable"
+          : "unknown",
+      relation: proposal && proposal.proposal !== "ambiguous" ? "hypothesis" : "unresolved",
+      execution: "not_observed",
+      changedFileInventoryComplete: inventoryComplete,
+      applicableTestInventoryComplete: inventoryComplete,
+      requiredEvidenceAvailable: inventoryComplete
+    });
+  }));
+  const scopeMappings = objectives.flatMap((objective) => seed.changeClusters.map((cluster) => {
+    const proposal = objective.state === "hypothesis" ? semanticScopeProposals.get(`${objective.id}:${cluster.id}`) : undefined;
+    return evaluateScopeMappingObservationV2({
+      objectiveId: objective.id,
+      changeClusterId: cluster.id,
+      relationLevel: proposal?.proposal === "plausibly_mapped" ? "hypothesis" : "unresolved",
+      authoritativeRoute: false,
+      collectionComplete: inventoryComplete,
+      contractViolation: false
+    });
+  }));
+  return {
+    version: 2,
+    seedHash: seed.seedHash,
+    ledgerDigest: ledger.valid ? ledger.ledger.ledgerDigest : digest({ domain: "agentproof.general-pr.empty-ledger.v2", seedHash: seed.seedHash }),
+    objectives,
+    testCoverage,
+    scopeMappings,
+    semanticState
+  };
+}
+
+function digest(value: unknown): string { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
+function stableJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") { const record = value as Record<string, unknown>; return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`; } return JSON.stringify(value); }

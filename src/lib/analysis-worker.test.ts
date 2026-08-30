@@ -22,6 +22,7 @@ import {
 } from "./tenant-deletion-state";
 import { clearUsageQuotaForTests } from "./usage-quota";
 import { clearBillingWebhookEventsForTests } from "./billing-beta";
+import * as generalPrObservationService from "./general-pr-observation-service";
 
 describe("analysis worker preflight", () => {
   afterEach(() => {
@@ -1856,6 +1857,29 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
     expect(serialized).not.toContain("key=");
+  });
+
+  it("runs shadow observations without retaining them in a worker result", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "shadow");
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    vi.stubGlobal("fetch", mockWorkerFetch());
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    try {
+      const result = await runNextAnalysisJob({
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:00Z")
+      });
+      const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0] });
+
+      expect(result.status).toBe("completed");
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow" }));
+      expect(serialized).not.toContain("ledgerDigest");
+      expect(serialized).not.toContain("generalPrObservation");
+    } finally {
+      observationSpy.mockRestore();
+    }
   });
 
   it("fails closed when the PR base changes after collection and before publication", async () => {

@@ -70,6 +70,7 @@ import {
   UsageQuotaStoreError
 } from "./usage-quota";
 import { generateVerificationReportV2FromInput } from "./verifier";
+import * as generalPrObservationService from "./general-pr-observation-service";
 import {
   OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS,
   OpenAISemanticError,
@@ -447,7 +448,24 @@ async function runPreflightedAnalysisJob(
       );
     }
 
-    const deterministicReport = generateVerificationReportV2FromInput(input);
+    const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
+      mode: generalPrObservationService.resolveGeneralPrObservationModeV2(
+        env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
+      ),
+      input,
+      generateReport: generateVerificationReportV2FromInput,
+      // The generated/semantic report still crosses the existing worker
+      // runtime boundary below; this only keeps observation collection off
+      // when deterministic generation is invalid.
+      validateDeterministicReport: (candidateInput, candidateReport) =>
+        resolveRuntimeReportValidation({
+          input: candidateInput,
+          report: candidateReport,
+          requireV2: true,
+          requireSourceProvenance: true
+        }).valid
+    });
+    const deterministicReport = generalPrObservation.report;
     const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
     const semanticResult = protocol === "legacy"
       ? await advanceQueuedSemanticAnalysis(

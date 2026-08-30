@@ -128,7 +128,12 @@ function collectStructuralSpans(
   }
 
   if (type === "html" && range) {
-    candidates.push({ kind: "html", ...range, headingRanges: headingPath.map((item) => item.range), excluded: true });
+    candidates.push({
+      kind: "html",
+      ...range,
+      headingRanges: headingPath.map((item) => item.range),
+      excluded: isHtmlComment(source.slice(range.start, range.end))
+    });
     return;
   }
 
@@ -160,4 +165,8 @@ function textHash(text: string): string {
 
 function rangeKey(range: { start: number; end: number }): string {
   return `${range.start}:${range.end}`;
+}
+
+function isHtmlComment(value: string): boolean {
+  return /^\s*<!--[\s\S]*-->\s*$/.test(value);
 }

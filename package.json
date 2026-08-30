@@ -38,6 +38,8 @@
     "eval:production-boundary:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-production-boundary-release-gate.mjs \"$@\"' --",
     "eval:toolchain:manifest": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/build-evaluation-toolchain-manifest.mjs \"$@\"' --",
     "eval:production-authority:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-production-authority-release-cli.mjs \"$@\"' --",
+    "eval:general-pr-observation:score": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-general-pr-observations.mjs \"$@\"' --",
+    "eval:general-pr-observation:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-general-pr-observation-release.mjs \"$@\"' --",
     "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:strict": "AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose",

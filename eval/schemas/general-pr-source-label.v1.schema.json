@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "AgentProof general PR source-selection blind label v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "reviewerId", "decision", "rubricHash"],
+  "properties": {
+    "version": { "const": 1 },
+    "caseId": { "$ref": "#/definitions/hash" },
+    "sourceHash": { "$ref": "#/definitions/hash" },
+    "contentHash": { "$ref": "#/definitions/hash" },
+    "headHash": { "$ref": "#/definitions/hash" },
+    "inventoryHash": { "$ref": "#/definitions/hash" },
+    "normalizerHash": { "$ref": "#/definitions/hash" },
+    "reviewerId": { "$ref": "#/definitions/hash" },
+    "decision": { "enum": ["positive", "negative", "abstain"] },
+    "rubricHash": { "$ref": "#/definitions/hash" }
+  },
+  "definitions": { "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
+}

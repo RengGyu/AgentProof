@@ -67,4 +67,26 @@ describe("parseGeneralPrStructureV1", () => {
 
     expect(after).toEqual(before);
   });
+
+  it("keeps visible raw HTML as context while excluding only HTML comments", () => {
+    const source = [
+      "<!-- hidden template instruction -->",
+      "",
+      "<details>",
+      "Visible rollout context.",
+      "</details>"
+    ].join("\n");
+
+    const result = parseGeneralPrStructureV1(source);
+    const htmlSpans = result.spans.filter((span) => span.kind === "html");
+
+    expect(htmlSpans).toHaveLength(2);
+    expect(htmlSpans.map((span) => ({
+      text: source.slice(span.start, span.end),
+      excluded: span.excluded
+    }))).toEqual([
+      { text: "<!-- hidden template instruction -->", excluded: true },
+      { text: "<details>\nVisible rollout context.\n</details>", excluded: false }
+    ]);
+  });
 });
