@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { buildObjectiveEvidenceRelationLedgerV1 } from "./objective-evidence-relation-ledger";
+import { buildObjectiveEvidenceRelationLedgerV1, type RelationVerificationLevelV1 } from "./objective-evidence-relation-ledger";
 import { buildGeneralPrObservationSeedV2, validateGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import {
   runGeneralPrSemanticObserverV2,
@@ -22,6 +22,7 @@ export interface GeneralPrObservationBundleV2 {
     admissionBasis: "explicit_structure" | "semantic_proposal";
     state: "observed" | "hypothesis";
   }>;
+  relationLevelCounts: Record<RelationVerificationLevelV1, number>;
   testCoverage: ReturnType<typeof evaluateTestCoverageObservationV2>[];
   scopeMappings: ReturnType<typeof evaluateScopeMappingObservationV2>[];
   semanticState: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
@@ -148,6 +149,14 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     ],
     edges: semanticEdges
   });
+  const relationLevelCounts: Record<RelationVerificationLevelV1, number> = {
+    verified: 0,
+    observed: 0,
+    hypothesis: 0,
+    unresolved: 0,
+    unavailable: 0
+  };
+  for (const edge of semanticEdges) relationLevelCounts[edge.level] += 1;
   const inventoryComplete = seed.completeness === "complete";
   const semanticTestProposals = new Map((semanticProposal?.testApplicabilityProposals ?? []).map((proposal) => [`${proposal.objectiveGroupId}:${proposal.changeClusterId}`, proposal]));
   const semanticScopeProposals = new Map((semanticProposal?.scopeMappingProposals ?? []).map((proposal) => [`${proposal.objectiveGroupId}:${proposal.changeClusterId}`, proposal]));
@@ -184,6 +193,7 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     seedHash: seed.seedHash,
     ledgerDigest: ledger.valid ? ledger.ledger.ledgerDigest : digest({ domain: "agentproof.general-pr.empty-ledger.v2", seedHash: seed.seedHash }),
     objectives,
+    relationLevelCounts,
     testCoverage,
     scopeMappings,
     semanticState
