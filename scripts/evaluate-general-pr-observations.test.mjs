@@ -67,7 +67,7 @@ function fixture() {
       ...(item.axis === "observation" ? { observationKind: "test_coverage", state: "related_test_observed" } : { decision: "positive" })
     }))
   };
-  return { corpus, goldSeal, manifest, results };
+  return { corpus, goldSeal, manifest, results, candidateSha: "d".repeat(40) };
 }
 
 describe("evaluate-general-pr-observations", () => {
@@ -79,6 +79,7 @@ describe("evaluate-general-pr-observations", () => {
     assert.equal(result.status, "scored");
     assert.equal(result.seal.caseCount, 2);
     assert.equal(result.seal.scoredCandidateManifestHash, value.results.candidateManifestHash);
+    assert.equal(result.seal.candidateSha, value.candidateSha);
     assert.equal(result.seal.score.hardGates.zero_privacy_leak, 0);
     assert.equal(serialized.includes(value.corpus.cases[0].caseId), false);
     assert.equal(serialized.includes("reviewerId"), false);
@@ -89,5 +90,12 @@ describe("evaluate-general-pr-observations", () => {
     value.results.cases[0].headHash = hash("different head");
 
     assert.deepEqual(evaluateGeneralPrObservationsV1(value), { status: "unavailable" });
+  });
+
+  it("fails closed when the exact candidate commit is absent or malformed", () => {
+    const value = fixture();
+
+    assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: null }), { status: "unavailable" });
+    assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: "not-a-sha" }), { status: "unavailable" });
   });
 });

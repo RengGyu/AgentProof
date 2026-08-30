@@ -24,8 +24,8 @@ const HARD_GATES = [
  * only: it never serializes case IDs, label text, source bindings, or model
  * output. Missing or malformed custody inputs are unavailable, never a pass.
  */
-export function evaluateGeneralPrObservationsV1({ corpus, goldSeal, manifest, results }) {
-  if (!verifyGeneralPrObservationSealV1({ corpus, seal: goldSeal }) || !isManifest(manifest) || !isResults(results, corpus, goldSeal, manifest)) {
+export function evaluateGeneralPrObservationsV1({ corpus, goldSeal, manifest, results, candidateSha }) {
+  if (!verifyGeneralPrObservationSealV1({ corpus, seal: goldSeal }) || !isManifest(manifest) || !isHash(candidateSha) || !isResults(results, corpus, goldSeal, manifest)) {
     return { status: "unavailable" };
   }
   const byId = new Map(results.cases.map((item) => [item.caseId, item]));
@@ -40,6 +40,7 @@ export function evaluateGeneralPrObservationsV1({ corpus, goldSeal, manifest, re
   };
   const unsigned = {
     ...goldSeal,
+    candidateSha,
     scoredCandidateManifestHash: stableDigest(manifest),
     score: { hardGates: results.hardGates, quality }
   };
@@ -60,7 +61,8 @@ export function runGeneralPrObservationEvaluationCliV1(argv) {
       corpus: readJson(paths.corpus),
       goldSeal: readJson(paths.goldSeal),
       manifest: readJson(paths.manifest),
-      results: readJson(paths.results)
+      results: readJson(paths.results),
+      candidateSha: paths.candidateSha
     });
     if (result.status !== "scored") return 1;
     writeFileSync(paths.output, `${JSON.stringify(result.seal)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
@@ -141,8 +143,8 @@ function wilsonLower(successes, total) {
 }
 
 function parseArgs(argv) {
-  if (argv.length !== 10) return null;
-  const allowed = new Map([["--gold-corpus", "corpus"], ["--gold-seal", "goldSeal"], ["--candidate-manifest", "manifest"], ["--candidate-results", "results"], ["--output", "output"]]);
+  if (argv.length !== 12) return null;
+  const allowed = new Map([["--gold-corpus", "corpus"], ["--gold-seal", "goldSeal"], ["--candidate-manifest", "manifest"], ["--candidate-results", "results"], ["--candidate-sha", "candidateSha"], ["--output", "output"]]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const target = allowed.get(argv[index]);
@@ -160,6 +162,7 @@ function readJson(path) {
 }
 function exactKeys(value, keys) { return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function isHash(value) { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
 function stableDigest(value) { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
 function stableJson(value) { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (isRecord(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`; return JSON.stringify(value); }
 

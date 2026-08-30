@@ -10,6 +10,7 @@ const stableJson = (value) => Array.isArray(value)
     ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`
     : JSON.stringify(value);
 const manifestHash = (value) => hash(stableJson(value));
+const candidateSha = "d".repeat(40);
 
 const manifest = {
   version: 1,
@@ -60,6 +61,7 @@ function seal(cohort, caseCount, overrides = {}) {
     rubricHash: hash("rubric"),
     toolchainHash: hash("toolchain"),
     sealHash: hash(`${cohort}:seal`),
+    candidateSha,
     scoredCandidateManifestHash: manifestHash(manifest),
     score: {
       hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 0, zero_shadow_report_change: 0 },
@@ -72,7 +74,7 @@ function seal(cohort, caseCount, overrides = {}) {
 
 describe("general PR observation release evaluator", () => {
   it("fails closed when sealed independent scores are unavailable", () => {
-    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({ manifest, policy, calibrationSeal: null, holdoutSeal: null }), {
+    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({ manifest, policy, candidateSha, calibrationSeal: null, holdoutSeal: null }), {
       status: "NO_GO",
       reasons: ["independent_scored_seals_unavailable"]
     });
@@ -83,6 +85,7 @@ describe("general PR observation release evaluator", () => {
     const result = evaluateGeneralPrObservationReleaseV1({
       manifest: changedManifest,
       policy,
+      candidateSha,
       calibrationSeal: seal("calibration", 60, { scoredCandidateManifestHash: manifestHash(changedManifest), score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 1, zero_shadow_report_change: 0 }, quality } }),
       holdoutSeal: seal("holdout", 60, { scoredCandidateManifestHash: manifestHash(changedManifest), score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 1, zero_shadow_report_change: 0 }, quality } })
     });
@@ -95,6 +98,7 @@ describe("general PR observation release evaluator", () => {
     const result = evaluateGeneralPrObservationReleaseV1({
       manifest,
       policy,
+      candidateSha,
       calibrationSeal: seal("calibration", 60, { scoredCandidateManifestHash: hash("different candidate") }),
       holdoutSeal: seal("holdout", 60, { scoredCandidateManifestHash: hash("different candidate") })
     });
@@ -107,10 +111,23 @@ describe("general PR observation release evaluator", () => {
     const result = evaluateGeneralPrObservationReleaseV1({
       manifest,
       policy,
+      candidateSha,
       calibrationSeal: seal("calibration", 60, { score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 0, zero_shadow_report_change: 0 }, quality: lowQuality } }),
       holdoutSeal: seal("holdout", 60, { score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 0, zero_shadow_report_change: 0 }, quality: lowQuality } })
     });
 
     assert.deepEqual(result, { status: "NO_GO", reasons: ["insufficient_quality_evidence"] });
+  });
+
+  it("rejects scores from a different candidate commit even when the manifest matches", () => {
+    const result = evaluateGeneralPrObservationReleaseV1({
+      manifest,
+      policy,
+      candidateSha,
+      calibrationSeal: seal("calibration", 60, { candidateSha: "e".repeat(40) }),
+      holdoutSeal: seal("holdout", 60, { candidateSha: "e".repeat(40) })
+    });
+
+    assert.deepEqual(result, { status: "NO_GO", reasons: ["candidate_binding_mismatch"] });
   });
 });
