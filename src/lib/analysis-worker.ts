@@ -77,6 +77,7 @@ import {
   retrieveHybridPlannerWithOpenAI,
   retrieveMissingSemanticsWithOpenAIBackground,
   retrieveSemanticsWithOpenAIBackground,
+  submitGeneralPrSemanticObservationWithOpenAI,
   submitHybridPlannerWithOpenAI,
   submitMissingSemanticsWithOpenAIBackground,
   submitSemanticsWithOpenAIBackground
@@ -448,10 +449,17 @@ async function runPreflightedAnalysisJob(
       );
     }
 
+    const generalPrObservationMode = generalPrObservationService.resolveGeneralPrObservationModeV2(
+      env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
+    );
+    const generalPrObserverApiKey = env.OPENAI_API_KEY?.trim();
+    const generalPrObserverModel = env.OPENAI_MODEL?.trim();
+    const publicShadowObserver = generalPrObservationMode === "shadow" &&
+      input.repositoryPrivate === false &&
+      input.sourceProvenance?.origin === "github_snapshot" &&
+      Boolean(generalPrObserverApiKey && generalPrObserverModel);
     const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
-      mode: generalPrObservationService.resolveGeneralPrObservationModeV2(
-        env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
-      ),
+      mode: generalPrObservationMode,
       input,
       generateReport: generateVerificationReportV2FromInput,
       // The generated/semantic report still crosses the existing worker
@@ -463,7 +471,33 @@ async function runPreflightedAnalysisJob(
           report: candidateReport,
           requireV2: true,
           requireSourceProvenance: true
-        }).valid
+        }).valid,
+      ...(publicShadowObserver && generalPrObserverApiKey && generalPrObserverModel ? {
+        semantic: {
+          provider: {
+            observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+              apiKey: generalPrObserverApiKey
+            })
+          },
+          providerAvailable: true,
+          privateRepository: false,
+          readCurrentInput: async () => {
+            try {
+              return await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
+                expectedHeadSha: input.sourceProvenance?.headSha,
+                expectedBaseSha: input.sourceProvenance?.baseSha
+              });
+            } catch {
+              return null;
+            }
+          },
+          modelProfile: {
+            model: generalPrObserverModel,
+            promptVersion: "general-pr-observer.v2",
+            inputFieldPolicyVersion: "general-pr-observer-fields.v1"
+          }
+        }
+      } : {})
     });
     const deterministicReport = generalPrObservation.report;
     const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);

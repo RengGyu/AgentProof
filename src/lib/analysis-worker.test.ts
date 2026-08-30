@@ -1862,8 +1862,17 @@ describe("analysis worker preflight", () => {
   it("runs shadow observations without retaining them in a worker result", async () => {
     stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
     vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "shadow");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("OPENAI_MODEL", "gpt-test");
     const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
-    vi.stubGlobal("fetch", mockWorkerFetch());
+    const githubFetch = mockWorkerFetch({ repositoryPrivate: false });
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") {
+        return Promise.resolve(Response.json({ output_text: "{}" }));
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
     await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
 
     try {
@@ -1875,6 +1884,7 @@ describe("analysis worker preflight", () => {
 
       expect(result.status).toBe("completed");
       expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow" }));
+      expect(fetchMock.mock.calls.some(([url]) => String(url) === "https://api.openai.com/v1/responses")).toBe(true);
       expect(serialized).not.toContain("ledgerDigest");
       expect(serialized).not.toContain("generalPrObservation");
     } finally {
@@ -2977,7 +2987,7 @@ function exampleFromJsonSchema(schema: Record<string, unknown>, root: Record<str
   throw new Error("Test schema did not provide a deterministic example value.");
 }
 
-function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
+function mockWorkerFetch(options: { pullRequestBody?: string; repositoryPrivate?: boolean } = {}) {
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url);
     const method = init?.method ?? "GET";
@@ -2995,7 +3005,7 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
           ?? "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
         url: `https://api.github.com/repos/RengGyu/AgentProof/pulls/${pullNumber}`,
         user: { login: "agent-author" },
-        base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+        base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", repo: { private: options.repositoryPrivate } },
         head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }
