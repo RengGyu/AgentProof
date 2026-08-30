@@ -186,6 +186,11 @@ export async function runGeneralPrSemanticObserverV2(
     !options.providerRetentionApproved
   )) return finish("unavailable", null);
 
+  // Read the provider-bound source immediately before submission. The initial
+  // snapshot can become private or stale while deterministic analysis runs.
+  const beforeSubmission = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
+  if (beforeSubmission !== "current") return finish(beforeSubmission, null);
+
   let output: unknown;
   try {
     output = await withTimeout(options.provider.observe(semanticPackage), timeoutMs);
@@ -194,18 +199,28 @@ export async function runGeneralPrSemanticObserverV2(
   }
   if (serializedBytes(output) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return finish("invalid", null, output);
 
+  // Re-read after the provider response as well. This keeps the proposal
+  // bound to the same public subject that supplied the package.
+  const afterSubmission = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
+  if (afterSubmission !== "current") return finish(afterSubmission, null, output);
+  const validation = validateGeneralPrSemanticProposalV2(output, options.seed, { currentSeedHash: options.seed.seedHash });
+  if (!validation.valid) return finish("invalid", null, output);
+  return finish("valid", validation.proposal, output);
+}
+
+async function readCurrentPublicSubject(
+  readCurrentInput: () => Promise<PullRequestInput | null>,
+  expectedSeed: GeneralPrObservationSeedV2
+): Promise<"current" | "unavailable" | "stale"> {
   let currentInput: PullRequestInput | null;
   try {
-    currentInput = await options.readCurrentInput();
+    currentInput = await readCurrentInput();
   } catch {
     currentInput = null;
   }
-  if (!currentInput) return finish("stale", null, output);
-  const currentSeed = buildGeneralPrObservationSeedV2(currentInput);
-  if (currentSeed.seedHash !== options.seed.seedHash) return finish("stale", null, output);
-  const validation = validateGeneralPrSemanticProposalV2(output, currentSeed, { currentSeedHash: currentSeed.seedHash });
-  if (!validation.valid) return finish("invalid", null, output);
-  return finish("valid", validation.proposal, output);
+  if (!currentInput) return "stale";
+  if (currentInput.repositoryPrivate !== false) return "unavailable";
+  return buildGeneralPrObservationSeedV2(currentInput).seedHash === expectedSeed.seedHash ? "current" : "stale";
 }
 
 function buildRedactedSourceViews(input: PullRequestInput, seed: GeneralPrObservationSeedV2): Map<string, string> | null {

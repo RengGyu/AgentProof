@@ -22,6 +22,7 @@ function input(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
     changedFiles: [{ path: "src/private-status.ts", status: "modified", patch: "SECRET_PATCH_MUST_NOT_LEAVE_PROCESS" }],
     checks: [{ name: "CI", status: "passed", summary: "SECRET_LOG_MUST_NOT_LEAVE_PROCESS" }],
     logs: [{ source: "CI", text: "SECRET_LOG_MUST_NOT_LEAVE_PROCESS" }],
+    repositoryPrivate: false,
     ...overrides
   };
 }
@@ -86,7 +87,7 @@ describe("GeneralPrSemanticObserverV2", () => {
     await expect(runGeneralPrSemanticObserverV2({ mode: "shadow", input: request, seed, provider: { observe: async () => new Promise(() => undefined) }, providerAvailable: true, privateRepository: false, timeoutMs: 1, readCurrentInput: async () => request, modelProfile })).resolves.toMatchObject({ state: "timeout" });
     await expect(runGeneralPrSemanticObserverV2({ mode: "shadow", input: request, seed, provider: { observe: async () => ({}) }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => request, modelProfile })).resolves.toMatchObject({ state: "invalid" });
     await expect(runGeneralPrSemanticObserverV2({ mode: "shadow", input: request, seed, provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => ({ ...request, description: "The service must return Changed." }), modelProfile })).resolves.toMatchObject({ state: "stale" });
-    expect(provider.observe).toHaveBeenCalled();
+    expect(provider.observe).not.toHaveBeenCalled();
   });
 
   it("binds the final current source and subject before accepting a semantic proposal", async () => {
@@ -173,6 +174,26 @@ describe("GeneralPrSemanticObserverV2", () => {
       provider,
       providerAvailable: true,
       readCurrentInput: async () => request,
+      modelProfile
+    });
+
+    expect(result).toMatchObject({ state: "unavailable" });
+    expect(provider.observe).not.toHaveBeenCalled();
+  });
+
+  it("does not send a package when a fresh source snapshot is private", async () => {
+    const request = input({ repositoryPrivate: false });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const provider = { observe: vi.fn(async () => validProposal(seed)) };
+
+    const result = await runGeneralPrSemanticObserverV2({
+      mode: "shadow",
+      input: request,
+      seed,
+      provider,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => ({ ...request, repositoryPrivate: true }),
       modelProfile
     });
 

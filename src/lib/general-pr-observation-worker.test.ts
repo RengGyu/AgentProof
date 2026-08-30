@@ -15,7 +15,8 @@ const input: PullRequestInput = {
   taskText: "",
   changedFiles: [{ path: "docs/reset.md", status: "modified" }],
   checks: [],
-  logs: []
+  logs: [],
+  repositoryPrivate: false
 };
 
 const report = { schemaVersion: "verification-report.v2", analysisId: "worker-test" } as unknown as VerificationReport;

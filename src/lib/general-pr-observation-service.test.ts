@@ -17,6 +17,7 @@ const input: PullRequestInput = {
   changedFiles: [{ path: "src/status.ts", status: "modified" }],
   checks: [],
   logs: [],
+  repositoryPrivate: false,
   sourceProvenance: {
     version: 1,
     origin: "github_snapshot",
