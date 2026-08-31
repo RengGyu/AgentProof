@@ -6,7 +6,7 @@ import {
   neutralizeSlackMentions,
   reportToSlackPayload
 } from "./slack";
-import { generateVerificationReport, generateVerificationReportV2 } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { PullRequestInput } from "./types";
 
 describe("slack helpers", () => {
@@ -106,6 +106,27 @@ describe("slack helpers", () => {
     expect(payload).toContain("Observed evidence: Partially supported");
     expect(payload).toContain("Evidence details are omitted from this portable summary.");
     expect(payload).not.toContain("Supported against approved contract");
+  });
+
+  it("includes only the target-free ordinary-PR assessment in a Slack summary", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "mixed_evidence",
+      counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+    };
+
+    const payload = JSON.stringify(reportToSlackPayload(report));
+
+    expect(payload).toContain("Ordinary PR evidence assessment");
+    expect(payload).toContain("Evidence is partially connected");
+    expect(payload).toContain("Partial evidence: 1");
+    expect(payload).not.toContain("sourceBindingRef");
+    expect(payload).not.toContain("sourceSpanRefs");
+    expect(payload).not.toContain("targets");
   });
 
   it("escapes Slack markdown link delimiters in report URLs", () => {

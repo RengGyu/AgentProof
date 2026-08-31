@@ -646,10 +646,100 @@ export interface VerificationReport {
   authenticity?: ReportAuthenticity;
 }
 
+/**
+ * Closed, ordinary-PR evidence assessment roles. These remain separate from
+ * strict Verification Contract V2 criteria and cannot change requirement
+ * status.
+ */
+export type GeneralPrAssessmentClaimRoleV1 =
+  | "acceptance_criterion"
+  | "behavioral_objective"
+  | "implementation_claim"
+  | "test_claim"
+  | "scope_exclusion"
+  | "known_limitation"
+  | "risk_claim"
+  | "follow_up"
+  | "context";
+
+export type GeneralPrTargetConclusionV1 =
+  | "evidence_supported"
+  | "evidence_partial"
+  | "not_demonstrated"
+  | "contradicted"
+  | "blocked"
+  | "not_assessable";
+
+export type GeneralPrAssessmentReasonV1 =
+  | "implementation_evidence_observed"
+  | "test_artifact_observed"
+  | "exact_execution_passed"
+  | "exact_execution_failed"
+  | "verified_relation_missing"
+  | "execution_not_observed"
+  | "claimed_artifact_not_observed"
+  | "unsupported_claim_type"
+  | "source_missing"
+  | "source_ambiguous"
+  | "source_unavailable"
+  | "collection_incomplete"
+  | "head_mismatch"
+  | "evidence_identity_incomplete"
+  | "semantic_relation_only"
+  | "author_claim_requires_confirmation";
+
+export interface GeneralPrAssessmentCountsV1 {
+  evidence_supported: number;
+  evidence_partial: number;
+  not_demonstrated: number;
+  contradicted: number;
+  blocked: number;
+  not_assessable: number;
+}
+
+export interface GeneralPrAssessmentTargetV1 {
+  version: 1;
+  targetId: string;
+  sourceBindingRef: string;
+  sourceAuthority: "linked_issue" | "pr_author_claim";
+  sourceSpanRefs: string[];
+  requirementId?: string;
+  admissionBasis: "explicit_structure" | "semantic_span_proposal";
+  claimRole: GeneralPrAssessmentClaimRoleV1;
+  conclusion: GeneralPrTargetConclusionV1;
+  reasonCodes: GeneralPrAssessmentReasonV1[];
+  evidenceRefs: string[];
+  relationLevels: Array<"verified" | "observed" | "hypothesis" | "unresolved" | "unavailable">;
+  headBound: boolean;
+}
+
+/** Full private report companion; it is not a strict contract conclusion. */
+export interface GeneralPrAssessmentV1 {
+  version: 1;
+  mode: "ordinary_pr" | "typed_contract_companion";
+  sourceState: "linked_issue" | "pr_author_claim" | "mixed" | "missing" | "ambiguous";
+  overallConclusion:
+    | "evidence_supports_stated_change"
+    | "mixed_evidence"
+    | "attention_required"
+    | "collection_blocked"
+    | "no_assessable_claims";
+  counts: GeneralPrAssessmentCountsV1;
+  targets: GeneralPrAssessmentTargetV1[];
+  reasonCodes: GeneralPrAssessmentReasonV1[];
+}
+
+/** Explicit allowlist for share, tenant, comment, and export surfaces. */
+export type GeneralPrAssessmentSummaryV1 = Omit<GeneralPrAssessmentV1, "targets">;
+
 /** A newly generated strict-contract report. Legacy v1 reports never gain this field. */
 export interface VerificationReportV2 extends VerificationReport {
   reportSchemaVersion: "verification-report.v2";
   verificationContract: import("./verification-contract-v2").VerificationContractReportV2;
+  /** Private target records, retained only where their source bindings are authorized. */
+  generalPrAssessment?: GeneralPrAssessmentV1;
+  /** Reviewer/API-safe companion; it is intentionally target-free. */
+  generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
 }
 
 export type DecodedVerificationReport = VerificationReport | VerificationReportV2;

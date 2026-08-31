@@ -1,6 +1,7 @@
 import { redactSecrets } from "./redact";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
+import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
 
 const EXPORT_SCHEMA_VERSION = "agentproof.dashboard-report-export.v1";
@@ -28,6 +29,9 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
   });
   const locationsByEvidenceId = new Map(exported.evidence_locations.map((item) => [item.id, item.safe_location]));
   const contractGuidance = verificationContractGuidance(detail.report?.verificationContract?.state);
+  const ordinaryPrAssessment = detail.report?.generalPrAssessmentSummary
+    ? presentGeneralPrAssessmentSummary(detail.report.generalPrAssessmentSummary)
+    : undefined;
   const lines = [
     "# AgentProof evidence report",
     "",
@@ -43,6 +47,15 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     ...(exported.verification_policy ? [`**Policy:** ${exported.verification_policy}`] : []),
     ...(exported.verification_outcome_note ? [`**Outcome policy:** ${exported.verification_outcome_note}`] : []),
     ...(contractGuidance ? [`**Contract guidance:** ${contractGuidance}`] : []),
+    ...(ordinaryPrAssessment ? [
+      "",
+      "## Ordinary PR Evidence Assessment",
+      "",
+      `- Result: ${ordinaryPrAssessment.conclusionLabel}`,
+      `- Source: ${ordinaryPrAssessment.sourceLabel}`,
+      `- ${ordinaryPrAssessment.countsLabel}`,
+      ...ordinaryPrAssessment.reasonLabels.map((reason) => `- ${reason}`)
+    ] : []),
     "",
     "## Requirements",
     "",
@@ -146,6 +159,14 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
     ...(report?.verificationContract ? {
       verification_policy: "Strict verification contract",
       verification_outcome_note: verificationOutcomeNote(report.verificationContract.state)
+    } : {}),
+    ...(report?.generalPrAssessmentSummary ? {
+      ordinary_pr_assessment: {
+        conclusion: report.generalPrAssessmentSummary.overallConclusion,
+        source_state: report.generalPrAssessmentSummary.sourceState,
+        counts: { ...report.generalPrAssessmentSummary.counts },
+        reason_codes: [...report.generalPrAssessmentSummary.reasonCodes]
+      }
     } : {}),
     requirements: (report?.requirements ?? []).map((item) => {
       const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, item.requirementId) : undefined;

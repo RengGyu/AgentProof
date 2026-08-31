@@ -78,6 +78,28 @@ describe("reportToGitHubComment", () => {
     expect(output).not.toContain("Outcome was not assessed against an approved verification contract.");
   });
 
+  it("renders the target-free ordinary-PR assessment without turning it into a contract outcome", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "mixed_evidence",
+      counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+    };
+
+    const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
+
+    expect(output).toContain("Ordinary PR evidence assessment");
+    expect(output).toContain("Evidence is partially connected");
+    expect(output).toContain("PR description claim — reviewer confirmation needed");
+    expect(output).toContain("Partial evidence: 1");
+    expect(output).not.toContain("sourceBindingRef");
+    expect(output).not.toContain("sourceSpanRefs");
+    expect(output).not.toContain("targets");
+  });
+
   it("uses the strict v2 outcome rather than high observed coverage on every Markdown surface", () => {
     const contract = {
       version: 2,

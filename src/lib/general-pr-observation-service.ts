@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildObjectiveEvidenceRelationLedgerV1, type RelationVerificationLevelV1 } from "./objective-evidence-relation-ledger";
+import { deriveGeneralPrAssessmentV1, summarizeGeneralPrAssessmentV1 } from "./general-pr-assessment";
 import { buildGeneralPrObservationSeedV2, validateGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import {
   runGeneralPrSemanticObserverV2,
@@ -9,7 +10,7 @@ import {
 import type { GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { evaluateScopeMappingObservationV2 } from "./scope-mapping-observation";
 import { evaluateTestCoverageObservationV2 } from "./test-coverage-observation";
-import type { PullRequestInput, VerificationReport } from "./types";
+import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 
 export interface GeneralPrObservationBundleV2 {
   version: 2;
@@ -90,7 +91,29 @@ export async function runGeneralPrObservationNowV2(
     modelProfile: options.semantic?.modelProfile ?? UNCONFIGURED_MODEL_PROFILE
   });
   const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semantic.proposal, semantic.state);
-  return { report, bundle };
+  return {
+    report: options.mode === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
+    bundle
+  };
+}
+
+/**
+ * Shadow collection must not modify a report. Advisory collection may add the
+ * optional V2 companion but never touches strict requirement outcomes.
+ */
+function attachGeneralPrAssessmentV1(
+  report: VerificationReport,
+  seed: ReturnType<typeof buildGeneralPrObservationSeedV2>,
+  bundle: GeneralPrObservationBundleV2
+): VerificationReport {
+  if ((report as Partial<VerificationReportV2>).reportSchemaVersion !== "verification-report.v2") return report;
+  return {
+    ...report,
+    // The report/API boundary retains only reviewer-safe aggregate results.
+    // Source bindings and span IDs remain inside the transient observation
+    // bundle; neither is stored or returned here.
+    generalPrAssessmentSummary: summarizeGeneralPrAssessmentV1(deriveGeneralPrAssessmentV1({ seed, bundle, report }))
+  } as VerificationReportV2;
 }
 
 export function finalizeDeterministicGeneralPrObservationsV2(

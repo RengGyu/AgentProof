@@ -103,6 +103,53 @@ const FAILED_CHECK_ASSOCIATION_BASES = new Set([
 const EXACT_HEAD_EXPORT_KINDS = new Set(["named", "default", "commonjs"]);
 const TEST_RELATION_SUBJECT_SOURCES = new Set(["current_requirement"]);
 const TEST_RELATION_BASES = new Set(["direct_static_import"]);
+const GENERAL_PR_ASSESSMENT_MODES = new Set(["ordinary_pr", "typed_contract_companion"]);
+const GENERAL_PR_ASSESSMENT_SOURCE_STATES = new Set(["linked_issue", "pr_author_claim", "mixed", "missing", "ambiguous"]);
+const GENERAL_PR_ASSESSMENT_CONCLUSIONS = new Set([
+  "evidence_supports_stated_change",
+  "mixed_evidence",
+  "attention_required",
+  "collection_blocked",
+  "no_assessable_claims"
+]);
+const GENERAL_PR_TARGET_CONCLUSIONS = new Set([
+  "evidence_supported",
+  "evidence_partial",
+  "not_demonstrated",
+  "contradicted",
+  "blocked",
+  "not_assessable"
+]);
+const GENERAL_PR_ASSESSMENT_CLAIM_ROLES = new Set([
+  "acceptance_criterion",
+  "behavioral_objective",
+  "implementation_claim",
+  "test_claim",
+  "scope_exclusion",
+  "known_limitation",
+  "risk_claim",
+  "follow_up",
+  "context"
+]);
+const GENERAL_PR_ASSESSMENT_REASONS = new Set([
+  "implementation_evidence_observed",
+  "test_artifact_observed",
+  "exact_execution_passed",
+  "exact_execution_failed",
+  "verified_relation_missing",
+  "execution_not_observed",
+  "claimed_artifact_not_observed",
+  "unsupported_claim_type",
+  "source_missing",
+  "source_ambiguous",
+  "source_unavailable",
+  "collection_incomplete",
+  "head_mismatch",
+  "evidence_identity_incomplete",
+  "semantic_relation_only",
+  "author_claim_requires_confirmation"
+]);
+const GENERAL_PR_RELATION_LEVELS = new Set(["verified", "observed", "hypothesis", "unresolved", "unavailable"]);
 const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
 
 const LIMITS = {
@@ -426,7 +473,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "verificationContract"] : [])]
+    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "verificationContract", "generalPrAssessment", "generalPrAssessmentSummary"] : [])]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -452,6 +499,8 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   validatePlannerProvenance(report.planner, mode, report.authenticity, errors);
   validatePlanningFieldConsistency(report, errors);
+  validateGeneralPrAssessment(report.generalPrAssessment, evidenceIds, requirementIds, report.requirements, report.source, mode, "full", errors);
+  validateGeneralPrAssessment(report.generalPrAssessmentSummary, evidenceIds, requirementIds, report.requirements, report.source, mode, "summary", errors);
   validateAuthenticity(report.authenticity, errors);
   if (mode === "full" || mode === "v2_full") {
     validateFailedCheckProofIsolation(report, errors);
@@ -479,6 +528,248 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Ordinary-PR assessment is intentionally a closed companion contract. In
+ * this release it may describe partial, blocked, unavailable, or absent
+ * evidence, but it cannot promote a behavioral claim to verified support or
+ * contradiction without a separately released deterministic evaluator.
+ */
+function validateGeneralPrAssessment(
+  value: unknown,
+  evidenceIds: Set<string>,
+  requirementIds: Set<string>,
+  requirements: unknown,
+  source: unknown,
+  mode: NonNullable<ReportValidationOptions["mode"]>,
+  projection: "full" | "summary",
+  errors: string[]
+): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push("generalPrAssessment must be an object.");
+    return;
+  }
+  const summaryMode = projection === "summary";
+  if (!summaryMode && (mode === "v2_summary" || mode === "v2_tenant")) {
+    errors.push("summary and tenant reports must omit generalPrAssessment target records.");
+    return;
+  }
+  requireKeys(
+    value,
+    ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes"],
+    "generalPrAssessment",
+    errors,
+    summaryMode ? [] : ["targets"]
+  );
+  if (!summaryMode && !("targets" in value)) errors.push("generalPrAssessment.targets is required for full reports.");
+  if (value.version !== 1) errors.push("generalPrAssessment.version is invalid.");
+  validateEnum(value.mode, "generalPrAssessment.mode", GENERAL_PR_ASSESSMENT_MODES, errors);
+  validateEnum(value.sourceState, "generalPrAssessment.sourceState", GENERAL_PR_ASSESSMENT_SOURCE_STATES, errors);
+  validateEnum(value.overallConclusion, "generalPrAssessment.overallConclusion", GENERAL_PR_ASSESSMENT_CONCLUSIONS, errors);
+  const counts = validateGeneralPrAssessmentCounts(value.counts, errors);
+  const reportReasons = validateClosedReasonCodes(value.reasonCodes, "generalPrAssessment.reasonCodes", errors);
+  if (summaryMode) {
+    validateGeneralPrAssessmentSummaryCeiling(value, counts, reportReasons, errors);
+    return;
+  }
+
+  const targets = validateArray(value.targets, "generalPrAssessment.targets", LIMITS.requirementCount, errors);
+  if (!targets || !counts) return;
+  const requirementEvidenceRefs = new Map(
+    (Array.isArray(requirements) ? requirements : [])
+      .filter(isRecord)
+      .map((requirement) => [requirement.requirementId, new Set(getStringArray(requirement.evidenceRefs))])
+  );
+  const targetConclusions: string[] = [];
+  const targetAuthorities: string[] = [];
+  const targetReasons: string[] = [];
+  targets.forEach((target, index) => {
+    if (!isRecord(target)) {
+      errors.push(`generalPrAssessment.targets[${index}] must be an object.`);
+      return;
+    }
+    const path = `generalPrAssessment.targets[${index}]`;
+    requireKeys(target, [
+      "version",
+      "targetId",
+      "sourceBindingRef",
+      "sourceAuthority",
+      "sourceSpanRefs",
+      "admissionBasis",
+      "claimRole",
+      "conclusion",
+      "reasonCodes",
+      "evidenceRefs",
+      "relationLevels",
+      "headBound"
+    ], path, errors, ["requirementId"]);
+    if (target.version !== 1) errors.push(`${path}.version is invalid.`);
+    if (typeof target.targetId !== "string" || !/^gpa_[a-f0-9]{24}$/.test(target.targetId)) errors.push(`${path}.targetId is invalid.`);
+    if (typeof target.sourceBindingRef !== "string" || !/^gpsrc_[a-f0-9]{24}$/.test(target.sourceBindingRef)) errors.push(`${path}.sourceBindingRef is invalid.`);
+    if (target.sourceAuthority !== "linked_issue" && target.sourceAuthority !== "pr_author_claim") errors.push(`${path}.sourceAuthority is invalid.`);
+    const sourceSpanRefs = validateStringArray(target.sourceSpanRefs, `${path}.sourceSpanRefs`, 12, 80, errors);
+    if (!sourceSpanRefs || sourceSpanRefs.length === 0 || sourceSpanRefs.some((ref) => !/^gpsp_[1-9]\d*_[1-9]\d*$/.test(ref)) || new Set(sourceSpanRefs).size !== sourceSpanRefs.length) {
+      errors.push(`${path}.sourceSpanRefs must contain unique bounded source spans.`);
+    }
+    if (target.requirementId !== undefined && (typeof target.requirementId !== "string" || !requirementIds.has(target.requirementId))) {
+      errors.push(`${path}.requirementId must reference a report requirement.`);
+    }
+    if (target.admissionBasis !== "explicit_structure" && target.admissionBasis !== "semantic_span_proposal") errors.push(`${path}.admissionBasis is invalid.`);
+    validateEnum(target.claimRole, `${path}.claimRole`, GENERAL_PR_ASSESSMENT_CLAIM_ROLES, errors);
+    validateEnum(target.conclusion, `${path}.conclusion`, GENERAL_PR_TARGET_CONCLUSIONS, errors);
+    const reasons = validateClosedReasonCodes(target.reasonCodes, `${path}.reasonCodes`, errors);
+    const evidenceRefs = getStringArray(target.evidenceRefs);
+    validateEvidenceRefs(target.evidenceRefs, `${path}.evidenceRefs`, evidenceIds, errors);
+    const relationLevels = validateStringEnumArray(target.relationLevels, `${path}.relationLevels`, 5, GENERAL_PR_RELATION_LEVELS, errors);
+    if (!relationLevels || relationLevels.length === 0 || new Set(relationLevels).size !== relationLevels.length) errors.push(`${path}.relationLevels must be nonempty and unique.`);
+    validateBoolean(target.headBound, `${path}.headBound`, errors);
+    if (target.headBound === true && !hasCompleteExactHeadProvenance(source)) {
+      errors.push(`${path}.headBound requires complete exact-head GitHub provenance.`);
+    }
+    if (target.requirementId !== undefined && typeof target.requirementId === "string") {
+      const allowed = requirementEvidenceRefs.get(target.requirementId);
+      if (allowed && evidenceRefs.some((ref) => !allowed.has(ref))) errors.push(`${path}.evidenceRefs must belong to its report requirement.`);
+    }
+    validateGeneralPrTargetCeiling(target, path, reasons, evidenceRefs, relationLevels ?? [], errors);
+    if (typeof target.conclusion === "string") targetConclusions.push(target.conclusion);
+    if (typeof target.sourceAuthority === "string") targetAuthorities.push(target.sourceAuthority);
+    targetReasons.push(...reasons);
+  });
+  const actualCounts = countGeneralPrTargetConclusions(targetConclusions);
+  for (const [key, count] of Object.entries(actualCounts)) {
+    if (counts[key as keyof typeof counts] !== count) errors.push(`generalPrAssessment.counts.${key} does not match targets.`);
+  }
+  const expectedConclusion = aggregateGeneralPrConclusion(targetConclusions);
+  if (value.overallConclusion !== expectedConclusion) errors.push("generalPrAssessment.overallConclusion does not match targets.");
+  validateGeneralPrSourceState(value.sourceState, targetAuthorities, errors);
+  if (reportReasons && reportReasons.some((reason) => !targetReasons.includes(reason) && reason !== "source_missing" && reason !== "source_ambiguous" && reason !== "unsupported_claim_type")) {
+    errors.push("generalPrAssessment.reasonCodes must be derived from targets or an empty-target source state.");
+  }
+}
+
+function validateGeneralPrAssessmentCounts(value: unknown, errors: string[]): Record<string, number> | null {
+  if (!isRecord(value)) {
+    errors.push("generalPrAssessment.counts must be an object.");
+    return null;
+  }
+  const keys = ["evidence_supported", "evidence_partial", "not_demonstrated", "contradicted", "blocked", "not_assessable"];
+  requireKeys(value, keys, "generalPrAssessment.counts", errors);
+  for (const key of keys) {
+    if (!Number.isSafeInteger(value[key]) || (value[key] as number) < 0 || (value[key] as number) > LIMITS.requirementCount) {
+      errors.push(`generalPrAssessment.counts.${key} must be a non-negative bounded integer.`);
+    }
+  }
+  return value as Record<string, number>;
+}
+
+/** A target-free summary cannot establish a new positive or negative proof. */
+function validateGeneralPrAssessmentSummaryCeiling(
+  value: RecordValue,
+  counts: Record<string, number> | null,
+  reasons: string[],
+  errors: string[]
+): void {
+  if (!counts) return;
+  if (counts.evidence_supported > 0 || counts.contradicted > 0 ||
+    value.overallConclusion === "evidence_supports_stated_change" ||
+    value.overallConclusion === "attention_required") {
+    errors.push("generalPrAssessmentSummary cannot claim support or contradiction without a private target-local receipt.");
+  }
+  if (value.sourceState === "pr_author_claim" && !reasons.includes("author_claim_requires_confirmation")) {
+    errors.push("generalPrAssessmentSummary PR-author claims require reviewer confirmation.");
+  }
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  if (value.overallConclusion === "collection_blocked" && (counts.blocked === 0 || total !== counts.blocked)) {
+    errors.push("generalPrAssessmentSummary collection_blocked must contain only blocked targets.");
+  }
+  if (value.overallConclusion === "no_assessable_claims" && total !== 0) {
+    errors.push("generalPrAssessmentSummary no_assessable_claims must not contain targets.");
+  }
+}
+
+function validateClosedReasonCodes(value: unknown, path: string, errors: string[]): string[] {
+  const reasons = validateStringEnumArray(value, path, 16, GENERAL_PR_ASSESSMENT_REASONS, errors) ?? [];
+  if (new Set(reasons).size !== reasons.length) errors.push(`${path} must not contain duplicates.`);
+  return reasons;
+}
+
+function validateGeneralPrTargetCeiling(
+  target: RecordValue,
+  path: string,
+  reasons: string[],
+  evidenceRefs: string[],
+  relationLevels: string[],
+  errors: string[]
+): void {
+  const conclusion = target.conclusion;
+  if (conclusion === "evidence_supported" || conclusion === "contradicted") {
+    errors.push(`${path}.${conclusion} is unavailable until a released deterministic evaluator supplies a target-local receipt.`);
+  }
+  if (conclusion === "evidence_partial") {
+    if (target.headBound !== true) errors.push(`${path}.evidence_partial requires exact-head binding.`);
+    if (!reasons.includes("verified_relation_missing") && !reasons.includes("semantic_relation_only") && !reasons.includes("execution_not_observed")) {
+      errors.push(`${path}.evidence_partial requires an unresolved-relation or execution reason.`);
+    }
+    if (!relationLevels.some((level) => level === "observed" || level === "hypothesis" || level === "unresolved")) {
+      errors.push(`${path}.evidence_partial requires a non-verified relation level.`);
+    }
+  }
+  if (conclusion === "blocked" && (target.headBound !== false || !reasons.some((reason) => ["collection_incomplete", "head_mismatch", "evidence_identity_incomplete", "source_unavailable"].includes(reason)))) {
+    errors.push(`${path}.blocked requires an incomplete-collection reason and no exact-head binding.`);
+  }
+  if (conclusion === "not_demonstrated" && (target.headBound !== true || !reasons.includes("claimed_artifact_not_observed"))) {
+    errors.push(`${path}.not_demonstrated requires complete exact-head absence evidence.`);
+  }
+  if (conclusion === "not_assessable" && !reasons.includes("unsupported_claim_type")) {
+    errors.push(`${path}.not_assessable requires unsupported_claim_type.`);
+  }
+  if (target.sourceAuthority === "pr_author_claim" && !reasons.includes("author_claim_requires_confirmation")) {
+    errors.push(`${path}.pr_author_claim requires author confirmation.`);
+  }
+  if (conclusion !== "evidence_supported" && evidenceRefs.length > 0 && relationLevels.every((level) => level === "unavailable")) {
+    errors.push(`${path} cannot cite evidence while every relation is unavailable.`);
+  }
+}
+
+function hasCompleteExactHeadProvenance(source: unknown): boolean {
+  if (!isRecord(source) || !isRecord(source.provenance)) return false;
+  const provenance = source.provenance;
+  return provenance.origin === "github_snapshot" && typeof provenance.headSha === "string" &&
+    isRecord(provenance.changedFileInventory) && provenance.changedFileInventory.completeness === "complete" &&
+    provenance.changedFileInventory.headSha === provenance.headSha;
+}
+
+function countGeneralPrTargetConclusions(conclusions: string[]): Record<string, number> {
+  return conclusions.reduce<Record<string, number>>((counts, conclusion) => {
+    if (GENERAL_PR_TARGET_CONCLUSIONS.has(conclusion)) counts[conclusion] += 1;
+    return counts;
+  }, {
+    evidence_supported: 0,
+    evidence_partial: 0,
+    not_demonstrated: 0,
+    contradicted: 0,
+    blocked: 0,
+    not_assessable: 0
+  });
+}
+
+function aggregateGeneralPrConclusion(conclusions: string[]): string {
+  if (conclusions.includes("contradicted")) return "attention_required";
+  if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "blocked")) return "collection_blocked";
+  if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "evidence_supported")) return "evidence_supports_stated_change";
+  return conclusions.length > 0 ? "mixed_evidence" : "no_assessable_claims";
+}
+
+function validateGeneralPrSourceState(value: unknown, authorities: string[], errors: string[]): void {
+  const uniqueAuthorities = new Set(authorities);
+  if (authorities.length === 0) {
+    if (value !== "missing" && value !== "ambiguous") errors.push("generalPrAssessment.sourceState without targets must be missing or ambiguous.");
+    return;
+  }
+  const expected = uniqueAuthorities.size > 1 ? "mixed" : uniqueAuthorities.has("linked_issue") ? "linked_issue" : "pr_author_claim";
+  if (value !== expected) errors.push("generalPrAssessment.sourceState does not match target authority.");
 }
 
 /** Recomputes the active typed plan from transient input without using verifier output. */

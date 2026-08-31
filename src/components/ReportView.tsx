@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { getExecutionEvidenceItems } from "@/lib/execution-evidence";
+import { presentGeneralPrAssessmentSummary } from "@/lib/general-pr-assessment-presentation";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
 import { buildShareUrl } from "@/lib/report-share";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
@@ -52,6 +53,12 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
       deriveRequirementPresentationV2(report, requirement.requirementId)
     ]));
   }, [report]);
+  const ordinaryPrAssessment = useMemo(
+    () => isVerificationReportV2(report) && report.generalPrAssessmentSummary
+      ? presentGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
+      : undefined,
+    [report]
+  );
   const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | "share" | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [commentToken, setCommentToken] = useState("");
@@ -224,6 +231,15 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             </ul>
           </div>
         </div>
+
+        {ordinaryPrAssessment ? (
+          <div className="notice" aria-label="Ordinary PR evidence assessment">
+            <ShieldAlert size={15} />
+            <span>
+              <strong>{ordinaryPrAssessment.heading}:</strong> {ordinaryPrAssessment.conclusionLabel}. {ordinaryPrAssessment.sourceLabel}. {ordinaryPrAssessment.countsLabel}
+            </span>
+          </div>
+        ) : null}
 
         <div className="reviewer-brief" aria-label="30-second reviewer card">
           <div className="reviewer-brief-item">

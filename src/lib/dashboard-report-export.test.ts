@@ -113,6 +113,35 @@ describe("dashboard report export", () => {
     expect(json.requirements[0]).toMatchObject({ evidence_visibility: "omitted_for_summary" });
   });
 
+  it("exports the bounded ordinary-PR assessment without private target records", () => {
+    const assessmentDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    const report = generatedSearchEmptyStateReport();
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "mixed_evidence",
+      counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+    };
+    assessmentDetail.report = report;
+
+    const markdown = dashboardReportToMarkdown(assessmentDetail);
+    const json = JSON.parse(dashboardReportToJson(assessmentDetail));
+    const output = `${markdown}\n${JSON.stringify(json)}`;
+
+    expect(markdown).toContain("## Ordinary PR Evidence Assessment");
+    expect(markdown).toContain("Evidence is partially connected");
+    expect(json.ordinary_pr_assessment).toMatchObject({
+      conclusion: "mixed_evidence",
+      counts: { evidence_partial: 1 },
+      reason_codes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+    });
+    expect(output).not.toContain("sourceBindingRef");
+    expect(output).not.toContain("sourceSpanRefs");
+    expect(output).not.toContain("targets");
+  });
+
   it("renders a verified authoritative outcome as contract-supported", () => {
     const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
     strictDetail.report = {

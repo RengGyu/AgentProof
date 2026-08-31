@@ -18,7 +18,7 @@ import {
   validateTenantStoredReport
 } from "./tenant-report-validation";
 import { tenantGapText, tenantRemediationText, tenantReportAnalysisContext } from "./tenant-report-language";
-import type { PullRequestInput, RequirementProofAxis, VerificationReport } from "./types";
+import type { GeneralPrAssessmentSummaryV1, PullRequestInput, RequirementProofAxis, VerificationReport, VerificationReportV2 } from "./types";
 
 export const SERVER_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_SERVER_REPORTS = 100;
@@ -928,7 +928,10 @@ export function prepareTenantDetailReportForStorage(
   if (isVerificationReportV2(report)) {
     Object.assign(safe, {
       reportSchemaVersion: "verification-report.v2",
-      verificationContract: structuredClone(report.verificationContract)
+      verificationContract: structuredClone(report.verificationContract),
+      ...(report.generalPrAssessmentSummary ? {
+        generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
+      } : {})
     });
   }
   safe.authenticity = trust === "verified_agentproof"
@@ -941,10 +944,7 @@ export function prepareTenantDetailReportForStorage(
   return safe;
 }
 
-function isVerificationReportV2(report: VerificationReport): report is VerificationReport & {
-  reportSchemaVersion: "verification-report.v2";
-  verificationContract: unknown;
-} {
+function isVerificationReportV2(report: VerificationReport): report is VerificationReportV2 {
   return (report as { reportSchemaVersion?: unknown }).reportSchemaVersion === "verification-report.v2";
 }
 
@@ -966,6 +966,19 @@ function copyPlannerProvenance(planner: NonNullable<VerificationReport["planner"
     promptVersion: planner.promptVersion,
     model: planner.model,
     inputHash: planner.inputHash
+  };
+}
+
+function copyGeneralPrAssessmentSummary(
+  assessment: GeneralPrAssessmentSummaryV1
+): GeneralPrAssessmentSummaryV1 {
+  return {
+    version: assessment.version,
+    mode: assessment.mode,
+    sourceState: assessment.sourceState,
+    overallConclusion: assessment.overallConclusion,
+    counts: { ...assessment.counts },
+    reasonCodes: [...assessment.reasonCodes]
   };
 }
 

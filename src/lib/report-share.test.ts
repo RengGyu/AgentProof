@@ -4,11 +4,45 @@ import { buildShareUrl, decodeSharedReport, encodeReportForShare, sanitizeReport
 import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
-import type { ProofGraph, PublicProofGraph } from "./types";
+import type { ProofGraph, PublicProofGraph, VerificationReportV2 } from "./types";
 
 const PLANNER_INPUT_HASH = "0123456789abcdef".repeat(4);
 
 describe("report share", () => {
+  it("round-trips only the bounded ordinary-PR assessment summary", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean) as VerificationReportV2;
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "mixed_evidence",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 1,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+    };
+
+    const payload = encodeReportForShare(report);
+    const envelope = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+    const decoded = decodeSharedReport(payload) as VerificationReportV2;
+    const serialized = JSON.stringify({ envelope, decoded });
+
+    expect(envelope.generalPrAssessmentSummary).toMatchObject({ overallConclusion: "mixed_evidence" });
+    expect(decoded.generalPrAssessmentSummary).toEqual(report.generalPrAssessmentSummary);
+    expect(serialized).not.toContain("sourceBindingRef");
+    expect(serialized).not.toContain("sourceSpanRefs");
+    expect(serialized).not.toContain("targets");
+
+    (envelope.generalPrAssessmentSummary as Record<string, unknown>).targets = [];
+    const injected = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+    expect(() => decodeSharedReport(injected)).toThrow("Shared report assessment has unknown fields");
+  });
+
   it("makes a full proof graph structurally incompatible with the public proof graph", () => {
     expectTypeOf<ProofGraph>().not.toExtend<PublicProofGraph>();
   });

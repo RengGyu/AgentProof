@@ -20,7 +20,7 @@ import {
 } from "./server-report-store";
 import { createVerifiedAuthenticity } from "./report-authenticity";
 import { decodeTenantPersistedReport, projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
-import type { PullRequestInput, VerificationReport } from "./types";
+import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
@@ -65,6 +65,49 @@ describe("server report store", () => {
       evidenceIndex: []
     });
     expect(saved.report.authenticity?.trust).toBe("imported_unverified");
+  });
+
+  it("persists and hydrates only the bounded ordinary-PR assessment summary", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const inputReport = generateVerificationReportV2FromInput(demoScenarios.clean);
+    inputReport.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "mixed_evidence",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 1,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+    };
+    const saved = await createVerifiedSavedReport(inputReport, {
+      tenantId: "tenant_summary",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 42,
+      headSha: "a".repeat(40)
+    });
+    const report = saved.report as VerificationReportV2;
+    const persisted = projectTenantPersistedReport(report, signingSecret);
+    const decoded = decodeTenantPersistedReport(persisted, {
+      signingSecret,
+      createdAt: "2026-08-31T00:00:00.000Z"
+    });
+    const serialized = JSON.stringify({ persisted, decoded });
+
+    expect(report.generalPrAssessmentSummary).toEqual(inputReport.generalPrAssessmentSummary);
+    expect(persisted.generalPrAssessmentSummary).toEqual(inputReport.generalPrAssessmentSummary);
+    expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(decoded).toMatchObject({ status: "valid", report: { generalPrAssessmentSummary: inputReport.generalPrAssessmentSummary } });
+    expect(serialized).not.toContain("sourceBindingRef");
+    expect(serialized).not.toContain("sourceSpanRefs");
+    expect(serialized).not.toContain("targets");
   });
 
   it("preserves a v2 no-contract discriminator through the private tenant storage boundary", async () => {

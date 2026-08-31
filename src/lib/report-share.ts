@@ -1,6 +1,6 @@
 import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
-import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, PublicProofGraph, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
+import type { GeneralPrAssessmentSummaryV1, HybridPlannerProvenance, PortableHybridPlannerProvenance, PublicProofGraph, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
 import type { VerificationContractReportV2 } from "./verification-contract-v2";
 import { redactSecrets } from "./redact";
 
@@ -44,6 +44,7 @@ interface ShareableReportV4 extends Omit<ShareableReportV3, "version"> {
   version: 4;
   reportSchemaVersion: "verification-report.v2";
   verificationContract: Omit<VerificationContractReportV2, "integrity" | "gaps">;
+  generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
 }
 
 type ShareableReport = ShareableReportV1 | ShareableReportV2 | ShareableReportV3 | ShareableReportV4;
@@ -146,7 +147,10 @@ function toShareableReport(report: VerificationReport): ShareableReportV3 | Shar
     ...base,
     version: 4,
     reportSchemaVersion: "verification-report.v2",
-    verificationContract: portableVerificationContract(report.verificationContract)
+    verificationContract: portableVerificationContract(report.verificationContract),
+    ...(report.generalPrAssessmentSummary ? {
+      generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
+    } : {})
   };
 }
 
@@ -204,7 +208,10 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
     verificationContract: {
       ...shared.verificationContract,
       gaps: portableVerificationContractGaps(shared.verificationContract.state)
-    }
+    },
+    ...(shared.generalPrAssessmentSummary ? {
+      generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(shared.generalPrAssessmentSummary)
+    } : {})
   } as VerificationReportV2;
 }
 
@@ -213,7 +220,7 @@ function parseShareableReport(value: unknown): ShareableReport {
   const version = value.version;
   if (version !== 1 && version !== 2 && version !== 3 && version !== 4) throw new Error("Shared report version is not supported.");
   assertOnlyShareableKeys(value, version === 4
-    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations", "reportSchemaVersion", "verificationContract"]
+    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary"]
     : version === 2 || version === 3
     ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations"]
     : ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "limitations"], "report");
@@ -227,6 +234,7 @@ function parseShareableReport(value: unknown): ShareableReport {
   validateShareableProofGraph(value.proofGraph);
   if (value.planner !== undefined) validateShareablePlanner(value.planner, version === 4 ? 3 : version);
   if (version === 4) validateShareableVerificationContract(value);
+  if (version === 4 && value.generalPrAssessmentSummary !== undefined) validateShareableGeneralPrAssessmentSummary(value.generalPrAssessmentSummary);
   return value as unknown as ShareableReport;
 }
 
@@ -269,6 +277,25 @@ function validateShareableVerificationContract(value: Record<string, unknown>): 
     !Array.isArray(value.verificationContract.objectives)) {
     throw new Error("Shared v2 report contract is invalid.");
   }
+}
+
+function validateShareableGeneralPrAssessmentSummary(value: unknown): void {
+  if (!isPlainRecord(value)) throw new Error("Shared report assessment is invalid.");
+  assertOnlyShareableKeys(value, ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes"], "assessment");
+  if (!isPlainRecord(value.counts) || !Array.isArray(value.reasonCodes)) {
+    throw new Error("Shared report assessment is invalid.");
+  }
+}
+
+function copyGeneralPrAssessmentSummary(assessment: GeneralPrAssessmentSummaryV1): GeneralPrAssessmentSummaryV1 {
+  return {
+    version: assessment.version,
+    mode: assessment.mode,
+    sourceState: assessment.sourceState,
+    overallConclusion: assessment.overallConclusion,
+    counts: { ...assessment.counts },
+    reasonCodes: [...assessment.reasonCodes]
+  };
 }
 
 function validateShareableRequirement(value: unknown) {

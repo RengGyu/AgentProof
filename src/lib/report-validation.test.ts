@@ -8,7 +8,10 @@ import { demoScenarios } from "./sample-data";
 import { projectTenantPersistedReport } from "./tenant-report-validation";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 import { generateVerificationReportV2 } from "./verifier";
-import type { PullRequestInput, TestRelationReceiptV2 } from "./types";
+import { deriveGeneralPrAssessmentV1 } from "./general-pr-assessment";
+import { finalizeDeterministicGeneralPrObservationsV2 } from "./general-pr-observation-service";
+import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import type { PullRequestInput, TestRelationReceiptV2, VerificationReportV2 } from "./types";
 
 const HYBRID_PLANNER_PROVENANCE = {
   version: 1,
@@ -20,6 +23,61 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("accepts a closed ordinary-PR assessment while rejecting injected private target fields", () => {
+    const input: PullRequestInput = {
+      title: "Return the repository label",
+      description: "",
+      taskText: "",
+      changedFiles: [{ path: "src/repository-label.ts", status: "modified" }],
+      checks: [],
+      logs: [],
+      sourceProvenance: {
+        version: 1,
+        origin: "github_snapshot",
+        baseSha: "a".repeat(40),
+        headSha: "b".repeat(40),
+        changedFileInventory: { version: 1, completeness: "complete", headSha: "b".repeat(40) },
+        evidenceCapturedAt: "2026-08-31T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+      }
+    };
+    const report = generateVerificationReportV2FromInput(input);
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+    report.generalPrAssessment = assessment;
+
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    const injected = structuredClone(report) as unknown as {
+      generalPrAssessment: { targets: Array<Record<string, unknown>> };
+    };
+    injected.generalPrAssessment.targets = [
+      { ...assessment.targets[0], rawSource: "must not enter a report" }
+    ];
+    expect(validateVerificationReport(injected, { mode: "v2_full" }).valid).toBe(false);
+  });
+
+  it("rejects a target-free summary that attempts an unsupported positive promotion", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean) as VerificationReportV2;
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "linked_issue",
+      overallConclusion: "evidence_supports_stated_change",
+      counts: {
+        evidence_supported: 1,
+        evidence_partial: 0,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      reasonCodes: ["implementation_evidence_observed"]
+    };
+
+    expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
+  });
   it("admits a structurally valid private v2 receipt bundle only for a full report", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     const requirementId = report.requirements[0]!.requirementId;

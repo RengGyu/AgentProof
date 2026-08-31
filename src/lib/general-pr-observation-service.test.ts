@@ -7,7 +7,7 @@ import {
 import { deriveGeneralPrObjectiveGroupIdV2 } from "./general-pr-semantic-proposal";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import type { GeneralPrSemanticObserverModelProfileV2 } from "./general-pr-semantic-observer";
-import type { PullRequestInput, VerificationReport } from "./types";
+import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 
 const report = { schemaVersion: "verification-report.v2", analysisId: "test" } as unknown as VerificationReport;
 const input: PullRequestInput = {
@@ -86,6 +86,29 @@ describe("runGeneralPrObservationNowV2", () => {
     expect(result.report).toBe(report);
     expect(result.bundle).toMatchObject({ version: 2, semanticState: "unavailable" });
     expect(JSON.stringify(result.bundle)).not.toContain("Return Ready when checks pass");
+  });
+
+  it("adds only a bounded companion assessment in advisory mode without changing strict requirement status", async () => {
+    const v2Report = {
+      ...report,
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent" },
+      requirements: [{ requirementId: "req_1", status: "unclear" }]
+    } as unknown as VerificationReportV2;
+    const result = await runGeneralPrObservationNowV2({
+      mode: "advisory",
+      input,
+      generateReport: () => v2Report,
+      validateDeterministicReport: () => true
+    });
+
+    expect(result.report).not.toBe(v2Report);
+    expect(result.report.requirements.map((requirement) => requirement.status)).toEqual(["unclear"]);
+    expect((result.report as VerificationReportV2).generalPrAssessmentSummary).toMatchObject({
+      overallConclusion: "mixed_evidence",
+      counts: expect.objectContaining({ evidence_supported: 0, evidence_partial: 2 })
+    });
+    expect(JSON.stringify(result.report)).not.toContain("ledgerDigest");
   });
 
   it("returns the deterministic report when runtime validation or collection fails", async () => {

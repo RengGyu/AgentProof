@@ -88,7 +88,7 @@ describe("POST /api/analyze", () => {
       }));
       const json = await response.json() as { report: VerificationReport; observation?: unknown };
 
-      expect(response.status).toBe(200);
+      expect(response.status, JSON.stringify(json)).toBe(200);
       expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(true);
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
@@ -128,6 +128,40 @@ describe("POST /api/analyze", () => {
       } else {
         process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = previousMode;
       }
+    }
+  });
+
+  it("returns a validator-approved advisory assessment without returning the private observation bundle", async () => {
+    const previousMode = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prDescription: "The service must return the repository label.",
+          changedFiles: "src/repository-label.ts\ntest/repository-label.test.ts",
+          checks: "CI: passed"
+        })
+      }));
+      const json = await response.json() as { report: VerificationReport; observation?: unknown };
+
+      expect(response.status, JSON.stringify(json)).toBe(200);
+      expect(json.observation).toBeUndefined();
+      expect(json.report).toMatchObject({
+        generalPrAssessmentSummary: {
+          sourceState: "pr_author_claim",
+          overallConclusion: "collection_blocked",
+          counts: expect.objectContaining({ evidence_supported: 0, blocked: 1 })
+        }
+      });
+      expect(JSON.stringify(json)).not.toContain("sourceSpanRefs");
+      expect(JSON.stringify(json)).not.toContain("sourceBindingRef");
+      expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    } finally {
+      if (previousMode === undefined) delete process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+      else process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = previousMode;
     }
   });
 
