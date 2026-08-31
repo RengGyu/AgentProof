@@ -15,6 +15,7 @@ import {
 describe("smoke-analyze-pr-url", () => {
   it("verifies analyze metadata and summary-only saved report privacy", async () => {
     const fullReport = reportFixture();
+    fullReport.generalPrAssessmentSummary = assessmentSummary();
     const savedReport = summaryOnlyReportFixture(fullReport);
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ report: fullReport }))
@@ -41,6 +42,7 @@ describe("smoke-analyze-pr-url", () => {
       prUrl: "https://github.com/org/repo/pull/1",
       taskText: "Acceptance criteria: add invoice export and tests.",
       githubToken: "github_pat_secret_should_not_leak_123",
+      requireGeneralPrAssessmentSummary: true,
       fetchImpl: fetchMock
     });
 
@@ -56,7 +58,8 @@ describe("smoke-analyze-pr-url", () => {
       savedEvidenceRefsCleared: true,
       savedReportDeleted: true,
       requirementStatusCounts: { partial: 1 },
-      requirementEvidenceStatusCounts: { partial: 1 }
+      requirementEvidenceStatusCounts: { partial: 1 },
+      generalPrAssessmentSummary: assessmentSummary()
     }));
     expect(result.analyzeTiming).toEqual({
       input: 3,
@@ -76,6 +79,18 @@ describe("smoke-analyze-pr-url", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, "https://agentproof.example/api/reports", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "https://agentproof.example/api/reports/saved_123");
     expect(fetchMock).toHaveBeenNthCalledWith(4, "https://agentproof.example/api/reports/saved_123", { method: "DELETE" });
+  });
+
+  it("rejects a live external PR result when advisory assessment is absent", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report: reportFixture() }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      requireGeneralPrAssessmentSummary: true,
+      fetchImpl: fetchMock
+    })).rejects.toThrow("General PR assessment summary was unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("accepts durable Supabase saved-report metadata while keeping summary-only checks", async () => {
@@ -630,6 +645,24 @@ function reportFixture() {
       }
     ],
     limitations: ["No CI or test logs were available."]
+  };
+}
+
+function assessmentSummary() {
+  return {
+    version: 1,
+    mode: "ordinary_pr",
+    sourceState: "pr_author_claim",
+    overallConclusion: "mixed_evidence",
+    counts: {
+      evidence_supported: 0,
+      evidence_partial: 1,
+      not_demonstrated: 0,
+      contradicted: 0,
+      blocked: 0,
+      not_assessable: 0
+    },
+    reasonCodes: ["verified_relation_missing", "author_claim_requires_confirmation"]
   };
 }
 

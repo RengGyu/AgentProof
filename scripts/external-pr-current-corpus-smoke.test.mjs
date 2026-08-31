@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { runCurrentExternalPrCorpusSmoke } from "./external-pr-current-corpus-smoke.mjs";
 
 describe("external-pr-current-corpus-smoke", () => {
@@ -13,6 +14,7 @@ describe("external-pr-current-corpus-smoke", () => {
       limitationCount: 2,
       requirementStatusCounts: { unclear: 1 },
       requirementEvidenceStatusCounts: { partial: 1 },
+      generalPrAssessmentSummary: assessmentSummary(),
       qualityGate: { ok: true, checks: [] },
       savedReportPrivacy: "summary-only",
       savedReportDeleted: true
@@ -33,12 +35,18 @@ describe("external-pr-current-corpus-smoke", () => {
       completedCount: 25,
       incompleteCount: 0,
       requirementStatusSummary: { unclear: 25 },
-      requirementEvidenceStatusSummary: { partial: 25 }
+      requirementEvidenceStatusSummary: { partial: 25 },
+      generalPrAssessmentSummary: {
+        presentCount: 25,
+        overallConclusionCounts: { mixed_evidence: 25 },
+        sourceStateCounts: { pr_author_claim: 25 }
+      }
     }));
     expect(runAnalyze).toHaveBeenCalledTimes(25);
     expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({
       prUrl: "https://github.com/public/repo/pull/1",
       requireRequirementFindings: false,
+      requireGeneralPrAssessmentSummary: true,
       expectedSourceAnchor: {
         headSha: "a".repeat(40),
         baseSha: "b".repeat(40)
@@ -46,6 +54,12 @@ describe("external-pr-current-corpus-smoke", () => {
     }));
     expect(JSON.stringify(runAnalyze.mock.calls)).not.toContain("taskText");
     expect(JSON.stringify(result)).not.toMatch(/title|body|path|log|token|manual/i);
+  });
+
+  it("enables the bounded general PR assessment in Vercel deployments", () => {
+    const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+
+    expect(config.env?.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE).toBe("advisory");
   });
 
   it("refuses a stale or incomplete source snapshot before analyzing any PR", async () => {
@@ -68,6 +82,24 @@ describe("external-pr-current-corpus-smoke", () => {
   });
 
 });
+
+function assessmentSummary() {
+  return {
+    version: 1,
+    mode: "ordinary_pr",
+    sourceState: "pr_author_claim",
+    overallConclusion: "mixed_evidence",
+    counts: {
+      evidence_supported: 0,
+      evidence_partial: 1,
+      not_demonstrated: 0,
+      contradicted: 0,
+      blocked: 0,
+      not_assessable: 0
+    },
+    reasonCodes: ["verified_relation_missing", "author_claim_requires_confirmation"]
+  };
+}
 
 function readySnapshot({ observedAt = "2026-08-31T00:00:00.000Z" } = {}) {
   return {

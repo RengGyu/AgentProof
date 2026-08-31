@@ -1,4 +1,7 @@
 {
+  "env": {
+    "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE": "advisory"
+  },
   "crons": [
     {
       "path": "/api/cron/analysis-jobs/run",

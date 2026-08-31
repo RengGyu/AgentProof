@@ -31,6 +31,7 @@ export async function runCurrentExternalPrCorpusSmoke({
         baseUrl,
         prUrl: testCase.prUrl,
         requireRequirementFindings: false,
+        requireGeneralPrAssessmentSummary: true,
         expectedSourceAnchor: testCase.anchor
       });
       results.push(completedResult(testCase, result));
@@ -52,6 +53,7 @@ export async function runCurrentExternalPrCorpusSmoke({
     incompleteCount,
     requirementStatusSummary: summarizeRequirementStatusCounts(results, "requirementStatusCounts"),
     requirementEvidenceStatusSummary: summarizeRequirementStatusCounts(results, "requirementEvidenceStatusCounts"),
+    generalPrAssessmentSummary: summarizeGeneralPrAssessments(results),
     qualityGateSummary: summarizeQualityGates(results.filter((item) => item.analysisStatus === "completed")),
     timingSummary: summarizeAnalyzeTimings(results.filter((item) => item.analysisStatus === "completed")),
     githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings(results.filter((item) => item.analysisStatus === "completed")),
@@ -80,12 +82,37 @@ function completedResult(testCase, result) {
     requirementEvidenceStatusCounts: result.requirementEvidenceStatusCounts,
     evidenceCount: result.evidenceCount,
     limitationCount: result.limitationCount,
+    generalPrAssessmentSummary: result.generalPrAssessmentSummary,
     analyzeTiming: result.analyzeTiming,
     githubEvidenceTiming: result.githubEvidenceTiming,
     qualityGate: result.qualityGate,
     savedReportPrivacy: result.savedReportPrivacy,
     savedReportDeleted: result.savedReportDeleted
   };
+}
+
+function summarizeGeneralPrAssessments(results) {
+  const overallConclusionCounts = {};
+  const sourceStateCounts = {};
+  let presentCount = 0;
+
+  for (const result of results) {
+    if (result.analysisStatus !== "completed") continue;
+    const summary = result.generalPrAssessmentSummary;
+    if (!summary || typeof summary !== "object") continue;
+
+    presentCount += 1;
+    incrementCount(overallConclusionCounts, summary.overallConclusion);
+    incrementCount(sourceStateCounts, summary.sourceState);
+  }
+
+  return { presentCount, overallConclusionCounts, sourceStateCounts };
+}
+
+function incrementCount(counts, value) {
+  if (typeof value === "string" && value.length > 0) {
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
 }
 
 function summarizeRequirementStatusCounts(results, field) {

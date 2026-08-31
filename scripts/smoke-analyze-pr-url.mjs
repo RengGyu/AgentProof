@@ -17,6 +17,7 @@ export async function runAnalyzePrSmoke({
   githubToken,
   allowProductionGithubToken = false,
   requireRequirementFindings = true,
+  requireGeneralPrAssessmentSummary = false,
   expectedSourceAnchor,
   expectations,
   fetchImpl = fetch
@@ -48,6 +49,10 @@ export async function runAnalyzePrSmoke({
   const analyzeTiming = analyzeTimingFromResponse(response);
   const githubEvidenceTiming = githubEvidenceTimingFromResponse(response);
   const report = payload.report;
+  const generalPrAssessmentSummary = readGeneralPrAssessmentSummary(
+    report,
+    requireGeneralPrAssessmentSummary
+  );
   assertExpectedSourceAnchor(report, expectedSourceAnchor);
   const executionEvidence = passingExecutionEvidence(report);
   const failedCheckLocations = failedCheckAnnotationLocations(report);
@@ -92,6 +97,7 @@ export async function runAnalyzePrSmoke({
     ),
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
+    generalPrAssessmentSummary,
     analyzeTiming,
     githubEvidenceTiming,
     expectationCheckCount: expectationResult.checks.length,
@@ -111,6 +117,18 @@ export async function runAnalyzePrSmoke({
     savedReportDeleteWarning: saveResult.deleteWarning,
     qualityGate
   };
+}
+
+function readGeneralPrAssessmentSummary(report, required) {
+  const summary = report?.generalPrAssessmentSummary;
+  if (!required) return summary;
+
+  if (!summary || typeof summary !== "object" || Array.isArray(summary) ||
+    Object.prototype.hasOwnProperty.call(summary, "targets")) {
+    throw smokeError("General PR assessment summary was unavailable.");
+  }
+
+  return summary;
 }
 
 function requirementStatusCounts(requirements, selectStatus = (requirement) => requirement.status) {
