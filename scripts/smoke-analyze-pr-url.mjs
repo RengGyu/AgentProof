@@ -8,6 +8,7 @@ const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation", "tot
 const ANALYZE_TIMING_PATTERN = /^ap_(input|evidence|report|validation|total);dur=(\d+)$/;
 const GITHUB_EVIDENCE_TIMING_PHASES = ["github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"];
 const GITHUB_EVIDENCE_TIMING_PATTERN = /^ap_(github_pr|github_files|github_checks|github_statuses|github_annotations|github_jobs);dur=(\d+)$/;
+const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -85,6 +86,10 @@ export async function runAnalyzePrSmoke({
     evidenceCoverage: report.summary?.evidenceCoverage,
     ciStatus: report.testing?.ciStatus,
     requirementCount: Array.isArray(report.requirements) ? report.requirements.length : 0,
+    requirementStatusCounts: requirementStatusCounts(report.requirements),
+    requirementEvidenceStatusCounts: requirementStatusCounts(report.requirements, (requirement) =>
+      requirement.evidenceStatus ?? requirement.status
+    ),
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
     analyzeTiming,
@@ -106,6 +111,15 @@ export async function runAnalyzePrSmoke({
     savedReportDeleteWarning: saveResult.deleteWarning,
     qualityGate
   };
+}
+
+function requirementStatusCounts(requirements, selectStatus = (requirement) => requirement.status) {
+  const counts = {};
+  for (const requirement of Array.isArray(requirements) ? requirements : []) {
+    const status = selectStatus(requirement);
+    if (REQUIREMENT_STATUSES.has(status)) counts[status] = (counts[status] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function assertExpectedSourceAnchor(report, expectedSourceAnchor) {

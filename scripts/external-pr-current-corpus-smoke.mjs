@@ -50,6 +50,8 @@ export async function runCurrentExternalPrCorpusSmoke({
     caseCount: results.length,
     completedCount,
     incompleteCount,
+    requirementStatusSummary: summarizeRequirementStatusCounts(results, "requirementStatusCounts"),
+    requirementEvidenceStatusSummary: summarizeRequirementStatusCounts(results, "requirementEvidenceStatusCounts"),
     qualityGateSummary: summarizeQualityGates(results.filter((item) => item.analysisStatus === "completed")),
     timingSummary: summarizeAnalyzeTimings(results.filter((item) => item.analysisStatus === "completed")),
     githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings(results.filter((item) => item.analysisStatus === "completed")),
@@ -74,6 +76,8 @@ function completedResult(testCase, result) {
     evidenceCoverage: result.evidenceCoverage,
     ciStatus: result.ciStatus,
     requirementCount: result.requirementCount,
+    requirementStatusCounts: result.requirementStatusCounts,
+    requirementEvidenceStatusCounts: result.requirementEvidenceStatusCounts,
     evidenceCount: result.evidenceCount,
     limitationCount: result.limitationCount,
     analyzeTiming: result.analyzeTiming,
@@ -82,6 +86,19 @@ function completedResult(testCase, result) {
     savedReportPrivacy: result.savedReportPrivacy,
     savedReportDeleted: result.savedReportDeleted
   };
+}
+
+function summarizeRequirementStatusCounts(results, field) {
+  const counts = {};
+  for (const result of results) {
+    if (result.analysisStatus !== "completed") continue;
+    for (const [status, count] of Object.entries(result[field] ?? {})) {
+      if (["met", "partial", "missing", "unclear"].includes(status) && Number.isSafeInteger(count) && count > 0) {
+        counts[status] = (counts[status] ?? 0) + count;
+      }
+    }
+  }
+  return counts;
 }
 
 function incompleteResult(testCase, error) {

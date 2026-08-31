@@ -54,7 +54,9 @@ describe("smoke-analyze-pr-url", () => {
       savedClaimCount: 0,
       savedRepromptOmitted: true,
       savedEvidenceRefsCleared: true,
-      savedReportDeleted: true
+      savedReportDeleted: true,
+      requirementStatusCounts: { partial: 1 },
+      requirementEvidenceStatusCounts: { partial: 1 }
     }));
     expect(result.analyzeTiming).toEqual({
       input: 3,

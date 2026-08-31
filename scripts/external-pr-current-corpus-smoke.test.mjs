@@ -11,6 +11,8 @@ describe("external-pr-current-corpus-smoke", () => {
       requirementCount: 0,
       evidenceCount: 4,
       limitationCount: 2,
+      requirementStatusCounts: { unclear: 1 },
+      requirementEvidenceStatusCounts: { partial: 1 },
       qualityGate: { ok: true, checks: [] },
       savedReportPrivacy: "summary-only",
       savedReportDeleted: true
@@ -29,7 +31,9 @@ describe("external-pr-current-corpus-smoke", () => {
       status: "completed",
       caseCount: 25,
       completedCount: 25,
-      incompleteCount: 0
+      incompleteCount: 0,
+      requirementStatusSummary: { unclear: 25 },
+      requirementEvidenceStatusSummary: { partial: 25 }
     }));
     expect(runAnalyze).toHaveBeenCalledTimes(25);
     expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({
