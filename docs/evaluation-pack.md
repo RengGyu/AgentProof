@@ -16,6 +16,8 @@ This document defines the MVP evaluation approach for AgentProof. The goal is no
 
 P0 design-partner validation starts with a five-public-PR pilot before any 20-case external PR expansion. The pilot fixture is `eval/fixtures/external-pr-pilot.v1.json`, and the runbook is `docs/external-pr-pilot.md`.
 
+The separate current-state corpus refreshes the public PR source anchors immediately before a 25-URL live smoke run. It preserves the candidate URLs but not their old metadata, report bodies, or manual labels. See `docs/external-pr-current-corpus.md`. It is a freshness and provenance check only; it does not replace pilot labels or create release authority.
+
 This pilot is separate from SWE-bench scoring:
 
 - It uses public PR URLs and bounded public metadata as report input.

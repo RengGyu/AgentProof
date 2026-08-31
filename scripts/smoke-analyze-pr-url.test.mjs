@@ -122,6 +122,27 @@ describe("smoke-analyze-pr-url", () => {
     })).toThrow("Saved report retained raw evidenceIndex items");
   });
 
+  it("rejects a live report when its GitHub source anchor differs from the frozen sample", async () => {
+    const report = reportFixture();
+    report.source.provenance = {
+      origin: "github_snapshot",
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40)
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      expectedSourceAnchor: {
+        headSha: "c".repeat(40),
+        baseSha: "b".repeat(40)
+      },
+      fetchImpl: fetchMock
+    })).rejects.toThrow("Analyze report source anchor did not match the frozen external PR sample");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("allows URL-only external PR evaluation to have no extracted requirements", () => {
     const report = reportFixture();
     report.requirements = [];

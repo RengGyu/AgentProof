@@ -95,6 +95,7 @@ Optional integrations are off by default. Keep automatic GitHub App comments dis
 
 - `docs/deployment-smoke.md` for production smoke, live integration checks, and cron policy.
 - `docs/external-pr-pilot.md` for the five-public-PR pilot before any twenty-case evaluation expansion.
+- `docs/external-pr-current-corpus.md` for refreshing and SHA-binding the current 25-public-PR live corpus.
 - `docs/reviewer-validation-packet.md` for three concrete reviewer outreach attempts and bounded feedback capture.
 - `docs/linked-issue-ingestion.md` for linked issue/task evidence precedence and privacy boundaries.
 - `docs/github-app-webhook.md` and `docs/github-app-onboarding.md` for GitHub App automation and design-partner setup.

@@ -16,6 +16,7 @@ export async function runAnalyzePrSmoke({
   githubToken,
   allowProductionGithubToken = false,
   requireRequirementFindings = true,
+  expectedSourceAnchor,
   expectations,
   fetchImpl = fetch
 }) {
@@ -46,6 +47,7 @@ export async function runAnalyzePrSmoke({
   const analyzeTiming = analyzeTimingFromResponse(response);
   const githubEvidenceTiming = githubEvidenceTimingFromResponse(response);
   const report = payload.report;
+  assertExpectedSourceAnchor(report, expectedSourceAnchor);
   const executionEvidence = passingExecutionEvidence(report);
   const failedCheckLocations = failedCheckAnnotationLocations(report);
   const expectationResult = assertReportExpectations(report, expectations);
@@ -104,6 +106,27 @@ export async function runAnalyzePrSmoke({
     savedReportDeleteWarning: saveResult.deleteWarning,
     qualityGate
   };
+}
+
+function assertExpectedSourceAnchor(report, expectedSourceAnchor) {
+  if (expectedSourceAnchor === undefined) return;
+
+  const expectedHeadSha = expectedSourceAnchor?.headSha;
+  const expectedBaseSha = expectedSourceAnchor?.baseSha;
+  const provenance = report?.source?.provenance;
+  if (
+    !isFullGitSha(expectedHeadSha) ||
+    !isFullGitSha(expectedBaseSha) ||
+    provenance?.origin !== "github_snapshot" ||
+    provenance?.headSha !== expectedHeadSha ||
+    provenance?.baseSha !== expectedBaseSha
+  ) {
+    throw smokeError("Analyze report source anchor did not match the frozen external PR sample.");
+  }
+}
+
+function isFullGitSha(value) {
+  return typeof value === "string" && /^[a-f0-9]{40,64}$/.test(value);
 }
 
 export function analyzeTimingFromResponse(response) {
