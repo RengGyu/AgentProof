@@ -4,6 +4,7 @@ import {
   assertReportExpectations,
   failedCheckAnnotationLocations,
   passingExecutionEvidence,
+  evaluateReportQualityGate,
   analyzeTimingFromResponse,
   githubEvidenceTimingFromResponse,
   parseGitHubEvidenceTimingHeader,
@@ -119,6 +120,28 @@ describe("smoke-analyze-pr-url", () => {
       originalReprompt: fullReport.reprompt.prompt,
       githubToken: "github_pat_secret_should_not_leak_123"
     })).toThrow("Saved report retained raw evidenceIndex items");
+  });
+
+  it("allows URL-only external PR evaluation to have no extracted requirements", () => {
+    const report = reportFixture();
+    report.requirements = [];
+    report.claims = [];
+    const savedReport = summaryOnlyReportFixture(report);
+
+    const strictResult = evaluateReportQualityGate(report, { savedReport });
+    const urlOnlyResult = evaluateReportQualityGate(report, {
+      savedReport,
+      requireRequirementFindings: false
+    });
+
+    expect(strictResult.checks.find((check) => check.id === "requirements_present")).toEqual(expect.objectContaining({
+      ok: false
+    }));
+    expect(urlOnlyResult).toEqual(expect.objectContaining({ ok: true }));
+    expect(urlOnlyResult.checks.find((check) => check.id === "requirements_present")).toEqual(expect.objectContaining({
+      ok: true,
+      detail: "No acceptance contract is required for this evaluation; zero requirement findings are allowed."
+    }));
   });
 
   it("parses only bounded analyze timing metrics", () => {

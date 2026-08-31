@@ -15,6 +15,7 @@ export async function runAnalyzePrSmoke({
   taskText = "",
   githubToken,
   allowProductionGithubToken = false,
+  requireRequirementFindings = true,
   expectations,
   fetchImpl = fetch
 }) {
@@ -60,7 +61,10 @@ export async function runAnalyzePrSmoke({
     githubToken,
     failedCheckLocations
   });
-  const qualityGate = evaluateReportQualityGate(report, { savedReport });
+  const qualityGate = evaluateReportQualityGate(report, {
+    savedReport,
+    requireRequirementFindings
+  });
 
   if (!qualityGate.ok) {
     const failedChecks = qualityGate.checks
@@ -335,9 +339,12 @@ export function assertReportExpectations(report, expectations = {}) {
   return { checks };
 }
 
-export function evaluateReportQualityGate(report, { savedReport } = {}) {
+export function evaluateReportQualityGate(report, {
+  savedReport,
+  requireRequirementFindings = true
+} = {}) {
   const checks = [
-    requirementsPresentQualityCheck(report),
+    requirementsPresentQualityCheck(report, requireRequirementFindings),
     metRequirementExecutionQualityCheck(report),
     ciExecutionQualityCheck(report),
     reviewerLeadProvenanceQualityCheck(report),
@@ -351,14 +358,16 @@ export function evaluateReportQualityGate(report, { savedReport } = {}) {
   };
 }
 
-function requirementsPresentQualityCheck(report) {
+function requirementsPresentQualityCheck(report, requireRequirementFindings) {
   const count = Array.isArray(report.requirements) ? report.requirements.length : 0;
 
   return qualityCheck({
     id: "requirements_present",
     label: "Requirement extraction present",
-    ok: count > 0,
-    detail: count > 0
+    ok: !requireRequirementFindings || count > 0,
+    detail: !requireRequirementFindings
+      ? "No acceptance contract is required for this evaluation; zero requirement findings are allowed."
+      : count > 0
       ? `${count} requirement finding(s) are available for reviewer coverage checks.`
       : "No requirement findings were available for reviewer coverage checks."
   });

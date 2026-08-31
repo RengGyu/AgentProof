@@ -41,7 +41,12 @@ describe("external-pr-pilot-smoke", () => {
 
       if (String(url).endsWith("/api/analyze")) {
         const body = JSON.parse(String(init.body));
-        return jsonResponse({ report: reportFixture(body.prUrl) });
+        const report = reportFixture(body.prUrl);
+        if (body.prUrl.endsWith("/pull/1")) {
+          report.requirements = [];
+          report.claims = [];
+        }
+        return jsonResponse({ report });
       }
 
       if (String(url).endsWith("/api/reports") && method === "POST") {
@@ -90,6 +95,7 @@ describe("external-pr-pilot-smoke", () => {
       next: "fill_manual_labels_after_reviewer_sessions"
     }));
     expect(result.qualityGateSummary.ok).toBe(true);
+    expect(result.results[0].requirementCount).toBe(0);
     expect(result.categoryStatuses).toEqual([
       { id: "external-pr-pilot-clean", category: "clean_pr", qualityGate: "passed", manualLabelStatus: "pending_reviewer_confirmation" },
       { id: "external-pr-pilot-missing-tests", category: "missing_tests", qualityGate: "passed", manualLabelStatus: "pending_reviewer_confirmation" },
