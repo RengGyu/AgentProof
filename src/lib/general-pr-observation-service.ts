@@ -50,7 +50,7 @@ export interface RunGeneralPrObservationNowOptionsV2 {
 
 const UNCONFIGURED_MODEL_PROFILE: GeneralPrSemanticObserverModelProfileV2 = {
   model: "deployment-unconfigured",
-  promptVersion: "general-pr-observer.v2",
+  promptVersion: "general-pr-observer.v3",
   inputFieldPolicyVersion: "general-pr-observer-fields.v1"
 };
 

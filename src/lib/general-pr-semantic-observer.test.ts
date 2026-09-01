@@ -4,7 +4,6 @@ import {
   runGeneralPrSemanticObserverV2,
   type GeneralPrSemanticObserverModelProfileV2
 } from "./general-pr-semantic-observer";
-import { deriveGeneralPrObjectiveGroupIdV2 } from "./general-pr-semantic-proposal";
 import { buildGeneralPrObservationSeedV2, type GeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import type { PullRequestInput } from "./types";
 
@@ -31,18 +30,12 @@ function validProposal(seed: GeneralPrObservationSeedV2) {
   const objectives = seed.spans.filter((span) => span.deterministicRole === "objective_candidate");
   if (objectives.length === 0) throw new Error("fixture must include an objective candidate");
   return {
-    contractVersion: "general_pr_semantic_proposal.v2" as const,
-    schemaVersion: "agentproof_general_pr_observer_v2" as const,
-    seedHash: seed.seedHash,
-    spanRoles: Object.fromEntries(seed.spans.map((span) => [span.id, {
+    spanRoles: seed.spans.map((span) => ({
       spanId: span.id,
       role: span.deterministicRole === "unresolved" ? "mixed_or_ambiguous" : span.deterministicRole,
       abstained: span.deterministicRole === "unresolved"
-    }])),
-    objectiveGroups: Object.fromEntries(objectives.map((objective) => {
-      const groupId = deriveGeneralPrObjectiveGroupIdV2([objective.id]);
-      return [groupId, { groupId, spanIds: [objective.id], disposition: "candidate" as const }];
     })),
+    objectiveGroups: objectives.map((objective) => ({ spanIds: [objective.id], disposition: "candidate" as const })),
     testApplicabilityProposals: [],
     scopeMappingProposals: [],
     evidenceRelationProposals: []

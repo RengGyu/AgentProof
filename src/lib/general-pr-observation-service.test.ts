@@ -36,30 +36,26 @@ const modelProfile: GeneralPrSemanticObserverModelProfileV2 = {
   inputFieldPolicyVersion: "test-fields.v1"
 };
 
-function validProposal(observationSeed: ReturnType<typeof buildGeneralPrObservationSeedV2>) {
-  const objectives = observationSeed.spans.filter((span) => span.deterministicRole === "objective_candidate");
-  if (objectives.length === 0) throw new Error("fixture must include an objective candidate");
-  const groups = objectives.map((objective) => {
-    const groupId = deriveGeneralPrObjectiveGroupIdV2([objective.id]);
-    return { groupId, spanIds: [objective.id], disposition: "candidate" as const };
-  });
-  const firstGroup = groups[0];
-  const firstCluster = observationSeed.changeClusters[0];
-  const firstEvidence = observationSeed.evidenceAtoms[0];
-  if (!firstGroup || !firstCluster || !firstEvidence) throw new Error("fixture must include bounded change evidence");
+function semanticProviderCandidate(
+  observationSeed: ReturnType<typeof buildGeneralPrObservationSeedV2>,
+  sourceKind: "linked_issue" | "pr_title" | "pr_body"
+) {
+  const targetSpan = observationSeed.spans.find((span) => (
+    observationSeed.sources.find((source) => source.id === span.sourceUnitId)?.kind === sourceKind
+  ));
+  const evidence = observationSeed.evidenceAtoms[0];
+  const cluster = observationSeed.changeClusters[0];
+  if (!targetSpan || !evidence || !cluster) throw new Error("fixture must include a target span and bounded evidence");
   return {
-    contractVersion: "general_pr_semantic_proposal.v2" as const,
-    schemaVersion: "agentproof_general_pr_observer_v2" as const,
-    seedHash: observationSeed.seedHash,
-    spanRoles: Object.fromEntries(observationSeed.spans.map((span) => [span.id, {
+    spanRoles: observationSeed.spans.map((span) => ({
       spanId: span.id,
-      role: span.deterministicRole === "unresolved" ? "mixed_or_ambiguous" : span.deterministicRole,
-      abstained: span.deterministicRole === "unresolved"
-    }])),
-    objectiveGroups: Object.fromEntries(groups.map((group) => [group.groupId, group])),
-    testApplicabilityProposals: [{ objectiveGroupId: firstGroup.groupId, changeClusterId: firstCluster.id, proposal: "likely_expected" as const }],
-    scopeMappingProposals: [{ objectiveGroupId: firstGroup.groupId, changeClusterId: firstCluster.id, proposal: "plausibly_mapped" as const }],
-    evidenceRelationProposals: [{ objectiveGroupId: firstGroup.groupId, evidenceId: firstEvidence.id, proposal: "supports" as const }]
+      role: span.id === targetSpan.id ? "objective_candidate" : "supporting_context",
+      abstained: false
+    })),
+    objectiveGroups: [{ spanIds: [targetSpan.id], disposition: "candidate" as const }],
+    testApplicabilityProposals: [{ objectiveSpanIds: [targetSpan.id], changeClusterId: cluster.id, proposal: "likely_expected" as const }],
+    scopeMappingProposals: [{ objectiveSpanIds: [targetSpan.id], changeClusterId: cluster.id, proposal: "plausibly_mapped" as const }],
+    evidenceRelationProposals: [{ objectiveSpanIds: [targetSpan.id], evidenceId: evidence.id, proposal: "supports" as const }]
   };
 }
 
@@ -156,7 +152,7 @@ describe("runGeneralPrObservationNowV2", () => {
   it("records a valid semantic proposal only as private hypothesis observations", async () => {
     const semanticInput = { ...input, title: "Maintenance notes", description: "Internal cleanup only." };
     const observationSeed = buildGeneralPrObservationSeedV2(semanticInput);
-    const provider = { observe: vi.fn(async () => semanticCandidateProposal(observationSeed, "pr_title")) };
+    const provider = { observe: vi.fn(async () => semanticProviderCandidate(observationSeed, "pr_title")) };
     const result = await runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
       input: semanticInput,
@@ -216,7 +212,7 @@ describe("runGeneralPrObservationNowV2", () => {
       input: noCandidateInput,
       generateReport: () => report,
       validateDeterministicReport: () => true,
-      semantic: { provider: { observe: async () => semanticCandidateProposal(semanticSeed, "pr_title") }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => noCandidateInput, modelProfile }
+      semantic: { provider: { observe: async () => semanticProviderCandidate(semanticSeed, "pr_title") }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => noCandidateInput, modelProfile }
     });
 
     expect(unavailable.bundle?.diagnostics).toMatchObject({ sourceCollection: "available", deterministicAdmission: "no_candidate", semanticAdmission: "unavailable" });

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES,
   GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS,
+  GENERAL_PR_SEMANTIC_PROVIDER_SCHEMA_NAME,
   buildGeneralPrSemanticProposalJsonSchemaV2,
   hashGeneralPrSemanticInvocationReceiptV2,
   validateGeneralPrSemanticProposalV2,
@@ -52,7 +53,7 @@ export interface GeneralPrSemanticObserverPackageV2 {
     store: false;
     timeoutMs: number;
     maxOutputTokens: typeof GENERAL_PR_SEMANTIC_OBSERVER_MAX_OUTPUT_TOKENS;
-    responseFormat: { type: "json_schema"; name: "agentproof_general_pr_observer_v2"; strict: true; schema: Record<string, unknown> };
+    responseFormat: { type: "json_schema"; name: typeof GENERAL_PR_SEMANTIC_PROVIDER_SCHEMA_NAME; strict: true; schema: Record<string, unknown> };
   };
 }
 
@@ -143,7 +144,7 @@ export function buildGeneralPrSemanticObserverPackageV2(
       store: false,
       timeoutMs,
       maxOutputTokens: GENERAL_PR_SEMANTIC_OBSERVER_MAX_OUTPUT_TOKENS,
-      responseFormat: { type: "json_schema", name: "agentproof_general_pr_observer_v2", strict: true, schema }
+      responseFormat: { type: "json_schema", name: GENERAL_PR_SEMANTIC_PROVIDER_SCHEMA_NAME, strict: true, schema }
     }
   };
   if (Buffer.byteLength(JSON.stringify(semanticPackage.input), "utf8") > GENERAL_PR_SEMANTIC_OBSERVER_MAX_INPUT_BYTES) return null;

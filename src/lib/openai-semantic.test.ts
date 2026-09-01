@@ -49,7 +49,7 @@ describe("OpenAI semantic adapter", () => {
       model: "gpt-test",
       store: false,
       max_output_tokens: 3200,
-      text: { format: { type: "json_schema", strict: true, name: "agentproof_general_pr_observer_v2" } }
+      text: { format: { type: "json_schema", strict: true, name: "agentproof_general_pr_observer_candidate_v1" } }
     });
     expect(JSON.stringify(body)).not.toContain("src/status.ts");
   });
