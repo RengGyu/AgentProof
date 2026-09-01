@@ -75,6 +75,7 @@ describe("external-pr-current-corpus-smoke", () => {
 
   it("forwards an optional GitHub token only to each analysis request", async () => {
     const githubToken = "github_pat_test_token";
+    const allowProductionGithubToken = true;
     const runAnalyze = vi.fn().mockResolvedValue(validAnalyzeResult());
 
     const result = await runCurrentExternalPrCorpusSmoke({
@@ -82,11 +83,12 @@ describe("external-pr-current-corpus-smoke", () => {
       now: "2026-08-31T00:10:00.000Z",
       maxSnapshotAgeMs: 30 * 60 * 1000,
       githubToken,
+      allowProductionGithubToken,
       runAnalyze
     });
 
     expect(runAnalyze).toHaveBeenCalledTimes(25);
-    expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ githubToken }));
+    expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ githubToken, allowProductionGithubToken }));
     expect(JSON.stringify(result)).not.toContain(githubToken);
   });
 

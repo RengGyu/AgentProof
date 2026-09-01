@@ -30,7 +30,8 @@ AGENTPROOF_SMOKE_BASE_URL=https://your-preview.example pnpm smoke:external-pr-cu
 If the deployed app needs GitHub credentials to collect the public PR evidence,
 set `AGENTPROOF_SMOKE_GITHUB_TOKEN` for this local command. The runner forwards
 it only with each analysis request; snapshots and run summaries never store or
-print the token.
+print the token. Remote Preview or production-like URLs also require the
+explicit `AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN=1` acknowledgement.
 
 ## Reading the result
 

@@ -49,6 +49,7 @@ export async function runCurrentExternalPrCorpusSmoke({
   snapshot,
   baseUrl = DEFAULT_BASE_URL,
   githubToken,
+  allowProductionGithubToken = false,
   now = new Date().toISOString(),
   maxSnapshotAgeMs = DEFAULT_MAX_SNAPSHOT_AGE_MS,
   runAnalyze = runAnalyzePrSmoke
@@ -62,6 +63,7 @@ export async function runCurrentExternalPrCorpusSmoke({
         baseUrl,
         prUrl: testCase.prUrl,
         githubToken,
+        allowProductionGithubToken,
         requireRequirementFindings: false,
         requireGeneralPrAssessmentSummary: true,
         expectedSourceAnchor: testCase.anchor
@@ -342,7 +344,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   runCurrentExternalPrCorpusSmoke({
     snapshot: readJson(snapshotPath),
-    githubToken: process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN
+    githubToken: process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN,
+    allowProductionGithubToken: process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1"
   })
     .then((result) => {
       if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(result);
