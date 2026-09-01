@@ -15,7 +15,7 @@ function input(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
       "Risk: review before rollout."
     ].join("\n\n"),
     taskSource: "issue",
-    taskText: Array.from({ length: 18 }, (_, index) => `- The service must expose requirement ${index + 1}.`).join("\n"),
+    taskText: ["## Requirements", ...Array.from({ length: 18 }, (_, index) => `- The service must expose requirement ${index + 1}.`)].join("\n"),
     changedFiles: [{ path: "src/state.ts", status: "modified" }],
     checks: [{ name: "unit", status: "passed" }],
     logs: [],
@@ -33,15 +33,24 @@ describe("selectGeneralPrSemanticClaimSpansV1", () => {
   it("bounds twenty legal spans, reserves objective-capable sources, and serializes in seed order", () => {
     const request = input();
     const seed = buildGeneralPrObservationSeedV2(request);
-    const selection = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed }));
-    const objectiveSources = seed.sources.filter((source) => source.roleCeiling === "objective").map((source) => source.id);
+    const selection = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxInputBytes: 2_000 }));
 
     expect(seed.spans.length).toBeGreaterThanOrEqual(20);
-    expect(selection.selectedSpans).toHaveLength(12);
-    expect(objectiveSources.every((sourceId) => selection.selectedSpans.some((span) => span.sourceUnitId === sourceId))).toBe(true);
+    expect(selection.selectedSpans.length).toBeLessThanOrEqual(12);
+    expect(selection.selectedSpanIds).toEqual(expect.arrayContaining(["gpsp_1_2", "gpsp_2_1", "gpsp_3_2"]));
+    expect(Buffer.byteLength(JSON.stringify(selection), "utf8")).toBeLessThanOrEqual(2_000);
     expect(selection.selectedSpanIds).toEqual([...selection.selectedSpanIds].sort((left, right) => seed.spans.findIndex((span) => span.id === left) - seed.spans.findIndex((span) => span.id === right)));
     expect(selection.selectedSpanIds).not.toEqual(seed.spans.map((span) => span.id));
     expect(selection.coverage).toBe("sampled");
+  });
+
+  it("reserves the ranked list item while serializing a preceding heading first", () => {
+    const request = input({ taskText: "## Requirements\n- The service must expose a current state." });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const selection = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxSpans: 4 }));
+
+    expect(selection.selectedSpanIds).toEqual(expect.arrayContaining(["gpsp_1_2", "gpsp_2_1", "gpsp_3_2"]));
+    expect(selection.selectedSpanIds.indexOf("gpsp_1_1")).toBeLessThan(selection.selectedSpanIds.indexOf("gpsp_1_2"));
   });
 
   it("is byte-identical for repeated input and source-selection invariant to unrelated evidence ordering", () => {
@@ -63,7 +72,7 @@ describe("selectGeneralPrSemanticClaimSpansV1", () => {
   it("omits oversize spans whole and reports unavailable when no complete span fits", () => {
     const request = input({ taskText: "The service must expose ".concat("a".repeat(4_000)) });
     const seed = buildGeneralPrObservationSeedV2(request);
-    const bounded = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxInputBytes: 500 }));
+    const bounded = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxInputBytes: 1_500 }));
     const unavailable = selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxInputBytes: 1 });
 
     expect(bounded.selectedSpans.some((span) => span.text.includes("a".repeat(100)))).toBe(false);
@@ -82,5 +91,6 @@ describe("selectGeneralPrSemanticClaimSpansV1", () => {
     expect(result.ok ? null : result.reason).toMatch(/seed_invalid|source_binding_invalid/);
     expect(forgedResult).toEqual({ ok: false, reason: "seed_invalid" });
     expect(selection.selectedSpans.map((span) => span.deterministicRole)).not.toContain("template_or_process");
+    expect(selection.selectedSpans.map((span) => span.structuralKind)).not.toEqual(expect.arrayContaining(["code", "html"]));
   });
 });

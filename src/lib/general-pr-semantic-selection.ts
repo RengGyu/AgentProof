@@ -76,7 +76,7 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
     const text = views.get(span.sourceUnitId)?.slice(span.start, span.end);
     if (!owner || typeof text !== "string" || !isEligible(owner.source, span)) return [];
     const selected = toSelectedSpan(owner.source, span, text);
-    if (selectedBytes([selected]) > maxInputBytes) {
+    if (selectionBytes(input.seed.seedHash, [selected], 1, 1) > maxInputBytes) {
       inputByteBudget += 1;
       return [];
     }
@@ -96,7 +96,7 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
   }
   const selectedIds = new Set(selected.map((item) => item.span.id));
   let spanBudget = Math.max(0, candidates.length - selected.length);
-  while (selected.length > 0 && selectedBytes(selected.map((item) => item.selected)) > maxInputBytes) {
+  while (selected.length > 0 && selectionBytes(input.seed.seedHash, selected.map((item) => item.selected), candidates.length, inputByteBudget) > maxInputBytes) {
     const removable = [...selected].sort(compareCandidate).reverse().find((item) => !reserved.has(item.span.id));
     if (!removable) {
       const reservedCandidate = [...selected].sort(compareCandidate).reverse()[0];
@@ -112,14 +112,7 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
   const ordered = [...selected].sort((left, right) => left.seedIndex - right.seedIndex);
   const selectedSpans = ordered.map((item) => item.selected);
   spanBudget = Math.max(0, candidates.length - selectedIds.size);
-  const selectionWithoutHash = {
-    version: 1 as const,
-    parentSeedHash: input.seed.seedHash,
-    selectedSpanIds: selectedSpans.map((span) => span.spanId),
-    selectedSpans,
-    coverage: (spanBudget > 0 || inputByteBudget > 0 ? "sampled" : "complete") as GeneralPrSemanticSelectionCoverageV1,
-    omittedReasonCounts: { spanBudget, inputByteBudget }
-  };
+  const selectionWithoutHash = selectionPayload(input.seed.seedHash, selectedSpans, spanBudget, inputByteBudget);
   return {
     ok: true,
     selection: {
@@ -152,7 +145,27 @@ function deterministicRoleRank(value: GeneralPrSemanticSpanV2["deterministicRole
   return (["objective_candidate", "problem_observation", "implementation_claim", "test_claim", "unresolved", "supporting_context", "mixed_or_ambiguous", "scope_exclusion", "known_limitation", "follow_up", "risk_or_revert", "template_or_process"] as string[]).indexOf(value);
 }
 function structuralKindRank(value: GeneralPrSemanticSpanV2["structuralKind"]): number { return (["title", "list_item", "paragraph", "table_cell", "heading", "blockquote", "html", "code"] as string[]).indexOf(value); }
-function selectedBytes(spans: GeneralPrSemanticClaimSelectionV1["selectedSpans"]): number { return Buffer.byteLength(JSON.stringify({ spans }), "utf8"); }
+function selectionPayload(
+  parentSeedHash: string,
+  selectedSpans: GeneralPrSemanticClaimSelectionV1["selectedSpans"],
+  spanBudget: number,
+  inputByteBudget: number
+) {
+  return {
+    version: 1 as const,
+    parentSeedHash,
+    selectedSpanIds: selectedSpans.map((span) => span.spanId),
+    selectedSpans,
+    coverage: (spanBudget > 0 || inputByteBudget > 0 ? "sampled" : "complete") as GeneralPrSemanticSelectionCoverageV1,
+    omittedReasonCounts: { spanBudget, inputByteBudget }
+  };
+}
+function selectionBytes(parentSeedHash: string, selectedSpans: GeneralPrSemanticClaimSelectionV1["selectedSpans"], totalCandidates: number, inputByteBudget: number): number {
+  return Buffer.byteLength(JSON.stringify({
+    ...selectionPayload(parentSeedHash, selectedSpans, Math.max(0, totalCandidates - selectedSpans.length), inputByteBudget),
+    claimSelectionHash: "0".repeat(64)
+  }), "utf8");
+}
 function boundedBudget(value: number | undefined, fallback: number): number { return Number.isSafeInteger(value) && value! >= 0 ? value! : fallback; }
 function sha(value: string): string { return createHash("sha256").update(value, "utf8").digest("hex"); }
 function digest(value: unknown): string { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
