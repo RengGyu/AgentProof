@@ -30,30 +30,30 @@ describe("buildGeneralPrObservationSeedV2", () => {
     expect(JSON.stringify(seed)).not.toContain("Return Ready when checks pass");
   });
 
-  it("keeps title and body as separate source units and uses a linked issue as the only authoritative objective source", () => {
+  it("keeps title and body as separate fallback sources without changing their authority", () => {
     const seed = buildGeneralPrObservationSeedV2(input({
       taskSource: "issue",
       taskText: "The service must return Ready when checks pass.",
       description: "This PR adds the label."
     }));
 
-    expect(seed.sources.map((source) => [source.kind, source.authority, source.roleCeiling])).toEqual([
-      ["linked_issue", "authoritative", "objective"],
-      ["pr_title", "author_claim", "context"],
-      ["pr_body", "author_claim", "context"]
+    expect(seed.sources.map((source) => [source.kind, source.authority, source.roleCeiling, source.admissionTier])).toEqual([
+      ["linked_issue", "authoritative", "objective", "primary"],
+      ["pr_title", "author_claim", "objective", "fallback"],
+      ["pr_body", "author_claim", "objective", "fallback"]
     ]);
     expect(seed.sources[1]?.sourceContentHash).not.toBe(seed.sources[2]?.sourceContentHash);
   });
 
-  it("keeps PR title and body spans as context when an authoritative source exists", () => {
+  it("keeps fallback PR spans eligible without granting linked-Issue authority", () => {
     const seed = buildGeneralPrObservationSeedV2(input({
       taskSource: "issue",
       taskText: "The service must return Ready when checks pass."
     }));
-    const contextSourceIds = new Set(seed.sources.filter((source) => source.roleCeiling === "context").map((source) => source.id));
+    const fallbackSourceIds = new Set(seed.sources.filter((source) => source.admissionTier === "fallback").map((source) => source.id));
 
-    expect(seed.spans.filter((span) => contextSourceIds.has(span.sourceUnitId)).every((span) => (
-      span.deterministicRole !== "objective_candidate"
+    expect(seed.spans.filter((span) => fallbackSourceIds.has(span.sourceUnitId)).every((span) => (
+      span.authorityCeiling === "author_claim"
     ))).toBe(true);
   });
 

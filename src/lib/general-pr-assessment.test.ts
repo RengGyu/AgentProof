@@ -70,4 +70,45 @@ describe("deriveGeneralPrAssessmentV1", () => {
       })]
     });
   });
+
+  it("retains PR-author source state and diagnostic reasons when no target is admitted", () => {
+    const seed = buildGeneralPrObservationSeedV2(input({ title: "Maintenance notes", description: "Internal cleanup only." }));
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle, report })).toMatchObject({
+      sourceState: "pr_author_claim",
+      overallConclusion: "no_assessable_claims",
+      reasonCodes: expect.arrayContaining(["deterministic_candidate_missing", "semantic_observer_unavailable"])
+    });
+  });
+
+  it("retains linked-Issue source state with zero targets and marks stale ownership ambiguous", () => {
+    const seed = buildGeneralPrObservationSeedV2(input({
+      title: "Maintenance notes",
+      taskSource: "issue",
+      taskText: "Background information about the current status page."
+    }));
+    const available = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+    const stale = finalizeDeterministicGeneralPrObservationsV2(seed, null, "stale");
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: available, report }).sourceState).toBe("linked_issue");
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report }).sourceState).toBe("ambiguous");
+  });
+
+  it("keeps fallback PR targets as author claims requiring reviewer confirmation", () => {
+    const seed = buildGeneralPrObservationSeedV2(input({
+      title: "Maintenance notes",
+      description: "The service must return Ready when checks pass.",
+      taskSource: "issue",
+      taskText: "Background information about the current status page."
+    }));
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle, report }).targets).toEqual([
+      expect.objectContaining({
+        sourceAuthority: "pr_author_claim",
+        reasonCodes: expect.arrayContaining(["author_claim_requires_confirmation"])
+      })
+    ]);
+  });
 });

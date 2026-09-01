@@ -15,6 +15,7 @@ export const GENERAL_PR_OBSERVATION_MAX_SOURCE_VIEW_BYTES = 64_000;
 
 export type GeneralPrSourceAuthorityV2 = "authoritative" | "author_claim";
 export type GeneralPrSourceKindV2 = "provided_requirement" | "linked_issue" | "pr_title" | "pr_body";
+export type GeneralPrSourceAdmissionTierV1 = "primary" | "fallback" | "context";
 export type GeneralPrClaimRoleV2 =
   | "objective_candidate"
   | "problem_observation"
@@ -33,6 +34,7 @@ export interface GeneralPrSourceUnitV2 {
   id: string;
   kind: GeneralPrSourceKindV2;
   authority: GeneralPrSourceAuthorityV2;
+  admissionTier: GeneralPrSourceAdmissionTierV1;
   sourceIdentityHash: string;
   rawSourceDigest: string;
   sourceContentHash: string;
@@ -123,6 +125,7 @@ export function buildGeneralPrObservationSeedV2(input: PullRequestInput): Genera
       id: sourceId,
       kind: candidate.kind,
       authority: candidate.authority,
+      admissionTier: candidate.admissionTier,
       sourceIdentityHash: candidate.identityHash,
       rawSourceDigest: candidate.rawDigest,
       sourceContentHash: candidate.contentDigest,
@@ -222,6 +225,7 @@ export function validateGeneralPrObservationSeedV2(value: unknown): GeneralPrObs
 interface SourceInput {
   kind: GeneralPrSourceKindV2;
   authority: GeneralPrSourceAuthorityV2;
+  admissionTier: GeneralPrSourceAdmissionTierV1;
   roleCeiling: "objective" | "context" | "policy_only";
   raw: string;
   redacted: string;
@@ -233,11 +237,12 @@ interface SourceInput {
 
 function buildSourceInputs(input: PullRequestInput): SourceInput[] {
   const hasAuthoritativeSource = input.taskText.trim().length > 0;
+  const hasLinkedIssue = hasAuthoritativeSource && input.taskSource === "issue";
   const authoritativeKind = input.taskSource === "issue" ? "linked_issue" : "provided_requirement";
-  const candidates: Array<{ kind: GeneralPrSourceKindV2; authority: GeneralPrSourceAuthorityV2; roleCeiling: "objective" | "context" | "policy_only"; text: string }> = [];
-  if (hasAuthoritativeSource) candidates.push({ kind: authoritativeKind, authority: "authoritative", roleCeiling: "objective", text: input.taskText });
-  if (input.title.trim()) candidates.push({ kind: "pr_title", authority: "author_claim", roleCeiling: hasAuthoritativeSource ? "context" : "objective", text: input.title });
-  if (input.description.trim()) candidates.push({ kind: "pr_body", authority: "author_claim", roleCeiling: hasAuthoritativeSource ? "context" : "objective", text: input.description });
+  const candidates: Array<{ kind: GeneralPrSourceKindV2; authority: GeneralPrSourceAuthorityV2; admissionTier: GeneralPrSourceAdmissionTierV1; roleCeiling: "objective" | "context" | "policy_only"; text: string }> = [];
+  if (hasAuthoritativeSource) candidates.push({ kind: authoritativeKind, authority: "authoritative", admissionTier: "primary", roleCeiling: "objective", text: input.taskText });
+  if (input.title.trim()) candidates.push({ kind: "pr_title", authority: "author_claim", admissionTier: hasLinkedIssue ? "fallback" : "primary", roleCeiling: "objective", text: input.title });
+  if (input.description.trim()) candidates.push({ kind: "pr_body", authority: "author_claim", admissionTier: hasLinkedIssue ? "fallback" : "primary", roleCeiling: "objective", text: input.description });
   return candidates.map((candidate) => {
     const raw = normalizeNewlines(candidate.text);
     const rawSupported = isSupportedSourceView(raw);
@@ -248,6 +253,7 @@ function buildSourceInputs(input: PullRequestInput): SourceInput[] {
     return {
       kind: candidate.kind,
       authority: candidate.authority,
+      admissionTier: candidate.admissionTier,
       roleCeiling: candidate.roleCeiling,
       raw,
       redacted,

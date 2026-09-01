@@ -34,7 +34,9 @@ function validProposal(observationSeed: GeneralPrObservationSeedV2) {
     seedHash: observationSeed.seedHash,
     spanRoles: Object.fromEntries(observationSeed.spans.map((span) => [span.id, {
       spanId: span.id,
-      role: span.deterministicRole === "unresolved" ? "mixed_or_ambiguous" : span.deterministicRole,
+      role: span.id === objective.id
+        ? "objective_candidate"
+        : span.deterministicRole === "unresolved" ? "mixed_or_ambiguous" : span.deterministicRole === "objective_candidate" ? "supporting_context" : span.deterministicRole,
       abstained: span.deterministicRole === "unresolved"
     }])),
     objectiveGroups: {
@@ -107,7 +109,7 @@ describe("GeneralPrSemanticProposalV2", () => {
     expect(validateGeneralPrSemanticProposalV2(duplicateEvidence, observationSeed)).toMatchObject({ valid: false });
   });
 
-  it("does not let a context-only PR span replace an authoritative objective", () => {
+  it("allows a fallback PR span to be classified as an objective without changing its authority", () => {
     const observationSeed = seed();
     const proposal = validProposal(observationSeed);
     const prTitleSpan = observationSeed.spans.find((span) => {
@@ -116,14 +118,26 @@ describe("GeneralPrSemanticProposalV2", () => {
     });
     if (!prTitleSpan) throw new Error("fixture must include a title span");
     const replacementId = deriveGeneralPrObjectiveGroupIdV2([prTitleSpan.id]);
-    const replaced = {
+    const fallbackProposal = {
       ...proposal,
+      spanRoles: Object.fromEntries(observationSeed.spans.map((span) => [span.id, {
+        spanId: span.id,
+        role: span.id === prTitleSpan.id ? "objective_candidate" : "supporting_context",
+        abstained: false
+      }])),
       objectiveGroups: {
         [replacementId]: { groupId: replacementId, spanIds: [prTitleSpan.id], disposition: "candidate" as const }
       }
     };
 
-    expect(validateGeneralPrSemanticProposalV2(replaced, observationSeed)).toMatchObject({ valid: false });
+    expect(validateGeneralPrSemanticProposalV2(fallbackProposal, observationSeed)).toMatchObject({
+      valid: true,
+      proposal: { objectiveGroups: { [replacementId]: { spanIds: [prTitleSpan.id] } } }
+    });
+    expect(observationSeed.sources.find((source) => source.id === prTitleSpan.sourceUnitId)).toMatchObject({
+      authority: "author_claim",
+      admissionTier: "fallback"
+    });
   });
 
   it("rejects mixed authorities, reordered spans, duplicate ownership, and forged group IDs", () => {

@@ -686,7 +686,31 @@ export type GeneralPrAssessmentReasonV1 =
   | "head_mismatch"
   | "evidence_identity_incomplete"
   | "semantic_relation_only"
-  | "author_claim_requires_confirmation";
+  | "author_claim_requires_confirmation"
+  | "deterministic_candidate_missing"
+  | "semantic_observer_disabled"
+  | "semantic_observer_ineligible"
+  | "semantic_observer_unavailable"
+  | "semantic_observer_timeout"
+  | "semantic_proposal_invalid"
+  | "semantic_candidate_missing"
+  | "semantic_candidate_rejected"
+  | "target_relation_unresolved";
+
+export interface GeneralPrAssessmentDiagnosticsV1 {
+  version: 1;
+  sourceCollection: "available" | "missing" | "parse_incomplete" | "collection_unavailable";
+  deterministicAdmission: "admitted" | "no_candidate" | "context_only";
+  semanticAdmission: "not_needed" | "disabled" | "ineligible" | "unavailable" | "timeout" | "invalid" | "stale" | "no_candidate" | "admitted";
+  relationState: "not_attempted" | "unresolved" | "hypothesis_only" | "verified" | "collection_blocked";
+  counts: {
+    sourceUnits: number;
+    eligibleSpans: number;
+    deterministicCandidates: number;
+    semanticCandidates: number;
+    admittedTargets: number;
+  };
+}
 
 export interface GeneralPrAssessmentCountsV1 {
   evidence_supported: number;

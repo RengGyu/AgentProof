@@ -4,7 +4,7 @@ import {
   runGeneralPrObservationNowV2
 } from "./general-pr-observation-service";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
-import { deriveGeneralPrObjectiveGroupIdV2 } from "./general-pr-semantic-proposal";
+import { deriveGeneralPrObjectiveGroupIdV2, type GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import type { GeneralPrSemanticObserverModelProfileV2 } from "./general-pr-semantic-observer";
 import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
@@ -62,6 +62,33 @@ function validProposal(observationSeed: ReturnType<typeof buildGeneralPrObservat
   };
 }
 
+function semanticCandidateProposal(
+  observationSeed: ReturnType<typeof buildGeneralPrObservationSeedV2>,
+  sourceKind: "linked_issue" | "pr_title" | "pr_body"
+): GeneralPrSemanticProposalV2 {
+  const targetSpan = observationSeed.spans.find((span) => (
+    observationSeed.sources.find((source) => source.id === span.sourceUnitId)?.kind === sourceKind
+  ));
+  const evidence = observationSeed.evidenceAtoms[0];
+  const cluster = observationSeed.changeClusters[0];
+  if (!targetSpan || !evidence || !cluster) throw new Error("fixture must include a target span and bounded evidence");
+  const groupId = deriveGeneralPrObjectiveGroupIdV2([targetSpan.id]);
+  return {
+    contractVersion: "general_pr_semantic_proposal.v2" as const,
+    schemaVersion: "agentproof_general_pr_observer_v2" as const,
+    seedHash: observationSeed.seedHash,
+    spanRoles: Object.fromEntries(observationSeed.spans.map((span) => [span.id, {
+      spanId: span.id,
+      role: span.id === targetSpan.id ? "objective_candidate" : "supporting_context",
+      abstained: false
+    }])),
+    objectiveGroups: { [groupId]: { groupId, spanIds: [targetSpan.id], disposition: "candidate" as const } },
+    testApplicabilityProposals: [{ objectiveGroupId: groupId, changeClusterId: cluster.id, proposal: "likely_expected" as const }],
+    scopeMappingProposals: [{ objectiveGroupId: groupId, changeClusterId: cluster.id, proposal: "plausibly_mapped" as const }],
+    evidenceRelationProposals: [{ objectiveGroupId: groupId, evidenceId: evidence.id, proposal: "supports" as const }]
+  };
+}
+
 describe("runGeneralPrObservationNowV2", () => {
   it("returns the exact deterministic report when the feature is disabled", async () => {
     const generateReport = vi.fn(() => report);
@@ -110,6 +137,8 @@ describe("runGeneralPrObservationNowV2", () => {
       counts: expect.objectContaining({ evidence_supported: 0, evidence_partial: 2 })
     });
     expect(JSON.stringify(result.report)).not.toContain("ledgerDigest");
+    expect(JSON.stringify(result.report)).not.toContain("diagnostics");
+    expect(JSON.stringify(result.report)).not.toContain("sourceSpanRefs");
   });
 
   it("returns the deterministic report when runtime validation or collection fails", async () => {
@@ -117,22 +146,26 @@ describe("runGeneralPrObservationNowV2", () => {
     const oversized = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"), input: { ...input, description: "x".repeat(64_001) }, generateReport: () => report, validateDeterministicReport: () => true });
 
     expect(invalid).toMatchObject({ report, bundle: null });
-    expect(oversized).toMatchObject({ report, bundle: null });
+    expect(oversized).toMatchObject({
+      report,
+      bundle: { diagnostics: { sourceCollection: "parse_incomplete", semanticAdmission: "ineligible" } }
+    });
   });
 
   it("records a valid semantic proposal only as private hypothesis observations", async () => {
-    const observationSeed = buildGeneralPrObservationSeedV2(input);
-    const provider = { observe: vi.fn(async () => validProposal(observationSeed)) };
+    const semanticInput = { ...input, title: "Maintenance notes", description: "Internal cleanup only." };
+    const observationSeed = buildGeneralPrObservationSeedV2(semanticInput);
+    const provider = { observe: vi.fn(async () => semanticCandidateProposal(observationSeed, "pr_title")) };
     const result = await runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
-      input,
+      input: semanticInput,
       generateReport: () => report,
       validateDeterministicReport: () => true,
       semantic: {
         provider,
         providerAvailable: true,
         privateRepository: false,
-        readCurrentInput: async () => input,
+        readCurrentInput: async () => semanticInput,
         modelProfile
       }
     });
@@ -151,5 +184,73 @@ describe("runGeneralPrObservationNowV2", () => {
     ]));
     expect(result.bundle?.ledgerDigest).not.toBe(finalizeDeterministicGeneralPrObservationsV2(observationSeed).ledgerDigest);
     expect(JSON.stringify(result.bundle)).not.toContain("test-model");
+  });
+
+  it("distinguishes unavailable, invalid, stale, and admitted semantic pipeline states", async () => {
+    const noCandidateInput = { ...input, title: "Maintenance notes", description: "Internal cleanup only." };
+    const unavailable = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
+      input: noCandidateInput,
+      generateReport: () => report,
+      validateDeterministicReport: () => true
+    });
+    const invalid = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
+      input: noCandidateInput,
+      generateReport: () => report,
+      validateDeterministicReport: () => true,
+      semantic: { provider: { observe: async () => ({}) }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => noCandidateInput, modelProfile }
+    });
+    const staleProvider = { observe: vi.fn(async () => ({})) };
+    const stale = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
+      input: noCandidateInput,
+      generateReport: () => report,
+      validateDeterministicReport: () => true,
+      semantic: { provider: staleProvider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => ({ ...noCandidateInput, title: "Changed title" }), modelProfile }
+    });
+    const semanticSeed = buildGeneralPrObservationSeedV2(noCandidateInput);
+    const admitted = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
+      input: noCandidateInput,
+      generateReport: () => report,
+      validateDeterministicReport: () => true,
+      semantic: { provider: { observe: async () => semanticCandidateProposal(semanticSeed, "pr_title") }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => noCandidateInput, modelProfile }
+    });
+
+    expect(unavailable.bundle?.diagnostics).toMatchObject({ sourceCollection: "available", deterministicAdmission: "no_candidate", semanticAdmission: "unavailable" });
+    expect(invalid.bundle?.diagnostics).toMatchObject({ semanticAdmission: "invalid" });
+    expect(stale.bundle?.diagnostics).toMatchObject({ semanticAdmission: "stale" });
+    expect(staleProvider.observe).not.toHaveBeenCalled();
+    expect(admitted.bundle?.diagnostics).toMatchObject({
+      semanticAdmission: "admitted",
+      relationState: "hypothesis_only",
+      counts: { sourceUnits: 2, eligibleSpans: 2, deterministicCandidates: 0, semanticCandidates: 1, admittedTargets: 1 }
+    });
+  });
+
+  it("admits a fallback PR author target only when the linked Issue has no primary target", () => {
+    const fallbackSeed = buildGeneralPrObservationSeedV2({
+      ...input,
+      title: "Maintenance notes",
+      description: "Desired outcome: Ready status is visible.",
+      taskSource: "issue",
+      taskText: "Background information about the current status page."
+    });
+    const fallbackProposal = semanticCandidateProposal(fallbackSeed, "pr_body");
+    const fallbackBundle = finalizeDeterministicGeneralPrObservationsV2(fallbackSeed, fallbackProposal, "valid");
+    const primarySeed = buildGeneralPrObservationSeedV2({
+      ...input,
+      title: "Maintenance notes",
+      description: "Desired outcome: Ready status is visible.",
+      taskSource: "issue",
+      taskText: "The service must return Ready when checks pass."
+    });
+    const primaryBundle = finalizeDeterministicGeneralPrObservationsV2(primarySeed, semanticCandidateProposal(primarySeed, "pr_body"), "valid");
+
+    expect(fallbackBundle.objectives).toHaveLength(1);
+    expect(fallbackBundle.objectives[0]).toMatchObject({ authority: "author_claim", state: "hypothesis" });
+    expect(primaryBundle.objectives).toHaveLength(1);
+    expect(primaryBundle.objectives[0]).toMatchObject({ authority: "authoritative", admissionBasis: "explicit_structure" });
   });
 });

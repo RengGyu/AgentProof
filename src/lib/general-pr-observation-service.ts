@@ -10,7 +10,7 @@ import {
 import type { GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { evaluateScopeMappingObservationV2 } from "./scope-mapping-observation";
 import { evaluateTestCoverageObservationV2 } from "./test-coverage-observation";
-import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
+import type { GeneralPrAssessmentDiagnosticsV1, PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 import type { GeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 
 export interface GeneralPrObservationBundleV2 {
@@ -28,6 +28,7 @@ export interface GeneralPrObservationBundleV2 {
   testCoverage: ReturnType<typeof evaluateTestCoverageObservationV2>[];
   scopeMappings: ReturnType<typeof evaluateScopeMappingObservationV2>[];
   semanticState: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+  diagnostics: GeneralPrAssessmentDiagnosticsV1;
 }
 
 export interface RunGeneralPrObservationNowOptionsV2 {
@@ -65,7 +66,14 @@ export async function runGeneralPrObservationNowV2(
   if (!options.validateDeterministicReport(options.input, report)) return { report, bundle: null };
   if (options.policy.semanticObservation === "disabled") return { report, bundle: null };
   const seed = buildGeneralPrObservationSeedV2(options.input);
-  if (!validateGeneralPrObservationSeedV2(seed).valid || seed.parseState !== "complete") return { report, bundle: null };
+  if (!validateGeneralPrObservationSeedV2(seed).valid) return { report, bundle: null };
+  if (seed.parseState !== "complete") {
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+    return {
+      report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
+      bundle
+    };
+  }
   const semantic = await runGeneralPrSemanticObserverV2({
     mode: options.policy.releasePhase,
     input: options.input,
@@ -115,30 +123,32 @@ export function finalizeDeterministicGeneralPrObservationsV2(
   const deterministicObjectives = seed.spans.flatMap((span) => {
     if (span.deterministicRole !== "objective_candidate") return [];
     const source = seed.sources.find((candidate) => candidate.id === span.sourceUnitId);
-    if (!source || source.roleCeiling !== "objective") return [];
+    if (!source || source.roleCeiling !== "objective" || source.admissionTier === "context") return [];
     return [{
       id: `gpo_${digest({ domain: "agentproof.general-pr.objective.v2", seedHash: seed.seedHash, spanId: span.id }).slice(0, 24)}`,
       sourceSpanIds: [span.id],
       authority: source.authority,
       admissionBasis: "explicit_structure" as const,
-      state: "observed" as const
+      state: "observed" as const,
+      admissionTier: source.admissionTier
     }];
   });
   const semanticObjectives = semanticProposal === null ? [] : Object.values(semanticProposal.objectiveGroups).flatMap((group) => {
     if (group.disposition !== "candidate") return [];
     const spans = group.spanIds.map((spanId) => seed.spans.find((span) => span.id === spanId));
     const source = spans[0] ? seed.sources.find((candidate) => candidate.id === spans[0]!.sourceUnitId) : undefined;
-    if (!source || spans.some((span) => !span || span.sourceUnitId !== spans[0]!.sourceUnitId)) return [];
+    if (!source || source.roleCeiling !== "objective" || source.admissionTier === "context" || spans.some((span) => !span || span.sourceUnitId !== spans[0]!.sourceUnitId)) return [];
     return [{
       id: group.groupId,
       sourceSpanIds: [...group.spanIds],
       authority: source.authority,
       admissionBasis: "semantic_proposal" as const,
-      state: "hypothesis" as const
+      state: "hypothesis" as const,
+      admissionTier: source.admissionTier
     }];
   });
-  const objectives = [...deterministicObjectives, ...semanticObjectives];
-  const semanticObjectiveIds = new Set(semanticObjectives.map((objective) => objective.id));
+  const objectives = selectAdmittedObjectives(deterministicObjectives, semanticObjectives);
+  const semanticObjectiveIds = new Set(objectives.filter((objective) => objective.state === "hypothesis").map((objective) => objective.id));
   const semanticEdges = semanticProposal === null ? [] : semanticProposal.evidenceRelationProposals.flatMap((proposal) => {
     if (proposal.proposal === "unresolved" || !semanticObjectiveIds.has(proposal.objectiveGroupId)) return [];
     const atom = seed.evidenceAtoms.find((candidate) => candidate.id === proposal.evidenceId);
@@ -202,6 +212,19 @@ export function finalizeDeterministicGeneralPrObservationsV2(
       contractViolation: false
     });
   }));
+  const eligibleSpans = seed.spans.filter((span) => {
+    const source = seed.sources.find((candidate) => candidate.id === span.sourceUnitId);
+    return source?.roleCeiling === "objective" && source.admissionTier !== "context" && span.deterministicRole !== "template_or_process";
+  }).length;
+  const diagnostics = buildDiagnostics({
+    seed,
+    semanticState,
+    eligibleSpans,
+    deterministicCandidates: deterministicObjectives.length,
+    semanticCandidates: semanticObjectives.length,
+    objectives,
+    relationLevelCounts
+  });
   return {
     version: 2,
     seedHash: seed.seedHash,
@@ -210,7 +233,79 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     relationLevelCounts,
     testCoverage,
     scopeMappings,
-    semanticState
+    semanticState,
+    diagnostics
+  };
+}
+
+type ObjectiveCandidate = {
+  id: string;
+  sourceSpanIds: string[];
+  authority: "authoritative" | "author_claim";
+  admissionBasis: "explicit_structure" | "semantic_proposal";
+  state: "observed" | "hypothesis";
+  admissionTier: "primary" | "fallback";
+};
+
+function selectAdmittedObjectives(
+  deterministic: ObjectiveCandidate[],
+  semantic: ObjectiveCandidate[]
+): GeneralPrObservationBundleV2["objectives"] {
+  const firstAvailable = [
+    deterministic.filter((candidate) => candidate.admissionTier === "primary"),
+    semantic.filter((candidate) => candidate.admissionTier === "primary"),
+    deterministic.filter((candidate) => candidate.admissionTier === "fallback"),
+    semantic.filter((candidate) => candidate.admissionTier === "fallback")
+  ].find((candidates) => candidates.length > 0) ?? [];
+  return firstAvailable.map(({ admissionTier: _admissionTier, ...objective }) => objective);
+}
+
+function buildDiagnostics(input: {
+  seed: ReturnType<typeof buildGeneralPrObservationSeedV2>;
+  semanticState: GeneralPrObservationBundleV2["semanticState"];
+  eligibleSpans: number;
+  deterministicCandidates: number;
+  semanticCandidates: number;
+  objectives: GeneralPrObservationBundleV2["objectives"];
+  relationLevelCounts: GeneralPrObservationBundleV2["relationLevelCounts"];
+}): GeneralPrAssessmentDiagnosticsV1 {
+  const deterministicAdmitted = input.objectives.some((objective) => objective.admissionBasis === "explicit_structure");
+  const semanticAdmitted = input.objectives.some((objective) => objective.admissionBasis === "semantic_proposal");
+  const sourceCollection: GeneralPrAssessmentDiagnosticsV1["sourceCollection"] = input.seed.sources.length === 0
+    ? "missing"
+    : input.seed.parseState === "incomplete"
+      ? "parse_incomplete"
+      : input.seed.completeness === "unavailable"
+        ? "collection_unavailable"
+        : "available";
+  const deterministicAdmission: GeneralPrAssessmentDiagnosticsV1["deterministicAdmission"] = deterministicAdmitted
+    ? "admitted"
+    : input.eligibleSpans === 0 && input.seed.sources.length > 0 ? "context_only" : "no_candidate";
+  const semanticAdmission: GeneralPrAssessmentDiagnosticsV1["semanticAdmission"] = input.seed.parseState !== "complete" || input.eligibleSpans === 0
+    ? "ineligible"
+    : input.semanticState === "valid"
+      ? semanticAdmitted ? "admitted" : "no_candidate"
+      : input.semanticState;
+  const relationState: GeneralPrAssessmentDiagnosticsV1["relationState"] = input.objectives.length === 0
+    ? "not_attempted"
+    : input.seed.completeness !== "complete"
+      ? "collection_blocked"
+      : input.relationLevelCounts.verified > 0
+        ? "verified"
+        : input.relationLevelCounts.hypothesis > 0 ? "hypothesis_only" : "unresolved";
+  return {
+    version: 1,
+    sourceCollection,
+    deterministicAdmission,
+    semanticAdmission,
+    relationState,
+    counts: {
+      sourceUnits: input.seed.sources.length,
+      eligibleSpans: input.eligibleSpans,
+      deterministicCandidates: input.deterministicCandidates,
+      semanticCandidates: input.semanticCandidates,
+      admittedTargets: input.objectives.length
+    }
   };
 }
 

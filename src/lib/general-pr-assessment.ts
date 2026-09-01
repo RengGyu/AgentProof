@@ -67,12 +67,12 @@ export function deriveGeneralPrAssessmentV1({
     })
     : [];
   const counts = countTargets(targets);
-  const sourceState = sourceStateFor(targets, seed, bundle.seedHash === seed.seedHash);
+  const sourceState = sourceStateFor(targets, seed, bundle);
   const reasonCodes = uniqueReasons([
     ...targets.flatMap((target) => target.reasonCodes),
-    ...(targets.length === 0 && seed.sources.length === 0 ? ["source_missing" as const] : []),
-    ...(targets.length === 0 && seed.sources.length > 0 ? ["unsupported_claim_type" as const] : []),
-    ...(bundle.seedHash !== seed.seedHash ? ["source_ambiguous" as const] : [])
+    ...diagnosticReasons(bundle),
+    ...(sourceState === "missing" ? ["source_missing" as const] : []),
+    ...(sourceState === "ambiguous" ? ["source_ambiguous" as const] : [])
   ]);
 
   return {
@@ -125,13 +125,35 @@ function reasonsFor(
 function sourceStateFor(
   targets: GeneralPrAssessmentTargetV1[],
   seed: GeneralPrObservationSeedV2,
-  bundleMatchesSeed: boolean
+  bundle: GeneralPrObservationBundleV2
 ): GeneralPrAssessmentV1["sourceState"] {
-  if (!bundleMatchesSeed) return "ambiguous";
-  if (targets.length === 0) return seed.sources.length === 0 ? "missing" : "ambiguous";
+  if (bundle.seedHash !== seed.seedHash || bundle.semanticState === "stale") return "ambiguous";
   const authorities = new Set(targets.map((target) => target.sourceAuthority));
   if (authorities.size > 1) return "mixed";
-  return authorities.has("linked_issue") ? "linked_issue" : "pr_author_claim";
+  if (authorities.has("linked_issue")) return "linked_issue";
+  if (authorities.has("pr_author_claim")) return "pr_author_claim";
+  const validSources = seed.sources.filter((source) => source.structuralSpanIds.length > 0);
+  if (validSources.some((source) => source.kind === "linked_issue")) return "linked_issue";
+  if (validSources.length > 0 && validSources.every((source) => source.kind === "pr_title" || source.kind === "pr_body")) return "pr_author_claim";
+  return validSources.length === 0 ? "missing" : "ambiguous";
+}
+
+function diagnosticReasons(bundle: GeneralPrObservationBundleV2): GeneralPrAssessmentReasonV1[] {
+  const diagnostics = bundle.diagnostics;
+  return uniqueReasons([
+    ...(diagnostics.deterministicAdmission === "no_candidate" ? ["deterministic_candidate_missing" as const] : []),
+    ...(diagnostics.deterministicAdmission === "context_only" ? ["unsupported_claim_type" as const] : []),
+    ...(diagnostics.sourceCollection === "collection_unavailable" ? ["source_unavailable" as const] : []),
+    ...(diagnostics.sourceCollection === "parse_incomplete" ? ["collection_incomplete" as const] : []),
+    ...(diagnostics.semanticAdmission === "disabled" ? ["semantic_observer_disabled" as const] : []),
+    ...(diagnostics.semanticAdmission === "ineligible" ? ["semantic_observer_ineligible" as const] : []),
+    ...(diagnostics.semanticAdmission === "unavailable" ? ["semantic_observer_unavailable" as const] : []),
+    ...(diagnostics.semanticAdmission === "timeout" ? ["semantic_observer_timeout" as const] : []),
+    ...(diagnostics.semanticAdmission === "invalid" ? ["semantic_proposal_invalid" as const] : []),
+    ...(diagnostics.semanticAdmission === "no_candidate" && diagnostics.counts.semanticCandidates === 0 ? ["semantic_candidate_missing" as const] : []),
+    ...(diagnostics.semanticAdmission === "no_candidate" && diagnostics.counts.semanticCandidates > 0 ? ["semantic_candidate_rejected" as const] : []),
+    ...(diagnostics.counts.admittedTargets > 0 && diagnostics.relationState !== "verified" ? ["target_relation_unresolved" as const] : [])
+  ]);
 }
 
 function overallConclusionFor(targets: GeneralPrAssessmentTargetV1[]): GeneralPrAssessmentV1["overallConclusion"] {
