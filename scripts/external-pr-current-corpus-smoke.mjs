@@ -97,6 +97,38 @@ export async function runCurrentExternalPrCorpusSmoke({
   return run;
 }
 
+/**
+ * Runs the same frozen corpus while retaining only operator-authenticated
+ * semantic boundary totals outside the public summary-only artifact.
+ */
+export async function runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+  operatorDiagnosticsToken,
+  runAnalyze = runAnalyzePrSmoke,
+  ...options
+}) {
+  if (typeof operatorDiagnosticsToken !== "string" || operatorDiagnosticsToken.length === 0) {
+    throw new Error("Operator diagnostics token is required.");
+  }
+
+  const boundaries = [];
+  const publicRun = await runCurrentExternalPrCorpusSmoke({
+    ...options,
+    runAnalyze: async (input) => {
+      const result = await runAnalyze({ ...input, operatorDiagnosticsToken });
+      if (!isValidOperatorSemanticBoundary(result.operatorSemanticBoundary)) {
+        throw new Error("Operator semantic boundary diagnostic was unavailable.");
+      }
+      boundaries.push(result.operatorSemanticBoundary);
+      return result;
+    }
+  });
+
+  return {
+    publicRun,
+    operatorDiagnostic: summarizeOperatorSemanticBoundaries(boundaries, publicRun.caseCount)
+  };
+}
+
 export function writeCurrentExternalPrCorpusRun(result, outputPath = DEFAULT_OUTPUT_PATH) {
   assertAggregateOnlyRunArtifact(result);
   mkdirSync(dirname(outputPath), { recursive: true });
@@ -129,6 +161,32 @@ function completedResult(testCase, result) {
     qualityGate: result.qualityGate,
     savedReportPrivacy: result.savedReportPrivacy,
     savedReportDeleted: result.savedReportDeleted
+  };
+}
+
+function isValidOperatorSemanticBoundary(value) {
+  return value && typeof value === "object" && !Array.isArray(value) &&
+    Object.keys(value).length === 3 && value.version === 1 &&
+    ["disabled", "ineligible", "valid", "invalid", "timeout", "unavailable", "stale", null].includes(value.semanticState) &&
+    ["configuration", "package", "privacy", "provider_request", "provider_response", null].includes(value.semanticFailureStage) &&
+    (value.semanticState === "unavailable" || value.semanticFailureStage === null);
+}
+
+function summarizeOperatorSemanticBoundaries(boundaries, caseCount) {
+  const semanticStateCounts = {};
+  const semanticFailureStageCounts = {};
+
+  for (const boundary of boundaries) {
+    if (boundary.semanticState !== null) incrementCount(semanticStateCounts, boundary.semanticState);
+    if (boundary.semanticFailureStage !== null) incrementCount(semanticFailureStageCounts, boundary.semanticFailureStage);
+  }
+
+  return {
+    version: 1,
+    privacy: "operator-only-aggregate",
+    caseCount,
+    semanticStateCounts,
+    semanticFailureStageCounts
   };
 }
 
@@ -341,23 +399,32 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const snapshotPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_SNAPSHOT ?? DEFAULT_SNAPSHOT_PATH;
   const outputPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_RUN_OUTPUT ?? DEFAULT_OUTPUT_PATH;
   const requireSemanticBoundary = process.env.AGENTPROOF_EXTERNAL_CORPUS_REQUIRE_SEMANTIC_BOUNDARY === "1";
+  const operatorDiagnosticsToken = process.env.AGENTPROOF_SMOKE_OPS_TOKEN;
 
-  runCurrentExternalPrCorpusSmoke({
+  const options = {
     snapshot: readJson(snapshotPath),
     githubToken: process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN,
     allowProductionGithubToken: process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1"
-  })
+  };
+  const execution = operatorDiagnosticsToken
+    ? runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({ ...options, operatorDiagnosticsToken })
+    : runCurrentExternalPrCorpusSmoke(options);
+
+  execution
     .then((result) => {
-      if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(result);
-      writeCurrentExternalPrCorpusRun(result, outputPath);
+      const publicRun = "publicRun" in result ? result.publicRun : result;
+      const operatorDiagnostic = "operatorDiagnostic" in result ? result.operatorDiagnostic : null;
+      if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(publicRun);
+      writeCurrentExternalPrCorpusRun(publicRun, outputPath);
       console.log(JSON.stringify({
-        status: result.status,
-        caseCount: result.caseCount,
-        completedCount: result.completedCount,
-        incompleteCount: result.incompleteCount,
+        status: publicRun.status,
+        caseCount: publicRun.caseCount,
+        completedCount: publicRun.completedCount,
+        incompleteCount: publicRun.incompleteCount,
+        ...(operatorDiagnostic ? { operatorDiagnostic } : {}),
         outputPath
       }));
-      process.exitCode = result.status === "completed" ? 0 : 1;
+      process.exitCode = publicRun.status === "completed" ? 0 : 1;
     })
     .catch(() => {
       console.error(JSON.stringify({ status: "incomplete", error: "Current external PR corpus smoke could not run." }));

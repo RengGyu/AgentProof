@@ -14,6 +14,58 @@ import {
 } from "./smoke-analyze-pr-url.mjs";
 
 describe("smoke-analyze-pr-url", () => {
+  it("requests and returns only the bounded operator semantic boundary state", async () => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        report: fullReport,
+        operatorDiagnostics: {
+          version: 1,
+          semanticState: "unavailable",
+          semanticFailureStage: "provider_request"
+        }
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: "saved_123",
+        url: "https://agentproof.example/reports/saved_123",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        report: savedReport,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    const result = await runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      operatorDiagnosticsToken: "ops-secret-value",
+      fetchImpl: fetchMock
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://agentproof.example/api/analyze", expect.objectContaining({
+      headers: {
+        "content-type": "application/json",
+        "x-agentproof-observation-diagnostics": "semantic-boundary-v1",
+        "x-agentproof-ops-token": "ops-secret-value"
+      }
+    }));
+    expect(result.operatorSemanticBoundary).toEqual({
+      version: 1,
+      semanticState: "unavailable",
+      semanticFailureStage: "provider_request"
+    });
+    expect(JSON.stringify(result.operatorSemanticBoundary)).not.toMatch(/token|source|path|prompt|output/i);
+  });
+
   it("verifies analyze metadata and summary-only saved report privacy", async () => {
     const fullReport = reportFixture();
     fullReport.generalPrAssessmentSummary = assessmentSummary();
@@ -616,7 +668,7 @@ function jsonResponse(payload, status = 200) {
     "cache-control": "private, no-store"
   };
 
-  if (payload && typeof payload === "object" && Object.keys(payload).length === 1 && payload.report) {
+  if (payload && typeof payload === "object" && payload.report) {
     headers["x-agentproof-timing"] = "ap_input;dur=3, ap_evidence;dur=120, ap_report;dur=14, ap_validation;dur=2, ap_total;dur=139";
     headers["x-agentproof-evidence-timing"] = "ap_github_pr;dur=20, ap_github_files;dur=40, ap_github_checks;dur=50, ap_github_statuses;dur=10, ap_github_annotations;dur=0, ap_github_jobs;dur=0";
   }

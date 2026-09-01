@@ -17,11 +17,14 @@ import * as generalPrObservationService from "@/lib/general-pr-observation-servi
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "@/lib/general-pr-runtime-policy";
 import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
+import { verifyOpsRequest } from "@/lib/ops-auth";
 import { redactSecrets } from "@/lib/redact";
 import type { AnalyzeRequest } from "@/lib/types";
 
 const MAX_BODY_BYTES = 80_000;
 const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation"] as const;
+const OPERATOR_DIAGNOSTIC_HEADER = "x-agentproof-observation-diagnostics";
+const OPERATOR_DIAGNOSTIC_VERSION = "semantic-boundary-v1";
 
 type AnalyzeTimingPhase = (typeof ANALYZE_TIMING_PHASES)[number];
 type AnalyzeTimingDurations = Partial<Record<AnalyzeTimingPhase, number>>;
@@ -39,8 +42,14 @@ interface GitHubEvidenceTiming extends GitHubEvidenceTimingSink {
 export async function POST(request: Request) {
   const timing = createAnalyzeTiming();
   const evidenceTiming = createGitHubEvidenceTiming();
+  const operatorDiagnosticsRequested = request.headers.get(OPERATOR_DIAGNOSTIC_HEADER) === OPERATOR_DIAGNOSTIC_VERSION;
 
   try {
+    if (operatorDiagnosticsRequested) {
+      const auth = verifyOpsRequest(request);
+      if (!auth.ok) return auth.response;
+    }
+
     const contentLength = Number(request.headers.get("content-length") ?? 0);
 
     if (contentLength > MAX_BODY_BYTES) {
@@ -164,7 +173,16 @@ export async function POST(request: Request) {
       );
     }
 
-    return jsonNoStore({ report: validation.report }, 200, timing, evidenceTiming);
+    return jsonNoStore({
+      report: validation.report,
+      ...(operatorDiagnosticsRequested ? {
+        operatorDiagnostics: {
+          version: 1,
+          semanticState: observed.bundle?.semanticState ?? null,
+          semanticFailureStage: observed.bundle?.semanticFailureStage ?? null
+        }
+      } : {})
+    }, 200, timing, evidenceTiming);
   } catch (error) {
     const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
     const guidance = analyzeFailureGuidance(error);

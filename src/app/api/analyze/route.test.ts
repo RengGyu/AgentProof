@@ -61,6 +61,48 @@ function validGeneralPrObserverCandidate(init?: RequestInit) {
 }
 
 describe("POST /api/analyze", () => {
+  it("returns semantic boundary state only to an authenticated operator diagnostic request", async () => {
+    const previous = process.env.AGENTPROOF_OPS_TOKEN;
+    process.env.AGENTPROOF_OPS_TOKEN = "ops-secret-value";
+
+    try {
+      const unauthorized = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-agentproof-observation-diagnostics": "semantic-boundary-v1"
+        },
+        body: JSON.stringify({ demoScenario: "clean" })
+      }));
+
+      expect(unauthorized.status).toBe(401);
+
+      const authorized = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-agentproof-observation-diagnostics": "semantic-boundary-v1",
+          "x-agentproof-ops-token": "ops-secret-value"
+        },
+        body: JSON.stringify({ demoScenario: "clean" })
+      }));
+      const json = await authorized.json() as {
+        operatorDiagnostics?: { version: number; semanticState: string | null; semanticFailureStage: string | null };
+      };
+
+      expect(authorized.status).toBe(200);
+      expect(json.operatorDiagnostics).toEqual({
+        version: 1,
+        semanticState: null,
+        semanticFailureStage: null
+      });
+      expect(JSON.stringify(json.operatorDiagnostics)).not.toMatch(/token|source|path|prompt|output/i);
+    } finally {
+      if (previous === undefined) delete process.env.AGENTPROOF_OPS_TOKEN;
+      else process.env.AGENTPROOF_OPS_TOKEN = previous;
+    }
+  });
+
   it("does not let a request field enable semantics when the server policy is disabled", async () => {
     const previous = {
       mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,

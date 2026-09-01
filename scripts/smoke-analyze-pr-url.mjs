@@ -54,12 +54,17 @@ const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
   "blocked",
   "not_assessable"
 ];
+const OPERATOR_DIAGNOSTIC_HEADER = "x-agentproof-observation-diagnostics";
+const OPERATOR_DIAGNOSTIC_VERSION = "semantic-boundary-v1";
+const OPERATOR_SEMANTIC_STATES = new Set(["disabled", "ineligible", "valid", "invalid", "timeout", "unavailable", "stale"]);
+const OPERATOR_SEMANTIC_FAILURE_STAGES = new Set(["configuration", "package", "privacy", "provider_request", "provider_response"]);
 
 export async function runAnalyzePrSmoke({
   baseUrl,
   prUrl,
   taskText = "",
   githubToken,
+  operatorDiagnosticsToken,
   allowProductionGithubToken = false,
   requireRequirementFindings = true,
   requireGeneralPrAssessmentSummary = false,
@@ -75,7 +80,13 @@ export async function runAnalyzePrSmoke({
 
   const response = await fetchImpl(`${baseUrl}/api/analyze`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(operatorDiagnosticsToken ? {
+        [OPERATOR_DIAGNOSTIC_HEADER]: OPERATOR_DIAGNOSTIC_VERSION,
+        "x-agentproof-ops-token": operatorDiagnosticsToken
+      } : {})
+    },
     body: JSON.stringify({
       prUrl,
       taskText,
@@ -94,6 +105,7 @@ export async function runAnalyzePrSmoke({
   const analyzeTiming = analyzeTimingFromResponse(response);
   const githubEvidenceTiming = githubEvidenceTimingFromResponse(response);
   const report = payload.report;
+  const operatorSemanticBoundary = readOperatorSemanticBoundary(payload.operatorDiagnostics, Boolean(operatorDiagnosticsToken));
   const generalPrAssessmentSummary = readGeneralPrAssessmentSummary(
     report,
     requireGeneralPrAssessmentSummary
@@ -160,7 +172,26 @@ export async function runAnalyzePrSmoke({
     savedEvidenceRefsCleared: evidenceRefsCleared(savedReport),
     savedReportDeleted: saveResult.deleted,
     savedReportDeleteWarning: saveResult.deleteWarning,
+    operatorSemanticBoundary,
     qualityGate
+  };
+}
+
+function readOperatorSemanticBoundary(value, required) {
+  if (!required) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+    !hasExactKeys(value, ["version", "semanticState", "semanticFailureStage"]) ||
+    value.version !== 1 ||
+    (value.semanticState !== null && !OPERATOR_SEMANTIC_STATES.has(value.semanticState)) ||
+    (value.semanticFailureStage !== null && !OPERATOR_SEMANTIC_FAILURE_STAGES.has(value.semanticFailureStage)) ||
+    (value.semanticState !== "unavailable" && value.semanticFailureStage !== null)) {
+    throw smokeError("Analyze response did not include a valid operator semantic boundary diagnostic.");
+  }
+
+  return {
+    version: 1,
+    semanticState: value.semanticState,
+    semanticFailureStage: value.semanticFailureStage
   };
 }
 

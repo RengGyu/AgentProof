@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   assertAggregateOnlyRunArtifact,
   assertCurrentExternalPrSemanticBoundaryHealth,
+  runCurrentExternalPrCorpusSemanticBoundaryDiagnostic,
   runCurrentExternalPrCorpusSmoke
 } from "./external-pr-current-corpus-smoke.mjs";
 
@@ -90,6 +91,37 @@ describe("external-pr-current-corpus-smoke", () => {
     expect(runAnalyze).toHaveBeenCalledTimes(25);
     expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ githubToken, allowProductionGithubToken }));
     expect(JSON.stringify(result)).not.toContain(githubToken);
+  });
+
+  it("keeps semantic failure-stage totals operator-only while preserving the public corpus artifact", async () => {
+    const operatorDiagnosticsToken = "ops-secret-value";
+    const runAnalyze = vi.fn().mockResolvedValue({
+      ...validAnalyzeResult(),
+      operatorSemanticBoundary: {
+        version: 1,
+        semanticState: "unavailable",
+        semanticFailureStage: "provider_request"
+      }
+    });
+
+    const result = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+      snapshot: readySnapshot(),
+      now: "2026-08-31T00:10:00.000Z",
+      maxSnapshotAgeMs: 30 * 60 * 1000,
+      operatorDiagnosticsToken,
+      runAnalyze
+    });
+
+    expect(result.publicRun.status).toBe("completed");
+    expect(JSON.stringify(result.publicRun)).not.toMatch(/provider|diagnostic|ops-secret-value/i);
+    expect(result.operatorDiagnostic).toEqual({
+      version: 1,
+      privacy: "operator-only-aggregate",
+      caseCount: 25,
+      semanticStateCounts: { unavailable: 25 },
+      semanticFailureStageCounts: { provider_request: 25 }
+    });
+    expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ operatorDiagnosticsToken }));
   });
 
   it("marks missing or invalid assessment summaries as analysis_unavailable", async () => {
