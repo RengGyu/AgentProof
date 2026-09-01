@@ -3,6 +3,7 @@ import type {
   CanonicalRequirementSetV1,
   ChangedFile,
   DeterministicRequirementRelation,
+  GeneralPrAssessmentCountsV1,
   PullRequestInput,
   RequirementSourceBinding,
   ResolvedHeadModulePayload,
@@ -695,6 +696,9 @@ function validateGeneralPrAssessmentSummaryCeiling(
   errors: string[]
 ): void {
   if (!counts) return;
+  if (value.overallConclusion !== aggregateGeneralPrConclusionFromCounts(counts as unknown as GeneralPrAssessmentCountsV1)) {
+    errors.push("generalPrAssessmentSummary.overallConclusion does not match counts.");
+  }
   if (counts.evidence_supported > 0 || counts.contradicted > 0 ||
     value.overallConclusion === "evidence_supports_stated_change" ||
     value.overallConclusion === "attention_required") {
@@ -779,11 +783,17 @@ function countGeneralPrTargetConclusions(conclusions: string[]): Record<string, 
 }
 
 function aggregateGeneralPrConclusion(conclusions: string[]): string {
-  if (conclusions.includes("contradicted")) return "attention_required";
-  if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "blocked")) return "collection_blocked";
-  if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "evidence_supported")) return "evidence_supports_stated_change";
-  if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "evidence_partial")) return "evidence_partial";
-  return conclusions.length > 0 ? "mixed_evidence" : "no_assessable_claims";
+  return aggregateGeneralPrConclusionFromCounts(countGeneralPrTargetConclusions(conclusions) as unknown as GeneralPrAssessmentCountsV1);
+}
+
+/** Shared by target-free projections so their conclusion cannot drift from the full-report aggregation rule. */
+export function aggregateGeneralPrConclusionFromCounts(counts: GeneralPrAssessmentCountsV1): string {
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  if (counts.contradicted > 0) return "attention_required";
+  if (total > 0 && counts.blocked === total) return "collection_blocked";
+  if (total > 0 && counts.evidence_supported === total) return "evidence_supports_stated_change";
+  if (total > 0 && counts.evidence_partial === total) return "evidence_partial";
+  return total > 0 ? "mixed_evidence" : "no_assessable_claims";
 }
 
 function validateGeneralPrSourceState(value: unknown, authorities: string[], errors: string[]): void {

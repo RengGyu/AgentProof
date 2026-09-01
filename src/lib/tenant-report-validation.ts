@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { containsSecretPattern } from "./redact";
 import { createVerifiedAuthenticity, verifyVerifiedAuthenticity } from "./report-authenticity";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
+import { aggregateGeneralPrConclusionFromCounts } from "./report-validation";
 import type { ReportValidationResult } from "./report-validation";
 import { validateLlmSemanticCandidate, type LlmSemanticOutput } from "./llm-semantic-output";
 import {
@@ -756,6 +757,9 @@ function copyTenantPlannerProvenance(value: HybridPlannerProvenance): HybridPlan
 function copyTenantGeneralPrAssessmentSummary(
   value: GeneralPrAssessmentSummaryV1
 ): GeneralPrAssessmentSummaryV1 {
+  if (value.overallConclusion !== aggregateGeneralPrConclusionFromCounts(value.counts)) {
+    throw new Error("Target-free general-PR assessment summary conclusion does not match counts.");
+  }
   return {
     version: value.version,
     mode: value.mode,
@@ -789,6 +793,8 @@ function validateTenantGeneralPrAssessmentSummary(value: unknown, errors: string
         !Number.isSafeInteger(counts[key]) || (counts[key] as number) < 0 || (counts[key] as number) > MAX_TENANT_REQUIREMENTS
       )) {
       errors.push("tenant ordinary-PR assessment summary counts are invalid.");
+    } else if (summary.overallConclusion !== aggregateGeneralPrConclusionFromCounts(counts as unknown as GeneralPrAssessmentSummaryV1["counts"])) {
+      errors.push("tenant ordinary-PR assessment summary conclusion does not match counts.");
     }
   }
   if (!Array.isArray(summary.reasonCodes) || summary.reasonCodes.length > 16 ||

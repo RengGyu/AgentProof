@@ -104,6 +104,57 @@ describe("validateVerificationReport", () => {
 
     expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
   });
+
+  it("derives every target-free summary conclusion from its aggregate counts", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean) as VerificationReportV2;
+    const counts = {
+      evidence_supported: 0,
+      evidence_partial: 1,
+      not_demonstrated: 0,
+      contradicted: 0,
+      blocked: 0,
+      not_assessable: 0
+    };
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "linked_issue",
+      overallConclusion: "evidence_partial",
+      counts,
+      reasonCodes: []
+    };
+
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    for (const [forgedCounts, overallConclusion] of [
+      [{ ...counts, evidence_partial: 0 }, "evidence_partial"],
+      [counts, "evidence_supports_stated_change"],
+      [counts, "mixed_evidence"],
+      [counts, "attention_required"],
+      [counts, "collection_blocked"],
+      [counts, "no_assessable_claims"]
+    ] as const) {
+      const forged = structuredClone(report);
+      const summary = forged.generalPrAssessmentSummary!;
+      summary.counts = forgedCounts;
+      summary.overallConclusion = overallConclusion as typeof summary.overallConclusion;
+      expect(validateVerificationReport(forged, { mode: "v2_full" }).errors).toContain(
+        "generalPrAssessmentSummary.overallConclusion does not match counts."
+      );
+    }
+
+    for (const [validCounts, overallConclusion] of [
+      [{ ...counts, evidence_partial: 0 }, "no_assessable_claims"],
+      [counts, "evidence_partial"],
+      [{ ...counts, not_demonstrated: 1 }, "mixed_evidence"],
+      [{ ...counts, evidence_partial: 0, blocked: 1 }, "collection_blocked"]
+    ] as const) {
+      const valid = structuredClone(report);
+      valid.generalPrAssessmentSummary!.counts = validCounts;
+      valid.generalPrAssessmentSummary!.overallConclusion = overallConclusion;
+      expect(validateVerificationReport(valid, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    }
+  });
   it("admits a structurally valid private v2 receipt bundle only for a full report", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     const requirementId = report.requirements[0]!.requirementId;

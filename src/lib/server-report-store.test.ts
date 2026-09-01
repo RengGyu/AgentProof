@@ -148,6 +148,40 @@ describe("server report store", () => {
     }
   });
 
+  it("rejects a forged target-free assessment conclusion before projection and after persistence", () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "linked_issue",
+      overallConclusion: "evidence_partial",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 1,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      reasonCodes: []
+    };
+
+    const persisted = projectTenantPersistedReport(report, signingSecret);
+    const forgedReport = structuredClone(report);
+    forgedReport.generalPrAssessmentSummary!.overallConclusion = "mixed_evidence";
+    expect(() => projectTenantPersistedReport(forgedReport, signingSecret)).toThrow(
+      "Target-free general-PR assessment summary conclusion does not match counts."
+    );
+
+    const forgedPersisted = structuredClone(persisted);
+    forgedPersisted.generalPrAssessmentSummary!.overallConclusion = "mixed_evidence";
+    resignPersistedTenantReport(forgedPersisted, signingSecret);
+    expect(validateTenantPersistedReport(forgedPersisted, signingSecret).errors).toContain(
+      "tenant ordinary-PR assessment summary conclusion does not match counts."
+    );
+  });
+
   it("preserves a v2 no-contract discriminator through the private tenant storage boundary", async () => {
     process.env.AGENTPROOF_REPORT_SIGNING_SECRET = "test-report-signing-secret-that-is-long-enough";
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
