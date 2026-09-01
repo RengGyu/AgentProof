@@ -14,7 +14,7 @@ import {
   validateGeneralPrObservationSeedV2,
   type GeneralPrObservationSeedV2
 } from "./general-pr-observation-source";
-import { redactSecrets } from "./redact";
+import { buildGeneralPrRedactedSourceViewsV1 } from "./general-pr-semantic-selection";
 import type { PullRequestInput } from "./types";
 
 export const GENERAL_PR_SEMANTIC_OBSERVER_MAX_SPANS = 12;
@@ -161,7 +161,7 @@ function buildGeneralPrSemanticObserverPackageResultV2(
   const rebuilt = buildGeneralPrObservationSeedV2(input);
   if (rebuilt.seedHash !== seed.seedHash) failureReasons.push("seed_rebuild_mismatch");
   if (failureReasons.length > 0) return { semanticPackage: null, failureReasons };
-  const textBySourceId = buildRedactedSourceViews(input, seed);
+  const textBySourceId = buildGeneralPrRedactedSourceViewsV1(input, seed);
   if (!textBySourceId) return { semanticPackage: null, failureReasons: ["source_binding_invalid"] };
   const sourcesById = new Map(seed.sources.map((source) => [source.id, source]));
   const changeFactsByRef = new Map(seed.changeFacts.map((fact) => [fact.fileRef, fact]));
@@ -307,24 +307,6 @@ async function readCurrentPublicSubject(
   if (!currentInput) return "stale";
   if (currentInput.repositoryPrivate !== false) return "unavailable";
   return buildGeneralPrObservationSeedV2(currentInput).seedHash === expectedSeed.seedHash ? "current" : "stale";
-}
-
-function buildRedactedSourceViews(input: PullRequestInput, seed: GeneralPrObservationSeedV2): Map<string, string> | null {
-  const candidates: Array<{ kind: string; text: string }> = [];
-  if (input.taskText.trim()) candidates.push({ kind: input.taskSource === "issue" ? "linked_issue" : "provided_requirement", text: input.taskText });
-  if (input.title.trim()) candidates.push({ kind: "pr_title", text: input.title });
-  if (input.description.trim()) candidates.push({ kind: "pr_body", text: input.description });
-  if (candidates.length !== seed.sources.length) return null;
-  const views = new Map<string, string>();
-  for (let index = 0; index < seed.sources.length; index += 1) {
-    const source = seed.sources[index];
-    const candidate = candidates[index];
-    if (!source || !candidate || source.kind !== candidate.kind) return null;
-    const redacted = redactSecrets(candidate.text.replace(/\r\n/g, "\n"));
-    if (sha(redacted) !== source.sourceContentHash) return null;
-    views.set(source.id, redacted);
-  }
-  return views;
 }
 
 class ObserverTimeoutError extends Error {}
