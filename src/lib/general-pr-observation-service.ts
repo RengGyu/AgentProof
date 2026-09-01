@@ -281,10 +281,10 @@ function buildDiagnostics(input: {
   const deterministicAdmission: GeneralPrAssessmentDiagnosticsV1["deterministicAdmission"] = input.deterministicCandidates > 0
     ? "admitted"
     : input.eligibleSpans === 0 && input.seed.sources.length > 0 ? "context_only" : "no_candidate";
-  const semanticAdmission: GeneralPrAssessmentDiagnosticsV1["semanticAdmission"] = input.seed.parseState !== "complete" || input.eligibleSpans === 0
-    ? "ineligible"
-    : deterministicSelected
-      ? "not_needed"
+  const semanticAdmission: GeneralPrAssessmentDiagnosticsV1["semanticAdmission"] = deterministicSelected
+    ? "not_needed"
+    : input.seed.parseState !== "complete" || input.eligibleSpans === 0
+      ? "ineligible"
       : input.semanticState === "valid"
         ? semanticAdmitted ? "admitted" : "no_candidate"
         : input.semanticState;

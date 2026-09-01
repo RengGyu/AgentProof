@@ -149,7 +149,7 @@ describe("runGeneralPrObservationNowV2", () => {
     expect(invalid).toMatchObject({ report, bundle: null });
     expect(oversized).toMatchObject({
       report,
-      bundle: { diagnostics: { sourceCollection: "parse_incomplete", semanticAdmission: "ineligible" } }
+      bundle: { diagnostics: { sourceCollection: "parse_incomplete", semanticAdmission: "not_needed" } }
     });
   });
 
