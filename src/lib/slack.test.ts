@@ -9,6 +9,17 @@ import {
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { PullRequestInput } from "./types";
 
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
+
 describe("slack helpers", () => {
   it("renders enhanced planning as neutral policy copy only", () => {
     const report = generateVerificationReport(demoScenarios.clean);
@@ -114,19 +125,23 @@ describe("slack helpers", () => {
       version: 1,
       mode: "ordinary_pr",
       sourceState: "pr_author_claim",
-      overallConclusion: "mixed_evidence",
+      overallConclusion: "evidence_partial",
       counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
-      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
     };
+    Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
 
     const payload = JSON.stringify(reportToSlackPayload(report));
 
     expect(payload).toContain("Ordinary PR evidence assessment");
-    expect(payload).toContain("Evidence is partially connected");
+    expect(payload).toContain("Evidence partially supports the stated change");
     expect(payload).toContain("Partial evidence: 1");
-    expect(payload).not.toContain("sourceBindingRef");
-    expect(payload).not.toContain("sourceSpanRefs");
-    expect(payload).not.toContain("targets");
+    expect(payload).toContain("Semantic assessment was unavailable.");
+    expect(payload).toContain("The target-to-evidence relation remains unresolved.");
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(payload).not.toContain(forbidden);
   });
 
   it("escapes Slack markdown link delimiters in report URLs", () => {

@@ -7,6 +7,28 @@ import { generateVerificationReport, generateVerificationReportV2, generateVerif
 import type { ProofGraph, PublicProofGraph, VerificationReportV2 } from "./types";
 
 const PLANNER_INPUT_HASH = "0123456789abcdef".repeat(4);
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
+const CLOSED_PARTIAL_REASONS = [
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
+] as const;
 
 describe("report share", () => {
   it("round-trips only the bounded ordinary-PR assessment summary", () => {
@@ -15,7 +37,7 @@ describe("report share", () => {
       version: 1,
       mode: "ordinary_pr",
       sourceState: "pr_author_claim",
-      overallConclusion: "mixed_evidence",
+      overallConclusion: "evidence_partial",
       counts: {
         evidence_supported: 0,
         evidence_partial: 1,
@@ -24,23 +46,38 @@ describe("report share", () => {
         blocked: 0,
         not_assessable: 0
       },
-      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+      reasonCodes: [...CLOSED_PARTIAL_REASONS]
     };
+    Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
 
     const payload = encodeReportForShare(report);
     const envelope = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
     const decoded = decodeSharedReport(payload) as VerificationReportV2;
     const serialized = JSON.stringify({ envelope, decoded });
 
-    expect(envelope.generalPrAssessmentSummary).toMatchObject({ overallConclusion: "mixed_evidence" });
-    expect(decoded.generalPrAssessmentSummary).toEqual(report.generalPrAssessmentSummary);
-    expect(serialized).not.toContain("sourceBindingRef");
-    expect(serialized).not.toContain("sourceSpanRefs");
-    expect(serialized).not.toContain("targets");
+    expect(envelope.generalPrAssessmentSummary).toMatchObject({
+      overallConclusion: "evidence_partial",
+      reasonCodes: CLOSED_PARTIAL_REASONS
+    });
+    expect(decoded.generalPrAssessmentSummary).toEqual(envelope.generalPrAssessmentSummary);
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
 
     (envelope.generalPrAssessmentSummary as Record<string, unknown>).targets = [];
     const injected = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
     expect(() => decodeSharedReport(injected)).toThrow("Shared report assessment has unknown fields");
+
+    delete (envelope.generalPrAssessmentSummary as Record<string, unknown>).targets;
+    (envelope.generalPrAssessmentSummary as Record<string, unknown>).diagnostics = {};
+    const diagnosticsInjected = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+    expect(() => decodeSharedReport(diagnosticsInjected)).toThrow("Shared report assessment has unknown fields");
+
+    delete (envelope.generalPrAssessmentSummary as Record<string, unknown>).diagnostics;
+    (envelope.generalPrAssessmentSummary as Record<string, unknown>).reasonCodes = ["unknown_reason"];
+    const unknownReasonInjected = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+    expect(() => decodeSharedReport(unknownReasonInjected)).toThrow("Shared report payload failed summary validation");
   });
 
   it("makes a full proof graph structurally incompatible with the public proof graph", () => {

@@ -237,6 +237,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             <ShieldAlert size={15} />
             <span>
               <strong>{ordinaryPrAssessment.heading}:</strong> {ordinaryPrAssessment.conclusionLabel}. {ordinaryPrAssessment.sourceLabel}. {ordinaryPrAssessment.countsLabel}
+              {ordinaryPrAssessment.reasonLabels.length > 0 ? ` ${ordinaryPrAssessment.reasonLabels.join(" ")}` : ""}
             </span>
           </div>
         ) : null}

@@ -4,6 +4,17 @@ import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMar
 import { sanitizeReportForShare } from "./report-share";
 import { generateVerificationReportV2FromInput } from "./verifier";
 
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
+
 const detail = {
   repositoryFullName: "synthetic-org/agentproof-rendering-fixture",
   pullRequestNumber: 424242,
@@ -120,10 +131,14 @@ describe("dashboard report export", () => {
       version: 1,
       mode: "ordinary_pr",
       sourceState: "pr_author_claim",
-      overallConclusion: "mixed_evidence",
+      overallConclusion: "evidence_partial",
       counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
-      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
     };
+    Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
     assessmentDetail.report = report;
 
     const markdown = dashboardReportToMarkdown(assessmentDetail);
@@ -131,15 +146,16 @@ describe("dashboard report export", () => {
     const output = `${markdown}\n${JSON.stringify(json)}`;
 
     expect(markdown).toContain("## Ordinary PR Evidence Assessment");
-    expect(markdown).toContain("Evidence is partially connected");
+    expect(markdown).toContain("Evidence partially supports the stated change");
+    expect(markdown).toContain("Semantic assessment was unavailable.");
     expect(json.ordinary_pr_assessment).toMatchObject({
-      conclusion: "mixed_evidence",
+      version: 1,
+      mode: "ordinary_pr",
+      conclusion: "evidence_partial",
       counts: { evidence_partial: 1 },
-      reason_codes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+      reason_codes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
     });
-    expect(output).not.toContain("sourceBindingRef");
-    expect(output).not.toContain("sourceSpanRefs");
-    expect(output).not.toContain("targets");
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(output).not.toContain(forbidden);
   });
 
   it("renders a verified authoritative outcome as contract-supported", () => {

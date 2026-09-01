@@ -34,6 +34,7 @@ const GENERAL_PR_ASSESSMENT_MODES = new Set(["ordinary_pr", "typed_contract_comp
 const GENERAL_PR_ASSESSMENT_SOURCE_STATES = new Set(["linked_issue", "pr_author_claim", "mixed", "missing", "ambiguous"]);
 const GENERAL_PR_ASSESSMENT_CONCLUSIONS = new Set([
   "evidence_supports_stated_change",
+  "evidence_partial",
   "mixed_evidence",
   "attention_required",
   "collection_blocked",
@@ -55,7 +56,16 @@ const GENERAL_PR_ASSESSMENT_REASONS = new Set([
   "head_mismatch",
   "evidence_identity_incomplete",
   "semantic_relation_only",
-  "author_claim_requires_confirmation"
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
 ]);
 const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
   "evidence_supported",

@@ -162,6 +162,8 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
     } : {}),
     ...(report?.generalPrAssessmentSummary ? {
       ordinary_pr_assessment: {
+        version: report.generalPrAssessmentSummary.version,
+        mode: report.generalPrAssessmentSummary.mode,
         conclusion: report.generalPrAssessmentSummary.overallConclusion,
         source_state: report.generalPrAssessmentSummary.sourceState,
         counts: { ...report.generalPrAssessmentSummary.counts },

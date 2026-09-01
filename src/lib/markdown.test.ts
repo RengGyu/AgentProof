@@ -5,6 +5,17 @@ import { generateVerificationReport } from "./verifier";
 import { generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { PullRequestInput } from "./types";
 
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
+
 describe("reportToGitHubComment", () => {
   it("omits private proof receipts from Markdown and GitHub comments", () => {
     const report = generateVerificationReport(demoScenarios.clean);
@@ -84,20 +95,24 @@ describe("reportToGitHubComment", () => {
       version: 1,
       mode: "ordinary_pr",
       sourceState: "pr_author_claim",
-      overallConclusion: "mixed_evidence",
+      overallConclusion: "evidence_partial",
       counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
-      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
     };
+    Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
 
     const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
 
     expect(output).toContain("Ordinary PR evidence assessment");
-    expect(output).toContain("Evidence is partially connected");
+    expect(output).toContain("Evidence partially supports the stated change");
     expect(output).toContain("PR description claim — reviewer confirmation needed");
     expect(output).toContain("Partial evidence: 1");
-    expect(output).not.toContain("sourceBindingRef");
-    expect(output).not.toContain("sourceSpanRefs");
-    expect(output).not.toContain("targets");
+    expect(output).toContain("Semantic assessment was unavailable.");
+    expect(output).toContain("The target-to-evidence relation remains unresolved.");
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(output).not.toContain(forbidden);
   });
 
   it("uses the strict v2 outcome rather than high observed coverage on every Markdown surface", () => {

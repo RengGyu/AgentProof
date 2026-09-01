@@ -24,6 +24,28 @@ import type { PullRequestInput, VerificationReport, VerificationReportV2 } from 
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
+const CLOSED_PARTIAL_REASONS = [
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
+] as const;
 
 describe("server report store", () => {
   const originalEnv = { ...process.env };
@@ -75,7 +97,7 @@ describe("server report store", () => {
       version: 1,
       mode: "ordinary_pr",
       sourceState: "pr_author_claim",
-      overallConclusion: "mixed_evidence",
+      overallConclusion: "evidence_partial",
       counts: {
         evidence_supported: 0,
         evidence_partial: 1,
@@ -84,8 +106,12 @@ describe("server report store", () => {
         blocked: 0,
         not_assessable: 0
       },
-      reasonCodes: ["author_claim_requires_confirmation", "verified_relation_missing"]
+      reasonCodes: [...CLOSED_PARTIAL_REASONS]
     };
+    Object.assign(inputReport.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
     const saved = await createVerifiedSavedReport(inputReport, {
       tenantId: "tenant_summary",
       installationId: 321,
@@ -101,13 +127,24 @@ describe("server report store", () => {
     });
     const serialized = JSON.stringify({ persisted, decoded });
 
-    expect(report.generalPrAssessmentSummary).toEqual(inputReport.generalPrAssessmentSummary);
-    expect(persisted.generalPrAssessmentSummary).toEqual(inputReport.generalPrAssessmentSummary);
+    expect(report.generalPrAssessmentSummary).toEqual(persisted.generalPrAssessmentSummary);
+    expect(persisted.generalPrAssessmentSummary).toMatchObject({
+      overallConclusion: "evidence_partial",
+      reasonCodes: CLOSED_PARTIAL_REASONS
+    });
     expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
-    expect(decoded).toMatchObject({ status: "valid", report: { generalPrAssessmentSummary: inputReport.generalPrAssessmentSummary } });
-    expect(serialized).not.toContain("sourceBindingRef");
-    expect(serialized).not.toContain("sourceSpanRefs");
-    expect(serialized).not.toContain("targets");
+    expect(decoded).toMatchObject({ status: "valid", report: { generalPrAssessmentSummary: persisted.generalPrAssessmentSummary } });
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
+
+    for (const injected of [
+      { targets: [] },
+      { diagnostics: {} },
+      { reasonCodes: ["unknown_reason"] }
+    ]) {
+      const untrusted = structuredClone(persisted) as typeof persisted & { generalPrAssessmentSummary: Record<string, unknown> };
+      Object.assign(untrusted.generalPrAssessmentSummary, injected);
+      expect(validateTenantPersistedReport(untrusted, signingSecret).valid).toBe(false);
+    }
   });
 
   it("preserves a v2 no-contract discriminator through the private tenant storage boundary", async () => {
