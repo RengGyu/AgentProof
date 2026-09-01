@@ -28,6 +28,7 @@ function conclusionLabel(
   conclusion: GeneralPrAssessmentSummaryV1["overallConclusion"]
 ): string {
   if (conclusion === "evidence_supports_stated_change") return "Evidence supports the stated change";
+  if (conclusion === "evidence_partial") return "Evidence partially supports the stated change";
   if (conclusion === "attention_required") return "Evidence needs attention";
   if (conclusion === "collection_blocked") return "Evidence collection was incomplete";
   if (conclusion === "no_assessable_claims") return "No assessable objective was found";
@@ -74,7 +75,16 @@ function reasonLabel(reason: GeneralPrAssessmentSummaryV1["reasonCodes"][number]
     head_mismatch: "Collected evidence did not match the analyzed head.",
     evidence_identity_incomplete: "Evidence identity was incomplete.",
     semantic_relation_only: "Only a semantic relation was available, not deterministic proof.",
-    author_claim_requires_confirmation: "The PR description is an author claim and needs reviewer confirmation."
+    author_claim_requires_confirmation: "The PR description is an author claim and needs reviewer confirmation.",
+    deterministic_candidate_missing: "No deterministic assessment candidate was identified.",
+    semantic_observer_disabled: "Semantic assessment was not enabled for this analysis.",
+    semantic_observer_ineligible: "The objective was not eligible for semantic assessment.",
+    semantic_observer_unavailable: "Semantic assessment was unavailable.",
+    semantic_observer_timeout: "Semantic assessment did not finish in time.",
+    semantic_proposal_invalid: "A semantic proposal could not be used safely.",
+    semantic_candidate_missing: "No semantic assessment candidate was identified.",
+    semantic_candidate_rejected: "A semantic assessment candidate could not be admitted safely.",
+    target_relation_unresolved: "The target-to-evidence relation remains unresolved."
   };
   return labels[reason];
 }

@@ -107,6 +107,7 @@ const GENERAL_PR_ASSESSMENT_MODES = new Set(["ordinary_pr", "typed_contract_comp
 const GENERAL_PR_ASSESSMENT_SOURCE_STATES = new Set(["linked_issue", "pr_author_claim", "mixed", "missing", "ambiguous"]);
 const GENERAL_PR_ASSESSMENT_CONCLUSIONS = new Set([
   "evidence_supports_stated_change",
+  "evidence_partial",
   "mixed_evidence",
   "attention_required",
   "collection_blocked",
@@ -147,7 +148,16 @@ const GENERAL_PR_ASSESSMENT_REASONS = new Set([
   "head_mismatch",
   "evidence_identity_incomplete",
   "semantic_relation_only",
-  "author_claim_requires_confirmation"
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
 ]);
 const GENERAL_PR_RELATION_LEVELS = new Set(["verified", "observed", "hypothesis", "unresolved", "unavailable"]);
 const SUMMARY_ONLY_RAW_PROOF_TEXT_PATTERN = /\b(Patch excerpt|raw_details|raw diff|raw log|full log|raw patch|raw annotation|BEGIN PRIVATE KEY)\b/i;
@@ -644,7 +654,20 @@ function validateGeneralPrAssessment(
   const expectedConclusion = aggregateGeneralPrConclusion(targetConclusions);
   if (value.overallConclusion !== expectedConclusion) errors.push("generalPrAssessment.overallConclusion does not match targets.");
   validateGeneralPrSourceState(value.sourceState, targetAuthorities, errors);
-  if (reportReasons && reportReasons.some((reason) => !targetReasons.includes(reason) && reason !== "source_missing" && reason !== "source_ambiguous" && reason !== "unsupported_claim_type")) {
+  if (reportReasons && reportReasons.some((reason) => !targetReasons.includes(reason) && ![
+    "source_missing",
+    "source_ambiguous",
+    "unsupported_claim_type",
+    "deterministic_candidate_missing",
+    "semantic_observer_disabled",
+    "semantic_observer_ineligible",
+    "semantic_observer_unavailable",
+    "semantic_observer_timeout",
+    "semantic_proposal_invalid",
+    "semantic_candidate_missing",
+    "semantic_candidate_rejected",
+    "target_relation_unresolved"
+  ].includes(reason))) {
     errors.push("generalPrAssessment.reasonCodes must be derived from targets or an empty-target source state.");
   }
 }
@@ -759,6 +782,7 @@ function aggregateGeneralPrConclusion(conclusions: string[]): string {
   if (conclusions.includes("contradicted")) return "attention_required";
   if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "blocked")) return "collection_blocked";
   if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "evidence_supported")) return "evidence_supports_stated_change";
+  if (conclusions.length > 0 && conclusions.every((conclusion) => conclusion === "evidence_partial")) return "evidence_partial";
   return conclusions.length > 0 ? "mixed_evidence" : "no_assessable_claims";
 }
 

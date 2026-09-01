@@ -744,6 +744,7 @@ export interface GeneralPrAssessmentV1 {
   sourceState: "linked_issue" | "pr_author_claim" | "mixed" | "missing" | "ambiguous";
   overallConclusion:
     | "evidence_supports_stated_change"
+    | "evidence_partial"
     | "mixed_evidence"
     | "attention_required"
     | "collection_blocked"

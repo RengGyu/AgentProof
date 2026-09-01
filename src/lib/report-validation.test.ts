@@ -49,6 +49,32 @@ describe("validateVerificationReport", () => {
 
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
 
+    const twoPartialTargets = structuredClone(report) as unknown as {
+      generalPrAssessment: {
+        counts: { evidence_partial: number };
+        targets: Array<Record<string, unknown>>;
+      };
+    };
+    twoPartialTargets.generalPrAssessment.targets.push({ ...assessment.targets[0] });
+    twoPartialTargets.generalPrAssessment.counts.evidence_partial = 2;
+    expect(validateVerificationReport(twoPartialTargets, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    const forgedConclusion = structuredClone(report) as unknown as {
+      generalPrAssessment: { overallConclusion: string };
+    };
+    forgedConclusion.generalPrAssessment.overallConclusion = "mixed_evidence";
+    expect(validateVerificationReport(forgedConclusion, { mode: "v2_full" }).errors).toContain(
+      "generalPrAssessment.overallConclusion does not match targets."
+    );
+
+    const forgedCounts = structuredClone(report) as unknown as {
+      generalPrAssessment: { counts: { evidence_partial: number } };
+    };
+    forgedCounts.generalPrAssessment.counts.evidence_partial = 2;
+    expect(validateVerificationReport(forgedCounts, { mode: "v2_full" }).errors).toContain(
+      "generalPrAssessment.counts.evidence_partial does not match targets."
+    );
+
     const injected = structuredClone(report) as unknown as {
       generalPrAssessment: { targets: Array<Record<string, unknown>> };
     };

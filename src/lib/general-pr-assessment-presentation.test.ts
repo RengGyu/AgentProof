@@ -6,7 +6,7 @@ const summary: GeneralPrAssessmentSummaryV1 = {
   version: 1,
   mode: "ordinary_pr",
   sourceState: "pr_author_claim",
-  overallConclusion: "mixed_evidence",
+  overallConclusion: "evidence_partial",
   counts: {
     evidence_supported: 0,
     evidence_partial: 1,
@@ -25,7 +25,7 @@ describe("presentGeneralPrAssessmentSummary", () => {
 
     expect(presentation).toMatchObject({
       heading: "Ordinary PR evidence assessment",
-      conclusionLabel: "Evidence is partially connected",
+      conclusionLabel: "Evidence partially supports the stated change",
       sourceLabel: "PR description claim — reviewer confirmation needed",
       countsLabel: "Partial evidence: 1",
       reasonLabels: [

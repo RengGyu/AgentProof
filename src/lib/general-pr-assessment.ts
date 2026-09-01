@@ -160,6 +160,7 @@ function overallConclusionFor(targets: GeneralPrAssessmentTargetV1[]): GeneralPr
   if (targets.some((target) => target.conclusion === "contradicted")) return "attention_required";
   if (targets.length > 0 && targets.every((target) => target.conclusion === "blocked")) return "collection_blocked";
   if (targets.length > 0 && targets.every((target) => target.conclusion === "evidence_supported")) return "evidence_supports_stated_change";
+  if (targets.length > 0 && targets.every((target) => target.conclusion === "evidence_partial")) return "evidence_partial";
   if (targets.length > 0) return "mixed_evidence";
   return "no_assessable_claims";
 }

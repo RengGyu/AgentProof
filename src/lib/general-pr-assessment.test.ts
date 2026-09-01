@@ -38,7 +38,7 @@ describe("deriveGeneralPrAssessmentV1", () => {
 
     expect(deriveGeneralPrAssessmentV1({ seed, bundle, report })).toMatchObject({
       sourceState: "pr_author_claim",
-      overallConclusion: "mixed_evidence",
+      overallConclusion: "evidence_partial",
       counts: {
         evidence_supported: 0,
         evidence_partial: 1,
