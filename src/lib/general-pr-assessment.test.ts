@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { deriveGeneralPrAssessmentV1 } from "./general-pr-assessment";
+import { deriveGeneralPrAssessmentV1, summarizeGeneralPrAssessmentV1 } from "./general-pr-assessment";
 import { finalizeDeterministicGeneralPrObservationsV2 } from "./general-pr-observation-service";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
-import type { PullRequestInput, VerificationReport } from "./types";
+import { validateVerificationReport } from "./report-validation";
+import { generateVerificationReportV2FromInput } from "./verifier";
+import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 
 const report = { requirements: [], evidenceIndex: [] } as unknown as VerificationReport;
 
@@ -72,14 +74,23 @@ describe("deriveGeneralPrAssessmentV1", () => {
   });
 
   it("retains PR-author source state and diagnostic reasons when no target is admitted", () => {
-    const seed = buildGeneralPrObservationSeedV2(input({ title: "Maintenance notes", description: "Internal cleanup only." }));
+    const noCandidateInput = input({ title: "Maintenance notes", description: "Internal cleanup only." });
+    const seed = buildGeneralPrObservationSeedV2(noCandidateInput);
     const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+    const runtimeReport = generateVerificationReportV2FromInput(noCandidateInput) as VerificationReportV2;
+    runtimeReport.generalPrAssessmentSummary = summarizeGeneralPrAssessmentV1(assessment);
 
-    expect(deriveGeneralPrAssessmentV1({ seed, bundle, report })).toMatchObject({
+    expect(assessment).toMatchObject({
       sourceState: "pr_author_claim",
       overallConclusion: "no_assessable_claims",
-      reasonCodes: expect.arrayContaining(["deterministic_candidate_missing", "semantic_observer_unavailable"])
+      reasonCodes: expect.arrayContaining([
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ])
     });
+    expect(validateVerificationReport(runtimeReport, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
   });
 
   it("retains linked-Issue source state with zero targets and marks stale ownership ambiguous", () => {
