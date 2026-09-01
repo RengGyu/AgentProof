@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { validateVerificationReport } from "@/lib/report-validation";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
-import type { VerificationReport } from "@/lib/types";
+import type { VerificationReport, VerificationReportV2 } from "@/lib/types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -90,7 +90,7 @@ describe("POST /api/analyze", () => {
 
       expect(response.status, JSON.stringify(json)).toBe(200);
       expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(false);
-      expect(json.report.generalPrAssessmentSummary).toBeUndefined();
+      expect((json.report as VerificationReportV2).generalPrAssessmentSummary).toBeUndefined();
     } finally {
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
