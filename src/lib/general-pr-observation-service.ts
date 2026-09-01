@@ -11,6 +11,7 @@ import type { GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal
 import { evaluateScopeMappingObservationV2 } from "./scope-mapping-observation";
 import { evaluateTestCoverageObservationV2 } from "./test-coverage-observation";
 import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
+import type { GeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 
 export interface GeneralPrObservationBundleV2 {
   version: 2;
@@ -30,7 +31,7 @@ export interface GeneralPrObservationBundleV2 {
 }
 
 export interface RunGeneralPrObservationNowOptionsV2 {
-  mode: "disabled" | "shadow" | "advisory";
+  policy: GeneralPrAssessmentRuntimePolicyV1;
   input: PullRequestInput;
   generateReport: (input: PullRequestInput) => VerificationReport;
   validateDeterministicReport: (input: PullRequestInput, report: VerificationReport) => boolean;
@@ -56,27 +57,17 @@ const UNCONFIGURED_MODEL_PROFILE: GeneralPrSemanticObserverModelProfileV2 = {
  * This observation pipeline is deliberately default-off. An unknown value
  * must not silently enable a new source of report findings.
  */
-export function resolveGeneralPrObservationModeV2(
-  configuredValue: string | undefined
-): "disabled" | "shadow" | "advisory" {
-  if (configuredValue === "shadow" || configuredValue === "advisory") {
-    return configuredValue;
-  }
-
-  return "disabled";
-}
-
 export async function runGeneralPrObservationNowV2(
   options: RunGeneralPrObservationNowOptionsV2
 ): Promise<{ report: VerificationReport; bundle: GeneralPrObservationBundleV2 | null }> {
   // The deterministic report is always the first and authoritative product output.
   const report = options.generateReport(options.input);
   if (!options.validateDeterministicReport(options.input, report)) return { report, bundle: null };
-  if (options.mode === "disabled") return { report, bundle: null };
+  if (options.policy.semanticObservation === "disabled") return { report, bundle: null };
   const seed = buildGeneralPrObservationSeedV2(options.input);
   if (!validateGeneralPrObservationSeedV2(seed).valid || seed.parseState !== "complete") return { report, bundle: null };
   const semantic = await runGeneralPrSemanticObserverV2({
-    mode: options.mode,
+    mode: options.policy.releasePhase,
     input: options.input,
     seed,
     provider: options.semantic?.provider,
@@ -92,7 +83,7 @@ export async function runGeneralPrObservationNowV2(
   });
   const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semantic.proposal, semantic.state);
   return {
-    report: options.mode === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
+    report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
     bundle
   };
 }

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   finalizeDeterministicGeneralPrObservationsV2,
-  resolveGeneralPrObservationModeV2,
   runGeneralPrObservationNowV2
 } from "./general-pr-observation-service";
+import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import { deriveGeneralPrObjectiveGroupIdV2 } from "./general-pr-semantic-proposal";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import type { GeneralPrSemanticObserverModelProfileV2 } from "./general-pr-semantic-observer";
@@ -63,17 +63,9 @@ function validProposal(observationSeed: ReturnType<typeof buildGeneralPrObservat
 }
 
 describe("runGeneralPrObservationNowV2", () => {
-  it("keeps the observation path disabled unless a supported mode is explicitly configured", () => {
-    expect(resolveGeneralPrObservationModeV2(undefined)).toBe("disabled");
-    expect(resolveGeneralPrObservationModeV2("")).toBe("disabled");
-    expect(resolveGeneralPrObservationModeV2("unknown")).toBe("disabled");
-    expect(resolveGeneralPrObservationModeV2("shadow")).toBe("shadow");
-    expect(resolveGeneralPrObservationModeV2("advisory")).toBe("advisory");
-  });
-
   it("returns the exact deterministic report when the feature is disabled", async () => {
     const generateReport = vi.fn(() => report);
-    const result = await runGeneralPrObservationNowV2({ mode: "disabled", input, generateReport, validateDeterministicReport: () => true });
+    const result = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("disabled"), input, generateReport, validateDeterministicReport: () => true });
 
     expect(result.report).toBe(report);
     expect(result.bundle).toBeNull();
@@ -81,7 +73,7 @@ describe("runGeneralPrObservationNowV2", () => {
   });
 
   it("keeps the deterministic report unchanged in shadow mode while returning only private observations", async () => {
-    const result = await runGeneralPrObservationNowV2({ mode: "shadow", input, generateReport: () => report, validateDeterministicReport: () => true });
+    const result = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"), input, generateReport: () => report, validateDeterministicReport: () => true });
 
     expect(result.report).toBe(report);
     expect(result.bundle).toMatchObject({ version: 2, semanticState: "unavailable" });
@@ -95,13 +87,22 @@ describe("runGeneralPrObservationNowV2", () => {
       verificationContract: { state: "absent" },
       requirements: [{ requirementId: "req_1", status: "unclear" }]
     } as unknown as VerificationReportV2;
+    const provider = { observe: vi.fn(async () => null) };
     const result = await runGeneralPrObservationNowV2({
-      mode: "advisory",
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
       input,
       generateReport: () => v2Report,
-      validateDeterministicReport: () => true
+      validateDeterministicReport: () => true,
+      semantic: {
+        provider,
+        providerAvailable: true,
+        privateRepository: false,
+        readCurrentInput: async () => input,
+        modelProfile
+      }
     });
 
+    expect(provider.observe).toHaveBeenCalledTimes(1);
     expect(result.report).not.toBe(v2Report);
     expect(result.report.requirements.map((requirement) => requirement.status)).toEqual(["unclear"]);
     expect((result.report as VerificationReportV2).generalPrAssessmentSummary).toMatchObject({
@@ -112,8 +113,8 @@ describe("runGeneralPrObservationNowV2", () => {
   });
 
   it("returns the deterministic report when runtime validation or collection fails", async () => {
-    const invalid = await runGeneralPrObservationNowV2({ mode: "shadow", input, generateReport: () => report, validateDeterministicReport: () => false });
-    const oversized = await runGeneralPrObservationNowV2({ mode: "shadow", input: { ...input, description: "x".repeat(64_001) }, generateReport: () => report, validateDeterministicReport: () => true });
+    const invalid = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"), input, generateReport: () => report, validateDeterministicReport: () => false });
+    const oversized = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"), input: { ...input, description: "x".repeat(64_001) }, generateReport: () => report, validateDeterministicReport: () => true });
 
     expect(invalid).toMatchObject({ report, bundle: null });
     expect(oversized).toMatchObject({ report, bundle: null });
@@ -123,7 +124,7 @@ describe("runGeneralPrObservationNowV2", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(input);
     const provider = { observe: vi.fn(async () => validProposal(observationSeed)) };
     const result = await runGeneralPrObservationNowV2({
-      mode: "shadow",
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
       input,
       generateReport: () => report,
       validateDeterministicReport: () => true,
