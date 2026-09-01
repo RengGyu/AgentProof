@@ -176,9 +176,11 @@ describe("external-pr-current-corpus-smoke", () => {
     for (const [name, mutate] of [
       ["incomplete", (run) => { run.status = "incomplete"; run.incompleteCount = 1; run.completedCount = 24; }],
       ["failed quality gate", (run) => { run.qualityGateSummary.checks = [{ id: "requirements_present", label: "Requirement extraction present", count: 25, failedCount: 1 }]; }],
+      ["quality gate not ok", (run) => { run.qualityGateSummary.ok = false; }],
       ["unavailable observer", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_observer_unavailable = 1; }],
       ["timeout observer", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_observer_timeout = 1; }],
       ["invalid provider candidate", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_proposal_invalid = 1; }],
+      ["unsupported semantic assessment", (run) => { run.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported = 1; }],
       ["no valid semantic terminal", (run) => { delete run.generalPrAssessmentSummary.reasonCodeCounts.semantic_candidate_missing; }]
     ]) {
       const mutated = structuredClone(result);

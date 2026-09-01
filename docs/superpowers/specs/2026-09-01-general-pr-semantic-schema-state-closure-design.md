@@ -1,8 +1,8 @@
 # General PR Semantic Schema and State Closure Design
 
-**Status:** Ready for implementation review  
-**Date:** 2026-09-01  
-**Depends on:** `docs/superpowers/specs/2026-09-01-general-pr-automatic-assessment-routing-design.md`  
+**Status:** Ready for implementation review
+**Date:** 2026-09-01
+**Depends on:** `docs/superpowers/specs/2026-09-01-general-pr-automatic-assessment-routing-design.md`
 **Product boundary:** Bounded semantic target discovery for ordinary public PR evidence reports; never strict verification authority
 
 ## 1. Problem

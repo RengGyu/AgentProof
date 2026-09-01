@@ -283,7 +283,8 @@ export function assertCurrentExternalPrSemanticBoundaryHealth(run) {
   assertAggregateOnlyRunArtifact(run);
   const fail = () => { throw new Error("Current external PR semantic boundary health was invalid."); };
   if (run.status !== "completed" || run.completedCount !== run.caseCount || run.incompleteCount !== 0) fail();
-  if (run.qualityGateSummary.checks.some((check) => check.failedCount !== 0)) fail();
+  if (!run.qualityGateSummary.ok || run.qualityGateSummary.checks.some((check) => check.failedCount !== 0)) fail();
+  if (run.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported !== 0) fail();
 
   const reasons = run.generalPrAssessmentSummary.reasonCodeCounts;
   for (const reason of ["semantic_observer_unavailable", "semantic_observer_timeout", "semantic_proposal_invalid"]) {
