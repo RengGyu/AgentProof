@@ -100,7 +100,8 @@ describe("external-pr-current-corpus-smoke", () => {
       operatorSemanticBoundary: {
         version: 1,
         semanticState: "unavailable",
-        semanticFailureStage: "provider_request"
+        semanticFailureStage: "package",
+        semanticPackageFailureReasons: ["evidence_atom_limit_exceeded"]
       }
     });
 
@@ -119,7 +120,8 @@ describe("external-pr-current-corpus-smoke", () => {
       privacy: "operator-only-aggregate",
       caseCount: 25,
       semanticStateCounts: { unavailable: 25 },
-      semanticFailureStageCounts: { provider_request: 25 }
+      semanticFailureStageCounts: { package: 25 },
+      semanticPackageFailureReasonCounts: { evidence_atom_limit_exceeded: 25 }
     });
     expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ operatorDiagnosticsToken }));
   });

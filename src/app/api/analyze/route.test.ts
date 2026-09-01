@@ -87,14 +87,20 @@ describe("POST /api/analyze", () => {
         body: JSON.stringify({ demoScenario: "clean" })
       }));
       const json = await authorized.json() as {
-        operatorDiagnostics?: { version: number; semanticState: string | null; semanticFailureStage: string | null };
+        operatorDiagnostics?: {
+          version: number;
+          semanticState: string | null;
+          semanticFailureStage: string | null;
+          semanticPackageFailureReasons: string[];
+        };
       };
 
       expect(authorized.status).toBe(200);
       expect(json.operatorDiagnostics).toEqual({
         version: 1,
         semanticState: null,
-        semanticFailureStage: null
+        semanticFailureStage: null,
+        semanticPackageFailureReasons: []
       });
       expect(JSON.stringify(json.operatorDiagnostics)).not.toMatch(/token|source|path|prompt|output/i);
     } finally {

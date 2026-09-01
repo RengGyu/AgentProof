@@ -31,6 +31,7 @@ const bundle: GeneralPrObservationBundleV2 = {
   }],
   semanticState: "valid",
   semanticFailureStage: null,
+  semanticPackageFailureReasons: [],
   diagnostics: {
     version: 1,
     sourceCollection: "available",

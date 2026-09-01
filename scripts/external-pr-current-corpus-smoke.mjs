@@ -36,6 +36,11 @@ const GENERAL_PR_REASON_CODES = new Set([
   "semantic_observer_unavailable", "semantic_observer_timeout", "semantic_proposal_invalid",
   "semantic_candidate_missing", "semantic_candidate_rejected", "target_relation_unresolved"
 ]);
+const OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS = new Set([
+  "model_profile_invalid", "timeout_invalid", "seed_invalid", "seed_parse_incomplete", "span_missing", "span_limit_exceeded",
+  "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch", "source_binding_invalid",
+  "schema_unavailable", "input_size_exceeded"
+]);
 const QUALITY_GATE_LABELS = new Map([
   ["requirements_present", "Requirement extraction present"],
   ["met_requirement_execution", "Met requirements cite passing execution evidence"],
@@ -166,19 +171,25 @@ function completedResult(testCase, result) {
 
 function isValidOperatorSemanticBoundary(value) {
   return value && typeof value === "object" && !Array.isArray(value) &&
-    Object.keys(value).length === 3 && value.version === 1 &&
+    Object.keys(value).length === 4 && value.version === 1 &&
     ["disabled", "ineligible", "valid", "invalid", "timeout", "unavailable", "stale", null].includes(value.semanticState) &&
     ["configuration", "package", "privacy", "provider_request", "provider_response", null].includes(value.semanticFailureStage) &&
-    (value.semanticState === "unavailable" || value.semanticFailureStage === null);
+    Array.isArray(value.semanticPackageFailureReasons) &&
+    new Set(value.semanticPackageFailureReasons).size === value.semanticPackageFailureReasons.length &&
+    value.semanticPackageFailureReasons.every((reason) => OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS.has(reason)) &&
+    (value.semanticState === "unavailable" || value.semanticFailureStage === null) &&
+    (value.semanticFailureStage === "package" || value.semanticPackageFailureReasons.length === 0);
 }
 
 function summarizeOperatorSemanticBoundaries(boundaries, caseCount) {
   const semanticStateCounts = {};
   const semanticFailureStageCounts = {};
+  const semanticPackageFailureReasonCounts = {};
 
   for (const boundary of boundaries) {
     if (boundary.semanticState !== null) incrementCount(semanticStateCounts, boundary.semanticState);
     if (boundary.semanticFailureStage !== null) incrementCount(semanticFailureStageCounts, boundary.semanticFailureStage);
+    for (const reason of boundary.semanticPackageFailureReasons) incrementCount(semanticPackageFailureReasonCounts, reason);
   }
 
   return {
@@ -186,7 +197,8 @@ function summarizeOperatorSemanticBoundaries(boundaries, caseCount) {
     privacy: "operator-only-aggregate",
     caseCount,
     semanticStateCounts,
-    semanticFailureStageCounts
+    semanticFailureStageCounts,
+    semanticPackageFailureReasonCounts
   };
 }
 

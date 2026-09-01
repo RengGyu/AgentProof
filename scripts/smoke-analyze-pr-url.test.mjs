@@ -23,7 +23,8 @@ describe("smoke-analyze-pr-url", () => {
         operatorDiagnostics: {
           version: 1,
           semanticState: "unavailable",
-          semanticFailureStage: "provider_request"
+          semanticFailureStage: "package",
+          semanticPackageFailureReasons: ["evidence_atom_limit_exceeded"]
         }
       }))
       .mockResolvedValueOnce(jsonResponse({
@@ -61,7 +62,8 @@ describe("smoke-analyze-pr-url", () => {
     expect(result.operatorSemanticBoundary).toEqual({
       version: 1,
       semanticState: "unavailable",
-      semanticFailureStage: "provider_request"
+      semanticFailureStage: "package",
+      semanticPackageFailureReasons: ["evidence_atom_limit_exceeded"]
     });
     expect(JSON.stringify(result.operatorSemanticBoundary)).not.toMatch(/token|source|path|prompt|output/i);
   });

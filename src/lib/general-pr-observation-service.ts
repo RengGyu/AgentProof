@@ -5,6 +5,7 @@ import { buildGeneralPrObservationSeedV2, validateGeneralPrObservationSeedV2 } f
 import {
   runGeneralPrSemanticObserverV2,
   type GeneralPrSemanticFailureStageV1,
+  type GeneralPrSemanticPackageFailureReasonV1,
   type GeneralPrSemanticObserverModelProfileV2,
   type GeneralPrSemanticObserverProviderV2
 } from "./general-pr-semantic-observer";
@@ -31,6 +32,8 @@ export interface GeneralPrObservationBundleV2 {
   semanticState: "disabled" | "ineligible" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   /** Private aggregate diagnostic only; it is not copied into reports. */
   semanticFailureStage: GeneralPrSemanticFailureStageV1 | null;
+  /** Private closed reason set only; it is not copied into reports. */
+  semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[];
   diagnostics: GeneralPrAssessmentDiagnosticsV1;
 }
 
@@ -99,7 +102,13 @@ export async function runGeneralPrObservationNowV2(
     readCurrentInput: options.semantic?.readCurrentInput ?? (async () => null),
     modelProfile: options.semantic?.modelProfile ?? UNCONFIGURED_MODEL_PROFILE
   });
-  const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semantic.proposal, semantic.state, semantic.semanticFailureStage);
+  const bundle = finalizeDeterministicGeneralPrObservationsV2(
+    seed,
+    semantic.proposal,
+    semantic.state,
+    semantic.semanticFailureStage,
+    semantic.semanticPackageFailureReasons
+  );
   return {
     report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
     bundle
@@ -135,7 +144,8 @@ export function finalizeDeterministicGeneralPrObservationsV2(
   seed: ReturnType<typeof buildGeneralPrObservationSeedV2>,
   semanticProposal: GeneralPrSemanticProposalV2 | null = null,
   semanticState: GeneralPrObservationBundleV2["semanticState"] = "unavailable",
-  semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null
+  semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null,
+  semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = []
 ): GeneralPrObservationBundleV2 {
   const deterministicObjectives = seed.spans.flatMap((span) => {
     if (span.deterministicRole !== "objective_candidate") return [];
@@ -252,6 +262,9 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     scopeMappings,
     semanticState,
     semanticFailureStage: semanticState === "unavailable" ? semanticFailureStage : null,
+    semanticPackageFailureReasons: semanticState === "unavailable" && semanticFailureStage === "package"
+      ? semanticPackageFailureReasons
+      : [],
     diagnostics
   };
 }

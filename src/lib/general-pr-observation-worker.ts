@@ -107,7 +107,13 @@ export async function advanceQueuedGeneralPrObservationV2(
   return {
     status: "completed",
     current: { ...options.current, attempt: 1, status: "completed" },
-    bundle: finalizeDeterministicGeneralPrObservationsV2(seed, semantic.proposal, semantic.state, semantic.semanticFailureStage),
+    bundle: finalizeDeterministicGeneralPrObservationsV2(
+      seed,
+      semantic.proposal,
+      semantic.state,
+      semantic.semanticFailureStage,
+      semantic.semanticPackageFailureReasons
+    ),
     semantic
   };
 }

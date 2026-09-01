@@ -263,6 +263,7 @@ describe("runGeneralPrObservationNowV2", () => {
       expect(result.report.requirements.map((requirement) => requirement.status)).toEqual(["unclear"]);
       expect((result.report as VerificationReportV2).generalPrAssessmentSummary?.counts.evidence_supported).toBe(0);
       expect(JSON.stringify(result.report)).not.toContain("semanticFailureStage");
+      expect(JSON.stringify(result.report)).not.toContain("semanticPackageFailureReasons");
     }
   });
 

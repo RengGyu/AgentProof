@@ -69,6 +69,21 @@ export type GeneralPrSemanticFailureStageV1 =
   | "provider_request"
   | "provider_response";
 
+/** Closed, source-free reasons why the bounded semantic package was not built. */
+export type GeneralPrSemanticPackageFailureReasonV1 =
+  | "model_profile_invalid"
+  | "timeout_invalid"
+  | "seed_invalid"
+  | "seed_parse_incomplete"
+  | "span_missing"
+  | "span_limit_exceeded"
+  | "change_cluster_limit_exceeded"
+  | "evidence_atom_limit_exceeded"
+  | "seed_rebuild_mismatch"
+  | "source_binding_invalid"
+  | "schema_unavailable"
+  | "input_size_exceeded";
+
 /**
  * Provider adapters may use this closed error to preserve only the failure
  * category. Its message and the original provider error are never reported
@@ -103,6 +118,8 @@ export type GeneralPrSemanticObserverRunResultV2 = {
   state: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   /** Non-null only for a provider-unavailable run; never projected into a report. */
   semanticFailureStage: GeneralPrSemanticFailureStageV1 | null;
+  /** Non-empty only for a package-unavailable run; never projected into a report. */
+  semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[];
   proposal: GeneralPrSemanticProposalV2 | null;
   receipt: GeneralPrSemanticInvocationReceiptV2 & { receiptHash: string };
 };
@@ -123,16 +140,33 @@ export function buildGeneralPrSemanticObserverPackageV2(
   modelProfile: GeneralPrSemanticObserverModelProfileV2,
   timeoutMs = GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TIMEOUT_MS
 ): GeneralPrSemanticObserverPackageV2 | null {
-  if (!isModelProfile(modelProfile) || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) return null;
-  if (!validateGeneralPrObservationSeedV2(seed).valid || seed.parseState !== "complete" || seed.spans.length === 0 || seed.spans.length > GENERAL_PR_SEMANTIC_OBSERVER_MAX_SPANS || seed.changeClusters.length > GENERAL_PR_SEMANTIC_OBSERVER_MAX_CLUSTERS || seed.evidenceAtoms.length > GENERAL_PR_SEMANTIC_OBSERVER_MAX_EVIDENCE_ATOMS) return null;
+  return buildGeneralPrSemanticObserverPackageResultV2(input, seed, modelProfile, timeoutMs).semanticPackage;
+}
+
+function buildGeneralPrSemanticObserverPackageResultV2(
+  input: PullRequestInput,
+  seed: GeneralPrObservationSeedV2,
+  modelProfile: GeneralPrSemanticObserverModelProfileV2,
+  timeoutMs: number
+): { semanticPackage: GeneralPrSemanticObserverPackageV2 | null; failureReasons: GeneralPrSemanticPackageFailureReasonV1[] } {
+  const failureReasons: GeneralPrSemanticPackageFailureReasonV1[] = [];
+  if (!isModelProfile(modelProfile)) failureReasons.push("model_profile_invalid");
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) failureReasons.push("timeout_invalid");
+  if (!validateGeneralPrObservationSeedV2(seed).valid) failureReasons.push("seed_invalid");
+  if (seed.parseState !== "complete") failureReasons.push("seed_parse_incomplete");
+  if (seed.spans.length === 0) failureReasons.push("span_missing");
+  else if (seed.spans.length > GENERAL_PR_SEMANTIC_OBSERVER_MAX_SPANS) failureReasons.push("span_limit_exceeded");
+  if (seed.changeClusters.length > GENERAL_PR_SEMANTIC_OBSERVER_MAX_CLUSTERS) failureReasons.push("change_cluster_limit_exceeded");
+  if (seed.evidenceAtoms.length > GENERAL_PR_SEMANTIC_OBSERVER_MAX_EVIDENCE_ATOMS) failureReasons.push("evidence_atom_limit_exceeded");
   const rebuilt = buildGeneralPrObservationSeedV2(input);
-  if (rebuilt.seedHash !== seed.seedHash) return null;
+  if (rebuilt.seedHash !== seed.seedHash) failureReasons.push("seed_rebuild_mismatch");
+  if (failureReasons.length > 0) return { semanticPackage: null, failureReasons };
   const textBySourceId = buildRedactedSourceViews(input, seed);
-  if (!textBySourceId) return null;
+  if (!textBySourceId) return { semanticPackage: null, failureReasons: ["source_binding_invalid"] };
   const sourcesById = new Map(seed.sources.map((source) => [source.id, source]));
   const changeFactsByRef = new Map(seed.changeFacts.map((fact) => [fact.fileRef, fact]));
   const schema = buildGeneralPrSemanticProposalJsonSchemaV2(seed);
-  if (!schema) return null;
+  if (!schema) return { semanticPackage: null, failureReasons: ["schema_unavailable"] };
   const semanticPackage: GeneralPrSemanticObserverPackageV2 = {
     system: SYSTEM_PROMPT,
     input: {
@@ -172,8 +206,10 @@ export function buildGeneralPrSemanticObserverPackageV2(
       responseFormat: { type: "json_schema", name: GENERAL_PR_SEMANTIC_PROVIDER_SCHEMA_NAME, strict: true, schema }
     }
   };
-  if (Buffer.byteLength(JSON.stringify(semanticPackage.input), "utf8") > GENERAL_PR_SEMANTIC_OBSERVER_MAX_INPUT_BYTES) return null;
-  return semanticPackage;
+  if (Buffer.byteLength(JSON.stringify(semanticPackage.input), "utf8") > GENERAL_PR_SEMANTIC_OBSERVER_MAX_INPUT_BYTES) {
+    return { semanticPackage: null, failureReasons: ["input_size_exceeded"] };
+  }
+  return { semanticPackage, failureReasons: [] };
 }
 
 /**
@@ -186,12 +222,14 @@ export async function runGeneralPrSemanticObserverV2(
   const now = options.clock ?? Date.now;
   const startedAt = now();
   const timeoutMs = options.timeoutMs ?? GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TIMEOUT_MS;
-  const semanticPackage = buildGeneralPrSemanticObserverPackageV2(options.input, options.seed, options.modelProfile, timeoutMs);
+  const packageResult = buildGeneralPrSemanticObserverPackageResultV2(options.input, options.seed, options.modelProfile, timeoutMs);
+  const semanticPackage = packageResult.semanticPackage;
   const finish = (
     state: GeneralPrSemanticObserverRunResultV2["state"],
     proposal: GeneralPrSemanticProposalV2 | null,
     output: unknown = null,
-    semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null
+    semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null,
+    semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = []
   ): GeneralPrSemanticObserverRunResultV2 => {
     const receiptState: GeneralPrSemanticInvocationReceiptV2["state"] = state === "disabled" ? "unavailable" : state;
     const receipt: GeneralPrSemanticInvocationReceiptV2 = {
@@ -207,13 +245,16 @@ export async function runGeneralPrSemanticObserverV2(
     return {
       state,
       semanticFailureStage: state === "unavailable" ? semanticFailureStage : null,
+      semanticPackageFailureReasons: state === "unavailable" && semanticFailureStage === "package"
+        ? semanticPackageFailureReasons
+        : [],
       proposal,
       receipt: { ...receipt, receiptHash: hashGeneralPrSemanticInvocationReceiptV2(receipt) }
     };
   };
 
   if (options.mode === "disabled") return finish("disabled", null);
-  if (!semanticPackage) return finish("unavailable", null, null, "package");
+  if (!semanticPackage) return finish("unavailable", null, null, "package", packageResult.failureReasons);
   if (!options.providerAvailable || !options.provider) return finish("unavailable", null, null, "configuration");
   // Repository visibility is an external privacy fact. Unknown is not public:
   // only an explicit public classification may bypass the private consent gate.

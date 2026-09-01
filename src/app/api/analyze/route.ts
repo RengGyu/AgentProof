@@ -179,7 +179,8 @@ export async function POST(request: Request) {
         operatorDiagnostics: {
           version: 1,
           semanticState: observed.bundle?.semanticState ?? null,
-          semanticFailureStage: observed.bundle?.semanticFailureStage ?? null
+          semanticFailureStage: observed.bundle?.semanticFailureStage ?? null,
+          semanticPackageFailureReasons: observed.bundle?.semanticPackageFailureReasons ?? []
         }
       } : {})
     }, 200, timing, evidenceTiming);

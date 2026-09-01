@@ -58,6 +58,11 @@ const OPERATOR_DIAGNOSTIC_HEADER = "x-agentproof-observation-diagnostics";
 const OPERATOR_DIAGNOSTIC_VERSION = "semantic-boundary-v1";
 const OPERATOR_SEMANTIC_STATES = new Set(["disabled", "ineligible", "valid", "invalid", "timeout", "unavailable", "stale"]);
 const OPERATOR_SEMANTIC_FAILURE_STAGES = new Set(["configuration", "package", "privacy", "provider_request", "provider_response"]);
+const OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS = new Set([
+  "model_profile_invalid", "timeout_invalid", "seed_invalid", "seed_parse_incomplete", "span_missing", "span_limit_exceeded",
+  "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch", "source_binding_invalid",
+  "schema_unavailable", "input_size_exceeded"
+]);
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -180,18 +185,23 @@ export async function runAnalyzePrSmoke({
 function readOperatorSemanticBoundary(value, required) {
   if (!required) return null;
   if (!value || typeof value !== "object" || Array.isArray(value) ||
-    !hasExactKeys(value, ["version", "semanticState", "semanticFailureStage"]) ||
+    !hasExactKeys(value, ["version", "semanticState", "semanticFailureStage", "semanticPackageFailureReasons"]) ||
     value.version !== 1 ||
     (value.semanticState !== null && !OPERATOR_SEMANTIC_STATES.has(value.semanticState)) ||
     (value.semanticFailureStage !== null && !OPERATOR_SEMANTIC_FAILURE_STAGES.has(value.semanticFailureStage)) ||
-    (value.semanticState !== "unavailable" && value.semanticFailureStage !== null)) {
+    !Array.isArray(value.semanticPackageFailureReasons) ||
+    new Set(value.semanticPackageFailureReasons).size !== value.semanticPackageFailureReasons.length ||
+    !value.semanticPackageFailureReasons.every((reason) => OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS.has(reason)) ||
+    (value.semanticState !== "unavailable" && value.semanticFailureStage !== null) ||
+    (value.semanticFailureStage !== "package" && value.semanticPackageFailureReasons.length !== 0)) {
     throw smokeError("Analyze response did not include a valid operator semantic boundary diagnostic.");
   }
 
   return {
     version: 1,
     semanticState: value.semanticState,
-    semanticFailureStage: value.semanticFailureStage
+    semanticFailureStage: value.semanticFailureStage,
+    semanticPackageFailureReasons: [...value.semanticPackageFailureReasons]
   };
 }
 

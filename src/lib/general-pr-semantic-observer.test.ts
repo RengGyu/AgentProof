@@ -70,6 +70,37 @@ describe("GeneralPrSemanticObserverV2", () => {
     expect(buildGeneralPrSemanticObserverPackageV2(tooManyChanges, buildGeneralPrObservationSeedV2(tooManyChanges), modelProfile)).toBeNull();
   });
 
+  it("returns every closed package-limit reason without exposing source details", async () => {
+    const overloaded = input({
+      description: Array.from({ length: 13 }, (_, index) => `- The service must return Ready ${index}.`).join("\n"),
+      changedFiles: Array.from({ length: 33 }, (_, index) => ({ path: `src/file-${index}.ts`, status: "modified" as const })),
+      checks: Array.from({ length: 40 }, (_, index) => ({ name: `CI ${index}`, status: "passed" as const }))
+    });
+    const seed = buildGeneralPrObservationSeedV2(overloaded);
+
+    const result = await runGeneralPrSemanticObserverV2({
+      mode: "shadow",
+      input: overloaded,
+      seed,
+      provider: { observe: async () => validProposal(seed) },
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => overloaded,
+      modelProfile
+    });
+
+    expect(result).toMatchObject({
+      state: "unavailable",
+      semanticFailureStage: "package",
+      semanticPackageFailureReasons: [
+        "span_limit_exceeded",
+        "change_cluster_limit_exceeded",
+        "evidence_atom_limit_exceeded"
+      ]
+    });
+    expect(JSON.stringify(result.semanticPackageFailureReasons)).not.toMatch(/file-|CI |Ready|SECRET/i);
+  });
+
   it("returns typed disabled, unavailable, timeout, invalid, and stale states without throwing", async () => {
     const request = input();
     const seed = buildGeneralPrObservationSeedV2(request);
