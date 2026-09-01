@@ -36,6 +36,14 @@ const GENERAL_PR_REASON_CODES = new Set([
   "semantic_observer_unavailable", "semantic_observer_timeout", "semantic_proposal_invalid",
   "semantic_candidate_missing", "semantic_candidate_rejected", "target_relation_unresolved"
 ]);
+const QUALITY_GATE_LABELS = new Map([
+  ["requirements_present", "Requirement extraction present"],
+  ["met_requirement_execution", "Met requirements cite passing execution evidence"],
+  ["ci_execution_proof", "Passed CI is backed by execution evidence"],
+  ["reviewer_lead_provenance", "Reviewer leads include provenance"],
+  ["human_decision_support", "Report does not make merge decisions"],
+  ["summary_only_privacy", "Saved report remains summary-only"]
+]);
 
 export async function runCurrentExternalPrCorpusSmoke({
   snapshot,
@@ -183,10 +191,14 @@ function incompleteResult(testCase, error) {
   };
 }
 
-function runArtifactResult(result) {
+function runArtifactResult(result, index) {
   return result.analysisStatus === "completed"
-    ? { id: result.id, analysisStatus: "completed" }
-    : { id: result.id, analysisStatus: "incomplete", failureKind: result.failureKind };
+    ? { id: opaqueCaseId(index), analysisStatus: "completed" }
+    : { id: opaqueCaseId(index), analysisStatus: "incomplete", failureKind: result.failureKind };
+}
+
+function opaqueCaseId(index) {
+  return `case_${String(index + 1).padStart(2, "0")}`;
 }
 
 export function assertAggregateOnlyRunArtifact(value) {
@@ -241,7 +253,7 @@ export function assertAggregateOnlyRunArtifact(value) {
   if (typeof value.qualityGateSummary.ok !== "boolean" || !Array.isArray(value.qualityGateSummary.checks)) fail();
   for (const check of value.qualityGateSummary.checks) {
     exactObject(check, ["id", "label", "count", "failedCount"]);
-    if (!/^[a-z_]{1,80}$/.test(check.id) || typeof check.label !== "string" || check.label.length > 160 ||
+    if (QUALITY_GATE_LABELS.get(check.id) !== check.label ||
       !nonNegativeInteger(check.count) || !nonNegativeInteger(check.failedCount) || check.failedCount > check.count) fail();
   }
 
@@ -249,7 +261,7 @@ export function assertAggregateOnlyRunArtifact(value) {
   timingSummary(value.githubEvidenceTimingSummary, "X-AgentProof-Evidence-Timing", [
     "github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"
   ]);
-  for (const result of value.results) {
+  for (const [index, result] of value.results.entries()) {
     if (result?.analysisStatus === "completed") {
       exactObject(result, ["id", "analysisStatus"]);
     } else if (result?.analysisStatus === "incomplete") {
@@ -258,7 +270,7 @@ export function assertAggregateOnlyRunArtifact(value) {
     } else {
       fail();
     }
-    if (typeof result.id !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(result.id)) fail();
+    if (result.id !== opaqueCaseId(index)) fail();
   }
 }
 

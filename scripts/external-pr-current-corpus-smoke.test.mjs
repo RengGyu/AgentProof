@@ -68,7 +68,7 @@ describe("external-pr-current-corpus-smoke", () => {
       }
     }));
     expect(JSON.stringify(runAnalyze.mock.calls)).not.toContain("taskText");
-    expect(result.results[0]).toEqual({ id: "case-1", analysisStatus: "completed" });
+    expect(result.results[0]).toEqual({ id: "case_01", analysisStatus: "completed" });
     expect(JSON.stringify(result)).not.toMatch(/title|body|path|log|token|manual|prUrl|anchorFingerprint|target|sourceText|provider|diagnostic/i);
   });
 
@@ -94,7 +94,7 @@ describe("external-pr-current-corpus-smoke", () => {
       generalPrAssessmentSummary: expect.objectContaining({ presentCount: 0 })
     }));
     expect(result.results).toEqual(Array.from({ length: 25 }, (_, index) => ({
-      id: `case-${index + 1}`,
+      id: `case_${String(index + 1).padStart(2, "0")}`,
       analysisStatus: "incomplete",
       failureKind: "analysis_unavailable"
     })));
@@ -118,6 +118,43 @@ describe("external-pr-current-corpus-smoke", () => {
       mutate(artifact);
       expect(() => assertAggregateOnlyRunArtifact(artifact), path).toThrow("Current external PR run artifact was invalid");
     }
+  });
+
+  it("allows only closed quality-gate id and label pairs plus opaque ordinal case IDs", async () => {
+    const result = await runCurrentExternalPrCorpusSmoke({
+      snapshot: readySnapshot(),
+      now: "2026-08-31T00:10:00.000Z",
+      maxSnapshotAgeMs: 30 * 60 * 1000,
+      runAnalyze: vi.fn().mockResolvedValue(validAnalyzeResult())
+    });
+    const validCheck = {
+      id: "requirements_present",
+      label: "Requirement extraction present",
+      count: 25,
+      failedCount: 0
+    };
+    const withValidCheck = structuredClone(result);
+    withValidCheck.qualityGateSummary.checks = [validCheck];
+
+    expect(() => assertAggregateOnlyRunArtifact(withValidCheck)).not.toThrow();
+    expect(() => assertAggregateOnlyRunArtifact({
+      ...withValidCheck,
+      qualityGateSummary: {
+        ...withValidCheck.qualityGateSummary,
+        checks: [{ ...validCheck, label: "https://private.example/?token=github_pat_secret" }]
+      }
+    })).toThrow("Current external PR run artifact was invalid");
+    expect(() => assertAggregateOnlyRunArtifact({
+      ...withValidCheck,
+      qualityGateSummary: {
+        ...withValidCheck.qualityGateSummary,
+        checks: [{ ...validCheck, label: "Saved report remains summary-only" }]
+      }
+    })).toThrow("Current external PR run artifact was invalid");
+    expect(() => assertAggregateOnlyRunArtifact({
+      ...withValidCheck,
+      results: [{ ...withValidCheck.results[0], id: "public-org/repo#123" }, ...withValidCheck.results.slice(1)]
+    })).toThrow("Current external PR run artifact was invalid");
   });
 
   it("enables the bounded general PR assessment in Vercel deployments", () => {
