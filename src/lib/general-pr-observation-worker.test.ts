@@ -5,7 +5,6 @@ import {
   runGeneralPrObservationNowV2
 } from "./general-pr-observation-service";
 import { advanceQueuedGeneralPrObservationV2 } from "./general-pr-observation-worker";
-import { deriveGeneralPrObjectiveGroupIdV2 } from "./general-pr-semantic-proposal";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import type { GeneralPrSemanticObserverModelProfileV2 } from "./general-pr-semantic-observer";
 import type { PullRequestInput, VerificationReport } from "./types";
@@ -39,20 +38,13 @@ const modelProfile: GeneralPrSemanticObserverModelProfileV2 = {
 function validProposal(observationSeed: ReturnType<typeof buildGeneralPrObservationSeedV2>) {
   const objectives = observationSeed.spans.filter((span) => span.deterministicRole === "objective_candidate");
   if (objectives.length === 0) throw new Error("fixture must include an objective candidate");
-  const groups = objectives.map((objective) => {
-    const groupId = deriveGeneralPrObjectiveGroupIdV2([objective.id]);
-    return [groupId, { groupId, spanIds: [objective.id], disposition: "candidate" as const }];
-  });
   return {
-    contractVersion: "general_pr_semantic_proposal.v2" as const,
-    schemaVersion: "agentproof_general_pr_observer_v2" as const,
-    seedHash: observationSeed.seedHash,
-    spanRoles: Object.fromEntries(observationSeed.spans.map((span) => [span.id, {
+    spanRoles: observationSeed.spans.map((span) => ({
       spanId: span.id,
       role: span.deterministicRole === "unresolved" ? "mixed_or_ambiguous" : span.deterministicRole,
       abstained: span.deterministicRole === "unresolved"
-    }])),
-    objectiveGroups: Object.fromEntries(groups),
+    })),
+    objectiveGroups: objectives.map((objective) => ({ spanIds: [objective.id], disposition: "candidate" as const })),
     testApplicabilityProposals: [],
     scopeMappingProposals: [],
     evidenceRelationProposals: []
@@ -128,6 +120,23 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
 
     expect(sync.bundle).toEqual(worker.bundle);
     expect(worker.semantic).toMatchObject({ state: "valid" });
+  });
+
+  it("carries a closed provider failure stage into the private worker bundle", async () => {
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider: { observe: async () => { throw new Error("provider unavailable"); } },
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => input,
+      modelProfile
+    });
+
+    expect(result.semantic).toMatchObject({ state: "unavailable", semanticFailureStage: "provider_request" });
+    expect(result.bundle).toMatchObject({ semanticState: "unavailable", semanticFailureStage: "provider_request" });
   });
 
   it("fences a stale response and does not retry a completed or exhausted job", async () => {

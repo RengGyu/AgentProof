@@ -30,6 +30,7 @@ const bundle: GeneralPrObservationBundleV2 = {
     state: "plausibly_mapped"
   }],
   semanticState: "valid",
+  semanticFailureStage: null,
   diagnostics: {
     version: 1,
     sourceCollection: "available",
@@ -50,6 +51,7 @@ describe("general PR observation telemetry", () => {
       mode: "shadow",
       eligibility: "eligible",
       semanticState: "valid",
+      semanticFailureStage: null,
       diagnostics: bundle.diagnostics,
       durationBucket: "lt_1s",
       objectiveCounts: { observed: 0, hypothesis: 1 },
@@ -84,12 +86,14 @@ describe("general PR observation telemetry", () => {
     expect(buildGeneralPrObservationTelemetryV1({ mode: "disabled", bundle: null, elapsedMs: 0 })).toMatchObject({
       eligibility: "disabled",
       semanticState: null,
+      semanticFailureStage: null,
       diagnostics: null,
       durationBucket: "lt_1s"
     });
     expect(buildGeneralPrObservationTelemetryV1({ mode: "shadow", bundle: null, elapsedMs: 8_001 })).toMatchObject({
       eligibility: "ineligible",
       semanticState: null,
+      semanticFailureStage: null,
       diagnostics: null,
       durationBucket: "gte_8s"
     });

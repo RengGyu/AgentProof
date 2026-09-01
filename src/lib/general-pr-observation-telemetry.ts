@@ -8,6 +8,7 @@ export interface GeneralPrObservationTelemetryV1 {
   mode: "disabled" | "shadow" | "advisory";
   eligibility: "disabled" | "ineligible" | "eligible";
   semanticState: GeneralPrObservationBundleV2["semanticState"] | null;
+  semanticFailureStage: GeneralPrObservationBundleV2["semanticFailureStage"] | null;
   diagnostics: GeneralPrObservationBundleV2["diagnostics"] | null;
   durationBucket: "lt_1s" | "1_3s" | "3_8s" | "gte_8s" | "unknown";
   objectiveCounts: { observed: number; hypothesis: number };
@@ -28,6 +29,7 @@ export function buildGeneralPrObservationTelemetryV1(input: {
     mode: input.mode,
     eligibility: input.mode === "disabled" ? "disabled" : bundle === null ? "ineligible" : "eligible",
     semanticState: bundle?.semanticState ?? null,
+    semanticFailureStage: bundle?.semanticFailureStage ?? null,
     diagnostics: bundle?.diagnostics ?? null,
     durationBucket: durationBucket(input.elapsedMs),
     objectiveCounts: {

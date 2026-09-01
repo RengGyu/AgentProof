@@ -13,7 +13,7 @@ import type { PullRequestInput } from "./types";
 
 const DEFAULT_MODEL_PROFILE: GeneralPrSemanticObserverModelProfileV2 = {
   model: "deployment-unconfigured",
-  promptVersion: "general-pr-observer.v2",
+  promptVersion: "general-pr-observer.v3",
   inputFieldPolicyVersion: "general-pr-observer-fields.v1"
 };
 
@@ -107,7 +107,7 @@ export async function advanceQueuedGeneralPrObservationV2(
   return {
     status: "completed",
     current: { ...options.current, attempt: 1, status: "completed" },
-    bundle: finalizeDeterministicGeneralPrObservationsV2(seed, semantic.proposal, semantic.state),
+    bundle: finalizeDeterministicGeneralPrObservationsV2(seed, semantic.proposal, semantic.state, semantic.semanticFailureStage),
     semantic
   };
 }

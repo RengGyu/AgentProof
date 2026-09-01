@@ -61,6 +61,29 @@ export interface GeneralPrSemanticObserverProviderV2 {
   observe: (request: GeneralPrSemanticObserverPackageV2) => Promise<unknown>;
 }
 
+/** Closed, aggregate-only reason for a provider-unavailable observation. */
+export type GeneralPrSemanticFailureStageV1 =
+  | "configuration"
+  | "package"
+  | "privacy"
+  | "provider_request"
+  | "provider_response";
+
+/**
+ * Provider adapters may use this closed error to preserve only the failure
+ * category. Its message and the original provider error are never reported
+ * or persisted by the observation pipeline.
+ */
+export class GeneralPrSemanticProviderFailure extends Error {
+  constructor(
+    public readonly stage: Extract<GeneralPrSemanticFailureStageV1, "provider_request" | "provider_response">,
+    public readonly timedOut = false
+  ) {
+    super("general PR semantic provider failure");
+    this.name = "GeneralPrSemanticProviderFailure";
+  }
+}
+
 export interface RunGeneralPrSemanticObserverOptionsV2 {
   mode: "disabled" | "shadow" | "advisory";
   input: PullRequestInput;
@@ -78,6 +101,8 @@ export interface RunGeneralPrSemanticObserverOptionsV2 {
 
 export type GeneralPrSemanticObserverRunResultV2 = {
   state: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+  /** Non-null only for a provider-unavailable run; never projected into a report. */
+  semanticFailureStage: GeneralPrSemanticFailureStageV1 | null;
   proposal: GeneralPrSemanticProposalV2 | null;
   receipt: GeneralPrSemanticInvocationReceiptV2 & { receiptHash: string };
 };
@@ -162,7 +187,12 @@ export async function runGeneralPrSemanticObserverV2(
   const startedAt = now();
   const timeoutMs = options.timeoutMs ?? GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TIMEOUT_MS;
   const semanticPackage = buildGeneralPrSemanticObserverPackageV2(options.input, options.seed, options.modelProfile, timeoutMs);
-  const finish = (state: GeneralPrSemanticObserverRunResultV2["state"], proposal: GeneralPrSemanticProposalV2 | null, output: unknown = null): GeneralPrSemanticObserverRunResultV2 => {
+  const finish = (
+    state: GeneralPrSemanticObserverRunResultV2["state"],
+    proposal: GeneralPrSemanticProposalV2 | null,
+    output: unknown = null,
+    semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null
+  ): GeneralPrSemanticObserverRunResultV2 => {
     const receiptState: GeneralPrSemanticInvocationReceiptV2["state"] = state === "disabled" ? "unavailable" : state;
     const receipt: GeneralPrSemanticInvocationReceiptV2 = {
       version: 2,
@@ -174,36 +204,50 @@ export async function runGeneralPrSemanticObserverV2(
       state: receiptState,
       durationBucket: durationBucket(now() - startedAt)
     };
-    return { state, proposal, receipt: { ...receipt, receiptHash: hashGeneralPrSemanticInvocationReceiptV2(receipt) } };
+    return {
+      state,
+      semanticFailureStage: state === "unavailable" ? semanticFailureStage : null,
+      proposal,
+      receipt: { ...receipt, receiptHash: hashGeneralPrSemanticInvocationReceiptV2(receipt) }
+    };
   };
 
   if (options.mode === "disabled") return finish("disabled", null);
-  if (!semanticPackage || !options.providerAvailable || !options.provider) return finish("unavailable", null);
+  if (!semanticPackage) return finish("unavailable", null, null, "package");
+  if (!options.providerAvailable || !options.provider) return finish("unavailable", null, null, "configuration");
   // Repository visibility is an external privacy fact. Unknown is not public:
   // only an explicit public classification may bypass the private consent gate.
   if (options.privateRepository !== false && (
     options.privateRepository !== true ||
     !options.privateRepositoryConsent ||
     !options.providerRetentionApproved
-  )) return finish("unavailable", null);
+  )) return finish("unavailable", null, null, "privacy");
 
   // Read the provider-bound source immediately before submission. The initial
   // snapshot can become private or stale while deterministic analysis runs.
   const beforeSubmission = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
-  if (beforeSubmission !== "current") return finish(beforeSubmission, null);
+  if (beforeSubmission !== "current") return finish(beforeSubmission, null, null, beforeSubmission === "unavailable" ? "privacy" : null);
 
   let output: unknown;
   try {
     output = await withTimeout(options.provider.observe(semanticPackage), timeoutMs);
   } catch (error) {
-    return finish(error instanceof ObserverTimeoutError ? "timeout" : "unavailable", null);
+    if (error instanceof ObserverTimeoutError || (error instanceof GeneralPrSemanticProviderFailure && error.timedOut)) {
+      return finish("timeout", null);
+    }
+    return finish(
+      "unavailable",
+      null,
+      null,
+      error instanceof GeneralPrSemanticProviderFailure ? error.stage : "provider_request"
+    );
   }
   if (serializedBytes(output) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return finish("invalid", null, output);
 
   // Re-read after the provider response as well. This keeps the proposal
   // bound to the same public subject that supplied the package.
   const afterSubmission = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
-  if (afterSubmission !== "current") return finish(afterSubmission, null, output);
+  if (afterSubmission !== "current") return finish(afterSubmission, null, output, afterSubmission === "unavailable" ? "privacy" : null);
   const validation = validateGeneralPrSemanticProposalV2(output, options.seed, { currentSeedHash: options.seed.seedHash });
   if (!validation.valid) return finish("invalid", null, output);
   return finish("valid", validation.proposal, output);

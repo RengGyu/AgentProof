@@ -83,6 +83,45 @@ describe("GeneralPrSemanticObserverV2", () => {
     expect(provider.observe).not.toHaveBeenCalled();
   });
 
+  it("keeps valid non-detection separate from unavailable failure stages", async () => {
+    const request = input();
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const validEmptyCandidate = {
+      spanRoles: seed.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })),
+      objectiveGroups: [],
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: []
+    };
+    const common = {
+      mode: "shadow" as const,
+      input: request,
+      seed,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => request,
+      modelProfile
+    };
+
+    const configuration = await runGeneralPrSemanticObserverV2({ ...common, providerAvailable: false });
+    const packageFailure = await runGeneralPrSemanticObserverV2({ ...common, provider: { observe: async () => validEmptyCandidate }, modelProfile: { ...modelProfile, model: "" } });
+    const privacy = await runGeneralPrSemanticObserverV2({ ...common, provider: { observe: async () => validEmptyCandidate }, privateRepository: true, privateRepositoryConsent: false, providerRetentionApproved: false });
+    const providerRequest = await runGeneralPrSemanticObserverV2({ ...common, provider: { observe: async () => { throw new Error("request failed"); } } });
+    const timeout = await runGeneralPrSemanticObserverV2({ ...common, provider: { observe: async () => new Promise(() => undefined) }, timeoutMs: 1 });
+    const invalid = await runGeneralPrSemanticObserverV2({ ...common, provider: { observe: async () => ({ spanRoles: [], testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }) } });
+    const nonDetection = await runGeneralPrSemanticObserverV2({ ...common, provider: { observe: async () => validEmptyCandidate } });
+    const stale = await runGeneralPrSemanticObserverV2({ ...common, provider: { observe: async () => validEmptyCandidate }, readCurrentInput: async () => ({ ...request, title: "Changed" }) });
+
+    expect(configuration).toMatchObject({ state: "unavailable", semanticFailureStage: "configuration" });
+    expect(packageFailure).toMatchObject({ state: "unavailable", semanticFailureStage: "package" });
+    expect(privacy).toMatchObject({ state: "unavailable", semanticFailureStage: "privacy" });
+    expect(providerRequest).toMatchObject({ state: "unavailable", semanticFailureStage: "provider_request" });
+    expect(timeout).toMatchObject({ state: "timeout", semanticFailureStage: null });
+    expect(invalid).toMatchObject({ state: "invalid", semanticFailureStage: null });
+    expect(nonDetection).toMatchObject({ state: "valid", semanticFailureStage: null, proposal: { objectiveGroups: {} } });
+    expect(stale).toMatchObject({ state: "stale", semanticFailureStage: null });
+  });
+
   it("binds the final current source and subject before accepting a semantic proposal", async () => {
     const request = input({
       sourceProvenance: {

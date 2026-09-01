@@ -226,6 +226,46 @@ describe("runGeneralPrObservationNowV2", () => {
     });
   });
 
+  it("projects semantic no-candidate, invalid output, and provider failure with distinct reasons", async () => {
+    const semanticInput = { ...input, title: "Maintenance notes", description: "Internal cleanup only." };
+    const seed = buildGeneralPrObservationSeedV2(semanticInput);
+    const emptyCandidate = {
+      spanRoles: seed.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })),
+      objectiveGroups: [],
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: []
+    };
+    const v2Report = {
+      ...report,
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent" },
+      requirements: [{ requirementId: "req_1", status: "unclear" }]
+    } as unknown as VerificationReportV2;
+    const run = (provider: { observe: () => Promise<unknown> }) => runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
+      input: semanticInput,
+      generateReport: () => v2Report,
+      validateDeterministicReport: () => true,
+      semantic: { provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => semanticInput, modelProfile }
+    });
+
+    const empty = await run({ observe: async () => emptyCandidate });
+    const invalid = await run({ observe: async () => ({ ...emptyCandidate, objectiveGroups: undefined }) });
+    const failed = await run({ observe: async () => { throw new Error("provider unavailable"); } });
+
+    expect((empty.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).toContain("semantic_candidate_missing");
+    expect((empty.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).not.toContain("semantic_proposal_invalid");
+    expect((invalid.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).toContain("semantic_proposal_invalid");
+    expect((failed.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).toContain("semantic_observer_unavailable");
+    expect((failed.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).not.toContain("semantic_candidate_missing");
+    for (const result of [empty, invalid, failed]) {
+      expect(result.report.requirements.map((requirement) => requirement.status)).toEqual(["unclear"]);
+      expect((result.report as VerificationReportV2).generalPrAssessmentSummary?.counts.evidence_supported).toBe(0);
+      expect(JSON.stringify(result.report)).not.toContain("semanticFailureStage");
+    }
+  });
+
   it("rejects provided requirements and non-GitHub inputs before semantic provider submission", async () => {
     const provider = { observe: vi.fn(async () => null) };
     const providedRequirement = {

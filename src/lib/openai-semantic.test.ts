@@ -54,6 +54,36 @@ describe("OpenAI semantic adapter", () => {
     expect(JSON.stringify(body)).not.toContain("src/status.ts");
   });
 
+  it("maps provider request and response failures without retaining provider details", async () => {
+    const input = {
+      title: "Return Ready when checks pass",
+      description: "The service must return Ready when checks pass.",
+      taskText: "",
+      changedFiles: [{ path: "src/status.ts", status: "modified" as const }],
+      checks: [],
+      logs: []
+    };
+    const semanticPackage = buildGeneralPrSemanticObserverPackageV2(
+      input,
+      buildGeneralPrObservationSeedV2(input),
+      { model: "gpt-test", promptVersion: "test.v1", inputFieldPolicyVersion: "test-fields.v1" }
+    );
+    if (!semanticPackage) throw new Error("fixture must build a semantic package");
+
+    await expect(submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+      apiKey: "test-key",
+      fetchFn: (async () => new Response("bad request", { status: 400 })) as typeof fetch
+    })).rejects.toMatchObject({ stage: "provider_request", timedOut: false });
+    await expect(submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+      apiKey: "test-key",
+      fetchFn: (async () => Response.json({})) as typeof fetch
+    })).rejects.toMatchObject({ stage: "provider_response", timedOut: false });
+    await expect(submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+      apiKey: "test-key",
+      fetchFn: (async () => Response.json({ output_text: "not JSON" })) as typeof fetch
+    })).rejects.toMatchObject({ stage: "provider_response", timedOut: false });
+  });
+
   it("submits one strict hybrid planner response with store false and no repair request", async () => {
     const { input, seed, plannerPackage, plan } = hybridFixture();
     const fetchMock = vi.fn().mockResolvedValue(Response.json({
