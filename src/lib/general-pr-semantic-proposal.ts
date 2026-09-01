@@ -181,7 +181,7 @@ export function validateGeneralPrSemanticProposalV2(
     if (!rawGroup.spanIds.every((spanId): spanId is string => typeof spanId === "string" && spansById.has(spanId)) || new Set(rawGroup.spanIds).size !== rawGroup.spanIds.length) return invalid("objective group span reference is invalid");
     if (deriveGeneralPrObjectiveGroupIdV2(rawGroup.spanIds) !== rawGroup.groupId) return invalid("objective group ID is forged");
     const entries = rawGroup.spanIds.map((spanId) => spansById.get(spanId)!);
-    if (!isSourceOrdered(entries) || new Set(entries.map(({ span }) => sourcesById.get(span.sourceUnitId)?.authority)).size !== 1) return invalid("objective group mixes or reorders source authority");
+    if (!isSourceOrdered(entries) || new Set(entries.map(({ span }) => span.sourceUnitId)).size !== 1 || new Set(entries.map(({ span }) => sourcesById.get(span.sourceUnitId)?.authority)).size !== 1) return invalid("objective group mixes or reorders source authority");
     if (rawGroup.disposition === "candidate") {
       if (entries.some(({ span }) => sourcesById.get(span.sourceUnitId)?.roleCeiling !== "objective" || span.deterministicRole === "template_or_process" || normalizedRoles[span.id]?.role !== "objective_candidate")) return invalid("candidate objective group is not eligible");
       for (const { span } of entries) objectiveMembership.set(span.id, (objectiveMembership.get(span.id) ?? 0) + 1);
@@ -265,7 +265,7 @@ function possibleContiguousGroupIds(seed: GeneralPrObservationSeedV2): string[] 
     for (let end = start + 1; end <= seed.spans.length; end += 1) {
       const spans = seed.spans.slice(start, end);
       const firstSource = seed.sources.find((source) => source.id === spans[0]?.sourceUnitId);
-      if (!firstSource || spans.some((span) => seed.sources.find((source) => source.id === span.sourceUnitId)?.authority !== firstSource.authority)) break;
+      if (!firstSource || spans.some((span) => span.sourceUnitId !== firstSource.id)) break;
       groups.push(deriveGeneralPrObjectiveGroupIdV2(spans.map((span) => span.id)));
     }
   }

@@ -269,7 +269,7 @@ function buildDiagnostics(input: {
   objectives: GeneralPrObservationBundleV2["objectives"];
   relationLevelCounts: GeneralPrObservationBundleV2["relationLevelCounts"];
 }): GeneralPrAssessmentDiagnosticsV1 {
-  const deterministicAdmitted = input.objectives.some((objective) => objective.admissionBasis === "explicit_structure");
+  const deterministicSelected = input.objectives.some((objective) => objective.admissionBasis === "explicit_structure");
   const semanticAdmitted = input.objectives.some((objective) => objective.admissionBasis === "semantic_proposal");
   const sourceCollection: GeneralPrAssessmentDiagnosticsV1["sourceCollection"] = input.seed.sources.length === 0
     ? "missing"
@@ -278,14 +278,16 @@ function buildDiagnostics(input: {
       : input.seed.completeness === "unavailable"
         ? "collection_unavailable"
         : "available";
-  const deterministicAdmission: GeneralPrAssessmentDiagnosticsV1["deterministicAdmission"] = deterministicAdmitted
+  const deterministicAdmission: GeneralPrAssessmentDiagnosticsV1["deterministicAdmission"] = input.deterministicCandidates > 0
     ? "admitted"
     : input.eligibleSpans === 0 && input.seed.sources.length > 0 ? "context_only" : "no_candidate";
   const semanticAdmission: GeneralPrAssessmentDiagnosticsV1["semanticAdmission"] = input.seed.parseState !== "complete" || input.eligibleSpans === 0
     ? "ineligible"
-    : input.semanticState === "valid"
-      ? semanticAdmitted ? "admitted" : "no_candidate"
-      : input.semanticState;
+    : deterministicSelected
+      ? "not_needed"
+      : input.semanticState === "valid"
+        ? semanticAdmitted ? "admitted" : "no_candidate"
+        : input.semanticState;
   const relationState: GeneralPrAssessmentDiagnosticsV1["relationState"] = input.objectives.length === 0
     ? "not_attempted"
     : input.seed.completeness !== "complete"

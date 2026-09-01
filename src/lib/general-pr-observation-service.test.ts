@@ -3,6 +3,7 @@ import {
   finalizeDeterministicGeneralPrObservationsV2,
   runGeneralPrObservationNowV2
 } from "./general-pr-observation-service";
+import { deriveGeneralPrAssessmentV1 } from "./general-pr-assessment";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import { deriveGeneralPrObjectiveGroupIdV2, type GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
@@ -227,6 +228,38 @@ describe("runGeneralPrObservationNowV2", () => {
       relationState: "hypothesis_only",
       counts: { sourceUnits: 2, eligibleSpans: 2, deterministicCandidates: 0, semanticCandidates: 1, admittedTargets: 1 }
     });
+  });
+
+  it("marks semantic observation not needed when a deterministic target is already admitted", () => {
+    const observationSeed = buildGeneralPrObservationSeedV2(input);
+    const observationBundle = finalizeDeterministicGeneralPrObservationsV2(observationSeed, null, "unavailable");
+    const assessment = deriveGeneralPrAssessmentV1({ seed: observationSeed, bundle: observationBundle, report });
+
+    expect(observationBundle.diagnostics.semanticAdmission).toBe("not_needed");
+    expect(assessment.reasonCodes).not.toContain("semantic_observer_unavailable");
+  });
+
+  it("reports deterministic candidates even when a primary semantic target wins tier selection", () => {
+    const observationSeed = buildGeneralPrObservationSeedV2({
+      ...input,
+      title: "Maintenance notes",
+      description: "The service must return Ready when checks pass.",
+      taskSource: "issue",
+      taskText: "Background information about the current status page."
+    });
+    const observationBundle = finalizeDeterministicGeneralPrObservationsV2(
+      observationSeed,
+      semanticCandidateProposal(observationSeed, "linked_issue"),
+      "valid"
+    );
+    const assessment = deriveGeneralPrAssessmentV1({ seed: observationSeed, bundle: observationBundle, report });
+
+    expect(observationBundle.diagnostics).toMatchObject({
+      deterministicAdmission: "admitted",
+      semanticAdmission: "admitted",
+      counts: { deterministicCandidates: 1, semanticCandidates: 1, admittedTargets: 1 }
+    });
+    expect(assessment.reasonCodes).not.toContain("deterministic_candidate_missing");
   });
 
   it("admits a fallback PR author target only when the linked Issue has no primary target", () => {

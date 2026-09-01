@@ -180,6 +180,27 @@ describe("GeneralPrSemanticProposalV2", () => {
     expect(validateGeneralPrSemanticProposalV2(forged, observationSeed)).toMatchObject({ valid: false });
   });
 
+  it("rejects an objective group spanning two same-authority source units", () => {
+    const observationSeed = seed({ taskText: "" });
+    const title = observationSeed.spans.find((span) => observationSeed.sources.find((source) => source.id === span.sourceUnitId)?.kind === "pr_title");
+    const body = observationSeed.spans.find((span) => observationSeed.sources.find((source) => source.id === span.sourceUnitId)?.kind === "pr_body");
+    if (!title || !body) throw new Error("fixture must include title and body spans");
+    const groupId = deriveGeneralPrObjectiveGroupIdV2([title.id, body.id]);
+    const proposal = {
+      ...validProposal(observationSeed),
+      spanRoles: Object.fromEntries(observationSeed.spans.map((span) => [span.id, {
+        spanId: span.id,
+        role: span.id === title.id || span.id === body.id ? "objective_candidate" : "supporting_context",
+        abstained: false
+      }])),
+      objectiveGroups: {
+        [groupId]: { groupId, spanIds: [title.id, body.id], disposition: "candidate" as const }
+      }
+    };
+
+    expect(validateGeneralPrSemanticProposalV2(proposal, observationSeed)).toMatchObject({ valid: false });
+  });
+
   it("rejects an incomplete span decision, oversized output, and stale seeds without partial repair", () => {
     const observationSeed = seed();
     const proposal = validProposal(observationSeed);
