@@ -9,6 +9,51 @@ const ANALYZE_TIMING_PATTERN = /^ap_(input|evidence|report|validation|total);dur
 const GITHUB_EVIDENCE_TIMING_PHASES = ["github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"];
 const GITHUB_EVIDENCE_TIMING_PATTERN = /^ap_(github_pr|github_files|github_checks|github_statuses|github_annotations|github_jobs);dur=(\d+)$/;
 const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
+const GENERAL_PR_ASSESSMENT_MODES = new Set(["ordinary_pr", "typed_contract_companion"]);
+const GENERAL_PR_ASSESSMENT_SOURCE_STATES = new Set(["linked_issue", "pr_author_claim", "mixed", "missing", "ambiguous"]);
+const GENERAL_PR_ASSESSMENT_CONCLUSIONS = new Set([
+  "evidence_supports_stated_change",
+  "evidence_partial",
+  "mixed_evidence",
+  "attention_required",
+  "collection_blocked",
+  "no_assessable_claims"
+]);
+const GENERAL_PR_ASSESSMENT_REASON_CODES = new Set([
+  "implementation_evidence_observed",
+  "test_artifact_observed",
+  "exact_execution_passed",
+  "exact_execution_failed",
+  "verified_relation_missing",
+  "execution_not_observed",
+  "claimed_artifact_not_observed",
+  "unsupported_claim_type",
+  "source_missing",
+  "source_ambiguous",
+  "source_unavailable",
+  "collection_incomplete",
+  "head_mismatch",
+  "evidence_identity_incomplete",
+  "semantic_relation_only",
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
+]);
+const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
+  "evidence_supported",
+  "evidence_partial",
+  "not_demonstrated",
+  "contradicted",
+  "blocked",
+  "not_assessable"
+];
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -123,12 +168,59 @@ function readGeneralPrAssessmentSummary(report, required) {
   const summary = report?.generalPrAssessmentSummary;
   if (!required) return summary;
 
-  if (!summary || typeof summary !== "object" || Array.isArray(summary) ||
-    Object.prototype.hasOwnProperty.call(summary, "targets")) {
+  if (!isValidGeneralPrAssessmentSummary(summary)) {
     throw smokeError("General PR assessment summary was unavailable.");
   }
 
-  return summary;
+  return copyGeneralPrAssessmentSummary(summary);
+}
+
+export function isValidGeneralPrAssessmentSummary(summary) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) return false;
+  const expectedKeys = ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes"];
+  if (!hasExactKeys(summary, expectedKeys) || summary.version !== 1 ||
+    !GENERAL_PR_ASSESSMENT_MODES.has(summary.mode) ||
+    !GENERAL_PR_ASSESSMENT_SOURCE_STATES.has(summary.sourceState) ||
+    !GENERAL_PR_ASSESSMENT_CONCLUSIONS.has(summary.overallConclusion) ||
+    !summary.counts || typeof summary.counts !== "object" || Array.isArray(summary.counts) ||
+    !hasExactKeys(summary.counts, GENERAL_PR_ASSESSMENT_COUNT_KEYS) ||
+    !Array.isArray(summary.reasonCodes) || summary.reasonCodes.length > 16 ||
+    new Set(summary.reasonCodes).size !== summary.reasonCodes.length ||
+    !summary.reasonCodes.every((reason) => GENERAL_PR_ASSESSMENT_REASON_CODES.has(reason))) {
+    return false;
+  }
+
+  for (const key of GENERAL_PR_ASSESSMENT_COUNT_KEYS) {
+    if (!Number.isSafeInteger(summary.counts[key]) || summary.counts[key] < 0 || summary.counts[key] > 100) return false;
+  }
+
+  const total = GENERAL_PR_ASSESSMENT_COUNT_KEYS.reduce((sum, key) => sum + summary.counts[key], 0);
+  if (summary.counts.evidence_supported > 0 || summary.counts.contradicted > 0 ||
+    summary.overallConclusion === "evidence_supports_stated_change" ||
+    summary.overallConclusion === "attention_required" ||
+    (summary.sourceState === "pr_author_claim" && !summary.reasonCodes.includes("author_claim_requires_confirmation")) ||
+    (summary.overallConclusion === "collection_blocked" && (summary.counts.blocked === 0 || total !== summary.counts.blocked)) ||
+    (summary.overallConclusion === "no_assessable_claims" && total !== 0)) {
+    return false;
+  }
+
+  return true;
+}
+
+export function copyGeneralPrAssessmentSummary(summary) {
+  return {
+    version: summary.version,
+    mode: summary.mode,
+    sourceState: summary.sourceState,
+    overallConclusion: summary.overallConclusion,
+    counts: Object.fromEntries(GENERAL_PR_ASSESSMENT_COUNT_KEYS.map((key) => [key, summary.counts[key]])),
+    reasonCodes: [...summary.reasonCodes]
+  };
+}
+
+function hasExactKeys(value, expectedKeys) {
+  const keys = Object.keys(value);
+  return keys.length === expectedKeys.length && expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
 }
 
 function requirementStatusCounts(requirements, selectStatus = (requirement) => requirement.status) {
@@ -646,6 +738,10 @@ export function assertSummaryOnlyReport(report, options = {}) {
 
   if (!evidenceRefsCleared(report)) {
     throw smokeError("Saved report retained evidenceRefs.");
+  }
+
+  if (report.generalPrAssessmentSummary !== undefined && !isValidGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)) {
+    throw smokeError("Saved report retained private general PR assessment data.");
   }
 
   if (!Array.isArray(report.limitations) || !report.limitations.some((item) => /omits raw evidence, patch\/log excerpts, claims,(?: proof-graph evidence refs,)? and re-prompt text/i.test(item))) {

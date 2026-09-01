@@ -1,7 +1,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
-import { runAnalyzePrSmoke } from "./smoke-analyze-pr-url.mjs";
+import {
+  isValidGeneralPrAssessmentSummary,
+  runAnalyzePrSmoke
+} from "./smoke-analyze-pr-url.mjs";
 import {
   summarizeAnalyzeTimings,
   summarizeGitHubEvidenceTimings,
@@ -42,7 +45,7 @@ export async function runCurrentExternalPrCorpusSmoke({
 
   const completedCount = results.filter((item) => item.analysisStatus === "completed").length;
   const incompleteCount = results.length - completedCount;
-  return {
+  const run = {
     version: 1,
     privacy: "external-pr-current-corpus-run-summary-only",
     status: incompleteCount === 0 ? "completed" : "incomplete",
@@ -57,16 +60,23 @@ export async function runCurrentExternalPrCorpusSmoke({
     qualityGateSummary: summarizeQualityGates(results.filter((item) => item.analysisStatus === "completed")),
     timingSummary: summarizeAnalyzeTimings(results.filter((item) => item.analysisStatus === "completed")),
     githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings(results.filter((item) => item.analysisStatus === "completed")),
-    results
+    results: results.map(runArtifactResult)
   };
+  assertAggregateOnlyRunArtifact(run);
+  return run;
 }
 
 export function writeCurrentExternalPrCorpusRun(result, outputPath = DEFAULT_OUTPUT_PATH) {
+  assertAggregateOnlyRunArtifact(result);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
 }
 
 function completedResult(testCase, result) {
+  if (!isValidGeneralPrAssessmentSummary(result.generalPrAssessmentSummary)) {
+    throw new Error("General PR assessment summary was unavailable.");
+  }
+
   return {
     id: testCase.id,
     cohort: testCase.cohort,
@@ -94,20 +104,33 @@ function completedResult(testCase, result) {
 function summarizeGeneralPrAssessments(results) {
   const overallConclusionCounts = {};
   const sourceStateCounts = {};
+  const reasonCodeCounts = {};
+  const assessmentCountTotals = Object.fromEntries(GENERAL_PR_ASSESSMENT_COUNT_KEYS.map((key) => [key, 0]));
   let presentCount = 0;
 
   for (const result of results) {
     if (result.analysisStatus !== "completed") continue;
     const summary = result.generalPrAssessmentSummary;
-    if (!summary || typeof summary !== "object") continue;
+    if (!isValidGeneralPrAssessmentSummary(summary)) continue;
 
     presentCount += 1;
     incrementCount(overallConclusionCounts, summary.overallConclusion);
     incrementCount(sourceStateCounts, summary.sourceState);
+    for (const reasonCode of summary.reasonCodes) incrementCount(reasonCodeCounts, reasonCode);
+    for (const key of GENERAL_PR_ASSESSMENT_COUNT_KEYS) assessmentCountTotals[key] += summary.counts[key];
   }
 
-  return { presentCount, overallConclusionCounts, sourceStateCounts };
+  return { presentCount, overallConclusionCounts, sourceStateCounts, reasonCodeCounts, assessmentCountTotals };
 }
+
+const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
+  "evidence_supported",
+  "evidence_partial",
+  "not_demonstrated",
+  "contradicted",
+  "blocked",
+  "not_assessable"
+];
 
 function incrementCount(counts, value) {
   if (typeof value === "string" && value.length > 0) {
@@ -139,6 +162,43 @@ function incompleteResult(testCase, error) {
       ? "source_drift"
       : "analysis_unavailable"
   };
+}
+
+function runArtifactResult(result) {
+  return result.analysisStatus === "completed"
+    ? { id: result.id, analysisStatus: "completed" }
+    : { id: result.id, analysisStatus: "incomplete", failureKind: result.failureKind };
+}
+
+function assertAggregateOnlyRunArtifact(value) {
+  const forbiddenKeys = new Set([
+    "targets",
+    "targetId",
+    "sourceText",
+    "sourceSpanRefs",
+    "sourceBindingRef",
+    "path",
+    "paths",
+    "locator",
+    "providerOutput",
+    "providerResponse",
+    "prompt",
+    "token",
+    "tokens",
+    "diagnostics",
+    "rawInput",
+    "prUrl",
+    "cohort",
+    "anchorFingerprint"
+  ]);
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    for (const [key, child] of Object.entries(node)) {
+      if (forbiddenKeys.has(key)) throw new Error("Current external PR run artifact retained private or identifying data.");
+      visit(child);
+    }
+  };
+  visit(value);
 }
 
 function validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs }) {

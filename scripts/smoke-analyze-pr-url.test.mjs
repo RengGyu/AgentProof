@@ -93,6 +93,24 @@ describe("smoke-analyze-pr-url", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a live external PR result when its assessment summary is not a closed target-free projection", async () => {
+    const report = reportFixture();
+    report.generalPrAssessmentSummary = {
+      ...assessmentSummary(),
+      sourceState: "unbounded_source_state",
+      targets: [{ sourceText: "private source text" }]
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      requireGeneralPrAssessmentSummary: true,
+      fetchImpl: fetchMock
+    })).rejects.toThrow("General PR assessment summary was unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts durable Supabase saved-report metadata while keeping summary-only checks", async () => {
     const fullReport = reportFixture();
     const savedReport = summaryOnlyReportFixture(fullReport);
@@ -137,6 +155,17 @@ describe("smoke-analyze-pr-url", () => {
       originalReprompt: fullReport.reprompt.prompt,
       githubToken: "github_pat_secret_should_not_leak_123"
     })).toThrow("Saved report retained raw evidenceIndex items");
+  });
+
+  it("rejects saved reports that retain a private general PR assessment target", () => {
+    const savedReport = summaryOnlyReportFixture(reportFixture());
+    savedReport.generalPrAssessmentSummary = {
+      ...assessmentSummary(),
+      targets: [{ targetId: "gpa_private_target" }]
+    };
+
+    expect(() => assertSummaryOnlyReport(savedReport))
+      .toThrow("Saved report retained private general PR assessment data");
   });
 
   it("rejects a live report when its GitHub source anchor differs from the frozen sample", async () => {

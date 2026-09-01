@@ -39,7 +39,19 @@ describe("external-pr-current-corpus-smoke", () => {
       generalPrAssessmentSummary: {
         presentCount: 25,
         overallConclusionCounts: { mixed_evidence: 25 },
-        sourceStateCounts: { pr_author_claim: 25 }
+        sourceStateCounts: { pr_author_claim: 25 },
+        reasonCodeCounts: {
+          verified_relation_missing: 25,
+          author_claim_requires_confirmation: 25
+        },
+        assessmentCountTotals: {
+          evidence_supported: 0,
+          evidence_partial: 25,
+          not_demonstrated: 0,
+          contradicted: 0,
+          blocked: 0,
+          not_assessable: 0
+        }
       }
     }));
     expect(runAnalyze).toHaveBeenCalledTimes(25);
@@ -53,7 +65,36 @@ describe("external-pr-current-corpus-smoke", () => {
       }
     }));
     expect(JSON.stringify(runAnalyze.mock.calls)).not.toContain("taskText");
-    expect(JSON.stringify(result)).not.toMatch(/title|body|path|log|token|manual/i);
+    expect(result.results[0]).toEqual({ id: "case-1", analysisStatus: "completed" });
+    expect(JSON.stringify(result)).not.toMatch(/title|body|path|log|token|manual|prUrl|anchorFingerprint|target|sourceText|provider|diagnostic/i);
+  });
+
+  it("marks missing or invalid assessment summaries as analysis_unavailable", async () => {
+    const runAnalyze = vi.fn().mockResolvedValue({
+      generalPrAssessmentSummary: {
+        ...assessmentSummary(),
+        reasonCodes: ["unbounded_reason"]
+      }
+    });
+
+    const result = await runCurrentExternalPrCorpusSmoke({
+      snapshot: readySnapshot(),
+      now: "2026-08-31T00:10:00.000Z",
+      maxSnapshotAgeMs: 30 * 60 * 1000,
+      runAnalyze
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      status: "incomplete",
+      completedCount: 0,
+      incompleteCount: 25,
+      generalPrAssessmentSummary: expect.objectContaining({ presentCount: 0 })
+    }));
+    expect(result.results).toEqual(Array.from({ length: 25 }, (_, index) => ({
+      id: `case-${index + 1}`,
+      analysisStatus: "incomplete",
+      failureKind: "analysis_unavailable"
+    })));
   });
 
   it("enables the bounded general PR assessment in Vercel deployments", () => {
