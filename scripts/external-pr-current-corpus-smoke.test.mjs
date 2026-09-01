@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { runCurrentExternalPrCorpusSmoke } from "./external-pr-current-corpus-smoke.mjs";
+import {
+  assertAggregateOnlyRunArtifact,
+  runCurrentExternalPrCorpusSmoke
+} from "./external-pr-current-corpus-smoke.mjs";
 
 describe("external-pr-current-corpus-smoke", () => {
   it("runs each ready current-state sample with its frozen anchor and URL-only input", async () => {
@@ -38,7 +41,7 @@ describe("external-pr-current-corpus-smoke", () => {
       requirementEvidenceStatusSummary: { partial: 25 },
       generalPrAssessmentSummary: {
         presentCount: 25,
-        overallConclusionCounts: { mixed_evidence: 25 },
+        overallConclusionCounts: { evidence_partial: 25 },
         sourceStateCounts: { pr_author_claim: 25 },
         reasonCodeCounts: {
           verified_relation_missing: 25,
@@ -97,6 +100,26 @@ describe("external-pr-current-corpus-smoke", () => {
     })));
   });
 
+  it("rejects unknown URL, source, provider, and diagnostic fields anywhere in a run artifact", async () => {
+    const result = await runCurrentExternalPrCorpusSmoke({
+      snapshot: readySnapshot(),
+      now: "2026-08-31T00:10:00.000Z",
+      maxSnapshotAgeMs: 30 * 60 * 1000,
+      runAnalyze: vi.fn().mockResolvedValue(validAnalyzeResult())
+    });
+
+    for (const [path, mutate] of [
+      ["url", (artifact) => { artifact.url = "https://private.example"; }],
+      ["sourceDetail", (artifact) => { artifact.generalPrAssessmentSummary.sourceDetail = "private source"; }],
+      ["providerMetadata", (artifact) => { artifact.results[0].providerMetadata = { model: "private" }; }],
+      ["diagnosticNotes", (artifact) => { artifact.timingSummary.diagnosticNotes = "private"; }]
+    ]) {
+      const artifact = structuredClone(result);
+      mutate(artifact);
+      expect(() => assertAggregateOnlyRunArtifact(artifact), path).toThrow("Current external PR run artifact was invalid");
+    }
+  });
+
   it("enables the bounded general PR assessment in Vercel deployments", () => {
     const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
 
@@ -129,7 +152,7 @@ function assessmentSummary() {
     version: 1,
     mode: "ordinary_pr",
     sourceState: "pr_author_claim",
-    overallConclusion: "mixed_evidence",
+    overallConclusion: "evidence_partial",
     counts: {
       evidence_supported: 0,
       evidence_partial: 1,
@@ -139,6 +162,24 @@ function assessmentSummary() {
       not_assessable: 0
     },
     reasonCodes: ["verified_relation_missing", "author_claim_requires_confirmation"]
+  };
+}
+
+function validAnalyzeResult() {
+  return {
+    priority: "medium",
+    confidence: 0.4,
+    evidenceCoverage: 25,
+    ciStatus: "unknown",
+    requirementCount: 0,
+    evidenceCount: 4,
+    limitationCount: 2,
+    requirementStatusCounts: { unclear: 1 },
+    requirementEvidenceStatusCounts: { partial: 1 },
+    generalPrAssessmentSummary: assessmentSummary(),
+    qualityGate: { ok: true, checks: [] },
+    savedReportPrivacy: "summary-only",
+    savedReportDeleted: true
   };
 }
 

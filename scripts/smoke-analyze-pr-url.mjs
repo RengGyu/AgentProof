@@ -194,17 +194,22 @@ export function isValidGeneralPrAssessmentSummary(summary) {
     if (!Number.isSafeInteger(summary.counts[key]) || summary.counts[key] < 0 || summary.counts[key] > 100) return false;
   }
 
-  const total = GENERAL_PR_ASSESSMENT_COUNT_KEYS.reduce((sum, key) => sum + summary.counts[key], 0);
-  if (summary.counts.evidence_supported > 0 || summary.counts.contradicted > 0 ||
-    summary.overallConclusion === "evidence_supports_stated_change" ||
-    summary.overallConclusion === "attention_required" ||
-    (summary.sourceState === "pr_author_claim" && !summary.reasonCodes.includes("author_claim_requires_confirmation")) ||
-    (summary.overallConclusion === "collection_blocked" && (summary.counts.blocked === 0 || total !== summary.counts.blocked)) ||
-    (summary.overallConclusion === "no_assessable_claims" && total !== 0)) {
+  if (summary.overallConclusion !== aggregateGeneralPrAssessmentConclusion(summary.counts) ||
+    (summary.sourceState === "pr_author_claim" && !summary.reasonCodes.includes("author_claim_requires_confirmation"))) {
     return false;
   }
 
   return true;
+}
+
+function aggregateGeneralPrAssessmentConclusion(counts) {
+  if (counts.contradicted > 0) return "attention_required";
+  const total = GENERAL_PR_ASSESSMENT_COUNT_KEYS.reduce((sum, key) => sum + counts[key], 0);
+  if (total === 0) return "no_assessable_claims";
+  if (counts.blocked === total) return "collection_blocked";
+  if (counts.evidence_supported === total) return "evidence_supports_stated_change";
+  if (counts.evidence_partial === total) return "evidence_partial";
+  return "mixed_evidence";
 }
 
 export function copyGeneralPrAssessmentSummary(summary) {

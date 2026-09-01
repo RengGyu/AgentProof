@@ -7,6 +7,7 @@ import {
   evaluateReportQualityGate,
   analyzeTimingFromResponse,
   githubEvidenceTimingFromResponse,
+  isValidGeneralPrAssessmentSummary,
   parseGitHubEvidenceTimingHeader,
   parseAnalyzeTimingHeader,
   runAnalyzePrSmoke
@@ -109,6 +110,48 @@ describe("smoke-analyze-pr-url", () => {
       fetchImpl: fetchMock
     })).rejects.toThrow("General PR assessment summary was unavailable");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the assessment conclusion to match its aggregate count states", () => {
+    expect(isValidGeneralPrAssessmentSummary(assessmentSummary())).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({
+      ...assessmentSummary(),
+      overallConclusion: "mixed_evidence"
+    })).toBe(false);
+
+    const allBlocked = {
+      ...assessmentSummary(),
+      overallConclusion: "collection_blocked",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 0,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 2,
+        not_assessable: 0
+      }
+    };
+    expect(isValidGeneralPrAssessmentSummary(allBlocked)).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({ ...allBlocked, overallConclusion: "evidence_partial" })).toBe(false);
+
+    const supported = {
+      ...assessmentSummary(),
+      overallConclusion: "evidence_supports_stated_change",
+      counts: {
+        evidence_supported: 1,
+        evidence_partial: 0,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      }
+    };
+    expect(isValidGeneralPrAssessmentSummary(supported)).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({
+      ...supported,
+      overallConclusion: "attention_required",
+      counts: { ...supported.counts, evidence_supported: 0, contradicted: 1 }
+    })).toBe(true);
   });
 
   it("accepts durable Supabase saved-report metadata while keeping summary-only checks", async () => {
@@ -682,7 +725,7 @@ function assessmentSummary() {
     version: 1,
     mode: "ordinary_pr",
     sourceState: "pr_author_claim",
-    overallConclusion: "mixed_evidence",
+    overallConclusion: "evidence_partial",
     counts: {
       evidence_supported: 0,
       evidence_partial: 1,

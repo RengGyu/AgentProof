@@ -17,6 +17,25 @@ const DEFAULT_OUTPUT_PATH = join(ROOT, "eval/generated/external-pr-current-corpu
 const DEFAULT_BASE_URL = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "https://agentproof-pearl.vercel.app").replace(/\/$/, "");
 const DEFAULT_MAX_SNAPSHOT_AGE_MS = 30 * 60 * 1000;
 const SHA_PATTERN = /^[a-f0-9]{40,64}$/;
+const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
+const GENERAL_PR_SOURCE_STATES = new Set(["linked_issue", "pr_author_claim", "mixed", "missing", "ambiguous"]);
+const GENERAL_PR_CONCLUSIONS = new Set([
+  "evidence_supports_stated_change",
+  "evidence_partial",
+  "mixed_evidence",
+  "attention_required",
+  "collection_blocked",
+  "no_assessable_claims"
+]);
+const GENERAL_PR_REASON_CODES = new Set([
+  "implementation_evidence_observed", "test_artifact_observed", "exact_execution_passed", "exact_execution_failed",
+  "verified_relation_missing", "execution_not_observed", "claimed_artifact_not_observed", "unsupported_claim_type",
+  "source_missing", "source_ambiguous", "source_unavailable", "collection_incomplete", "head_mismatch",
+  "evidence_identity_incomplete", "semantic_relation_only", "author_claim_requires_confirmation",
+  "deterministic_candidate_missing", "semantic_observer_disabled", "semantic_observer_ineligible",
+  "semantic_observer_unavailable", "semantic_observer_timeout", "semantic_proposal_invalid",
+  "semantic_candidate_missing", "semantic_candidate_rejected", "target_relation_unresolved"
+]);
 
 export async function runCurrentExternalPrCorpusSmoke({
   snapshot,
@@ -170,35 +189,77 @@ function runArtifactResult(result) {
     : { id: result.id, analysisStatus: "incomplete", failureKind: result.failureKind };
 }
 
-function assertAggregateOnlyRunArtifact(value) {
-  const forbiddenKeys = new Set([
-    "targets",
-    "targetId",
-    "sourceText",
-    "sourceSpanRefs",
-    "sourceBindingRef",
-    "path",
-    "paths",
-    "locator",
-    "providerOutput",
-    "providerResponse",
-    "prompt",
-    "token",
-    "tokens",
-    "diagnostics",
-    "rawInput",
-    "prUrl",
-    "cohort",
-    "anchorFingerprint"
-  ]);
-  const visit = (node) => {
-    if (!node || typeof node !== "object") return;
-    for (const [key, child] of Object.entries(node)) {
-      if (forbiddenKeys.has(key)) throw new Error("Current external PR run artifact retained private or identifying data.");
-      visit(child);
+export function assertAggregateOnlyRunArtifact(value) {
+  const fail = () => { throw new Error("Current external PR run artifact was invalid."); };
+  const exactObject = (node, keys) => {
+    if (!node || typeof node !== "object" || Array.isArray(node) ||
+      Object.keys(node).length !== keys.length || !keys.every((key) => Object.prototype.hasOwnProperty.call(node, key))) fail();
+  };
+  const nonNegativeInteger = (node) => Number.isSafeInteger(node) && node >= 0;
+  const countRecord = (node, allowed) => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) fail();
+    for (const [key, count] of Object.entries(node)) {
+      if (!allowed.has(key) || !nonNegativeInteger(count)) fail();
     }
   };
-  visit(value);
+  const timingSummary = (node, metric, phases) => {
+    exactObject(node, ["metric", "unit", "method", "phases"]);
+    if (node.metric !== metric || node.unit !== "ms" || node.method !== "nearest-rank") fail();
+    exactObject(node.phases, phases);
+    for (const phase of phases) {
+      const stats = node.phases[phase];
+      exactObject(stats, ["count", "missingCount", "p50", "p95", "max"]);
+      if (!nonNegativeInteger(stats.count) || !nonNegativeInteger(stats.missingCount) ||
+        ![stats.p50, stats.p95, stats.max].every((stat) => stat === null || nonNegativeInteger(stat))) fail();
+    }
+  };
+
+  exactObject(value, [
+    "version", "privacy", "status", "observedAt", "sourceSnapshotFingerprint", "caseCount", "completedCount",
+    "incompleteCount", "requirementStatusSummary", "requirementEvidenceStatusSummary", "generalPrAssessmentSummary",
+    "qualityGateSummary", "timingSummary", "githubEvidenceTimingSummary", "results"
+  ]);
+  if (value.version !== 1 || value.privacy !== "external-pr-current-corpus-run-summary-only" ||
+    !["completed", "incomplete"].includes(value.status) || !Number.isFinite(Date.parse(value.observedAt)) ||
+    !/^[a-f0-9]{64}$/.test(value.sourceSnapshotFingerprint) || !Array.isArray(value.results) ||
+    ![value.caseCount, value.completedCount, value.incompleteCount].every(nonNegativeInteger) ||
+    value.caseCount !== value.results.length || value.caseCount !== value.completedCount + value.incompleteCount) fail();
+
+  countRecord(value.requirementStatusSummary, REQUIREMENT_STATUSES);
+  countRecord(value.requirementEvidenceStatusSummary, REQUIREMENT_STATUSES);
+  exactObject(value.generalPrAssessmentSummary, ["presentCount", "overallConclusionCounts", "sourceStateCounts", "reasonCodeCounts", "assessmentCountTotals"]);
+  if (!nonNegativeInteger(value.generalPrAssessmentSummary.presentCount) || value.generalPrAssessmentSummary.presentCount > value.completedCount) fail();
+  countRecord(value.generalPrAssessmentSummary.overallConclusionCounts, GENERAL_PR_CONCLUSIONS);
+  countRecord(value.generalPrAssessmentSummary.sourceStateCounts, GENERAL_PR_SOURCE_STATES);
+  countRecord(value.generalPrAssessmentSummary.reasonCodeCounts, GENERAL_PR_REASON_CODES);
+  exactObject(value.generalPrAssessmentSummary.assessmentCountTotals, GENERAL_PR_ASSESSMENT_COUNT_KEYS);
+  for (const count of Object.values(value.generalPrAssessmentSummary.assessmentCountTotals)) {
+    if (!nonNegativeInteger(count)) fail();
+  }
+
+  exactObject(value.qualityGateSummary, ["ok", "checks"]);
+  if (typeof value.qualityGateSummary.ok !== "boolean" || !Array.isArray(value.qualityGateSummary.checks)) fail();
+  for (const check of value.qualityGateSummary.checks) {
+    exactObject(check, ["id", "label", "count", "failedCount"]);
+    if (!/^[a-z_]{1,80}$/.test(check.id) || typeof check.label !== "string" || check.label.length > 160 ||
+      !nonNegativeInteger(check.count) || !nonNegativeInteger(check.failedCount) || check.failedCount > check.count) fail();
+  }
+
+  timingSummary(value.timingSummary, "X-AgentProof-Timing", ["input", "evidence", "report", "validation", "total"]);
+  timingSummary(value.githubEvidenceTimingSummary, "X-AgentProof-Evidence-Timing", [
+    "github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"
+  ]);
+  for (const result of value.results) {
+    if (result?.analysisStatus === "completed") {
+      exactObject(result, ["id", "analysisStatus"]);
+    } else if (result?.analysisStatus === "incomplete") {
+      exactObject(result, ["id", "analysisStatus", "failureKind"]);
+      if (!["source_drift", "analysis_unavailable"].includes(result.failureKind)) fail();
+    } else {
+      fail();
+    }
+    if (typeof result.id !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(result.id)) fail();
+  }
 }
 
 function validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs }) {
