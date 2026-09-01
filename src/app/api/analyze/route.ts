@@ -14,6 +14,7 @@ import {
 import { submitGeneralPrSemanticObservationWithOpenAI } from "@/lib/openai-semantic";
 import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
+import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "@/lib/general-pr-runtime-policy";
 import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
 import { redactSecrets } from "@/lib/redact";
@@ -93,18 +94,18 @@ export async function POST(request: Request) {
       : await buildPullRequestInput(body, evidenceTiming);
 
     timing.start("report");
-    const observationMode = generalPrObservationService.resolveGeneralPrObservationModeV2(
+    const policy = resolveGeneralPrAssessmentRuntimePolicyV1(
       process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
     );
     const publicPrUrl = body.prUrl?.trim();
     const observerApiKey = process.env.OPENAI_API_KEY?.trim();
     const observerModel = process.env.OPENAI_MODEL?.trim();
-    const publicShadowObserver = observationMode === "shadow" &&
+    const semanticEligible = policy.semanticObservation === "eligible_public_pr" &&
       input.repositoryPrivate === false &&
       input.sourceProvenance?.origin === "github_snapshot" &&
       Boolean(publicPrUrl && observerApiKey && observerModel);
     const observed = await generalPrObservationService.runGeneralPrObservationNowV2({
-      mode: observationMode,
+      policy,
       input,
       generateReport: generateVerificationReportV2FromInput,
       // The existing runtime gate remains the final authority below. This
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
           report: candidateReport,
           requireV2: true
         }).valid,
-      ...(publicShadowObserver && publicPrUrl && observerApiKey && observerModel ? {
+      ...(semanticEligible && publicPrUrl && observerApiKey && observerModel ? {
         semantic: {
           provider: {
             observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {

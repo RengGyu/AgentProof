@@ -71,6 +71,7 @@ import {
 } from "./usage-quota";
 import { generateVerificationReportV2FromInput } from "./verifier";
 import * as generalPrObservationService from "./general-pr-observation-service";
+import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import {
   OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS,
   OpenAISemanticError,
@@ -449,17 +450,17 @@ async function runPreflightedAnalysisJob(
       );
     }
 
-    const generalPrObservationMode = generalPrObservationService.resolveGeneralPrObservationModeV2(
+    const generalPrPolicy = resolveGeneralPrAssessmentRuntimePolicyV1(
       env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
     );
     const generalPrObserverApiKey = env.OPENAI_API_KEY?.trim();
     const generalPrObserverModel = env.OPENAI_MODEL?.trim();
-    const publicShadowObserver = generalPrObservationMode === "shadow" &&
+    const semanticEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
       input.repositoryPrivate === false &&
       input.sourceProvenance?.origin === "github_snapshot" &&
       Boolean(generalPrObserverApiKey && generalPrObserverModel);
     const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
-      mode: generalPrObservationMode,
+      policy: generalPrPolicy,
       input,
       generateReport: generateVerificationReportV2FromInput,
       // The generated/semantic report still crosses the existing worker
@@ -472,7 +473,7 @@ async function runPreflightedAnalysisJob(
           requireV2: true,
           requireSourceProvenance: true
         }).valid,
-      ...(publicShadowObserver && generalPrObserverApiKey && generalPrObserverModel ? {
+      ...(semanticEligible && generalPrObserverApiKey && generalPrObserverModel ? {
         semantic: {
           provider: {
             observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {

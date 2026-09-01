@@ -49,15 +49,16 @@ function expectNoGitHubEvidenceTiming(response: Response) {
 }
 
 describe("POST /api/analyze", () => {
-  it("uses the observer provider only for an explicitly public live GitHub PR in shadow mode", async () => {
+  it("uses the observer provider for an explicitly public live GitHub PR in advisory policy", async () => {
     const previous = {
       mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
       key: process.env.OPENAI_API_KEY,
       model: process.env.OPENAI_MODEL
     };
-    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "shadow";
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_MODEL = "gpt-test";
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
     const headSha = "a".repeat(40);
     const baseSha = "b".repeat(40);
     const fetchMock = vi.fn((url: string) => {
@@ -84,15 +85,27 @@ describe("POST /api/analyze", () => {
       const response = await POST(new Request("http://localhost/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" })
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/repo/pull/12",
+          requestedSemanticMode: "enable"
+        })
       }));
       const json = await response.json() as { report: VerificationReport; observation?: unknown };
 
       expect(response.status, JSON.stringify(json)).toBe(200);
       expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(true);
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        policy: expect.objectContaining({
+          semanticObservation: "eligible_public_pr",
+          assessmentProjection: "advisory"
+        }),
+        semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
+      }));
+      expect(json.report).toHaveProperty("generalPrAssessmentSummary");
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
     } finally {
+      observationSpy.mockRestore();
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
         else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
@@ -117,7 +130,9 @@ describe("POST /api/analyze", () => {
       const json = await response.json() as { report: VerificationReport; observation?: unknown };
 
       expect(response.status).toBe(200);
-      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow" }));
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        policy: expect.objectContaining({ releasePhase: "shadow" })
+      }));
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
       expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });

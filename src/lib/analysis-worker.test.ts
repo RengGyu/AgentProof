@@ -1859,9 +1859,9 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("key=");
   });
 
-  it("runs shadow observations without retaining them in a worker result", async () => {
+  it("runs advisory observations without retaining private bundles in a worker result", async () => {
     stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
-    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "shadow");
+    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "advisory");
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     vi.stubEnv("OPENAI_MODEL", "gpt-test");
     const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
@@ -1883,7 +1883,13 @@ describe("analysis worker preflight", () => {
       const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0] });
 
       expect(result.status).toBe("completed");
-      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow" }));
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        policy: expect.objectContaining({
+          semanticObservation: "eligible_public_pr",
+          assessmentProjection: "advisory"
+        }),
+        semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
+      }));
       expect(fetchMock.mock.calls.some(([url]) => String(url) === "https://api.openai.com/v1/responses")).toBe(true);
       expect(serialized).not.toContain("ledgerDigest");
       expect(serialized).not.toContain("generalPrObservation");

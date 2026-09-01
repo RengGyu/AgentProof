@@ -6,6 +6,7 @@ import {
 } from "./general-pr-observation-service";
 import { advanceQueuedGeneralPrObservationV2 } from "./general-pr-observation-worker";
 import { deriveGeneralPrObjectiveGroupIdV2 } from "./general-pr-semantic-proposal";
+import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import type { GeneralPrSemanticObserverModelProfileV2 } from "./general-pr-semantic-observer";
 import type { PullRequestInput, VerificationReport } from "./types";
 
@@ -93,7 +94,7 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     const seed = buildGeneralPrObservationSeedV2(semanticInput);
     const provider = { observe: vi.fn(async () => validProposal(seed)) };
     const sync = await runGeneralPrObservationNowV2({
-      mode: "shadow",
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
       input: semanticInput,
       generateReport: () => report,
       validateDeterministicReport: () => true,
