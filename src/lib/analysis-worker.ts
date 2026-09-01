@@ -456,8 +456,7 @@ async function runPreflightedAnalysisJob(
     const generalPrObserverApiKey = env.OPENAI_API_KEY?.trim();
     const generalPrObserverModel = env.OPENAI_MODEL?.trim();
     const semanticEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
-      input.repositoryPrivate === false &&
-      input.sourceProvenance?.origin === "github_snapshot" &&
+      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
       Boolean(generalPrObserverApiKey && generalPrObserverModel);
     const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
       policy: generalPrPolicy,

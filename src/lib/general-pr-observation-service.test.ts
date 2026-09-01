@@ -230,6 +230,53 @@ describe("runGeneralPrObservationNowV2", () => {
     });
   });
 
+  it("rejects provided requirements and non-GitHub inputs before semantic provider submission", async () => {
+    const provider = { observe: vi.fn(async () => null) };
+    const providedRequirement = {
+      ...input,
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      taskText: "Acceptance criteria: send this request text to the provider.",
+      taskSource: "task" as const
+    };
+    const pastedEvidence = {
+      ...input,
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      sourceProvenance: {
+        ...input.sourceProvenance!,
+        origin: "pasted_evidence" as const
+      }
+    };
+
+    const provided = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
+      input: providedRequirement,
+      generateReport: () => report,
+      validateDeterministicReport: () => true,
+      semantic: { provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => providedRequirement, modelProfile }
+    });
+    const pasted = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
+      input: pastedEvidence,
+      generateReport: () => report,
+      validateDeterministicReport: () => true,
+      semantic: { provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => pastedEvidence, modelProfile }
+    });
+
+    expect(provider.observe).not.toHaveBeenCalled();
+    expect(provided.bundle).toMatchObject({
+      semanticState: "ineligible",
+      diagnostics: { semanticAdmission: "ineligible" }
+    });
+    expect(pasted.bundle).toMatchObject({
+      semanticState: "ineligible",
+      diagnostics: { semanticAdmission: "ineligible" }
+    });
+    expect(deriveGeneralPrAssessmentV1({ seed: buildGeneralPrObservationSeedV2(pastedEvidence), bundle: pasted.bundle!, report }).reasonCodes)
+      .toContain("semantic_observer_ineligible");
+  });
+
   it("marks semantic observation not needed when a deterministic target is already admitted", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(input);
     const observationBundle = finalizeDeterministicGeneralPrObservationsV2(observationSeed, null, "unavailable");

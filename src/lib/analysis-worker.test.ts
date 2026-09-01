@@ -1888,6 +1888,7 @@ describe("analysis worker preflight", () => {
           semanticObservation: "eligible_public_pr",
           assessmentProjection: "advisory"
         }),
+        input: expect.objectContaining({ taskText: "" }),
         semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
       }));
       expect(fetchMock.mock.calls.some(([url]) => String(url) === "https://api.openai.com/v1/responses")).toBe(true);

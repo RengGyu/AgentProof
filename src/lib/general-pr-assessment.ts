@@ -68,12 +68,13 @@ export function deriveGeneralPrAssessmentV1({
     : [];
   const counts = countTargets(targets);
   const sourceState = sourceStateFor(targets, seed, bundle);
+  const headMismatch = bundle.seedHash !== seed.seedHash || bundle.semanticState === "stale";
   const reasonCodes = uniqueReasons([
     ...targets.flatMap((target) => target.reasonCodes),
     ...diagnosticReasons(bundle),
     ...(sourceState === "pr_author_claim" ? ["author_claim_requires_confirmation" as const] : []),
     ...(sourceState === "missing" ? ["source_missing" as const] : []),
-    ...(sourceState === "ambiguous" ? ["source_ambiguous" as const] : [])
+    ...(headMismatch ? ["head_mismatch" as const] : sourceState === "ambiguous" ? ["source_ambiguous" as const] : [])
   ]);
 
   return {

@@ -101,8 +101,7 @@ export async function POST(request: Request) {
     const observerApiKey = process.env.OPENAI_API_KEY?.trim();
     const observerModel = process.env.OPENAI_MODEL?.trim();
     const semanticEligible = policy.semanticObservation === "eligible_public_pr" &&
-      input.repositoryPrivate === false &&
-      input.sourceProvenance?.origin === "github_snapshot" &&
+      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
       Boolean(publicPrUrl && observerApiKey && observerModel);
     const observed = await generalPrObservationService.runGeneralPrObservationNowV2({
       policy,
@@ -128,7 +127,7 @@ export async function POST(request: Request) {
           privateRepository: false,
           readCurrentInput: async () => {
             try {
-              return await buildGitHubPullRequestInput(publicPrUrl, body.githubToken, body.taskText ?? "", undefined, {
+              return await buildGitHubPullRequestInput(publicPrUrl, body.githubToken, "", undefined, {
                 expectedHeadSha: input.sourceProvenance?.headSha,
                 expectedBaseSha: input.sourceProvenance?.baseSha
               });

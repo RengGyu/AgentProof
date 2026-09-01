@@ -27,7 +27,7 @@ export interface GeneralPrObservationBundleV2 {
   relationLevelCounts: Record<RelationVerificationLevelV1, number>;
   testCoverage: ReturnType<typeof evaluateTestCoverageObservationV2>[];
   scopeMappings: ReturnType<typeof evaluateScopeMappingObservationV2>[];
-  semanticState: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+  semanticState: "disabled" | "ineligible" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   diagnostics: GeneralPrAssessmentDiagnosticsV1;
 }
 
@@ -67,6 +67,13 @@ export async function runGeneralPrObservationNowV2(
   if (options.policy.semanticObservation === "disabled") return { report, bundle: null };
   const seed = buildGeneralPrObservationSeedV2(options.input);
   if (!validateGeneralPrObservationSeedV2(seed).valid) return { report, bundle: null };
+  if (!isGeneralPrSemanticObserverEligibleV2(options.input)) {
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "ineligible");
+    return {
+      report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
+      bundle
+    };
+  }
   if (seed.parseState !== "complete") {
     const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
     return {
@@ -94,6 +101,12 @@ export async function runGeneralPrObservationNowV2(
     report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
     bundle
   };
+}
+
+export function isGeneralPrSemanticObserverEligibleV2(input: PullRequestInput): boolean {
+  return input.repositoryPrivate === false &&
+    input.sourceProvenance?.origin === "github_snapshot" &&
+    (input.taskText.trim() === "" || input.taskSource === "issue");
 }
 
 /**

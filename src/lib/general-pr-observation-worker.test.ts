@@ -17,7 +17,16 @@ const input: PullRequestInput = {
   changedFiles: [{ path: "docs/reset.md", status: "modified" }],
   checks: [],
   logs: [],
-  repositoryPrivate: false
+  repositoryPrivate: false,
+  sourceProvenance: {
+    version: 1,
+    origin: "github_snapshot",
+    baseSha: "b".repeat(40),
+    headSha: "a".repeat(40),
+    changedFileInventory: { version: 1, completeness: "complete", headSha: "a".repeat(40) },
+    evidenceCapturedAt: "2026-08-31T00:00:00.000Z",
+    inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+  }
 };
 
 const report = { schemaVersion: "verification-report.v2", analysisId: "worker-test" } as unknown as VerificationReport;

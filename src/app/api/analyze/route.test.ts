@@ -163,6 +163,65 @@ describe("POST /api/analyze", () => {
     }
   });
 
+  it("does not submit request-provided task text to the public-PR semantic observer", async () => {
+    const previous = {
+      mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
+      key: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL
+    };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "https://api.openai.com/v1/responses") {
+        return Promise.resolve(Response.json({ output_text: "{}" }));
+      }
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Public PR",
+          body: "Internal cleanup only.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: baseSha, repo: { private: false } },
+          head: { ref: "agent/validation", sha: headSha }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/repo/pull/12",
+          taskText: "Request-only context must not enter the provider package."
+        })
+      }));
+      const json = await response.json() as { report: VerificationReportV2 };
+
+      expect(response.status, JSON.stringify(json)).toBe(200);
+      expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(false);
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        input: expect.objectContaining({ taskSource: "task" })
+      }));
+      expect(observationSpy.mock.calls[0]?.[0]).not.toHaveProperty("semantic");
+      expect(json.report.generalPrAssessmentSummary?.reasonCodes).toContain("semantic_observer_ineligible");
+    } finally {
+      observationSpy.mockRestore();
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
+        else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
+      }
+    }
+  });
+
   it("runs configured shadow observations without adding private observations to the response", async () => {
     const previousMode = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
     process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "shadow";

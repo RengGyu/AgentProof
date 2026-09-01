@@ -103,7 +103,11 @@ describe("deriveGeneralPrAssessmentV1", () => {
     const stale = finalizeDeterministicGeneralPrObservationsV2(seed, null, "stale");
 
     expect(deriveGeneralPrAssessmentV1({ seed, bundle: available, report }).sourceState).toBe("linked_issue");
-    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report }).sourceState).toBe("ambiguous");
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report })).toMatchObject({
+      sourceState: "ambiguous",
+      reasonCodes: expect.arrayContaining(["head_mismatch"])
+    });
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report }).reasonCodes).not.toContain("source_ambiguous");
   });
 
   it("keeps fallback PR targets as author claims requiring reviewer confirmation", () => {
