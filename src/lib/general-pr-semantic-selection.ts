@@ -74,7 +74,7 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
   const candidates = input.seed.spans.flatMap((span, seedIndex) => {
     const owner = sourcesById.get(span.sourceUnitId);
     const text = views.get(span.sourceUnitId)?.slice(span.start, span.end);
-    if (!owner || typeof text !== "string" || !isEligible(owner.source, span)) return [];
+    if (!owner || typeof text !== "string" || !isGeneralPrSemanticClaimSpanEligibleV1(owner.source, span)) return [];
     const selected = toSelectedSpan(owner.source, span, text);
     if (selectionBytes(input.seed.seedHash, [selected], 1, 1) > maxInputBytes) {
       inputByteBudget += 1;
@@ -86,7 +86,7 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
   const reserved = new Set<string>();
   for (const source of input.seed.sources) {
     if (source.roleCeiling !== "objective") continue;
-    const candidate = byRank.find((item) => item.source.id === source.id && item.span.deterministicRole !== "template_or_process");
+    const candidate = byRank.find((item) => item.source.id === source.id && isGeneralPrSemanticClaimSpanReservableV1(item.source, item.span));
     if (candidate) reserved.add(candidate.span.id);
   }
   const selected = byRank.filter((item) => reserved.has(item.span.id)).slice(0, maxSpans);
@@ -122,8 +122,14 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
   };
 }
 
-function isEligible(source: GeneralPrSourceUnitV2, span: GeneralPrSemanticSpanV2): boolean {
+/** Pure eligibility boundary for source/span types already validated by the seed. */
+export function isGeneralPrSemanticClaimSpanEligibleV1(source: GeneralPrSourceUnitV2, span: GeneralPrSemanticSpanV2): boolean {
   return source.roleCeiling !== "policy_only" && span.structuralKind !== "code" && span.structuralKind !== "html";
+}
+
+/** A template/process span may be selected for context but never reserves objective diversity. */
+export function isGeneralPrSemanticClaimSpanReservableV1(source: GeneralPrSourceUnitV2, span: GeneralPrSemanticSpanV2): boolean {
+  return source.roleCeiling === "objective" && span.deterministicRole !== "template_or_process" && isGeneralPrSemanticClaimSpanEligibleV1(source, span);
 }
 
 function toSelectedSpan(source: GeneralPrSourceUnitV2, span: GeneralPrSemanticSpanV2, text: string): GeneralPrSemanticClaimSelectionV1["selectedSpans"][number] {

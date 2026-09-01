@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
-import { selectGeneralPrSemanticClaimSpansV1 } from "./general-pr-semantic-selection";
+import {
+  isGeneralPrSemanticClaimSpanEligibleV1,
+  isGeneralPrSemanticClaimSpanReservableV1,
+  selectGeneralPrSemanticClaimSpansV1
+} from "./general-pr-semantic-selection";
 import type { PullRequestInput } from "./types";
 
 function input(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
@@ -92,5 +96,23 @@ describe("selectGeneralPrSemanticClaimSpansV1", () => {
     expect(forgedResult).toEqual({ ok: false, reason: "seed_invalid" });
     expect(selection.selectedSpans.map((span) => span.deterministicRole)).not.toContain("template_or_process");
     expect(selection.selectedSpans.map((span) => span.structuralKind)).not.toEqual(expect.arrayContaining(["code", "html"]));
+  });
+
+  it("excludes code, HTML, and policy-only spans at the pure eligibility boundary", () => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const source = seed.sources[0]!;
+    const span = seed.spans[0]!;
+
+    expect(isGeneralPrSemanticClaimSpanEligibleV1(source, { ...span, structuralKind: "code" })).toBe(false);
+    expect(isGeneralPrSemanticClaimSpanEligibleV1(source, { ...span, structuralKind: "html" })).toBe(false);
+    expect(isGeneralPrSemanticClaimSpanEligibleV1({ ...source, roleCeiling: "policy_only" }, span)).toBe(false);
+    expect(isGeneralPrSemanticClaimSpanReservableV1(source, { ...span, deterministicRole: "template_or_process" })).toBe(false);
+  });
+
+  it("returns unavailable when every canonical source span is excluded", () => {
+    const request = input({ title: "", taskText: "", description: "<!-- hidden -->\n\n```ts\nconst state = 'private';\n```" });
+    const result = selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed: buildGeneralPrObservationSeedV2(request) });
+
+    expect(result).toEqual({ ok: false, reason: "selection_unavailable" });
   });
 });
