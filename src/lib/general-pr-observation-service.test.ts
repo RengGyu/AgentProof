@@ -134,7 +134,7 @@ describe("runGeneralPrObservationNowV2", () => {
     expect(result.report).not.toBe(v2Report);
     expect(result.report.requirements.map((requirement) => requirement.status)).toEqual(["unclear"]);
     expect((result.report as VerificationReportV2).generalPrAssessmentSummary).toMatchObject({
-      overallConclusion: "mixed_evidence",
+      overallConclusion: "evidence_partial",
       counts: expect.objectContaining({ evidence_supported: 0, evidence_partial: 2 })
     });
     expect(JSON.stringify(result.report)).not.toContain("ledgerDigest");
