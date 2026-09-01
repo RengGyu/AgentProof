@@ -136,14 +136,15 @@ describe("server report store", () => {
     expect(decoded).toMatchObject({ status: "valid", report: { generalPrAssessmentSummary: persisted.generalPrAssessmentSummary } });
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
 
-    for (const injected of [
-      { targets: [] },
-      { diagnostics: {} },
-      { reasonCodes: ["unknown_reason"] }
+    for (const { injected, expectedError } of [
+      { injected: { targets: [] }, expectedError: "tenant ordinary-PR assessment summary is invalid." },
+      { injected: { diagnostics: {} }, expectedError: "tenant ordinary-PR assessment summary is invalid." },
+      { injected: { reasonCodes: ["unknown_reason"] }, expectedError: "tenant ordinary-PR assessment summary reasons are invalid." }
     ]) {
       const untrusted = structuredClone(persisted) as typeof persisted & { generalPrAssessmentSummary: Record<string, unknown> };
       Object.assign(untrusted.generalPrAssessmentSummary, injected);
-      expect(validateTenantPersistedReport(untrusted, signingSecret).valid).toBe(false);
+      resignPersistedTenantReport(untrusted, signingSecret);
+      expect(validateTenantPersistedReport(untrusted, signingSecret)).toEqual({ valid: false, errors: [expectedError] });
     }
   });
 
