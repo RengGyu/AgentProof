@@ -48,6 +48,18 @@ function expectNoGitHubEvidenceTiming(response: Response) {
   expect(response.headers.get("X-AgentProof-Evidence-Timing")).toBeNull();
 }
 
+function validGeneralPrObserverCandidate(init?: RequestInit) {
+  const request = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ text: string }> }> };
+  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as { spans: Array<{ id: string }> };
+  return {
+    spanRoles: observerInput.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })),
+    objectiveGroups: [],
+    testApplicabilityProposals: [],
+    scopeMappingProposals: [],
+    evidenceRelationProposals: []
+  };
+}
+
 describe("POST /api/analyze", () => {
   it("does not let a request field enable semantics when the server policy is disabled", async () => {
     const previous = {
@@ -111,14 +123,14 @@ describe("POST /api/analyze", () => {
     const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
     const headSha = "a".repeat(40);
     const baseSha = "b".repeat(40);
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === "https://api.openai.com/v1/responses") {
-        return Promise.resolve(Response.json({ output_text: "{}" }));
+        return Promise.resolve(Response.json({ output_text: JSON.stringify(validGeneralPrObserverCandidate(init)) }));
       }
       if (url.endsWith("/pulls/12")) {
         return Promise.resolve(Response.json({
-          title: "Public PR",
-          body: "Acceptance criteria: add validation.",
+          title: "Maintenance notes",
+          body: "Internal cleanup only.",
           url: "https://api.github.com/repos/acme/repo/pulls/12",
           base: { ref: "main", sha: baseSha, repo: { private: false } },
           head: { ref: "agent/validation", sha: headSha }
@@ -154,6 +166,10 @@ describe("POST /api/analyze", () => {
       expect(json.report).toHaveProperty("generalPrAssessmentSummary");
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
+      const summary = (json.report as VerificationReportV2).generalPrAssessmentSummary;
+      expect(summary?.reasonCodes).toContain("semantic_candidate_missing");
+      expect(summary?.reasonCodes).not.toEqual(expect.arrayContaining(["semantic_observer_unavailable", "semantic_proposal_invalid"]));
+      expect(summary?.counts.evidence_supported).toBe(0);
     } finally {
       observationSpy.mockRestore();
       for (const [key, value] of Object.entries(previous)) {

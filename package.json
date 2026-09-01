@@ -19,6 +19,7 @@
     "smoke:external-pr-pilot": "node scripts/external-pr-pilot-smoke.mjs",
     "refresh:external-pr-corpus": "node scripts/refresh-external-pr-corpus.mjs",
     "smoke:external-pr-current-corpus": "node scripts/external-pr-current-corpus-smoke.mjs",
+    "smoke:external-pr-current-corpus:release": "AGENTPROOF_EXTERNAL_CORPUS_REQUIRE_SEMANTIC_BOUNDARY=1 node scripts/external-pr-current-corpus-smoke.mjs",
     "smoke:github-comment": "node scripts/smoke-github-comment.mjs",
     "smoke:github-webhook": "node scripts/smoke-github-webhook.mjs",
     "smoke:github-webhook-live": "node scripts/smoke-github-webhook-live.mjs",

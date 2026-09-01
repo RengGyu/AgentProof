@@ -274,6 +274,24 @@ export function assertAggregateOnlyRunArtifact(value) {
   }
 }
 
+/**
+ * Release-only guard for the observable semantic transport boundary. It does
+ * not score semantic accuracy and it cannot infer whether an aggregate
+ * evidence_supported count came from a semantic or deterministic target.
+ */
+export function assertCurrentExternalPrSemanticBoundaryHealth(run) {
+  assertAggregateOnlyRunArtifact(run);
+  const fail = () => { throw new Error("Current external PR semantic boundary health was invalid."); };
+  if (run.status !== "completed" || run.completedCount !== run.caseCount || run.incompleteCount !== 0) fail();
+  if (run.qualityGateSummary.checks.some((check) => check.failedCount !== 0)) fail();
+
+  const reasons = run.generalPrAssessmentSummary.reasonCodeCounts;
+  for (const reason of ["semantic_observer_unavailable", "semantic_observer_timeout", "semantic_proposal_invalid"]) {
+    if ((reasons[reason] ?? 0) !== 0) fail();
+  }
+  if (((reasons.semantic_candidate_missing ?? 0) + (reasons.semantic_relation_only ?? 0)) === 0) fail();
+}
+
 function validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs }) {
   if (!snapshot || typeof snapshot !== "object" || snapshot.version !== 1 ||
     snapshot.privacy !== "external-pr-live-corpus-anchor-summary-only" || snapshot.status !== "ready") {
@@ -317,9 +335,11 @@ function readJson(path) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const snapshotPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_SNAPSHOT ?? DEFAULT_SNAPSHOT_PATH;
   const outputPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_RUN_OUTPUT ?? DEFAULT_OUTPUT_PATH;
+  const requireSemanticBoundary = process.env.AGENTPROOF_EXTERNAL_CORPUS_REQUIRE_SEMANTIC_BOUNDARY === "1";
 
   runCurrentExternalPrCorpusSmoke({ snapshot: readJson(snapshotPath) })
     .then((result) => {
+      if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(result);
       writeCurrentExternalPrCorpusRun(result, outputPath);
       console.log(JSON.stringify({
         status: result.status,

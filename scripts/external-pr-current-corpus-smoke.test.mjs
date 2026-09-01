@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   assertAggregateOnlyRunArtifact,
+  assertCurrentExternalPrSemanticBoundaryHealth,
   runCurrentExternalPrCorpusSmoke
 } from "./external-pr-current-corpus-smoke.mjs";
 
@@ -155,6 +156,35 @@ describe("external-pr-current-corpus-smoke", () => {
       ...withValidCheck,
       results: [{ ...withValidCheck.results[0], id: "public-org/repo#123" }, ...withValidCheck.results.slice(1)]
     })).toThrow("Current external PR run artifact was invalid");
+  });
+
+  it("requires a completed corpus with valid semantic terminal signals and no observer failure", async () => {
+    const result = await runCurrentExternalPrCorpusSmoke({
+      snapshot: readySnapshot(),
+      now: "2026-08-31T00:10:00.000Z",
+      maxSnapshotAgeMs: 30 * 60 * 1000,
+      runAnalyze: vi.fn().mockResolvedValue({
+        ...validAnalyzeResult(),
+        generalPrAssessmentSummary: {
+          ...assessmentSummary(),
+          reasonCodes: ["author_claim_requires_confirmation", "semantic_candidate_missing"]
+        }
+      })
+    });
+
+    expect(() => assertCurrentExternalPrSemanticBoundaryHealth(result)).not.toThrow();
+    for (const [name, mutate] of [
+      ["incomplete", (run) => { run.status = "incomplete"; run.incompleteCount = 1; run.completedCount = 24; }],
+      ["failed quality gate", (run) => { run.qualityGateSummary.checks = [{ id: "requirements_present", label: "Requirement extraction present", count: 25, failedCount: 1 }]; }],
+      ["unavailable observer", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_observer_unavailable = 1; }],
+      ["timeout observer", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_observer_timeout = 1; }],
+      ["invalid provider candidate", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_proposal_invalid = 1; }],
+      ["no valid semantic terminal", (run) => { delete run.generalPrAssessmentSummary.reasonCodeCounts.semantic_candidate_missing; }]
+    ]) {
+      const mutated = structuredClone(result);
+      mutate(mutated);
+      expect(() => assertCurrentExternalPrSemanticBoundaryHealth(mutated), name).toThrow();
+    }
   });
 
   it("enables the bounded general PR assessment in Vercel deployments", () => {

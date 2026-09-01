@@ -1865,10 +1865,10 @@ describe("analysis worker preflight", () => {
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     vi.stubEnv("OPENAI_MODEL", "gpt-test");
     const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
-    const githubFetch = mockWorkerFetch({ repositoryPrivate: false });
+    const githubFetch = mockWorkerFetch({ repositoryPrivate: false, pullRequestBody: "Internal cleanup only." });
     const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
       if (String(url) === "https://api.openai.com/v1/responses") {
-        return Promise.resolve(Response.json({ output_text: "{}" }));
+        return Promise.resolve(Response.json({ output_text: JSON.stringify(validGeneralPrObserverCandidate(init)) }));
       }
       return githubFetch(url, init);
     });
@@ -1894,6 +1894,12 @@ describe("analysis worker preflight", () => {
       expect(fetchMock.mock.calls.some(([url]) => String(url) === "https://api.openai.com/v1/responses")).toBe(true);
       expect(serialized).not.toContain("ledgerDigest");
       expect(serialized).not.toContain("generalPrObservation");
+      const observationResult = await observationSpy.mock.results.at(-1)?.value;
+      expect(observationResult?.bundle).toMatchObject({
+        semanticState: "valid",
+        semanticFailureStage: null,
+        diagnostics: { semanticAdmission: "no_candidate" }
+      });
     } finally {
       observationSpy.mockRestore();
     }
@@ -2992,6 +2998,18 @@ function exampleFromJsonSchema(schema: Record<string, unknown>, root: Record<str
   if (schema.type === "array") return [];
   if (schema.type === "null") return null;
   throw new Error("Test schema did not provide a deterministic example value.");
+}
+
+function validGeneralPrObserverCandidate(init?: RequestInit) {
+  const request = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ text: string }> }> };
+  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as { spans: Array<{ id: string }> };
+  return {
+    spanRoles: observerInput.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })),
+    objectiveGroups: [],
+    testApplicabilityProposals: [],
+    scopeMappingProposals: [],
+    evidenceRelationProposals: []
+  };
 }
 
 function mockWorkerFetch(options: { pullRequestBody?: string; repositoryPrivate?: boolean } = {}) {
