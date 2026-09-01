@@ -73,6 +73,23 @@ describe("external-pr-current-corpus-smoke", () => {
     expect(JSON.stringify(result)).not.toMatch(/title|body|path|log|token|manual|prUrl|anchorFingerprint|target|sourceText|provider|diagnostic/i);
   });
 
+  it("forwards an optional GitHub token only to each analysis request", async () => {
+    const githubToken = "github_pat_test_token";
+    const runAnalyze = vi.fn().mockResolvedValue(validAnalyzeResult());
+
+    const result = await runCurrentExternalPrCorpusSmoke({
+      snapshot: readySnapshot(),
+      now: "2026-08-31T00:10:00.000Z",
+      maxSnapshotAgeMs: 30 * 60 * 1000,
+      githubToken,
+      runAnalyze
+    });
+
+    expect(runAnalyze).toHaveBeenCalledTimes(25);
+    expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ githubToken }));
+    expect(JSON.stringify(result)).not.toContain(githubToken);
+  });
+
   it("marks missing or invalid assessment summaries as analysis_unavailable", async () => {
     const runAnalyze = vi.fn().mockResolvedValue({
       generalPrAssessmentSummary: {

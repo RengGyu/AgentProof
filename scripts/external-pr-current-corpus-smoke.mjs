@@ -48,6 +48,7 @@ const QUALITY_GATE_LABELS = new Map([
 export async function runCurrentExternalPrCorpusSmoke({
   snapshot,
   baseUrl = DEFAULT_BASE_URL,
+  githubToken,
   now = new Date().toISOString(),
   maxSnapshotAgeMs = DEFAULT_MAX_SNAPSHOT_AGE_MS,
   runAnalyze = runAnalyzePrSmoke
@@ -60,6 +61,7 @@ export async function runCurrentExternalPrCorpusSmoke({
       const result = await runAnalyze({
         baseUrl,
         prUrl: testCase.prUrl,
+        githubToken,
         requireRequirementFindings: false,
         requireGeneralPrAssessmentSummary: true,
         expectedSourceAnchor: testCase.anchor
@@ -338,7 +340,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const outputPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_RUN_OUTPUT ?? DEFAULT_OUTPUT_PATH;
   const requireSemanticBoundary = process.env.AGENTPROOF_EXTERNAL_CORPUS_REQUIRE_SEMANTIC_BOUNDARY === "1";
 
-  runCurrentExternalPrCorpusSmoke({ snapshot: readJson(snapshotPath) })
+  runCurrentExternalPrCorpusSmoke({
+    snapshot: readJson(snapshotPath),
+    githubToken: process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN
+  })
     .then((result) => {
       if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(result);
       writeCurrentExternalPrCorpusRun(result, outputPath);

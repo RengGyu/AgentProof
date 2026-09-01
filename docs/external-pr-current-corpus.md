@@ -27,6 +27,11 @@ Then evaluate the same 25 URLs. The runner refuses a snapshot older than 30 minu
 AGENTPROOF_SMOKE_BASE_URL=https://your-preview.example pnpm smoke:external-pr-current-corpus
 ```
 
+If the deployed app needs GitHub credentials to collect the public PR evidence,
+set `AGENTPROOF_SMOKE_GITHUB_TOKEN` for this local command. The runner forwards
+it only with each analysis request; snapshots and run summaries never store or
+print the token.
+
 ## Reading the result
 
 - `completed`: all 25 reports used the captured source anchors.
