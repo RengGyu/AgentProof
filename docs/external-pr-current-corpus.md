@@ -1,6 +1,6 @@
 # Current-State External PR Corpus
 
-This run evaluates 25 public PR URLs against the GitHub state observed now. It is a live evidence-collection check, not a correctness benchmark or a release-authority dataset.
+This run evaluates 25 public PR URLs against the GitHub state observed now. It measures collection, staged packaging, provider-call, and privacy health; it is not a correctness benchmark or a release-authority dataset.
 
 ## What stays fixed
 
@@ -27,6 +27,10 @@ Then evaluate the same 25 URLs. The runner refuses a snapshot older than 30 minu
 AGENTPROOF_SMOKE_BASE_URL=https://your-preview.example pnpm smoke:external-pr-current-corpus
 ```
 
+The release packaging-health guard additionally requires the authenticated
+`AGENTPROOF_SMOKE_OPS_TOKEN`; without that aggregate diagnostic boundary it
+fails closed.
+
 If the deployed app needs GitHub credentials to collect the public PR evidence,
 set `AGENTPROOF_SMOKE_GITHUB_TOKEN` for this local command. The runner forwards
 it only with each analysis request; snapshots and run summaries never store or
@@ -41,6 +45,6 @@ explicit `AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN=1` acknowledgement.
 
 For completed reports, `generalPrAssessmentSummary` is aggregate-only: it records the count of present summaries, closed `sourceState`, overall-conclusion, and reason-code distributions, plus totals for the six bounded assessment-count states. A missing or invalid summary makes that case `analysis_unavailable`.
 
-The saved run keeps only the opaque case ID and completion/failure status per case. It does not retain assessment targets, source text, paths, PR URLs, provider output, tokens, or diagnostics. These distributions are smoke-observation signals only; they do not infer semantic-state or admission-basis metrics from the public response.
+The saved run keeps only the opaque case ID and completion/failure status per case. It does not retain assessment targets, source text, paths, PR URLs, provider output, tokens, or diagnostics. Authenticated operator output keeps only closed aggregate stage, coverage, call, selection-bucket, package-ready, and omission counts. These distributions are smoke-observation signals only; they do not infer semantic-state or admission-basis metrics from the public response.
 
-This live corpus does not replace the existing pilot's separate human-label process, and it cannot by itself authorize release promotion.
+This live corpus does not replace the existing pilot's separate human-label process, and it cannot by itself authorize release promotion. In particular, a lower `unclear` rate does not prove accuracy: labelled calibration and holdout gates remain required.

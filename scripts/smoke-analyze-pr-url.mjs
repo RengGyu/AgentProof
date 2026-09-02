@@ -56,13 +56,11 @@ const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
 ];
 const OPERATOR_DIAGNOSTIC_HEADER = "x-agentproof-observation-diagnostics";
 const OPERATOR_DIAGNOSTIC_VERSION = "semantic-boundary-v1";
-const OPERATOR_SEMANTIC_STATES = new Set(["disabled", "ineligible", "valid", "invalid", "timeout", "unavailable", "stale"]);
-const OPERATOR_SEMANTIC_FAILURE_STAGES = new Set(["configuration", "package", "privacy", "provider_request", "provider_response"]);
-const OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS = new Set([
-  "model_profile_invalid", "timeout_invalid", "seed_invalid", "seed_parse_incomplete", "span_missing", "span_limit_exceeded",
-  "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch", "source_binding_invalid",
-  "schema_unavailable", "input_size_exceeded"
-]);
+const OPERATOR_STAGE_STATES = new Set(["not_run", "valid", "invalid", "timeout", "unavailable", "stale"]);
+const OPERATOR_COVERAGE_STATES = new Set(["complete", "sampled", "incomplete"]);
+const OPERATOR_SOURCE_BUCKETS = new Set(["0", "1_4", "5_8", "9_12"]);
+const OPERATOR_EVIDENCE_BUCKETS = new Set(["0", "1_16", "17_32", "33_64"]);
+const OPERATOR_OMISSION_KEYS = ["spanBudget", "evidenceBudget", "inputByteBudget", "unsafeDescriptor", "noDeterministicSignal"];
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -110,7 +108,7 @@ export async function runAnalyzePrSmoke({
   const analyzeTiming = analyzeTimingFromResponse(response);
   const githubEvidenceTiming = githubEvidenceTimingFromResponse(response);
   const report = payload.report;
-  const operatorSemanticBoundary = readOperatorSemanticBoundary(payload.operatorDiagnostics, Boolean(operatorDiagnosticsToken));
+  const operatorSemanticDiagnostics = readOperatorSemanticDiagnostics(payload.operatorDiagnostics, Boolean(operatorDiagnosticsToken));
   const generalPrAssessmentSummary = readGeneralPrAssessmentSummary(
     report,
     requireGeneralPrAssessmentSummary
@@ -177,31 +175,36 @@ export async function runAnalyzePrSmoke({
     savedEvidenceRefsCleared: evidenceRefsCleared(savedReport),
     savedReportDeleted: saveResult.deleted,
     savedReportDeleteWarning: saveResult.deleteWarning,
-    operatorSemanticBoundary,
+    operatorSemanticDiagnostics,
     qualityGate
   };
 }
 
-function readOperatorSemanticBoundary(value, required) {
+function readOperatorSemanticDiagnostics(value, required) {
   if (!required) return null;
   if (!value || typeof value !== "object" || Array.isArray(value) ||
-    !hasExactKeys(value, ["version", "semanticState", "semanticFailureStage", "semanticPackageFailureReasons"]) ||
-    value.version !== 1 ||
-    (value.semanticState !== null && !OPERATOR_SEMANTIC_STATES.has(value.semanticState)) ||
-    (value.semanticFailureStage !== null && !OPERATOR_SEMANTIC_FAILURE_STAGES.has(value.semanticFailureStage)) ||
-    !Array.isArray(value.semanticPackageFailureReasons) ||
-    new Set(value.semanticPackageFailureReasons).size !== value.semanticPackageFailureReasons.length ||
-    !value.semanticPackageFailureReasons.every((reason) => OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS.has(reason)) ||
-    (value.semanticState !== "unavailable" && value.semanticFailureStage !== null) ||
-    (value.semanticFailureStage !== "package" && value.semanticPackageFailureReasons.length !== 0)) {
-    throw smokeError("Analyze response did not include a valid operator semantic boundary diagnostic.");
+    !hasExactKeys(value, ["claimState", "evidenceState", "sourceCoverage", "evidenceCoverage", "providerCallCount", "selectedCountBuckets", "omittedReasonCounts"]) ||
+    !OPERATOR_STAGE_STATES.has(value.claimState) || !OPERATOR_STAGE_STATES.has(value.evidenceState) ||
+    (value.sourceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) ||
+    (value.evidenceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) ||
+    !Number.isSafeInteger(value.providerCallCount) || value.providerCallCount < 0 || value.providerCallCount > 2 ||
+    !value.selectedCountBuckets || typeof value.selectedCountBuckets !== "object" || Array.isArray(value.selectedCountBuckets) ||
+    !hasExactKeys(value.selectedCountBuckets, ["sourceSpans", "evidenceCandidates"]) ||
+    !OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) || !OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) ||
+    !value.omittedReasonCounts || typeof value.omittedReasonCounts !== "object" || Array.isArray(value.omittedReasonCounts) ||
+    !hasExactKeys(value.omittedReasonCounts, OPERATOR_OMISSION_KEYS) ||
+    !OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omittedReasonCounts[key]) && value.omittedReasonCounts[key] >= 0)) {
+    throw smokeError("Analyze response did not include a valid operator staged diagnostic.");
   }
 
   return {
-    version: 1,
-    semanticState: value.semanticState,
-    semanticFailureStage: value.semanticFailureStage,
-    semanticPackageFailureReasons: [...value.semanticPackageFailureReasons]
+    claimState: value.claimState,
+    evidenceState: value.evidenceState,
+    sourceCoverage: value.sourceCoverage,
+    evidenceCoverage: value.evidenceCoverage,
+    providerCallCount: value.providerCallCount,
+    selectedCountBuckets: { ...value.selectedCountBuckets },
+    omittedReasonCounts: Object.fromEntries(OPERATOR_OMISSION_KEYS.map((key) => [key, value.omittedReasonCounts[key]]))
   };
 }
 

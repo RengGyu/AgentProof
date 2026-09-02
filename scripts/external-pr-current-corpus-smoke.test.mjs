@@ -93,15 +93,18 @@ describe("external-pr-current-corpus-smoke", () => {
     expect(JSON.stringify(result)).not.toContain(githubToken);
   });
 
-  it("keeps semantic failure-stage totals operator-only while preserving the public corpus artifact", async () => {
+  it("summarizes only closed staged packaging diagnostics outside the public artifact", async () => {
     const operatorDiagnosticsToken = "ops-secret-value";
     const runAnalyze = vi.fn().mockResolvedValue({
       ...validAnalyzeResult(),
-      operatorSemanticBoundary: {
-        version: 1,
-        semanticState: "unavailable",
-        semanticFailureStage: "package",
-        semanticPackageFailureReasons: ["evidence_atom_limit_exceeded"]
+      operatorSemanticDiagnostics: {
+        claimState: "valid",
+        evidenceState: "not_run",
+        sourceCoverage: "sampled",
+        evidenceCoverage: null,
+        providerCallCount: 1,
+        selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" },
+        omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 1 }
       }
     });
 
@@ -119,9 +122,14 @@ describe("external-pr-current-corpus-smoke", () => {
       version: 1,
       privacy: "operator-only-aggregate",
       caseCount: 25,
-      semanticStateCounts: { unavailable: 25 },
-      semanticFailureStageCounts: { package: 25 },
-      semanticPackageFailureReasonCounts: { evidence_atom_limit_exceeded: 25 }
+      claimStageStateCounts: { valid: 25 },
+      evidenceStageStateCounts: { not_run: 25 },
+      sourceCoverageCounts: { sampled: 25 },
+      evidenceCoverageCounts: {},
+      providerCallCountCounts: { "1": 25 },
+      selectedCountBucketCounts: { sourceSpans: { "1_4": 25 }, evidenceCandidates: { "0": 25 } },
+      packageReadyCount: 25,
+      omissionReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 25 }
     });
     expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ operatorDiagnosticsToken }));
   });
@@ -211,30 +219,30 @@ describe("external-pr-current-corpus-smoke", () => {
     })).toThrow("Current external PR run artifact was invalid");
   });
 
-  it("requires a completed corpus with valid semantic terminal signals and no observer failure", async () => {
-    const result = await runCurrentExternalPrCorpusSmoke({
+  it("release guard rejects packaging hazards but permits unclear findings", async () => {
+    const result = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
       snapshot: readySnapshot(),
       now: "2026-08-31T00:10:00.000Z",
       maxSnapshotAgeMs: 30 * 60 * 1000,
+      operatorDiagnosticsToken: "ops-secret-value",
       runAnalyze: vi.fn().mockResolvedValue({
         ...validAnalyzeResult(),
-        generalPrAssessmentSummary: {
-          ...assessmentSummary(),
-          reasonCodes: ["author_claim_requires_confirmation", "semantic_candidate_missing"]
-        }
+        operatorSemanticDiagnostics: validOperatorDiagnostics()
       })
     });
 
     expect(() => assertCurrentExternalPrSemanticBoundaryHealth(result)).not.toThrow();
     for (const [name, mutate] of [
-      ["incomplete", (run) => { run.status = "incomplete"; run.incompleteCount = 1; run.completedCount = 24; }],
-      ["failed quality gate", (run) => { run.qualityGateSummary.checks = [{ id: "requirements_present", label: "Requirement extraction present", count: 25, failedCount: 1 }]; }],
-      ["quality gate not ok", (run) => { run.qualityGateSummary.ok = false; }],
-      ["unavailable observer", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_observer_unavailable = 1; }],
-      ["timeout observer", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_observer_timeout = 1; }],
-      ["invalid provider candidate", (run) => { run.generalPrAssessmentSummary.reasonCodeCounts.semantic_proposal_invalid = 1; }],
-      ["unsupported semantic assessment", (run) => { run.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported = 1; }],
-      ["no valid semantic terminal", (run) => { delete run.generalPrAssessmentSummary.reasonCodeCounts.semantic_candidate_missing; }]
+      ["incomplete", (value) => { value.publicRun.status = "incomplete"; value.publicRun.incompleteCount = 1; value.publicRun.completedCount = 24; }],
+      ["failed quality gate", (value) => { value.publicRun.qualityGateSummary.checks = [{ id: "requirements_present", label: "Requirement extraction present", count: 25, failedCount: 1 }]; }],
+      ["strict authority promotion", (value) => { value.publicRun.requirementStatusSummary.met = 1; }],
+      ["supported evidence authority promotion", (value) => { value.publicRun.requirementEvidenceStatusSummary.met = 1; }],
+      ["evidence authority promotion", (value) => { value.publicRun.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported = 1; }],
+      ["count-limit recurrence", (value) => { value.operatorDiagnostic.omissionReasonCounts.spanBudget = 1; }],
+      ["evidence count-limit recurrence", (value) => { value.operatorDiagnostic.omissionReasonCounts.evidenceBudget = 1; }],
+      ["more than two provider calls", (value) => { value.operatorDiagnostic.providerCallCountCounts = { "3": 25 }; }],
+      ["private operator field", (value) => { value.operatorDiagnostic.sourceText = "private"; }],
+      ["unexpected server error", (value) => { value.publicRun.results[0] = { id: "case_01", analysisStatus: "incomplete", failureKind: "unexpected_server_error" }; value.publicRun.status = "incomplete"; value.publicRun.completedCount = 24; value.publicRun.incompleteCount = 1; }]
     ]) {
       const mutated = structuredClone(result);
       mutate(mutated);
@@ -302,6 +310,18 @@ function validAnalyzeResult() {
     qualityGate: { ok: true, checks: [] },
     savedReportPrivacy: "summary-only",
     savedReportDeleted: true
+  };
+}
+
+function validOperatorDiagnostics() {
+  return {
+    claimState: "valid",
+    evidenceState: "not_run",
+    sourceCoverage: "sampled",
+    evidenceCoverage: null,
+    providerCallCount: 1,
+    selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" },
+    omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
   };
 }
 

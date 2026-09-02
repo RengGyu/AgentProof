@@ -36,11 +36,11 @@ const GENERAL_PR_REASON_CODES = new Set([
   "semantic_observer_unavailable", "semantic_observer_timeout", "semantic_proposal_invalid",
   "semantic_candidate_missing", "semantic_candidate_rejected", "target_relation_unresolved"
 ]);
-const OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS = new Set([
-  "model_profile_invalid", "timeout_invalid", "seed_invalid", "seed_parse_incomplete", "span_missing", "span_limit_exceeded",
-  "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch", "source_binding_invalid",
-  "schema_unavailable", "input_size_exceeded"
-]);
+const OPERATOR_STAGE_STATES = new Set(["not_run", "valid", "invalid", "timeout", "unavailable", "stale"]);
+const OPERATOR_COVERAGE_STATES = new Set(["complete", "sampled", "incomplete"]);
+const OPERATOR_SOURCE_BUCKETS = new Set(["0", "1_4", "5_8", "9_12"]);
+const OPERATOR_EVIDENCE_BUCKETS = new Set(["0", "1_16", "17_32", "33_64"]);
+const OPERATOR_OMISSION_KEYS = ["spanBudget", "evidenceBudget", "inputByteBudget", "unsafeDescriptor", "noDeterministicSignal"];
 const QUALITY_GATE_LABELS = new Map([
   ["requirements_present", "Requirement extraction present"],
   ["met_requirement_execution", "Met requirements cite passing execution evidence"],
@@ -115,22 +115,22 @@ export async function runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
     throw new Error("Operator diagnostics token is required.");
   }
 
-  const boundaries = [];
+  const diagnostics = [];
   const publicRun = await runCurrentExternalPrCorpusSmoke({
     ...options,
     runAnalyze: async (input) => {
       const result = await runAnalyze({ ...input, operatorDiagnosticsToken });
-      if (!isValidOperatorSemanticBoundary(result.operatorSemanticBoundary)) {
-        throw new Error("Operator semantic boundary diagnostic was unavailable.");
+      if (!isValidOperatorSemanticDiagnostics(result.operatorSemanticDiagnostics)) {
+        throw new Error("Operator staged diagnostic was unavailable.");
       }
-      boundaries.push(result.operatorSemanticBoundary);
+      diagnostics.push(result.operatorSemanticDiagnostics);
       return result;
     }
   });
 
   return {
     publicRun,
-    operatorDiagnostic: summarizeOperatorSemanticBoundaries(boundaries, publicRun.caseCount)
+    operatorDiagnostic: summarizeOperatorSemanticDiagnostics(diagnostics, publicRun.caseCount)
   };
 }
 
@@ -169,36 +169,54 @@ function completedResult(testCase, result) {
   };
 }
 
-function isValidOperatorSemanticBoundary(value) {
+function isValidOperatorSemanticDiagnostics(value) {
   return value && typeof value === "object" && !Array.isArray(value) &&
-    Object.keys(value).length === 4 && value.version === 1 &&
-    ["disabled", "ineligible", "valid", "invalid", "timeout", "unavailable", "stale", null].includes(value.semanticState) &&
-    ["configuration", "package", "privacy", "provider_request", "provider_response", null].includes(value.semanticFailureStage) &&
-    Array.isArray(value.semanticPackageFailureReasons) &&
-    new Set(value.semanticPackageFailureReasons).size === value.semanticPackageFailureReasons.length &&
-    value.semanticPackageFailureReasons.every((reason) => OPERATOR_SEMANTIC_PACKAGE_FAILURE_REASONS.has(reason)) &&
-    (value.semanticState === "unavailable" || value.semanticFailureStage === null) &&
-    (value.semanticFailureStage === "package" || value.semanticPackageFailureReasons.length === 0);
+    Object.keys(value).length === 7 && OPERATOR_STAGE_STATES.has(value.claimState) && OPERATOR_STAGE_STATES.has(value.evidenceState) &&
+    (value.sourceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) &&
+    (value.evidenceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) &&
+    Number.isSafeInteger(value.providerCallCount) && value.providerCallCount >= 0 && value.providerCallCount <= 2 &&
+    value.selectedCountBuckets && typeof value.selectedCountBuckets === "object" && !Array.isArray(value.selectedCountBuckets) &&
+    Object.keys(value.selectedCountBuckets).length === 2 && OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) &&
+    OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) &&
+    value.omittedReasonCounts && typeof value.omittedReasonCounts === "object" && !Array.isArray(value.omittedReasonCounts) &&
+    Object.keys(value.omittedReasonCounts).length === OPERATOR_OMISSION_KEYS.length &&
+    OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omittedReasonCounts[key]) && value.omittedReasonCounts[key] >= 0);
 }
 
-function summarizeOperatorSemanticBoundaries(boundaries, caseCount) {
-  const semanticStateCounts = {};
-  const semanticFailureStageCounts = {};
-  const semanticPackageFailureReasonCounts = {};
+function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
+  const claimStageStateCounts = {};
+  const evidenceStageStateCounts = {};
+  const sourceCoverageCounts = {};
+  const evidenceCoverageCounts = {};
+  const providerCallCountCounts = {};
+  const selectedCountBucketCounts = { sourceSpans: {}, evidenceCandidates: {} };
+  const omissionReasonCounts = Object.fromEntries(OPERATOR_OMISSION_KEYS.map((key) => [key, 0]));
+  let packageReadyCount = 0;
 
-  for (const boundary of boundaries) {
-    if (boundary.semanticState !== null) incrementCount(semanticStateCounts, boundary.semanticState);
-    if (boundary.semanticFailureStage !== null) incrementCount(semanticFailureStageCounts, boundary.semanticFailureStage);
-    for (const reason of boundary.semanticPackageFailureReasons) incrementCount(semanticPackageFailureReasonCounts, reason);
+  for (const diagnostic of diagnostics) {
+    incrementCount(claimStageStateCounts, diagnostic.claimState);
+    incrementCount(evidenceStageStateCounts, diagnostic.evidenceState);
+    if (diagnostic.sourceCoverage !== null) incrementCount(sourceCoverageCounts, diagnostic.sourceCoverage);
+    if (diagnostic.evidenceCoverage !== null) incrementCount(evidenceCoverageCounts, diagnostic.evidenceCoverage);
+    incrementCount(providerCallCountCounts, String(diagnostic.providerCallCount));
+    incrementCount(selectedCountBucketCounts.sourceSpans, diagnostic.selectedCountBuckets.sourceSpans);
+    incrementCount(selectedCountBucketCounts.evidenceCandidates, diagnostic.selectedCountBuckets.evidenceCandidates);
+    for (const key of OPERATOR_OMISSION_KEYS) omissionReasonCounts[key] += diagnostic.omittedReasonCounts[key];
+    if (diagnostic.claimState === "valid" && ["valid", "not_run"].includes(diagnostic.evidenceState)) packageReadyCount += 1;
   }
 
   return {
     version: 1,
     privacy: "operator-only-aggregate",
     caseCount,
-    semanticStateCounts,
-    semanticFailureStageCounts,
-    semanticPackageFailureReasonCounts
+    claimStageStateCounts,
+    evidenceStageStateCounts,
+    sourceCoverageCounts,
+    evidenceCoverageCounts,
+    providerCallCountCounts,
+    selectedCountBucketCounts,
+    packageReadyCount,
+    omissionReasonCounts
   };
 }
 
@@ -261,7 +279,9 @@ function incompleteResult(testCase, error) {
     analysisStatus: "incomplete",
     failureKind: error instanceof Error && /frozen external PR sample/i.test(error.message)
       ? "source_drift"
-      : "analysis_unavailable"
+      : error && typeof error === "object" && typeof error.status === "number" && error.status >= 500
+        ? "unexpected_server_error"
+        : "analysis_unavailable"
   };
 }
 
@@ -340,7 +360,7 @@ export function assertAggregateOnlyRunArtifact(value) {
       exactObject(result, ["id", "analysisStatus"]);
     } else if (result?.analysisStatus === "incomplete") {
       exactObject(result, ["id", "analysisStatus", "failureKind"]);
-      if (!["source_drift", "analysis_unavailable"].includes(result.failureKind)) fail();
+      if (!["source_drift", "analysis_unavailable", "unexpected_server_error"].includes(result.failureKind)) fail();
     } else {
       fail();
     }
@@ -349,22 +369,40 @@ export function assertAggregateOnlyRunArtifact(value) {
 }
 
 /**
- * Release-only guard for the observable semantic transport boundary. It does
- * not score semantic accuracy and it cannot infer whether an aggregate
- * evidence_supported count came from a semantic or deterministic target.
+ * Release-only guard for aggregate packaging health. It is not an accuracy
+ * benchmark: unclear reports remain legal and labelled calibration is still required.
  */
-export function assertCurrentExternalPrSemanticBoundaryHealth(run) {
+export function assertCurrentExternalPrSemanticBoundaryHealth({ publicRun: run, operatorDiagnostic }) {
   assertAggregateOnlyRunArtifact(run);
   const fail = () => { throw new Error("Current external PR semantic boundary health was invalid."); };
+  if (!isValidOperatorDiagnosticAggregate(operatorDiagnostic, run.caseCount)) fail();
   if (run.status !== "completed" || run.completedCount !== run.caseCount || run.incompleteCount !== 0) fail();
   if (!run.qualityGateSummary.ok || run.qualityGateSummary.checks.some((check) => check.failedCount !== 0)) fail();
+  if ((run.requirementStatusSummary.met ?? 0) !== 0 || (run.requirementEvidenceStatusSummary.met ?? 0) !== 0) fail();
   if (run.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported !== 0) fail();
+  if ((operatorDiagnostic.providerCallCountCounts["0"] ?? 0) + (operatorDiagnostic.providerCallCountCounts["1"] ?? 0) +
+    (operatorDiagnostic.providerCallCountCounts["2"] ?? 0) !== run.caseCount) fail();
+  if (operatorDiagnostic.packageReadyCount !== run.caseCount) fail();
+  if (operatorDiagnostic.omissionReasonCounts.spanBudget !== 0 || operatorDiagnostic.omissionReasonCounts.evidenceBudget !== 0) fail();
+}
 
-  const reasons = run.generalPrAssessmentSummary.reasonCodeCounts;
-  for (const reason of ["semantic_observer_unavailable", "semantic_observer_timeout", "semantic_proposal_invalid"]) {
-    if ((reasons[reason] ?? 0) !== 0) fail();
+function isValidOperatorDiagnosticAggregate(value, caseCount) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== 1 ||
+    value.privacy !== "operator-only-aggregate" || value.caseCount !== caseCount ||
+    !Number.isSafeInteger(value.packageReadyCount) || value.packageReadyCount < 0 || value.packageReadyCount > caseCount) return false;
+  const records = [
+    [value.claimStageStateCounts, OPERATOR_STAGE_STATES], [value.evidenceStageStateCounts, OPERATOR_STAGE_STATES],
+    [value.sourceCoverageCounts, OPERATOR_COVERAGE_STATES], [value.evidenceCoverageCounts, OPERATOR_COVERAGE_STATES],
+    [value.providerCallCountCounts, new Set(["0", "1", "2"])], [value.selectedCountBucketCounts?.sourceSpans, OPERATOR_SOURCE_BUCKETS],
+    [value.selectedCountBucketCounts?.evidenceCandidates, OPERATOR_EVIDENCE_BUCKETS]
+  ];
+  if (Object.keys(value).length !== 11 || !value.omissionReasonCounts || typeof value.omissionReasonCounts !== "object" ||
+    Object.keys(value.omissionReasonCounts).length !== OPERATOR_OMISSION_KEYS.length) return false;
+  for (const [record, keys] of records) {
+    if (!record || typeof record !== "object" || Array.isArray(record) ||
+      Object.entries(record).some(([key, count]) => !keys.has(key) || !Number.isSafeInteger(count) || count < 0)) return false;
   }
-  if (((reasons.semantic_candidate_missing ?? 0) + (reasons.semantic_relation_only ?? 0)) === 0) fail();
+  return OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omissionReasonCounts[key]) && value.omissionReasonCounts[key] >= 0);
 }
 
 function validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs }) {
@@ -426,7 +464,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     .then((result) => {
       const publicRun = "publicRun" in result ? result.publicRun : result;
       const operatorDiagnostic = "operatorDiagnostic" in result ? result.operatorDiagnostic : null;
-      if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(publicRun);
+      if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(result);
       writeCurrentExternalPrCorpusRun(publicRun, outputPath);
       console.log(JSON.stringify({
         status: publicRun.status,
