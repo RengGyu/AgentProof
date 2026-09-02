@@ -48,6 +48,16 @@ describe("selectGeneralPrSemanticClaimSpansV1", () => {
     expect(selection.coverage).toBe("sampled");
   });
 
+  it("caps caller-supplied span limits at the approved production maximum", () => {
+    const request = input({
+      taskText: ["## Requirements", ...Array.from({ length: 20 }, (_, index) => `- The service must expose requirement ${index + 1}.`)].join("\n")
+    });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const selection = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxSpans: 99, maxInputBytes: 200_000 }));
+
+    expect(selection.selectedSpans).toHaveLength(12);
+  });
+
   it("reserves the ranked list item while serializing a preceding heading first", () => {
     const request = input({ taskText: "## Requirements\n- The service must expose a current state." });
     const seed = buildGeneralPrObservationSeedV2(request);

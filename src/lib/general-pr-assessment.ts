@@ -152,7 +152,11 @@ function diagnosticReasons(bundle: GeneralPrObservationBundleV2): GeneralPrAsses
     ...(diagnostics.semanticAdmission === "unavailable" ? ["semantic_observer_unavailable" as const] : []),
     ...(diagnostics.semanticAdmission === "timeout" ? ["semantic_observer_timeout" as const] : []),
     ...(diagnostics.semanticAdmission === "invalid" ? ["semantic_proposal_invalid" as const] : []),
-    ...(diagnostics.semanticAdmission === "no_candidate" && diagnostics.counts.semanticCandidates === 0 ? ["semantic_candidate_missing" as const] : []),
+    ...(diagnostics.semanticAdmission === "no_candidate" && diagnostics.counts.semanticCandidates === 0
+      ? bundle.semanticStageDiagnostics.sourceCoverage === "complete"
+        ? ["semantic_candidate_missing" as const]
+        : ["collection_incomplete" as const]
+      : []),
     ...(diagnostics.semanticAdmission === "no_candidate" && diagnostics.counts.semanticCandidates > 0 ? ["semantic_candidate_rejected" as const] : []),
     ...(diagnostics.counts.admittedTargets > 0 && diagnostics.relationState !== "verified" ? ["target_relation_unresolved" as const] : [])
   ]);

@@ -103,48 +103,48 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
     ]) expect(serialized).not.toContain(forbidden);
   });
 
-  it("rejects URL-like descriptor sources and counts each unsafe omission", () => {
+  it("retains descriptors with unsafe source fragments after producing empty safe sketches", () => {
     const cases: Array<{
       name: string;
       request: PullRequestInput;
       forbidden: string[];
-      omittedKinds: Array<"change" | "check" | "execution">;
+      retainedKinds: Array<"change" | "check" | "execution">;
     }> = [
       {
         name: "ftp path",
         request: completeInput({ changedFiles: [{ path: "ftp://private.example/secret.ts", status: "modified" }] }),
         forbidden: ["ftp", "private", "example", "secret"],
-        omittedKinds: ["change"]
+        retainedKinds: ["change"]
       },
       {
         name: "file URI hunk label",
         request: completeInput({ changedFiles: [{ path: "src/repositories/repository-visibility.ts", status: "modified", patch: "@@ -1 +1 @@ file:///private/secret.ts" }] }),
         forbidden: ["file", "private", "secret"],
-        omittedKinds: ["change"]
+        retainedKinds: ["change"]
       },
       {
         name: "www check display name",
         request: completeInput({ checks: [{ name: "www.private.example/secret", status: "passed" }] }),
         forbidden: ["www", "private", "example", "secret"],
-        omittedKinds: ["check", "execution"]
+        retainedKinds: ["check", "execution"]
       },
       {
         name: "opaque magnet path",
         request: completeInput({ changedFiles: [{ path: "magnet:?xt=urn:btih:magnetprivatevalue", status: "modified" }] }),
         forbidden: ["magnetprivatevalue"],
-        omittedKinds: ["change"]
+        retainedKinds: ["change"]
       },
       {
         name: "opaque URN hunk label",
         request: completeInput({ changedFiles: [{ path: "src/repositories/repository-visibility.ts", status: "modified", patch: "@@ -1 +1 @@ urn:agentproof:urnprivatevalue" }] }),
         forbidden: ["urnprivatevalue"],
-        omittedKinds: ["change"]
+        retainedKinds: ["change"]
       },
       {
         name: "opaque telephone check display name",
         request: completeInput({ checks: [{ name: "tel:+821012345678 privatetelvalue", status: "passed" }] }),
         forbidden: ["privatetelvalue"],
-        omittedKinds: ["check", "execution"]
+        retainedKinds: ["check", "execution"]
       }
     ];
 
@@ -159,10 +159,10 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
       });
       expect(result.status, fixture.name).toBe("selected");
       if (result.status !== "selected") throw new Error(`${fixture.name}: ${result.status}`);
-      expect(result.selection.omittedReasonCounts.unsafeDescriptor, fixture.name).toBeGreaterThan(0);
-      expect(result.selection.coverage, fixture.name).toBe("incomplete");
-      for (const kind of fixture.omittedKinds) {
-        expect(result.selection.evidenceDescriptors.some((descriptor) => descriptor.kind === kind), `${fixture.name}: ${kind}`).toBe(false);
+      expect(result.selection.omittedReasonCounts.unsafeDescriptor, fixture.name).toBe(0);
+      for (const kind of fixture.retainedKinds) {
+        const descriptors = result.selection.evidenceDescriptors.filter((descriptor) => descriptor.kind === kind);
+        expect(descriptors, `${fixture.name}: ${kind}`).not.toEqual([]);
       }
       const tokens = result.selection.evidenceDescriptors.flatMap((descriptor) => descriptor.tokenSketch)
         .concat(result.selection.changeClusterDescriptors.flatMap((descriptor) => descriptor.tokenSketch));
@@ -172,6 +172,14 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
         expect(serialized, `${fixture.name}: serialized ${forbidden}`).not.toContain(forbidden);
       }
     }
+  });
+
+  it("retains the observed relation basis when an unsafe source leaves no safe sketch", () => {
+    const request = completeInput({ changedFiles: [{ path: "ftp://private.example/secret.ts", status: "modified" }] });
+    const { selection } = selected(request);
+    const descriptor = selection.evidenceDescriptors.find((candidate) => candidate.kind === "change");
+
+    expect(descriptor).toMatchObject({ tokenSketch: [], relationBasis: "observation_only" });
   });
 
   it("admits safe normal path, hunk-label, and check-name descriptor sources", () => {

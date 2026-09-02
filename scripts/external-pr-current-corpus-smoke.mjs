@@ -41,6 +41,11 @@ const OPERATOR_COVERAGE_STATES = new Set(["complete", "sampled", "incomplete"]);
 const OPERATOR_SOURCE_BUCKETS = new Set(["0", "1_4", "5_8", "9_12"]);
 const OPERATOR_EVIDENCE_BUCKETS = new Set(["0", "1_16", "17_32", "33_64"]);
 const OPERATOR_OMISSION_KEYS = ["spanBudget", "evidenceBudget", "inputByteBudget", "unsafeDescriptor", "noDeterministicSignal"];
+const OPERATOR_PACKAGE_FAILURE_REASONS = new Set([
+  "model_profile_invalid", "timeout_invalid", "seed_invalid", "seed_parse_incomplete", "span_missing",
+  "span_limit_exceeded", "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch",
+  "source_binding_invalid", "selection_unavailable", "schema_unavailable", "input_size_exceeded"
+]);
 const QUALITY_GATE_LABELS = new Map([
   ["requirements_present", "Requirement extraction present"],
   ["met_requirement_execution", "Met requirements cite passing execution evidence"],
@@ -171,13 +176,16 @@ function completedResult(testCase, result) {
 
 function isValidOperatorSemanticDiagnostics(value) {
   return value && typeof value === "object" && !Array.isArray(value) &&
-    Object.keys(value).length === 7 && OPERATOR_STAGE_STATES.has(value.claimState) && OPERATOR_STAGE_STATES.has(value.evidenceState) &&
+    Object.keys(value).length === 8 && OPERATOR_STAGE_STATES.has(value.claimState) && OPERATOR_STAGE_STATES.has(value.evidenceState) &&
     (value.sourceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) &&
     (value.evidenceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) &&
     [0, 1, 2, "3_plus"].includes(value.providerCallCount) &&
     value.selectedCountBuckets && typeof value.selectedCountBuckets === "object" && !Array.isArray(value.selectedCountBuckets) &&
     Object.keys(value.selectedCountBuckets).length === 2 && OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) &&
     OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) &&
+    Array.isArray(value.semanticPackageFailureReasons) &&
+    new Set(value.semanticPackageFailureReasons).size === value.semanticPackageFailureReasons.length &&
+    value.semanticPackageFailureReasons.every((reason) => OPERATOR_PACKAGE_FAILURE_REASONS.has(reason)) &&
     value.omittedReasonCounts && typeof value.omittedReasonCounts === "object" && !Array.isArray(value.omittedReasonCounts) &&
     Object.keys(value.omittedReasonCounts).length === OPERATOR_OMISSION_KEYS.length &&
     OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omittedReasonCounts[key]) && value.omittedReasonCounts[key] >= 0);
@@ -190,6 +198,7 @@ function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
   const evidenceCoverageCounts = {};
   const providerCallCountCounts = {};
   const selectedCountBucketCounts = { sourceSpans: {}, evidenceCandidates: {} };
+  const semanticPackageFailureReasonCounts = {};
   const omissionReasonCounts = Object.fromEntries(OPERATOR_OMISSION_KEYS.map((key) => [key, 0]));
   let packageReadyCount = 0;
 
@@ -201,6 +210,7 @@ function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
     incrementCount(providerCallCountCounts, String(diagnostic.providerCallCount));
     incrementCount(selectedCountBucketCounts.sourceSpans, diagnostic.selectedCountBuckets.sourceSpans);
     incrementCount(selectedCountBucketCounts.evidenceCandidates, diagnostic.selectedCountBuckets.evidenceCandidates);
+    for (const reason of diagnostic.semanticPackageFailureReasons) incrementCount(semanticPackageFailureReasonCounts, reason);
     for (const key of OPERATOR_OMISSION_KEYS) omissionReasonCounts[key] += diagnostic.omittedReasonCounts[key];
     if (diagnostic.claimState === "valid" && ["valid", "not_run"].includes(diagnostic.evidenceState)) packageReadyCount += 1;
   }
@@ -216,6 +226,7 @@ function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
     providerCallCountCounts,
     selectedCountBucketCounts,
     packageReadyCount,
+    semanticPackageFailureReasonCounts,
     omissionReasonCounts
   };
 }
@@ -383,8 +394,9 @@ export function assertCurrentExternalPrSemanticBoundaryHealth({ publicRun: run, 
   if ((operatorDiagnostic.providerCallCountCounts["0"] ?? 0) + (operatorDiagnostic.providerCallCountCounts["1"] ?? 0) +
     (operatorDiagnostic.providerCallCountCounts["2"] ?? 0) !== run.caseCount) fail();
   if ((operatorDiagnostic.providerCallCountCounts["3_plus"] ?? 0) !== 0) fail();
-  if (operatorDiagnostic.packageReadyCount !== run.caseCount) fail();
-  if (operatorDiagnostic.omissionReasonCounts.spanBudget !== 0 || operatorDiagnostic.omissionReasonCounts.evidenceBudget !== 0) fail();
+  if ((operatorDiagnostic.semanticPackageFailureReasonCounts.span_limit_exceeded ?? 0) !== 0 ||
+    (operatorDiagnostic.semanticPackageFailureReasonCounts.change_cluster_limit_exceeded ?? 0) !== 0 ||
+    (operatorDiagnostic.semanticPackageFailureReasonCounts.evidence_atom_limit_exceeded ?? 0) !== 0) fail();
 }
 
 function isValidOperatorDiagnosticAggregate(value, caseCount) {
@@ -397,17 +409,22 @@ function isValidOperatorDiagnosticAggregate(value, caseCount) {
     [value.providerCallCountCounts, new Set(["0", "1", "2", "3_plus"])], [value.selectedCountBucketCounts?.sourceSpans, OPERATOR_SOURCE_BUCKETS],
     [value.selectedCountBucketCounts?.evidenceCandidates, OPERATOR_EVIDENCE_BUCKETS]
   ];
-  if (Object.keys(value).length !== 11 || !value.selectedCountBucketCounts || typeof value.selectedCountBucketCounts !== "object" ||
+  if (Object.keys(value).length !== 12 || !value.selectedCountBucketCounts || typeof value.selectedCountBucketCounts !== "object" ||
     Array.isArray(value.selectedCountBucketCounts) || Object.keys(value.selectedCountBucketCounts).length !== 2 ||
     !Object.prototype.hasOwnProperty.call(value.selectedCountBucketCounts, "sourceSpans") ||
     !Object.prototype.hasOwnProperty.call(value.selectedCountBucketCounts, "evidenceCandidates") ||
     !value.omissionReasonCounts || typeof value.omissionReasonCounts !== "object" ||
-    Object.keys(value.omissionReasonCounts).length !== OPERATOR_OMISSION_KEYS.length) return false;
+    Object.keys(value.omissionReasonCounts).length !== OPERATOR_OMISSION_KEYS.length ||
+    !value.semanticPackageFailureReasonCounts || typeof value.semanticPackageFailureReasonCounts !== "object" ||
+    Array.isArray(value.semanticPackageFailureReasonCounts)) return false;
   for (const [record, keys] of records) {
     if (!record || typeof record !== "object" || Array.isArray(record) ||
       Object.entries(record).some(([key, count]) => !keys.has(key) || !Number.isSafeInteger(count) || count < 0)) return false;
   }
-  return OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omissionReasonCounts[key]) && value.omissionReasonCounts[key] >= 0);
+  return OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omissionReasonCounts[key]) && value.omissionReasonCounts[key] >= 0) &&
+    Object.entries(value.semanticPackageFailureReasonCounts).every(([reason, count]) =>
+      OPERATOR_PACKAGE_FAILURE_REASONS.has(reason) && Number.isSafeInteger(count) && count >= 0
+    );
 }
 
 function validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs }) {

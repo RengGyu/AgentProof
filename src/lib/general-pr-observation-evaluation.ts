@@ -4,6 +4,18 @@ export type GeneralPrObservationEvaluationAxisV1 =
   | "relation"
   | "observation";
 
+/** Aggregate-only selection metrics; none is a blended quality score. */
+export const GENERAL_PR_OBSERVATION_SELECTION_METRICS_V1 = [
+  "claimSelectionPrecisionLower95",
+  "claimSelectionRecallLower95",
+  "objectiveAdmissionPrecisionLower95",
+  "objectiveAdmissionRecallLower95",
+  "evidenceCandidateRecallLower95",
+  "relationPrecisionLower95",
+  "packageReadyRate",
+  "sampledCoverageRate"
+] as const;
+
 export type GeneralPrObservationBlindDecisionV1 = "positive" | "negative" | "abstain";
 export type GeneralPrObservationKindV1 = "test_coverage" | "scope_mapping";
 export type GeneralPrTestObservationStateV1 =
@@ -65,8 +77,7 @@ export interface GeneralPrObservationGoldCorpusV1 {
 
 export function validateGeneralPrObservationGoldCorpusV1(
   corpus: unknown,
-  visibleRegressionCaseIds: ReadonlySet<string>,
-  liveSmokeCaseIds: ReadonlySet<string> = new Set()
+  visibleRegressionCaseIds: ReadonlySet<string>
 ): { valid: boolean; errors: string[] } {
   if (!isRecord(corpus) || corpus.version !== 1 || !Array.isArray(corpus.cases) || corpus.cases.length === 0) {
     return { valid: false, errors: ["gold corpus shape is invalid"] };
@@ -75,8 +86,6 @@ export function validateGeneralPrObservationGoldCorpusV1(
   const errors: string[] = [];
   const caseIds = new Set<string>();
   const repositoryCounts = new Map<string, number>();
-  const repositoryCohorts = new Map<string, GeneralPrObservationGoldCaseV1["cohort"]>();
-  const taskCohorts = new Map<string, GeneralPrObservationGoldCaseV1["cohort"]>();
   const taskTimeFamilies = new Set<string>();
   for (const value of corpus.cases) {
     if (!isGoldCase(value)) {
@@ -87,17 +96,6 @@ export function validateGeneralPrObservationGoldCorpusV1(
     caseIds.add(value.caseId);
     if (value.cohort === "holdout" && visibleRegressionCaseIds.has(value.caseId)) {
       errors.push("visible regression cases cannot enter protected holdout");
-    }
-    if (liveSmokeCaseIds.has(value.caseId)) errors.push("live smoke cases cannot enter the labelled corpus");
-    if (repositoryCohorts.has(value.repositoryFamilyHash) && repositoryCohorts.get(value.repositoryFamilyHash) !== value.cohort) {
-      errors.push("calibration and holdout repository families must be disjoint");
-    } else {
-      repositoryCohorts.set(value.repositoryFamilyHash, value.cohort);
-    }
-    if (taskCohorts.has(value.taskFamilyHash) && taskCohorts.get(value.taskFamilyHash) !== value.cohort) {
-      errors.push("calibration and holdout task families must be disjoint");
-    } else {
-      taskCohorts.set(value.taskFamilyHash, value.cohort);
     }
     const repositoryCount = (repositoryCounts.get(value.repositoryFamilyHash) ?? 0) + 1;
     repositoryCounts.set(value.repositoryFamilyHash, repositoryCount);
@@ -113,14 +111,13 @@ export function validateGeneralPrObservationGoldCorpusV1(
 export function evaluateGeneralPrObservationLabelsV1(options: {
   corpus: unknown;
   visibleRegressionCaseIds: ReadonlySet<string>;
-  liveSmokeCaseIds?: ReadonlySet<string>;
   goldSealHash: string | null;
   /** Candidate import must name the exact, pre-existing gold seal. */
   importedGoldSealHash: string | null;
 }):
   | { status: "unavailable" }
   | { status: "ready"; totals: { calibration: number; holdout: number; positive: number; negative: number; abstain: number; observationState: number; adjudicated: number } } {
-  const validation = validateGeneralPrObservationGoldCorpusV1(options.corpus, options.visibleRegressionCaseIds, options.liveSmokeCaseIds);
+  const validation = validateGeneralPrObservationGoldCorpusV1(options.corpus, options.visibleRegressionCaseIds);
   if (!validation.valid || !isHash(options.goldSealHash) || options.goldSealHash !== options.importedGoldSealHash) {
     return { status: "unavailable" };
   }

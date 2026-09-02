@@ -51,6 +51,7 @@ export function buildGeneralPrObservationTelemetryV1(input: {
 }
 
 export type GeneralPrSemanticOperatorDiagnosticsV1 = Omit<GeneralPrSemanticStageDiagnosticsV1, "version"> & {
+  semanticPackageFailureReasons: GeneralPrObservationBundleV2["semanticPackageFailureReasons"];
   omittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1;
 };
 
@@ -70,6 +71,7 @@ export function buildGeneralPrSemanticOperatorDiagnosticsV1(
   const { version: _version, ...diagnostics } = stages;
   return {
     ...diagnostics,
+    semanticPackageFailureReasons: [...(bundle?.semanticPackageFailureReasons ?? [])],
     omittedReasonCounts: bundle?.semanticSelectionOmittedReasonCounts ?? {
       spanBudget: 0,
       evidenceBudget: 0,

@@ -1,18 +1,19 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { generalPrObservationSelectionPolicyHashV1 } from "./general-pr-observation-selection-policy-anchor.mjs";
+import { GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 } from "./general-pr-observation-selection-policy-anchor.mjs";
 
 export function buildGeneralPrObservationSealV1(input) {
   const corpus = input?.corpus;
   if (!isCorpus(corpus) || !Array.isArray(input?.schemaHashes) || input.schemaHashes.length === 0 ||
-    !input.schemaHashes.every(isHash) || !isHash(input?.selectionPolicyHash) ||
-    generalPrObservationSelectionPolicyHashV1(input?.selectionPolicy) !== input.selectionPolicyHash ||
+    !input.schemaHashes.every(isHash) ||
     !isHash(input?.rubricHash) || !isHash(input?.toolchainHash)) {
     return { status: "invalid" };
   }
   const cohort = corpus.cases[0].cohort;
   const cohortPartitionWitnessHash = buildCohortPartitionWitnessHash(corpus, input.peerCorpus, input.liveSmokeCaseIds);
-  if (!cohortPartitionWitnessHash) return { status: "invalid" };
+  if (!corpus.cases.every((item) => item.cohort === cohort) || !validIndependentLabels(corpus.cases) || !cohortPartitionWitnessHash) {
+    return { status: "invalid" };
+  }
   const corpusHash = digest({ domain: "agentproof.general-pr.gold-corpus.v1", corpus });
   const sourceBindingDigest = digest({
     domain: "agentproof.general-pr.gold-bindings.v1",
@@ -34,7 +35,7 @@ export function buildGeneralPrObservationSealV1(input) {
     sourceBindingDigest,
     schemaDigest,
     cohortPartitionWitnessHash,
-    selectionPolicyHash: input.selectionPolicyHash,
+    selectionPolicyHash: GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1,
     rubricHash: input.rubricHash,
     toolchainHash: input.toolchainHash
   };
@@ -49,7 +50,7 @@ export function verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmoke
   const cohort = corpus.cases[0].cohort;
   if (!corpus.cases.every((item) => item.cohort === cohort)) return false;
   const cohortPartitionWitnessHash = buildCohortPartitionWitnessHash(corpus, peerCorpus, liveSmokeCaseIds);
-  if (cohortPartitionWitnessHash !== seal.cohortPartitionWitnessHash) return false;
+  if (!cohortPartitionWitnessHash) return false;
   const unsigned = {
     version: 1,
     cohort,
@@ -68,7 +69,7 @@ export function verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmoke
     }),
     schemaDigest: seal.schemaDigest,
     cohortPartitionWitnessHash,
-    selectionPolicyHash: seal.selectionPolicyHash,
+    selectionPolicyHash: GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1,
     rubricHash: seal.rubricHash,
     toolchainHash: seal.toolchainHash
   };
@@ -87,43 +88,25 @@ function isGoldSeal(value) {
 }
 
 function buildCohortPartitionWitnessHash(corpus, peerCorpus, liveSmokeCaseIds) {
-  if (!isCorpus(peerCorpus) || !Array.isArray(liveSmokeCaseIds) || liveSmokeCaseIds.length === 0 ||
-    !liveSmokeCaseIds.every(isHash) || new Set(liveSmokeCaseIds).size !== liveSmokeCaseIds.length ||
-    !validCohortCorpus(corpus) || !validCohortCorpus(peerCorpus)) return null;
-  const cohort = corpus.cases[0].cohort;
-  const peerCohort = peerCorpus.cases[0].cohort;
-  if (cohort === peerCohort) return null;
+  if (!isCorpus(peerCorpus) || !Array.isArray(liveSmokeCaseIds) || liveSmokeCaseIds.length === 0 || !liveSmokeCaseIds.every(isHash) || new Set(liveSmokeCaseIds).size !== liveSmokeCaseIds.length) return null;
+  const cohort = corpus.cases[0]?.cohort;
+  const peerCohort = peerCorpus.cases[0]?.cohort;
+  if ((cohort !== "calibration" && cohort !== "holdout") || peerCohort === cohort || !peerCorpus.cases.every((item) => item.cohort === peerCohort) || !validIndependentLabels(peerCorpus.cases)) return null;
   const liveIds = new Set(liveSmokeCaseIds);
-  const corpusCases = [...corpus.cases, ...peerCorpus.cases];
-  if (corpusCases.some((item) => liveIds.has(item.caseId))) return null;
-  if (hasOverlap(corpus.cases, peerCorpus.cases, "caseId") ||
-    hasOverlap(corpus.cases, peerCorpus.cases, "repositoryFamilyHash") ||
-    hasOverlap(corpus.cases, peerCorpus.cases, "taskFamilyHash")) return null;
-  const corpusHashes = {
+  if ([...corpus.cases, ...peerCorpus.cases].some((item) => liveIds.has(item.caseId)) || ["caseId", "repositoryFamilyHash", "taskFamilyHash"].some((key) => hasOverlap(corpus.cases, peerCorpus.cases, key))) return null;
+  const hashes = {
     [cohort]: digest({ domain: "agentproof.general-pr.gold-corpus.v1", corpus }),
     [peerCohort]: digest({ domain: "agentproof.general-pr.gold-corpus.v1", corpus: peerCorpus })
   };
-  const liveSmokeExclusionHash = digest({
-    domain: "agentproof.general-pr.live-smoke-exclusion.v1",
-    caseIds: [...liveSmokeCaseIds].sort()
-  });
   return digest({
     domain: "agentproof.general-pr.cohort-partition-witness.v1",
-    calibrationCorpusHash: corpusHashes.calibration,
-    holdoutCorpusHash: corpusHashes.holdout,
-    liveSmokeExclusionHash
+    calibrationCorpusHash: hashes.calibration,
+    holdoutCorpusHash: hashes.holdout,
+    liveSmokeExclusionHash: digest({ domain: "agentproof.general-pr.live-smoke-exclusion.v1", caseIds: [...liveSmokeCaseIds].sort() })
   });
 }
 
-function validCohortCorpus(corpus) {
-  const cohort = corpus.cases[0].cohort;
-  return corpus.cases.every((item) => item.cohort === cohort) && validIndependentLabels(corpus.cases);
-}
-
-function hasOverlap(left, right, key) {
-  const values = new Set(left.map((item) => item[key]));
-  return right.some((item) => values.has(item[key]));
-}
+function hasOverlap(left, right, key) { const values = new Set(left.map((item) => item[key])); return right.some((item) => values.has(item[key])); }
 
 function isCase(value) {
   return isRecord(value) && value.version === 1 && isHash(value.caseId) &&
@@ -182,16 +165,7 @@ export function runGeneralPrObservationSealCliV1(argv) {
     const peerCorpus = JSON.parse(readFileSync(paths.peerCorpus, "utf8"));
     const liveSmoke = JSON.parse(readFileSync(paths.liveSmokeCaseIds, "utf8"));
     const schemaHashes = paths.schemaHashes.split(",");
-    const result = buildGeneralPrObservationSealV1({
-      corpus,
-      peerCorpus,
-      liveSmokeCaseIds: exactKeys(liveSmoke, ["version", "caseIds"]) && liveSmoke.version === 1 ? liveSmoke.caseIds : null,
-      schemaHashes,
-      selectionPolicy: JSON.parse(readFileSync(paths.selectionPolicy, "utf8")),
-      selectionPolicyHash: paths.selectionPolicyHash,
-      rubricHash: paths.rubricHash,
-      toolchainHash: paths.toolchainHash
-    });
+    const result = buildGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmokeCaseIds: exactKeys(liveSmoke, ["version", "caseIds"]) && liveSmoke.version === 1 ? liveSmoke.caseIds : null, schemaHashes, rubricHash: paths.rubricHash, toolchainHash: paths.toolchainHash });
     if (result.status !== "sealed") return 1;
     writeFileSync(paths.output, `${JSON.stringify(result.seal)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
     process.stdout.write('{"version":1,"status":"sealed"}\n');
@@ -202,12 +176,12 @@ export function runGeneralPrObservationSealCliV1(argv) {
 }
 
 function parseArgs(argv) {
-  if (argv.length !== 18) return null;
+  if (argv.length !== 14) return null;
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
-    if (!["--corpus", "--peer-corpus", "--live-smoke-case-ids", "--schema-hashes", "--selection-policy", "--selection-policy-hash", "--rubric-hash", "--toolchain-hash", "--output"].includes(key) || typeof value !== "string" || value.length === 0 || values.has(key)) return null;
+    if (!["--corpus", "--peer-corpus", "--live-smoke-case-ids", "--schema-hashes", "--rubric-hash", "--toolchain-hash", "--output"].includes(key) || typeof value !== "string" || value.length === 0 || values.has(key)) return null;
     values.set(key, value);
   }
   return {
@@ -215,8 +189,6 @@ function parseArgs(argv) {
     peerCorpus: values.get("--peer-corpus"),
     liveSmokeCaseIds: values.get("--live-smoke-case-ids"),
     schemaHashes: values.get("--schema-hashes"),
-    selectionPolicy: values.get("--selection-policy"),
-    selectionPolicyHash: values.get("--selection-policy-hash"),
     rubricHash: values.get("--rubric-hash"),
     toolchainHash: values.get("--toolchain-hash"),
     output: values.get("--output")

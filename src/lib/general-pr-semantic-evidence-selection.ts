@@ -266,16 +266,11 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
 
   const exactSeedHead = Boolean(seed.headSha && seed.testedSubject.kind === "head" && seed.testedSubject.sha === seed.headSha);
   const evidenceDescriptors: GeneralPrSemanticEvidenceDescriptorV1[] = [];
-  let unsafeDescriptorCount = 0;
   for (let index = 0; index < seed.changeFacts.length; index += 1) {
     const fact = seed.changeFacts[index]!;
     const atom = changeAtoms[index]!;
     if (!verifyChangeAtom(atom, fact, expectedSubjectDigest)) return null;
     const file = pullRequest.changedFiles[index];
-    if (hasUnsafeFileDescriptorSource(file)) {
-      unsafeDescriptorCount += 1;
-      continue;
-    }
     evidenceDescriptors.push(evidenceDescriptor(atom, fact, file, exactSeedHead ? "exact_head" : subjectBindingFor(seed), "observation_only"));
   }
   for (let index = 0; index < seed.testArtifacts.length; index += 1) {
@@ -284,10 +279,6 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
     const owner = factByRef.get(artifact.evidenceRef);
     if (!owner || !verifyTestAtom(atom, artifact, expectedSubjectDigest)) return null;
     const file = pullRequest.changedFiles[owner.index];
-    if (hasUnsafeFileDescriptorSource(file)) {
-      unsafeDescriptorCount += 1;
-      continue;
-    }
     evidenceDescriptors.push(evidenceDescriptor(atom, owner.fact, file, exactSeedHead ? "exact_head" : subjectBindingFor(seed), "changed_artifact"));
   }
   for (let index = 0; index < pullRequest.checks.length; index += 1) {
@@ -295,10 +286,6 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
     const atom = checkAtoms[index]!;
     const execution = seed.executions[index]!;
     if (!verifyCheckAtom(atom, check, index, expectedSubjectDigest)) return null;
-    if (hasUnsafeUrlLikeValue(check.name)) {
-      unsafeDescriptorCount += 1;
-      continue;
-    }
     const exact = exactSeedHead && execution.subjectKind === "head" && execution.subjectSha === seed.headSha && execution.headSha === seed.headSha && execution.subjectContextDigest !== null;
     evidenceDescriptors.push({
       evidenceId: atom.id,
@@ -317,10 +304,6 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
     const atom = executionAtoms[index]!;
     const check = pullRequest.checks[index]!;
     if (!verifyExecutionAtom(atom, execution, index, expectedSubjectDigest)) return null;
-    if (hasUnsafeUrlLikeValue(check.name)) {
-      unsafeDescriptorCount += 1;
-      continue;
-    }
     const exact = exactSeedHead && execution.subjectKind === "head" && execution.subjectSha === seed.headSha && execution.headSha === seed.headSha && execution.subjectContextDigest !== null;
     evidenceDescriptors.push({
       evidenceId: atom.id,
@@ -337,10 +320,6 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
   const changeClusterDescriptors: GeneralPrSemanticChangeClusterDescriptorV1[] = [];
   for (const cluster of seed.changeClusters) {
     const members = cluster.fileRefs.map((ref) => factByRef.get(ref)!);
-    if (members.some((member) => hasUnsafeFileDescriptorSource(pullRequest.changedFiles[member.index]))) {
-      unsafeDescriptorCount += 1;
-      continue;
-    }
     const relationBasis = cluster.formationBasis === "static_relation" ? "released_static_relation"
       : cluster.formationBasis === "build_relation" ? "released_build_relation"
       : cluster.formationBasis === "rename" ? "rename"
@@ -356,7 +335,7 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
       relationBasis
     });
   }
-  return { evidenceDescriptors, changeClusterDescriptors, unsafeDescriptorCount };
+  return { evidenceDescriptors, changeClusterDescriptors, unsafeDescriptorCount: 0 };
 }
 
 function evidenceDescriptor(
@@ -465,6 +444,7 @@ function tokenSketch(...inputs: string[]): string[] {
   const tokens: string[] = [];
   const seen = new Set<string>();
   for (const input of inputs) {
+    if (UNSAFE_URL_LIKE_PATTERN.test(input)) continue;
     let safe: string;
     try {
       safe = redactSecrets(input)
@@ -486,14 +466,6 @@ function tokenSketch(...inputs: string[]): string[] {
     }
   }
   return tokens;
-}
-
-function hasUnsafeFileDescriptorSource(file: ChangedFile | undefined): boolean {
-  return fileSketchInputs(file).some(hasUnsafeUrlLikeValue);
-}
-
-function hasUnsafeUrlLikeValue(value: string): boolean {
-  return UNSAFE_URL_LIKE_PATTERN.test(value);
 }
 
 function verifyChangeAtom(atom: GeneralPrEvidenceAtomV2, fact: GeneralPrChangeFactV2, subjectDigest: string): boolean {

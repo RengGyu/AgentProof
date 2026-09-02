@@ -255,10 +255,12 @@ export function finalizeDeterministicGeneralPrObservationsV2(
   };
   for (const edge of semanticEdges) relationLevelCounts[edge.level] += 1;
   const inventoryComplete = seed.completeness === "complete";
+  const semanticEvidenceComplete = semanticStageDiagnostics.evidenceCoverage === "complete";
   const semanticTestProposals = new Map((semanticProposal?.testApplicabilityProposals ?? []).map((proposal) => [`${proposal.objectiveGroupId}:${proposal.changeClusterId}`, proposal]));
   const semanticScopeProposals = new Map((semanticProposal?.scopeMappingProposals ?? []).map((proposal) => [`${proposal.objectiveGroupId}:${proposal.changeClusterId}`, proposal]));
   const testCoverage = objectives.flatMap((objective) => seed.changeClusters.map((cluster) => {
     const proposal = objective.state === "hypothesis" ? semanticTestProposals.get(`${objective.id}:${cluster.id}`) : undefined;
+    const relationCoverageComplete = objective.state !== "hypothesis" || semanticEvidenceComplete || (proposal !== undefined && proposal.proposal !== "ambiguous");
     return evaluateTestCoverageObservationV2({
       objectiveId: objective.id,
       changeClusterId: cluster.id,
@@ -269,19 +271,20 @@ export function finalizeDeterministicGeneralPrObservationsV2(
           : "unknown",
       relation: proposal && proposal.proposal !== "ambiguous" ? "hypothesis" : "unresolved",
       execution: "not_observed",
-      changedFileInventoryComplete: inventoryComplete,
-      applicableTestInventoryComplete: inventoryComplete,
-      requiredEvidenceAvailable: inventoryComplete
+      changedFileInventoryComplete: inventoryComplete && relationCoverageComplete,
+      applicableTestInventoryComplete: inventoryComplete && relationCoverageComplete,
+      requiredEvidenceAvailable: inventoryComplete && relationCoverageComplete
     });
   }));
   const scopeMappings = objectives.flatMap((objective) => seed.changeClusters.map((cluster) => {
     const proposal = objective.state === "hypothesis" ? semanticScopeProposals.get(`${objective.id}:${cluster.id}`) : undefined;
+    const relationCoverageComplete = objective.state !== "hypothesis" || semanticEvidenceComplete || proposal?.proposal === "plausibly_mapped";
     return evaluateScopeMappingObservationV2({
       objectiveId: objective.id,
       changeClusterId: cluster.id,
       relationLevel: proposal?.proposal === "plausibly_mapped" ? "hypothesis" : "unresolved",
       authoritativeRoute: false,
-      collectionComplete: inventoryComplete,
+      collectionComplete: inventoryComplete && relationCoverageComplete,
       contractViolation: false
     });
   }));

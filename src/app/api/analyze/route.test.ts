@@ -103,6 +103,7 @@ describe("POST /api/analyze", () => {
           evidenceCoverage: string | null;
           providerCallCount: number;
           selectedCountBuckets: { sourceSpans: string; evidenceCandidates: string };
+          semanticPackageFailureReasons: string[];
           omittedReasonCounts: Record<string, number>;
         };
       };
@@ -115,10 +116,11 @@ describe("POST /api/analyze", () => {
         evidenceCoverage: null,
         providerCallCount: 0,
         selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
+        semanticPackageFailureReasons: [],
         omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
       });
       expect(Object.keys(json.operatorDiagnostics ?? {}).sort()).toEqual([
-        "claimState", "evidenceCoverage", "evidenceState", "omittedReasonCounts", "providerCallCount", "selectedCountBuckets", "sourceCoverage"
+        "claimState", "evidenceCoverage", "evidenceState", "omittedReasonCounts", "providerCallCount", "selectedCountBuckets", "semanticPackageFailureReasons", "sourceCoverage"
       ]);
       expect(JSON.stringify(json.operatorDiagnostics)).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
     } finally {

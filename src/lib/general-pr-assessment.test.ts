@@ -169,6 +169,62 @@ describe("deriveGeneralPrAssessmentV1", () => {
     expect(bundle.scopeMappings).toEqual([expect.objectContaining({ state: "plausibly_mapped" })]);
   });
 
+  it("marks unresolved Stage B relations collection-unavailable when evidence coverage is not complete", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const proposal = semanticProposal(seed);
+    const unresolvedProposal = {
+      ...proposal,
+      testApplicabilityProposals: [],
+      scopeMappingProposals: []
+    };
+
+    for (const [evidenceCoverage, evidenceState] of [
+      ["sampled", "valid"],
+      ["incomplete", "valid"],
+      [null, "unavailable"]
+    ] as const) {
+      const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, unresolvedProposal, "valid", null, [], {
+        version: 1,
+        claimState: "valid",
+        evidenceState,
+        sourceCoverage: "complete",
+        evidenceCoverage,
+        providerCallCount: 2,
+        selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
+      });
+
+      expect(bundle.testCoverage).toEqual([expect.objectContaining({
+        relation: "unresolved",
+        summaryState: "collection_unavailable"
+      })]);
+      expect(bundle.scopeMappings).toEqual([expect.objectContaining({ state: "collection_unavailable" })]);
+    }
+  });
+
+  it("treats a sampled valid zero-objective result as incomplete rather than globally missing", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const stageDiagnostics = {
+      version: 1 as const,
+      claimState: "valid" as const,
+      evidenceState: "not_run" as const,
+      sourceCoverage: "sampled" as const,
+      evidenceCoverage: null,
+      providerCallCount: 1 as const,
+      selectedCountBuckets: { sourceSpans: "1_4" as const, evidenceCandidates: "0" as const }
+    };
+    const sampled = finalizeDeterministicGeneralPrObservationsV2(seed, null, "valid", null, [], stageDiagnostics);
+    const complete = finalizeDeterministicGeneralPrObservationsV2(seed, null, "valid", null, [], {
+      ...stageDiagnostics,
+      sourceCoverage: "complete"
+    });
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: sampled, report }).reasonCodes).toEqual(expect.arrayContaining([
+      "collection_incomplete"
+    ]));
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: sampled, report }).reasonCodes).not.toContain("semantic_candidate_missing");
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: complete, report }).reasonCodes).toContain("semantic_candidate_missing");
+  });
+
   it("downgrades selected evidence but leaves the complete relevant result unchanged when unrelated evidence is removed", () => {
     const withUnrelated = semanticOnlyInput({ changedFiles: [
       { path: "src/status.ts", status: "modified", patch: "+ return Ready;" },

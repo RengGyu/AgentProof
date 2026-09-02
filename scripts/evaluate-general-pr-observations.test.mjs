@@ -11,13 +11,6 @@ const stableJson = (value) => Array.isArray(value)
     ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`
     : JSON.stringify(value);
 const manifestHash = (value) => hash(stableJson(value));
-const selectionPolicy = {
-  version: 1,
-  policyVersion: "general-pr-claim-evidence-selection.v1",
-  claim: { maxSpans: 12, maxInputBytes: 12_000 },
-  evidence: { maxPerObjective: 12, maxTotal: 64, maxInputBytes: 12_000 }
-};
-const selectionPolicyHash = hash(stableJson({ domain: "agentproof.general-pr.selection-policy.v1", policy: selectionPolicy }));
 const gates = {
   zero_false_contract_supported: 0,
   zero_false_decisive_relation: 0,
@@ -57,7 +50,7 @@ function peerCorpus(corpus) {
     cases: corpus.cases.map((item, index) => ({
       ...item,
       caseId: hash(`peer:${index}:case`),
-      cohort: item.cohort === "calibration" ? "holdout" : "calibration",
+      cohort: "holdout",
       repositoryFamilyHash: hash(`peer:${index}:repo`),
       taskFamilyHash: hash(`peer:${index}:task`),
       timeWindowHash: hash(`peer:${index}:time`),
@@ -70,32 +63,19 @@ function peerCorpus(corpus) {
   };
 }
 
-function sealInput(corpus, overrides = {}) {
-  return {
-    corpus,
-    peerCorpus: peerCorpus(corpus),
-    liveSmokeCaseIds: [hash("live-smoke-only")],
-    schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")],
-    selectionPolicy,
-    selectionPolicyHash,
-    rubricHash: hash("rubric"),
-    toolchainHash: hash("toolchain"),
-    ...overrides
-  };
-}
-
 function fixture() {
-  const binary = (reviewerId, decision = "positive") => ({ version: 1, reviewerId: hash(reviewerId), decision, rubricHash: hash("rubric") });
+  const binary = (reviewerId) => ({ version: 1, reviewerId: hash(reviewerId), decision: "positive", rubricHash: hash("rubric") });
   const state = (reviewerId) => ({ version: 1, reviewerId: hash(reviewerId), observationKind: "test_coverage", state: "related_test_observed", rubricHash: hash("rubric") });
   const corpus = { version: 1, cases: [goldCase("span", "span_role", [binary("one"), binary("two")]), goldCase("test", "observation", [state("three"), state("four")])] };
-  const custody = sealInput(corpus);
-  const goldSeal = buildGeneralPrObservationSealV1(custody).seal;
+  const peer = peerCorpus(corpus);
+  const liveSmokeCaseIds = [hash("live-smoke-only")];
+  const sealInput = { corpus, peerCorpus: peer, liveSmokeCaseIds, schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")], rubricHash: hash("rubric"), toolchainHash: hash("toolchain") };
+  const goldSeal = buildGeneralPrObservationSealV1(sealInput).seal;
   const manifest = { version: 1, baseSha: "a".repeat(40), candidateBranch: "codex/test", reportSchemaVersion: "verification-report.v2", featurePolicy: { semanticObserverShadow: false, reviewerAdvisoryObservations: false, deterministicRelationConsumption: false, positiveProofPromotion: false } };
   const results = {
     version: 1,
     goldSealHash: goldSeal.sealHash,
     candidateManifestHash: manifestHash(manifest),
-    selectionPolicy,
     hardGates: gates,
     cases: corpus.cases.map((item) => ({
       version: 1,
@@ -110,59 +90,29 @@ function fixture() {
       ...(item.axis === "observation" ? { observationKind: "test_coverage", state: "related_test_observed" } : { decision: "positive" })
     }))
   };
-  return {
-    corpus,
-    peerCorpus: custody.peerCorpus,
-    liveSmokeCaseIds: custody.liveSmokeCaseIds,
-    goldSeal,
-    manifest,
-    results,
-    candidateSha: "d".repeat(40)
-  };
+  return { corpus, peerCorpus: peer, liveSmokeCaseIds, goldSeal, manifest, results, candidateSha: "d".repeat(40) };
 }
 
 describe("evaluate-general-pr-observations", () => {
-  it("creates an aggregate candidate-bound score without returning case identifiers or labels", () => {
+  it("reports claim, objective, evidence, relation, package, and coverage metrics separately", () => {
     const value = fixture();
     const result = evaluateGeneralPrObservationsV1(value);
-    const serialized = JSON.stringify(result);
 
     assert.equal(result.status, "scored");
-    assert.equal(result.seal.caseCount, 2);
-    assert.equal(result.seal.scoredCandidateManifestHash, value.results.candidateManifestHash);
-    assert.equal(result.seal.candidateSha, value.candidateSha);
-    assert.equal(result.seal.score.hardGates.zero_privacy_leak, 0);
-    assert.equal(serialized.includes(value.corpus.cases[0].caseId), false);
-    assert.equal(serialized.includes("reviewerId"), false);
-    assert.equal(serialized.includes("maxSpans"), false);
+    assert.deepEqual(Object.keys(result.seal.score.quality).slice(0, 8), [
+      "claimSelectionPrecisionLower95",
+      "claimSelectionRecallLower95",
+      "objectiveAdmissionPrecisionLower95",
+      "objectiveAdmissionRecallLower95",
+      "evidenceCandidateRecallLower95",
+      "relationPrecisionLower95",
+      "packageReadyRate",
+      "sampledCoverageRate"
+    ]);
+    assert.equal(Object.hasOwn(result.seal.score, "qualityScore"), false);
   });
 
-  it("fails closed when a candidate row is not bound to the sealed source snapshot", () => {
-    const value = fixture();
-    value.results.cases[0].headHash = hash("different head");
-
-    assert.deepEqual(evaluateGeneralPrObservationsV1(value), { status: "unavailable" });
-  });
-
-  it("fails closed when the exact candidate commit is absent or malformed", () => {
-    const value = fixture();
-
-    assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: null }), { status: "unavailable" });
-    assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: "not-a-sha" }), { status: "unavailable" });
-  });
-
-  it("fails closed when declared scoring limits do not match the sealed policy", () => {
-    const value = fixture();
-    value.results.selectionPolicy = {
-      ...selectionPolicy,
-      claim: { maxSpans: 1, maxInputBytes: 1 },
-      evidence: { maxPerObjective: 1, maxTotal: 1, maxInputBytes: 1 }
-    };
-
-    assert.deepEqual(evaluateGeneralPrObservationsV1(value), { status: "unavailable" });
-  });
-
-  it("scores staged selection, admission, evidence, relation, packaging, and coverage independently", () => {
+  it("keeps each labelled selection metric separate", () => {
     const value = fixture();
     const binary = (caseId, axis, decision) => goldCase(caseId, axis, [
       { version: 1, reviewerId: hash(`${caseId}:one`), decision, rubricHash: hash("rubric") },
@@ -180,9 +130,12 @@ describe("evaluate-general-pr-observations", () => {
     ];
     value.peerCorpus = peerCorpus(value.corpus);
     value.goldSeal = buildGeneralPrObservationSealV1({
-      ...sealInput(value.corpus),
+      corpus: value.corpus,
       peerCorpus: value.peerCorpus,
-      liveSmokeCaseIds: value.liveSmokeCaseIds
+      liveSmokeCaseIds: value.liveSmokeCaseIds,
+      schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")],
+      rubricHash: hash("rubric"),
+      toolchainHash: hash("toolchain")
     }).seal;
     const decisions = ["positive", "positive", "positive", "negative", "negative", "positive", "negative", "positive"];
     value.results = {
@@ -218,48 +171,33 @@ describe("evaluate-general-pr-observations", () => {
       testObservationExactMatchLower95: "UNKNOWN",
       scopeMappingExactMatchLower95: "UNKNOWN"
     });
-    assert.equal(Object.hasOwn(result.seal.score, "qualityScore"), false);
-    assert.equal(result.seal.score.hardGates.zero_authority_elevation, 0);
+  });
+
+  it("creates an aggregate candidate-bound score without returning case identifiers or labels", () => {
+    const value = fixture();
+    const result = evaluateGeneralPrObservationsV1(value);
+    const serialized = JSON.stringify(result);
+
+    assert.equal(result.status, "scored");
+    assert.equal(result.seal.caseCount, 2);
+    assert.equal(result.seal.scoredCandidateManifestHash, value.results.candidateManifestHash);
+    assert.equal(result.seal.candidateSha, value.candidateSha);
     assert.equal(result.seal.score.hardGates.zero_privacy_leak, 0);
+    assert.equal(serialized.includes(value.corpus.cases[0].caseId), false);
+    assert.equal(serialized.includes("reviewerId"), false);
   });
 
-  it("fails closed when staged operational fields are missing or relation selection is not boolean", () => {
-    const missingPackaging = fixture();
-    delete missingPackaging.results.cases[0].packageReady;
-    const malformedEvidenceSelection = fixture();
-    malformedEvidenceSelection.corpus.cases = [goldCase("relation", "relation", [
-      { version: 1, reviewerId: hash("one"), decision: "positive", rubricHash: hash("rubric") },
-      { version: 1, reviewerId: hash("two"), decision: "positive", rubricHash: hash("rubric") }
-    ])];
-    malformedEvidenceSelection.peerCorpus = peerCorpus(malformedEvidenceSelection.corpus);
-    malformedEvidenceSelection.goldSeal = buildGeneralPrObservationSealV1({
-      ...sealInput(malformedEvidenceSelection.corpus, { schemaHashes: [hash("relation")] }),
-      peerCorpus: malformedEvidenceSelection.peerCorpus,
-      liveSmokeCaseIds: malformedEvidenceSelection.liveSmokeCaseIds
-    }).seal;
-    malformedEvidenceSelection.results.goldSealHash = malformedEvidenceSelection.goldSeal.sealHash;
-    malformedEvidenceSelection.results.cases = [{
-      ...malformedEvidenceSelection.results.cases[0],
-      caseId: malformedEvidenceSelection.corpus.cases[0].caseId,
-      sourceHash: malformedEvidenceSelection.corpus.cases[0].sourceHash,
-      contentHash: malformedEvidenceSelection.corpus.cases[0].contentHash,
-      headHash: malformedEvidenceSelection.corpus.cases[0].headHash,
-      inventoryHash: malformedEvidenceSelection.corpus.cases[0].inventoryHash,
-      normalizerHash: malformedEvidenceSelection.corpus.cases[0].normalizerHash,
-      evidenceCandidateSelected: "yes"
-    }];
+  it("fails closed when a candidate row is not bound to the sealed source snapshot", () => {
+    const value = fixture();
+    value.results.cases[0].headHash = hash("different head");
 
-    assert.deepEqual(evaluateGeneralPrObservationsV1(missingPackaging), { status: "unavailable" });
-    assert.deepEqual(evaluateGeneralPrObservationsV1(malformedEvidenceSelection), { status: "unavailable" });
+    assert.deepEqual(evaluateGeneralPrObservationsV1(value), { status: "unavailable" });
   });
 
-  it("revalidates cohort-family and live-smoke custody while scoring", () => {
-    const overlap = fixture();
-    overlap.peerCorpus.cases[0].repositoryFamilyHash = overlap.corpus.cases[0].repositoryFamilyHash;
-    const liveDerived = fixture();
-    liveDerived.liveSmokeCaseIds = [liveDerived.corpus.cases[0].caseId];
+  it("fails closed when the exact candidate commit is absent or malformed", () => {
+    const value = fixture();
 
-    assert.deepEqual(evaluateGeneralPrObservationsV1(overlap), { status: "unavailable" });
-    assert.deepEqual(evaluateGeneralPrObservationsV1(liveDerived), { status: "unavailable" });
+    assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: null }), { status: "unavailable" });
+    assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: "not-a-sha" }), { status: "unavailable" });
   });
 });

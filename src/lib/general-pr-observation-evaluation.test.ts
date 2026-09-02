@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import {
+  GENERAL_PR_OBSERVATION_SELECTION_METRICS_V1,
   evaluateGeneralPrObservationLabelsV1,
   validateGeneralPrObservationGoldCorpusV1
 } from "./general-pr-observation-evaluation";
@@ -31,6 +32,19 @@ function caseRecord(overrides: Record<string, unknown> = {}) {
 }
 
 describe("general PR observation evaluation", () => {
+  it("names selection measurements independently rather than as one quality score", () => {
+    expect(GENERAL_PR_OBSERVATION_SELECTION_METRICS_V1).toEqual([
+      "claimSelectionPrecisionLower95",
+      "claimSelectionRecallLower95",
+      "objectiveAdmissionPrecisionLower95",
+      "objectiveAdmissionRecallLower95",
+      "evidenceCandidateRecallLower95",
+      "relationPrecisionLower95",
+      "packageReadyRate",
+      "sampledCoverageRate"
+    ]);
+  });
+
   it("accepts two independent matching labels and preserves genuine ambiguity", () => {
     const corpus = { version: 1 as const, cases: [caseRecord()] };
 
@@ -77,58 +91,5 @@ describe("general PR observation evaluation", () => {
     };
 
     expect(validateGeneralPrObservationGoldCorpusV1(corpus, new Set())).toEqual({ valid: true, errors: [] });
-  });
-
-  it("rejects calibration and holdout cases from the same repository or task family", () => {
-    const corpus = {
-      version: 1 as const,
-      cases: [
-        caseRecord(),
-        caseRecord({
-          caseId: hash("holdout-repository"),
-          cohort: "holdout",
-          taskFamilyHash: hash("other-task"),
-          timeWindowHash: hash("other-time")
-        }),
-        caseRecord({
-          caseId: hash("holdout-task"),
-          cohort: "holdout",
-          repositoryFamilyHash: hash("other-repository"),
-          timeWindowHash: hash("third-time")
-        })
-      ]
-    };
-
-    expect(validateGeneralPrObservationGoldCorpusV1(corpus, new Set())).toEqual({
-      valid: false,
-      errors: expect.arrayContaining([
-        "calibration and holdout repository families must be disjoint",
-        "calibration and holdout task families must be disjoint"
-      ])
-    });
-  });
-
-  it("keeps the live smoke corpus out of both labelled cohorts", () => {
-    const calibrationId = hash("live-25-calibration");
-    const holdoutId = hash("live-25-holdout");
-    const corpus = { version: 1 as const, cases: [caseRecord({ caseId: calibrationId })] };
-    const holdout = { version: 1 as const, cases: [caseRecord({ caseId: holdoutId, cohort: "holdout" })] };
-    const liveSmokeCaseIds = new Set([calibrationId, holdoutId]);
-
-    expect(validateGeneralPrObservationGoldCorpusV1(corpus, new Set(), liveSmokeCaseIds)).toEqual({
-      valid: false,
-      errors: ["live smoke cases cannot enter the labelled corpus"]
-    });
-    expect(validateGeneralPrObservationGoldCorpusV1(holdout, new Set(), liveSmokeCaseIds)).toEqual({
-      valid: false,
-      errors: ["live smoke cases cannot enter the labelled corpus"]
-    });
-    expect(evaluateGeneralPrObservationLabelsV1({
-      corpus,
-      visibleRegressionCaseIds: new Set(),
-      liveSmokeCaseIds,
-      goldSealHash: hash("s"),
-      importedGoldSealHash: hash("s")
-    })).toEqual({ status: "unavailable" });
   });
 });

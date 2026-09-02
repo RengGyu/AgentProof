@@ -1,39 +1,20 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import {
-  GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1,
-  GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_V1,
-  generalPrObservationSelectionPolicyHashV1
-} from "./general-pr-observation-selection-policy-anchor.mjs";
+import { GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 } from "./general-pr-observation-selection-policy-anchor.mjs";
 
 const REQUIRED_HARD_GATES = [
-  "zero_false_contract_supported",
-  "zero_authority_elevation",
-  "zero_stale_subject_binding",
-  "zero_receipt_reuse",
-  "zero_privacy_leak"
+  "zero_false_contract_supported", "zero_false_decisive_relation", "zero_false_local_ci_association", "zero_authority_elevation",
+  "zero_stale_subject_binding", "zero_receipt_reuse", "zero_incomplete_as_complete", "zero_privacy_leak", "zero_shadow_report_change",
+  "zero_template_test_risk_follow_up_objective_admission", "zero_false_missing_targeted_test", "zero_false_out_of_scope_by_contract"
 ];
-const APPROVED_QUALITY_THRESHOLDS = {
-  objectiveAdmissionPrecisionLower95: 0.95,
-  objectiveAdmissionRecallLower95: 0.90
-};
-// Accepted for the existing policy file only; release evaluation gates APPROVED_QUALITY_THRESHOLDS.
-const LEGACY_QUALITY_THRESHOLDS = {
-  ...APPROVED_QUALITY_THRESHOLDS,
-  testObservationExactMatchLower95: 0.90,
-  scopeMappingExactMatchLower95: 0.90
-};
+const APPROVED_QUALITY_THRESHOLDS = { objectiveAdmissionPrecisionLower95: 0.95, objectiveAdmissionRecallLower95: 0.90 };
+const LEGACY_QUALITY_THRESHOLDS = { ...APPROVED_QUALITY_THRESHOLDS, testObservationExactMatchLower95: 0.90, scopeMappingExactMatchLower95: 0.90 };
+const APPROVED_MINIMUM_CALIBRATION_CASES = 60;
+const APPROVED_MINIMUM_HOLDOUT_CASES = 60;
 const REPORTED_QUALITY_METRICS = [
-  "claimSelectionPrecisionLower95",
-  "claimSelectionRecallLower95",
-  "objectiveAdmissionPrecisionLower95",
-  "objectiveAdmissionRecallLower95",
-  "evidenceCandidateRecallLower95",
-  "relationPrecisionLower95",
-  "packageReadyRate",
-  "sampledCoverageRate",
-  "testObservationExactMatchLower95",
-  "scopeMappingExactMatchLower95"
+  "claimSelectionPrecisionLower95", "claimSelectionRecallLower95", "objectiveAdmissionPrecisionLower95", "objectiveAdmissionRecallLower95",
+  "evidenceCandidateRecallLower95", "relationPrecisionLower95", "packageReadyRate", "sampledCoverageRate",
+  "testObservationExactMatchLower95", "scopeMappingExactMatchLower95"
 ];
 
 export function evaluateGeneralPrObservationReleaseV1({ manifest, policy, calibrationSeal, holdoutSeal, candidateSha }) {
@@ -45,15 +26,17 @@ export function evaluateGeneralPrObservationReleaseV1({ manifest, policy, calibr
   if (!sameJson(manifest.featurePolicy, policy.requiredFeaturePolicy)) reasons.push("feature_policy_mismatch");
   if (calibrationSeal.scoredCandidateManifestHash !== digest(manifest) || holdoutSeal.scoredCandidateManifestHash !== digest(manifest) || calibrationSeal.candidateSha !== candidateSha || holdoutSeal.candidateSha !== candidateSha) reasons.push("candidate_binding_mismatch");
   if (calibrationSeal.cohortPartitionWitnessHash !== holdoutSeal.cohortPartitionWitnessHash) reasons.push("cohort_partition_mismatch");
-  if (calibrationSeal.selectionPolicyHash !== holdoutSeal.selectionPolicyHash ||
-    calibrationSeal.selectionPolicyHash !== GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 ||
-    policy.approvedSelectionPolicyHash !== GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1) reasons.push("selection_policy_binding_mismatch");
+  if (calibrationSeal.selectionPolicyHash !== GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 || holdoutSeal.selectionPolicyHash !== GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1) reasons.push("selection_policy_binding_mismatch");
   if (calibrationSeal.caseCount < policy.minimumCalibrationCases || holdoutSeal.caseCount < policy.minimumHoldoutCases) reasons.push("insufficient_independent_denominator");
-  if (!policy.hardGates.every((gate) => calibrationSeal.score.hardGates[gate] === 0 && holdoutSeal.score.hardGates[gate] === 0)) reasons.push("hard_gate_failed");
+  if (!REQUIRED_HARD_GATES.every((gate) => calibrationSeal.score.hardGates[gate] === 0 && holdoutSeal.score.hardGates[gate] === 0)) reasons.push("hard_gate_failed");
   const qualityState = qualityGateState(APPROVED_QUALITY_THRESHOLDS, calibrationSeal.score.quality, holdoutSeal.score.quality);
   if (qualityState === "insufficient") reasons.push("insufficient_quality_evidence");
   if (qualityState === "failed") reasons.push("quality_gate_failed");
-  return reasons.length === 0 ? { status: "GO", reasons: [] } : { status: "NO_GO", reasons };
+  // The sealed score contains aggregate metrics only. It has no replayable
+  // execution receipt proving the candidate ran under the fixed policy.
+  // A caller-supplied digest or limit object cannot establish that proof.
+  reasons.push("independently_bound_execution_unavailable");
+  return { status: "NO_GO", reasons };
 }
 
 export function runGeneralPrObservationReleaseCliV1(argv) {
@@ -82,14 +65,10 @@ function isManifest(value) {
 }
 
 function isPolicy(value) {
-  return isRecord(value) && value.version === 1 && Number.isSafeInteger(value.minimumCalibrationCases) && value.minimumCalibrationCases > 0 &&
-    Number.isSafeInteger(value.minimumHoldoutCases) && value.minimumHoldoutCases > 0 && generalPrObservationSelectionPolicyHashV1(value.approvedSelectionPolicy) !== null &&
-    isHash(value.approvedSelectionPolicyHash) && value.approvedSelectionPolicyHash === generalPrObservationSelectionPolicyHashV1(value.approvedSelectionPolicy) &&
-    value.approvedSelectionPolicyHash === GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 &&
-    sameJson(value.approvedSelectionPolicy, GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_V1) &&
-    isRecord(value.requiredFeaturePolicy) &&
-    Array.isArray(value.hardGates) && value.hardGates.length === new Set(value.hardGates).size &&
-    value.hardGates.every((item) => typeof item === "string") && REQUIRED_HARD_GATES.every((gate) => value.hardGates.includes(gate)) &&
+  return isRecord(value) && value.version === 1 && value.minimumCalibrationCases === APPROVED_MINIMUM_CALIBRATION_CASES &&
+    value.minimumHoldoutCases === APPROVED_MINIMUM_HOLDOUT_CASES && isRecord(value.requiredFeaturePolicy) &&
+    Array.isArray(value.hardGates) && value.hardGates.length === REQUIRED_HARD_GATES.length && value.hardGates.length === new Set(value.hardGates).size &&
+    REQUIRED_HARD_GATES.every((gate) => value.hardGates.includes(gate)) &&
     (sameJson(value.qualityThresholds, APPROVED_QUALITY_THRESHOLDS) || sameJson(value.qualityThresholds, LEGACY_QUALITY_THRESHOLDS));
 }
 

@@ -18,7 +18,6 @@ import {
 
 export const GENERAL_PR_SEMANTIC_PROPOSAL_CONTRACT_VERSION = "general_pr_semantic_proposal.v2" as const;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_SCHEMA_VERSION = "agentproof_general_pr_observer_v2" as const;
-export const GENERAL_PR_SEMANTIC_PROVIDER_SCHEMA_NAME = "agentproof_general_pr_observer_candidate_v1" as const;
 export const GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME = "agentproof_general_pr_claim_candidate_v1" as const;
 export const GENERAL_PR_SEMANTIC_EVIDENCE_SCHEMA_NAME = "agentproof_general_pr_evidence_candidate_v1" as const;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES = 16_384;
@@ -123,18 +122,7 @@ export interface GeneralPrSemanticProposalV2 {
   }>;
 }
 
-export interface GeneralPrSemanticInvocationReceiptV2 {
-  version: 2;
-  seedHash: string;
-  promptHash: string;
-  schemaHash: string;
-  modelProfileHash: string;
-  outputHash: string | null;
-  state: "valid" | "invalid" | "timeout" | "unavailable" | "stale";
-  durationBucket: "lt_1s" | "1_3s" | "3_8s" | "gte_8s" | "unknown";
-}
-
-export type GeneralPrSemanticDurationBucketV1 = GeneralPrSemanticInvocationReceiptV2["durationBucket"];
+export type GeneralPrSemanticDurationBucketV1 = "lt_1s" | "1_3s" | "3_8s" | "gte_8s" | "unknown";
 
 export interface GeneralPrSemanticInvocationReceiptV3 {
   version: 3;
@@ -191,11 +179,6 @@ interface ValidatedEvidenceRegistrationV1 {
 const VALIDATED_CLAIM_RESULTS = new WeakMap<object, ValidatedClaimResultV1>();
 const VALIDATED_EVIDENCE_RESULTS = new WeakMap<object, ValidatedEvidenceRegistrationV1>();
 
-export interface GeneralPrSemanticProposalValidationContextV2 {
-  /** The post-provider seed hash after raw-source and subject freshness revalidation. */
-  currentSeedHash: string;
-}
-
 type JsonSchema = Record<string, unknown>;
 
 export function deriveGeneralPrObjectiveGroupIdV2(spanIds: readonly string[]): string {
@@ -204,10 +187,6 @@ export function deriveGeneralPrObjectiveGroupIdV2(spanIds: readonly string[]): s
 
 export function hashGeneralPrSemanticProposalV2(proposal: GeneralPrSemanticProposalV2): string {
   return digest({ domain: "agentproof.general-pr.semantic-proposal.v2", proposal });
-}
-
-export function hashGeneralPrSemanticInvocationReceiptV2(receipt: GeneralPrSemanticInvocationReceiptV2): string {
-  return digest({ domain: "agentproof.general-pr.semantic-invocation-receipt.v2", receipt });
 }
 
 export function hashGeneralPrSemanticInvocationReceiptV3(receipt: GeneralPrSemanticInvocationReceiptV3): string {
@@ -330,81 +309,15 @@ export function mergeGeneralPrSemanticStageCandidatesV1(
     testApplicabilityProposals: evidenceSnapshot?.testApplicabilityProposals ?? [],
     scopeMappingProposals: evidenceSnapshot?.scopeMappingProposals ?? [],
     evidenceRelationProposals: evidenceSnapshot?.evidenceRelationProposals ?? []
-  }, seed, { currentSeedHash: seed.seedHash }, "canonical_merge");
-}
-
-/**
- * This is a bounded, provider-facing strict schema. IDs are data values in
- * arrays, never seed-derived object property names. The validator below is
- * still authoritative for reference validity and semantic ownership.
- */
-export function buildGeneralPrSemanticProposalJsonSchemaV2(seed: GeneralPrObservationSeedV2): JsonSchema | null {
-  if (!validateGeneralPrObservationSeedV2(seed).valid || seed.spans.length > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_SPANS) return null;
-  const spanIds = seed.spans.map((span) => span.id);
-  return exactObjectSchema(PROVIDER_ROOT_KEYS, {
-    spanRoles: {
-      type: "array",
-      minItems: spanIds.length,
-      maxItems: spanIds.length,
-      items: exactObjectSchema(SPAN_ROLE_KEYS, {
-        spanId: enumSchema(spanIds),
-        role: enumSchema(ROLES),
-        abstained: { type: "boolean" }
-      })
-    },
-    objectiveGroups: {
-      type: "array",
-      maxItems: GENERAL_PR_SEMANTIC_PROPOSAL_MAX_SPANS,
-      items: exactObjectSchema(PROVIDER_OBJECTIVE_GROUP_KEYS, {
-        spanIds: spanIdArraySchema(spanIds),
-        disposition: enumSchema(["candidate", "not_objective", "ambiguous"])
-      })
-    },
-    testApplicabilityProposals: relationArraySchema(
-      PROVIDER_TEST_APPLICABILITY_KEYS,
-      {
-        objectiveSpanIds: spanIdArraySchema(spanIds),
-        changeClusterId: idReferenceSchema(seed.changeClusters.map((cluster) => cluster.id)),
-        proposal: enumSchema(["likely_expected", "likely_not_applicable", "ambiguous"])
-      }
-    ),
-    scopeMappingProposals: relationArraySchema(
-      PROVIDER_SCOPE_MAPPING_KEYS,
-      {
-        objectiveSpanIds: spanIdArraySchema(spanIds),
-        changeClusterId: idReferenceSchema(seed.changeClusters.map((cluster) => cluster.id)),
-        proposal: enumSchema(["plausibly_mapped", "unresolved"])
-      }
-    ),
-    evidenceRelationProposals: relationArraySchema(
-      PROVIDER_EVIDENCE_RELATION_KEYS,
-      {
-        objectiveSpanIds: spanIdArraySchema(spanIds),
-        evidenceId: idReferenceSchema(seed.evidenceAtoms.map((atom) => atom.id)),
-        proposal: enumSchema(["supports", "tests", "implements", "contradicts", "unresolved"])
-      }
-    )
-  });
-}
-
-export function validateGeneralPrSemanticProposalV2(
-  candidate: unknown,
-  seed: GeneralPrObservationSeedV2,
-  context: GeneralPrSemanticProposalValidationContextV2 = { currentSeedHash: seed.seedHash }
-): GeneralPrSemanticProposalValidation {
-  return validateGeneralPrSemanticProposalV2Internal(candidate, seed, context, "provider_candidate");
+  }, seed);
 }
 
 function validateGeneralPrSemanticProposalV2Internal(
   candidate: unknown,
-  seed: GeneralPrObservationSeedV2,
-  context: GeneralPrSemanticProposalValidationContextV2,
-  mode: "provider_candidate" | "canonical_merge"
+  seed: GeneralPrObservationSeedV2
 ): GeneralPrSemanticProposalValidation {
   if (!validateGeneralPrObservationSeedV2(seed).valid) return invalid("seed is invalid");
-  if (mode === "provider_candidate" && serializedBytes(candidate) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalid("proposal output byte limit exceeded");
   if (!isRecord(candidate) || !hasExactKeys(candidate, PROVIDER_ROOT_KEYS)) return invalid("provider candidate root shape is invalid");
-  if (context.currentSeedHash !== seed.seedHash) return invalid("proposal is stale");
   if (!Array.isArray(candidate.spanRoles) || !Array.isArray(candidate.objectiveGroups) || !Array.isArray(candidate.testApplicabilityProposals) || !Array.isArray(candidate.scopeMappingProposals) || !Array.isArray(candidate.evidenceRelationProposals)) return invalid("provider candidate collections are invalid");
 
   const spanIds = seed.spans.map((span) => span.id);
@@ -676,19 +589,21 @@ function deterministicUnselectedRole(span: GeneralPrSemanticSpanV2): GeneralPrSe
 }
 
 function registerValidatedStageResult<T extends object>(registry: WeakMap<object, T>, result: T): T {
-  registry.set(result, deepFreeze(structuredClone(result)));
-  return result;
+  const snapshot = deepFreeze(structuredClone(result));
+  registry.set(snapshot, snapshot);
+  return snapshot;
 }
 
 function registerValidatedEvidenceStageResult(
   result: ValidatedEvidenceResultV1,
   claimSnapshot: ValidatedClaimResultV1
 ): ValidatedEvidenceResultV1 {
-  VALIDATED_EVIDENCE_RESULTS.set(result, Object.freeze({
+  const snapshot = deepFreeze(structuredClone(result));
+  VALIDATED_EVIDENCE_RESULTS.set(snapshot, Object.freeze({
     claimSnapshot,
-    evidenceSnapshot: deepFreeze(structuredClone(result))
+    evidenceSnapshot: snapshot
   }));
-  return result;
+  return snapshot;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -748,14 +663,6 @@ function isContiguousSourceSequence(
 
 function spanIdArraySchema(spanIds: readonly string[]): JsonSchema {
   return { type: "array", minItems: 1, maxItems: GENERAL_PR_SEMANTIC_PROPOSAL_MAX_SPANS, items: enumSchema(spanIds) };
-}
-
-function relationArraySchema(keys: readonly string[], properties: Record<string, JsonSchema>): JsonSchema {
-  return { type: "array", maxItems: GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS, items: exactObjectSchema(keys, properties) };
-}
-
-function idReferenceSchema(ids: readonly string[]): JsonSchema {
-  return ids.length > 0 ? enumSchema(ids) : { type: "string", minLength: 1, maxLength: 120 };
 }
 
 function exactObjectSchema(keys: readonly string[], properties: Record<string, JsonSchema>): JsonSchema {

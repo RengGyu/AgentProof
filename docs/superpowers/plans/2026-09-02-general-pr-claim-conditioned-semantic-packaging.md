@@ -727,7 +727,7 @@ interface GeneralPrSemanticStageDiagnosticsV1 {
   evidenceState: "not_run" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   sourceCoverage: GeneralPrSemanticSelectionCoverageV1 | null;
   evidenceCoverage: GeneralPrSemanticSelectionCoverageV1 | null;
-  providerCallCount: 0 | 1 | 2;
+  providerCallCount: 0 | 1 | 2 | "3_plus";
   selectedCountBuckets: {
     sourceSpans: "0" | "1_4" | "5_8" | "9_12";
     evidenceCandidates: "0" | "1_16" | "17_32" | "33_64";
@@ -977,7 +977,7 @@ Assert exact-key validation and summary-only privacy.
 Release smoke must fail when:
 
 - a legal selection exists but result reports `span_limit_exceeded` or `evidence_atom_limit_exceeded`;
-- provider call count exceeds 2;
+- provider call count is `3_plus` (the closed aggregate bucket for an observed third or later call);
 - semantic-only strict `met`, Supported, or `evidence_supported` appears;
 - any private field appears;
 - `completedCount !== caseCount`; or

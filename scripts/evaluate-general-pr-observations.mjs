@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { verifyGeneralPrObservationSealV1 } from "./general-pr-observation-seal.mjs";
-import { generalPrObservationSelectionPolicyHashV1 } from "./general-pr-observation-selection-policy-anchor.mjs";
 
 const MAX_INPUT_BYTES = 4_194_304;
 const HASH = /^[a-f0-9]{64}$/;
@@ -26,9 +25,7 @@ const HARD_GATES = [
  * output. Missing or malformed custody inputs are unavailable, never a pass.
  */
 export function evaluateGeneralPrObservationsV1({ corpus, peerCorpus, liveSmokeCaseIds, goldSeal, manifest, results, candidateSha }) {
-  if (!verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmokeCaseIds, seal: goldSeal }) ||
-    generalPrObservationSelectionPolicyHashV1(results?.selectionPolicy) !== goldSeal?.selectionPolicyHash ||
-    !isManifest(manifest) || !isHash(candidateSha) || !isResults(results, corpus, goldSeal, manifest)) {
+  if (!verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmokeCaseIds, seal: goldSeal }) || !isManifest(manifest) || !isHash(candidateSha) || !isResults(results, corpus, goldSeal, manifest)) {
     return { status: "unavailable" };
   }
   const byId = new Map(results.cases.map((item) => [item.caseId, item]));
@@ -88,7 +85,7 @@ function isManifest(value) {
 }
 
 function isResults(value, corpus, goldSeal, manifest) {
-  if (!isRecord(value) || Object.keys(value).length !== 6 || value.version !== 1 || value.goldSealHash !== goldSeal.sealHash ||
+  if (!isRecord(value) || Object.keys(value).length !== 5 || value.version !== 1 || value.goldSealHash !== goldSeal.sealHash ||
     value.candidateManifestHash !== stableDigest(manifest) || !isHardGates(value.hardGates) || !Array.isArray(value.cases) || value.cases.length !== corpus.cases.length) return false;
   const expectedById = new Map(corpus.cases.map((item) => [item.caseId, item]));
   const seen = new Set();
@@ -96,11 +93,7 @@ function isResults(value, corpus, goldSeal, manifest) {
     const gold = expectedById.get(item?.caseId);
     if (!gold || seen.has(item.caseId) || !sameBinding(gold, item)) return false;
     seen.add(item.caseId);
-    return gold.axis === "observation"
-      ? isObservationCandidate(item, resolvedLabel(gold).observationKind)
-      : gold.axis === "relation"
-        ? isRelationCandidate(item)
-        : isBinaryCandidate(item);
+    return gold.axis === "observation" ? isObservationCandidate(item, resolvedLabel(gold).observationKind) : gold.axis === "relation" ? isRelationCandidate(item) : isBinaryCandidate(item);
   });
 }
 
@@ -111,26 +104,22 @@ function sameBinding(gold, candidate) {
 
 function isBinaryCandidate(value) {
   return exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "decision", "packageReady", "coverage"]) &&
-    isOperationalResult(value) &&
-    ["positive", "negative", "abstain"].includes(value.decision);
+    ["positive", "negative", "abstain"].includes(value.decision) && isOperationalCandidate(value);
 }
 
 function isObservationCandidate(value, kind) {
-  if (!exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "observationKind", "state", "packageReady", "coverage"]) || !isOperationalResult(value) || value.observationKind !== kind) return false;
+  if (!exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "observationKind", "state", "packageReady", "coverage"]) || value.observationKind !== kind || !isOperationalCandidate(value)) return false;
   return kind === "test_coverage"
     ? ["covered_by_verified_relation", "verified_test_failed", "related_test_observed", "missing_targeted_test", "test_not_applicable", "relation_unresolved", "execution_unresolved", "collection_unavailable"].includes(value.state)
     : ["mapped_by_verified_relation", "plausibly_mapped", "unmapped", "out_of_scope_by_contract", "collection_unavailable"].includes(value.state);
 }
 
 function isRelationCandidate(value) {
-  return exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "decision", "packageReady", "coverage", "evidenceCandidateSelected"]) &&
-    isOperationalResult(value) && typeof value.evidenceCandidateSelected === "boolean" &&
-    ["positive", "negative", "abstain"].includes(value.decision);
+  return exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "decision", "evidenceCandidateSelected", "packageReady", "coverage"]) &&
+    ["positive", "negative", "abstain"].includes(value.decision) && typeof value.evidenceCandidateSelected === "boolean" && isOperationalCandidate(value);
 }
 
-function isOperationalResult(value) {
-  return typeof value.packageReady === "boolean" && ["complete", "sampled", "unavailable"].includes(value.coverage);
-}
+function isOperationalCandidate(value) { return typeof value.packageReady === "boolean" && (value.coverage === "complete" || value.coverage === "sampled" || value.coverage === "incomplete"); }
 
 function isHardGates(value) {
   return exactKeys(value, HARD_GATES) && HARD_GATES.every((key) => Number.isSafeInteger(value[key]) && value[key] >= 0);
@@ -158,14 +147,12 @@ function recallLower95(items) {
 }
 
 function evidenceRecallLower95(items) {
-  const relevant = items.filter(({ gold }) => gold.decision === "positive");
-  if (relevant.length === 0) return "UNKNOWN";
-  return wilsonLower(relevant.filter(({ candidate }) => candidate.evidenceCandidateSelected).length, relevant.length);
+  const actualPositive = items.filter(({ gold }) => gold.decision === "positive");
+  if (actualPositive.length === 0) return "UNKNOWN";
+  return wilsonLower(actualPositive.filter(({ candidate }) => candidate.evidenceCandidateSelected).length, actualPositive.length);
 }
 
-function rate(items, predicate) {
-  return Number((items.filter(predicate).length / items.length).toFixed(12));
-}
+function rate(items, predicate) { return items.length === 0 ? "UNKNOWN" : Number((items.filter(predicate).length / items.length).toFixed(12)); }
 
 function wilsonLower(successes, total) {
   const z = 1.6448536269514722;
@@ -194,10 +181,7 @@ function readJson(path) {
   if (Buffer.byteLength(raw, "utf8") > MAX_INPUT_BYTES) throw new Error("evaluation input exceeds byte limit");
   return JSON.parse(raw);
 }
-function readLiveSmokeCaseIds(path) {
-  const value = readJson(path);
-  return exactKeys(value, ["version", "caseIds"]) && value.version === 1 ? value.caseIds : null;
-}
+function readLiveSmokeCaseIds(path) { const value = readJson(path); return exactKeys(value, ["version", "caseIds"]) && value.version === 1 ? value.caseIds : null; }
 function exactKeys(value, keys) { return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function isHash(value) { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }

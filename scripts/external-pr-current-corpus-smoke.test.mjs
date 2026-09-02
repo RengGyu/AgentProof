@@ -104,6 +104,7 @@ describe("external-pr-current-corpus-smoke", () => {
         evidenceCoverage: null,
         providerCallCount: 1,
         selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" },
+        semanticPackageFailureReasons: ["span_limit_exceeded"],
         omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 1 }
       }
     });
@@ -129,6 +130,7 @@ describe("external-pr-current-corpus-smoke", () => {
       providerCallCountCounts: { "1": 25 },
       selectedCountBucketCounts: { sourceSpans: { "1_4": 25 }, evidenceCandidates: { "0": 25 } },
       packageReadyCount: 25,
+      semanticPackageFailureReasonCounts: { span_limit_exceeded: 25 },
       omissionReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 25 }
     });
     expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ operatorDiagnosticsToken }));
@@ -219,7 +221,7 @@ describe("external-pr-current-corpus-smoke", () => {
     })).toThrow("Current external PR run artifact was invalid");
   });
 
-  it("release guard rejects packaging hazards but permits unclear findings", async () => {
+  it("release guard permits sampled budget omissions and partial package readiness, but rejects legacy limit package failures", async () => {
     const result = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
       snapshot: readySnapshot(),
       now: "2026-08-31T00:10:00.000Z",
@@ -232,14 +234,20 @@ describe("external-pr-current-corpus-smoke", () => {
     });
 
     expect(() => assertCurrentExternalPrSemanticBoundaryHealth(result)).not.toThrow();
+    const sampledOmissions = structuredClone(result);
+    sampledOmissions.operatorDiagnostic.omissionReasonCounts.spanBudget = 1;
+    sampledOmissions.operatorDiagnostic.omissionReasonCounts.evidenceBudget = 1;
+    sampledOmissions.operatorDiagnostic.packageReadyCount = 24;
+    expect(() => assertCurrentExternalPrSemanticBoundaryHealth(sampledOmissions)).not.toThrow();
     for (const [name, mutate] of [
       ["incomplete", (value) => { value.publicRun.status = "incomplete"; value.publicRun.incompleteCount = 1; value.publicRun.completedCount = 24; }],
       ["failed quality gate", (value) => { value.publicRun.qualityGateSummary.checks = [{ id: "requirements_present", label: "Requirement extraction present", count: 25, failedCount: 1 }]; }],
       ["strict authority promotion", (value) => { value.publicRun.requirementStatusSummary.met = 1; }],
       ["supported evidence authority promotion", (value) => { value.publicRun.requirementEvidenceStatusSummary.met = 1; }],
       ["evidence authority promotion", (value) => { value.publicRun.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported = 1; }],
-      ["count-limit recurrence", (value) => { value.operatorDiagnostic.omissionReasonCounts.spanBudget = 1; }],
-      ["evidence count-limit recurrence", (value) => { value.operatorDiagnostic.omissionReasonCounts.evidenceBudget = 1; }],
+      ["legacy span-limit package failure", (value) => { value.operatorDiagnostic.semanticPackageFailureReasonCounts.span_limit_exceeded = 1; }],
+      ["legacy change-cluster-limit package failure", (value) => { value.operatorDiagnostic.semanticPackageFailureReasonCounts.change_cluster_limit_exceeded = 1; }],
+      ["legacy evidence-limit package failure", (value) => { value.operatorDiagnostic.semanticPackageFailureReasonCounts.evidence_atom_limit_exceeded = 1; }],
       ["third or later provider call", (value) => { value.operatorDiagnostic.providerCallCountCounts = { "3_plus": 25 }; }],
       ["private operator field", (value) => { value.operatorDiagnostic.sourceText = "private"; }],
       ["private nested operator field", (value) => { value.operatorDiagnostic.selectedCountBucketCounts.sourceText = "private"; }],
@@ -322,6 +330,7 @@ function validOperatorDiagnostics() {
     evidenceCoverage: null,
     providerCallCount: 1,
     selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" },
+    semanticPackageFailureReasons: [],
     omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
   };
 }

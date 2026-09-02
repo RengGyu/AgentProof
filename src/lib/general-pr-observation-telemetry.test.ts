@@ -34,7 +34,7 @@ const bundle: GeneralPrObservationBundleV2 = {
   }],
   semanticState: "valid",
   semanticFailureStage: null,
-  semanticPackageFailureReasons: [],
+  semanticPackageFailureReasons: ["span_limit_exceeded"],
   semanticStageDiagnostics: {
     version: 1,
     claimState: "valid",
@@ -115,6 +115,7 @@ describe("general PR observation telemetry", () => {
       evidenceCoverage: "complete",
       providerCallCount: 2,
       selectedCountBuckets: { sourceSpans: "9_12", evidenceCandidates: "17_32" },
+      semanticPackageFailureReasons: ["span_limit_exceeded"],
       omittedReasonCounts: {
         spanBudget: 3,
         evidenceBudget: 2,
@@ -130,6 +131,7 @@ describe("general PR observation telemetry", () => {
       "omittedReasonCounts",
       "providerCallCount",
       "selectedCountBuckets",
+      "semanticPackageFailureReasons",
       "sourceCoverage"
     ]);
     expect(serialized).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
@@ -171,6 +173,7 @@ describe("general PR observation telemetry", () => {
       evidenceCoverage: null,
       providerCallCount: 0,
       selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
+      semanticPackageFailureReasons: [],
       omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
     });
   });

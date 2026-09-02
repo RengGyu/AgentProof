@@ -178,7 +178,7 @@ function selectionBytes(parentSeedHash: string, selectedSpans: GeneralPrSemantic
     claimSelectionHash: "0".repeat(64)
   }), "utf8");
 }
-function boundedBudget(value: number | undefined, fallback: number): number { return Number.isSafeInteger(value) && value! >= 0 ? value! : fallback; }
+function boundedBudget(value: number | undefined, fallback: number): number { return Number.isSafeInteger(value) && value! >= 0 ? Math.min(value!, fallback) : fallback; }
 function sha(value: string): string { return createHash("sha256").update(value, "utf8").digest("hex"); }
 function digest(value: unknown): string { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
 function stableJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") { const record = value as Record<string, unknown>; return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`; } return JSON.stringify(value); }

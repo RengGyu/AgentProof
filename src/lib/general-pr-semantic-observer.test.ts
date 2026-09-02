@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildGeneralPrSemanticObserverPackageV2,
   GeneralPrSemanticProviderFailure,
   runGeneralPrSemanticObserverV2,
   type GeneralPrSemanticObserverModelProfileV2,
@@ -113,15 +112,18 @@ function run(request: PullRequestInput, overrides: Partial<Parameters<typeof run
 }
 
 describe("GeneralPrSemanticObserverV3 staging", () => {
-  it("builds a bounded redacted claim package instead of rejecting oversized full seeds", () => {
+  it("sends a bounded redacted claim package instead of rejecting oversized full seeds", async () => {
     const request = input({
       title: "Return Ready with token sk-123456789",
       description: Array.from({ length: 20 }, (_, index) => `- The service must return Ready ${index}.`).join("\n"),
       changedFiles: Array.from({ length: 40 }, (_, index) => ({ path: `src/file-${index}.ts`, status: "modified" as const })),
       checks: Array.from({ length: 40 }, (_, index) => ({ name: `CI ${index}`, status: "passed" as const }))
     });
-    const semanticPackage = buildGeneralPrSemanticObserverPackageV2(request, buildGeneralPrObservationSeedV2(request), modelProfile);
+    const provider = stagedProvider();
+    const result = await run(request, { provider });
+    const semanticPackage = provider.observe.mock.calls[0]?.[0];
 
+    expect(result.state).toBe("valid");
     expect(semanticPackage).toMatchObject({ stage: "claim_discovery", request: { store: false, maxOutputTokens: 3200 } });
     if (!semanticPackage || semanticPackage.stage !== "claim_discovery") throw new Error("claim package required");
     expect(semanticPackage.input.spans).toHaveLength(12);

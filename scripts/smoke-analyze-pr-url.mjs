@@ -61,6 +61,11 @@ const OPERATOR_COVERAGE_STATES = new Set(["complete", "sampled", "incomplete"]);
 const OPERATOR_SOURCE_BUCKETS = new Set(["0", "1_4", "5_8", "9_12"]);
 const OPERATOR_EVIDENCE_BUCKETS = new Set(["0", "1_16", "17_32", "33_64"]);
 const OPERATOR_OMISSION_KEYS = ["spanBudget", "evidenceBudget", "inputByteBudget", "unsafeDescriptor", "noDeterministicSignal"];
+const OPERATOR_PACKAGE_FAILURE_REASONS = new Set([
+  "model_profile_invalid", "timeout_invalid", "seed_invalid", "seed_parse_incomplete", "span_missing",
+  "span_limit_exceeded", "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch",
+  "source_binding_invalid", "selection_unavailable", "schema_unavailable", "input_size_exceeded"
+]);
 
 export async function runAnalyzePrSmoke({
   baseUrl,
@@ -183,7 +188,7 @@ export async function runAnalyzePrSmoke({
 function readOperatorSemanticDiagnostics(value, required) {
   if (!required) return null;
   if (!value || typeof value !== "object" || Array.isArray(value) ||
-    !hasExactKeys(value, ["claimState", "evidenceState", "sourceCoverage", "evidenceCoverage", "providerCallCount", "selectedCountBuckets", "omittedReasonCounts"]) ||
+    !hasExactKeys(value, ["claimState", "evidenceState", "sourceCoverage", "evidenceCoverage", "providerCallCount", "selectedCountBuckets", "semanticPackageFailureReasons", "omittedReasonCounts"]) ||
     !OPERATOR_STAGE_STATES.has(value.claimState) || !OPERATOR_STAGE_STATES.has(value.evidenceState) ||
     (value.sourceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) ||
     (value.evidenceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) ||
@@ -191,6 +196,9 @@ function readOperatorSemanticDiagnostics(value, required) {
     !value.selectedCountBuckets || typeof value.selectedCountBuckets !== "object" || Array.isArray(value.selectedCountBuckets) ||
     !hasExactKeys(value.selectedCountBuckets, ["sourceSpans", "evidenceCandidates"]) ||
     !OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) || !OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) ||
+    !Array.isArray(value.semanticPackageFailureReasons) ||
+    new Set(value.semanticPackageFailureReasons).size !== value.semanticPackageFailureReasons.length ||
+    !value.semanticPackageFailureReasons.every((reason) => OPERATOR_PACKAGE_FAILURE_REASONS.has(reason)) ||
     !value.omittedReasonCounts || typeof value.omittedReasonCounts !== "object" || Array.isArray(value.omittedReasonCounts) ||
     !hasExactKeys(value.omittedReasonCounts, OPERATOR_OMISSION_KEYS) ||
     !OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omittedReasonCounts[key]) && value.omittedReasonCounts[key] >= 0)) {
@@ -204,6 +212,7 @@ function readOperatorSemanticDiagnostics(value, required) {
     evidenceCoverage: value.evidenceCoverage,
     providerCallCount: value.providerCallCount,
     selectedCountBuckets: { ...value.selectedCountBuckets },
+    semanticPackageFailureReasons: [...value.semanticPackageFailureReasons],
     omittedReasonCounts: Object.fromEntries(OPERATOR_OMISSION_KEYS.map((key) => [key, value.omittedReasonCounts[key]]))
   };
 }
