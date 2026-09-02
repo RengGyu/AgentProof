@@ -134,6 +134,26 @@ export interface GeneralPrSemanticInvocationReceiptV2 {
   durationBucket: "lt_1s" | "1_3s" | "3_8s" | "gte_8s" | "unknown";
 }
 
+export type GeneralPrSemanticDurationBucketV1 = GeneralPrSemanticInvocationReceiptV2["durationBucket"];
+
+export interface GeneralPrSemanticInvocationReceiptV3 {
+  version: 3;
+  seedHash: string;
+  claimSelectionHash: string | null;
+  evidenceSelectionHash: string | null;
+  selectionHash: string | null;
+  modelProfileHash: string;
+  claimPromptHash: string;
+  claimSchemaHash: string;
+  claimOutputHash: string | null;
+  evidencePromptHash: string | null;
+  evidenceSchemaHash: string | null;
+  evidenceOutputHash: string | null;
+  claimState: "not_run" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+  evidenceState: "not_run" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+  durationBucket: GeneralPrSemanticDurationBucketV1;
+}
+
 export type GeneralPrSemanticProposalValidation =
   | { valid: true; proposal: GeneralPrSemanticProposalV2; errors: [] }
   | { valid: false; errors: string[] };
@@ -188,6 +208,10 @@ export function hashGeneralPrSemanticProposalV2(proposal: GeneralPrSemanticPropo
 
 export function hashGeneralPrSemanticInvocationReceiptV2(receipt: GeneralPrSemanticInvocationReceiptV2): string {
   return digest({ domain: "agentproof.general-pr.semantic-invocation-receipt.v2", receipt });
+}
+
+export function hashGeneralPrSemanticInvocationReceiptV3(receipt: GeneralPrSemanticInvocationReceiptV3): string {
+  return digest({ domain: "agentproof.general-pr.semantic-invocation-receipt.v3", receipt });
 }
 
 export function buildGeneralPrSemanticClaimJsonSchemaV1(selection: GeneralPrSemanticClaimSelectionV1): JsonSchema {

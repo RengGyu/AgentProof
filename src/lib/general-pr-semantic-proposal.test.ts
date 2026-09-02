@@ -5,6 +5,7 @@ import {
   buildGeneralPrSemanticProposalJsonSchemaV2,
   deriveGeneralPrObjectiveGroupIdV2,
   GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES,
+  hashGeneralPrSemanticInvocationReceiptV3,
   mergeGeneralPrSemanticStageCandidatesV1,
   validateGeneralPrSemanticClaimCandidateV1,
   validateGeneralPrSemanticEvidenceCandidateV1,
@@ -272,6 +273,45 @@ describe("GeneralPr semantic provider candidate", () => {
 });
 
 describe("GeneralPr split semantic stage contracts", () => {
+  it("hashes every V3 invocation-receipt stage binding", () => {
+    const receipt = {
+      version: 3 as const,
+      seedHash: "a".repeat(64),
+      claimSelectionHash: "b".repeat(64),
+      evidenceSelectionHash: "c".repeat(64),
+      selectionHash: "d".repeat(64),
+      modelProfileHash: "e".repeat(64),
+      claimPromptHash: "f".repeat(64),
+      claimSchemaHash: "1".repeat(64),
+      claimOutputHash: "2".repeat(64),
+      evidencePromptHash: "3".repeat(64),
+      evidenceSchemaHash: "4".repeat(64),
+      evidenceOutputHash: "5".repeat(64),
+      claimState: "valid" as const,
+      evidenceState: "valid" as const,
+      durationBucket: "lt_1s" as const
+    };
+    const baseline = hashGeneralPrSemanticInvocationReceiptV3(receipt);
+
+    for (const [key, value] of [
+      ["seedHash", "6".repeat(64)],
+      ["claimSelectionHash", "7".repeat(64)],
+      ["evidenceSelectionHash", null],
+      ["selectionHash", "8".repeat(64)],
+      ["modelProfileHash", "9".repeat(64)],
+      ["claimPromptHash", "a".repeat(64)],
+      ["claimSchemaHash", "b".repeat(64)],
+      ["claimOutputHash", null],
+      ["evidencePromptHash", null],
+      ["evidenceSchemaHash", null],
+      ["evidenceOutputHash", null],
+      ["claimState", "stale"],
+      ["evidenceState", "timeout"]
+    ] as const) {
+      expect(hashGeneralPrSemanticInvocationReceiptV3({ ...receipt, [key]: value })).not.toBe(baseline);
+    }
+  });
+
   it("builds recursively strict selection-bound claim and evidence schemas", () => {
     const request = stageInput();
     const observationSeed = buildGeneralPrObservationSeedV2(request);
