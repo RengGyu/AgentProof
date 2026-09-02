@@ -45,7 +45,7 @@ function goldCase(caseId, axis, labels) {
 }
 
 function fixture() {
-  const binary = (reviewerId) => ({ version: 1, reviewerId: hash(reviewerId), decision: "positive", rubricHash: hash("rubric") });
+  const binary = (reviewerId, decision = "positive") => ({ version: 1, reviewerId: hash(reviewerId), decision, rubricHash: hash("rubric") });
   const state = (reviewerId) => ({ version: 1, reviewerId: hash(reviewerId), observationKind: "test_coverage", state: "related_test_observed", rubricHash: hash("rubric") });
   const corpus = { version: 1, cases: [goldCase("span", "span_role", [binary("one"), binary("two")]), goldCase("test", "observation", [state("three"), state("four")])] };
   const sealInput = { corpus, schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")], selectionPolicyHash: hash("selection"), rubricHash: hash("rubric"), toolchainHash: hash("toolchain") };
@@ -64,6 +64,8 @@ function fixture() {
       headHash: item.headHash,
       inventoryHash: item.inventoryHash,
       normalizerHash: item.normalizerHash,
+      packageReady: true,
+      coverage: "complete",
       ...(item.axis === "observation" ? { observationKind: "test_coverage", state: "related_test_observed" } : { decision: "positive" })
     }))
   };
@@ -97,5 +99,98 @@ describe("evaluate-general-pr-observations", () => {
 
     assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: null }), { status: "unavailable" });
     assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: "not-a-sha" }), { status: "unavailable" });
+  });
+
+  it("scores staged selection, admission, evidence, relation, packaging, and coverage independently", () => {
+    const value = fixture();
+    const binary = (caseId, axis, decision) => goldCase(caseId, axis, [
+      { version: 1, reviewerId: hash(`${caseId}:one`), decision, rubricHash: hash("rubric") },
+      { version: 1, reviewerId: hash(`${caseId}:two`), decision, rubricHash: hash("rubric") }
+    ]);
+    value.corpus.cases = [
+      binary("source-positive", "source_selection", "positive"),
+      binary("source-negative", "source_selection", "negative"),
+      binary("objective-positive", "span_role", "positive"),
+      binary("objective-missed", "span_role", "positive"),
+      binary("objective-negative", "span_role", "negative"),
+      binary("relation-positive", "relation", "positive"),
+      binary("relation-missed", "relation", "positive"),
+      binary("relation-negative", "relation", "negative")
+    ];
+    value.goldSeal = buildGeneralPrObservationSealV1({
+      corpus: value.corpus,
+      schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")],
+      selectionPolicyHash: hash("selection"),
+      rubricHash: hash("rubric"),
+      toolchainHash: hash("toolchain")
+    }).seal;
+    const decisions = ["positive", "positive", "positive", "negative", "negative", "positive", "negative", "positive"];
+    value.results = {
+      ...value.results,
+      goldSealHash: value.goldSeal.sealHash,
+      cases: value.corpus.cases.map((item, index) => ({
+        version: 1,
+        caseId: item.caseId,
+        sourceHash: item.sourceHash,
+        contentHash: item.contentHash,
+        headHash: item.headHash,
+        inventoryHash: item.inventoryHash,
+        normalizerHash: item.normalizerHash,
+        decision: decisions[index],
+        packageReady: index < 6,
+        coverage: index < 2 ? "sampled" : "complete",
+        ...(item.axis === "relation" ? { evidenceCandidateSelected: index === 5 || index === 7 } : {})
+      }))
+    };
+
+    const result = evaluateGeneralPrObservationsV1(value);
+
+    assert.equal(result.status, "scored");
+    assert.deepEqual(result.seal.score.quality, {
+      claimSelectionPrecisionLower95: 0.120866319422,
+      claimSelectionRecallLower95: 0.269865948784,
+      objectiveAdmissionPrecisionLower95: 0.269865948784,
+      objectiveAdmissionRecallLower95: 0.120866319422,
+      evidenceCandidateRecallLower95: 0.120866319422,
+      relationPrecisionLower95: 0.120866319422,
+      packageReadyRate: 0.75,
+      sampledCoverageRate: 0.25,
+      testObservationExactMatchLower95: "UNKNOWN",
+      scopeMappingExactMatchLower95: "UNKNOWN"
+    });
+    assert.equal(Object.hasOwn(result.seal.score, "qualityScore"), false);
+    assert.equal(result.seal.score.hardGates.zero_authority_elevation, 0);
+    assert.equal(result.seal.score.hardGates.zero_privacy_leak, 0);
+  });
+
+  it("fails closed when staged operational fields are missing or relation selection is not boolean", () => {
+    const missingPackaging = fixture();
+    delete missingPackaging.results.cases[0].packageReady;
+    const malformedEvidenceSelection = fixture();
+    malformedEvidenceSelection.corpus.cases = [goldCase("relation", "relation", [
+      { version: 1, reviewerId: hash("one"), decision: "positive", rubricHash: hash("rubric") },
+      { version: 1, reviewerId: hash("two"), decision: "positive", rubricHash: hash("rubric") }
+    ])];
+    malformedEvidenceSelection.goldSeal = buildGeneralPrObservationSealV1({
+      corpus: malformedEvidenceSelection.corpus,
+      schemaHashes: [hash("relation")],
+      selectionPolicyHash: hash("selection"),
+      rubricHash: hash("rubric"),
+      toolchainHash: hash("toolchain")
+    }).seal;
+    malformedEvidenceSelection.results.goldSealHash = malformedEvidenceSelection.goldSeal.sealHash;
+    malformedEvidenceSelection.results.cases = [{
+      ...malformedEvidenceSelection.results.cases[0],
+      caseId: malformedEvidenceSelection.corpus.cases[0].caseId,
+      sourceHash: malformedEvidenceSelection.corpus.cases[0].sourceHash,
+      contentHash: malformedEvidenceSelection.corpus.cases[0].contentHash,
+      headHash: malformedEvidenceSelection.corpus.cases[0].headHash,
+      inventoryHash: malformedEvidenceSelection.corpus.cases[0].inventoryHash,
+      normalizerHash: malformedEvidenceSelection.corpus.cases[0].normalizerHash,
+      evidenceCandidateSelected: "yes"
+    }];
+
+    assert.deepEqual(evaluateGeneralPrObservationsV1(missingPackaging), { status: "unavailable" });
+    assert.deepEqual(evaluateGeneralPrObservationsV1(malformedEvidenceSelection), { status: "unavailable" });
   });
 });

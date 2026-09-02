@@ -11,6 +11,14 @@ const stableJson = (value) => Array.isArray(value)
     : JSON.stringify(value);
 const manifestHash = (value) => hash(stableJson(value));
 const candidateSha = "d".repeat(40);
+const requiredHardGates = [
+  "zero_false_contract_supported",
+  "zero_authority_elevation",
+  "zero_stale_subject_binding",
+  "zero_receipt_reuse",
+  "zero_privacy_leak"
+];
+const passingHardGates = Object.fromEntries(requiredHardGates.map((key) => [key, 0]));
 
 const manifest = {
   version: 1,
@@ -31,20 +39,22 @@ const policy = {
   minimumCalibrationCases: 60,
   minimumHoldoutCases: 60,
   requiredFeaturePolicy: manifest.featurePolicy,
-  hardGates: ["zero_false_contract_supported", "zero_privacy_leak", "zero_shadow_report_change"],
+  hardGates: requiredHardGates,
   qualityThresholds: {
     objectiveAdmissionPrecisionLower95: 0.95,
-    objectiveAdmissionRecallLower95: 0.9,
-    testObservationExactMatchLower95: 0.9,
-    scopeMappingExactMatchLower95: 0.9
+    objectiveAdmissionRecallLower95: 0.9
   }
 };
 
 const quality = {
-  sourceSelectionExactMatchLower95: 1,
+  claimSelectionPrecisionLower95: 1,
+  claimSelectionRecallLower95: 1,
   objectiveAdmissionPrecisionLower95: 1,
   objectiveAdmissionRecallLower95: 1,
-  relationExactMatchLower95: 1,
+  evidenceCandidateRecallLower95: 1,
+  relationPrecisionLower95: 1,
+  packageReadyRate: 1,
+  sampledCoverageRate: 0,
   testObservationExactMatchLower95: 1,
   scopeMappingExactMatchLower95: 1
 };
@@ -64,7 +74,7 @@ function seal(cohort, caseCount, overrides = {}) {
     candidateSha,
     scoredCandidateManifestHash: manifestHash(manifest),
     score: {
-      hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 0, zero_shadow_report_change: 0 },
+      hardGates: passingHardGates,
       quality
     },
     ...overrides
@@ -86,8 +96,8 @@ describe("general PR observation release evaluator", () => {
       manifest: changedManifest,
       policy,
       candidateSha,
-      calibrationSeal: seal("calibration", 60, { scoredCandidateManifestHash: manifestHash(changedManifest), score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 1, zero_shadow_report_change: 0 }, quality } }),
-      holdoutSeal: seal("holdout", 60, { scoredCandidateManifestHash: manifestHash(changedManifest), score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 1, zero_shadow_report_change: 0 }, quality } })
+      calibrationSeal: seal("calibration", 60, { scoredCandidateManifestHash: manifestHash(changedManifest), score: { hardGates: { ...passingHardGates, zero_privacy_leak: 1 }, quality } }),
+      holdoutSeal: seal("holdout", 60, { scoredCandidateManifestHash: manifestHash(changedManifest), score: { hardGates: { ...passingHardGates, zero_privacy_leak: 1 }, quality } })
     });
 
     assert.equal(result.status, "NO_GO");
@@ -106,17 +116,71 @@ describe("general PR observation release evaluator", () => {
     assert.deepEqual(result, { status: "NO_GO", reasons: ["candidate_binding_mismatch"] });
   });
 
-  it("keeps advisory release blocked when an evaluated quality axis is insufficient", () => {
-    const lowQuality = { ...quality, scopeMappingExactMatchLower95: "UNKNOWN" };
+  it("keeps advisory release blocked when approved objective admission evidence is insufficient", () => {
+    const lowQuality = { ...quality, objectiveAdmissionRecallLower95: "UNKNOWN" };
     const result = evaluateGeneralPrObservationReleaseV1({
       manifest,
       policy,
       candidateSha,
-      calibrationSeal: seal("calibration", 60, { score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 0, zero_shadow_report_change: 0 }, quality: lowQuality } }),
-      holdoutSeal: seal("holdout", 60, { score: { hardGates: { zero_false_contract_supported: 0, zero_privacy_leak: 0, zero_shadow_report_change: 0 }, quality: lowQuality } })
+      calibrationSeal: seal("calibration", 60, { score: { hardGates: passingHardGates, quality: lowQuality } }),
+      holdoutSeal: seal("holdout", 60, { score: { hardGates: passingHardGates, quality: lowQuality } })
     });
 
     assert.deepEqual(result, { status: "NO_GO", reasons: ["insufficient_quality_evidence"] });
+  });
+
+  it("requires both independent cohorts to meet the approved Wilson bounds", () => {
+    const belowPrecision = { ...quality, objectiveAdmissionPrecisionLower95: 0.949999 };
+    const belowRecall = { ...quality, objectiveAdmissionRecallLower95: 0.899999 };
+
+    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({
+      manifest,
+      policy,
+      candidateSha,
+      calibrationSeal: seal("calibration", 60, { score: { hardGates: passingHardGates, quality: belowPrecision } }),
+      holdoutSeal: seal("holdout", 60, { score: { hardGates: passingHardGates, quality: belowRecall } })
+    }), { status: "NO_GO", reasons: ["quality_gate_failed"] });
+  });
+
+  it("reports evidence-candidate recall without turning it into a release threshold", () => {
+    const reportedOnly = { ...quality, evidenceCandidateRecallLower95: "UNKNOWN" };
+
+    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({
+      manifest,
+      policy,
+      candidateSha,
+      calibrationSeal: seal("calibration", 60, { score: { hardGates: passingHardGates, quality: reportedOnly } }),
+      holdoutSeal: seal("holdout", 60, { score: { hardGates: passingHardGates, quality: reportedOnly } })
+    }), { status: "GO", reasons: [] });
+  });
+
+  it("accepts existing legacy observation threshold fields as non-gating metadata", () => {
+    const legacyPolicy = {
+      ...policy,
+      qualityThresholds: {
+        ...policy.qualityThresholds,
+        testObservationExactMatchLower95: 0.9,
+        scopeMappingExactMatchLower95: 0.9
+      }
+    };
+    const reportedOnly = { ...quality, testObservationExactMatchLower95: "UNKNOWN", scopeMappingExactMatchLower95: "UNKNOWN" };
+
+    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({
+      manifest,
+      policy: legacyPolicy,
+      candidateSha,
+      calibrationSeal: seal("calibration", 60, { score: { hardGates: passingHardGates, quality: reportedOnly } }),
+      holdoutSeal: seal("holdout", 60, { score: { hardGates: passingHardGates, quality: reportedOnly } })
+    }), { status: "GO", reasons: [] });
+  });
+
+  it("rejects policies that relax mandatory authority/privacy gates or add an unapproved quality threshold", () => {
+    const relaxed = { ...policy, hardGates: requiredHardGates.filter((key) => key !== "zero_receipt_reuse") };
+    const evidenceThreshold = { ...policy, qualityThresholds: { ...policy.qualityThresholds, evidenceCandidateRecallLower95: 0.9 } };
+    const input = { manifest, candidateSha, calibrationSeal: seal("calibration", 60), holdoutSeal: seal("holdout", 60) };
+
+    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({ ...input, policy: relaxed }), { status: "NO_GO", reasons: ["release_inputs_invalid"] });
+    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({ ...input, policy: evidenceThreshold }), { status: "NO_GO", reasons: ["release_inputs_invalid"] });
   });
 
   it("rejects scores from a different candidate commit even when the manifest matches", () => {

@@ -31,10 +31,14 @@ export function evaluateGeneralPrObservationsV1({ corpus, goldSeal, manifest, re
   const byId = new Map(results.cases.map((item) => [item.caseId, item]));
   const expected = corpus.cases.map((item) => ({ gold: resolvedLabel(item), candidate: byId.get(item.caseId), axis: item.axis }));
   const quality = {
-    sourceSelectionExactMatchLower95: exactMatchLower95(expected.filter((item) => item.axis === "source_selection")),
+    claimSelectionPrecisionLower95: precisionLower95(expected.filter((item) => item.axis === "source_selection")),
+    claimSelectionRecallLower95: recallLower95(expected.filter((item) => item.axis === "source_selection")),
     objectiveAdmissionPrecisionLower95: precisionLower95(expected.filter((item) => item.axis === "span_role")),
     objectiveAdmissionRecallLower95: recallLower95(expected.filter((item) => item.axis === "span_role")),
-    relationExactMatchLower95: exactMatchLower95(expected.filter((item) => item.axis === "relation")),
+    evidenceCandidateRecallLower95: evidenceRecallLower95(expected.filter((item) => item.axis === "relation")),
+    relationPrecisionLower95: precisionLower95(expected.filter((item) => item.axis === "relation")),
+    packageReadyRate: rate(expected, ({ candidate }) => candidate.packageReady),
+    sampledCoverageRate: rate(expected, ({ candidate }) => candidate.coverage === "sampled"),
     testObservationExactMatchLower95: exactMatchLower95(expected.filter((item) => item.axis === "observation" && item.gold.observationKind === "test_coverage")),
     scopeMappingExactMatchLower95: exactMatchLower95(expected.filter((item) => item.axis === "observation" && item.gold.observationKind === "scope_mapping"))
   };
@@ -87,7 +91,11 @@ function isResults(value, corpus, goldSeal, manifest) {
     const gold = expectedById.get(item?.caseId);
     if (!gold || seen.has(item.caseId) || !sameBinding(gold, item)) return false;
     seen.add(item.caseId);
-    return gold.axis === "observation" ? isObservationCandidate(item, resolvedLabel(gold).observationKind) : isBinaryCandidate(item);
+    return gold.axis === "observation"
+      ? isObservationCandidate(item, resolvedLabel(gold).observationKind)
+      : gold.axis === "relation"
+        ? isRelationCandidate(item)
+        : isBinaryCandidate(item);
   });
 }
 
@@ -97,15 +105,26 @@ function sameBinding(gold, candidate) {
 }
 
 function isBinaryCandidate(value) {
-  return exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "decision"]) &&
+  return exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "decision", "packageReady", "coverage"]) &&
+    isOperationalResult(value) &&
     ["positive", "negative", "abstain"].includes(value.decision);
 }
 
 function isObservationCandidate(value, kind) {
-  if (!exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "observationKind", "state"]) || value.observationKind !== kind) return false;
+  if (!exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "observationKind", "state", "packageReady", "coverage"]) || !isOperationalResult(value) || value.observationKind !== kind) return false;
   return kind === "test_coverage"
     ? ["covered_by_verified_relation", "verified_test_failed", "related_test_observed", "missing_targeted_test", "test_not_applicable", "relation_unresolved", "execution_unresolved", "collection_unavailable"].includes(value.state)
     : ["mapped_by_verified_relation", "plausibly_mapped", "unmapped", "out_of_scope_by_contract", "collection_unavailable"].includes(value.state);
+}
+
+function isRelationCandidate(value) {
+  return exactKeys(value, ["version", "caseId", "sourceHash", "contentHash", "headHash", "inventoryHash", "normalizerHash", "decision", "packageReady", "coverage", "evidenceCandidateSelected"]) &&
+    isOperationalResult(value) && typeof value.evidenceCandidateSelected === "boolean" &&
+    ["positive", "negative", "abstain"].includes(value.decision);
+}
+
+function isOperationalResult(value) {
+  return typeof value.packageReady === "boolean" && ["complete", "sampled", "unavailable"].includes(value.coverage);
 }
 
 function isHardGates(value) {
@@ -131,6 +150,16 @@ function recallLower95(items) {
   const actualPositive = items.filter(({ gold }) => gold.decision === "positive");
   if (actualPositive.length === 0) return "UNKNOWN";
   return wilsonLower(actualPositive.filter(({ candidate }) => candidate.decision === "positive").length, actualPositive.length);
+}
+
+function evidenceRecallLower95(items) {
+  const relevant = items.filter(({ gold }) => gold.decision === "positive");
+  if (relevant.length === 0) return "UNKNOWN";
+  return wilsonLower(relevant.filter(({ candidate }) => candidate.evidenceCandidateSelected).length, relevant.length);
+}
+
+function rate(items, predicate) {
+  return Number((items.filter(predicate).length / items.length).toFixed(12));
 }
 
 function wilsonLower(successes, total) {
