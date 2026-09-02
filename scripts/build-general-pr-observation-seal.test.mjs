@@ -39,8 +39,8 @@ describe("build-general-pr-observation-seal", () => {
       const liveSmokePath = writeJson(root, "live-smoke.json", liveSmoke);
       const manifestPath = writeJson(root, "manifest.json", manifest);
       const policyPath = writeJson(root, "policy.json", releasePolicy(manifest));
-      const calibrationSeal = runSeal(root, "calibration", calibrationPath, holdoutPath, liveSmokePath, approvedSelectionPolicyHash);
-      const holdoutSeal = runSeal(root, "holdout", holdoutPath, calibrationPath, liveSmokePath, approvedSelectionPolicyHash);
+      const calibrationSeal = runSeal(root, "calibration", calibrationPath, holdoutPath, liveSmokePath);
+      const holdoutSeal = runSeal(root, "holdout", holdoutPath, calibrationPath, liveSmokePath);
 
       assert.equal(calibrationSeal.child.status, 0, calibrationSeal.child.stderr);
       assert.equal(holdoutSeal.child.status, 0, holdoutSeal.child.stderr);
@@ -60,22 +60,14 @@ describe("build-general-pr-observation-seal", () => {
       const overlapping = structuredClone(holdout);
       overlapping.cases[0].repositoryFamilyHash = calibration.cases[0].repositoryFamilyHash;
       const overlapPath = writeJson(root, "overlap.json", overlapping);
-      const overlapSeal = runSeal(root, "overlap", calibrationPath, overlapPath, liveSmokePath, approvedSelectionPolicyHash);
+      const overlapSeal = runSeal(root, "overlap", calibrationPath, overlapPath, liveSmokePath);
       assert.equal(overlapSeal.child.status, 1);
       assert.equal(existsSync(overlapSeal.path), false);
 
       const liveDerivedPath = writeJson(root, "live-derived.json", { version: 1, caseIds: [calibration.cases[0].caseId] });
-      const liveDerivedSeal = runSeal(root, "live-derived", calibrationPath, holdoutPath, liveDerivedPath, approvedSelectionPolicyHash);
+      const liveDerivedSeal = runSeal(root, "live-derived", calibrationPath, holdoutPath, liveDerivedPath);
       assert.equal(liveDerivedSeal.child.status, 1);
       assert.equal(existsSync(liveDerivedSeal.path), false);
-
-      const driftSeal = runSeal(root, "holdout-drift", holdoutPath, calibrationPath, liveSmokePath, hash("unapproved-selection-policy"));
-      assert.equal(driftSeal.child.status, 0, driftSeal.child.stderr);
-      const driftScore = runScore(root, "holdout-drift", holdoutPath, calibrationPath, liveSmokePath, driftSeal.path, manifestPath, holdout, driftSeal.value, manifest);
-      assert.equal(driftScore.child.status, 0, driftScore.child.stderr);
-      const driftRelease = runRelease(root, "drift", manifestPath, policyPath, calibrationScore.path, driftScore.path);
-      assert.equal(driftRelease.child.status, 1);
-      assert.deepEqual(driftRelease.value, { version: 1, status: "NO_GO", reasons: ["selection_policy_binding_mismatch"] });
 
       const substitutedSelectionPolicy = {
         version: 1,
@@ -87,17 +79,24 @@ describe("build-general-pr-observation-seal", () => {
         domain: "agentproof.general-pr.selection-policy.v1",
         policy: substitutedSelectionPolicy
       }));
+      const mislabeledSeal = runSeal(root, "mislabeled", holdoutPath, calibrationPath, liveSmokePath, substitutedSelectionPolicy, approvedSelectionPolicyHash);
+      assert.equal(mislabeledSeal.child.status, 1);
+      assert.equal(existsSync(mislabeledSeal.path), false);
+      const mislabeledScore = runScore(root, "mislabeled", calibrationPath, holdoutPath, liveSmokePath, calibrationSeal.path, manifestPath, calibration, calibrationSeal.value, manifest, substitutedSelectionPolicy);
+      assert.equal(mislabeledScore.child.status, 1);
+      assert.equal(existsSync(mislabeledScore.path), false);
+
       const substitutedPolicyPath = writeJson(root, "substituted-policy.json", {
         ...releasePolicy(manifest),
         approvedSelectionPolicy: substitutedSelectionPolicy,
         approvedSelectionPolicyHash: substitutedSelectionPolicyHash
       });
-      const substitutedCalibrationSeal = runSeal(root, "substituted-calibration", calibrationPath, holdoutPath, liveSmokePath, substitutedSelectionPolicyHash);
-      const substitutedHoldoutSeal = runSeal(root, "substituted-holdout", holdoutPath, calibrationPath, liveSmokePath, substitutedSelectionPolicyHash);
+      const substitutedCalibrationSeal = runSeal(root, "substituted-calibration", calibrationPath, holdoutPath, liveSmokePath, substitutedSelectionPolicy, substitutedSelectionPolicyHash);
+      const substitutedHoldoutSeal = runSeal(root, "substituted-holdout", holdoutPath, calibrationPath, liveSmokePath, substitutedSelectionPolicy, substitutedSelectionPolicyHash);
       assert.equal(substitutedCalibrationSeal.child.status, 0, substitutedCalibrationSeal.child.stderr);
       assert.equal(substitutedHoldoutSeal.child.status, 0, substitutedHoldoutSeal.child.stderr);
-      const substitutedCalibrationScore = runScore(root, "substituted-calibration", calibrationPath, holdoutPath, liveSmokePath, substitutedCalibrationSeal.path, manifestPath, calibration, substitutedCalibrationSeal.value, manifest);
-      const substitutedHoldoutScore = runScore(root, "substituted-holdout", holdoutPath, calibrationPath, liveSmokePath, substitutedHoldoutSeal.path, manifestPath, holdout, substitutedHoldoutSeal.value, manifest);
+      const substitutedCalibrationScore = runScore(root, "substituted-calibration", calibrationPath, holdoutPath, liveSmokePath, substitutedCalibrationSeal.path, manifestPath, calibration, substitutedCalibrationSeal.value, manifest, substitutedSelectionPolicy);
+      const substitutedHoldoutScore = runScore(root, "substituted-holdout", holdoutPath, calibrationPath, liveSmokePath, substitutedHoldoutSeal.path, manifestPath, holdout, substitutedHoldoutSeal.value, manifest, substitutedSelectionPolicy);
       assert.equal(substitutedCalibrationScore.child.status, 0, substitutedCalibrationScore.child.stderr);
       assert.equal(substitutedHoldoutScore.child.status, 0, substitutedHoldoutScore.child.stderr);
       const substitutedRelease = runRelease(root, "substituted", manifestPath, substitutedPolicyPath, substitutedCalibrationScore.path, substitutedHoldoutScore.path);
@@ -162,13 +161,15 @@ function releasePolicy(manifest) {
   };
 }
 
-function runSeal(root, name, corpusPath, peerPath, liveSmokePath, selectionPolicyHash) {
+function runSeal(root, name, corpusPath, peerPath, liveSmokePath, selectionPolicy = approvedSelectionPolicy, selectionPolicyHash = approvedSelectionPolicyHash) {
   const output = join(root, `${name}-seal.json`);
+  const selectionPolicyPath = writeJson(root, `${name}-selection-policy.json`, selectionPolicy);
   const child = run("general-pr-observation-seal.mjs", [
     "--corpus", corpusPath,
     "--peer-corpus", peerPath,
     "--live-smoke-case-ids", liveSmokePath,
     "--schema-hashes", [hash("source"), hash("span"), hash("relation"), hash("observation")].join(","),
+    "--selection-policy", selectionPolicyPath,
     "--selection-policy-hash", selectionPolicyHash,
     "--rubric-hash", hash("rubric"),
     "--toolchain-hash", hash("toolchain"),
@@ -177,8 +178,8 @@ function runSeal(root, name, corpusPath, peerPath, liveSmokePath, selectionPolic
   return { child, path: output, value: existsSync(output) ? JSON.parse(readFileSync(output, "utf8")) : null };
 }
 
-function runScore(root, name, corpusPath, peerPath, liveSmokePath, sealPath, manifestPath, corpus, seal, manifest) {
-  const resultsPath = writeJson(root, `${name}-results.json`, candidateResults(corpus, seal, manifest));
+function runScore(root, name, corpusPath, peerPath, liveSmokePath, sealPath, manifestPath, corpus, seal, manifest, selectionPolicy = approvedSelectionPolicy) {
+  const resultsPath = writeJson(root, `${name}-results.json`, candidateResults(corpus, seal, manifest, selectionPolicy));
   const output = join(root, `${name}-score.json`);
   const child = run("evaluate-general-pr-observations.mjs", [
     "--gold-corpus", corpusPath,
@@ -193,7 +194,7 @@ function runScore(root, name, corpusPath, peerPath, liveSmokePath, sealPath, man
   return { child, path: output };
 }
 
-function candidateResults(corpus, seal, manifest) {
+function candidateResults(corpus, seal, manifest, selectionPolicy) {
   const hardGateNames = [
     "zero_false_contract_supported", "zero_false_decisive_relation", "zero_false_local_ci_association", "zero_authority_elevation",
     "zero_stale_subject_binding", "zero_receipt_reuse", "zero_incomplete_as_complete", "zero_privacy_leak", "zero_shadow_report_change",
@@ -203,6 +204,7 @@ function candidateResults(corpus, seal, manifest) {
     version: 1,
     goldSealHash: seal.sealHash,
     candidateManifestHash: hash(stableJson(manifest)),
+    selectionPolicy,
     hardGates: Object.fromEntries(hardGateNames.map((gate) => [gate, 0])),
     cases: corpus.cases.map((item) => ({
       version: 1,

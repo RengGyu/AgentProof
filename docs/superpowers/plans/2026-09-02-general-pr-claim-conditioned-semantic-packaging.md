@@ -1082,7 +1082,7 @@ Expected: FAIL because selection and package metrics are absent.
 
 Keep calibration and holdout disjoint by repository/task family. Do not import current 25-live-PR outcomes as labels.
 
-Artifact contract note: gold and scored seals carry only an opaque `cohortPartitionWitnessHash`; the seal and score commands recompute it transiently from both private cohort corpora plus the opaque live-smoke exclusion set. Release requires matching partition witnesses and matching `selectionPolicyHash` values equal to the explicitly approved claim/evidence budget digest in the release policy. No family/case membership list is emitted.
+Artifact contract note: gold and scored seals carry only opaque `cohortPartitionWitnessHash` and `selectionPolicyHash` values. The seal command recomputes the policy hash from a declared claim/evidence budget object and rejects a mismatched caller digest; candidate results declare the same non-sensitive budget object, and scoring independently recomputes its hash against the gold seal. The seal and score commands also recompute the partition witness transiently from both private cohort corpora plus the opaque live-smoke exclusion set. Release requires matching partition witnesses and policy hashes equal to the immutable approved digest. No budget object, family/case membership list, or label content is emitted in gold/scored seals.
 
 - [ ] **Step 5: Run evaluation tests**
 

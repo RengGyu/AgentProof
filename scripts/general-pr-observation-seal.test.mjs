@@ -4,6 +4,18 @@ import { describe, it } from "node:test";
 import { buildGeneralPrObservationSealV1 } from "./general-pr-observation-seal.mjs";
 
 const hash = (value) => createHash("sha256").update(value, "utf8").digest("hex");
+const stableJson = (value) => Array.isArray(value)
+  ? `[${value.map(stableJson).join(",")}]`
+  : value && typeof value === "object"
+    ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`
+    : JSON.stringify(value);
+const selectionPolicy = {
+  version: 1,
+  policyVersion: "general-pr-claim-evidence-selection.v1",
+  claim: { maxSpans: 12, maxInputBytes: 12_000 },
+  evidence: { maxPerObjective: 12, maxTotal: 64, maxInputBytes: 12_000 }
+};
+const selectionPolicyHash = hash(stableJson({ domain: "agentproof.general-pr.selection-policy.v1", policy: selectionPolicy }));
 
 function corpus(overrides = {}) {
   return {
@@ -55,7 +67,8 @@ function sealInput(value = corpus()) {
     peerCorpus: oppositeCorpus(value),
     liveSmokeCaseIds: [hash("live-smoke-only")],
     schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")],
-    selectionPolicyHash: hash("selection"),
+    selectionPolicy,
+    selectionPolicyHash,
     rubricHash: hash("rubric"),
     toolchainHash: hash("toolchain")
   };
@@ -77,6 +90,7 @@ describe("general PR observation seal", () => {
     assert.equal(serialized.includes(value.cases[0].caseId), false);
     assert.equal(serialized.includes(value.cases[0].repositoryFamilyHash), false);
     assert.equal(serialized.includes(hash("live-smoke-only")), false);
+    assert.equal(serialized.includes("maxSpans"), false);
   });
 
   it("rejects an unadjudicated corpus or a mixed cohort", () => {
@@ -114,9 +128,24 @@ describe("general PR observation seal", () => {
     assert.deepEqual(buildGeneralPrObservationSealV1({
       corpus: value,
       schemaHashes: [hash("source")],
-      selectionPolicyHash: hash("selection"),
+      selectionPolicy,
+      selectionPolicyHash,
       rubricHash: hash("rubric"),
       toolchainHash: hash("toolchain")
+    }), { status: "invalid" });
+  });
+
+  it("rejects a claimed policy digest that does not match the declared limits", () => {
+    const substitutedSelectionPolicy = {
+      ...selectionPolicy,
+      claim: { maxSpans: 1, maxInputBytes: 1 },
+      evidence: { maxPerObjective: 1, maxTotal: 1, maxInputBytes: 1 }
+    };
+
+    assert.deepEqual(buildGeneralPrObservationSealV1({
+      ...sealInput(),
+      selectionPolicy: substitutedSelectionPolicy,
+      selectionPolicyHash
     }), { status: "invalid" });
   });
 

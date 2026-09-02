@@ -2,7 +2,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import {
   GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1,
-  GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_V1
+  GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_V1,
+  generalPrObservationSelectionPolicyHashV1
 } from "./general-pr-observation-selection-policy-anchor.mjs";
 
 const REQUIRED_HARD_GATES = [
@@ -82,8 +83,8 @@ function isManifest(value) {
 
 function isPolicy(value) {
   return isRecord(value) && value.version === 1 && Number.isSafeInteger(value.minimumCalibrationCases) && value.minimumCalibrationCases > 0 &&
-    Number.isSafeInteger(value.minimumHoldoutCases) && value.minimumHoldoutCases > 0 && isApprovedSelectionPolicy(value.approvedSelectionPolicy) &&
-    isHash(value.approvedSelectionPolicyHash) && value.approvedSelectionPolicyHash === digest({ domain: "agentproof.general-pr.selection-policy.v1", policy: value.approvedSelectionPolicy }) &&
+    Number.isSafeInteger(value.minimumHoldoutCases) && value.minimumHoldoutCases > 0 && generalPrObservationSelectionPolicyHashV1(value.approvedSelectionPolicy) !== null &&
+    isHash(value.approvedSelectionPolicyHash) && value.approvedSelectionPolicyHash === generalPrObservationSelectionPolicyHashV1(value.approvedSelectionPolicy) &&
     value.approvedSelectionPolicyHash === GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 &&
     sameJson(value.approvedSelectionPolicy, GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_V1) &&
     isRecord(value.requiredFeaturePolicy) &&
@@ -129,12 +130,6 @@ function readJson(path) { return JSON.parse(readFileSync(path, "utf8")); }
 function isHash(value) { return typeof value === "string" && /^[a-f0-9]{64}$/.test(value); }
 function isCommitSha(value) { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
-function isApprovedSelectionPolicy(value) {
-  return exactKeys(value, ["version", "policyVersion", "claim", "evidence"]) && value.version === 1 && value.policyVersion === "general-pr-claim-evidence-selection.v1" &&
-    exactKeys(value.claim, ["maxSpans", "maxInputBytes"]) && isPositiveInteger(value.claim.maxSpans) && isPositiveInteger(value.claim.maxInputBytes) &&
-    exactKeys(value.evidence, ["maxPerObjective", "maxTotal", "maxInputBytes"]) && isPositiveInteger(value.evidence.maxPerObjective) && isPositiveInteger(value.evidence.maxTotal) && isPositiveInteger(value.evidence.maxInputBytes);
-}
-function isPositiveInteger(value) { return Number.isSafeInteger(value) && value > 0; }
 function isRateOrUnknown(value) { return value === "UNKNOWN" || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1); }
 function exactKeys(value, keys) { return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 function sameJson(left, right) { return stableJson(left) === stableJson(right); }

@@ -11,6 +11,13 @@ const stableJson = (value) => Array.isArray(value)
     ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`
     : JSON.stringify(value);
 const manifestHash = (value) => hash(stableJson(value));
+const selectionPolicy = {
+  version: 1,
+  policyVersion: "general-pr-claim-evidence-selection.v1",
+  claim: { maxSpans: 12, maxInputBytes: 12_000 },
+  evidence: { maxPerObjective: 12, maxTotal: 64, maxInputBytes: 12_000 }
+};
+const selectionPolicyHash = hash(stableJson({ domain: "agentproof.general-pr.selection-policy.v1", policy: selectionPolicy }));
 const gates = {
   zero_false_contract_supported: 0,
   zero_false_decisive_relation: 0,
@@ -69,7 +76,8 @@ function sealInput(corpus, overrides = {}) {
     peerCorpus: peerCorpus(corpus),
     liveSmokeCaseIds: [hash("live-smoke-only")],
     schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")],
-    selectionPolicyHash: hash("selection"),
+    selectionPolicy,
+    selectionPolicyHash,
     rubricHash: hash("rubric"),
     toolchainHash: hash("toolchain"),
     ...overrides
@@ -87,6 +95,7 @@ function fixture() {
     version: 1,
     goldSealHash: goldSeal.sealHash,
     candidateManifestHash: manifestHash(manifest),
+    selectionPolicy,
     hardGates: gates,
     cases: corpus.cases.map((item) => ({
       version: 1,
@@ -125,6 +134,7 @@ describe("evaluate-general-pr-observations", () => {
     assert.equal(result.seal.score.hardGates.zero_privacy_leak, 0);
     assert.equal(serialized.includes(value.corpus.cases[0].caseId), false);
     assert.equal(serialized.includes("reviewerId"), false);
+    assert.equal(serialized.includes("maxSpans"), false);
   });
 
   it("fails closed when a candidate row is not bound to the sealed source snapshot", () => {
@@ -139,6 +149,17 @@ describe("evaluate-general-pr-observations", () => {
 
     assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: null }), { status: "unavailable" });
     assert.deepEqual(evaluateGeneralPrObservationsV1({ ...value, candidateSha: "not-a-sha" }), { status: "unavailable" });
+  });
+
+  it("fails closed when declared scoring limits do not match the sealed policy", () => {
+    const value = fixture();
+    value.results.selectionPolicy = {
+      ...selectionPolicy,
+      claim: { maxSpans: 1, maxInputBytes: 1 },
+      evidence: { maxPerObjective: 1, maxTotal: 1, maxInputBytes: 1 }
+    };
+
+    assert.deepEqual(evaluateGeneralPrObservationsV1(value), { status: "unavailable" });
   });
 
   it("scores staged selection, admission, evidence, relation, packaging, and coverage independently", () => {

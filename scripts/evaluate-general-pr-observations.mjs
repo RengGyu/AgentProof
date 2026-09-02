@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { verifyGeneralPrObservationSealV1 } from "./general-pr-observation-seal.mjs";
+import { generalPrObservationSelectionPolicyHashV1 } from "./general-pr-observation-selection-policy-anchor.mjs";
 
 const MAX_INPUT_BYTES = 4_194_304;
 const HASH = /^[a-f0-9]{64}$/;
@@ -25,7 +26,9 @@ const HARD_GATES = [
  * output. Missing or malformed custody inputs are unavailable, never a pass.
  */
 export function evaluateGeneralPrObservationsV1({ corpus, peerCorpus, liveSmokeCaseIds, goldSeal, manifest, results, candidateSha }) {
-  if (!verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmokeCaseIds, seal: goldSeal }) || !isManifest(manifest) || !isHash(candidateSha) || !isResults(results, corpus, goldSeal, manifest)) {
+  if (!verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmokeCaseIds, seal: goldSeal }) ||
+    generalPrObservationSelectionPolicyHashV1(results?.selectionPolicy) !== goldSeal?.selectionPolicyHash ||
+    !isManifest(manifest) || !isHash(candidateSha) || !isResults(results, corpus, goldSeal, manifest)) {
     return { status: "unavailable" };
   }
   const byId = new Map(results.cases.map((item) => [item.caseId, item]));
@@ -85,7 +88,7 @@ function isManifest(value) {
 }
 
 function isResults(value, corpus, goldSeal, manifest) {
-  if (!isRecord(value) || Object.keys(value).length !== 5 || value.version !== 1 || value.goldSealHash !== goldSeal.sealHash ||
+  if (!isRecord(value) || Object.keys(value).length !== 6 || value.version !== 1 || value.goldSealHash !== goldSeal.sealHash ||
     value.candidateManifestHash !== stableDigest(manifest) || !isHardGates(value.hardGates) || !Array.isArray(value.cases) || value.cases.length !== corpus.cases.length) return false;
   const expectedById = new Map(corpus.cases.map((item) => [item.caseId, item]));
   const seen = new Set();

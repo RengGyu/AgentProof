@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { generalPrObservationSelectionPolicyHashV1 } from "./general-pr-observation-selection-policy-anchor.mjs";
 
 export function buildGeneralPrObservationSealV1(input) {
   const corpus = input?.corpus;
   if (!isCorpus(corpus) || !Array.isArray(input?.schemaHashes) || input.schemaHashes.length === 0 ||
     !input.schemaHashes.every(isHash) || !isHash(input?.selectionPolicyHash) ||
+    generalPrObservationSelectionPolicyHashV1(input?.selectionPolicy) !== input.selectionPolicyHash ||
     !isHash(input?.rubricHash) || !isHash(input?.toolchainHash)) {
     return { status: "invalid" };
   }
@@ -185,6 +187,7 @@ export function runGeneralPrObservationSealCliV1(argv) {
       peerCorpus,
       liveSmokeCaseIds: exactKeys(liveSmoke, ["version", "caseIds"]) && liveSmoke.version === 1 ? liveSmoke.caseIds : null,
       schemaHashes,
+      selectionPolicy: JSON.parse(readFileSync(paths.selectionPolicy, "utf8")),
       selectionPolicyHash: paths.selectionPolicyHash,
       rubricHash: paths.rubricHash,
       toolchainHash: paths.toolchainHash
@@ -199,12 +202,12 @@ export function runGeneralPrObservationSealCliV1(argv) {
 }
 
 function parseArgs(argv) {
-  if (argv.length !== 16) return null;
+  if (argv.length !== 18) return null;
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
-    if (!["--corpus", "--peer-corpus", "--live-smoke-case-ids", "--schema-hashes", "--selection-policy-hash", "--rubric-hash", "--toolchain-hash", "--output"].includes(key) || typeof value !== "string" || value.length === 0 || values.has(key)) return null;
+    if (!["--corpus", "--peer-corpus", "--live-smoke-case-ids", "--schema-hashes", "--selection-policy", "--selection-policy-hash", "--rubric-hash", "--toolchain-hash", "--output"].includes(key) || typeof value !== "string" || value.length === 0 || values.has(key)) return null;
     values.set(key, value);
   }
   return {
@@ -212,6 +215,7 @@ function parseArgs(argv) {
     peerCorpus: values.get("--peer-corpus"),
     liveSmokeCaseIds: values.get("--live-smoke-case-ids"),
     schemaHashes: values.get("--schema-hashes"),
+    selectionPolicy: values.get("--selection-policy"),
     selectionPolicyHash: values.get("--selection-policy-hash"),
     rubricHash: values.get("--rubric-hash"),
     toolchainHash: values.get("--toolchain-hash"),
