@@ -163,9 +163,13 @@ export type GeneralPrSemanticEvidenceValidationV1 =
 
 type ValidatedClaimResultV1 = Extract<GeneralPrSemanticClaimValidationV1, { valid: true }>;
 type ValidatedEvidenceResultV1 = Extract<GeneralPrSemanticEvidenceValidationV1, { valid: true }>;
+interface ValidatedEvidenceRegistrationV1 {
+  claimSnapshot: ValidatedClaimResultV1;
+  evidenceSnapshot: ValidatedEvidenceResultV1;
+}
 
 const VALIDATED_CLAIM_RESULTS = new WeakMap<object, ValidatedClaimResultV1>();
-const VALIDATED_EVIDENCE_RESULTS = new WeakMap<object, ValidatedEvidenceResultV1>();
+const VALIDATED_EVIDENCE_RESULTS = new WeakMap<object, ValidatedEvidenceRegistrationV1>();
 
 export interface GeneralPrSemanticProposalValidationContextV2 {
   /** The post-provider seed hash after raw-source and subject freshness revalidation. */
@@ -245,13 +249,17 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
   claim: GeneralPrSemanticClaimValidationV1,
   selection: GeneralPrSemanticEvidenceSelectionV1
 ): GeneralPrSemanticEvidenceValidationV1 {
-  if (!claim.valid) return invalidEvidence("claim stage is invalid");
+  const validatedClaim = VALIDATED_CLAIM_RESULTS.get(claim);
+  if (!validatedClaim) {
+    if (!claim.valid) return invalidEvidence("claim stage is invalid");
+    return invalidEvidence("claim stage validation provenance is invalid");
+  }
   if (!validateGeneralPrObservationSeedV2(seed).valid) return invalidEvidence("seed is invalid");
   if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidEvidence("evidence output byte limit exceeded");
   if (!isRecord(value) || !hasExactKeys(value, EVIDENCE_ROOT_KEYS) || !Array.isArray(value.testApplicabilityProposals) || !Array.isArray(value.scopeMappingProposals) || !Array.isArray(value.evidenceRelationProposals)) return invalidEvidence("evidence candidate root shape is invalid");
   const totalRelations = value.testApplicabilityProposals.length + value.scopeMappingProposals.length + value.evidenceRelationProposals.length;
   if (totalRelations > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS) return invalidEvidence("evidence relation limit exceeded");
-  const allowedGroups = validateEvidenceSelection(seed, claim, selection);
+  const allowedGroups = validateEvidenceSelection(seed, validatedClaim, selection);
   if (!allowedGroups) return invalidEvidence("evidence selection binding is invalid");
   const testApplicabilityProposals = normalizeSelectedRelations(value.testApplicabilityProposals, PROVIDER_TEST_APPLICABILITY_KEYS, allowedGroups, "changeClusterIds", "changeClusterId", ["likely_expected", "likely_not_applicable", "ambiguous"]);
   const scopeMappingProposals = normalizeSelectedRelations(value.scopeMappingProposals, PROVIDER_SCOPE_MAPPING_KEYS, allowedGroups, "changeClusterIds", "changeClusterId", ["plausibly_mapped", "unresolved"]);
@@ -262,7 +270,7 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
     ...scopeMappingProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
     ...evidenceRelationProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `evidence:${item.evidenceId}` }))
   ])) return invalidEvidence("evidence relation proposal is invalid");
-  return registerValidatedStageResult(VALIDATED_EVIDENCE_RESULTS, {
+  return registerValidatedEvidenceStageResult({
     valid: true,
     parentSeedHash: seed.seedHash,
     evidenceSelectionHash: selection.evidenceSelectionHash,
@@ -270,7 +278,7 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
     scopeMappingProposals,
     evidenceRelationProposals,
     errors: []
-  });
+  }, validatedClaim);
 }
 
 export function mergeGeneralPrSemanticStageCandidatesV1(
@@ -289,13 +297,15 @@ export function mergeGeneralPrSemanticStageCandidatesV1(
     if (!evidence.valid) return invalid("evidence stage is invalid");
     return invalid("evidence stage validation provenance is invalid");
   }
-  if (validatedEvidence && validatedEvidence.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
+  if (validatedEvidence && validatedEvidence.claimSnapshot !== validatedClaim) return invalid("evidence stage claim provenance is invalid");
+  if (validatedEvidence && validatedEvidence.evidenceSnapshot.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
+  const evidenceSnapshot = validatedEvidence?.evidenceSnapshot;
   return validateGeneralPrSemanticProposalV2Internal({
     spanRoles: validatedClaim.spanRoles,
     objectiveGroups: validatedClaim.objectiveGroups,
-    testApplicabilityProposals: validatedEvidence?.testApplicabilityProposals ?? [],
-    scopeMappingProposals: validatedEvidence?.scopeMappingProposals ?? [],
-    evidenceRelationProposals: validatedEvidence?.evidenceRelationProposals ?? []
+    testApplicabilityProposals: evidenceSnapshot?.testApplicabilityProposals ?? [],
+    scopeMappingProposals: evidenceSnapshot?.scopeMappingProposals ?? [],
+    evidenceRelationProposals: evidenceSnapshot?.evidenceRelationProposals ?? []
   }, seed, { currentSeedHash: seed.seedHash }, "canonical_merge");
 }
 
@@ -643,6 +653,17 @@ function deterministicUnselectedRole(span: GeneralPrSemanticSpanV2): GeneralPrSe
 
 function registerValidatedStageResult<T extends object>(registry: WeakMap<object, T>, result: T): T {
   registry.set(result, deepFreeze(structuredClone(result)));
+  return result;
+}
+
+function registerValidatedEvidenceStageResult(
+  result: ValidatedEvidenceResultV1,
+  claimSnapshot: ValidatedClaimResultV1
+): ValidatedEvidenceResultV1 {
+  VALIDATED_EVIDENCE_RESULTS.set(result, Object.freeze({
+    claimSnapshot,
+    evidenceSnapshot: deepFreeze(structuredClone(result))
+  }));
   return result;
 }
 

@@ -520,6 +520,72 @@ describe("GeneralPr split semantic stage contracts", () => {
     expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, evidence)).toEqual(expect.objectContaining({ valid: true }));
   });
 
+  it("rejects an unregistered claim lookalike before evidence validation", () => {
+    const request = stageInput();
+    const observationSeed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, observationSeed);
+    const candidate = claimCandidate(selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
+    if (!claim.valid) throw new Error(claim.errors.join(", "));
+    const forgedClaim = {
+      ...claim,
+      spanRoles: claim.spanRoles.map((role) => ({ ...role })),
+      objectiveGroups: claim.objectiveGroups.map((group) => ({ ...group, spanIds: [...group.spanIds] }))
+    };
+
+    expect(validateGeneralPrSemanticEvidenceCandidateV1({
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: []
+    }, observationSeed, forgedClaim, evidenceSelection)).toEqual({
+      valid: false,
+      errors: ["claim stage validation provenance is invalid"]
+    });
+  });
+
+  it("uses the private claim snapshot during evidence validation", () => {
+    const request = stageInput();
+    const observationSeed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, observationSeed);
+    const candidate = claimCandidate(selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
+    if (!claim.valid) throw new Error(claim.errors.join(", "));
+    Object.defineProperty(claim, "valid", { configurable: true, get: () => false });
+    Object.defineProperty(claim, "claimSelectionHash", { configurable: true, get: () => "0".repeat(64) });
+    Object.defineProperty(claim, "objectiveGroups", { configurable: true, get: () => [] });
+
+    expect(validateGeneralPrSemanticEvidenceCandidateV1({
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: []
+    }, observationSeed, claim, evidenceSelection)).toEqual(expect.objectContaining({ valid: true }));
+  });
+
+  it("binds registered evidence to the exact registered claim provenance", () => {
+    const request = stageInput();
+    const observationSeed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, observationSeed);
+    const candidate = claimCandidate(selection);
+    const firstClaim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const secondClaim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
+    const evidence = validateGeneralPrSemanticEvidenceCandidateV1({
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: []
+    }, observationSeed, firstClaim, evidenceSelection);
+    expect(firstClaim).toEqual(secondClaim);
+    expect(evidence).toEqual(expect.objectContaining({ valid: true }));
+
+    expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, secondClaim, evidence)).toEqual({
+      valid: false,
+      errors: ["evidence stage claim provenance is invalid"]
+    });
+    expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, firstClaim, evidence)).toEqual(expect.objectContaining({ valid: true }));
+  });
+
   it("merges a private claim snapshot when a genuine result is accessor-swapped after validation", () => {
     const request = stageInput();
     const observationSeed = buildGeneralPrObservationSeedV2(request);
