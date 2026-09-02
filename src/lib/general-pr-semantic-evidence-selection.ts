@@ -20,7 +20,7 @@ const DEFAULT_MAX_TOTAL = 64;
 const DEFAULT_MAX_INPUT_BYTES = 12_000;
 const RRF_K = 60;
 const EVIDENCE_KINDS: GeneralPrSemanticEvidenceKindV1[] = ["change", "test_artifact", "check", "execution"];
-const UNSAFE_URL_LIKE_PATTERN = /(?:\b(?:https?|ftps?|file|ssh|git|ws|wss|s3|mailto|data|javascript):[^\s]+|\b[a-z][a-z0-9+.-]{1,31}:[^\s]*[\/@][^\s]*|\bwww\.[^\s]+)/iu;
+const UNSAFE_URL_LIKE_PATTERN = /(?:\b[a-z][a-z0-9+.-]*:[^\s]*|\bwww\.[^\s]+)/iu;
 
 export type GeneralPrSemanticEvidenceKindV1 = GeneralPrEvidenceAtomV2["kind"];
 

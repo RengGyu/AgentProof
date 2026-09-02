@@ -127,6 +127,24 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
         request: completeInput({ checks: [{ name: "www.private.example/secret", status: "passed" }] }),
         forbidden: ["www", "private", "example", "secret"],
         omittedKinds: ["check", "execution"]
+      },
+      {
+        name: "opaque magnet path",
+        request: completeInput({ changedFiles: [{ path: "magnet:?xt=urn:btih:magnetprivatevalue", status: "modified" }] }),
+        forbidden: ["magnetprivatevalue"],
+        omittedKinds: ["change"]
+      },
+      {
+        name: "opaque URN hunk label",
+        request: completeInput({ changedFiles: [{ path: "src/repositories/repository-visibility.ts", status: "modified", patch: "@@ -1 +1 @@ urn:agentproof:urnprivatevalue" }] }),
+        forbidden: ["urnprivatevalue"],
+        omittedKinds: ["change"]
+      },
+      {
+        name: "opaque telephone check display name",
+        request: completeInput({ checks: [{ name: "tel:+821012345678 privatetelvalue", status: "passed" }] }),
+        forbidden: ["privatetelvalue"],
+        omittedKinds: ["check", "execution"]
       }
     ];
 
@@ -148,7 +166,11 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
       }
       const tokens = result.selection.evidenceDescriptors.flatMap((descriptor) => descriptor.tokenSketch)
         .concat(result.selection.changeClusterDescriptors.flatMap((descriptor) => descriptor.tokenSketch));
-      for (const forbidden of fixture.forbidden) expect(tokens, `${fixture.name}: ${forbidden}`).not.toContain(forbidden);
+      const serialized = JSON.stringify(result.selection).toLowerCase();
+      for (const forbidden of fixture.forbidden) {
+        expect(tokens, `${fixture.name}: ${forbidden}`).not.toContain(forbidden);
+        expect(serialized, `${fixture.name}: serialized ${forbidden}`).not.toContain(forbidden);
+      }
     }
   });
 
