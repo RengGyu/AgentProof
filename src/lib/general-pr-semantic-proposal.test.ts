@@ -5,7 +5,7 @@ import {
   GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES,
   hashGeneralPrSemanticInvocationReceiptV3,
   mergeGeneralPrSemanticStageCandidatesV1,
-  validateGeneralPrSemanticClaimCandidateV1,
+  validateGeneralPrSemanticClaimCandidateV2,
   validateGeneralPrSemanticEvidenceCandidateV1
 } from "./general-pr-semantic-proposal";
 import { buildGeneralPrObservationSeedV2, type GeneralPrObservationSeedV2 } from "./general-pr-observation-source";
@@ -89,9 +89,8 @@ function claimCandidate(selection: GeneralPrSemanticClaimSelectionV1, objectiveT
           : span.deterministicRole === "unresolved"
             ? "mixed_or_ambiguous" as const
             : "supporting_context" as const;
-      return { spanId: span.spanId, role, abstained: role === "mixed_or_ambiguous" };
+      return { spanId: span.spanId, role };
     }),
-    objectiveGroups: objectiveIds.map((spanId) => ({ spanIds: [spanId], disposition: "candidate" as const }))
   };
 }
 
@@ -105,7 +104,7 @@ function selectedEvidence(
     pullRequest: request,
     seed: observationSeed,
     claimSelection: selection,
-    objectiveGroups: candidate.objectiveGroups
+    objectiveGroups: candidate.spanRoles.filter((role) => role.role === "objective_candidate").map((role) => ({ spanIds: [role.spanId], disposition: "candidate" as const }))
   });
   expect(result.status).toBe("selected");
   if (result.status !== "selected") throw new Error(result.status);
@@ -168,6 +167,8 @@ describe("GeneralPr split semantic stage contracts", () => {
 
     expectOpenAiStrictObjects(claimSchema);
     expectOpenAiStrictObjects(evidenceSchema);
+    expect(JSON.stringify(claimSchema)).not.toContain("objectiveGroups");
+    expect(JSON.stringify(claimSchema)).not.toContain("abstained");
     expect(schemaEnums(claimSchema).flat()).toEqual(expect.arrayContaining(claims.selectedSpanIds));
     expect(schemaEnums(claimSchema).flat().filter((value) => typeof value === "string" && value.startsWith("gpsp_")))
       .toEqual(expect.arrayContaining(claims.selectedSpanIds));
@@ -204,7 +205,7 @@ describe("GeneralPr split semantic stage contracts", () => {
       pullRequest: request,
       seed: observationSeed,
       claimSelection: claims,
-      objectiveGroups: candidate.objectiveGroups,
+      objectiveGroups: candidate.spanRoles.filter((role) => role.role === "objective_candidate").map((role) => ({ spanIds: [role.spanId], disposition: "candidate" as const })),
       maxPerObjective: 4
     });
     expect(result.status).toBe("selected");
@@ -222,19 +223,23 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const { objectiveGroups: _groups, ...missingRoot } = candidate;
+    const { spanRoles: _roles, ...missingRoot } = candidate;
     const extraRoot = { ...candidate, version: 1 };
+    const malformedDecision = { ...candidate, spanRoles: [{ spanId: candidate.spanRoles[0]!.spanId, role: "not_a_role" }, ...candidate.spanRoles.slice(1)] };
     const unselected = observationSeed.spans.find((span) => !selection.selectedSpanIds.includes(span.id));
     const unknownDecision = { ...candidate, spanRoles: [...candidate.spanRoles.slice(1), { ...candidate.spanRoles[0]!, spanId: unselected?.id ?? "gpsp_unselected" }] };
     const duplicateDecision = { ...candidate, spanRoles: [...candidate.spanRoles.slice(1), candidate.spanRoles[1]!] };
     const missingDecision = { ...candidate, spanRoles: candidate.spanRoles.slice(1) };
 
-    expect(validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection)).toEqual(expect.objectContaining({ valid: true }));
-    for (const mutation of [missingRoot, extraRoot, unknownDecision, duplicateDecision, missingDecision]) {
-      expect(validateGeneralPrSemanticClaimCandidateV1(mutation, observationSeed, selection)).toEqual(expect.objectContaining({ valid: false }));
+    expect(validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection)).toEqual(expect.objectContaining({ valid: true }));
+    expect(validateGeneralPrSemanticClaimCandidateV2(missingRoot, observationSeed, selection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "root_shape_invalid" }));
+    expect(validateGeneralPrSemanticClaimCandidateV2(extraRoot, observationSeed, selection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "root_shape_invalid" }));
+    expect(validateGeneralPrSemanticClaimCandidateV2(malformedDecision, observationSeed, selection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "span_decision_invalid" }));
+    for (const mutation of [unknownDecision, duplicateDecision, missingDecision]) {
+      expect(validateGeneralPrSemanticClaimCandidateV2(mutation, observationSeed, selection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "span_binding_invalid" }));
     }
-    expect(validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, { ...selection, parentSeedHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false }));
-    expect(validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, { ...selection, claimSelectionHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false }));
+    expect(validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, { ...selection, parentSeedHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false, invalidReason: "span_binding_invalid" }));
+    expect(validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, { ...selection, claimSelectionHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false, invalidReason: "span_binding_invalid" }));
   });
 
   it("returns recursively frozen normalized claim and evidence snapshots", () => {
@@ -242,7 +247,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
     const evidence = validateGeneralPrSemanticEvidenceCandidateV1({
       testApplicabilityProposals: [],
@@ -261,7 +266,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection, ["Return state 1."]);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     if (!claim.valid) throw new Error(claim.errors.join(", "));
     const canonicalCandidate = {
       spanRoles: claim.spanRoles,
@@ -278,35 +283,32 @@ describe("GeneralPr split semantic stage contracts", () => {
     if (merged.valid) expect(Object.keys(merged.proposal.spanRoles)).toHaveLength(observationSeed.spans.length);
   });
 
-  it("rejects reordered, non-contiguous, cross-source, role-ceiling, and ungrouped objective claims", () => {
+  it("derives singleton groups in selected order and rejects source-ceiling violations", () => {
     const request = stageInput();
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
-    const firstSourceId = selection.selectedSpans.find((span) => span.deterministicRole !== "template_or_process")?.sourceUnitId;
-    const authoritative = selection.selectedSpans.filter((span) => span.sourceUnitId === firstSourceId && span.deterministicRole !== "template_or_process");
-    const otherSource = selection.selectedSpans.find((span) => span.sourceUnitId !== firstSourceId);
+    const objectives = selection.selectedSpans.filter((span) => span.deterministicRole !== "template_or_process").slice(0, 2);
     const ceilingSpan = selection.selectedSpans.find((span) => span.deterministicRole === "template_or_process");
-    if (authoritative.length < 3 || !otherSource || !ceilingSpan) throw new Error("fixture must contain three source-local spans, another source, and one role-ceiling span");
-    const withObjectiveRoles = (ids: string[]) => ({
-      spanRoles: claimCandidate(selection).spanRoles.map((role) => ids.includes(role.spanId) ? { ...role, role: "objective_candidate" as const, abstained: false } : role),
-      objectiveGroups: [] as Array<{ spanIds: string[]; disposition: "candidate" }>
-    });
-    const adjacent = authoritative.slice(0, 2).map((span) => span.spanId);
-    const nonContiguous = [authoritative[0]!.spanId, authoritative[2]!.spanId];
-    const crossSourceIds = [authoritative[0]!.spanId, otherSource.spanId];
-    const reordered = withObjectiveRoles(adjacent);
-    reordered.objectiveGroups = [{ spanIds: [...adjacent].reverse(), disposition: "candidate" }];
-    const skipped = withObjectiveRoles(nonContiguous);
-    skipped.objectiveGroups = [{ spanIds: nonContiguous, disposition: "candidate" }];
-    const crossSource = withObjectiveRoles(crossSourceIds);
-    crossSource.objectiveGroups = [{ spanIds: crossSourceIds, disposition: "candidate" }];
-    const ceiling = withObjectiveRoles([ceilingSpan.spanId]);
-    ceiling.objectiveGroups = [{ spanIds: [ceilingSpan.spanId], disposition: "candidate" }];
-    const ungrouped = withObjectiveRoles([authoritative[0]!.spanId]);
+    if (objectives.length !== 2 || !ceilingSpan) throw new Error("fixture must contain two objectives and one role-ceiling span");
+    const candidate = claimCandidate(selection, objectives.map((span) => span.text));
+    const valid = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
+    expect(valid).toEqual(expect.objectContaining({ valid: true }));
+    if (valid.valid) expect(valid.objectiveGroups).toEqual(objectives.map((span) => ({ spanIds: [span.spanId], disposition: "candidate" })));
+    const ceiling = { spanRoles: candidate.spanRoles.map((role) => role.spanId === ceilingSpan.spanId ? { ...role, role: "objective_candidate" as const } : role) };
+    expect(validateGeneralPrSemanticClaimCandidateV2(ceiling, observationSeed, selection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "role_ceiling_violation" }));
+    const noObjectives = { spanRoles: candidate.spanRoles.map((role) => ({ ...role, role: role.role === "objective_candidate" ? "supporting_context" as const : role.role })) };
+    const none = validateGeneralPrSemanticClaimCandidateV2(noObjectives, observationSeed, selection);
+    expect(none).toEqual(expect.objectContaining({ valid: true }));
+    if (none.valid) expect(none.objectiveGroups).toEqual([]);
+  });
 
-    for (const mutation of [reordered, skipped, crossSource, ceiling, ungrouped]) {
-      expect(validateGeneralPrSemanticClaimCandidateV1(mutation, observationSeed, selection)).toEqual(expect.objectContaining({ valid: false }));
-    }
+  it("returns output_limit_exceeded for oversized V2 claim output", () => {
+    const request = stageInput();
+    const observationSeed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, observationSeed);
+    const oversized = { spanRoles: claimCandidate(selection).spanRoles, padding: "x".repeat(GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) };
+    expect(validateGeneralPrSemanticClaimCandidateV2(oversized, observationSeed, selection))
+      .toEqual(expect.objectContaining({ valid: false, invalidReason: "output_limit_exceeded" }));
   });
 
   it("validates objective-specific evidence choices and rejects ID, duplicate, binding, and limit mutations", () => {
@@ -314,7 +316,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection, ["Return Ready", "status readable"]);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     expect(claim.valid).toBe(true);
     const selected = selectedEvidence(request, observationSeed, selection, candidate);
     const sharedClusterId = selected.objectiveGroups[0]?.changeClusterIds.find((id) => selected.objectiveGroups[1]?.changeClusterIds.includes(id));
@@ -382,7 +384,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidence = selectedEvidence(request, observationSeed, selection, candidate);
     const target = evidence.evidenceDescriptors.find((descriptor) => descriptor.subjectBinding !== "exact_head");
     if (!target) throw new Error("fixture must contain non-exact evidence");
@@ -400,7 +402,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
     const group = evidenceSelection.objectiveGroups[0]!;
     const clusterId = group.changeClusterIds[0];
@@ -423,7 +425,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
     const evidence = validateGeneralPrSemanticEvidenceCandidateV1({
       testApplicabilityProposals: [],
@@ -444,7 +446,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
     if (!claim.valid) throw new Error(claim.errors.join(", "));
     const forgedClaim = {
@@ -468,7 +470,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
     if (!claim.valid) throw new Error(claim.errors.join(", "));
     expect(() => Object.defineProperty(claim, "valid", { configurable: true, get: () => false })).toThrow(TypeError);
@@ -487,8 +489,8 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const firstClaim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
-    const secondClaim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const firstClaim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
+    const secondClaim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
     const evidence = validateGeneralPrSemanticEvidenceCandidateV1({
       testApplicabilityProposals: [],
@@ -509,7 +511,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const request = stageInput();
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(claimCandidate(selection), observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(claimCandidate(selection), observationSeed, selection);
     if (!claim.valid) throw new Error(claim.errors.join(", "));
     const baseline = mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, null);
     const groupedSpanIds = new Set(claim.objectiveGroups.flatMap((group) => group.spanIds));
@@ -530,7 +532,7 @@ describe("GeneralPr split semantic stage contracts", () => {
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection);
-    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV2(candidate, observationSeed, selection);
     const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
     const group = evidenceSelection.objectiveGroups[0]!;
     const evidenceId = group.evidenceIds[0];

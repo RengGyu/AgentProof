@@ -493,7 +493,7 @@ async function runPreflightedAnalysisJob(
           },
           modelProfile: {
             model: generalPrObserverModel,
-            promptVersion: "general-pr-observer.v3",
+            promptVersion: "general-pr-observer.v4",
             inputFieldPolicyVersion: "general-pr-observer-fields.v1"
           }
         }

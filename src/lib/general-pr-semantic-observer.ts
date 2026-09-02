@@ -6,9 +6,10 @@ import {
   buildGeneralPrSemanticEvidenceJsonSchemaV1,
   hashGeneralPrSemanticInvocationReceiptV3,
   mergeGeneralPrSemanticStageCandidatesV1,
-  validateGeneralPrSemanticClaimCandidateV1,
+  validateGeneralPrSemanticClaimCandidateV2,
   validateGeneralPrSemanticEvidenceCandidateV1,
-  type GeneralPrSemanticClaimValidationV1,
+  type GeneralPrSemanticClaimValidationV2,
+  type GeneralPrSemanticClaimInvalidReasonV2,
   type GeneralPrSemanticEvidenceValidationV1,
   type GeneralPrSemanticInvocationReceiptV3,
   type GeneralPrSemanticProposalV2
@@ -35,7 +36,7 @@ export const GENERAL_PR_SEMANTIC_OBSERVER_MAX_SPANS = 12;
 export const GENERAL_PR_SEMANTIC_OBSERVER_MAX_EVIDENCE_ATOMS = 64;
 export const GENERAL_PR_SEMANTIC_OBSERVER_MAX_INPUT_BYTES = 12_000;
 export const GENERAL_PR_SEMANTIC_OBSERVER_MAX_OUTPUT_TOKENS = 3_200;
-export const GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TIMEOUT_MS = 8_000;
+export const GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TOTAL_BUDGET_MS = 60_000;
 const GENERAL_PR_SEMANTIC_EVIDENCE_MAX_PER_OBJECTIVE = 12;
 const GENERAL_PR_SEMANTIC_EVIDENCE_MAX_TOTAL = 64;
 
@@ -59,9 +60,9 @@ export interface GeneralPrSemanticProviderRequestV1 {
   };
 }
 
-export interface GeneralPrSemanticClaimPackageInputV1 {
-  contractVersion: "general_pr_semantic_claim.v1";
-  schemaVersion: "agentproof_general_pr_claim_observer_v1";
+export interface GeneralPrSemanticClaimPackageInputV2 {
+  contractVersion: "general_pr_semantic_claim.v2";
+  schemaVersion: "agentproof_general_pr_claim_observer_v2";
   seedHash: string;
   claimSelectionHash: string;
   coverage: GeneralPrSemanticSelectionCoverageV1;
@@ -92,12 +93,12 @@ export interface GeneralPrSemanticEvidencePackageInputV1 {
   evidenceDescriptors: GeneralPrSemanticEvidenceSelectionV1["evidenceDescriptors"];
 }
 
-export type GeneralPrSemanticObserverPackageV3 =
-  | { stage: "claim_discovery"; system: string; input: GeneralPrSemanticClaimPackageInputV1; request: GeneralPrSemanticProviderRequestV1 }
+export type GeneralPrSemanticObserverPackageV4 =
+  | { stage: "claim_discovery"; system: string; input: GeneralPrSemanticClaimPackageInputV2; request: GeneralPrSemanticProviderRequestV1 }
   | { stage: "evidence_linking"; system: string; input: GeneralPrSemanticEvidencePackageInputV1; request: GeneralPrSemanticProviderRequestV1 };
 
-export interface GeneralPrSemanticObserverProviderV3 {
-  observe: (request: GeneralPrSemanticObserverPackageV3) => Promise<unknown>;
+export interface GeneralPrSemanticObserverProviderV4 {
+  observe: (request: GeneralPrSemanticObserverPackageV4) => Promise<unknown>;
 }
 
 /** Closed, aggregate-only reason for a provider-unavailable observation. */
@@ -138,7 +139,7 @@ export interface RunGeneralPrSemanticObserverOptionsV2 {
   mode: "disabled" | "shadow" | "advisory";
   input: PullRequestInput;
   seed: GeneralPrObservationSeedV2;
-  provider?: GeneralPrSemanticObserverProviderV3;
+  provider?: GeneralPrSemanticObserverProviderV4;
   providerAvailable: boolean;
   privateRepository?: boolean;
   privateRepositoryConsent?: boolean;
@@ -180,6 +181,8 @@ export type GeneralPrSemanticObserverRunResultV3 = {
   state: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   semanticFailureStage: GeneralPrSemanticFailureStageV1 | null;
   semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[];
+  /** Private closed validator category; excluded from receipts and public projections. */
+  semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null;
   proposal: GeneralPrSemanticProposalV2 | null;
   selectionManifest: GeneralPrSemanticSelectionManifestV1 | null;
   receipt: GeneralPrSemanticInvocationReceiptV3 & { receiptHash: string };
@@ -190,7 +193,7 @@ const BASE_SYSTEM_PROMPT = [
   "Return only JSON matching the supplied schema.",
   "Use IDs and closed enum values only; never infer verification, authority, or proof."
 ].join(" ");
-const CLAIM_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT} Classify only the selected source spans and propose contiguous objective groups.`;
+const CLAIM_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT} Classify only the selected source spans. Return exactly one closed role for every span. Do not group spans and do not infer verification, implementation, test, or evidence status.`;
 const EVIDENCE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT} Link only admitted objective groups to their objective-specific allowed IDs.`;
 
 function buildClaimPackageResult(
@@ -199,7 +202,7 @@ function buildClaimPackageResult(
   modelProfile: GeneralPrSemanticObserverModelProfileV2,
   timeoutMs: number
 ): {
-  semanticPackage: Extract<GeneralPrSemanticObserverPackageV3, { stage: "claim_discovery" }> | null;
+  semanticPackage: Extract<GeneralPrSemanticObserverPackageV4, { stage: "claim_discovery" }> | null;
   selection: GeneralPrSemanticClaimSelectionV1 | null;
   failureReasons: GeneralPrSemanticPackageFailureReasonV1[];
 } {
@@ -225,12 +228,12 @@ function buildClaimPackageResult(
     return { semanticPackage: null, selection: null, failureReasons: [reason] };
   }
   const schema = buildGeneralPrSemanticClaimJsonSchemaV1(selected.selection);
-  const semanticPackage: Extract<GeneralPrSemanticObserverPackageV3, { stage: "claim_discovery" }> = {
+  const semanticPackage: Extract<GeneralPrSemanticObserverPackageV4, { stage: "claim_discovery" }> = {
     stage: "claim_discovery",
     system: CLAIM_SYSTEM_PROMPT,
     input: {
-      contractVersion: "general_pr_semantic_claim.v1",
-      schemaVersion: "agentproof_general_pr_claim_observer_v1",
+      contractVersion: "general_pr_semantic_claim.v2",
+      schemaVersion: "agentproof_general_pr_claim_observer_v2",
       seedHash: seed.seedHash,
       claimSelectionHash: selected.selection.claimSelectionHash,
       coverage: selected.selection.coverage,
@@ -256,9 +259,9 @@ export async function runGeneralPrSemanticObserverV2(
 ): Promise<GeneralPrSemanticObserverRunResultV3> {
   const now = options.clock ?? Date.now;
   const startedAt = now();
-  const timeoutMs = options.timeoutMs ?? GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TIMEOUT_MS;
-  let claimPackage: Extract<GeneralPrSemanticObserverPackageV3, { stage: "claim_discovery" }> | null = null;
-  let evidencePackage: Extract<GeneralPrSemanticObserverPackageV3, { stage: "evidence_linking" }> | null = null;
+  const timeoutMs = options.timeoutMs ?? GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TOTAL_BUDGET_MS;
+  let claimPackage: Extract<GeneralPrSemanticObserverPackageV4, { stage: "claim_discovery" }> | null = null;
+  let evidencePackage: Extract<GeneralPrSemanticObserverPackageV4, { stage: "evidence_linking" }> | null = null;
   let claimSelection: GeneralPrSemanticClaimSelectionV1 | null = null;
   let evidenceSelection: GeneralPrSemanticEvidenceSelectionV1 | null = null;
   let evidenceAttempted = false;
@@ -273,7 +276,8 @@ export async function runGeneralPrSemanticObserverV2(
     claimState: GeneralPrSemanticInvocationReceiptV3["claimState"],
     evidenceState: GeneralPrSemanticInvocationReceiptV3["evidenceState"] = "not_run",
     semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null,
-    semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = []
+    semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = [],
+    semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null = null
   ): GeneralPrSemanticObserverRunResultV3 => {
     const safeClaimSelectionHash = claimSelection ? claimReceiptSelectionHash(options.seed, claimSelection) : null;
     const receiptEvidenceSelection = evidenceAttempted ? evidenceSelection : null;
@@ -302,6 +306,7 @@ export async function runGeneralPrSemanticObserverV2(
       state,
       semanticFailureStage: state === "unavailable" ? semanticFailureStage : null,
       semanticPackageFailureReasons: state === "unavailable" && semanticFailureStage === "package" ? semanticPackageFailureReasons : [],
+      semanticClaimInvalidReason,
       proposal,
       selectionManifest: claimSelection && safeClaimSelectionHash && selectionHash
         ? buildSelectionManifest(options.seed, claimSelection, receiptEvidenceSelection, safeClaimSelectionHash, safeEvidenceSelectionHash, selectionHash, evidenceCoverage, evidenceOmissions)
@@ -323,9 +328,11 @@ export async function runGeneralPrSemanticObserverV2(
 
   const beforeClaim = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
   if (beforeClaim !== "current") return finish(beforeClaim, null, beforeClaim, "not_run", beforeClaim === "unavailable" ? "privacy" : null);
+  const claimTimeoutMs = remainingTimeoutMs(timeoutMs, startedAt, now);
+  if (claimTimeoutMs <= 0) return finish("timeout", null, "timeout");
 
   try {
-    claimOutput = await withTimeout(options.provider.observe(claimPackage), timeoutMs);
+    claimOutput = await withTimeout(options.provider.observe(withRequestTimeout(claimPackage, claimTimeoutMs)), claimTimeoutMs);
   } catch (error) {
     if (isTimeout(error)) return finish("timeout", null, "timeout");
     return finish("unavailable", null, "unavailable", "not_run", providerFailureStage(error));
@@ -334,7 +341,7 @@ export async function runGeneralPrSemanticObserverV2(
   const afterClaim = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
   if (afterClaim !== "current") return finish(afterClaim, null, afterClaim, "not_run", afterClaim === "unavailable" ? "privacy" : null);
   const claim = safelyValidateClaimOutput(claimOutput, options.seed, claimSelection);
-  if (!claim.valid) return finish("invalid", null, "invalid");
+  if (!claim.valid) return finish("invalid", null, "invalid", "not_run", null, [], claim.invalidReason);
   const claimsOnly = mergeGeneralPrSemanticStageCandidatesV1(options.seed, claim, null);
   if (!claimsOnly.valid) return finish("invalid", null, "invalid");
   const admittedGroups = claim.objectiveGroups.filter((group): group is { spanIds: string[]; disposition: "candidate" } => group.disposition === "candidate");
@@ -365,10 +372,12 @@ export async function runGeneralPrSemanticObserverV2(
   evidencePackage = buildEvidencePackage(options.seed, claimSelection, evidenceSelection, options.modelProfile, timeoutMs);
   const beforeEvidence = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
   if (beforeEvidence !== "current") return finish(beforeEvidence, null, "valid", beforeEvidence, beforeEvidence === "unavailable" ? "privacy" : null);
+  const evidenceTimeoutMs = remainingTimeoutMs(timeoutMs, startedAt, now);
+  if (evidenceTimeoutMs <= 0) return finish("valid", claimsOnly.proposal, "valid", "timeout");
 
   evidenceAttempted = true;
   try {
-    evidenceOutput = await withTimeout(options.provider.observe(evidencePackage), timeoutMs);
+    evidenceOutput = await withTimeout(options.provider.observe(withRequestTimeout(evidencePackage, evidenceTimeoutMs)), evidenceTimeoutMs);
   } catch (error) {
     return finish("valid", claimsOnly.proposal, "valid", isTimeout(error) ? "timeout" : "unavailable");
   }
@@ -389,7 +398,7 @@ function buildEvidencePackage(
   selection: GeneralPrSemanticEvidenceSelectionV1,
   modelProfile: GeneralPrSemanticObserverModelProfileV2,
   timeoutMs: number
-): Extract<GeneralPrSemanticObserverPackageV3, { stage: "evidence_linking" }> {
+): Extract<GeneralPrSemanticObserverPackageV4, { stage: "evidence_linking" }> {
   const selectedText = new Map(claimSelection.selectedSpans.map((span) => [span.spanId, span.text]));
   return {
     stage: "evidence_linking",
@@ -454,6 +463,14 @@ function providerRequest(
   };
 }
 
+function remainingTimeoutMs(totalBudgetMs: number, startedAt: number, now: () => number): number {
+  return Math.max(0, totalBudgetMs - (now() - startedAt));
+}
+
+function withRequestTimeout<T extends GeneralPrSemanticObserverPackageV4>(semanticPackage: T, timeoutMs: number): T {
+  return { ...semanticPackage, request: { ...semanticPackage.request, timeoutMs } } as T;
+}
+
 async function readCurrentPublicSubject(
   readCurrentInput: () => Promise<PullRequestInput | null>,
   expectedSeed: GeneralPrObservationSeedV2
@@ -489,18 +506,18 @@ function safelyValidateClaimOutput(
   output: unknown,
   seed: GeneralPrObservationSeedV2,
   selection: GeneralPrSemanticClaimSelectionV1
-): GeneralPrSemanticClaimValidationV1 {
+): GeneralPrSemanticClaimValidationV2 {
   try {
-    return validateGeneralPrSemanticClaimCandidateV1(output, seed, selection);
+    return validateGeneralPrSemanticClaimCandidateV2(output, seed, selection);
   } catch {
-    return { valid: false, errors: ["claim candidate validation failed"] };
+    return { valid: false, invalidReason: "root_shape_invalid", errors: ["claim candidate validation failed"] };
   }
 }
 
 function safelyValidateEvidenceOutput(
   output: unknown,
   seed: GeneralPrObservationSeedV2,
-  claim: GeneralPrSemanticClaimValidationV1,
+  claim: GeneralPrSemanticClaimValidationV2,
   selection: GeneralPrSemanticEvidenceSelectionV1
 ): GeneralPrSemanticEvidenceValidationV1 {
   try {

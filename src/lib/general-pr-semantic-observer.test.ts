@@ -1,12 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TOTAL_BUDGET_MS,
   GeneralPrSemanticProviderFailure,
   runGeneralPrSemanticObserverV2,
   type GeneralPrSemanticObserverModelProfileV2,
-  type GeneralPrSemanticObserverPackageV3
+  type GeneralPrSemanticObserverPackageV4
 } from "./general-pr-semantic-observer";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import type { PullRequestInput } from "./types";
+
+afterEach(() => vi.useRealTimers());
 
 const modelProfile: GeneralPrSemanticObserverModelProfileV2 = {
   model: "deployment-configured-model",
@@ -27,16 +30,14 @@ function input(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
   };
 }
 
-function claimCandidate(request: Extract<GeneralPrSemanticObserverPackageV3, { stage: "claim_discovery" }>, withObjective = true) {
+function claimCandidate(request: Extract<GeneralPrSemanticObserverPackageV4, { stage: "claim_discovery" }>, withObjective = true) {
   const objective = request.input.spans.find((span) => span.deterministicRole === "objective_candidate") ?? request.input.spans[0];
   if (!objective) throw new Error("claim package must contain a span");
   return {
     spanRoles: request.input.spans.map((span) => ({
       spanId: span.id,
       role: withObjective && span.id === objective.id ? "objective_candidate" as const : "supporting_context" as const,
-      abstained: false
-    })),
-    objectiveGroups: withObjective ? [{ spanIds: [objective.id], disposition: "candidate" as const }] : []
+    }))
   };
 }
 
@@ -47,11 +48,11 @@ const emptyEvidenceCandidate = {
 };
 
 function stagedProvider(options: {
-  claim?: (request: Extract<GeneralPrSemanticObserverPackageV3, { stage: "claim_discovery" }>) => unknown | Promise<unknown>;
-  evidence?: (request: Extract<GeneralPrSemanticObserverPackageV3, { stage: "evidence_linking" }>) => unknown | Promise<unknown>;
+  claim?: (request: Extract<GeneralPrSemanticObserverPackageV4, { stage: "claim_discovery" }>) => unknown | Promise<unknown>;
+  evidence?: (request: Extract<GeneralPrSemanticObserverPackageV4, { stage: "evidence_linking" }>) => unknown | Promise<unknown>;
 } = {}) {
   return {
-    observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => {
+    observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => {
       if (request.stage === "claim_discovery") return options.claim ? options.claim(request) : claimCandidate(request);
       return options.evidence ? options.evidence(request) : emptyEvidenceCandidate;
     })
@@ -153,21 +154,77 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     expect(provider.observe).toHaveBeenCalledTimes(0);
   });
 
-  it("runs claim discovery once and reports timeout without starting evidence", async () => {
+  it("does not start claim discovery when its shared budget has already elapsed", async () => {
     const request = input();
     const provider = stagedProvider({ claim: async () => new Promise(() => undefined) });
-    const result = await run(request, { provider, timeoutMs: 1 });
+    let now = 0;
+    const result = await run(request, { provider, timeoutMs: 1, clock: () => now, readCurrentInput: async () => {
+      now = 1;
+      return request;
+    } });
 
-    expect(result).toMatchObject({ state: "timeout", receipt: { claimState: "timeout", evidenceState: "not_run" } });
-    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
+    expect(result).toMatchObject({ state: "timeout", semanticClaimInvalidReason: null, receipt: { claimState: "timeout", evidenceState: "not_run" } });
+    expect(provider.observe).toHaveBeenCalledTimes(0);
+  });
+
+  it("gives the default claim call the full shared 60 second budget", async () => {
+    const provider = stagedProvider();
+
+    await run(input(), { provider, clock: () => 0 });
+
+    expect(GENERAL_PR_SEMANTIC_OBSERVER_DEFAULT_TOTAL_BUDGET_MS).toBe(60_000);
+    expect(provider.observe.mock.calls[0]?.[0].request.timeoutMs).toBe(60_000);
+  });
+
+  it("gives evidence only the time remaining after claim discovery", async () => {
+    let now = 0;
+    const provider = stagedProvider({ claim: (request) => {
+      now += 40_000;
+      return claimCandidate(request);
+    } });
+
+    await run(input(), { provider, clock: () => now });
+
+    expect(provider.observe.mock.calls.map(([request]) => request.request.timeoutMs)).toEqual([60_000, 20_000]);
+  });
+
+  it("keeps valid claims when claim discovery exhausts the shared budget", async () => {
+    let now = 0;
+    const provider = stagedProvider({ claim: (request) => {
+      now += 60_000;
+      return claimCandidate(request);
+    } });
+
+    const result = await run(input(), { provider, clock: () => now });
+
+    expect(result).toMatchObject({ state: "valid", receipt: { claimState: "valid", evidenceState: "timeout" } });
+    expect(provider.observe).toHaveBeenCalledTimes(1);
+  });
+
+  it("times out a never-settling claim exactly when the shared budget expires", async () => {
+    vi.useFakeTimers();
+    const provider = stagedProvider({ claim: async () => new Promise(() => undefined) });
+    const result = run(input(), { provider });
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(provider.observe).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(result).resolves.toMatchObject({ state: "timeout", receipt: { claimState: "timeout", evidenceState: "not_run" } });
   });
 
   it("runs claim discovery once and rejects an invalid claim without starting evidence", async () => {
     const request = input();
-    const provider = stagedProvider({ claim: async () => ({}) });
+    const provider = stagedProvider({ claim: async (claimPackage) => ({
+      spanRoles: claimPackage.input.spans.slice(1).map((span) => ({ spanId: span.id, role: "supporting_context" }))
+    }) });
     const result = await run(request, { provider });
 
-    expect(result).toMatchObject({ state: "invalid", receipt: { claimState: "invalid", evidenceState: "not_run" } });
+    expect(result).toMatchObject({
+      state: "invalid",
+      semanticClaimInvalidReason: "span_binding_invalid",
+      receipt: { claimState: "invalid", evidenceState: "not_run" }
+    });
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
   });
 
@@ -207,6 +264,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     expect(result).toMatchObject({
       state: "unavailable",
       semanticFailureStage: "provider_request",
+      semanticClaimInvalidReason: null,
       receipt: { claimState: "unavailable", evidenceState: "not_run" }
     });
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
@@ -251,8 +309,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
       claim: (claimRequest) => {
         const objective = [...claimRequest.input.spans].sort((left, right) => right.text.length - left.text.length)[0]!;
         return {
-          spanRoles: claimRequest.input.spans.map((span) => ({ spanId: span.id, role: span.id === objective.id ? "objective_candidate" as const : "supporting_context" as const, abstained: false })),
-          objectiveGroups: [{ spanIds: [objective.id], disposition: "candidate" as const }]
+          spanRoles: claimRequest.input.spans.map((span) => ({ spanId: span.id, role: span.id === objective.id ? "objective_candidate" as const : "supporting_context" as const }))
         };
       }
     });
@@ -277,6 +334,23 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     expect(result).toMatchObject({ state: "valid", receipt: { claimState: "valid", evidenceState: "valid" } });
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
     expect(result.receipt.evidenceSelectionHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("reads fresh input around each semantic stage in order", async () => {
+    const request = input();
+    const provider = stagedProvider();
+    const events: string[] = [];
+    provider.observe.mockImplementation(async (semanticPackage) => {
+      events.push(semanticPackage.stage);
+      return semanticPackage.stage === "claim_discovery" ? claimCandidate(semanticPackage) : emptyEvidenceCandidate;
+    });
+    const result = await run(request, { provider, readCurrentInput: async () => {
+      events.push("read");
+      return request;
+    } });
+
+    expect(result.state).toBe("valid");
+    expect(events).toEqual(["read", "claim_discovery", "read", "read", "evidence_linking", "read"]);
   });
 
   it.each([
@@ -367,6 +441,27 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
       }
     });
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
+  });
+
+  it("reads freshness in order and stops after post-claim head drift", async () => {
+    const request = input();
+    const provider = stagedProvider();
+    const events: string[] = [];
+    const reads = [request, input({ title: "Changed after claim" })];
+    let readIndex = 0;
+    provider.observe.mockImplementation(async (semanticPackage) => {
+      events.push(semanticPackage.stage);
+      return semanticPackage.stage === "claim_discovery" ? claimCandidate(semanticPackage) : emptyEvidenceCandidate;
+    });
+
+    const result = await run(request, { provider, readCurrentInput: async () => {
+      events.push(`read-${readIndex + 1}`);
+      return reads[readIndex++]!;
+    } });
+
+    expect(events).toEqual(["read-1", "claim_discovery", "read-2"]);
+    expect(result).toMatchObject({ state: "stale", receipt: { claimState: "stale", evidenceState: "not_run" } });
+    expect(provider.observe).toHaveBeenCalledTimes(1);
   });
 
   it("discards both stages if the current subject becomes private after evidence", async () => {

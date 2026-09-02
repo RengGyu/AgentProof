@@ -18,7 +18,7 @@ import {
 
 export const GENERAL_PR_SEMANTIC_PROPOSAL_CONTRACT_VERSION = "general_pr_semantic_proposal.v2" as const;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_SCHEMA_VERSION = "agentproof_general_pr_observer_v2" as const;
-export const GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME = "agentproof_general_pr_claim_candidate_v1" as const;
+export const GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME = "agentproof_general_pr_claim_candidate_v2" as const;
 export const GENERAL_PR_SEMANTIC_EVIDENCE_SCHEMA_NAME = "agentproof_general_pr_evidence_candidate_v1" as const;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES = 16_384;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_MAX_SPANS = 12;
@@ -31,12 +31,12 @@ const PROVIDER_ROOT_KEYS = [
   "scopeMappingProposals",
   "evidenceRelationProposals"
 ] as const;
-const SPAN_ROLE_KEYS = ["spanId", "role", "abstained"] as const;
+const SPAN_ROLE_KEYS = ["spanId", "role"] as const;
 const PROVIDER_OBJECTIVE_GROUP_KEYS = ["spanIds", "disposition"] as const;
 const PROVIDER_TEST_APPLICABILITY_KEYS = ["objectiveSpanIds", "changeClusterId", "proposal"] as const;
 const PROVIDER_SCOPE_MAPPING_KEYS = ["objectiveSpanIds", "changeClusterId", "proposal"] as const;
 const PROVIDER_EVIDENCE_RELATION_KEYS = ["objectiveSpanIds", "evidenceId", "proposal"] as const;
-const CLAIM_ROOT_KEYS = ["spanRoles", "objectiveGroups"] as const;
+const CLAIM_ROOT_KEYS = ["spanRoles"] as const;
 const EVIDENCE_ROOT_KEYS = ["testApplicabilityProposals", "scopeMappingProposals", "evidenceRelationProposals"] as const;
 const CLAIM_SELECTION_KEYS = ["version", "parentSeedHash", "claimSelectionHash", "selectedSpanIds", "selectedSpans", "coverage", "omittedReasonCounts"] as const;
 const CLAIM_SELECTED_SPAN_KEYS = ["spanId", "sourceUnitId", "authority", "sourceRole", "structuralKind", "deterministicRole", "text"] as const;
@@ -66,6 +66,18 @@ export interface GeneralPrSemanticSpanRoleV2 {
   spanId: string;
   role: GeneralPrClaimRoleV2;
   abstained: boolean;
+}
+
+export type GeneralPrSemanticClaimInvalidReasonV2 =
+  | "root_shape_invalid"
+  | "span_decision_invalid"
+  | "span_binding_invalid"
+  | "role_ceiling_violation"
+  | "output_limit_exceeded";
+
+/** Private provider response. Grouping and abstention are locally derived. */
+export interface GeneralPrSemanticClaimCandidateV2 {
+  spanRoles: Array<{ spanId: string; role: GeneralPrClaimRoleV2 }>;
 }
 
 export interface GeneralPrSemanticObjectiveGroupV2 {
@@ -146,16 +158,16 @@ export type GeneralPrSemanticProposalValidation =
   | { valid: true; proposal: GeneralPrSemanticProposalV2; errors: [] }
   | { valid: false; errors: string[] };
 
-export type GeneralPrSemanticClaimValidationV1 =
+export type GeneralPrSemanticClaimValidationV2 =
   | {
       valid: true;
       parentSeedHash: string;
       claimSelectionHash: string;
       spanRoles: GeneralPrSemanticSpanRoleV2[];
-      objectiveGroups: GeneralPrSemanticProviderCandidateV1["objectiveGroups"];
+      objectiveGroups: Array<{ spanIds: string[]; disposition: "candidate" }>;
       errors: [];
     }
-  | { valid: false; errors: string[] };
+  | { valid: false; invalidReason: GeneralPrSemanticClaimInvalidReasonV2; errors: string[] };
 
 export type GeneralPrSemanticEvidenceValidationV1 =
   | {
@@ -169,7 +181,7 @@ export type GeneralPrSemanticEvidenceValidationV1 =
     }
   | { valid: false; errors: string[] };
 
-type ValidatedClaimResultV1 = Extract<GeneralPrSemanticClaimValidationV1, { valid: true }>;
+type ValidatedClaimResultV1 = Extract<GeneralPrSemanticClaimValidationV2, { valid: true }>;
 type ValidatedEvidenceResultV1 = Extract<GeneralPrSemanticEvidenceValidationV1, { valid: true }>;
 interface ValidatedEvidenceRegistrationV1 {
   claimSnapshot: ValidatedClaimResultV1;
@@ -202,16 +214,7 @@ export function buildGeneralPrSemanticClaimJsonSchemaV1(selection: GeneralPrSema
       maxItems: spanIds.length,
       items: exactObjectSchema(SPAN_ROLE_KEYS, {
         spanId: enumSchema(spanIds),
-        role: enumSchema(ROLES),
-        abstained: { type: "boolean" }
-      })
-    },
-    objectiveGroups: {
-      type: "array",
-      maxItems: spanIds.length,
-      items: exactObjectSchema(PROVIDER_OBJECTIVE_GROUP_KEYS, {
-        spanIds: spanIdArraySchema(spanIds),
-        disposition: enumSchema(["candidate", "not_objective", "ambiguous"])
+        role: enumSchema(ROLES)
       })
     }
   });
@@ -225,31 +228,33 @@ export function buildGeneralPrSemanticEvidenceJsonSchemaV1(selection: GeneralPrS
   });
 }
 
-export function validateGeneralPrSemanticClaimCandidateV1(
+export function validateGeneralPrSemanticClaimCandidateV2(
   value: unknown,
   seed: GeneralPrObservationSeedV2,
   selection: GeneralPrSemanticClaimSelectionV1
-): GeneralPrSemanticClaimValidationV1 {
-  if (!validateGeneralPrObservationSeedV2(seed).valid) return invalidClaim("seed is invalid");
+): GeneralPrSemanticClaimValidationV2 {
+  if (!validateGeneralPrObservationSeedV2(seed).valid) return invalidClaim("span_binding_invalid", "seed is invalid");
   const selectedEntries = validateClaimSelection(seed, selection);
-  if (!selectedEntries) return invalidClaim("claim selection binding is invalid");
-  if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidClaim("claim output byte limit exceeded");
-  if (!isRecord(value) || !hasExactKeys(value, CLAIM_ROOT_KEYS) || !Array.isArray(value.spanRoles) || !Array.isArray(value.objectiveGroups)) return invalidClaim("claim candidate root shape is invalid");
+  if (!selectedEntries) return invalidClaim("span_binding_invalid", "claim selection binding is invalid");
+  if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidClaim("output_limit_exceeded", "claim output byte limit exceeded");
+  if (!isRecord(value) || !hasExactKeys(value, CLAIM_ROOT_KEYS) || !Array.isArray(value.spanRoles)) return invalidClaim("root_shape_invalid", "claim candidate root shape is invalid");
   const sourcesById = new Map(seed.sources.map((source) => [source.id, source]));
   const selectedById = new Map(selectedEntries.map((entry) => [entry.span.id, entry]));
+  const invalidReason = classifyClaimSpanRoles(value.spanRoles, selection.selectedSpanIds, selectedById, sourcesById);
+  if (invalidReason) return invalidClaim(invalidReason, "claim span decisions are invalid");
   const normalizedSelectedRoles = normalizeRoles(value.spanRoles, selection.selectedSpanIds, selectedById, sourcesById);
-  if (!normalizedSelectedRoles) return invalidClaim("claim span decisions are invalid");
-  const normalizedGroups = normalizeGroups(value.objectiveGroups, normalizedSelectedRoles, selectedById, sourcesById);
-  if (!normalizedGroups) return invalidClaim("claim objective groups are invalid");
+  if (!normalizedSelectedRoles) return invalidClaim("span_binding_invalid", "claim span decisions are invalid");
   const spanRoles = seed.spans.map((span) => normalizedSelectedRoles[span.id] ?? deterministicUnselectedRole(span));
-  const objectiveGroups = Object.values(normalizedGroups).map(({ spanIds, disposition }) => ({ spanIds, disposition }));
+  const objectiveGroups = selection.selectedSpanIds.flatMap((spanId) => normalizedSelectedRoles[spanId]?.role === "objective_candidate"
+    ? [{ spanIds: [spanId], disposition: "candidate" as const }]
+    : []);
   return registerValidatedStageResult(VALIDATED_CLAIM_RESULTS, { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, errors: [] });
 }
 
 export function validateGeneralPrSemanticEvidenceCandidateV1(
   value: unknown,
   seed: GeneralPrObservationSeedV2,
-  claim: GeneralPrSemanticClaimValidationV1,
+  claim: GeneralPrSemanticClaimValidationV2,
   selection: GeneralPrSemanticEvidenceSelectionV1
 ): GeneralPrSemanticEvidenceValidationV1 {
   const validatedClaim = VALIDATED_CLAIM_RESULTS.get(claim);
@@ -286,7 +291,7 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
 
 export function mergeGeneralPrSemanticStageCandidatesV1(
   seed: GeneralPrObservationSeedV2,
-  claim: GeneralPrSemanticClaimValidationV1,
+  claim: GeneralPrSemanticClaimValidationV2,
   evidence: GeneralPrSemanticEvidenceValidationV1 | null
 ): GeneralPrSemanticProposalValidation {
   const validatedClaim = VALIDATED_CLAIM_RESULTS.get(claim);
@@ -323,7 +328,7 @@ function validateGeneralPrSemanticProposalV2Internal(
   const spanIds = seed.spans.map((span) => span.id);
   const spansById = new Map(seed.spans.map((span, index) => [span.id, { span, index }]));
   const sourcesById = new Map(seed.sources.map((source) => [source.id, source]));
-  const normalizedRoles = normalizeRoles(candidate.spanRoles, spanIds, spansById, sourcesById);
+  const normalizedRoles = normalizeRoles(candidate.spanRoles, spanIds, spansById, sourcesById, true);
   if (!normalizedRoles) return invalid("provider span decisions are invalid");
 
   const normalizedGroups = normalizeGroups(candidate.objectiveGroups, normalizedRoles, spansById, sourcesById);
@@ -356,22 +361,42 @@ function normalizeRoles(
   values: unknown[],
   spanIds: string[],
   spansById: ReadonlyMap<string, { span: GeneralPrSemanticSpanV2; index: number }>,
-  sourcesById: ReadonlyMap<string, GeneralPrObservationSeedV2["sources"][number]>
+  sourcesById: ReadonlyMap<string, GeneralPrObservationSeedV2["sources"][number]>,
+  allowDerivedAbstained = false
 ): Record<string, GeneralPrSemanticSpanRoleV2> | null {
   if (values.length !== spanIds.length || !hasNoArrayHoles(values)) return null;
   const normalized: Record<string, GeneralPrSemanticSpanRoleV2> = {};
   for (const value of values) {
-    if (!isRecord(value) || !hasExactKeys(value, SPAN_ROLE_KEYS) || typeof value.spanId !== "string" || !isRole(value.role) || typeof value.abstained !== "boolean") return null;
+    if (!isRecord(value) || !hasExactKeys(value, allowDerivedAbstained ? ["spanId", "role", "abstained"] : SPAN_ROLE_KEYS) || typeof value.spanId !== "string" || !isRole(value.role) || (allowDerivedAbstained && value.abstained !== (value.role === "mixed_or_ambiguous"))) return null;
     if (normalized[value.spanId] || !spanIds.includes(value.spanId)) return null;
     const entry = spansById.get(value.spanId);
     const source = entry ? sourcesById.get(entry.span.sourceUnitId) : undefined;
     if (!entry || !source) return null;
-    if (value.abstained && value.role !== "mixed_or_ambiguous") return null;
     if (entry.span.deterministicRole === "template_or_process" && value.role !== "template_or_process") return null;
     if (source.roleCeiling !== "objective" && value.role === "objective_candidate") return null;
-    normalized[value.spanId] = { spanId: value.spanId, role: value.role, abstained: value.abstained };
+    normalized[value.spanId] = { spanId: value.spanId, role: value.role, abstained: value.role === "mixed_or_ambiguous" };
   }
   return spanIds.every((spanId) => normalized[spanId] !== undefined) ? normalized : null;
+}
+
+function classifyClaimSpanRoles(
+  values: unknown[],
+  spanIds: readonly string[],
+  spansById: ReadonlyMap<string, { span: GeneralPrSemanticSpanV2; index: number }>,
+  sourcesById: ReadonlyMap<string, GeneralPrObservationSeedV2["sources"][number]>
+): GeneralPrSemanticClaimInvalidReasonV2 | null {
+  if (values.length !== spanIds.length || !hasNoArrayHoles(values)) return "span_binding_invalid";
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!isRecord(value) || !hasExactKeys(value, SPAN_ROLE_KEYS) || typeof value.spanId !== "string" || !isRole(value.role)) return "span_decision_invalid";
+    if (seen.has(value.spanId) || !spanIds.includes(value.spanId)) return "span_binding_invalid";
+    seen.add(value.spanId);
+    const entry = spansById.get(value.spanId);
+    const source = entry ? sourcesById.get(entry.span.sourceUnitId) : undefined;
+    if (!entry || !source) return "span_binding_invalid";
+    if ((entry.span.deterministicRole === "template_or_process" && value.role !== "template_or_process") || (source.roleCeiling !== "objective" && value.role === "objective_candidate")) return "role_ceiling_violation";
+  }
+  return spanIds.every((spanId) => seen.has(spanId)) ? null : "span_binding_invalid";
 }
 
 function normalizeGroups(
@@ -489,7 +514,7 @@ function validateClaimSelection(seed: GeneralPrObservationSeedV2, selection: Gen
 
 function validateEvidenceSelection(
   seed: GeneralPrObservationSeedV2,
-  claim: Extract<GeneralPrSemanticClaimValidationV1, { valid: true }>,
+  claim: Extract<GeneralPrSemanticClaimValidationV2, { valid: true }>,
   selection: GeneralPrSemanticEvidenceSelectionV1
 ): EvidenceAllowedGroup[] | null {
   if (!isRecord(selection) || !hasExactKeys(selection, EVIDENCE_SELECTION_KEYS) || selection.version !== 1 || selection.policyVersion !== GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION || selection.parentSeedHash !== seed.seedHash || selection.claimSelectionHash !== claim.claimSelectionHash || !isHash(selection.evidenceSelectionHash)) return null;
@@ -673,7 +698,7 @@ function enumSchema(values: readonly unknown[]): JsonSchema { return { enum: [..
 function isObjectiveDisposition(value: unknown): value is GeneralPrSemanticObjectiveGroupV2["disposition"] { return value === "candidate" || value === "not_objective" || value === "ambiguous"; }
 function isRole(value: unknown): value is GeneralPrClaimRoleV2 { return typeof value === "string" && ROLES.includes(value as GeneralPrClaimRoleV2); }
 function invalid(error: string): GeneralPrSemanticProposalValidation { return { valid: false, errors: [error] }; }
-function invalidClaim(error: string): GeneralPrSemanticClaimValidationV1 { return { valid: false, errors: [error] }; }
+function invalidClaim(invalidReason: GeneralPrSemanticClaimInvalidReasonV2, error: string): GeneralPrSemanticClaimValidationV2 { return { valid: false, invalidReason, errors: [error] }; }
 function invalidEvidence(error: string): GeneralPrSemanticEvidenceValidationV1 { return { valid: false, errors: [error] }; }
 function isRecord(value: unknown): value is Record<string, unknown> { const prototype = value && typeof value === "object" ? Object.getPrototypeOf(value) : null; return Boolean(value) && !Array.isArray(value) && (prototype === Object.prototype || prototype === null); }
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean { const actual = Object.keys(value).sort(); const expected = [...keys].sort(); return actual.length === expected.length && actual.every((key, index) => key === expected[index]); }

@@ -9,7 +9,7 @@ import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-
 import * as semanticObserver from "./general-pr-semantic-observer";
 import type {
   GeneralPrSemanticObserverModelProfileV2,
-  GeneralPrSemanticObserverPackageV3
+  GeneralPrSemanticObserverPackageV4
 } from "./general-pr-semantic-observer";
 import type { PullRequestInput, VerificationReport } from "./types";
 
@@ -39,7 +39,7 @@ const modelProfile: GeneralPrSemanticObserverModelProfileV2 = {
   inputFieldPolicyVersion: "test-fields.v1"
 };
 
-function validProposal(request: GeneralPrSemanticObserverPackageV3) {
+function validProposal(request: GeneralPrSemanticObserverPackageV4) {
   if (request.stage === "evidence_linking") {
     return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
   }
@@ -49,9 +49,7 @@ function validProposal(request: GeneralPrSemanticObserverPackageV3) {
     spanRoles: request.input.spans.map((span) => ({
       spanId: span.id,
       role: span.id === objective.id ? "objective_candidate" as const : "supporting_context" as const,
-      abstained: false
-    })),
-    objectiveGroups: [{ spanIds: [objective.id], disposition: "candidate" as const }]
+    }))
   };
 }
 
@@ -90,6 +88,60 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     expect(JSON.stringify(result.current)).not.toContain("reset procedure");
   });
 
+  it("bypasses semantics for an explicit deterministic objective", async () => {
+    const objectiveInput = {
+      ...input,
+      title: "Return Ready when checks pass",
+      description: "The service must return Ready when checks pass."
+    };
+    const seed = buildGeneralPrObservationSeedV2(objectiveInput);
+    const provider = { observe: vi.fn(async () => ({})) };
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input: objectiveInput,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => objectiveInput,
+      modelProfile
+    });
+
+    expect(provider.observe).not.toHaveBeenCalled();
+    expect(result.semantic).toBeNull();
+    expect(result.bundle).toEqual(finalizeDeterministicGeneralPrObservationsV2(seed, null, "disabled"));
+    expect(result.bundle).toMatchObject({
+      semanticState: "disabled",
+      semanticStageDiagnostics: { claimState: "not_run", evidenceState: "not_run", providerCallCount: 0 },
+      diagnostics: { semanticAdmission: "not_needed" }
+    });
+  });
+
+  it("keeps an ineligible explicit objective on the existing observer-derived path", async () => {
+    const objectiveInput = {
+      ...input,
+      title: "Return Ready when checks pass",
+      description: "The service must return Ready when checks pass.",
+      repositoryPrivate: true
+    };
+    const seed = buildGeneralPrObservationSeedV2(objectiveInput);
+    const provider = { observe: vi.fn(async () => ({})) };
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input: objectiveInput,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider,
+      providerAvailable: true,
+      privateRepository: true,
+      readCurrentInput: async () => objectiveInput,
+      modelProfile
+    });
+
+    expect(provider.observe).not.toHaveBeenCalled();
+    expect(result.semantic).toBeNull();
+    expect(result.bundle).toMatchObject({ semanticState: "ineligible" });
+  });
+
   it("finalizes the same private hypothesis bundle in sync and worker adapters", async () => {
     const semanticInput: PullRequestInput = {
       ...input,
@@ -98,7 +150,7 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
       changedFiles: []
     };
     const seed = buildGeneralPrObservationSeedV2(semanticInput);
-    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => validProposal(request)) };
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => validProposal(request)) };
     const sync = await runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
       input: semanticInput,
@@ -138,7 +190,7 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
       changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+ Ready" }]
     };
     const seed = buildGeneralPrObservationSeedV2(semanticInput);
-    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => validProposal(request)) };
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => validProposal(request)) };
 
     const result = await advanceQueuedGeneralPrObservationV2({
       mode,
@@ -163,7 +215,7 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
       mode: "shadow",
       input,
       current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
-      provider: { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => validProposal(request)) },
+      provider: { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => validProposal(request)) },
       providerAvailable: true,
       privateRepository: false,
       readCurrentInput: async () => input,
@@ -172,9 +224,9 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     if (!baseline.semantic) throw new Error("fixture must produce an observer result");
 
     const observe = vi.spyOn(semanticObserver, "runGeneralPrSemanticObserverV2").mockImplementationOnce(async (options) => {
-      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV3);
-      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV3);
-      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV3);
+      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV4);
+      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV4);
+      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV4);
       return baseline.semantic!;
     });
     const provider = { observe: vi.fn(async () => ({})) };
@@ -215,6 +267,23 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     expect(result.bundle).toMatchObject({ semanticState: "unavailable", semanticFailureStage: "provider_request" });
   });
 
+  it("carries a closed invalid claim reason into the private worker bundle", async () => {
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider: { observe: async () => ({ spanRoles: [] }) },
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => input,
+      modelProfile
+    });
+
+    expect(result.semantic).toMatchObject({ state: "invalid", semanticClaimInvalidReason: "span_binding_invalid" });
+    expect(result.bundle).toMatchObject({ semanticState: "invalid", semanticClaimInvalidReason: "span_binding_invalid" });
+  });
+
   it("fences a stale response and does not retry a completed or exhausted job", async () => {
     const seed = buildGeneralPrObservationSeedV2(input);
     const stale = await advanceQueuedGeneralPrObservationV2({
@@ -245,7 +314,7 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     };
     const seed = buildGeneralPrObservationSeedV2(semanticInput);
     const provider = {
-      observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => {
+      observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => {
         if (request.stage === "evidence_linking") throw new Error("provider unavailable");
         return validProposal(request);
       })

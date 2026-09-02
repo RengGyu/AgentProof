@@ -9,7 +9,7 @@ import { deriveGeneralPrObjectiveGroupIdV2, type GeneralPrSemanticProposalV2 } f
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import type {
   GeneralPrSemanticObserverModelProfileV2,
-  GeneralPrSemanticObserverPackageV3
+  GeneralPrSemanticObserverPackageV4
 } from "./general-pr-semantic-observer";
 import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 
@@ -42,7 +42,7 @@ const modelProfile: GeneralPrSemanticObserverModelProfileV2 = {
 function semanticProviderCandidate(
   observationSeed: ReturnType<typeof buildGeneralPrObservationSeedV2>,
   sourceKind: "linked_issue" | "pr_title" | "pr_body",
-  request: GeneralPrSemanticObserverPackageV3
+  request: GeneralPrSemanticObserverPackageV4
 ) {
   const targetSpan = observationSeed.spans.find((span) => (
     observationSeed.sources.find((source) => source.id === span.sourceUnitId)?.kind === sourceKind
@@ -63,9 +63,7 @@ function semanticProviderCandidate(
     spanRoles: request.input.spans.map((span) => ({
       spanId: span.id,
       role: span.id === targetSpan.id ? "objective_candidate" : "supporting_context",
-      abstained: false
-    })),
-    objectiveGroups: [{ spanIds: [targetSpan.id], disposition: "candidate" as const }]
+    }))
   };
 }
 
@@ -97,6 +95,31 @@ function semanticCandidateProposal(
 }
 
 describe("runGeneralPrObservationNowV2", () => {
+  it("retains a claim-invalid reason only for invalid semantic state", () => {
+    const observationSeed = buildGeneralPrObservationSeedV2(input);
+
+    expect(finalizeDeterministicGeneralPrObservationsV2(
+      observationSeed,
+      null,
+      "invalid",
+      null,
+      [],
+      undefined,
+      undefined,
+      "span_binding_invalid"
+    ).semanticClaimInvalidReason).toBe("span_binding_invalid");
+    expect(finalizeDeterministicGeneralPrObservationsV2(
+      observationSeed,
+      null,
+      "valid",
+      null,
+      [],
+      undefined,
+      undefined,
+      "span_binding_invalid"
+    ).semanticClaimInvalidReason).toBeNull();
+  });
+
   it("returns the exact deterministic report when the feature is disabled", async () => {
     const generateReport = vi.fn(() => report);
     const result = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("disabled"), input, generateReport, validateDeterministicReport: () => true });
@@ -110,11 +133,11 @@ describe("runGeneralPrObservationNowV2", () => {
     const result = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"), input, generateReport: () => report, validateDeterministicReport: () => true });
 
     expect(result.report).toBe(report);
-    expect(result.bundle).toMatchObject({ version: 2, semanticState: "unavailable" });
+    expect(result.bundle).toMatchObject({ version: 2, semanticState: "disabled" });
     expect(JSON.stringify(result.bundle)).not.toContain("Return Ready when checks pass");
   });
 
-  it("adds only a bounded companion assessment in advisory mode without changing strict requirement status", async () => {
+  it("bypasses semantics for an explicit deterministic objective without changing the advisory assessment", async () => {
     const v2Report = {
       ...report,
       reportSchemaVersion: "verification-report.v2",
@@ -136,7 +159,19 @@ describe("runGeneralPrObservationNowV2", () => {
       }
     });
 
-    expect(provider.observe).toHaveBeenCalledTimes(1);
+    const deterministicBundle = finalizeDeterministicGeneralPrObservationsV2(
+      buildGeneralPrObservationSeedV2(input),
+      null,
+      "disabled"
+    );
+
+    expect(provider.observe).not.toHaveBeenCalled();
+    expect(result.bundle).toEqual(deterministicBundle);
+    expect(result.bundle).toMatchObject({
+      semanticState: "disabled",
+      semanticStageDiagnostics: { claimState: "not_run", evidenceState: "not_run", providerCallCount: 0 },
+      diagnostics: { semanticAdmission: "not_needed" }
+    });
     expect(result.report).not.toBe(v2Report);
     expect(JSON.stringify(result.report.requirements)).toBe(JSON.stringify(v2Report.requirements));
     expect((result.report as VerificationReportV2).generalPrAssessmentSummary).toMatchObject({
@@ -167,7 +202,7 @@ describe("runGeneralPrObservationNowV2", () => {
       changedFiles: [{ path: "src/status.ts", status: "modified" as const, patch: "+ return Ready;" }]
     };
     const observationSeed = buildGeneralPrObservationSeedV2(semanticInput);
-    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => semanticProviderCandidate(observationSeed, "pr_title", request)) };
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => semanticProviderCandidate(observationSeed, "pr_title", request)) };
     const result = await runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
       input: semanticInput,
@@ -244,6 +279,8 @@ describe("runGeneralPrObservationNowV2", () => {
 
     expect(unavailable.bundle?.diagnostics).toMatchObject({ sourceCollection: "available", deterministicAdmission: "no_candidate", semanticAdmission: "unavailable" });
     expect(invalid.bundle?.diagnostics).toMatchObject({ semanticAdmission: "invalid" });
+    expect(invalid.bundle?.semanticClaimInvalidReason).toBe("root_shape_invalid");
+    expect(JSON.stringify(invalid.report)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason/);
     expect(stale.bundle?.diagnostics).toMatchObject({ semanticAdmission: "stale" });
     expect(staleProvider.observe).not.toHaveBeenCalled();
     expect(admitted.bundle?.diagnostics).toMatchObject({
@@ -261,7 +298,7 @@ describe("runGeneralPrObservationNowV2", () => {
       verificationContract: { state: "absent" },
       requirements: [{ requirementId: "req_1", status: "unclear" }]
     } as unknown as VerificationReportV2;
-    const run = (provider: { observe: (request: GeneralPrSemanticObserverPackageV3) => Promise<unknown> }) => runGeneralPrObservationNowV2({
+  const run = (provider: { observe: (request: GeneralPrSemanticObserverPackageV4) => Promise<unknown> }) => runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
       input: semanticInput,
       generateReport: () => v2Report,
@@ -271,7 +308,7 @@ describe("runGeneralPrObservationNowV2", () => {
 
     const empty = await run({
       observe: async (request) => request.stage === "claim_discovery"
-        ? { spanRoles: request.input.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })), objectiveGroups: [] }
+        ? { spanRoles: request.input.spans.map((span) => ({ spanId: span.id, role: "supporting_context" })) }
         : { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }
     });
     const invalid = await run({ observe: async () => ({ spanRoles: [], objectiveGroups: undefined }) });
@@ -302,7 +339,7 @@ describe("runGeneralPrObservationNowV2", () => {
       }))
     };
     const seed = buildGeneralPrObservationSeedV2(semanticInput);
-    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => semanticProviderCandidate(seed, "pr_title", request)) };
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => semanticProviderCandidate(seed, "pr_title", request)) };
     const result = await runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1(mode),
       input: semanticInput,
@@ -340,7 +377,7 @@ describe("runGeneralPrObservationNowV2", () => {
       requirements: [{ requirementId: "req_1", status: "unclear", evidence: ["baseline"] }]
     } as unknown as VerificationReportV2;
     const provider = {
-      observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => {
+      observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => {
         if (request.stage === "evidence_linking") throw new Error("stage B unavailable");
         return semanticProviderCandidate(seed, "pr_title", request);
       })

@@ -1,13 +1,14 @@
 import {
   runGeneralPrSemanticObserverV2,
   type GeneralPrSemanticObserverModelProfileV2,
-  type GeneralPrSemanticObserverProviderV3,
+  type GeneralPrSemanticObserverProviderV4,
   type GeneralPrSemanticObserverRunResultV3
 } from "./general-pr-semantic-observer";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import {
   buildGeneralPrSemanticAggregateDiagnosticsV1,
   finalizeDeterministicGeneralPrObservationsV2,
+  isGeneralPrSemanticObserverEligibleV2,
   type GeneralPrObservationBundleV2,
   type GeneralPrSemanticProviderCallCountV1
 } from "./general-pr-observation-service";
@@ -15,7 +16,7 @@ import type { PullRequestInput } from "./types";
 
 const DEFAULT_MODEL_PROFILE: GeneralPrSemanticObserverModelProfileV2 = {
   model: "deployment-unconfigured",
-  promptVersion: "general-pr-observer.v3",
+  promptVersion: "general-pr-observer.v4",
   inputFieldPolicyVersion: "general-pr-observer-fields.v1"
 };
 
@@ -35,7 +36,7 @@ export interface AdvanceQueuedGeneralPrObservationOptionsV2 {
   mode: "disabled" | "shadow" | "advisory";
   input: PullRequestInput;
   current: QueuedGeneralPrObservationV2;
-  provider?: GeneralPrSemanticObserverProviderV3;
+  provider?: GeneralPrSemanticObserverProviderV4;
   providerAvailable: boolean;
   privateRepository?: boolean;
   privateRepositoryConsent?: boolean;
@@ -85,6 +86,25 @@ export async function advanceQueuedGeneralPrObservationV2(
     };
   }
 
+  if (!isGeneralPrSemanticObserverEligibleV2(options.input)) {
+    return {
+      status: "completed",
+      current: { ...options.current, attempt: 1, status: "completed" },
+      bundle: finalizeDeterministicGeneralPrObservationsV2(seed, null, "ineligible"),
+      semantic: null
+    };
+  }
+
+  const deterministicBundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "disabled");
+  if (hasExplicitDeterministicObjective(deterministicBundle)) {
+    return {
+      status: "completed",
+      current: { ...options.current, attempt: 1, status: "completed" },
+      bundle: deterministicBundle,
+      semantic: null
+    };
+  }
+
   let providerCallCount: GeneralPrSemanticProviderCallCountV1 = 0;
   const configuredProvider = options.provider;
   const semantic = await runGeneralPrSemanticObserverV2({
@@ -125,8 +145,13 @@ export async function advanceQueuedGeneralPrObservationV2(
       semantic.semanticFailureStage,
       semantic.semanticPackageFailureReasons,
       aggregate.stageDiagnostics,
-      aggregate.omittedReasonCounts
+      aggregate.omittedReasonCounts,
+      semantic.semanticClaimInvalidReason
     ),
     semantic
   };
+}
+
+function hasExplicitDeterministicObjective(bundle: GeneralPrObservationBundleV2): boolean {
+  return bundle.objectives.some((objective) => objective.admissionBasis === "explicit_structure");
 }

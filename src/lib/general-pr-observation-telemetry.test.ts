@@ -34,6 +34,7 @@ const bundle: GeneralPrObservationBundleV2 = {
   }],
   semanticState: "valid",
   semanticFailureStage: null,
+  semanticClaimInvalidReason: "span_binding_invalid",
   semanticPackageFailureReasons: ["span_limit_exceeded"],
   semanticStageDiagnostics: {
     version: 1,
@@ -102,6 +103,8 @@ describe("general PR observation telemetry", () => {
     expect(serialized).not.toContain(bundle.seedHash);
     expect(serialized).not.toContain("sourceSpanRefs");
     expect(serialized).not.toContain("provider output");
+    expect(serialized).not.toContain("claimInvalidReason");
+    expect(serialized).not.toContain("semanticClaimInvalidReason");
   });
 
   it("projects only closed stage aggregates across the operator boundary", () => {
@@ -115,6 +118,7 @@ describe("general PR observation telemetry", () => {
       evidenceCoverage: "complete",
       providerCallCount: 2,
       selectedCountBuckets: { sourceSpans: "9_12", evidenceCandidates: "17_32" },
+      claimInvalidReason: "span_binding_invalid",
       semanticPackageFailureReasons: ["span_limit_exceeded"],
       omittedReasonCounts: {
         spanBudget: 3,
@@ -125,6 +129,7 @@ describe("general PR observation telemetry", () => {
       }
     });
     expect(Object.keys(diagnostics).sort()).toEqual([
+      "claimInvalidReason",
       "claimState",
       "evidenceCoverage",
       "evidenceState",
@@ -173,6 +178,7 @@ describe("general PR observation telemetry", () => {
       evidenceCoverage: null,
       providerCallCount: 0,
       selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
+      claimInvalidReason: null,
       semanticPackageFailureReasons: [],
       omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
     });

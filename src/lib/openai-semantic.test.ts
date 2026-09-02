@@ -11,7 +11,7 @@ import {
 } from "./openai-semantic";
 import { extractRequirementSpanSeed } from "./extractors";
 import {
-  type GeneralPrSemanticObserverPackageV3
+  type GeneralPrSemanticObserverPackageV4
 } from "./general-pr-semantic-observer";
 import {
   GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME,
@@ -46,6 +46,22 @@ describe("OpenAI semantic adapter", () => {
       text: { format: { type: "json_schema", strict: true, name: semanticPackage.request.responseFormat.name } }
     });
     expect(body.text.format.schema).toEqual(semanticPackage.request.responseFormat.schema);
+    timeoutSpy.mockRestore();
+  });
+
+  it("passes a package's remaining 20 second timeout to AbortSignal without retention", async () => {
+    const semanticPackage = { ...stagedSemanticPackages()[1]!, request: { ...stagedSemanticPackages()[1]!.request, timeoutMs: 20_000 } };
+    const fetchMock = vi.fn(async () => Response.json({ output_text: "{}" }));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+
+    await submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(20_000);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).store).toBe(false);
     timeoutSpy.mockRestore();
   });
 
@@ -666,14 +682,14 @@ describe("OpenAI semantic adapter", () => {
   );
 });
 
-function stagedSemanticPackages(): GeneralPrSemanticObserverPackageV3[] {
+function stagedSemanticPackages(): GeneralPrSemanticObserverPackageV4[] {
   return [
     {
       stage: "claim_discovery",
       system: "claim system",
       input: {
-        contractVersion: "general_pr_semantic_claim.v1",
-        schemaVersion: "agentproof_general_pr_claim_observer_v1",
+        contractVersion: "general_pr_semantic_claim.v2",
+        schemaVersion: "agentproof_general_pr_claim_observer_v2",
         seedHash: "a".repeat(64),
         claimSelectionHash: "b".repeat(64),
         coverage: "complete",

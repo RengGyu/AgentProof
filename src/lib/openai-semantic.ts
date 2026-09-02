@@ -10,7 +10,7 @@ import { extractOpenAIResponseText } from "./openai-verifier";
 import { HYBRID_PLANNER_MAX_OUTPUT_BYTES } from "./hybrid-planner";
 import {
   GeneralPrSemanticProviderFailure,
-  type GeneralPrSemanticObserverPackageV3
+  type GeneralPrSemanticObserverPackageV4
 } from "./general-pr-semantic-observer";
 import { redactSecrets } from "./redact";
 import type {
@@ -66,7 +66,7 @@ export interface OpenAISemanticResult {
 
 /** Sends the already bounded observer package; validation remains with the observer. */
 export async function submitGeneralPrSemanticObservationWithOpenAI(
-  semanticPackage: GeneralPrSemanticObserverPackageV3,
+  semanticPackage: GeneralPrSemanticObserverPackageV4,
   options: Pick<OpenAISemanticOptions, "apiKey" | "fetchFn">
 ): Promise<unknown> {
   try {

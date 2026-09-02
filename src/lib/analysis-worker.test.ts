@@ -1896,7 +1896,7 @@ describe("analysis worker preflight", () => {
       expect(observerCalls.map(([, init]) => {
         const body = JSON.parse(String(init?.body));
         return JSON.parse(body.input[1].content[0].text).contractVersion;
-      })).toEqual(["general_pr_semantic_claim.v1", "general_pr_semantic_evidence.v1"]);
+      })).toEqual(["general_pr_semantic_claim.v2", "general_pr_semantic_evidence.v1"]);
       expect(serialized).not.toContain("ledgerDigest");
       expect(serialized).not.toContain("generalPrObservation");
       const observationResult = await observationSpy.mock.results.at(-1)?.value;
@@ -3019,10 +3019,8 @@ function validGeneralPrObserverCandidate(init?: RequestInit) {
   return {
     spanRoles: observerInput.spans!.map((span) => ({
       spanId: span.id,
-      role: span.id === objective.id ? "objective_candidate" : "supporting_context",
-      abstained: false
-    })),
-    objectiveGroups: [{ spanIds: [objective.id], disposition: "candidate" }]
+      role: span.id === objective.id ? "objective_candidate" : "supporting_context"
+    }))
   };
 }
 
