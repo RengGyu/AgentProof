@@ -76,6 +76,33 @@ describe("build-general-pr-observation-seal", () => {
       const driftRelease = runRelease(root, "drift", manifestPath, policyPath, calibrationScore.path, driftScore.path);
       assert.equal(driftRelease.child.status, 1);
       assert.deepEqual(driftRelease.value, { version: 1, status: "NO_GO", reasons: ["selection_policy_binding_mismatch"] });
+
+      const substitutedSelectionPolicy = {
+        version: 1,
+        policyVersion: "general-pr-claim-evidence-selection.v1",
+        claim: { maxSpans: 1, maxInputBytes: 1 },
+        evidence: { maxPerObjective: 1, maxTotal: 1, maxInputBytes: 1 }
+      };
+      const substitutedSelectionPolicyHash = hash(stableJson({
+        domain: "agentproof.general-pr.selection-policy.v1",
+        policy: substitutedSelectionPolicy
+      }));
+      const substitutedPolicyPath = writeJson(root, "substituted-policy.json", {
+        ...releasePolicy(manifest),
+        approvedSelectionPolicy: substitutedSelectionPolicy,
+        approvedSelectionPolicyHash: substitutedSelectionPolicyHash
+      });
+      const substitutedCalibrationSeal = runSeal(root, "substituted-calibration", calibrationPath, holdoutPath, liveSmokePath, substitutedSelectionPolicyHash);
+      const substitutedHoldoutSeal = runSeal(root, "substituted-holdout", holdoutPath, calibrationPath, liveSmokePath, substitutedSelectionPolicyHash);
+      assert.equal(substitutedCalibrationSeal.child.status, 0, substitutedCalibrationSeal.child.stderr);
+      assert.equal(substitutedHoldoutSeal.child.status, 0, substitutedHoldoutSeal.child.stderr);
+      const substitutedCalibrationScore = runScore(root, "substituted-calibration", calibrationPath, holdoutPath, liveSmokePath, substitutedCalibrationSeal.path, manifestPath, calibration, substitutedCalibrationSeal.value, manifest);
+      const substitutedHoldoutScore = runScore(root, "substituted-holdout", holdoutPath, calibrationPath, liveSmokePath, substitutedHoldoutSeal.path, manifestPath, holdout, substitutedHoldoutSeal.value, manifest);
+      assert.equal(substitutedCalibrationScore.child.status, 0, substitutedCalibrationScore.child.stderr);
+      assert.equal(substitutedHoldoutScore.child.status, 0, substitutedHoldoutScore.child.stderr);
+      const substitutedRelease = runRelease(root, "substituted", manifestPath, substitutedPolicyPath, substitutedCalibrationScore.path, substitutedHoldoutScore.path);
+      assert.equal(substitutedRelease.child.status, 1);
+      assert.deepEqual(substitutedRelease.value, { version: 1, status: "NO_GO", reasons: ["release_inputs_invalid"] });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -285,4 +285,30 @@ describe("general PR observation release evaluator", () => {
     assert.deepEqual(calibrationMismatch, { status: "NO_GO", reasons: ["selection_policy_binding_mismatch"] });
     assert.deepEqual(bothUnapproved, { status: "NO_GO", reasons: ["selection_policy_binding_mismatch"] });
   });
+
+  it("rejects a self-consistent caller-substituted policy even when both cohorts use it", () => {
+    const substitutedSelectionPolicy = {
+      version: 1,
+      policyVersion: "general-pr-claim-evidence-selection.v1",
+      claim: { maxSpans: 1, maxInputBytes: 1 },
+      evidence: { maxPerObjective: 1, maxTotal: 1, maxInputBytes: 1 }
+    };
+    const substitutedSelectionPolicyHash = hash(stableJson({
+      domain: "agentproof.general-pr.selection-policy.v1",
+      policy: substitutedSelectionPolicy
+    }));
+    const substitutedPolicy = {
+      ...policy,
+      approvedSelectionPolicy: substitutedSelectionPolicy,
+      approvedSelectionPolicyHash: substitutedSelectionPolicyHash
+    };
+
+    assert.deepEqual(evaluateGeneralPrObservationReleaseV1({
+      manifest,
+      policy: substitutedPolicy,
+      candidateSha,
+      calibrationSeal: seal("calibration", 60, { selectionPolicyHash: substitutedSelectionPolicyHash }),
+      holdoutSeal: seal("holdout", 60, { selectionPolicyHash: substitutedSelectionPolicyHash })
+    }), { status: "NO_GO", reasons: ["release_inputs_invalid"] });
+  });
 });

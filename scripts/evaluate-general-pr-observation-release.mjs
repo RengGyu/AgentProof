@@ -1,5 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import {
+  GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1,
+  GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_V1
+} from "./general-pr-observation-selection-policy-anchor.mjs";
 
 const REQUIRED_HARD_GATES = [
   "zero_false_contract_supported",
@@ -40,7 +44,9 @@ export function evaluateGeneralPrObservationReleaseV1({ manifest, policy, calibr
   if (!sameJson(manifest.featurePolicy, policy.requiredFeaturePolicy)) reasons.push("feature_policy_mismatch");
   if (calibrationSeal.scoredCandidateManifestHash !== digest(manifest) || holdoutSeal.scoredCandidateManifestHash !== digest(manifest) || calibrationSeal.candidateSha !== candidateSha || holdoutSeal.candidateSha !== candidateSha) reasons.push("candidate_binding_mismatch");
   if (calibrationSeal.cohortPartitionWitnessHash !== holdoutSeal.cohortPartitionWitnessHash) reasons.push("cohort_partition_mismatch");
-  if (calibrationSeal.selectionPolicyHash !== holdoutSeal.selectionPolicyHash || calibrationSeal.selectionPolicyHash !== policy.approvedSelectionPolicyHash) reasons.push("selection_policy_binding_mismatch");
+  if (calibrationSeal.selectionPolicyHash !== holdoutSeal.selectionPolicyHash ||
+    calibrationSeal.selectionPolicyHash !== GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 ||
+    policy.approvedSelectionPolicyHash !== GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1) reasons.push("selection_policy_binding_mismatch");
   if (calibrationSeal.caseCount < policy.minimumCalibrationCases || holdoutSeal.caseCount < policy.minimumHoldoutCases) reasons.push("insufficient_independent_denominator");
   if (!policy.hardGates.every((gate) => calibrationSeal.score.hardGates[gate] === 0 && holdoutSeal.score.hardGates[gate] === 0)) reasons.push("hard_gate_failed");
   const qualityState = qualityGateState(APPROVED_QUALITY_THRESHOLDS, calibrationSeal.score.quality, holdoutSeal.score.quality);
@@ -78,6 +84,8 @@ function isPolicy(value) {
   return isRecord(value) && value.version === 1 && Number.isSafeInteger(value.minimumCalibrationCases) && value.minimumCalibrationCases > 0 &&
     Number.isSafeInteger(value.minimumHoldoutCases) && value.minimumHoldoutCases > 0 && isApprovedSelectionPolicy(value.approvedSelectionPolicy) &&
     isHash(value.approvedSelectionPolicyHash) && value.approvedSelectionPolicyHash === digest({ domain: "agentproof.general-pr.selection-policy.v1", policy: value.approvedSelectionPolicy }) &&
+    value.approvedSelectionPolicyHash === GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_HASH_V1 &&
+    sameJson(value.approvedSelectionPolicy, GENERAL_PR_OBSERVATION_APPROVED_SELECTION_POLICY_V1) &&
     isRecord(value.requiredFeaturePolicy) &&
     Array.isArray(value.hardGates) && value.hardGates.length === new Set(value.hardGates).size &&
     value.hardGates.every((item) => typeof item === "string") && REQUIRED_HARD_GATES.every((gate) => value.hardGates.includes(gate)) &&
