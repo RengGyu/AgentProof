@@ -20,6 +20,7 @@ const DEFAULT_MAX_TOTAL = 64;
 const DEFAULT_MAX_INPUT_BYTES = 12_000;
 const RRF_K = 60;
 const EVIDENCE_KINDS: GeneralPrSemanticEvidenceKindV1[] = ["change", "test_artifact", "check", "execution"];
+const UNSAFE_URL_LIKE_PATTERN = /(?:\b(?:https?|ftps?|file|ssh|git|ws|wss|s3|mailto|data|javascript):[^\s]+|\b[a-z][a-z0-9+.-]{1,31}:[^\s]*[\/@][^\s]*|\bwww\.[^\s]+)/iu;
 
 export type GeneralPrSemanticEvidenceKindV1 = GeneralPrEvidenceAtomV2["kind"];
 
@@ -59,6 +60,12 @@ export interface GeneralPrSemanticEvidenceSelectionOmittedReasonCountsV1 {
 
 export interface GeneralPrSemanticEvidenceSelectionV1 {
   version: 1;
+  policyVersion: typeof GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION;
+  limits: {
+    maxPerObjective: number;
+    maxTotal: number;
+    maxInputBytes: number;
+  };
   parentSeedHash: string;
   claimSelectionHash: string;
   evidenceSelectionHash: string;
@@ -92,6 +99,12 @@ export function generalPrSemanticRelationPriorityV1(
   return null;
 }
 
+export function computeGeneralPrSemanticEvidenceSelectionHashV1(
+  selection: Omit<GeneralPrSemanticEvidenceSelectionV1, "evidenceSelectionHash">
+): string {
+  return digest({ domain: "agentproof.general-pr.evidence-selection.v1", selection });
+}
+
 export function selectGeneralPrSemanticEvidenceV1(input: {
   pullRequest: PullRequestInput;
   seed: GeneralPrObservationSeedV2;
@@ -112,7 +125,7 @@ export function selectGeneralPrSemanticEvidenceV1(input: {
   const maxPerObjective = boundedBudget(input.maxPerObjective, DEFAULT_MAX_PER_OBJECTIVE, DEFAULT_MAX_PER_OBJECTIVE);
   const maxTotal = boundedBudget(input.maxTotal, DEFAULT_MAX_TOTAL, DEFAULT_MAX_TOTAL);
   const maxInputBytes = boundedBudget(input.maxInputBytes, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_INPUT_BYTES);
-  const omittedReasonCounts = emptyOmissionCounts();
+  const omittedReasonCounts = { ...emptyOmissionCounts(), unsafeDescriptor: catalogs.unsafeDescriptorCount };
   const candidates = relationCandidates(catalogs);
   const selectedGroups: SelectedObjectiveGroup[] = [];
   const globalIds = new Set<string>();
@@ -183,6 +196,7 @@ function validateClaimBinding(
   selection: GeneralPrSemanticClaimSelectionV1,
   objectiveGroups: Array<{ spanIds: string[]; disposition: "candidate" }>
 ): string[] | null {
+  if (!Array.isArray(objectiveGroups) || objectiveGroups.length === 0) return null;
   if (selection.version !== 1 || selection.parentSeedHash !== seed.seedHash || !isHash(selection.claimSelectionHash)) return null;
   const { claimSelectionHash, ...unsigned } = selection;
   if (digest({ domain: "agentproof.general-pr.claim-selection.v1", policyVersion: GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION, selection: unsigned }) !== claimSelectionHash) return null;
@@ -252,24 +266,39 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
 
   const exactSeedHead = Boolean(seed.headSha && seed.testedSubject.kind === "head" && seed.testedSubject.sha === seed.headSha);
   const evidenceDescriptors: GeneralPrSemanticEvidenceDescriptorV1[] = [];
+  let unsafeDescriptorCount = 0;
   for (let index = 0; index < seed.changeFacts.length; index += 1) {
     const fact = seed.changeFacts[index]!;
     const atom = changeAtoms[index]!;
     if (!verifyChangeAtom(atom, fact, expectedSubjectDigest)) return null;
-    evidenceDescriptors.push(evidenceDescriptor(atom, fact, pullRequest.changedFiles[index], exactSeedHead ? "exact_head" : subjectBindingFor(seed), "observation_only"));
+    const file = pullRequest.changedFiles[index];
+    if (hasUnsafeFileDescriptorSource(file)) {
+      unsafeDescriptorCount += 1;
+      continue;
+    }
+    evidenceDescriptors.push(evidenceDescriptor(atom, fact, file, exactSeedHead ? "exact_head" : subjectBindingFor(seed), "observation_only"));
   }
   for (let index = 0; index < seed.testArtifacts.length; index += 1) {
     const artifact = seed.testArtifacts[index]!;
     const atom = testAtoms[index]!;
     const owner = factByRef.get(artifact.evidenceRef);
     if (!owner || !verifyTestAtom(atom, artifact, expectedSubjectDigest)) return null;
-    evidenceDescriptors.push(evidenceDescriptor(atom, owner.fact, pullRequest.changedFiles[owner.index], exactSeedHead ? "exact_head" : subjectBindingFor(seed), "changed_artifact"));
+    const file = pullRequest.changedFiles[owner.index];
+    if (hasUnsafeFileDescriptorSource(file)) {
+      unsafeDescriptorCount += 1;
+      continue;
+    }
+    evidenceDescriptors.push(evidenceDescriptor(atom, owner.fact, file, exactSeedHead ? "exact_head" : subjectBindingFor(seed), "changed_artifact"));
   }
   for (let index = 0; index < pullRequest.checks.length; index += 1) {
     const check = pullRequest.checks[index]!;
     const atom = checkAtoms[index]!;
     const execution = seed.executions[index]!;
     if (!verifyCheckAtom(atom, check, index, expectedSubjectDigest)) return null;
+    if (hasUnsafeUrlLikeValue(check.name)) {
+      unsafeDescriptorCount += 1;
+      continue;
+    }
     const exact = exactSeedHead && execution.subjectKind === "head" && execution.subjectSha === seed.headSha && execution.headSha === seed.headSha && execution.subjectContextDigest !== null;
     evidenceDescriptors.push({
       evidenceId: atom.id,
@@ -288,6 +317,10 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
     const atom = executionAtoms[index]!;
     const check = pullRequest.checks[index]!;
     if (!verifyExecutionAtom(atom, execution, index, expectedSubjectDigest)) return null;
+    if (hasUnsafeUrlLikeValue(check.name)) {
+      unsafeDescriptorCount += 1;
+      continue;
+    }
     const exact = exactSeedHead && execution.subjectKind === "head" && execution.subjectSha === seed.headSha && execution.headSha === seed.headSha && execution.subjectContextDigest !== null;
     evidenceDescriptors.push({
       evidenceId: atom.id,
@@ -304,6 +337,10 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
   const changeClusterDescriptors: GeneralPrSemanticChangeClusterDescriptorV1[] = [];
   for (const cluster of seed.changeClusters) {
     const members = cluster.fileRefs.map((ref) => factByRef.get(ref)!);
+    if (members.some((member) => hasUnsafeFileDescriptorSource(pullRequest.changedFiles[member.index]))) {
+      unsafeDescriptorCount += 1;
+      continue;
+    }
     const relationBasis = cluster.formationBasis === "static_relation" ? "released_static_relation"
       : cluster.formationBasis === "build_relation" ? "released_build_relation"
       : cluster.formationBasis === "rename" ? "rename"
@@ -319,7 +356,7 @@ function buildDescriptorCatalogs(pullRequest: PullRequestInput, seed: GeneralPrO
       relationBasis
     });
   }
-  return { evidenceDescriptors, changeClusterDescriptors };
+  return { evidenceDescriptors, changeClusterDescriptors, unsafeDescriptorCount };
 }
 
 function evidenceDescriptor(
@@ -395,23 +432,19 @@ function materializeSelection(
   }));
   const changeClusterDescriptors = catalogs.changeClusterDescriptors.filter((descriptor) => selectedIds.has(descriptor.changeClusterId));
   const evidenceDescriptors = catalogs.evidenceDescriptors.filter((descriptor) => selectedIds.has(descriptor.evidenceId));
-  const hashInput = {
-    parentSeedHash: seed.seedHash,
-    claimSelectionHash: claimSelection.claimSelectionHash,
-    objectiveGroups,
-    limits: { maxPerObjective, maxTotal, maxInputBytes }
-  };
-  return {
+  const unsigned: Omit<GeneralPrSemanticEvidenceSelectionV1, "evidenceSelectionHash"> = {
     version: 1,
+    policyVersion: GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION,
+    limits: { maxPerObjective, maxTotal, maxInputBytes },
     parentSeedHash: seed.seedHash,
     claimSelectionHash: claimSelection.claimSelectionHash,
-    evidenceSelectionHash: digest({ domain: "agentproof.general-pr.evidence-selection.v1", policyVersion: GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION, selection: hashInput }),
     objectiveGroups,
     changeClusterDescriptors,
     evidenceDescriptors,
     coverage: coverageFor(seed, omittedReasonCounts),
     omittedReasonCounts: { ...omittedReasonCounts }
   };
+  return { ...unsigned, evidenceSelectionHash: computeGeneralPrSemanticEvidenceSelectionHashV1(unsigned) };
 }
 
 function fileSketchInputs(file: ChangedFile | undefined): string[] {
@@ -435,7 +468,7 @@ function tokenSketch(...inputs: string[]): string[] {
     let safe: string;
     try {
       safe = redactSecrets(input)
-        .replace(/https?:\/\/[^\s]+/giu, " ")
+        .replace(new RegExp(UNSAFE_URL_LIKE_PATTERN.source, "giu"), " ")
         .replace(/[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[\p{L}]{2,}/giu, " ")
         .replace(/\b[a-f0-9]{40,64}\b/giu, " ")
         .normalize("NFKC")
@@ -453,6 +486,14 @@ function tokenSketch(...inputs: string[]): string[] {
     }
   }
   return tokens;
+}
+
+function hasUnsafeFileDescriptorSource(file: ChangedFile | undefined): boolean {
+  return fileSketchInputs(file).some(hasUnsafeUrlLikeValue);
+}
+
+function hasUnsafeUrlLikeValue(value: string): boolean {
+  return UNSAFE_URL_LIKE_PATTERN.test(value);
 }
 
 function verifyChangeAtom(atom: GeneralPrEvidenceAtomV2, fact: GeneralPrChangeFactV2, subjectDigest: string): boolean {
@@ -511,6 +552,7 @@ function stableJson(value: unknown): string { if (Array.isArray(value)) return `
 interface DescriptorCatalogs {
   evidenceDescriptors: GeneralPrSemanticEvidenceDescriptorV1[];
   changeClusterDescriptors: GeneralPrSemanticChangeClusterDescriptorV1[];
+  unsafeDescriptorCount: number;
 }
 
 interface RelationCandidate {

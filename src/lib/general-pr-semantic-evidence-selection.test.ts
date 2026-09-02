@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import {
+  computeGeneralPrSemanticEvidenceSelectionHashV1,
   generalPrSemanticRelationPriorityV1,
   reciprocalRankFusionScoreV1,
   selectGeneralPrSemanticEvidenceV1
@@ -100,6 +101,69 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
       "d".repeat(40),
       secret
     ]) expect(serialized).not.toContain(forbidden);
+  });
+
+  it("rejects URL-like descriptor sources and counts each unsafe omission", () => {
+    const cases: Array<{
+      name: string;
+      request: PullRequestInput;
+      forbidden: string[];
+      omittedKinds: Array<"change" | "check" | "execution">;
+    }> = [
+      {
+        name: "ftp path",
+        request: completeInput({ changedFiles: [{ path: "ftp://private.example/secret.ts", status: "modified" }] }),
+        forbidden: ["ftp", "private", "example", "secret"],
+        omittedKinds: ["change"]
+      },
+      {
+        name: "file URI hunk label",
+        request: completeInput({ changedFiles: [{ path: "src/repositories/repository-visibility.ts", status: "modified", patch: "@@ -1 +1 @@ file:///private/secret.ts" }] }),
+        forbidden: ["file", "private", "secret"],
+        omittedKinds: ["change"]
+      },
+      {
+        name: "www check display name",
+        request: completeInput({ checks: [{ name: "www.private.example/secret", status: "passed" }] }),
+        forbidden: ["www", "private", "example", "secret"],
+        omittedKinds: ["check", "execution"]
+      }
+    ];
+
+    for (const fixture of cases) {
+      const seed = buildGeneralPrObservationSeedV2(fixture.request);
+      const claims = claimSelection(fixture.request);
+      const result = selectGeneralPrSemanticEvidenceV1({
+        pullRequest: fixture.request,
+        seed,
+        claimSelection: claims,
+        objectiveGroups: objectiveGroup(claims, "repository visibility")
+      });
+      expect(result.status, fixture.name).toBe("selected");
+      if (result.status !== "selected") throw new Error(`${fixture.name}: ${result.status}`);
+      expect(result.selection.omittedReasonCounts.unsafeDescriptor, fixture.name).toBeGreaterThan(0);
+      expect(result.selection.coverage, fixture.name).toBe("incomplete");
+      for (const kind of fixture.omittedKinds) {
+        expect(result.selection.evidenceDescriptors.some((descriptor) => descriptor.kind === kind), `${fixture.name}: ${kind}`).toBe(false);
+      }
+      const tokens = result.selection.evidenceDescriptors.flatMap((descriptor) => descriptor.tokenSketch)
+        .concat(result.selection.changeClusterDescriptors.flatMap((descriptor) => descriptor.tokenSketch));
+      for (const forbidden of fixture.forbidden) expect(tokens, `${fixture.name}: ${forbidden}`).not.toContain(forbidden);
+    }
+  });
+
+  it("admits safe normal path, hunk-label, and check-name descriptor sources", () => {
+    const request = completeInput({
+      changedFiles: [{ path: "src/repositories/repository-visibility.ts", status: "modified", patch: "@@ -1 +1 @@ ensureRepositoryVisibility" }],
+      checks: [{ name: "Repository visibility unit", status: "passed" }]
+    });
+    const { selection } = selected(request);
+    const kinds = new Set(selection.evidenceDescriptors.map((descriptor) => descriptor.kind));
+    const tokens = selection.evidenceDescriptors.flatMap((descriptor) => descriptor.tokenSketch);
+
+    expect(selection.omittedReasonCounts.unsafeDescriptor).toBe(0);
+    expect(kinds).toEqual(new Set(["change", "check", "execution"]));
+    expect(tokens).toEqual(expect.arrayContaining(["repository", "visibility", "ensure"]));
   });
 
   it("uses RRF k=60 and contributes zero for a missing signal rank", () => {
@@ -229,6 +293,29 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
     expect(selection.objectiveGroups.every((group) => group.evidenceIds.every((id) => evidenceIds.has(id)) && group.changeClusterIds.every((id) => clusterIds.has(id)))).toBe(true);
   });
 
+  it("authenticates the complete returned selection with declared policy and effective limits", () => {
+    const request = completeInput();
+    const { selection } = selected(request, { maxPerObjective: 6, maxTotal: 9, maxInputBytes: 4_000 });
+    const { evidenceSelectionHash, ...unsigned } = selection;
+
+    expect(selection.policyVersion).toBe("general-pr-claim-evidence-selection.v1");
+    expect(selection.limits).toEqual({ maxPerObjective: 6, maxTotal: 9, maxInputBytes: 4_000 });
+    expect(computeGeneralPrSemanticEvidenceSelectionHashV1(unsigned)).toBe(evidenceSelectionHash);
+
+    const mutations = [
+      { ...unsigned, policyVersion: "changed-policy" as typeof unsigned.policyVersion },
+      { ...unsigned, limits: { ...unsigned.limits, maxTotal: unsigned.limits.maxTotal - 1 } },
+      { ...unsigned, coverage: unsigned.coverage === "complete" ? "sampled" as const : "complete" as const },
+      { ...unsigned, omittedReasonCounts: { ...unsigned.omittedReasonCounts, unsafeDescriptor: unsigned.omittedReasonCounts.unsafeDescriptor + 1 } },
+      { ...unsigned, objectiveGroups: unsigned.objectiveGroups.map((group, index) => index === 0 ? { ...group, evidenceIds: group.evidenceIds.slice(1) } : group) },
+      { ...unsigned, changeClusterDescriptors: unsigned.changeClusterDescriptors.map((descriptor, index) => index === 0 ? { ...descriptor, tokenSketch: [...descriptor.tokenSketch, "mutated"] } : descriptor) },
+      { ...unsigned, evidenceDescriptors: unsigned.evidenceDescriptors.map((descriptor, index) => index === 0 ? { ...descriptor, tokenSketch: [...descriptor.tokenSketch, "mutated"] } : descriptor) }
+    ];
+    for (const mutation of mutations) {
+      expect(computeGeneralPrSemanticEvidenceSelectionHashV1(mutation)).not.toBe(evidenceSelectionHash);
+    }
+  });
+
   it("rejects stale seeds and forged claim bindings", () => {
     const request = completeInput();
     const seed = buildGeneralPrObservationSeedV2(request);
@@ -245,6 +332,19 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
       seed,
       claimSelection: { ...claims, claimSelectionHash: "0".repeat(64) },
       objectiveGroups: objectiveGroup(claims, "repository visibility")
+    })).toEqual({ status: "invalid", reason: "claim_binding_invalid" });
+  });
+
+  it("rejects an empty objective-group binding instead of returning complete empty", () => {
+    const request = completeInput();
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const claims = claimSelection(request);
+
+    expect(selectGeneralPrSemanticEvidenceV1({
+      pullRequest: request,
+      seed,
+      claimSelection: claims,
+      objectiveGroups: []
     })).toEqual({ status: "invalid", reason: "claim_binding_invalid" });
   });
 
