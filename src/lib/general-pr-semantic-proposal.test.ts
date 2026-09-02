@@ -520,6 +520,58 @@ describe("GeneralPr split semantic stage contracts", () => {
     expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, evidence)).toEqual(expect.objectContaining({ valid: true }));
   });
 
+  it("merges a private claim snapshot when a genuine result is accessor-swapped after validation", () => {
+    const request = stageInput();
+    const observationSeed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, observationSeed);
+    const claim = validateGeneralPrSemanticClaimCandidateV1(claimCandidate(selection), observationSeed, selection);
+    if (!claim.valid) throw new Error(claim.errors.join(", "));
+    const baseline = mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, null);
+    const groupedSpanIds = new Set(claim.objectiveGroups.flatMap((group) => group.spanIds));
+    const ungroupedRole = claim.spanRoles.find((role) => !groupedSpanIds.has(role.spanId));
+    if (!ungroupedRole) throw new Error("fixture must contain an ungrouped span");
+    const originalRoles = claim.spanRoles;
+    const changedRoles = originalRoles.map((role) => role.spanId === ungroupedRole.spanId
+      ? { ...role, role: "implementation_claim" as const, abstained: false }
+      : role);
+    const originalGroups = claim.objectiveGroups;
+    const changedGroups = [...originalGroups, { spanIds: [ungroupedRole.spanId], disposition: "not_objective" as const }];
+    let roleReads = 0;
+    let groupReads = 0;
+    Object.defineProperty(claim, "spanRoles", { configurable: true, get: () => roleReads++ === 0 ? originalRoles : changedRoles });
+    Object.defineProperty(claim, "objectiveGroups", { configurable: true, get: () => groupReads++ === 0 ? originalGroups : changedGroups });
+
+    expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, null)).toEqual(baseline);
+  });
+
+  it("merges a private evidence snapshot when a genuine result is accessor-swapped after validation", () => {
+    const request = stageInput();
+    const observationSeed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, observationSeed);
+    const candidate = claimCandidate(selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
+    const group = evidenceSelection.objectiveGroups[0]!;
+    const evidenceId = group.evidenceIds[0];
+    if (!claim.valid || !evidenceId) throw new Error("fixture stages must contain evidence");
+    const evidence = validateGeneralPrSemanticEvidenceCandidateV1({
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: [{ objectiveSpanIds: group.objectiveSpanIds, evidenceId, proposal: "supports" }]
+    }, observationSeed, claim, evidenceSelection);
+    if (!evidence.valid) throw new Error(evidence.errors.join(", "));
+    const baseline = mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, evidence);
+    const originalRelations = evidence.evidenceRelationProposals;
+    const changedRelations = originalRelations.map((relation) => ({ ...relation, proposal: "contradicts" as const }));
+    let relationReads = 0;
+    Object.defineProperty(evidence, "evidenceRelationProposals", {
+      configurable: true,
+      get: () => relationReads++ === 0 ? originalRelations : changedRelations
+    });
+
+    expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, evidence)).toEqual(baseline);
+  });
+
   it("keeps oversized deterministic full-seed expansion out of the provider-output byte gate", () => {
     const request = stageInput({
       taskText: ["## Requirements", ...Array.from({ length: 260 }, (_, index) => `- Return state ${index + 1}.`)].join("\n")

@@ -63,9 +63,6 @@ const ROLES: readonly GeneralPrClaimRoleV2[] = [
   "mixed_or_ambiguous"
 ];
 
-const VALIDATED_CLAIM_RESULTS = new WeakMap<object, string>();
-const VALIDATED_EVIDENCE_RESULTS = new WeakMap<object, string>();
-
 export interface GeneralPrSemanticSpanRoleV2 {
   spanId: string;
   role: GeneralPrClaimRoleV2;
@@ -164,6 +161,12 @@ export type GeneralPrSemanticEvidenceValidationV1 =
     }
   | { valid: false; errors: string[] };
 
+type ValidatedClaimResultV1 = Extract<GeneralPrSemanticClaimValidationV1, { valid: true }>;
+type ValidatedEvidenceResultV1 = Extract<GeneralPrSemanticEvidenceValidationV1, { valid: true }>;
+
+const VALIDATED_CLAIM_RESULTS = new WeakMap<object, ValidatedClaimResultV1>();
+const VALIDATED_EVIDENCE_RESULTS = new WeakMap<object, ValidatedEvidenceResultV1>();
+
 export interface GeneralPrSemanticProposalValidationContextV2 {
   /** The post-provider seed hash after raw-source and subject freshness revalidation. */
   currentSeedHash: string;
@@ -233,7 +236,7 @@ export function validateGeneralPrSemanticClaimCandidateV1(
   if (!normalizedGroups) return invalidClaim("claim objective groups are invalid");
   const spanRoles = seed.spans.map((span) => normalizedSelectedRoles[span.id] ?? deterministicUnselectedRole(span));
   const objectiveGroups = Object.values(normalizedGroups).map(({ spanIds, disposition }) => ({ spanIds, disposition }));
-  return registerValidatedStageResult(VALIDATED_CLAIM_RESULTS, "claim", { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, errors: [] });
+  return registerValidatedStageResult(VALIDATED_CLAIM_RESULTS, { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, errors: [] });
 }
 
 export function validateGeneralPrSemanticEvidenceCandidateV1(
@@ -259,7 +262,7 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
     ...scopeMappingProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
     ...evidenceRelationProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `evidence:${item.evidenceId}` }))
   ])) return invalidEvidence("evidence relation proposal is invalid");
-  return registerValidatedStageResult(VALIDATED_EVIDENCE_RESULTS, "evidence", {
+  return registerValidatedStageResult(VALIDATED_EVIDENCE_RESULTS, {
     valid: true,
     parentSeedHash: seed.seedHash,
     evidenceSelectionHash: selection.evidenceSelectionHash,
@@ -275,18 +278,24 @@ export function mergeGeneralPrSemanticStageCandidatesV1(
   claim: GeneralPrSemanticClaimValidationV1,
   evidence: GeneralPrSemanticEvidenceValidationV1 | null
 ): GeneralPrSemanticProposalValidation {
-  if (!claim.valid) return invalid("claim stage is invalid");
-  if (!hasValidatedStageProvenance(VALIDATED_CLAIM_RESULTS, "claim", claim)) return invalid("claim stage validation provenance is invalid");
-  if (claim.parentSeedHash !== seed.seedHash) return invalid("claim stage is stale");
-  if (evidence && !evidence.valid) return invalid("evidence stage is invalid");
-  if (evidence && !hasValidatedStageProvenance(VALIDATED_EVIDENCE_RESULTS, "evidence", evidence)) return invalid("evidence stage validation provenance is invalid");
-  if (evidence?.parentSeedHash !== undefined && evidence.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
+  const validatedClaim = VALIDATED_CLAIM_RESULTS.get(claim);
+  if (!validatedClaim) {
+    if (!claim.valid) return invalid("claim stage is invalid");
+    return invalid("claim stage validation provenance is invalid");
+  }
+  if (validatedClaim.parentSeedHash !== seed.seedHash) return invalid("claim stage is stale");
+  const validatedEvidence = evidence ? VALIDATED_EVIDENCE_RESULTS.get(evidence) : undefined;
+  if (evidence && !validatedEvidence) {
+    if (!evidence.valid) return invalid("evidence stage is invalid");
+    return invalid("evidence stage validation provenance is invalid");
+  }
+  if (validatedEvidence && validatedEvidence.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
   return validateGeneralPrSemanticProposalV2Internal({
-    spanRoles: claim.spanRoles,
-    objectiveGroups: claim.objectiveGroups,
-    testApplicabilityProposals: evidence?.testApplicabilityProposals ?? [],
-    scopeMappingProposals: evidence?.scopeMappingProposals ?? [],
-    evidenceRelationProposals: evidence?.evidenceRelationProposals ?? []
+    spanRoles: validatedClaim.spanRoles,
+    objectiveGroups: validatedClaim.objectiveGroups,
+    testApplicabilityProposals: validatedEvidence?.testApplicabilityProposals ?? [],
+    scopeMappingProposals: validatedEvidence?.scopeMappingProposals ?? [],
+    evidenceRelationProposals: validatedEvidence?.evidenceRelationProposals ?? []
   }, seed, { currentSeedHash: seed.seedHash }, "canonical_merge");
 }
 
@@ -632,22 +641,15 @@ function deterministicUnselectedRole(span: GeneralPrSemanticSpanV2): GeneralPrSe
     : { spanId: span.id, role: "supporting_context", abstained: false };
 }
 
-function registerValidatedStageResult<T extends object>(registry: WeakMap<object, string>, stage: "claim" | "evidence", result: T): T {
-  registry.set(result, validatedStageFingerprint(stage, result)!);
+function registerValidatedStageResult<T extends object>(registry: WeakMap<object, T>, result: T): T {
+  registry.set(result, deepFreeze(structuredClone(result)));
   return result;
 }
 
-function hasValidatedStageProvenance(registry: WeakMap<object, string>, stage: "claim" | "evidence", result: object): boolean {
-  const registered = registry.get(result);
-  return registered !== undefined && registered === validatedStageFingerprint(stage, result);
-}
-
-function validatedStageFingerprint(stage: "claim" | "evidence", result: object): string | null {
-  try {
-    return digest({ domain: `agentproof.general-pr.semantic-${stage}-validation.v1`, result });
-  } catch {
-    return null;
-  }
+function deepFreeze<T>(value: T): T {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) deepFreeze(child);
+  return Object.freeze(value);
 }
 
 function hasConsistentRelationOwnership(relations: Array<{ objectiveSpanIds: string[]; referenceId: string }>): boolean {
