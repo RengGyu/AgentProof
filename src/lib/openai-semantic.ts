@@ -10,7 +10,7 @@ import { extractOpenAIResponseText } from "./openai-verifier";
 import { HYBRID_PLANNER_MAX_OUTPUT_BYTES } from "./hybrid-planner";
 import {
   GeneralPrSemanticProviderFailure,
-  type GeneralPrSemanticObserverPackageV2
+  type GeneralPrSemanticObserverPackageV3
 } from "./general-pr-semantic-observer";
 import { redactSecrets } from "./redact";
 import type {
@@ -66,11 +66,11 @@ export interface OpenAISemanticResult {
 
 /** Sends the already bounded observer package; validation remains with the observer. */
 export async function submitGeneralPrSemanticObservationWithOpenAI(
-  semanticPackage: GeneralPrSemanticObserverPackageV2,
+  semanticPackage: GeneralPrSemanticObserverPackageV3,
   options: Pick<OpenAISemanticOptions, "apiKey" | "fetchFn">
 ): Promise<unknown> {
   try {
-    const response = await fetchOpenAIResponse(OPENAI_RESPONSES_URL, {
+    const response = await fetchGeneralPrSemanticObservationResponse(OPENAI_RESPONSES_URL, {
       method: "POST",
       headers: openAIHeaders(options.apiKey),
       body: JSON.stringify({
@@ -94,6 +94,32 @@ export async function submitGeneralPrSemanticObservationWithOpenAI(
     }
   } catch (error) {
     throw toGeneralPrSemanticProviderFailure(error);
+  }
+}
+
+/** This staged path intentionally never reads provider error bodies. */
+async function fetchGeneralPrSemanticObservationResponse(
+  url: string,
+  init: RequestInit,
+  fetchFn: typeof fetch | undefined
+): Promise<Response> {
+  try {
+    const response = await (fetchFn ?? fetch)(url, init);
+    if (response.ok) return response;
+
+    const status = response.status;
+    if (status === 408) throw new OpenAISemanticError("openai_timeout", true, "OpenAI semantic request timed out.", status);
+    if (status === 409 || status === 429) throw new OpenAISemanticError("openai_rate_limited", true, "OpenAI semantic request was temporarily limited.", status);
+    if (status >= 500) throw new OpenAISemanticError("openai_provider_unavailable", true, "OpenAI semantic provider is unavailable.", status);
+    if (status === 401 || status === 403) throw new OpenAISemanticError("openai_auth_failed", false, "OpenAI semantic authorization failed.", status);
+    throw new OpenAISemanticError("openai_request_invalid", false, "OpenAI semantic request was rejected.", status);
+  } catch (error) {
+    if (error instanceof OpenAISemanticError) throw error;
+    const name = error instanceof Error ? error.name : "";
+    if (name === "AbortError" || name === "TimeoutError") {
+      throw new OpenAISemanticError("openai_timeout", true, "OpenAI semantic request timed out.");
+    }
+    throw new OpenAISemanticError("openai_network_error", true, "OpenAI semantic request could not reach the provider.");
   }
 }
 
