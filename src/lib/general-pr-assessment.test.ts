@@ -67,6 +67,35 @@ function semanticProposal(seed: ReturnType<typeof buildGeneralPrObservationSeedV
   };
 }
 
+function relevantResult(
+  assessment: ReturnType<typeof deriveGeneralPrAssessmentV1>,
+  bundle: ReturnType<typeof finalizeDeterministicGeneralPrObservationsV2>,
+  proposal: GeneralPrSemanticProposalV2
+) {
+  return {
+    assessment: {
+      sourceState: assessment.sourceState,
+      overallConclusion: assessment.overallConclusion,
+      counts: assessment.counts,
+      targets: assessment.targets.map(({ targetId: _targetId, sourceBindingRef: _sourceBindingRef, sourceSpanRefs: _sourceSpanRefs, ...target }) => target),
+      reasonCodes: assessment.reasonCodes
+    },
+    proposal: {
+      objectiveGroups: Object.values(proposal.objectiveGroups).map(({ groupId: _groupId, ...group }) => group),
+      testApplicability: proposal.testApplicabilityProposals.map(({ objectiveGroupId: _objectiveGroupId, changeClusterId: _changeClusterId, ...item }) => item),
+      scopeMappings: proposal.scopeMappingProposals.map(({ objectiveGroupId: _objectiveGroupId, changeClusterId: _changeClusterId, ...item }) => item),
+      evidenceRelations: proposal.evidenceRelationProposals.map(({ objectiveGroupId: _objectiveGroupId, evidenceId: _evidenceId, ...item }) => item)
+    },
+    relationLevelCounts: bundle.relationLevelCounts,
+    testCoverage: bundle.testCoverage
+      .filter((item) => item.relation === "hypothesis")
+      .map(({ objectiveId: _objectiveId, changeClusterId: _changeClusterId, ...item }) => item),
+    scopeMappings: bundle.scopeMappings
+      .filter((item) => item.state === "plausibly_mapped")
+      .map(({ objectiveId: _objectiveId, changeClusterId: _changeClusterId, ...item }) => item)
+  };
+}
+
 describe("deriveGeneralPrAssessmentV1", () => {
   it("caps a PR author objective at partial when only changed artifacts and global CI are observed", () => {
     const seed = buildGeneralPrObservationSeedV2(input());
@@ -131,15 +160,16 @@ describe("deriveGeneralPrAssessmentV1", () => {
       selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
     });
 
-    expect(bundle.testCoverage).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ summaryState: "missing_targeted_test" })
-    ]));
-    expect(bundle.scopeMappings).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ state: "out_of_scope_by_contract" })
-    ]));
+    expect(bundle.testCoverage).toEqual([expect.objectContaining({
+      applicability: "hypothesized_required",
+      relation: "hypothesis",
+      execution: "not_observed",
+      summaryState: "relation_unresolved"
+    })]);
+    expect(bundle.scopeMappings).toEqual([expect.objectContaining({ state: "plausibly_mapped" })]);
   });
 
-  it("downgrades a relation when its selected evidence is removed while unrelated evidence is removed", () => {
+  it("downgrades selected evidence but leaves the complete relevant result unchanged when unrelated evidence is removed", () => {
     const withUnrelated = semanticOnlyInput({ changedFiles: [
       { path: "src/status.ts", status: "modified", patch: "+ return Ready;" },
       { path: "src/unrelated.ts", status: "modified", patch: "+ export const unrelated = true;" }
@@ -150,11 +180,13 @@ describe("deriveGeneralPrAssessmentV1", () => {
     const removedSelected = finalizeDeterministicGeneralPrObservationsV2(selectedSeed, { ...selectedProposal, evidenceRelationProposals: [] }, "valid");
     const withoutUnrelatedSeed = buildGeneralPrObservationSeedV2(semanticOnlyInput({ changedFiles: [withUnrelated.changedFiles[0]!] }));
     const withoutUnrelated = finalizeDeterministicGeneralPrObservationsV2(withoutUnrelatedSeed, semanticProposal(withoutUnrelatedSeed), "valid");
+    const baselineAssessment = deriveGeneralPrAssessmentV1({ seed: selectedSeed, bundle: selected, report });
+    const withoutUnrelatedAssessment = deriveGeneralPrAssessmentV1({ seed: withoutUnrelatedSeed, bundle: withoutUnrelated, report });
 
     expect(selected.diagnostics.relationState).toBe("hypothesis_only");
     expect(removedSelected.diagnostics.relationState).toBe("unresolved");
-    expect(withoutUnrelated.relationLevelCounts).toEqual(selected.relationLevelCounts);
-    expect(deriveGeneralPrAssessmentV1({ seed: withoutUnrelatedSeed, bundle: withoutUnrelated, report }).targets[0]?.conclusion).toBe("evidence_partial");
+    expect(relevantResult(withoutUnrelatedAssessment, withoutUnrelated, semanticProposal(withoutUnrelatedSeed)))
+      .toEqual(relevantResult(baselineAssessment, selected, selectedProposal));
   });
 
   it("rejects a verified relation copied to another objective", () => {

@@ -8,6 +8,7 @@ import {
   reportToSlackPayload
 } from "./slack";
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
+import type { AnalysisJobQueueSummary } from "./analysis-jobs";
 import type { PullRequestInput } from "./types";
 
 const PRIVATE_ASSESSMENT_TERMS = [
@@ -164,8 +165,7 @@ describe("slack helpers", () => {
   });
 
   it("formats analysis queue alerts as aggregate-only payloads", () => {
-    const payloadText = JSON.stringify(analysisQueueAlertsToSlackPayload({
-      summary: {
+    const summary = {
         privacy: "analysis-job-queue-summary-only",
         sampled: 3,
         truncated: false,
@@ -179,8 +179,11 @@ describe("slack helpers", () => {
         due: 1,
         delayedRetry: 0,
         staleProcessing: 1,
-        oldestQueuedAgeSeconds: 1000
-      },
+        oldestQueuedAgeSeconds: 1000,
+        ...transientSelectionFixture()
+      } as unknown as AnalysisJobQueueSummary;
+    const payloadText = JSON.stringify(analysisQueueAlertsToSlackPayload({
+      summary,
       alerts: [
         {
           code: "analysis_queue_failed_terminal",
