@@ -3,6 +3,7 @@ import { createHash, createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import {
   clearSavedReportsForTests,
   cleanupExpiredReports,
@@ -109,7 +110,7 @@ describe("server report store", () => {
       reasonCodes: [...CLOSED_PARTIAL_REASONS]
     };
     Object.assign(inputReport.generalPrAssessmentSummary as Record<string, unknown>, {
-      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
       targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
     });
     const saved = await createVerifiedSavedReport(inputReport, {
@@ -135,6 +136,7 @@ describe("server report store", () => {
     expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
     expect(decoded).toMatchObject({ status: "valid", report: { generalPrAssessmentSummary: persisted.generalPrAssessmentSummary } });
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
+    expectNoSelectionSentinels(serialized);
 
     for (const { injected, expectedError } of [
       { injected: { targets: [] }, expectedError: "tenant ordinary-PR assessment summary is invalid." },

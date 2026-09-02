@@ -11,6 +11,7 @@ import { generateVerificationReportV2 } from "./verifier";
 import { deriveGeneralPrAssessmentV1 } from "./general-pr-assessment";
 import { finalizeDeterministicGeneralPrObservationsV2 } from "./general-pr-observation-service";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import type { PullRequestInput, TestRelationReceiptV2, VerificationReportV2 } from "./types";
 
 const HYBRID_PLANNER_PROVENANCE = {
@@ -44,10 +45,12 @@ describe("validateVerificationReport", () => {
     const report = generateVerificationReportV2FromInput(input);
     const seed = buildGeneralPrObservationSeedV2(input);
     const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+    Object.assign(bundle as unknown as Record<string, unknown>, { transientObserver: transientSelectionFixture() });
     const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
     report.generalPrAssessment = assessment;
 
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    expectNoSelectionSentinels(report);
 
     const twoPartialTargets = structuredClone(report) as unknown as {
       generalPrAssessment: {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import {
   analysisQueueAlertsToSlackPayload,
   isAllowedSlackWebhookUrl,
@@ -130,7 +131,7 @@ describe("slack helpers", () => {
       reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
     };
     Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
-      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
       targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
     });
 
@@ -142,6 +143,7 @@ describe("slack helpers", () => {
     expect(payload).toContain("Semantic assessment was unavailable.");
     expect(payload).toContain("The target-to-evidence relation remains unresolved.");
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(payload).not.toContain(forbidden);
+    expectNoSelectionSentinels(payload);
   });
 
   it("escapes Slack markdown link delimiters in report URLs", () => {
@@ -209,5 +211,6 @@ describe("slack helpers", () => {
     expect(payloadText).not.toContain("reprompt");
     expect(payloadText).not.toContain("Patch excerpt");
     expect(payloadText).not.toContain("github_pat_");
+    expectNoSelectionSentinels(payloadText);
   });
 });

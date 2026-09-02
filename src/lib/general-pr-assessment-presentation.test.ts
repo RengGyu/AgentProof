@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import type { GeneralPrAssessmentSummaryV1 } from "./types";
 
 const summary: GeneralPrAssessmentSummaryV1 = {
@@ -20,6 +21,7 @@ const summary: GeneralPrAssessmentSummaryV1 = {
 
 describe("presentGeneralPrAssessmentSummary", () => {
   it("renders a bounded reviewer explanation without target or source details", () => {
+    Object.assign(summary as Record<string, unknown>, { transientObserver: transientSelectionFixture() });
     const presentation = presentGeneralPrAssessmentSummary(summary);
     const serialized = JSON.stringify(presentation);
 
@@ -36,5 +38,6 @@ describe("presentGeneralPrAssessmentSummary", () => {
     expect(serialized).not.toContain("sourceBindingRef");
     expect(serialized).not.toContain("sourceSpanRefs");
     expect(serialized).not.toContain("targets");
+    expectNoSelectionSentinels(serialized);
   });
 });

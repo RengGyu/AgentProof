@@ -3,6 +3,7 @@ import { AGENTPROOF_COMMENT_MARKER } from "@/lib/markdown";
 import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "@/lib/verifier";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "@/lib/general-pr-selection-sentinels.test-fixture";
 import { POST } from "./route";
 
 describe("POST /api/github/comment", () => {
@@ -39,12 +40,13 @@ describe("POST /api/github/comment", () => {
         body: JSON.stringify({
           prUrl: "https://github.com/org/repo/pull/1",
           githubToken: "token",
-          report: { analysisId: "bad" }
+          report: { analysisId: "bad", ...transientSelectionFixture() }
         })
       })
     );
 
     expect(response.status).toBe(422);
+    expectNoSelectionSentinels(await response.clone().text());
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

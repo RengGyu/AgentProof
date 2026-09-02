@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAuditEventsForTests, recordAuditEvent } from "@/lib/audit-log";
 import { createTenantAdminSession } from "@/lib/github-onboarding";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "@/lib/general-pr-selection-sentinels.test-fixture";
 import { GET } from "./route";
 
 describe("GET /api/tenants/audit-export", () => {
@@ -32,6 +33,7 @@ describe("GET /api/tenants/audit-export", () => {
   it("returns a summary-only attachment envelope with required success headers", async () => {
     stubInviteEnv();
     await recordAuditEvent({
+      ...transientSelectionFixture(),
       action: "github_app_analysis_completed",
       result: "completed",
       tenantId: "tenant_a",
@@ -105,6 +107,7 @@ describe("GET /api/tenants/audit-export", () => {
     expect(serialized).not.toContain("commentBody");
     expect(serialized).not.toContain("token");
     expect(serialized).not.toContain("signature");
+    expectNoSelectionSentinels(serialized);
   });
 
   it("accepts the tenant admin session cookie", async () => {

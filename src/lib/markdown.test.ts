@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment, reportToMarkdown } from "./markdown";
 import { demoScenarios } from "./sample-data";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import { generateVerificationReport } from "./verifier";
 import { generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { PullRequestInput } from "./types";
@@ -21,6 +22,7 @@ describe("reportToGitHubComment", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     const requirementId = report.requirements[0]!.requirementId;
     Object.assign(report.proofGraph, {
+      transientObserver: transientSelectionFixture(),
       sourceBindings: [{
         version: 1,
         kind: "requirement_source_binding",
@@ -73,6 +75,7 @@ describe("reportToGitHubComment", () => {
     ]) {
       expect(output).not.toContain(privateValue);
     }
+    expectNoSelectionSentinels(output);
   });
 
   it("separates v2 no-contract outcomes from observed implementation and execution evidence", () => {

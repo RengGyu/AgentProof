@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "./dashboard-report-export";
 import { sanitizeReportForShare } from "./report-share";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import { generateVerificationReportV2FromInput } from "./verifier";
 
 const PRIVATE_ASSESSMENT_TERMS = [
@@ -136,7 +137,7 @@ describe("dashboard report export", () => {
       reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
     };
     Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
-      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
       targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
     });
     assessmentDetail.report = report;
@@ -156,6 +157,7 @@ describe("dashboard report export", () => {
       reason_codes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
     });
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(output).not.toContain(forbidden);
+    expectNoSelectionSentinels(output);
   });
 
   it("renders a verified authoritative outcome as contract-supported", () => {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "@/lib/verifier";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "@/lib/general-pr-selection-sentinels.test-fixture";
 import { POST } from "./route";
 
 describe("POST /api/notifications/slack", () => {
@@ -105,6 +106,24 @@ describe("POST /api/notifications/slack", () => {
 
     expect(response.status).toBe(413);
     expect(json.error).toContain("too large");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects transient observer fields before sending a Slack notification", async () => {
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/C");
+    vi.stubEnv("AGENTPROOF_NOTIFY_TOKEN", "secret");
+    vi.stubEnv("AGENTPROOF_MANUAL_SLACK_NOTIFICATIONS_ENABLED", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(new Request("http://localhost/api/notifications/slack", {
+      method: "POST",
+      headers: { "x-agentproof-notify-token": "secret" },
+      body: JSON.stringify({ report: { ...generateVerificationReport(demoScenarios.clean), ...transientSelectionFixture() } })
+    }));
+
+    expect(response.status).toBe(422);
+    expectNoSelectionSentinels(await response.text());
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

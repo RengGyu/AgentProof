@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAuditEventsForTests, recordAuditEvent } from "./audit-log";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import {
   buildTenantAuditExport,
   DEFAULT_TENANT_AUDIT_EXPORT_LIMIT,
@@ -15,6 +16,7 @@ describe("tenant audit export", () => {
 
   it("projects bounded customer-facing audit events without tenant, provider, or raw evidence internals", async () => {
     await recordAuditEvent({
+      ...transientSelectionFixture(),
       action: "github_app_analysis_completed",
       result: "completed",
       tenantId: "tenant_a",
@@ -106,6 +108,7 @@ describe("tenant audit export", () => {
     expect(serialized).not.toContain("commentBody");
     expect(serialized).not.toContain("token");
     expect(serialized).not.toContain("signature");
+    expectNoSelectionSentinels(serialized);
   });
 
   it("defaults to 100, clamps to 250, fetches one extra row, and marks truncation", async () => {

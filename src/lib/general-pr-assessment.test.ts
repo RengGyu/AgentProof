@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { deriveGeneralPrAssessmentV1, summarizeGeneralPrAssessmentV1 } from "./general-pr-assessment";
 import { finalizeDeterministicGeneralPrObservationsV2 } from "./general-pr-observation-service";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import { buildObjectiveEvidenceRelationLedgerV1 } from "./objective-evidence-relation-ledger";
+import { deriveGeneralPrObjectiveGroupIdV2, type GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import { validateVerificationReport } from "./report-validation";
 import { generateVerificationReportV2FromInput } from "./verifier";
 import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
@@ -33,10 +36,42 @@ function input(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
   };
 }
 
+function semanticOnlyInput(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
+  return input({
+    title: "Maintenance notes",
+    description: "Internal cleanup only.",
+    changedFiles: [{ path: "src/status.ts", status: "modified", patch: "+ return Ready;" }],
+    ...overrides
+  });
+}
+
+function semanticProposal(seed: ReturnType<typeof buildGeneralPrObservationSeedV2>): GeneralPrSemanticProposalV2 {
+  const span = seed.spans.find((candidate) => seed.sources.find((source) => source.id === candidate.sourceUnitId)?.kind === "pr_title");
+  const cluster = seed.changeClusters[0];
+  const evidence = seed.evidenceAtoms[0];
+  if (!span || !cluster || !evidence) throw new Error("semantic fixture requires bounded source and evidence");
+  const groupId = deriveGeneralPrObjectiveGroupIdV2([span.id]);
+  return {
+    contractVersion: "general_pr_semantic_proposal.v2",
+    schemaVersion: "agentproof_general_pr_observer_v2",
+    seedHash: seed.seedHash,
+    spanRoles: Object.fromEntries(seed.spans.map((candidate) => [candidate.id, {
+      spanId: candidate.id,
+      role: candidate.id === span.id ? "objective_candidate" as const : "supporting_context" as const,
+      abstained: false
+    }])),
+    objectiveGroups: { [groupId]: { groupId, spanIds: [span.id], disposition: "candidate" } },
+    testApplicabilityProposals: [{ objectiveGroupId: groupId, changeClusterId: cluster.id, proposal: "likely_expected" }],
+    scopeMappingProposals: [{ objectiveGroupId: groupId, changeClusterId: cluster.id, proposal: "plausibly_mapped" }],
+    evidenceRelationProposals: [{ objectiveGroupId: groupId, evidenceId: evidence.id, proposal: "supports" }]
+  };
+}
+
 describe("deriveGeneralPrAssessmentV1", () => {
   it("caps a PR author objective at partial when only changed artifacts and global CI are observed", () => {
     const seed = buildGeneralPrObservationSeedV2(input());
     const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+    Object.assign(bundle as unknown as Record<string, unknown>, { transientObserver: transientSelectionFixture() });
 
     expect(deriveGeneralPrAssessmentV1({ seed, bundle, report })).toMatchObject({
       sourceState: "pr_author_claim",
@@ -56,6 +91,91 @@ describe("deriveGeneralPrAssessmentV1", () => {
         headBound: true
       })]
     });
+    expectNoSelectionSentinels(deriveGeneralPrAssessmentV1({ seed, bundle, report }));
+  });
+
+  it("keeps a semantic-only target evidence-partial and its relation hypothesis-only", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), "valid");
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.targets).toEqual([expect.objectContaining({
+      admissionBasis: "semantic_span_proposal",
+      conclusion: "evidence_partial",
+      relationLevels: ["hypothesis"],
+      evidenceRefs: []
+    })]);
+    expect(bundle.relationLevelCounts).toMatchObject({ verified: 0, observed: 0, hypothesis: 1 });
+  });
+
+  it("does not turn generic passed CI or a changed test artifact into target-local passed execution", () => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.targets[0]).toMatchObject({ conclusion: "evidence_partial", evidenceRefs: [] });
+    expect(bundle.testCoverage).toEqual(expect.arrayContaining([
+      expect.objectContaining({ execution: "not_observed", summaryState: "relation_unresolved" })
+    ]));
+  });
+
+  it("does not convert sampled semantic evidence into missing-test or contradiction findings", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), "valid", null, [], {
+      version: 1,
+      claimState: "valid",
+      evidenceState: "valid",
+      sourceCoverage: "sampled",
+      evidenceCoverage: "sampled",
+      providerCallCount: 2,
+      selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
+    });
+
+    expect(bundle.testCoverage).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ summaryState: "missing_targeted_test" })
+    ]));
+    expect(bundle.scopeMappings).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ state: "out_of_scope_by_contract" })
+    ]));
+  });
+
+  it("downgrades a relation when its selected evidence is removed while unrelated evidence is removed", () => {
+    const withUnrelated = semanticOnlyInput({ changedFiles: [
+      { path: "src/status.ts", status: "modified", patch: "+ return Ready;" },
+      { path: "src/unrelated.ts", status: "modified", patch: "+ export const unrelated = true;" }
+    ] });
+    const selectedSeed = buildGeneralPrObservationSeedV2(withUnrelated);
+    const selectedProposal = semanticProposal(selectedSeed);
+    const selected = finalizeDeterministicGeneralPrObservationsV2(selectedSeed, selectedProposal, "valid");
+    const removedSelected = finalizeDeterministicGeneralPrObservationsV2(selectedSeed, { ...selectedProposal, evidenceRelationProposals: [] }, "valid");
+    const withoutUnrelatedSeed = buildGeneralPrObservationSeedV2(semanticOnlyInput({ changedFiles: [withUnrelated.changedFiles[0]!] }));
+    const withoutUnrelated = finalizeDeterministicGeneralPrObservationsV2(withoutUnrelatedSeed, semanticProposal(withoutUnrelatedSeed), "valid");
+
+    expect(selected.diagnostics.relationState).toBe("hypothesis_only");
+    expect(removedSelected.diagnostics.relationState).toBe("unresolved");
+    expect(withoutUnrelated.relationLevelCounts).toEqual(selected.relationLevelCounts);
+    expect(deriveGeneralPrAssessmentV1({ seed: withoutUnrelatedSeed, bundle: withoutUnrelated, report }).targets[0]?.conclusion).toBe("evidence_partial");
+  });
+
+  it("rejects a verified relation copied to another objective", () => {
+    const copied = buildObjectiveEvidenceRelationLedgerV1({
+      nodes: [
+        ...["objective_a", "objective_b"].map((id) => ({ version: 1 as const, id, kind: "objective_group" as const, subjectDigest: "a".repeat(64) })),
+        { version: 1 as const, id: "evidence", kind: "evidence_atom" as const, subjectDigest: "a".repeat(64) }
+      ],
+      edges: ["objective_a", "objective_b"].map((fromNodeId) => ({
+        fromNodeId,
+        toNodeId: "evidence",
+        kind: "syntax_imports" as const,
+        level: "verified" as const,
+        basis: "typescript_ast_relation" as const,
+        subjectDigest: "a".repeat(64),
+        evidenceRefs: ["evidence"],
+        completeness: "complete" as const
+      }))
+    });
+
+    expect(copied).toEqual({ valid: false, errors: ["verified evidence cannot be copied across objectives"] });
   });
 
   it("blocks a target when complete exact-head collection is unavailable", () => {

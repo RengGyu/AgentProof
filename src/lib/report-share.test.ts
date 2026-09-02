@@ -3,6 +3,7 @@ import { reportToMarkdown } from "./markdown";
 import { buildShareUrl, decodeSharedReport, encodeReportForShare, sanitizeReportForShare, SUMMARY_ONLY_LIMITATION } from "./report-share";
 import { validateVerificationReport } from "./report-validation";
 import { demoScenarios } from "./sample-data";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { ProofGraph, PublicProofGraph, VerificationReportV2 } from "./types";
 
@@ -49,7 +50,7 @@ describe("report share", () => {
       reasonCodes: [...CLOSED_PARTIAL_REASONS]
     };
     Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
-      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
       targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
     });
 
@@ -64,6 +65,7 @@ describe("report share", () => {
     });
     expect(decoded.generalPrAssessmentSummary).toEqual(envelope.generalPrAssessmentSummary);
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
+    expectNoSelectionSentinels(serialized);
 
     (envelope.generalPrAssessmentSummary as Record<string, unknown>).targets = [];
     const injected = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
