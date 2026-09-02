@@ -8,6 +8,8 @@ import {
   mergeGeneralPrSemanticStageCandidatesV1,
   validateGeneralPrSemanticClaimCandidateV1,
   validateGeneralPrSemanticEvidenceCandidateV1,
+  type GeneralPrSemanticClaimValidationV1,
+  type GeneralPrSemanticEvidenceValidationV1,
   type GeneralPrSemanticInvocationReceiptV3,
   type GeneralPrSemanticProposalV2
 } from "./general-pr-semantic-proposal";
@@ -346,7 +348,7 @@ export async function runGeneralPrSemanticObserverV2(
 
   const afterClaim = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
   if (afterClaim !== "current") return finish(afterClaim, null, afterClaim, "not_run", afterClaim === "unavailable" ? "privacy" : null);
-  const claim = validateGeneralPrSemanticClaimCandidateV1(claimOutput, options.seed, claimSelection);
+  const claim = safelyValidateClaimOutput(claimOutput, options.seed, claimSelection);
   if (!claim.valid) return finish("invalid", null, "invalid");
   const claimsOnly = mergeGeneralPrSemanticStageCandidatesV1(options.seed, claim, null);
   if (!claimsOnly.valid) return finish("invalid", null, "invalid");
@@ -388,7 +390,7 @@ export async function runGeneralPrSemanticObserverV2(
 
   const afterEvidence = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
   if (afterEvidence !== "current") return finish(afterEvidence, null, "valid", afterEvidence, afterEvidence === "unavailable" ? "privacy" : null);
-  const evidence = validateGeneralPrSemanticEvidenceCandidateV1(evidenceOutput, options.seed, claim, evidenceSelection);
+  const evidence = safelyValidateEvidenceOutput(evidenceOutput, options.seed, claim, evidenceSelection);
   if (!evidence.valid) return finish("valid", claimsOnly.proposal, "valid", "invalid");
   const merged = mergeGeneralPrSemanticStageCandidatesV1(options.seed, claim, evidence);
   return merged.valid
@@ -496,6 +498,31 @@ function isTimeout(error: unknown): boolean {
 
 function providerFailureStage(error: unknown): GeneralPrSemanticFailureStageV1 {
   return error instanceof GeneralPrSemanticProviderFailure ? error.stage : "provider_request";
+}
+
+function safelyValidateClaimOutput(
+  output: unknown,
+  seed: GeneralPrObservationSeedV2,
+  selection: GeneralPrSemanticClaimSelectionV1
+): GeneralPrSemanticClaimValidationV1 {
+  try {
+    return validateGeneralPrSemanticClaimCandidateV1(output, seed, selection);
+  } catch {
+    return { valid: false, errors: ["claim candidate validation failed"] };
+  }
+}
+
+function safelyValidateEvidenceOutput(
+  output: unknown,
+  seed: GeneralPrObservationSeedV2,
+  claim: GeneralPrSemanticClaimValidationV1,
+  selection: GeneralPrSemanticEvidenceSelectionV1
+): GeneralPrSemanticEvidenceValidationV1 {
+  try {
+    return validateGeneralPrSemanticEvidenceCandidateV1(output, seed, claim, selection);
+  } catch {
+    return { valid: false, errors: ["evidence candidate validation failed"] };
+  }
 }
 
 function claimReceiptSelectionHash(seed: GeneralPrObservationSeedV2, selection: GeneralPrSemanticClaimSelectionV1): string {

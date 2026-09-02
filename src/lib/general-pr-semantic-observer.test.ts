@@ -70,6 +70,33 @@ const malformedProviderOutputs = [
   }]
 ] as const;
 
+function hostileProviderOutputs(stage: "claim" | "evidence") {
+  const plain = () => stage === "claim"
+    ? { spanRoles: [], objectiveGroups: [] }
+    : { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
+  const hostileKey = stage === "claim" ? "spanRoles" : "testApplicabilityProposals";
+  return [
+    ["throwing getter", () => {
+      const value = plain() as Record<string, unknown>;
+      Object.defineProperty(value, hostileKey, { enumerable: true, get: () => { throw new Error("HOSTILE_VALIDATOR_SECRET"); } });
+      Object.defineProperty(value, "toJSON", { value: plain });
+      return value;
+    }],
+    ["Proxy.get trap", () => new Proxy(plain(), {
+      get(target, key, receiver) {
+        if (key === "toJSON") return plain;
+        if (key === hostileKey) throw new Error("HOSTILE_VALIDATOR_SECRET");
+        return Reflect.get(target, key, receiver);
+      }
+    })],
+    ["Proxy.ownKeys trap", () => {
+      const target = plain();
+      Object.defineProperty(target, "toJSON", { value: plain });
+      return new Proxy(target, { ownKeys: () => { throw new Error("HOSTILE_VALIDATOR_SECRET"); } });
+    }]
+  ] as const;
+}
+
 function run(request: PullRequestInput, overrides: Partial<Parameters<typeof runGeneralPrSemanticObserverV2>[0]> = {}) {
   const seed = buildGeneralPrObservationSeedV2(request);
   return runGeneralPrSemanticObserverV2({
@@ -153,6 +180,20 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
       receipt: { claimState: "invalid", evidenceState: "not_run", claimOutputHash: null, evidenceOutputHash: null }
     });
     expect(JSON.stringify(result.receipt)).not.toContain("MALFORMED_PROVIDER_SECRET");
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
+  });
+
+  it.each(hostileProviderOutputs("claim"))("contains claim validator exceptions from a %s", async (_label, output) => {
+    const request = input();
+    const provider = stagedProvider({ claim: async () => output() });
+    const result = await run(request, { provider });
+
+    expect(result).toMatchObject({
+      state: "invalid",
+      proposal: null,
+      receipt: { claimState: "invalid", evidenceState: "not_run", claimOutputHash: null }
+    });
+    expect(JSON.stringify(result.receipt)).not.toContain("HOSTILE_VALIDATOR_SECRET");
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
   });
 
@@ -266,6 +307,21 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     });
     expect(Object.keys(result.proposal?.objectiveGroups ?? {})).toHaveLength(1);
     expect(JSON.stringify(result.receipt)).not.toContain("MALFORMED_PROVIDER_SECRET");
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+  });
+
+  it.each(hostileProviderOutputs("evidence"))("keeps claims-only output when evidence validator meets a %s", async (_label, output) => {
+    const request = input();
+    const provider = stagedProvider({ evidence: async () => output() });
+    const result = await run(request, { provider });
+
+    expect(result).toMatchObject({
+      state: "valid",
+      receipt: { claimState: "valid", evidenceState: "invalid", evidenceOutputHash: null },
+      proposal: { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }
+    });
+    expect(Object.keys(result.proposal?.objectiveGroups ?? {})).toHaveLength(1);
+    expect(JSON.stringify(result.receipt)).not.toContain("HOSTILE_VALIDATOR_SECRET");
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
   });
 
