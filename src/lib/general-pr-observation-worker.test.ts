@@ -6,7 +6,10 @@ import {
 } from "./general-pr-observation-service";
 import { advanceQueuedGeneralPrObservationV2 } from "./general-pr-observation-worker";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
-import type { GeneralPrSemanticObserverModelProfileV2 } from "./general-pr-semantic-observer";
+import type {
+  GeneralPrSemanticObserverModelProfileV2,
+  GeneralPrSemanticObserverPackageV3
+} from "./general-pr-semantic-observer";
 import type { PullRequestInput, VerificationReport } from "./types";
 
 const input: PullRequestInput = {
@@ -35,19 +38,19 @@ const modelProfile: GeneralPrSemanticObserverModelProfileV2 = {
   inputFieldPolicyVersion: "test-fields.v1"
 };
 
-function validProposal(observationSeed: ReturnType<typeof buildGeneralPrObservationSeedV2>) {
-  const objectives = observationSeed.spans.filter((span) => span.deterministicRole === "objective_candidate");
-  if (objectives.length === 0) throw new Error("fixture must include an objective candidate");
+function validProposal(request: GeneralPrSemanticObserverPackageV3) {
+  if (request.stage === "evidence_linking") {
+    return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
+  }
+  const objective = request.input.spans.find((span) => span.deterministicRole === "objective_candidate") ?? request.input.spans[0];
+  if (!objective) throw new Error("fixture must include an objective candidate");
   return {
-    spanRoles: observationSeed.spans.map((span) => ({
+    spanRoles: request.input.spans.map((span) => ({
       spanId: span.id,
-      role: span.deterministicRole === "unresolved" ? "mixed_or_ambiguous" : span.deterministicRole,
-      abstained: span.deterministicRole === "unresolved"
+      role: span.id === objective.id ? "objective_candidate" as const : "supporting_context" as const,
+      abstained: false
     })),
-    objectiveGroups: objectives.map((objective) => ({ spanIds: [objective.id], disposition: "candidate" as const })),
-    testApplicabilityProposals: [],
-    scopeMappingProposals: [],
-    evidenceRelationProposals: []
+    objectiveGroups: [{ spanIds: [objective.id], disposition: "candidate" as const }]
   };
 }
 
@@ -89,11 +92,12 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
   it("finalizes the same private hypothesis bundle in sync and worker adapters", async () => {
     const semanticInput: PullRequestInput = {
       ...input,
-      title: "Return Ready when checks pass",
-      description: "The service must return Ready when checks pass."
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      changedFiles: []
     };
     const seed = buildGeneralPrObservationSeedV2(semanticInput);
-    const provider = { observe: vi.fn(async () => validProposal(seed)) };
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => validProposal(request)) };
     const sync = await runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
       input: semanticInput,
@@ -119,7 +123,37 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     });
 
     expect(sync.bundle).toEqual(worker.bundle);
-    expect(worker.semantic).toMatchObject({ state: "valid" });
+    expect(worker.semantic).toMatchObject({ state: "valid", receipt: { claimState: "valid", evidenceState: "not_run" } });
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "claim_discovery"]);
+    expect(worker.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
+    expect(worker.bundle?.semanticStageDiagnostics).toMatchObject({ providerCallCount: 1, claimState: "valid", evidenceState: "not_run" });
+  });
+
+  it.each(["shadow", "advisory"] as const)("runs Stage A then Stage B once for an eligible %s worker", async (mode) => {
+    const semanticInput: PullRequestInput = {
+      ...input,
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+ Ready" }]
+    };
+    const seed = buildGeneralPrObservationSeedV2(semanticInput);
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => validProposal(request)) };
+
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode,
+      input: semanticInput,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => semanticInput,
+      modelProfile
+    });
+
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+    expect(result.bundle?.semanticStageDiagnostics).toMatchObject({ providerCallCount: 2, claimState: "valid", evidenceState: "valid" });
+    expect(result.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
+    expect(result.bundle?.relationLevelCounts.verified).toBe(0);
   });
 
   it("carries a closed provider failure stage into the private worker bundle", async () => {
@@ -160,5 +194,49 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
 
     expect(stale).toMatchObject({ status: "stale", current: { status: "stale", attempt: 1 } });
     expect(completed).toMatchObject({ status: "terminal", current: { status: "stale", attempt: 1 } });
+  });
+
+  it("stores no staged observer details in the queue record and never retries a failed Stage B", async () => {
+    const semanticInput: PullRequestInput = {
+      ...input,
+      changedFiles: [{ path: "docs/reset.md", status: "modified", patch: "+ reset" }]
+    };
+    const seed = buildGeneralPrObservationSeedV2(semanticInput);
+    const provider = {
+      observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => {
+        if (request.stage === "evidence_linking") throw new Error("provider unavailable");
+        return validProposal(request);
+      })
+    };
+    const first = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input: semanticInput,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => semanticInput,
+      modelProfile
+    });
+    const second = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input: semanticInput,
+      current: first.current,
+      provider,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => semanticInput,
+      modelProfile
+    });
+
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+    expect(first).toMatchObject({
+      status: "completed",
+      current: { version: 2, seedHash: seed.seedHash, attempt: 1, status: "completed" },
+      bundle: { semanticState: "valid", semanticStageDiagnostics: { evidenceState: "unavailable", providerCallCount: 2 } }
+    });
+    expect(second).toMatchObject({ status: "terminal", bundle: null, semantic: null });
+    expect(Object.keys(first.current).sort()).toEqual(["attempt", "seedHash", "status", "version"]);
+    expect(JSON.stringify(first.current)).not.toMatch(/selection|descriptor|receipt|source|provider/i);
   });
 });

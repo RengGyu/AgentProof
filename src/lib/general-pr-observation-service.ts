@@ -7,8 +7,10 @@ import {
   type GeneralPrSemanticFailureStageV1,
   type GeneralPrSemanticPackageFailureReasonV1,
   type GeneralPrSemanticObserverModelProfileV2,
-  type GeneralPrSemanticObserverProviderV2
+  type GeneralPrSemanticObserverProviderV3,
+  type GeneralPrSemanticObserverRunResultV3
 } from "./general-pr-semantic-observer";
+import type { GeneralPrSemanticSelectionCoverageV1 } from "./general-pr-semantic-selection";
 import type { GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { evaluateScopeMappingObservationV2 } from "./scope-mapping-observation";
 import { evaluateTestCoverageObservationV2 } from "./test-coverage-observation";
@@ -34,7 +36,32 @@ export interface GeneralPrObservationBundleV2 {
   semanticFailureStage: GeneralPrSemanticFailureStageV1 | null;
   /** Private closed reason set only; it is not copied into reports. */
   semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[];
+  /** Private aggregate only; no selection IDs, hashes, descriptors, or provider output. */
+  semanticStageDiagnostics: GeneralPrSemanticStageDiagnosticsV1;
+  /** Private closed aggregate only; it is not copied into reports. */
+  semanticSelectionOmittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1;
   diagnostics: GeneralPrAssessmentDiagnosticsV1;
+}
+
+export interface GeneralPrSemanticStageDiagnosticsV1 {
+  version: 1;
+  claimState: "not_run" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+  evidenceState: "not_run" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
+  sourceCoverage: GeneralPrSemanticSelectionCoverageV1 | null;
+  evidenceCoverage: GeneralPrSemanticSelectionCoverageV1 | null;
+  providerCallCount: 0 | 1 | 2;
+  selectedCountBuckets: {
+    sourceSpans: "0" | "1_4" | "5_8" | "9_12";
+    evidenceCandidates: "0" | "1_16" | "17_32" | "33_64";
+  };
+}
+
+export interface GeneralPrSemanticSelectionOmittedReasonCountsV1 {
+  spanBudget: number;
+  evidenceBudget: number;
+  inputByteBudget: number;
+  unsafeDescriptor: number;
+  noDeterministicSignal: number;
 }
 
 export interface RunGeneralPrObservationNowOptionsV2 {
@@ -43,7 +70,7 @@ export interface RunGeneralPrObservationNowOptionsV2 {
   generateReport: (input: PullRequestInput) => VerificationReport;
   validateDeterministicReport: (input: PullRequestInput, report: VerificationReport) => boolean;
   semantic?: {
-    provider?: GeneralPrSemanticObserverProviderV2;
+    provider?: GeneralPrSemanticObserverProviderV3;
     providerAvailable: boolean;
     privateRepository?: boolean;
     privateRepositoryConsent?: boolean;
@@ -87,11 +114,18 @@ export async function runGeneralPrObservationNowV2(
       bundle
     };
   }
+  let providerCallCount: 0 | 1 | 2 = 0;
+  const configuredProvider = options.semantic?.provider;
   const semantic = await runGeneralPrSemanticObserverV2({
     mode: options.policy.releasePhase,
     input: options.input,
     seed,
-    provider: options.semantic?.provider,
+    provider: configuredProvider ? {
+      observe: (request) => {
+        providerCallCount = providerCallCount === 0 ? 1 : 2;
+        return configuredProvider.observe(request);
+      }
+    } : undefined,
     providerAvailable: options.semantic?.providerAvailable ?? false,
     privateRepository: options.semantic?.privateRepository,
     privateRepositoryConsent: options.semantic?.privateRepositoryConsent,
@@ -102,12 +136,15 @@ export async function runGeneralPrObservationNowV2(
     readCurrentInput: options.semantic?.readCurrentInput ?? (async () => null),
     modelProfile: options.semantic?.modelProfile ?? UNCONFIGURED_MODEL_PROFILE
   });
+  const aggregate = buildGeneralPrSemanticAggregateDiagnosticsV1(semantic, providerCallCount);
   const bundle = finalizeDeterministicGeneralPrObservationsV2(
     seed,
     semantic.proposal,
     semantic.state,
     semantic.semanticFailureStage,
-    semantic.semanticPackageFailureReasons
+    semantic.semanticPackageFailureReasons,
+    aggregate.stageDiagnostics,
+    aggregate.omittedReasonCounts
   );
   return {
     report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
@@ -145,7 +182,9 @@ export function finalizeDeterministicGeneralPrObservationsV2(
   semanticProposal: GeneralPrSemanticProposalV2 | null = null,
   semanticState: GeneralPrObservationBundleV2["semanticState"] = "unavailable",
   semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null,
-  semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = []
+  semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = [],
+  semanticStageDiagnostics: GeneralPrSemanticStageDiagnosticsV1 = emptySemanticStageDiagnostics(),
+  semanticSelectionOmittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1 = emptySemanticSelectionOmittedReasonCounts()
 ): GeneralPrObservationBundleV2 {
   const deterministicObjectives = seed.spans.flatMap((span) => {
     if (span.deterministicRole !== "objective_candidate") return [];
@@ -265,8 +304,67 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     semanticPackageFailureReasons: semanticState === "unavailable" && semanticFailureStage === "package"
       ? semanticPackageFailureReasons
       : [],
+    semanticStageDiagnostics,
+    semanticSelectionOmittedReasonCounts,
     diagnostics
   };
+}
+
+export function buildGeneralPrSemanticAggregateDiagnosticsV1(
+  semantic: GeneralPrSemanticObserverRunResultV3,
+  providerCallCount: 0 | 1 | 2
+): {
+  stageDiagnostics: GeneralPrSemanticStageDiagnosticsV1;
+  omittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1;
+} {
+  const manifest = semantic.selectionManifest;
+  return {
+    stageDiagnostics: {
+      version: 1,
+      claimState: semantic.receipt.claimState,
+      evidenceState: semantic.receipt.evidenceState,
+      sourceCoverage: manifest?.coverage.sourceSpans ?? null,
+      evidenceCoverage: manifest?.coverage.evidenceCandidates ?? null,
+      providerCallCount,
+      selectedCountBuckets: {
+        sourceSpans: sourceSpanCountBucket(manifest?.counts.sourceSpansSelected ?? 0),
+        evidenceCandidates: evidenceCandidateCountBucket(manifest?.counts.evidenceCandidatesSelected ?? 0)
+      }
+    },
+    omittedReasonCounts: manifest
+      ? { ...manifest.omittedReasonCounts }
+      : emptySemanticSelectionOmittedReasonCounts()
+  };
+}
+
+function emptySemanticStageDiagnostics(): GeneralPrSemanticStageDiagnosticsV1 {
+  return {
+    version: 1,
+    claimState: "not_run",
+    evidenceState: "not_run",
+    sourceCoverage: null,
+    evidenceCoverage: null,
+    providerCallCount: 0,
+    selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" }
+  };
+}
+
+function emptySemanticSelectionOmittedReasonCounts(): GeneralPrSemanticSelectionOmittedReasonCountsV1 {
+  return { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 };
+}
+
+function sourceSpanCountBucket(count: number): GeneralPrSemanticStageDiagnosticsV1["selectedCountBuckets"]["sourceSpans"] {
+  if (count <= 0) return "0";
+  if (count <= 4) return "1_4";
+  if (count <= 8) return "5_8";
+  return "9_12";
+}
+
+function evidenceCandidateCountBucket(count: number): GeneralPrSemanticStageDiagnosticsV1["selectedCountBuckets"]["evidenceCandidates"] {
+  if (count <= 0) return "0";
+  if (count <= 16) return "1_16";
+  if (count <= 32) return "17_32";
+  return "33_64";
 }
 
 type ObjectiveCandidate = {

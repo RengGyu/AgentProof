@@ -50,13 +50,22 @@ function expectNoGitHubEvidenceTiming(response: Response) {
 
 function validGeneralPrObserverCandidate(init?: RequestInit) {
   const request = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ text: string }> }> };
-  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as { spans: Array<{ id: string }> };
+  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as {
+    contractVersion: string;
+    spans?: Array<{ id: string }>;
+  };
+  if (observerInput.contractVersion === "general_pr_semantic_evidence.v1") {
+    return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
+  }
+  const objective = observerInput.spans?.[0];
+  if (!objective) throw new Error("claim package must include a span");
   return {
-    spanRoles: observerInput.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })),
-    objectiveGroups: [],
-    testApplicabilityProposals: [],
-    scopeMappingProposals: [],
-    evidenceRelationProposals: []
+    spanRoles: observerInput.spans!.map((span) => ({
+      spanId: span.id,
+      role: span.id === objective.id ? "objective_candidate" : "supporting_context",
+      abstained: false
+    })),
+    objectiveGroups: [{ spanIds: [objective.id], disposition: "candidate" }]
   };
 }
 
@@ -88,21 +97,30 @@ describe("POST /api/analyze", () => {
       }));
       const json = await authorized.json() as {
         operatorDiagnostics?: {
-          version: number;
-          semanticState: string | null;
-          semanticFailureStage: string | null;
-          semanticPackageFailureReasons: string[];
+          claimState: string;
+          evidenceState: string;
+          sourceCoverage: string | null;
+          evidenceCoverage: string | null;
+          providerCallCount: number;
+          selectedCountBuckets: { sourceSpans: string; evidenceCandidates: string };
+          omittedReasonCounts: Record<string, number>;
         };
       };
 
       expect(authorized.status).toBe(200);
       expect(json.operatorDiagnostics).toEqual({
-        version: 1,
-        semanticState: null,
-        semanticFailureStage: null,
-        semanticPackageFailureReasons: []
+        claimState: "not_run",
+        evidenceState: "not_run",
+        sourceCoverage: null,
+        evidenceCoverage: null,
+        providerCallCount: 0,
+        selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
+        omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
       });
-      expect(JSON.stringify(json.operatorDiagnostics)).not.toMatch(/token|source|path|prompt|output/i);
+      expect(Object.keys(json.operatorDiagnostics ?? {}).sort()).toEqual([
+        "claimState", "evidenceCoverage", "evidenceState", "omittedReasonCounts", "providerCallCount", "selectedCountBuckets", "sourceCoverage"
+      ]);
+      expect(JSON.stringify(json.operatorDiagnostics)).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
     } finally {
       if (previous === undefined) delete process.env.AGENTPROOF_OPS_TOKEN;
       else process.env.AGENTPROOF_OPS_TOKEN = previous;
@@ -184,7 +202,7 @@ describe("POST /api/analyze", () => {
           head: { ref: "agent/validation", sha: headSha }
         }));
       }
-      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "+ return Ready;" }]));
       if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
       if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
       throw new Error(`unexpected URL ${url}`);
@@ -197,13 +215,18 @@ describe("POST /api/analyze", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           prUrl: "https://github.com/acme/repo/pull/12",
-          requestedSemanticMode: "enable"
+          requestedSemanticMode: "disable"
         })
       }));
       const json = await response.json() as { report: VerificationReport; observation?: unknown };
 
       expect(response.status, JSON.stringify(json)).toBe(200);
-      expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(true);
+      const observerCalls = fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses");
+      expect(observerCalls).toHaveLength(2);
+      expect(observerCalls.map(([, init]) => {
+        const body = JSON.parse(String(init?.body));
+        return JSON.parse(body.input[1].content[0].text).contractVersion;
+      })).toEqual(["general_pr_semantic_claim.v1", "general_pr_semantic_evidence.v1"]);
       expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
         policy: expect.objectContaining({
           semanticObservation: "eligible_public_pr",
@@ -215,8 +238,8 @@ describe("POST /api/analyze", () => {
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
       const summary = (json.report as VerificationReportV2).generalPrAssessmentSummary;
-      expect(summary?.reasonCodes).toContain("semantic_candidate_missing");
-      expect(summary?.reasonCodes).not.toEqual(expect.arrayContaining(["semantic_observer_unavailable", "semantic_proposal_invalid"]));
+      expect(summary?.reasonCodes).toContain("semantic_relation_only");
+      expect(summary?.reasonCodes).not.toEqual(expect.arrayContaining(["semantic_observer_unavailable", "semantic_proposal_invalid", "semantic_candidate_missing"]));
       expect(summary?.counts.evidence_supported).toBe(0);
     } finally {
       observationSpy.mockRestore();

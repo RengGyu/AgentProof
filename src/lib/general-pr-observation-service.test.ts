@@ -7,7 +7,10 @@ import { deriveGeneralPrAssessmentV1 } from "./general-pr-assessment";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import { deriveGeneralPrObjectiveGroupIdV2, type GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
-import type { GeneralPrSemanticObserverModelProfileV2 } from "./general-pr-semantic-observer";
+import type {
+  GeneralPrSemanticObserverModelProfileV2,
+  GeneralPrSemanticObserverPackageV3
+} from "./general-pr-semantic-observer";
 import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 
 const report = { schemaVersion: "verification-report.v2", analysisId: "test" } as unknown as VerificationReport;
@@ -38,24 +41,31 @@ const modelProfile: GeneralPrSemanticObserverModelProfileV2 = {
 
 function semanticProviderCandidate(
   observationSeed: ReturnType<typeof buildGeneralPrObservationSeedV2>,
-  sourceKind: "linked_issue" | "pr_title" | "pr_body"
+  sourceKind: "linked_issue" | "pr_title" | "pr_body",
+  request: GeneralPrSemanticObserverPackageV3
 ) {
   const targetSpan = observationSeed.spans.find((span) => (
     observationSeed.sources.find((source) => source.id === span.sourceUnitId)?.kind === sourceKind
   ));
-  const evidence = observationSeed.evidenceAtoms[0];
-  const cluster = observationSeed.changeClusters[0];
-  if (!targetSpan || !evidence || !cluster) throw new Error("fixture must include a target span and bounded evidence");
+  if (!targetSpan) throw new Error("fixture must include a target span");
+  if (request.stage === "evidence_linking") {
+    const objective = request.input.objectiveGroups[0];
+    if (!objective) throw new Error("fixture must include an evidence objective");
+    const clusterId = objective.allowedChangeClusterIds[0];
+    const evidenceId = objective.allowedEvidenceIds[0];
+    return {
+      testApplicabilityProposals: clusterId ? [{ objectiveSpanIds: objective.objectiveSpanIds, changeClusterId: clusterId, proposal: "likely_expected" as const }] : [],
+      scopeMappingProposals: clusterId ? [{ objectiveSpanIds: objective.objectiveSpanIds, changeClusterId: clusterId, proposal: "plausibly_mapped" as const }] : [],
+      evidenceRelationProposals: evidenceId ? [{ objectiveSpanIds: objective.objectiveSpanIds, evidenceId, proposal: "supports" as const }] : []
+    };
+  }
   return {
-    spanRoles: observationSeed.spans.map((span) => ({
+    spanRoles: request.input.spans.map((span) => ({
       spanId: span.id,
       role: span.id === targetSpan.id ? "objective_candidate" : "supporting_context",
       abstained: false
     })),
-    objectiveGroups: [{ spanIds: [targetSpan.id], disposition: "candidate" as const }],
-    testApplicabilityProposals: [{ objectiveSpanIds: [targetSpan.id], changeClusterId: cluster.id, proposal: "likely_expected" as const }],
-    scopeMappingProposals: [{ objectiveSpanIds: [targetSpan.id], changeClusterId: cluster.id, proposal: "plausibly_mapped" as const }],
-    evidenceRelationProposals: [{ objectiveSpanIds: [targetSpan.id], evidenceId: evidence.id, proposal: "supports" as const }]
+    objectiveGroups: [{ spanIds: [targetSpan.id], disposition: "candidate" as const }]
   };
 }
 
@@ -128,7 +138,7 @@ describe("runGeneralPrObservationNowV2", () => {
 
     expect(provider.observe).toHaveBeenCalledTimes(1);
     expect(result.report).not.toBe(v2Report);
-    expect(result.report.requirements.map((requirement) => requirement.status)).toEqual(["unclear"]);
+    expect(JSON.stringify(result.report.requirements)).toBe(JSON.stringify(v2Report.requirements));
     expect((result.report as VerificationReportV2).generalPrAssessmentSummary).toMatchObject({
       overallConclusion: "evidence_partial",
       counts: expect.objectContaining({ evidence_supported: 0, evidence_partial: 2 })
@@ -150,9 +160,14 @@ describe("runGeneralPrObservationNowV2", () => {
   });
 
   it("records a valid semantic proposal only as private hypothesis observations", async () => {
-    const semanticInput = { ...input, title: "Maintenance notes", description: "Internal cleanup only." };
+    const semanticInput = {
+      ...input,
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      changedFiles: [{ path: "src/status.ts", status: "modified" as const, patch: "+ return Ready;" }]
+    };
     const observationSeed = buildGeneralPrObservationSeedV2(semanticInput);
-    const provider = { observe: vi.fn(async () => semanticProviderCandidate(observationSeed, "pr_title")) };
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => semanticProviderCandidate(observationSeed, "pr_title", request)) };
     const result = await runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("shadow"),
       input: semanticInput,
@@ -168,8 +183,17 @@ describe("runGeneralPrObservationNowV2", () => {
     });
 
     expect(result.report).toBe(report);
-    expect(provider.observe).toHaveBeenCalledTimes(1);
-    expect(result.bundle).toMatchObject({ semanticState: "valid" });
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+    expect(result.bundle).toMatchObject({
+      semanticState: "valid",
+      semanticStageDiagnostics: {
+        claimState: "valid",
+        evidenceState: "valid",
+        providerCallCount: 2,
+        sourceCoverage: "complete",
+        evidenceCoverage: "complete"
+      }
+    });
     expect(result.bundle?.objectives).toEqual(expect.arrayContaining([
       expect.objectContaining({ state: "hypothesis", admissionBasis: "semantic_proposal" })
     ]));
@@ -181,6 +205,9 @@ describe("runGeneralPrObservationNowV2", () => {
     ]));
     expect(result.bundle?.ledgerDigest).not.toBe(finalizeDeterministicGeneralPrObservationsV2(observationSeed).ledgerDigest);
     expect(JSON.stringify(result.bundle)).not.toContain("test-model");
+    expect(result.bundle).not.toHaveProperty("selectionManifest");
+    expect(result.bundle).not.toHaveProperty("receipt");
+    expect(JSON.stringify(result.bundle)).not.toMatch(/claimSelectionHash|evidenceSelectionHash|tokenSketch|changeClusterDescriptors|evidenceDescriptors/i);
   });
 
   it("distinguishes unavailable, invalid, stale, and admitted semantic pipeline states", async () => {
@@ -212,7 +239,7 @@ describe("runGeneralPrObservationNowV2", () => {
       input: noCandidateInput,
       generateReport: () => report,
       validateDeterministicReport: () => true,
-      semantic: { provider: { observe: async () => semanticProviderCandidate(semanticSeed, "pr_title") }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => noCandidateInput, modelProfile }
+      semantic: { provider: { observe: async (request) => semanticProviderCandidate(semanticSeed, "pr_title", request) }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => noCandidateInput, modelProfile }
     });
 
     expect(unavailable.bundle?.diagnostics).toMatchObject({ sourceCollection: "available", deterministicAdmission: "no_candidate", semanticAdmission: "unavailable" });
@@ -228,21 +255,13 @@ describe("runGeneralPrObservationNowV2", () => {
 
   it("projects semantic no-candidate, invalid output, and provider failure with distinct reasons", async () => {
     const semanticInput = { ...input, title: "Maintenance notes", description: "Internal cleanup only." };
-    const seed = buildGeneralPrObservationSeedV2(semanticInput);
-    const emptyCandidate = {
-      spanRoles: seed.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })),
-      objectiveGroups: [],
-      testApplicabilityProposals: [],
-      scopeMappingProposals: [],
-      evidenceRelationProposals: []
-    };
     const v2Report = {
       ...report,
       reportSchemaVersion: "verification-report.v2",
       verificationContract: { state: "absent" },
       requirements: [{ requirementId: "req_1", status: "unclear" }]
     } as unknown as VerificationReportV2;
-    const run = (provider: { observe: () => Promise<unknown> }) => runGeneralPrObservationNowV2({
+    const run = (provider: { observe: (request: GeneralPrSemanticObserverPackageV3) => Promise<unknown> }) => runGeneralPrObservationNowV2({
       policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
       input: semanticInput,
       generateReport: () => v2Report,
@@ -250,8 +269,12 @@ describe("runGeneralPrObservationNowV2", () => {
       semantic: { provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => semanticInput, modelProfile }
     });
 
-    const empty = await run({ observe: async () => emptyCandidate });
-    const invalid = await run({ observe: async () => ({ ...emptyCandidate, objectiveGroups: undefined }) });
+    const empty = await run({
+      observe: async (request) => request.stage === "claim_discovery"
+        ? { spanRoles: request.input.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })), objectiveGroups: [] }
+        : { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }
+    });
+    const invalid = await run({ observe: async () => ({ spanRoles: [], objectiveGroups: undefined }) });
     const failed = await run({ observe: async () => { throw new Error("provider unavailable"); } });
 
     expect((empty.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).toContain("semantic_candidate_missing");
@@ -260,11 +283,85 @@ describe("runGeneralPrObservationNowV2", () => {
     expect((failed.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).toContain("semantic_observer_unavailable");
     expect((failed.report as VerificationReportV2).generalPrAssessmentSummary?.reasonCodes).not.toContain("semantic_candidate_missing");
     for (const result of [empty, invalid, failed]) {
-      expect(result.report.requirements.map((requirement) => requirement.status)).toEqual(["unclear"]);
+      expect(JSON.stringify(result.report.requirements)).toBe(JSON.stringify(v2Report.requirements));
       expect((result.report as VerificationReportV2).generalPrAssessmentSummary?.counts.evidence_supported).toBe(0);
       expect(JSON.stringify(result.report)).not.toContain("semanticFailureStage");
       expect(JSON.stringify(result.report)).not.toContain("semanticPackageFailureReasons");
     }
+  });
+
+  it.each(["shadow", "advisory"] as const)("automatically stages eligible %s runs and keeps sampled effects hypothesis-only", async (mode) => {
+    const semanticInput: PullRequestInput = {
+      ...input,
+      title: "Maintenance notes",
+      description: Array.from({ length: 16 }, (_, index) => `- Requirement ${index}: return status ${index}.`).join("\n"),
+      changedFiles: Array.from({ length: 20 }, (_, index) => ({
+        path: `src/status-${index}.ts`,
+        status: "modified" as const,
+        patch: `+ return status${index};`
+      }))
+    };
+    const seed = buildGeneralPrObservationSeedV2(semanticInput);
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => semanticProviderCandidate(seed, "pr_title", request)) };
+    const result = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1(mode),
+      input: semanticInput,
+      generateReport: () => report,
+      validateDeterministicReport: () => true,
+      semantic: { provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => semanticInput, modelProfile }
+    });
+
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+    expect(result.bundle?.semanticStageDiagnostics).toMatchObject({
+      claimState: "valid",
+      evidenceState: "valid",
+      providerCallCount: 2,
+      sourceCoverage: "sampled",
+      evidenceCoverage: "sampled"
+    });
+    expect(result.bundle?.objectives.every((objective) => objective.state !== "observed")).toBe(true);
+    expect(result.bundle?.relationLevelCounts).toMatchObject({ verified: 0, observed: 0 });
+    expect(result.bundle?.diagnostics).toMatchObject({ semanticAdmission: "admitted", relationState: "hypothesis_only" });
+    expect(Object.values(result.bundle?.semanticSelectionOmittedReasonCounts ?? {}).some((count) => count > 0)).toBe(true);
+  });
+
+  it("keeps the strict requirement section byte-identical when Stage B fails", async () => {
+    const semanticInput: PullRequestInput = {
+      ...input,
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      changedFiles: [{ path: "src/status.ts", status: "modified", patch: "+ return Ready;" }]
+    };
+    const seed = buildGeneralPrObservationSeedV2(semanticInput);
+    const strictReport = {
+      ...report,
+      reportSchemaVersion: "verification-report.v2",
+      verificationContract: { state: "absent" },
+      requirements: [{ requirementId: "req_1", status: "unclear", evidence: ["baseline"] }]
+    } as unknown as VerificationReportV2;
+    const provider = {
+      observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => {
+        if (request.stage === "evidence_linking") throw new Error("stage B unavailable");
+        return semanticProviderCandidate(seed, "pr_title", request);
+      })
+    };
+
+    const result = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
+      input: semanticInput,
+      generateReport: () => strictReport,
+      validateDeterministicReport: () => true,
+      semantic: { provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => semanticInput, modelProfile }
+    });
+
+    expect(JSON.stringify(result.report.requirements)).toBe(JSON.stringify(strictReport.requirements));
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+    expect(result.bundle).toMatchObject({
+      semanticState: "valid",
+      semanticStageDiagnostics: { claimState: "valid", evidenceState: "unavailable", providerCallCount: 2 }
+    });
+    expect(result.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
+    expect(result.bundle?.relationLevelCounts.verified).toBe(0);
   });
 
   it("rejects provided requirements and non-GitHub inputs before semantic provider submission", async () => {

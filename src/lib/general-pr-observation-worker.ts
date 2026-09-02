@@ -1,11 +1,12 @@
 import {
   runGeneralPrSemanticObserverV2,
   type GeneralPrSemanticObserverModelProfileV2,
-  type GeneralPrSemanticObserverProviderV2,
-  type GeneralPrSemanticObserverRunResultV2
+  type GeneralPrSemanticObserverProviderV3,
+  type GeneralPrSemanticObserverRunResultV3
 } from "./general-pr-semantic-observer";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
 import {
+  buildGeneralPrSemanticAggregateDiagnosticsV1,
   finalizeDeterministicGeneralPrObservationsV2,
   type GeneralPrObservationBundleV2
 } from "./general-pr-observation-service";
@@ -33,7 +34,7 @@ export interface AdvanceQueuedGeneralPrObservationOptionsV2 {
   mode: "disabled" | "shadow" | "advisory";
   input: PullRequestInput;
   current: QueuedGeneralPrObservationV2;
-  provider?: GeneralPrSemanticObserverProviderV2;
+  provider?: GeneralPrSemanticObserverProviderV3;
   providerAvailable: boolean;
   privateRepository?: boolean;
   privateRepositoryConsent?: boolean;
@@ -47,7 +48,7 @@ export type AdvanceQueuedGeneralPrObservationResultV2 = {
   current: QueuedGeneralPrObservationV2;
   bundle: GeneralPrObservationBundleV2 | null;
   /** Null means no observer invocation occurred; never synthesize a receipt. */
-  semantic: GeneralPrSemanticObserverRunResultV2 | null;
+  semantic: GeneralPrSemanticObserverRunResultV3 | null;
 };
 
 /**
@@ -83,11 +84,18 @@ export async function advanceQueuedGeneralPrObservationV2(
     };
   }
 
+  let providerCallCount: 0 | 1 | 2 = 0;
+  const configuredProvider = options.provider;
   const semantic = await runGeneralPrSemanticObserverV2({
     mode: options.mode,
     input: options.input,
     seed,
-    provider: options.provider,
+    provider: configuredProvider ? {
+      observe: (request) => {
+        providerCallCount = providerCallCount === 0 ? 1 : 2;
+        return configuredProvider.observe(request);
+      }
+    } : undefined,
     providerAvailable: options.providerAvailable,
     privateRepository: options.privateRepository,
     privateRepositoryConsent: options.privateRepositoryConsent,
@@ -104,6 +112,8 @@ export async function advanceQueuedGeneralPrObservationV2(
     };
   }
 
+  const aggregate = buildGeneralPrSemanticAggregateDiagnosticsV1(semantic, providerCallCount);
+
   return {
     status: "completed",
     current: { ...options.current, attempt: 1, status: "completed" },
@@ -112,7 +122,9 @@ export async function advanceQueuedGeneralPrObservationV2(
       semantic.proposal,
       semantic.state,
       semantic.semanticFailureStage,
-      semantic.semanticPackageFailureReasons
+      semantic.semanticPackageFailureReasons,
+      aggregate.stageDiagnostics,
+      aggregate.omittedReasonCounts
     ),
     semantic
   };

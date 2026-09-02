@@ -1891,15 +1891,23 @@ describe("analysis worker preflight", () => {
         input: expect.objectContaining({ taskText: "" }),
         semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
       }));
-      expect(fetchMock.mock.calls.some(([url]) => String(url) === "https://api.openai.com/v1/responses")).toBe(true);
+      const observerCalls = fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses");
+      expect(observerCalls).toHaveLength(2);
+      expect(observerCalls.map(([, init]) => {
+        const body = JSON.parse(String(init?.body));
+        return JSON.parse(body.input[1].content[0].text).contractVersion;
+      })).toEqual(["general_pr_semantic_claim.v1", "general_pr_semantic_evidence.v1"]);
       expect(serialized).not.toContain("ledgerDigest");
       expect(serialized).not.toContain("generalPrObservation");
       const observationResult = await observationSpy.mock.results.at(-1)?.value;
       expect(observationResult?.bundle).toMatchObject({
         semanticState: "valid",
         semanticFailureStage: null,
-        diagnostics: { semanticAdmission: "no_candidate" }
+        diagnostics: { semanticAdmission: "admitted" },
+        semanticStageDiagnostics: { claimState: "valid", evidenceState: "valid", providerCallCount: 2 }
       });
+      expect(observationResult?.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
+      expect(observationResult?.bundle?.relationLevelCounts.verified).toBe(0);
     } finally {
       observationSpy.mockRestore();
     }
@@ -3002,13 +3010,19 @@ function exampleFromJsonSchema(schema: Record<string, unknown>, root: Record<str
 
 function validGeneralPrObserverCandidate(init?: RequestInit) {
   const request = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ text: string }> }> };
-  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as { spans: Array<{ id: string }> };
+  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as { contractVersion: string; spans?: Array<{ id: string }> };
+  if (observerInput.contractVersion === "general_pr_semantic_evidence.v1") {
+    return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
+  }
+  const objective = observerInput.spans?.[0];
+  if (!objective) throw new Error("claim package must include a span");
   return {
-    spanRoles: observerInput.spans.map((span) => ({ spanId: span.id, role: "supporting_context", abstained: false })),
-    objectiveGroups: [],
-    testApplicabilityProposals: [],
-    scopeMappingProposals: [],
-    evidenceRelationProposals: []
+    spanRoles: observerInput.spans!.map((span) => ({
+      spanId: span.id,
+      role: span.id === objective.id ? "objective_candidate" : "supporting_context",
+      abstained: false
+    })),
+    objectiveGroups: [{ spanIds: [objective.id], disposition: "candidate" }]
   };
 }
 

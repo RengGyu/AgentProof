@@ -14,6 +14,7 @@ import {
 import { submitGeneralPrSemanticObservationWithOpenAI } from "@/lib/openai-semantic";
 import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
+import { buildGeneralPrSemanticOperatorDiagnosticsV1 } from "@/lib/general-pr-observation-telemetry";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "@/lib/general-pr-runtime-policy";
 import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
@@ -176,12 +177,7 @@ export async function POST(request: Request) {
     return jsonNoStore({
       report: validation.report,
       ...(operatorDiagnosticsRequested ? {
-        operatorDiagnostics: {
-          version: 1,
-          semanticState: observed.bundle?.semanticState ?? null,
-          semanticFailureStage: observed.bundle?.semanticFailureStage ?? null,
-          semanticPackageFailureReasons: observed.bundle?.semanticPackageFailureReasons ?? []
-        }
+        operatorDiagnostics: buildGeneralPrSemanticOperatorDiagnosticsV1(observed.bundle)
       } : {})
     }, 200, timing, evidenceTiming);
   } catch (error) {

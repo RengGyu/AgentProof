@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildGeneralPrObservationTelemetryV1 } from "./general-pr-observation-telemetry";
+import {
+  buildGeneralPrObservationTelemetryV1,
+  buildGeneralPrSemanticOperatorDiagnosticsV1
+} from "./general-pr-observation-telemetry";
 import type { GeneralPrObservationBundleV2 } from "./general-pr-observation-service";
 
 const bundle: GeneralPrObservationBundleV2 = {
@@ -32,6 +35,22 @@ const bundle: GeneralPrObservationBundleV2 = {
   semanticState: "valid",
   semanticFailureStage: null,
   semanticPackageFailureReasons: [],
+  semanticStageDiagnostics: {
+    version: 1,
+    claimState: "valid",
+    evidenceState: "invalid",
+    sourceCoverage: "sampled",
+    evidenceCoverage: "complete",
+    providerCallCount: 2,
+    selectedCountBuckets: { sourceSpans: "9_12", evidenceCandidates: "17_32" }
+  },
+  semanticSelectionOmittedReasonCounts: {
+    spanBudget: 3,
+    evidenceBudget: 2,
+    inputByteBudget: 1,
+    unsafeDescriptor: 1,
+    noDeterministicSignal: 4
+  },
   diagnostics: {
     version: 1,
     sourceCollection: "available",
@@ -53,6 +72,8 @@ describe("general PR observation telemetry", () => {
       eligibility: "eligible",
       semanticState: "valid",
       semanticFailureStage: null,
+      semanticStageDiagnostics: bundle.semanticStageDiagnostics,
+      semanticSelectionOmittedReasonCounts: bundle.semanticSelectionOmittedReasonCounts,
       diagnostics: bundle.diagnostics,
       durationBucket: "lt_1s",
       objectiveCounts: { observed: 0, hypothesis: 1 },
@@ -83,11 +104,44 @@ describe("general PR observation telemetry", () => {
     expect(serialized).not.toContain("provider output");
   });
 
+  it("projects only closed stage aggregates across the operator boundary", () => {
+    const diagnostics = buildGeneralPrSemanticOperatorDiagnosticsV1(bundle);
+    const serialized = JSON.stringify(diagnostics);
+
+    expect(diagnostics).toEqual({
+      claimState: "valid",
+      evidenceState: "invalid",
+      sourceCoverage: "sampled",
+      evidenceCoverage: "complete",
+      providerCallCount: 2,
+      selectedCountBuckets: { sourceSpans: "9_12", evidenceCandidates: "17_32" },
+      omittedReasonCounts: {
+        spanBudget: 3,
+        evidenceBudget: 2,
+        inputByteBudget: 1,
+        unsafeDescriptor: 1,
+        noDeterministicSignal: 4
+      }
+    });
+    expect(Object.keys(diagnostics).sort()).toEqual([
+      "claimState",
+      "evidenceCoverage",
+      "evidenceState",
+      "omittedReasonCounts",
+      "providerCallCount",
+      "selectedCountBuckets",
+      "sourceCoverage"
+    ]);
+    expect(serialized).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
+  });
+
   it("records disabled and ineligible runs without inventing an observation state", () => {
     expect(buildGeneralPrObservationTelemetryV1({ mode: "disabled", bundle: null, elapsedMs: 0 })).toMatchObject({
       eligibility: "disabled",
       semanticState: null,
       semanticFailureStage: null,
+      semanticStageDiagnostics: null,
+      semanticSelectionOmittedReasonCounts: null,
       diagnostics: null,
       durationBucket: "lt_1s"
     });
@@ -95,8 +149,19 @@ describe("general PR observation telemetry", () => {
       eligibility: "ineligible",
       semanticState: null,
       semanticFailureStage: null,
+      semanticStageDiagnostics: null,
+      semanticSelectionOmittedReasonCounts: null,
       diagnostics: null,
       durationBucket: "gte_8s"
+    });
+    expect(buildGeneralPrSemanticOperatorDiagnosticsV1(null)).toEqual({
+      claimState: "not_run",
+      evidenceState: "not_run",
+      sourceCoverage: null,
+      evidenceCoverage: null,
+      providerCallCount: 0,
+      selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
+      omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
     });
   });
 });
