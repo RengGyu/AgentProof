@@ -39,6 +39,8 @@ export function evaluateGeneralPrObservationReleaseV1({ manifest, policy, calibr
   const reasons = [];
   if (!sameJson(manifest.featurePolicy, policy.requiredFeaturePolicy)) reasons.push("feature_policy_mismatch");
   if (calibrationSeal.scoredCandidateManifestHash !== digest(manifest) || holdoutSeal.scoredCandidateManifestHash !== digest(manifest) || calibrationSeal.candidateSha !== candidateSha || holdoutSeal.candidateSha !== candidateSha) reasons.push("candidate_binding_mismatch");
+  if (calibrationSeal.cohortPartitionWitnessHash !== holdoutSeal.cohortPartitionWitnessHash) reasons.push("cohort_partition_mismatch");
+  if (calibrationSeal.selectionPolicyHash !== holdoutSeal.selectionPolicyHash || calibrationSeal.selectionPolicyHash !== policy.approvedSelectionPolicyHash) reasons.push("selection_policy_binding_mismatch");
   if (calibrationSeal.caseCount < policy.minimumCalibrationCases || holdoutSeal.caseCount < policy.minimumHoldoutCases) reasons.push("insufficient_independent_denominator");
   if (!policy.hardGates.every((gate) => calibrationSeal.score.hardGates[gate] === 0 && holdoutSeal.score.hardGates[gate] === 0)) reasons.push("hard_gate_failed");
   const qualityState = qualityGateState(APPROVED_QUALITY_THRESHOLDS, calibrationSeal.score.quality, holdoutSeal.score.quality);
@@ -74,15 +76,17 @@ function isManifest(value) {
 
 function isPolicy(value) {
   return isRecord(value) && value.version === 1 && Number.isSafeInteger(value.minimumCalibrationCases) && value.minimumCalibrationCases > 0 &&
-    Number.isSafeInteger(value.minimumHoldoutCases) && value.minimumHoldoutCases > 0 && isRecord(value.requiredFeaturePolicy) &&
+    Number.isSafeInteger(value.minimumHoldoutCases) && value.minimumHoldoutCases > 0 && isApprovedSelectionPolicy(value.approvedSelectionPolicy) &&
+    isHash(value.approvedSelectionPolicyHash) && value.approvedSelectionPolicyHash === digest({ domain: "agentproof.general-pr.selection-policy.v1", policy: value.approvedSelectionPolicy }) &&
+    isRecord(value.requiredFeaturePolicy) &&
     Array.isArray(value.hardGates) && value.hardGates.length === new Set(value.hardGates).size &&
     value.hardGates.every((item) => typeof item === "string") && REQUIRED_HARD_GATES.every((gate) => value.hardGates.includes(gate)) &&
     (sameJson(value.qualityThresholds, APPROVED_QUALITY_THRESHOLDS) || sameJson(value.qualityThresholds, LEGACY_QUALITY_THRESHOLDS));
 }
 
 function isScoredSeal(value, cohort) {
-  return exactKeys(value, ["version", "cohort", "caseCount", "corpusHash", "sourceBindingDigest", "schemaDigest", "selectionPolicyHash", "rubricHash", "toolchainHash", "sealHash", "candidateSha", "scoredCandidateManifestHash", "score", "scoredSealHash"]) && value.version === 1 && value.cohort === cohort && Number.isSafeInteger(value.caseCount) && value.caseCount > 0 &&
-    isHash(value.corpusHash) && isHash(value.sourceBindingDigest) && isHash(value.schemaDigest) && isHash(value.selectionPolicyHash) &&
+  return exactKeys(value, ["version", "cohort", "caseCount", "corpusHash", "sourceBindingDigest", "schemaDigest", "cohortPartitionWitnessHash", "selectionPolicyHash", "rubricHash", "toolchainHash", "sealHash", "candidateSha", "scoredCandidateManifestHash", "score", "scoredSealHash"]) && value.version === 1 && value.cohort === cohort && Number.isSafeInteger(value.caseCount) && value.caseCount > 0 &&
+    isHash(value.corpusHash) && isHash(value.sourceBindingDigest) && isHash(value.schemaDigest) && isHash(value.cohortPartitionWitnessHash) && isHash(value.selectionPolicyHash) &&
     isHash(value.rubricHash) && isHash(value.toolchainHash) && isHash(value.sealHash) && isCommitSha(value.candidateSha) && isHash(value.scoredCandidateManifestHash) &&
     isRecord(value.score) && exactKeys(value.score, ["hardGates", "quality"]) && isRecord(value.score.hardGates) && isRecord(value.score.quality) &&
     isHash(value.scoredSealHash) && Object.values(value.score.hardGates).every((item) => Number.isSafeInteger(item) && item >= 0) &&
@@ -117,6 +121,12 @@ function readJson(path) { return JSON.parse(readFileSync(path, "utf8")); }
 function isHash(value) { return typeof value === "string" && /^[a-f0-9]{64}$/.test(value); }
 function isCommitSha(value) { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function isApprovedSelectionPolicy(value) {
+  return exactKeys(value, ["version", "policyVersion", "claim", "evidence"]) && value.version === 1 && value.policyVersion === "general-pr-claim-evidence-selection.v1" &&
+    exactKeys(value.claim, ["maxSpans", "maxInputBytes"]) && isPositiveInteger(value.claim.maxSpans) && isPositiveInteger(value.claim.maxInputBytes) &&
+    exactKeys(value.evidence, ["maxPerObjective", "maxTotal", "maxInputBytes"]) && isPositiveInteger(value.evidence.maxPerObjective) && isPositiveInteger(value.evidence.maxTotal) && isPositiveInteger(value.evidence.maxInputBytes);
+}
+function isPositiveInteger(value) { return Number.isSafeInteger(value) && value > 0; }
 function isRateOrUnknown(value) { return value === "UNKNOWN" || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1); }
 function exactKeys(value, keys) { return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 function sameJson(left, right) { return stableJson(left) === stableJson(right); }

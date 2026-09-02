@@ -2,6 +2,20 @@
   "version": 1,
   "minimumCalibrationCases": 60,
   "minimumHoldoutCases": 60,
+  "approvedSelectionPolicy": {
+    "version": 1,
+    "policyVersion": "general-pr-claim-evidence-selection.v1",
+    "claim": {
+      "maxSpans": 12,
+      "maxInputBytes": 12000
+    },
+    "evidence": {
+      "maxPerObjective": 12,
+      "maxTotal": 64,
+      "maxInputBytes": 12000
+    }
+  },
+  "approvedSelectionPolicyHash": "0c9d55e4512e720ecae264b59428d512951202cebf1e2dd7b29e5625ddaf6b26",
   "requiredFeaturePolicy": {
     "semanticObserverShadow": false,
     "reviewerAdvisoryObservations": false,

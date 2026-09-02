@@ -24,8 +24,8 @@ const HARD_GATES = [
  * only: it never serializes case IDs, label text, source bindings, or model
  * output. Missing or malformed custody inputs are unavailable, never a pass.
  */
-export function evaluateGeneralPrObservationsV1({ corpus, goldSeal, manifest, results, candidateSha }) {
-  if (!verifyGeneralPrObservationSealV1({ corpus, seal: goldSeal }) || !isManifest(manifest) || !isHash(candidateSha) || !isResults(results, corpus, goldSeal, manifest)) {
+export function evaluateGeneralPrObservationsV1({ corpus, peerCorpus, liveSmokeCaseIds, goldSeal, manifest, results, candidateSha }) {
+  if (!verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmokeCaseIds, seal: goldSeal }) || !isManifest(manifest) || !isHash(candidateSha) || !isResults(results, corpus, goldSeal, manifest)) {
     return { status: "unavailable" };
   }
   const byId = new Map(results.cases.map((item) => [item.caseId, item]));
@@ -63,6 +63,8 @@ export function runGeneralPrObservationEvaluationCliV1(argv) {
   try {
     const result = evaluateGeneralPrObservationsV1({
       corpus: readJson(paths.corpus),
+      peerCorpus: readJson(paths.peerCorpus),
+      liveSmokeCaseIds: readLiveSmokeCaseIds(paths.liveSmokeCaseIds),
       goldSeal: readJson(paths.goldSeal),
       manifest: readJson(paths.manifest),
       results: readJson(paths.results),
@@ -172,8 +174,8 @@ function wilsonLower(successes, total) {
 }
 
 function parseArgs(argv) {
-  if (argv.length !== 12) return null;
-  const allowed = new Map([["--gold-corpus", "corpus"], ["--gold-seal", "goldSeal"], ["--candidate-manifest", "manifest"], ["--candidate-results", "results"], ["--candidate-sha", "candidateSha"], ["--output", "output"]]);
+  if (argv.length !== 16) return null;
+  const allowed = new Map([["--gold-corpus", "corpus"], ["--peer-corpus", "peerCorpus"], ["--live-smoke-case-ids", "liveSmokeCaseIds"], ["--gold-seal", "goldSeal"], ["--candidate-manifest", "manifest"], ["--candidate-results", "results"], ["--candidate-sha", "candidateSha"], ["--output", "output"]]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const target = allowed.get(argv[index]);
@@ -188,6 +190,10 @@ function readJson(path) {
   const raw = readFileSync(path, "utf8");
   if (Buffer.byteLength(raw, "utf8") > MAX_INPUT_BYTES) throw new Error("evaluation input exceeds byte limit");
   return JSON.parse(raw);
+}
+function readLiveSmokeCaseIds(path) {
+  const value = readJson(path);
+  return exactKeys(value, ["version", "caseIds"]) && value.version === 1 ? value.caseIds : null;
 }
 function exactKeys(value, keys) { return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }

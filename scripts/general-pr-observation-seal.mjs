@@ -9,9 +9,8 @@ export function buildGeneralPrObservationSealV1(input) {
     return { status: "invalid" };
   }
   const cohort = corpus.cases[0].cohort;
-  if (!corpus.cases.every((item) => item.cohort === cohort) || !validIndependentLabels(corpus.cases)) {
-    return { status: "invalid" };
-  }
+  const cohortPartitionWitnessHash = buildCohortPartitionWitnessHash(corpus, input.peerCorpus, input.liveSmokeCaseIds);
+  if (!cohortPartitionWitnessHash) return { status: "invalid" };
   const corpusHash = digest({ domain: "agentproof.general-pr.gold-corpus.v1", corpus });
   const sourceBindingDigest = digest({
     domain: "agentproof.general-pr.gold-bindings.v1",
@@ -32,6 +31,7 @@ export function buildGeneralPrObservationSealV1(input) {
     corpusHash,
     sourceBindingDigest,
     schemaDigest,
+    cohortPartitionWitnessHash,
     selectionPolicyHash: input.selectionPolicyHash,
     rubricHash: input.rubricHash,
     toolchainHash: input.toolchainHash
@@ -42,10 +42,12 @@ export function buildGeneralPrObservationSealV1(input) {
   };
 }
 
-export function verifyGeneralPrObservationSealV1({ corpus, seal }) {
+export function verifyGeneralPrObservationSealV1({ corpus, peerCorpus, liveSmokeCaseIds, seal }) {
   if (!isCorpus(corpus) || !isGoldSeal(seal) || !validIndependentLabels(corpus.cases)) return false;
   const cohort = corpus.cases[0].cohort;
   if (!corpus.cases.every((item) => item.cohort === cohort)) return false;
+  const cohortPartitionWitnessHash = buildCohortPartitionWitnessHash(corpus, peerCorpus, liveSmokeCaseIds);
+  if (cohortPartitionWitnessHash !== seal.cohortPartitionWitnessHash) return false;
   const unsigned = {
     version: 1,
     cohort,
@@ -63,6 +65,7 @@ export function verifyGeneralPrObservationSealV1({ corpus, seal }) {
       }))
     }),
     schemaDigest: seal.schemaDigest,
+    cohortPartitionWitnessHash,
     selectionPolicyHash: seal.selectionPolicyHash,
     rubricHash: seal.rubricHash,
     toolchainHash: seal.toolchainHash
@@ -76,9 +79,48 @@ function isCorpus(value) {
 }
 
 function isGoldSeal(value) {
-  return isRecord(value) && Object.keys(value).length === 10 && value.version === 1 &&
+  return isRecord(value) && Object.keys(value).length === 11 && value.version === 1 &&
     (value.cohort === "calibration" || value.cohort === "holdout") && Number.isSafeInteger(value.caseCount) && value.caseCount > 0 &&
-    [value.corpusHash, value.sourceBindingDigest, value.schemaDigest, value.selectionPolicyHash, value.rubricHash, value.toolchainHash, value.sealHash].every(isHash);
+    [value.corpusHash, value.sourceBindingDigest, value.schemaDigest, value.cohortPartitionWitnessHash, value.selectionPolicyHash, value.rubricHash, value.toolchainHash, value.sealHash].every(isHash);
+}
+
+function buildCohortPartitionWitnessHash(corpus, peerCorpus, liveSmokeCaseIds) {
+  if (!isCorpus(peerCorpus) || !Array.isArray(liveSmokeCaseIds) || liveSmokeCaseIds.length === 0 ||
+    !liveSmokeCaseIds.every(isHash) || new Set(liveSmokeCaseIds).size !== liveSmokeCaseIds.length ||
+    !validCohortCorpus(corpus) || !validCohortCorpus(peerCorpus)) return null;
+  const cohort = corpus.cases[0].cohort;
+  const peerCohort = peerCorpus.cases[0].cohort;
+  if (cohort === peerCohort) return null;
+  const liveIds = new Set(liveSmokeCaseIds);
+  const corpusCases = [...corpus.cases, ...peerCorpus.cases];
+  if (corpusCases.some((item) => liveIds.has(item.caseId))) return null;
+  if (hasOverlap(corpus.cases, peerCorpus.cases, "caseId") ||
+    hasOverlap(corpus.cases, peerCorpus.cases, "repositoryFamilyHash") ||
+    hasOverlap(corpus.cases, peerCorpus.cases, "taskFamilyHash")) return null;
+  const corpusHashes = {
+    [cohort]: digest({ domain: "agentproof.general-pr.gold-corpus.v1", corpus }),
+    [peerCohort]: digest({ domain: "agentproof.general-pr.gold-corpus.v1", corpus: peerCorpus })
+  };
+  const liveSmokeExclusionHash = digest({
+    domain: "agentproof.general-pr.live-smoke-exclusion.v1",
+    caseIds: [...liveSmokeCaseIds].sort()
+  });
+  return digest({
+    domain: "agentproof.general-pr.cohort-partition-witness.v1",
+    calibrationCorpusHash: corpusHashes.calibration,
+    holdoutCorpusHash: corpusHashes.holdout,
+    liveSmokeExclusionHash
+  });
+}
+
+function validCohortCorpus(corpus) {
+  const cohort = corpus.cases[0].cohort;
+  return corpus.cases.every((item) => item.cohort === cohort) && validIndependentLabels(corpus.cases);
+}
+
+function hasOverlap(left, right, key) {
+  const values = new Set(left.map((item) => item[key]));
+  return right.some((item) => values.has(item[key]));
 }
 
 function isCase(value) {
@@ -135,8 +177,18 @@ export function runGeneralPrObservationSealCliV1(argv) {
   if (!paths || existsSync(paths.output)) return 2;
   try {
     const corpus = JSON.parse(readFileSync(paths.corpus, "utf8"));
+    const peerCorpus = JSON.parse(readFileSync(paths.peerCorpus, "utf8"));
+    const liveSmoke = JSON.parse(readFileSync(paths.liveSmokeCaseIds, "utf8"));
     const schemaHashes = paths.schemaHashes.split(",");
-    const result = buildGeneralPrObservationSealV1({ corpus, schemaHashes, selectionPolicyHash: paths.selectionPolicyHash, rubricHash: paths.rubricHash, toolchainHash: paths.toolchainHash });
+    const result = buildGeneralPrObservationSealV1({
+      corpus,
+      peerCorpus,
+      liveSmokeCaseIds: exactKeys(liveSmoke, ["version", "caseIds"]) && liveSmoke.version === 1 ? liveSmoke.caseIds : null,
+      schemaHashes,
+      selectionPolicyHash: paths.selectionPolicyHash,
+      rubricHash: paths.rubricHash,
+      toolchainHash: paths.toolchainHash
+    });
     if (result.status !== "sealed") return 1;
     writeFileSync(paths.output, `${JSON.stringify(result.seal)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
     process.stdout.write('{"version":1,"status":"sealed"}\n');
@@ -147,16 +199,18 @@ export function runGeneralPrObservationSealCliV1(argv) {
 }
 
 function parseArgs(argv) {
-  if (argv.length !== 12) return null;
+  if (argv.length !== 16) return null;
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
-    if (!["--corpus", "--schema-hashes", "--selection-policy-hash", "--rubric-hash", "--toolchain-hash", "--output"].includes(key) || typeof value !== "string" || value.length === 0 || values.has(key)) return null;
+    if (!["--corpus", "--peer-corpus", "--live-smoke-case-ids", "--schema-hashes", "--selection-policy-hash", "--rubric-hash", "--toolchain-hash", "--output"].includes(key) || typeof value !== "string" || value.length === 0 || values.has(key)) return null;
     values.set(key, value);
   }
   return {
     corpus: values.get("--corpus"),
+    peerCorpus: values.get("--peer-corpus"),
+    liveSmokeCaseIds: values.get("--live-smoke-case-ids"),
     schemaHashes: values.get("--schema-hashes"),
     selectionPolicyHash: values.get("--selection-policy-hash"),
     rubricHash: values.get("--rubric-hash"),
@@ -167,6 +221,7 @@ function parseArgs(argv) {
 
 function isHash(value) { return typeof value === "string" && /^[a-f0-9]{64}$/.test(value); }
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function exactKeys(value, keys) { return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 function digest(value) { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
 function stableJson(value) { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (isRecord(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`; return JSON.stringify(value); }
 function sameJson(left, right) { return stableJson(left) === stableJson(right); }

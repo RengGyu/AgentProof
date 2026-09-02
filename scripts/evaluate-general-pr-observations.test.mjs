@@ -44,12 +44,44 @@ function goldCase(caseId, axis, labels) {
   };
 }
 
+function peerCorpus(corpus) {
+  return {
+    version: 1,
+    cases: corpus.cases.map((item, index) => ({
+      ...item,
+      caseId: hash(`peer:${index}:case`),
+      cohort: item.cohort === "calibration" ? "holdout" : "calibration",
+      repositoryFamilyHash: hash(`peer:${index}:repo`),
+      taskFamilyHash: hash(`peer:${index}:task`),
+      timeWindowHash: hash(`peer:${index}:time`),
+      sourceHash: hash(`peer:${index}:source`),
+      contentHash: hash(`peer:${index}:content`),
+      headHash: hash(`peer:${index}:head`),
+      inventoryHash: hash(`peer:${index}:inventory`),
+      normalizerHash: hash(`peer:${index}:normalizer`)
+    }))
+  };
+}
+
+function sealInput(corpus, overrides = {}) {
+  return {
+    corpus,
+    peerCorpus: peerCorpus(corpus),
+    liveSmokeCaseIds: [hash("live-smoke-only")],
+    schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")],
+    selectionPolicyHash: hash("selection"),
+    rubricHash: hash("rubric"),
+    toolchainHash: hash("toolchain"),
+    ...overrides
+  };
+}
+
 function fixture() {
   const binary = (reviewerId, decision = "positive") => ({ version: 1, reviewerId: hash(reviewerId), decision, rubricHash: hash("rubric") });
   const state = (reviewerId) => ({ version: 1, reviewerId: hash(reviewerId), observationKind: "test_coverage", state: "related_test_observed", rubricHash: hash("rubric") });
   const corpus = { version: 1, cases: [goldCase("span", "span_role", [binary("one"), binary("two")]), goldCase("test", "observation", [state("three"), state("four")])] };
-  const sealInput = { corpus, schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")], selectionPolicyHash: hash("selection"), rubricHash: hash("rubric"), toolchainHash: hash("toolchain") };
-  const goldSeal = buildGeneralPrObservationSealV1(sealInput).seal;
+  const custody = sealInput(corpus);
+  const goldSeal = buildGeneralPrObservationSealV1(custody).seal;
   const manifest = { version: 1, baseSha: "a".repeat(40), candidateBranch: "codex/test", reportSchemaVersion: "verification-report.v2", featurePolicy: { semanticObserverShadow: false, reviewerAdvisoryObservations: false, deterministicRelationConsumption: false, positiveProofPromotion: false } };
   const results = {
     version: 1,
@@ -69,7 +101,15 @@ function fixture() {
       ...(item.axis === "observation" ? { observationKind: "test_coverage", state: "related_test_observed" } : { decision: "positive" })
     }))
   };
-  return { corpus, goldSeal, manifest, results, candidateSha: "d".repeat(40) };
+  return {
+    corpus,
+    peerCorpus: custody.peerCorpus,
+    liveSmokeCaseIds: custody.liveSmokeCaseIds,
+    goldSeal,
+    manifest,
+    results,
+    candidateSha: "d".repeat(40)
+  };
 }
 
 describe("evaluate-general-pr-observations", () => {
@@ -117,12 +157,11 @@ describe("evaluate-general-pr-observations", () => {
       binary("relation-missed", "relation", "positive"),
       binary("relation-negative", "relation", "negative")
     ];
+    value.peerCorpus = peerCorpus(value.corpus);
     value.goldSeal = buildGeneralPrObservationSealV1({
-      corpus: value.corpus,
-      schemaHashes: [hash("source"), hash("span"), hash("relation"), hash("observation")],
-      selectionPolicyHash: hash("selection"),
-      rubricHash: hash("rubric"),
-      toolchainHash: hash("toolchain")
+      ...sealInput(value.corpus),
+      peerCorpus: value.peerCorpus,
+      liveSmokeCaseIds: value.liveSmokeCaseIds
     }).seal;
     const decisions = ["positive", "positive", "positive", "negative", "negative", "positive", "negative", "positive"];
     value.results = {
@@ -171,12 +210,11 @@ describe("evaluate-general-pr-observations", () => {
       { version: 1, reviewerId: hash("one"), decision: "positive", rubricHash: hash("rubric") },
       { version: 1, reviewerId: hash("two"), decision: "positive", rubricHash: hash("rubric") }
     ])];
+    malformedEvidenceSelection.peerCorpus = peerCorpus(malformedEvidenceSelection.corpus);
     malformedEvidenceSelection.goldSeal = buildGeneralPrObservationSealV1({
-      corpus: malformedEvidenceSelection.corpus,
-      schemaHashes: [hash("relation")],
-      selectionPolicyHash: hash("selection"),
-      rubricHash: hash("rubric"),
-      toolchainHash: hash("toolchain")
+      ...sealInput(malformedEvidenceSelection.corpus, { schemaHashes: [hash("relation")] }),
+      peerCorpus: malformedEvidenceSelection.peerCorpus,
+      liveSmokeCaseIds: malformedEvidenceSelection.liveSmokeCaseIds
     }).seal;
     malformedEvidenceSelection.results.goldSealHash = malformedEvidenceSelection.goldSeal.sealHash;
     malformedEvidenceSelection.results.cases = [{
@@ -192,5 +230,15 @@ describe("evaluate-general-pr-observations", () => {
 
     assert.deepEqual(evaluateGeneralPrObservationsV1(missingPackaging), { status: "unavailable" });
     assert.deepEqual(evaluateGeneralPrObservationsV1(malformedEvidenceSelection), { status: "unavailable" });
+  });
+
+  it("revalidates cohort-family and live-smoke custody while scoring", () => {
+    const overlap = fixture();
+    overlap.peerCorpus.cases[0].repositoryFamilyHash = overlap.corpus.cases[0].repositoryFamilyHash;
+    const liveDerived = fixture();
+    liveDerived.liveSmokeCaseIds = [liveDerived.corpus.cases[0].caseId];
+
+    assert.deepEqual(evaluateGeneralPrObservationsV1(overlap), { status: "unavailable" });
+    assert.deepEqual(evaluateGeneralPrObservationsV1(liveDerived), { status: "unavailable" });
   });
 });

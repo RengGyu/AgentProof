@@ -1082,6 +1082,8 @@ Expected: FAIL because selection and package metrics are absent.
 
 Keep calibration and holdout disjoint by repository/task family. Do not import current 25-live-PR outcomes as labels.
 
+Artifact contract note: gold and scored seals carry only an opaque `cohortPartitionWitnessHash`; the seal and score commands recompute it transiently from both private cohort corpora plus the opaque live-smoke exclusion set. Release requires matching partition witnesses and matching `selectionPolicyHash` values equal to the explicitly approved claim/evidence budget digest in the release policy. No family/case membership list is emitted.
+
 - [ ] **Step 5: Run evaluation tests**
 
 ```bash
