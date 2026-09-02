@@ -4,6 +4,7 @@ import {
   buildGeneralPrSemanticEvidenceJsonSchemaV1,
   buildGeneralPrSemanticProposalJsonSchemaV2,
   deriveGeneralPrObjectiveGroupIdV2,
+  GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES,
   mergeGeneralPrSemanticStageCandidatesV1,
   validateGeneralPrSemanticClaimCandidateV1,
   validateGeneralPrSemanticEvidenceCandidateV1,
@@ -498,18 +499,29 @@ describe("GeneralPr split semantic stage contracts", () => {
     }, observationSeed)).toEqual(first);
   });
 
-  it("expands a sampled claim selection to the canonical full-seed span contract", () => {
+  it("keeps oversized deterministic full-seed expansion out of the provider-output byte gate", () => {
     const request = stageInput({
-      taskText: ["## Requirements", ...Array.from({ length: 20 }, (_, index) => `- Return state ${index + 1}.`)].join("\n")
+      taskText: ["## Requirements", ...Array.from({ length: 260 }, (_, index) => `- Return state ${index + 1}.`)].join("\n")
     });
     const observationSeed = buildGeneralPrObservationSeedV2(request);
     const selection = claimSelection(request, observationSeed);
     const candidate = claimCandidate(selection, ["Return state 1."]);
     const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    if (!claim.valid) throw new Error(claim.errors.join(", "));
+    const expandedCandidate = {
+      spanRoles: claim.spanRoles,
+      objectiveGroups: claim.objectiveGroups,
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: []
+    };
     const merged = mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, null);
 
     expect(observationSeed.spans.length).toBeGreaterThan(12);
     expect(selection.selectedSpanIds.length).toBe(12);
+    expect(Buffer.byteLength(JSON.stringify(candidate), "utf8")).toBeLessThanOrEqual(GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES);
+    expect(Buffer.byteLength(JSON.stringify(expandedCandidate), "utf8")).toBeGreaterThan(GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES);
+    expect(validateGeneralPrSemanticProposalV2(expandedCandidate, observationSeed)).toEqual({ valid: false, errors: ["proposal output byte limit exceeded"] });
     expect(merged).toEqual(expect.objectContaining({ valid: true }));
     if (merged.valid) expect(Object.keys(merged.proposal.spanRoles)).toHaveLength(observationSeed.spans.length);
   });

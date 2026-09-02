@@ -276,13 +276,13 @@ export function mergeGeneralPrSemanticStageCandidatesV1(
   if (claim.parentSeedHash !== seed.seedHash) return invalid("claim stage is stale");
   if (evidence && !evidence.valid) return invalid("evidence stage is invalid");
   if (evidence?.parentSeedHash !== undefined && evidence.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
-  return validateGeneralPrSemanticProposalV2({
+  return validateGeneralPrSemanticProposalV2Internal({
     spanRoles: claim.spanRoles,
     objectiveGroups: claim.objectiveGroups,
     testApplicabilityProposals: evidence?.testApplicabilityProposals ?? [],
     scopeMappingProposals: evidence?.scopeMappingProposals ?? [],
     evidenceRelationProposals: evidence?.evidenceRelationProposals ?? []
-  }, seed);
+  }, seed, { currentSeedHash: seed.seedHash }, "canonical_merge");
 }
 
 /**
@@ -344,8 +344,17 @@ export function validateGeneralPrSemanticProposalV2(
   seed: GeneralPrObservationSeedV2,
   context: GeneralPrSemanticProposalValidationContextV2 = { currentSeedHash: seed.seedHash }
 ): GeneralPrSemanticProposalValidation {
+  return validateGeneralPrSemanticProposalV2Internal(candidate, seed, context, "provider_candidate");
+}
+
+function validateGeneralPrSemanticProposalV2Internal(
+  candidate: unknown,
+  seed: GeneralPrObservationSeedV2,
+  context: GeneralPrSemanticProposalValidationContextV2,
+  mode: "provider_candidate" | "canonical_merge"
+): GeneralPrSemanticProposalValidation {
   if (!validateGeneralPrObservationSeedV2(seed).valid) return invalid("seed is invalid");
-  if (serializedBytes(candidate) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalid("proposal output byte limit exceeded");
+  if (mode === "provider_candidate" && serializedBytes(candidate) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalid("proposal output byte limit exceeded");
   if (!isRecord(candidate) || !hasExactKeys(candidate, PROVIDER_ROOT_KEYS)) return invalid("provider candidate root shape is invalid");
   if (context.currentSeedHash !== seed.seedHash) return invalid("proposal is stale");
   if (!Array.isArray(candidate.spanRoles) || !Array.isArray(candidate.objectiveGroups) || !Array.isArray(candidate.testApplicabilityProposals) || !Array.isArray(candidate.scopeMappingProposals) || !Array.isArray(candidate.evidenceRelationProposals)) return invalid("provider candidate collections are invalid");
