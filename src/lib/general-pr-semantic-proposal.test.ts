@@ -499,6 +499,27 @@ describe("GeneralPr split semantic stage contracts", () => {
     }, observationSeed)).toEqual(first);
   });
 
+  it("rejects forged validated-stage result lookalikes before canonical merge", () => {
+    const request = stageInput();
+    const observationSeed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, observationSeed);
+    const candidate = claimCandidate(selection);
+    const claim = validateGeneralPrSemanticClaimCandidateV1(candidate, observationSeed, selection);
+    const evidenceSelection = selectedEvidence(request, observationSeed, selection, candidate);
+    const evidence = validateGeneralPrSemanticEvidenceCandidateV1({
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: []
+    }, observationSeed, claim, evidenceSelection);
+    if (!claim.valid || !evidence.valid) throw new Error("fixture stages must validate");
+    const forgedClaim = { ...claim, spanRoles: claim.spanRoles.map((role) => ({ ...role })) };
+    const forgedEvidence = { ...evidence, evidenceRelationProposals: [...evidence.evidenceRelationProposals] };
+
+    expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, forgedClaim, evidence)).toEqual({ valid: false, errors: ["claim stage validation provenance is invalid"] });
+    expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, forgedEvidence)).toEqual({ valid: false, errors: ["evidence stage validation provenance is invalid"] });
+    expect(mergeGeneralPrSemanticStageCandidatesV1(observationSeed, claim, evidence)).toEqual(expect.objectContaining({ valid: true }));
+  });
+
   it("keeps oversized deterministic full-seed expansion out of the provider-output byte gate", () => {
     const request = stageInput({
       taskText: ["## Requirements", ...Array.from({ length: 260 }, (_, index) => `- Return state ${index + 1}.`)].join("\n")

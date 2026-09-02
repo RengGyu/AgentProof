@@ -63,6 +63,9 @@ const ROLES: readonly GeneralPrClaimRoleV2[] = [
   "mixed_or_ambiguous"
 ];
 
+const VALIDATED_CLAIM_RESULTS = new WeakMap<object, string>();
+const VALIDATED_EVIDENCE_RESULTS = new WeakMap<object, string>();
+
 export interface GeneralPrSemanticSpanRoleV2 {
   spanId: string;
   role: GeneralPrClaimRoleV2;
@@ -230,7 +233,7 @@ export function validateGeneralPrSemanticClaimCandidateV1(
   if (!normalizedGroups) return invalidClaim("claim objective groups are invalid");
   const spanRoles = seed.spans.map((span) => normalizedSelectedRoles[span.id] ?? deterministicUnselectedRole(span));
   const objectiveGroups = Object.values(normalizedGroups).map(({ spanIds, disposition }) => ({ spanIds, disposition }));
-  return { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, errors: [] };
+  return registerValidatedStageResult(VALIDATED_CLAIM_RESULTS, "claim", { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, errors: [] });
 }
 
 export function validateGeneralPrSemanticEvidenceCandidateV1(
@@ -256,7 +259,7 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
     ...scopeMappingProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
     ...evidenceRelationProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `evidence:${item.evidenceId}` }))
   ])) return invalidEvidence("evidence relation proposal is invalid");
-  return {
+  return registerValidatedStageResult(VALIDATED_EVIDENCE_RESULTS, "evidence", {
     valid: true,
     parentSeedHash: seed.seedHash,
     evidenceSelectionHash: selection.evidenceSelectionHash,
@@ -264,7 +267,7 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
     scopeMappingProposals,
     evidenceRelationProposals,
     errors: []
-  };
+  });
 }
 
 export function mergeGeneralPrSemanticStageCandidatesV1(
@@ -273,8 +276,10 @@ export function mergeGeneralPrSemanticStageCandidatesV1(
   evidence: GeneralPrSemanticEvidenceValidationV1 | null
 ): GeneralPrSemanticProposalValidation {
   if (!claim.valid) return invalid("claim stage is invalid");
+  if (!hasValidatedStageProvenance(VALIDATED_CLAIM_RESULTS, "claim", claim)) return invalid("claim stage validation provenance is invalid");
   if (claim.parentSeedHash !== seed.seedHash) return invalid("claim stage is stale");
   if (evidence && !evidence.valid) return invalid("evidence stage is invalid");
+  if (evidence && !hasValidatedStageProvenance(VALIDATED_EVIDENCE_RESULTS, "evidence", evidence)) return invalid("evidence stage validation provenance is invalid");
   if (evidence?.parentSeedHash !== undefined && evidence.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
   return validateGeneralPrSemanticProposalV2Internal({
     spanRoles: claim.spanRoles,
@@ -625,6 +630,24 @@ function deterministicUnselectedRole(span: GeneralPrSemanticSpanV2): GeneralPrSe
   return span.deterministicRole === "template_or_process"
     ? { spanId: span.id, role: "template_or_process", abstained: false }
     : { spanId: span.id, role: "supporting_context", abstained: false };
+}
+
+function registerValidatedStageResult<T extends object>(registry: WeakMap<object, string>, stage: "claim" | "evidence", result: T): T {
+  registry.set(result, validatedStageFingerprint(stage, result)!);
+  return result;
+}
+
+function hasValidatedStageProvenance(registry: WeakMap<object, string>, stage: "claim" | "evidence", result: object): boolean {
+  const registered = registry.get(result);
+  return registered !== undefined && registered === validatedStageFingerprint(stage, result);
+}
+
+function validatedStageFingerprint(stage: "claim" | "evidence", result: object): string | null {
+  try {
+    return digest({ domain: `agentproof.general-pr.semantic-${stage}-validation.v1`, result });
+  } catch {
+    return null;
+  }
 }
 
 function hasConsistentRelationOwnership(relations: Array<{ objectiveSpanIds: string[]; referenceId: string }>): boolean {
