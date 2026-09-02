@@ -135,6 +135,16 @@ describe("general PR observation telemetry", () => {
     expect(serialized).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
   });
 
+  it("preserves a third or later invocation only as the closed 3_plus bucket", () => {
+    const diagnostics = buildGeneralPrSemanticOperatorDiagnosticsV1({
+      ...bundle,
+      semanticStageDiagnostics: { ...bundle.semanticStageDiagnostics, providerCallCount: "3_plus" }
+    });
+
+    expect(diagnostics.providerCallCount).toBe("3_plus");
+    expect(JSON.stringify(diagnostics)).not.toMatch(/providerCallCount[^,}]*3(?!_plus)/);
+  });
+
   it("records disabled and ineligible runs without inventing an observation state", () => {
     expect(buildGeneralPrObservationTelemetryV1({ mode: "disabled", bundle: null, elapsedMs: 0 })).toMatchObject({
       eligibility: "disabled",

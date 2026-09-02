@@ -8,7 +8,8 @@ import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source
 import {
   buildGeneralPrSemanticAggregateDiagnosticsV1,
   finalizeDeterministicGeneralPrObservationsV2,
-  type GeneralPrObservationBundleV2
+  type GeneralPrObservationBundleV2,
+  type GeneralPrSemanticProviderCallCountV1
 } from "./general-pr-observation-service";
 import type { PullRequestInput } from "./types";
 
@@ -84,7 +85,7 @@ export async function advanceQueuedGeneralPrObservationV2(
     };
   }
 
-  let providerCallCount: 0 | 1 | 2 = 0;
+  let providerCallCount: GeneralPrSemanticProviderCallCountV1 = 0;
   const configuredProvider = options.provider;
   const semantic = await runGeneralPrSemanticObserverV2({
     mode: options.mode,
@@ -92,7 +93,7 @@ export async function advanceQueuedGeneralPrObservationV2(
     seed,
     provider: configuredProvider ? {
       observe: (request) => {
-        providerCallCount = providerCallCount === 0 ? 1 : 2;
+        providerCallCount = providerCallCount === 0 ? 1 : providerCallCount === 1 ? 2 : "3_plus";
         return configuredProvider.observe(request);
       }
     } : undefined,

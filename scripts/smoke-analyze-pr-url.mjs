@@ -187,7 +187,7 @@ function readOperatorSemanticDiagnostics(value, required) {
     !OPERATOR_STAGE_STATES.has(value.claimState) || !OPERATOR_STAGE_STATES.has(value.evidenceState) ||
     (value.sourceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) ||
     (value.evidenceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) ||
-    !Number.isSafeInteger(value.providerCallCount) || value.providerCallCount < 0 || value.providerCallCount > 2 ||
+    ![0, 1, 2, "3_plus"].includes(value.providerCallCount) ||
     !value.selectedCountBuckets || typeof value.selectedCountBuckets !== "object" || Array.isArray(value.selectedCountBuckets) ||
     !hasExactKeys(value.selectedCountBuckets, ["sourceSpans", "evidenceCandidates"]) ||
     !OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) || !OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) ||

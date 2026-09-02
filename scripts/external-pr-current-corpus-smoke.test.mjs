@@ -240,8 +240,9 @@ describe("external-pr-current-corpus-smoke", () => {
       ["evidence authority promotion", (value) => { value.publicRun.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported = 1; }],
       ["count-limit recurrence", (value) => { value.operatorDiagnostic.omissionReasonCounts.spanBudget = 1; }],
       ["evidence count-limit recurrence", (value) => { value.operatorDiagnostic.omissionReasonCounts.evidenceBudget = 1; }],
-      ["more than two provider calls", (value) => { value.operatorDiagnostic.providerCallCountCounts = { "3": 25 }; }],
+      ["third or later provider call", (value) => { value.operatorDiagnostic.providerCallCountCounts = { "3_plus": 25 }; }],
       ["private operator field", (value) => { value.operatorDiagnostic.sourceText = "private"; }],
+      ["private nested operator field", (value) => { value.operatorDiagnostic.selectedCountBucketCounts.sourceText = "private"; }],
       ["unexpected server error", (value) => { value.publicRun.results[0] = { id: "case_01", analysisStatus: "incomplete", failureKind: "unexpected_server_error" }; value.publicRun.status = "incomplete"; value.publicRun.completedCount = 24; value.publicRun.incompleteCount = 1; }]
     ]) {
       const mutated = structuredClone(result);

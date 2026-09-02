@@ -49,12 +49,15 @@ export interface GeneralPrSemanticStageDiagnosticsV1 {
   evidenceState: "not_run" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   sourceCoverage: GeneralPrSemanticSelectionCoverageV1 | null;
   evidenceCoverage: GeneralPrSemanticSelectionCoverageV1 | null;
-  providerCallCount: 0 | 1 | 2;
+  providerCallCount: GeneralPrSemanticProviderCallCountV1;
   selectedCountBuckets: {
     sourceSpans: "0" | "1_4" | "5_8" | "9_12";
     evidenceCandidates: "0" | "1_16" | "17_32" | "33_64";
   };
 }
+
+/** Closed private safety bucket; it never exposes an unbounded call metric. */
+export type GeneralPrSemanticProviderCallCountV1 = 0 | 1 | 2 | "3_plus";
 
 export interface GeneralPrSemanticSelectionOmittedReasonCountsV1 {
   spanBudget: number;
@@ -114,7 +117,7 @@ export async function runGeneralPrObservationNowV2(
       bundle
     };
   }
-  let providerCallCount: 0 | 1 | 2 = 0;
+  let providerCallCount: GeneralPrSemanticProviderCallCountV1 = 0;
   const configuredProvider = options.semantic?.provider;
   const semantic = await runGeneralPrSemanticObserverV2({
     mode: options.policy.releasePhase,
@@ -122,7 +125,7 @@ export async function runGeneralPrObservationNowV2(
     seed,
     provider: configuredProvider ? {
       observe: (request) => {
-        providerCallCount = providerCallCount === 0 ? 1 : 2;
+        providerCallCount = nextProviderCallCount(providerCallCount);
         return configuredProvider.observe(request);
       }
     } : undefined,
@@ -150,6 +153,10 @@ export async function runGeneralPrObservationNowV2(
     report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
     bundle
   };
+}
+
+function nextProviderCallCount(value: GeneralPrSemanticProviderCallCountV1): GeneralPrSemanticProviderCallCountV1 {
+  return value === 0 ? 1 : value === 1 ? 2 : "3_plus";
 }
 
 export function isGeneralPrSemanticObserverEligibleV2(input: PullRequestInput): boolean {
@@ -312,7 +319,7 @@ export function finalizeDeterministicGeneralPrObservationsV2(
 
 export function buildGeneralPrSemanticAggregateDiagnosticsV1(
   semantic: GeneralPrSemanticObserverRunResultV3,
-  providerCallCount: 0 | 1 | 2
+  providerCallCount: GeneralPrSemanticProviderCallCountV1
 ): {
   stageDiagnostics: GeneralPrSemanticStageDiagnosticsV1;
   omittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1;

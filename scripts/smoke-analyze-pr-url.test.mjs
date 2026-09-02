@@ -74,7 +74,7 @@ describe("smoke-analyze-pr-url", () => {
     expect(JSON.stringify(result.operatorSemanticDiagnostics)).not.toMatch(/token|path|prompt|output|hash|text/i);
   });
 
-  it("rejects operator diagnostics with private fields, invalid stage values, or more than two calls", async () => {
+  it("rejects operator diagnostics with private fields, invalid stage values, or raw call counts", async () => {
     for (const operatorDiagnostics of [
       { claimState: "valid", evidenceState: "not_run", sourceCoverage: "sampled", evidenceCoverage: null, providerCallCount: 1, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" }, omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }, sourceText: "private" },
       { claimState: "selected", evidenceState: "not_run", sourceCoverage: "sampled", evidenceCoverage: null, providerCallCount: 1, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" }, omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } },
@@ -88,6 +88,20 @@ describe("smoke-analyze-pr-url", () => {
         fetchImpl: fetchMock
       })).rejects.toThrow("valid operator staged diagnostic");
     }
+  });
+
+  it("accepts only the closed 3_plus provider-call safety bucket", async () => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const operatorDiagnostics = { claimState: "valid", evidenceState: "valid", sourceCoverage: "complete", evidenceCoverage: "complete", providerCallCount: "3_plus", selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }, omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: fullReport, operatorDiagnostics }))
+      .mockResolvedValueOnce(jsonResponse({ id: "saved_123", url: "https://agentproof.example/reports/saved_123", expiresAt: "2026-06-27T00:00:00.000Z", privacy: "summary-only", durability: "short-lived-in-memory", durabilityWarning: "Saved reports are short-lived." }))
+      .mockResolvedValueOnce(jsonResponse({ report: savedReport, privacy: "summary-only", durability: "short-lived-in-memory", durabilityWarning: "Saved reports are short-lived." }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    await expect(runAnalyzePrSmoke({ baseUrl: "https://agentproof.example", prUrl: "https://github.com/org/repo/pull/1", operatorDiagnosticsToken: "ops-secret-value", fetchImpl: fetchMock }))
+      .resolves.toEqual(expect.objectContaining({ operatorSemanticDiagnostics: operatorDiagnostics }));
   });
 
   it.each([

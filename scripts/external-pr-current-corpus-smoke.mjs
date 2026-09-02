@@ -174,7 +174,7 @@ function isValidOperatorSemanticDiagnostics(value) {
     Object.keys(value).length === 7 && OPERATOR_STAGE_STATES.has(value.claimState) && OPERATOR_STAGE_STATES.has(value.evidenceState) &&
     (value.sourceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) &&
     (value.evidenceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) &&
-    Number.isSafeInteger(value.providerCallCount) && value.providerCallCount >= 0 && value.providerCallCount <= 2 &&
+    [0, 1, 2, "3_plus"].includes(value.providerCallCount) &&
     value.selectedCountBuckets && typeof value.selectedCountBuckets === "object" && !Array.isArray(value.selectedCountBuckets) &&
     Object.keys(value.selectedCountBuckets).length === 2 && OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) &&
     OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) &&
@@ -382,6 +382,7 @@ export function assertCurrentExternalPrSemanticBoundaryHealth({ publicRun: run, 
   if (run.generalPrAssessmentSummary.assessmentCountTotals.evidence_supported !== 0) fail();
   if ((operatorDiagnostic.providerCallCountCounts["0"] ?? 0) + (operatorDiagnostic.providerCallCountCounts["1"] ?? 0) +
     (operatorDiagnostic.providerCallCountCounts["2"] ?? 0) !== run.caseCount) fail();
+  if ((operatorDiagnostic.providerCallCountCounts["3_plus"] ?? 0) !== 0) fail();
   if (operatorDiagnostic.packageReadyCount !== run.caseCount) fail();
   if (operatorDiagnostic.omissionReasonCounts.spanBudget !== 0 || operatorDiagnostic.omissionReasonCounts.evidenceBudget !== 0) fail();
 }
@@ -393,10 +394,14 @@ function isValidOperatorDiagnosticAggregate(value, caseCount) {
   const records = [
     [value.claimStageStateCounts, OPERATOR_STAGE_STATES], [value.evidenceStageStateCounts, OPERATOR_STAGE_STATES],
     [value.sourceCoverageCounts, OPERATOR_COVERAGE_STATES], [value.evidenceCoverageCounts, OPERATOR_COVERAGE_STATES],
-    [value.providerCallCountCounts, new Set(["0", "1", "2"])], [value.selectedCountBucketCounts?.sourceSpans, OPERATOR_SOURCE_BUCKETS],
+    [value.providerCallCountCounts, new Set(["0", "1", "2", "3_plus"])], [value.selectedCountBucketCounts?.sourceSpans, OPERATOR_SOURCE_BUCKETS],
     [value.selectedCountBucketCounts?.evidenceCandidates, OPERATOR_EVIDENCE_BUCKETS]
   ];
-  if (Object.keys(value).length !== 11 || !value.omissionReasonCounts || typeof value.omissionReasonCounts !== "object" ||
+  if (Object.keys(value).length !== 11 || !value.selectedCountBucketCounts || typeof value.selectedCountBucketCounts !== "object" ||
+    Array.isArray(value.selectedCountBucketCounts) || Object.keys(value.selectedCountBucketCounts).length !== 2 ||
+    !Object.prototype.hasOwnProperty.call(value.selectedCountBucketCounts, "sourceSpans") ||
+    !Object.prototype.hasOwnProperty.call(value.selectedCountBucketCounts, "evidenceCandidates") ||
+    !value.omissionReasonCounts || typeof value.omissionReasonCounts !== "object" ||
     Object.keys(value.omissionReasonCounts).length !== OPERATOR_OMISSION_KEYS.length) return false;
   for (const [record, keys] of records) {
     if (!record || typeof record !== "object" || Array.isArray(record) ||

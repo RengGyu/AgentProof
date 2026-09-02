@@ -6,6 +6,7 @@ import {
 } from "./general-pr-observation-service";
 import { advanceQueuedGeneralPrObservationV2 } from "./general-pr-observation-worker";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
+import * as semanticObserver from "./general-pr-semantic-observer";
 import type {
   GeneralPrSemanticObserverModelProfileV2,
   GeneralPrSemanticObserverPackageV3
@@ -154,6 +155,47 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     expect(result.bundle?.semanticStageDiagnostics).toMatchObject({ providerCallCount: 2, claimState: "valid", evidenceState: "valid" });
     expect(result.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
     expect(result.bundle?.relationLevelCounts.verified).toBe(0);
+  });
+
+  it("records a third observer invocation as the closed 3_plus bucket", async () => {
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const baseline = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider: { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => validProposal(request)) },
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => input,
+      modelProfile
+    });
+    if (!baseline.semantic) throw new Error("fixture must produce an observer result");
+
+    const observe = vi.spyOn(semanticObserver, "runGeneralPrSemanticObserverV2").mockImplementationOnce(async (options) => {
+      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV3);
+      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV3);
+      await options.provider?.observe({} as GeneralPrSemanticObserverPackageV3);
+      return baseline.semantic!;
+    });
+    const provider = { observe: vi.fn(async () => ({})) };
+
+    try {
+      const result = await advanceQueuedGeneralPrObservationV2({
+        mode: "shadow",
+        input,
+        current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+        provider,
+        providerAvailable: true,
+        privateRepository: false,
+        readCurrentInput: async () => input,
+        modelProfile
+      });
+
+      expect(provider.observe).toHaveBeenCalledTimes(3);
+      expect(result.bundle?.semanticStageDiagnostics.providerCallCount).toBe("3_plus");
+    } finally {
+      observe.mockRestore();
+    }
   });
 
   it("carries a closed provider failure stage into the private worker bundle", async () => {

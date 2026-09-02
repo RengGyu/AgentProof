@@ -31,6 +31,10 @@ The release packaging-health guard additionally requires the authenticated
 `AGENTPROOF_SMOKE_OPS_TOKEN`; without that aggregate diagnostic boundary it
 fails closed.
 
+Provider calls are represented only as the closed buckets `0`, `1`, `2`, or
+`3_plus`. `3_plus` is a safety violation that blocks the release guard, not a
+performance metric or a retained raw count.
+
 If the deployed app needs GitHub credentials to collect the public PR evidence,
 set `AGENTPROOF_SMOKE_GITHUB_TOKEN` for this local command. The runner forwards
 it only with each analysis request; snapshots and run summaries never store or
