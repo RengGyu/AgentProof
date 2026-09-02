@@ -303,10 +303,10 @@ export async function runGeneralPrSemanticObserverV2(
       modelProfileHash: digest({ domain: "agentproof.general-pr.semantic-model-profile.v3", profile: options.modelProfile }),
       claimPromptHash: digest({ domain: "agentproof.general-pr.semantic-claim-prompt.v1", prompt: CLAIM_SYSTEM_PROMPT, promptVersion: options.modelProfile.promptVersion }),
       claimSchemaHash: digest({ domain: "agentproof.general-pr.semantic-claim-schema.v1", schema: claimPackage?.request.responseFormat.schema ?? null }),
-      claimOutputHash: claimOutput === null ? null : digest({ domain: "agentproof.general-pr.semantic-claim-output.v1", output: claimOutput }),
+      claimOutputHash: claimOutput === null ? null : hashProviderOutput("agentproof.general-pr.semantic-claim-output.v1", claimOutput),
       evidencePromptHash: evidenceAttempted && evidencePackage ? digest({ domain: "agentproof.general-pr.semantic-evidence-prompt.v1", prompt: EVIDENCE_SYSTEM_PROMPT, promptVersion: options.modelProfile.promptVersion }) : null,
       evidenceSchemaHash: evidenceAttempted && evidencePackage ? digest({ domain: "agentproof.general-pr.semantic-evidence-schema.v1", schema: evidencePackage.request.responseFormat.schema }) : null,
-      evidenceOutputHash: evidenceOutput === null ? null : digest({ domain: "agentproof.general-pr.semantic-evidence-output.v1", output: evidenceOutput }),
+      evidenceOutputHash: evidenceOutput === null ? null : hashProviderOutput("agentproof.general-pr.semantic-evidence-output.v1", evidenceOutput),
       claimState,
       evidenceState,
       durationBucket: durationBucket(now() - startedAt)
@@ -591,3 +591,33 @@ function isModelProfile(value: GeneralPrSemanticObserverModelProfileV2): boolean
 
 function digest(value: unknown): string { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
 function stableJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") { const record = value as Record<string, unknown>; return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`; } return JSON.stringify(value); }
+
+function hashProviderOutput(domain: string, value: unknown): string | null {
+  try {
+    const output = stableProviderJson(value, new Set());
+    return output === undefined
+      ? null
+      : createHash("sha256").update(`${domain}\0${output}`, "utf8").digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+function stableProviderJson(value: unknown, ancestors: Set<object>): string | undefined {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") return Number.isFinite(value) ? JSON.stringify(value) : undefined;
+  if (typeof value !== "object") return undefined;
+  if (ancestors.has(value)) return undefined;
+  ancestors.add(value);
+  const entries = Array.isArray(value)
+    ? Array.from(value, (item) => stableProviderJson(item, ancestors))
+    : Object.keys(value).sort().map((key) => {
+      const item = stableProviderJson((value as Record<string, unknown>)[key], ancestors);
+      return item === undefined ? undefined : `${JSON.stringify(key)}:${item}`;
+    });
+  ancestors.delete(value);
+  return entries.some((entry) => entry === undefined)
+    ? undefined
+    : Array.isArray(value) ? `[${entries.join(",")}]` : `{${entries.join(",")}}`;
+}

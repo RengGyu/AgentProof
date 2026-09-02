@@ -53,11 +53,22 @@ function stagedProvider(options: {
 } = {}) {
   return {
     observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV3) => {
-      if (request.stage === "claim_discovery") return options.claim?.(request) ?? claimCandidate(request);
-      return options.evidence?.(request) ?? emptyEvidenceCandidate;
+      if (request.stage === "claim_discovery") return options.claim ? options.claim(request) : claimCandidate(request);
+      return options.evidence ? options.evidence(request) : emptyEvidenceCandidate;
     })
   };
 }
+
+const malformedProviderOutputs = [
+  ["undefined", () => undefined],
+  ["bigint", () => 1n],
+  ["symbol", () => Symbol("MALFORMED_PROVIDER_SECRET")],
+  ["cyclic object", () => {
+    const value: Record<string, unknown> = { secret: "MALFORMED_PROVIDER_SECRET" };
+    value.self = value;
+    return value;
+  }]
+] as const;
 
 function run(request: PullRequestInput, overrides: Partial<Parameters<typeof runGeneralPrSemanticObserverV2>[0]> = {}) {
   const seed = buildGeneralPrObservationSeedV2(request);
@@ -128,6 +139,20 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     const result = await run(request, { provider });
 
     expect(result).toMatchObject({ state: "invalid", receipt: { claimState: "invalid", evidenceState: "not_run" } });
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
+  });
+
+  it.each(malformedProviderOutputs)("classifies malformed %s claim output without throwing or hashing raw data", async (_label, output) => {
+    const request = input();
+    const provider = stagedProvider({ claim: async () => output() });
+    const result = await run(request, { provider });
+
+    expect(result).toMatchObject({
+      state: "invalid",
+      proposal: null,
+      receipt: { claimState: "invalid", evidenceState: "not_run", claimOutputHash: null, evidenceOutputHash: null }
+    });
+    expect(JSON.stringify(result.receipt)).not.toContain("MALFORMED_PROVIDER_SECRET");
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
   });
 
@@ -226,6 +251,21 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
       proposal: { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }
     });
     expect(Object.keys(result.proposal?.objectiveGroups ?? {})).toHaveLength(1);
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+  });
+
+  it.each(malformedProviderOutputs)("keeps valid claims when evidence output is malformed %s", async (_label, output) => {
+    const request = input();
+    const provider = stagedProvider({ evidence: async () => output() });
+    const result = await run(request, { provider });
+
+    expect(result).toMatchObject({
+      state: "valid",
+      receipt: { claimState: "valid", evidenceState: "invalid", evidenceOutputHash: null },
+      proposal: { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }
+    });
+    expect(Object.keys(result.proposal?.objectiveGroups ?? {})).toHaveLength(1);
+    expect(JSON.stringify(result.receipt)).not.toContain("MALFORMED_PROVIDER_SECRET");
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
   });
 
