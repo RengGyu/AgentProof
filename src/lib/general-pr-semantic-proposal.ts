@@ -5,10 +5,22 @@ import {
   type GeneralPrObservationSeedV2,
   type GeneralPrSemanticSpanV2
 } from "./general-pr-observation-source";
+import {
+  computeGeneralPrSemanticEvidenceSelectionHashV1,
+  type GeneralPrSemanticEvidenceDescriptorV1,
+  type GeneralPrSemanticEvidenceSelectionV1
+} from "./general-pr-semantic-evidence-selection";
+import {
+  computeGeneralPrSemanticClaimSelectionHashV1,
+  GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION,
+  type GeneralPrSemanticClaimSelectionV1
+} from "./general-pr-semantic-selection";
 
 export const GENERAL_PR_SEMANTIC_PROPOSAL_CONTRACT_VERSION = "general_pr_semantic_proposal.v2" as const;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_SCHEMA_VERSION = "agentproof_general_pr_observer_v2" as const;
 export const GENERAL_PR_SEMANTIC_PROVIDER_SCHEMA_NAME = "agentproof_general_pr_observer_candidate_v1" as const;
+export const GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME = "agentproof_general_pr_claim_candidate_v1" as const;
+export const GENERAL_PR_SEMANTIC_EVIDENCE_SCHEMA_NAME = "agentproof_general_pr_evidence_candidate_v1" as const;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES = 16_384;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_MAX_SPANS = 12;
 export const GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS = 64;
@@ -25,6 +37,17 @@ const PROVIDER_OBJECTIVE_GROUP_KEYS = ["spanIds", "disposition"] as const;
 const PROVIDER_TEST_APPLICABILITY_KEYS = ["objectiveSpanIds", "changeClusterId", "proposal"] as const;
 const PROVIDER_SCOPE_MAPPING_KEYS = ["objectiveSpanIds", "changeClusterId", "proposal"] as const;
 const PROVIDER_EVIDENCE_RELATION_KEYS = ["objectiveSpanIds", "evidenceId", "proposal"] as const;
+const CLAIM_ROOT_KEYS = ["spanRoles", "objectiveGroups"] as const;
+const EVIDENCE_ROOT_KEYS = ["testApplicabilityProposals", "scopeMappingProposals", "evidenceRelationProposals"] as const;
+const CLAIM_SELECTION_KEYS = ["version", "parentSeedHash", "claimSelectionHash", "selectedSpanIds", "selectedSpans", "coverage", "omittedReasonCounts"] as const;
+const CLAIM_SELECTED_SPAN_KEYS = ["spanId", "sourceUnitId", "authority", "sourceRole", "structuralKind", "deterministicRole", "text"] as const;
+const OMITTED_CLAIM_KEYS = ["spanBudget", "inputByteBudget"] as const;
+const EVIDENCE_SELECTION_KEYS = ["version", "policyVersion", "limits", "parentSeedHash", "claimSelectionHash", "evidenceSelectionHash", "objectiveGroups", "changeClusterDescriptors", "evidenceDescriptors", "coverage", "omittedReasonCounts"] as const;
+const EVIDENCE_LIMIT_KEYS = ["maxPerObjective", "maxTotal", "maxInputBytes"] as const;
+const EVIDENCE_SELECTION_GROUP_KEYS = ["objectiveSpanIds", "changeClusterIds", "evidenceIds"] as const;
+const CHANGE_CLUSTER_DESCRIPTOR_KEYS = ["changeClusterId", "roleCandidates", "languages", "tokenSketch", "completeness", "relationBasis"] as const;
+const EVIDENCE_DESCRIPTOR_KEYS = ["evidenceId", "kind", "roleCandidates", "language", "changeStatus", "tokenSketch", "completeness", "subjectBinding", "relationBasis"] as const;
+const OMITTED_EVIDENCE_KEYS = ["evidenceBudget", "inputByteBudget", "unsafeDescriptor", "noDeterministicSignal"] as const;
 
 const ROLES: readonly GeneralPrClaimRoleV2[] = [
   "objective_candidate",
@@ -115,6 +138,29 @@ export type GeneralPrSemanticProposalValidation =
   | { valid: true; proposal: GeneralPrSemanticProposalV2; errors: [] }
   | { valid: false; errors: string[] };
 
+export type GeneralPrSemanticClaimValidationV1 =
+  | {
+      valid: true;
+      parentSeedHash: string;
+      claimSelectionHash: string;
+      spanRoles: GeneralPrSemanticSpanRoleV2[];
+      objectiveGroups: GeneralPrSemanticProviderCandidateV1["objectiveGroups"];
+      errors: [];
+    }
+  | { valid: false; errors: string[] };
+
+export type GeneralPrSemanticEvidenceValidationV1 =
+  | {
+      valid: true;
+      parentSeedHash: string;
+      evidenceSelectionHash: string;
+      testApplicabilityProposals: GeneralPrSemanticProviderCandidateV1["testApplicabilityProposals"];
+      scopeMappingProposals: GeneralPrSemanticProviderCandidateV1["scopeMappingProposals"];
+      evidenceRelationProposals: GeneralPrSemanticProviderCandidateV1["evidenceRelationProposals"];
+      errors: [];
+    }
+  | { valid: false; errors: string[] };
+
 export interface GeneralPrSemanticProposalValidationContextV2 {
   /** The post-provider seed hash after raw-source and subject freshness revalidation. */
   currentSeedHash: string;
@@ -132,6 +178,111 @@ export function hashGeneralPrSemanticProposalV2(proposal: GeneralPrSemanticPropo
 
 export function hashGeneralPrSemanticInvocationReceiptV2(receipt: GeneralPrSemanticInvocationReceiptV2): string {
   return digest({ domain: "agentproof.general-pr.semantic-invocation-receipt.v2", receipt });
+}
+
+export function buildGeneralPrSemanticClaimJsonSchemaV1(selection: GeneralPrSemanticClaimSelectionV1): JsonSchema {
+  const spanIds = selection.selectedSpanIds;
+  return exactObjectSchema(CLAIM_ROOT_KEYS, {
+    spanRoles: {
+      type: "array",
+      minItems: spanIds.length,
+      maxItems: spanIds.length,
+      items: exactObjectSchema(SPAN_ROLE_KEYS, {
+        spanId: enumSchema(spanIds),
+        role: enumSchema(ROLES),
+        abstained: { type: "boolean" }
+      })
+    },
+    objectiveGroups: {
+      type: "array",
+      maxItems: spanIds.length,
+      items: exactObjectSchema(PROVIDER_OBJECTIVE_GROUP_KEYS, {
+        spanIds: spanIdArraySchema(spanIds),
+        disposition: enumSchema(["candidate", "not_objective", "ambiguous"])
+      })
+    }
+  });
+}
+
+export function buildGeneralPrSemanticEvidenceJsonSchemaV1(selection: GeneralPrSemanticEvidenceSelectionV1): JsonSchema {
+  return exactObjectSchema(EVIDENCE_ROOT_KEYS, {
+    testApplicabilityProposals: selectedRelationArraySchema(selection.objectiveGroups, "changeClusterIds", PROVIDER_TEST_APPLICABILITY_KEYS, "changeClusterId", ["likely_expected", "likely_not_applicable", "ambiguous"]),
+    scopeMappingProposals: selectedRelationArraySchema(selection.objectiveGroups, "changeClusterIds", PROVIDER_SCOPE_MAPPING_KEYS, "changeClusterId", ["plausibly_mapped", "unresolved"]),
+    evidenceRelationProposals: selectedRelationArraySchema(selection.objectiveGroups, "evidenceIds", PROVIDER_EVIDENCE_RELATION_KEYS, "evidenceId", ["supports", "tests", "implements", "contradicts", "unresolved"])
+  });
+}
+
+export function validateGeneralPrSemanticClaimCandidateV1(
+  value: unknown,
+  seed: GeneralPrObservationSeedV2,
+  selection: GeneralPrSemanticClaimSelectionV1
+): GeneralPrSemanticClaimValidationV1 {
+  if (!validateGeneralPrObservationSeedV2(seed).valid) return invalidClaim("seed is invalid");
+  const selectedEntries = validateClaimSelection(seed, selection);
+  if (!selectedEntries) return invalidClaim("claim selection binding is invalid");
+  if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidClaim("claim output byte limit exceeded");
+  if (!isRecord(value) || !hasExactKeys(value, CLAIM_ROOT_KEYS) || !Array.isArray(value.spanRoles) || !Array.isArray(value.objectiveGroups)) return invalidClaim("claim candidate root shape is invalid");
+  const sourcesById = new Map(seed.sources.map((source) => [source.id, source]));
+  const selectedById = new Map(selectedEntries.map((entry) => [entry.span.id, entry]));
+  const normalizedSelectedRoles = normalizeRoles(value.spanRoles, selection.selectedSpanIds, selectedById, sourcesById);
+  if (!normalizedSelectedRoles) return invalidClaim("claim span decisions are invalid");
+  const normalizedGroups = normalizeGroups(value.objectiveGroups, normalizedSelectedRoles, selectedById, sourcesById);
+  if (!normalizedGroups) return invalidClaim("claim objective groups are invalid");
+  const spanRoles = seed.spans.map((span) => normalizedSelectedRoles[span.id] ?? deterministicUnselectedRole(span));
+  const objectiveGroups = Object.values(normalizedGroups).map(({ spanIds, disposition }) => ({ spanIds, disposition }));
+  return { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, errors: [] };
+}
+
+export function validateGeneralPrSemanticEvidenceCandidateV1(
+  value: unknown,
+  seed: GeneralPrObservationSeedV2,
+  claim: GeneralPrSemanticClaimValidationV1,
+  selection: GeneralPrSemanticEvidenceSelectionV1
+): GeneralPrSemanticEvidenceValidationV1 {
+  if (!claim.valid) return invalidEvidence("claim stage is invalid");
+  if (!validateGeneralPrObservationSeedV2(seed).valid) return invalidEvidence("seed is invalid");
+  if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidEvidence("evidence output byte limit exceeded");
+  if (!isRecord(value) || !hasExactKeys(value, EVIDENCE_ROOT_KEYS) || !Array.isArray(value.testApplicabilityProposals) || !Array.isArray(value.scopeMappingProposals) || !Array.isArray(value.evidenceRelationProposals)) return invalidEvidence("evidence candidate root shape is invalid");
+  const totalRelations = value.testApplicabilityProposals.length + value.scopeMappingProposals.length + value.evidenceRelationProposals.length;
+  if (totalRelations > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS) return invalidEvidence("evidence relation limit exceeded");
+  const allowedGroups = validateEvidenceSelection(seed, claim, selection);
+  if (!allowedGroups) return invalidEvidence("evidence selection binding is invalid");
+  const testApplicabilityProposals = normalizeSelectedRelations(value.testApplicabilityProposals, PROVIDER_TEST_APPLICABILITY_KEYS, allowedGroups, "changeClusterIds", "changeClusterId", ["likely_expected", "likely_not_applicable", "ambiguous"]);
+  const scopeMappingProposals = normalizeSelectedRelations(value.scopeMappingProposals, PROVIDER_SCOPE_MAPPING_KEYS, allowedGroups, "changeClusterIds", "changeClusterId", ["plausibly_mapped", "unresolved"]);
+  const evidenceRelationProposals = normalizeSelectedRelations(value.evidenceRelationProposals, PROVIDER_EVIDENCE_RELATION_KEYS, allowedGroups, "evidenceIds", "evidenceId", ["supports", "tests", "implements", "contradicts", "unresolved"]);
+  if (!testApplicabilityProposals || !scopeMappingProposals || !evidenceRelationProposals) return invalidEvidence("evidence relation proposal is invalid");
+  if (!hasConsistentRelationOwnership([
+    ...testApplicabilityProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
+    ...scopeMappingProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
+    ...evidenceRelationProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `evidence:${item.evidenceId}` }))
+  ])) return invalidEvidence("evidence relation proposal is invalid");
+  return {
+    valid: true,
+    parentSeedHash: seed.seedHash,
+    evidenceSelectionHash: selection.evidenceSelectionHash,
+    testApplicabilityProposals,
+    scopeMappingProposals,
+    evidenceRelationProposals,
+    errors: []
+  };
+}
+
+export function mergeGeneralPrSemanticStageCandidatesV1(
+  seed: GeneralPrObservationSeedV2,
+  claim: GeneralPrSemanticClaimValidationV1,
+  evidence: GeneralPrSemanticEvidenceValidationV1 | null
+): GeneralPrSemanticProposalValidation {
+  if (!claim.valid) return invalid("claim stage is invalid");
+  if (claim.parentSeedHash !== seed.seedHash) return invalid("claim stage is stale");
+  if (evidence && !evidence.valid) return invalid("evidence stage is invalid");
+  if (evidence?.parentSeedHash !== undefined && evidence.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
+  return validateGeneralPrSemanticProposalV2({
+    spanRoles: claim.spanRoles,
+    objectiveGroups: claim.objectiveGroups,
+    testApplicabilityProposals: evidence?.testApplicabilityProposals ?? [],
+    scopeMappingProposals: evidence?.scopeMappingProposals ?? [],
+    evidenceRelationProposals: evidence?.evidenceRelationProposals ?? []
+  }, seed);
 }
 
 /**
@@ -194,7 +345,6 @@ export function validateGeneralPrSemanticProposalV2(
   context: GeneralPrSemanticProposalValidationContextV2 = { currentSeedHash: seed.seedHash }
 ): GeneralPrSemanticProposalValidation {
   if (!validateGeneralPrObservationSeedV2(seed).valid) return invalid("seed is invalid");
-  if (seed.spans.length > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_SPANS) return invalid("seed span limit exceeded");
   if (serializedBytes(candidate) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalid("proposal output byte limit exceeded");
   if (!isRecord(candidate) || !hasExactKeys(candidate, PROVIDER_ROOT_KEYS)) return invalid("provider candidate root shape is invalid");
   if (context.currentSeedHash !== seed.seedHash) return invalid("proposal is stale");
@@ -339,6 +489,163 @@ function normalizeRelations<
   return proposals;
 }
 
+type SelectedSpanEntry = { span: GeneralPrSemanticSpanV2; index: number };
+type EvidenceAllowedGroup = GeneralPrSemanticEvidenceSelectionV1["objectiveGroups"][number];
+
+function validateClaimSelection(seed: GeneralPrObservationSeedV2, selection: GeneralPrSemanticClaimSelectionV1): SelectedSpanEntry[] | null {
+  if (!isRecord(selection) || !hasExactKeys(selection, CLAIM_SELECTION_KEYS) || selection.version !== 1 || selection.parentSeedHash !== seed.seedHash || !isHash(selection.claimSelectionHash)) return null;
+  const { claimSelectionHash, ...unsigned } = selection;
+  if (computeGeneralPrSemanticClaimSelectionHashV1(unsigned) !== claimSelectionHash) return null;
+  if (!isCoverage(selection.coverage) || !isRecord(selection.omittedReasonCounts) || !hasExactKeys(selection.omittedReasonCounts, OMITTED_CLAIM_KEYS) || !isCount(selection.omittedReasonCounts.spanBudget) || !isCount(selection.omittedReasonCounts.inputByteBudget)) return null;
+  if (!Array.isArray(selection.selectedSpanIds) || !Array.isArray(selection.selectedSpans) || selection.selectedSpanIds.length === 0 || selection.selectedSpanIds.length > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_SPANS || selection.selectedSpanIds.length !== selection.selectedSpans.length || !hasNoArrayHoles(selection.selectedSpanIds) || !hasNoArrayHoles(selection.selectedSpans)) return null;
+  const spansById = new Map(seed.spans.map((span, index) => [span.id, { span, index }]));
+  const sourcesById = new Map(seed.sources.map((source) => [source.id, source]));
+  const selected: SelectedSpanEntry[] = [];
+  const seen = new Set<string>();
+  let priorIndex = -1;
+  for (let index = 0; index < selection.selectedSpans.length; index += 1) {
+    const item = selection.selectedSpans[index];
+    if (!isRecord(item) || !hasExactKeys(item, CLAIM_SELECTED_SPAN_KEYS) || typeof item.spanId !== "string" || item.spanId !== selection.selectedSpanIds[index] || seen.has(item.spanId)) return null;
+    const canonical = spansById.get(item.spanId);
+    const source = canonical ? sourcesById.get(canonical.span.sourceUnitId) : undefined;
+    if (!canonical || !source || canonical.index <= priorIndex || source.roleCeiling === "policy_only" || canonical.span.structuralKind === "code" || canonical.span.structuralKind === "html") return null;
+    if (item.sourceUnitId !== canonical.span.sourceUnitId || item.authority !== source.authority || item.sourceRole !== (source.roleCeiling === "context" ? "context" : "objective") || item.structuralKind !== canonical.span.structuralKind || item.deterministicRole !== canonical.span.deterministicRole || typeof item.text !== "string" || sha(item.text) !== canonical.span.textHash) return null;
+    priorIndex = canonical.index;
+    seen.add(item.spanId);
+    selected.push(canonical);
+  }
+  return selected;
+}
+
+function validateEvidenceSelection(
+  seed: GeneralPrObservationSeedV2,
+  claim: Extract<GeneralPrSemanticClaimValidationV1, { valid: true }>,
+  selection: GeneralPrSemanticEvidenceSelectionV1
+): EvidenceAllowedGroup[] | null {
+  if (!isRecord(selection) || !hasExactKeys(selection, EVIDENCE_SELECTION_KEYS) || selection.version !== 1 || selection.policyVersion !== GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION || selection.parentSeedHash !== seed.seedHash || selection.claimSelectionHash !== claim.claimSelectionHash || !isHash(selection.evidenceSelectionHash)) return null;
+  const { evidenceSelectionHash, ...unsigned } = selection;
+  if (computeGeneralPrSemanticEvidenceSelectionHashV1(unsigned) !== evidenceSelectionHash) return null;
+  if (!isRecord(selection.limits) || !hasExactKeys(selection.limits, EVIDENCE_LIMIT_KEYS) || !boundedCount(selection.limits.maxPerObjective, 12) || !boundedCount(selection.limits.maxTotal, GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS) || !boundedCount(selection.limits.maxInputBytes, 12_000)) return null;
+  if (serializedBytes(selection) > selection.limits.maxInputBytes || !isCoverage(selection.coverage) || !isRecord(selection.omittedReasonCounts) || !hasExactKeys(selection.omittedReasonCounts, OMITTED_EVIDENCE_KEYS) || Object.values(selection.omittedReasonCounts).some((value) => !isCount(value))) return null;
+  if (!Array.isArray(selection.objectiveGroups) || !Array.isArray(selection.changeClusterDescriptors) || !Array.isArray(selection.evidenceDescriptors) || !hasNoArrayHoles(selection.objectiveGroups) || !hasNoArrayHoles(selection.changeClusterDescriptors) || !hasNoArrayHoles(selection.evidenceDescriptors)) return null;
+  const claimGroups = claim.objectiveGroups.filter((group) => group.disposition === "candidate");
+  if (selection.objectiveGroups.length !== claimGroups.length || selection.objectiveGroups.length === 0) return null;
+  const seedClusterIds = new Set(seed.changeClusters.map((cluster) => cluster.id));
+  const seedEvidenceById = new Map(seed.evidenceAtoms.map((atom) => [atom.id, atom]));
+  const clusterDescriptorIds = new Set<string>();
+  for (const descriptor of selection.changeClusterDescriptors) {
+    if (!isRecord(descriptor) || !hasExactKeys(descriptor, CHANGE_CLUSTER_DESCRIPTOR_KEYS) || typeof descriptor.changeClusterId !== "string" || clusterDescriptorIds.has(descriptor.changeClusterId) || !seedClusterIds.has(descriptor.changeClusterId) || !isStringArray(descriptor.roleCandidates) || !isStringArray(descriptor.languages) || !isStringArray(descriptor.tokenSketch) || !isCompleteness(descriptor.completeness)) return null;
+    const cluster = seed.changeClusters.find((candidate) => candidate.id === descriptor.changeClusterId);
+    const expectedBasis = cluster?.formationBasis === "static_relation" ? "released_static_relation" : cluster?.formationBasis === "build_relation" ? "released_build_relation" : cluster?.formationBasis;
+    if (descriptor.relationBasis !== expectedBasis) return null;
+    clusterDescriptorIds.add(descriptor.changeClusterId);
+  }
+  const evidenceDescriptorIds = new Set<string>();
+  for (const descriptor of selection.evidenceDescriptors) {
+    if (!isRecord(descriptor) || !hasExactKeys(descriptor, EVIDENCE_DESCRIPTOR_KEYS) || typeof descriptor.evidenceId !== "string" || evidenceDescriptorIds.has(descriptor.evidenceId) || !isStringArray(descriptor.roleCandidates) || !isStringArray(descriptor.tokenSketch) || !(descriptor.language === null || typeof descriptor.language === "string") || !(descriptor.changeStatus === null || typeof descriptor.changeStatus === "string")) return null;
+    const atom = seedEvidenceById.get(descriptor.evidenceId);
+    if (!atom || !validEvidenceDescriptorBinding(descriptor as unknown as GeneralPrSemanticEvidenceDescriptorV1, atom, seed)) return null;
+    evidenceDescriptorIds.add(descriptor.evidenceId);
+  }
+  const usedClusterIds = new Set<string>();
+  const usedEvidenceIds = new Set<string>();
+  for (let index = 0; index < selection.objectiveGroups.length; index += 1) {
+    const group = selection.objectiveGroups[index];
+    const claimGroup = claimGroups[index];
+    if (!isRecord(group) || !hasExactKeys(group, EVIDENCE_SELECTION_GROUP_KEYS) || !claimGroup || !sameStringArray(group.objectiveSpanIds, claimGroup.spanIds) || !uniqueStringArray(group.changeClusterIds, true) || !uniqueStringArray(group.evidenceIds, true)) return null;
+    if (group.changeClusterIds.length + group.evidenceIds.length > selection.limits.maxPerObjective || group.changeClusterIds.some((id) => !clusterDescriptorIds.has(id)) || group.evidenceIds.some((id) => !evidenceDescriptorIds.has(id))) return null;
+    group.changeClusterIds.forEach((id) => usedClusterIds.add(id));
+    group.evidenceIds.forEach((id) => usedEvidenceIds.add(id));
+  }
+  if (usedClusterIds.size + usedEvidenceIds.size === 0 || new Set([...usedClusterIds, ...usedEvidenceIds]).size > selection.limits.maxTotal || usedClusterIds.size !== clusterDescriptorIds.size || usedEvidenceIds.size !== evidenceDescriptorIds.size) return null;
+  return selection.objectiveGroups;
+}
+
+function validEvidenceDescriptorBinding(
+  descriptor: GeneralPrSemanticEvidenceDescriptorV1,
+  atom: GeneralPrObservationSeedV2["evidenceAtoms"][number],
+  seed: GeneralPrObservationSeedV2
+): boolean {
+  if (descriptor.kind !== atom.kind || descriptor.completeness !== atom.completeness || !isCompleteness(descriptor.completeness)) return false;
+  const exactSeedHead = Boolean(seed.headSha && seed.testedSubject.kind === "head" && seed.testedSubject.sha === seed.headSha);
+  let exact = exactSeedHead;
+  if (atom.kind === "check" || atom.kind === "execution") {
+    const kindIndex = seed.evidenceAtoms.filter((candidate) => candidate.kind === atom.kind).findIndex((candidate) => candidate.id === atom.id);
+    const execution = seed.executions[kindIndex];
+    exact = Boolean(exactSeedHead && execution && execution.subjectKind === "head" && execution.subjectSha === seed.headSha && execution.headSha === seed.headSha && execution.subjectContextDigest !== null);
+  }
+  const expectedBinding: GeneralPrSemanticEvidenceDescriptorV1["subjectBinding"] = exact ? "exact_head" : seed.headSha || seed.testedSubject.sha ? "incomplete" : "unknown";
+  const expectedBasis: GeneralPrSemanticEvidenceDescriptorV1["relationBasis"] = atom.kind === "change" ? "observation_only" : atom.kind === "test_artifact" ? "changed_artifact" : exact ? "exact_subject" : "unresolved";
+  return descriptor.subjectBinding === expectedBinding && descriptor.relationBasis === expectedBasis;
+}
+
+function normalizeSelectedRelations<
+  Field extends "changeClusterId" | "evidenceId",
+  IdField extends "changeClusterIds" | "evidenceIds",
+  Proposal extends string
+>(
+  values: unknown[],
+  keys: readonly string[],
+  groups: readonly EvidenceAllowedGroup[],
+  idsField: IdField,
+  referenceField: Field,
+  proposals: readonly Proposal[]
+): Array<{ objectiveSpanIds: string[] } & Record<Field, string> & { proposal: Proposal }> | null {
+  if (!hasNoArrayHoles(values)) return null;
+  const groupsByKey = new Map(groups.map((group) => [objectiveKey(group.objectiveSpanIds), group]));
+  const normalized: Array<{ objectiveSpanIds: string[] } & Record<Field, string> & { proposal: Proposal }> = [];
+  const seen = new Set<string>();
+  const ownerByReference = new Map<string, string>();
+  for (const value of values) {
+    if (!isRecord(value) || !hasExactKeys(value, keys) || !uniqueStringArray(value.objectiveSpanIds) || typeof value[referenceField] !== "string" || !proposals.includes(value.proposal as Proposal)) return null;
+    const groupKey = objectiveKey(value.objectiveSpanIds);
+    const group = groupsByKey.get(groupKey);
+    const referenceId = value[referenceField] as string;
+    if (!group || !(group[idsField] as string[]).includes(referenceId)) return null;
+    const relationKey = `${groupKey}:${referenceId}`;
+    const priorOwner = ownerByReference.get(referenceId);
+    if (seen.has(relationKey) || (priorOwner !== undefined && priorOwner !== groupKey)) return null;
+    seen.add(relationKey);
+    ownerByReference.set(referenceId, groupKey);
+    normalized.push({ objectiveSpanIds: [...value.objectiveSpanIds], [referenceField]: referenceId, proposal: value.proposal as Proposal } as { objectiveSpanIds: string[] } & Record<Field, string> & { proposal: Proposal });
+  }
+  return normalized;
+}
+
+function deterministicUnselectedRole(span: GeneralPrSemanticSpanV2): GeneralPrSemanticSpanRoleV2 {
+  return span.deterministicRole === "template_or_process"
+    ? { spanId: span.id, role: "template_or_process", abstained: false }
+    : { spanId: span.id, role: "supporting_context", abstained: false };
+}
+
+function hasConsistentRelationOwnership(relations: Array<{ objectiveSpanIds: string[]; referenceId: string }>): boolean {
+  const owners = new Map<string, string>();
+  for (const relation of relations) {
+    const owner = objectiveKey(relation.objectiveSpanIds);
+    const prior = owners.get(relation.referenceId);
+    if (prior !== undefined && prior !== owner) return false;
+    owners.set(relation.referenceId, owner);
+  }
+  return true;
+}
+
+function selectedRelationArraySchema(
+  groups: GeneralPrSemanticEvidenceSelectionV1["objectiveGroups"],
+  idsField: "changeClusterIds" | "evidenceIds",
+  keys: readonly string[],
+  referenceField: "changeClusterId" | "evidenceId",
+  proposals: readonly string[]
+): JsonSchema {
+  const variants = groups.flatMap((group) => group[idsField].length === 0 ? [] : [exactObjectSchema(keys, {
+    objectiveSpanIds: enumSchema([[...group.objectiveSpanIds]]),
+    [referenceField]: enumSchema(group[idsField]),
+    proposal: enumSchema(proposals)
+  })]);
+  return variants.length === 0
+    ? { type: "array", maxItems: 0, items: false }
+    : { type: "array", maxItems: GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS, items: { anyOf: variants } };
+}
+
 function resolveSpanEntries(
   value: unknown,
   spansById: ReadonlyMap<string, { span: GeneralPrSemanticSpanV2; index: number }>
@@ -380,9 +687,21 @@ function enumSchema(values: readonly unknown[]): JsonSchema { return { enum: [..
 function isObjectiveDisposition(value: unknown): value is GeneralPrSemanticObjectiveGroupV2["disposition"] { return value === "candidate" || value === "not_objective" || value === "ambiguous"; }
 function isRole(value: unknown): value is GeneralPrClaimRoleV2 { return typeof value === "string" && ROLES.includes(value as GeneralPrClaimRoleV2); }
 function invalid(error: string): GeneralPrSemanticProposalValidation { return { valid: false, errors: [error] }; }
+function invalidClaim(error: string): GeneralPrSemanticClaimValidationV1 { return { valid: false, errors: [error] }; }
+function invalidEvidence(error: string): GeneralPrSemanticEvidenceValidationV1 { return { valid: false, errors: [error] }; }
 function isRecord(value: unknown): value is Record<string, unknown> { const prototype = value && typeof value === "object" ? Object.getPrototypeOf(value) : null; return Boolean(value) && !Array.isArray(value) && (prototype === Object.prototype || prototype === null); }
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean { const actual = Object.keys(value).sort(); const expected = [...keys].sort(); return actual.length === expected.length && actual.every((key, index) => key === expected[index]); }
 function hasNoArrayHoles(value: readonly unknown[]): boolean { return Object.keys(value).length === value.length; }
+function isCoverage(value: unknown): boolean { return value === "complete" || value === "sampled" || value === "incomplete"; }
+function isCompleteness(value: unknown): boolean { return value === "complete" || value === "incomplete" || value === "unknown"; }
+function isCount(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) >= 0; }
+function boundedCount(value: unknown, maximum: number): value is number { return isCount(value) && value <= maximum; }
+function isHash(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{64}$/.test(value); }
+function isStringArray(value: unknown): value is string[] { return Array.isArray(value) && hasNoArrayHoles(value) && value.every((item) => typeof item === "string"); }
+function uniqueStringArray(value: unknown, allowEmpty = false): value is string[] { return isStringArray(value) && (allowEmpty || value.length > 0) && new Set(value).size === value.length; }
+function sameStringArray(left: unknown, right: readonly string[]): left is string[] { return isStringArray(left) && left.length === right.length && left.every((item, index) => item === right[index]); }
+function objectiveKey(spanIds: readonly string[]): string { return JSON.stringify(spanIds); }
 function serializedBytes(value: unknown): number { try { return Buffer.byteLength(JSON.stringify(value), "utf8"); } catch { return Number.POSITIVE_INFINITY; } }
+function sha(value: string): string { return createHash("sha256").update(value, "utf8").digest("hex"); }
 function digest(value: unknown): string { return createHash("sha256").update(stableJson(value), "utf8").digest("hex"); }
 function stableJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") { const record = value as Record<string, unknown>; return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`; } return JSON.stringify(value); }

@@ -34,6 +34,12 @@ export interface GeneralPrSemanticClaimSelectionV1 {
   omittedReasonCounts: { spanBudget: number; inputByteBudget: number };
 }
 
+export function computeGeneralPrSemanticClaimSelectionHashV1(
+  selection: Omit<GeneralPrSemanticClaimSelectionV1, "claimSelectionHash">
+): string {
+  return digest({ domain: "agentproof.general-pr.claim-selection.v1", policyVersion: GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION, selection });
+}
+
 export function buildGeneralPrRedactedSourceViewsV1(input: PullRequestInput, seed: GeneralPrObservationSeedV2): Map<string, string> | null {
   if (!validateGeneralPrObservationSeedV2(seed).valid) return null;
   if (buildGeneralPrObservationSeedV2(input).seedHash !== seed.seedHash) return null;
@@ -117,7 +123,7 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
     ok: true,
     selection: {
       ...selectionWithoutHash,
-      claimSelectionHash: digest({ domain: "agentproof.general-pr.claim-selection.v1", policyVersion: GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION, selection: selectionWithoutHash })
+      claimSelectionHash: computeGeneralPrSemanticClaimSelectionHashV1(selectionWithoutHash)
     }
   };
 }
