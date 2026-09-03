@@ -4,7 +4,7 @@ import { redactSecrets } from "@/lib/redact";
 import { createSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
 import type { VerificationReport } from "@/lib/types";
 
-const MAX_REPORT_REQUEST_BYTES = 120_000;
+const MAX_REPORT_REQUEST_BYTES = 1_000_000;
 
 interface SaveReportRequest {
   report?: VerificationReport;
