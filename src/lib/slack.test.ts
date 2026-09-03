@@ -129,20 +129,24 @@ describe("slack helpers", () => {
       sourceState: "pr_author_claim",
       overallConclusion: "evidence_partial",
       counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
-      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
+      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"],
+      observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
     };
     Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
       diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
       targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
     });
+    Object.assign(report.generalPrAssessmentSummary.observations as object, { diagnostics: "private-observation-sentinel" });
 
     const payload = JSON.stringify(reportToSlackPayload(report));
 
     expect(payload).toContain("Ordinary PR evidence assessment");
-    expect(payload).toContain("Evidence partially supports the stated change");
+    expect(payload).toContain("Partial observations; objective fulfillment remains unconfirmed");
     expect(payload).toContain("Partial evidence: 1");
     expect(payload).toContain("Semantic assessment was unavailable.");
     expect(payload).toContain("The target-to-evidence relation remains unresolved.");
+    expect(payload).toContain("Observed changed artifacts: 2");
+    expect(payload).not.toContain("private-observation-sentinel");
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(payload).not.toContain(forbidden);
     expectNoSelectionSentinels(payload);
   });

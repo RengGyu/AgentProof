@@ -15,6 +15,31 @@ It does not retain or print PR title/body, diffs, paths, logs, review labels, or
 
 ## Run order
 
+## E1 local preparation boundary
+
+E1 local preparation does **not** refresh, open, or run the 25-PR corpus. Its
+only corpus preflight is an existence check, which does not read manifest
+contents:
+
+```bash
+test -f eval/generated/external-pr-live-corpus.v1.json
+```
+
+The current runners accept no CLI flags. Their confirmed interface and help are:
+
+```bash
+pnpm smoke:analyze-pr --help
+pnpm smoke:external-pr-current-corpus --help
+```
+
+Use the existing environment variables below only after separate approval for a
+live run. Do not put token values in shell history, docs, output files, or
+command lines. A prior result is comparable to a new run only when the PR URL,
+head SHA, base SHA, input anchor, and policy anchor all match; do not combine
+partial batches or reused results into one batch count. The emitted aggregate
+rows omit the input and policy anchors, so they are not independent cross-run
+comparison evidence.
+
 First refresh the 25 SHA anchors. This uses the existing local GitHub CLI session only to call GitHub; its token is never written to the snapshot.
 
 ```bash
@@ -52,3 +77,37 @@ For completed reports, `generalPrAssessmentSummary` is aggregate-only: it record
 The saved run keeps only the opaque case ID and completion/failure status per case. It does not retain assessment targets, source text, paths, PR URLs, provider output, tokens, or diagnostics. Authenticated operator output keeps only closed aggregate stage, coverage, call, selection-bucket, package-ready, and omission counts. These distributions are smoke-observation signals only; they do not infer semantic-state or admission-basis metrics from the public response.
 
 This live corpus does not replace the existing pilot's separate human-label process, and it cannot by itself authorize release promotion. In particular, a lower `unclear` rate does not prove accuracy: labelled calibration and holdout gates remain required.
+
+## Optional local per-PR diagnostics
+
+Set `AGENTPROOF_EXTERNAL_CORPUS_DETAILS_OUTPUT` to a file under the ignored
+`eval/generated/` directory to retain local operator-only details. Product
+save/share schemas stay unchanged; the public run artifact may include optional
+closed aggregate fields, while older v1 artifacts remain readable without them.
+
+Each case records its public PR URL and expected head/base SHA, requirement
+verdicts, bounded requirement text and gap notes, proof-axis states, evidence
+IDs linked to kind/label/locator descriptors, ordinary-PR target reasons, and
+the authenticated operator diagnostic. Evidence IDs are local to that PR's
+report. Raw evidence summaries, source bindings, receipts, code/log bodies,
+provider responses and credentials are excluded. Text uses the existing secret
+redactor and additionally removes the credentials supplied to that run.
+
+Files are replaced atomically after each case with owner-only permissions. A
+failure after analysis (for example summary storage) still keeps the analyzed
+detail and the failing stage/HTTP status, without retaining raw error bodies.
+Progress output includes only case count and completion status. Release guard
+failure still exits nonzero, but no longer discards collected results.
+
+The operator response accepts both the previous eight-field shape and the
+current shape with the closed `claimInvalidReason` field. Unknown fields and
+unknown reason values remain rejected. Supply `AGENTPROOF_SMOKE_OPS_TOKEN` only
+in the process environment; it must match the tested deployment's
+`AGENTPROOF_OPS_TOKEN`. A GitHub token is not an operator token.
+
+```bash
+AGENTPROOF_EXTERNAL_CORPUS_DETAILS_OUTPUT=eval/generated/external-pr-details.v1.json pnpm smoke:external-pr-current-corpus:release
+```
+
+These details are for local investigation, not public sharing or source truth
+for correctness labels. A zero Supported count alone does not establish safety.

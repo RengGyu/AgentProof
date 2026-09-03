@@ -978,7 +978,8 @@ function copyGeneralPrAssessmentSummary(
     sourceState: assessment.sourceState,
     overallConclusion: assessment.overallConclusion,
     counts: { ...assessment.counts },
-    reasonCodes: [...assessment.reasonCodes]
+    reasonCodes: [...assessment.reasonCodes],
+    ...(assessment.observations ? { observations: { version: assessment.observations.version, inventory: { state: assessment.observations.inventory.state, changedArtifacts: assessment.observations.inventory.changedArtifacts, changedTestCandidates: assessment.observations.inventory.changedTestCandidates }, links: { state: assessment.observations.links.state, linkedObjectives: assessment.observations.links.linkedObjectives, supports: assessment.observations.links.supports, tests: assessment.observations.links.tests, implements: assessment.observations.links.implements, contradicts: assessment.observations.links.contradicts }, coverage: { source: assessment.observations.coverage.source, evidence: assessment.observations.coverage.evidence } } } : {})
   };
 }
 

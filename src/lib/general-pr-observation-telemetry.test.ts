@@ -17,6 +17,7 @@ const bundle: GeneralPrObservationBundleV2 = {
     state: "hypothesis"
   }],
   relationLevelCounts: { verified: 0, observed: 0, hypothesis: 2, unresolved: 0, unavailable: 0 },
+  evidenceRelations: [],
   testCoverage: [{
     version: 2,
     objectiveId: "private-objective-id",
@@ -34,7 +35,10 @@ const bundle: GeneralPrObservationBundleV2 = {
   }],
   semanticState: "valid",
   semanticFailureStage: null,
+  semanticProviderDiagnostic: null,
   semanticClaimInvalidReason: "span_binding_invalid",
+  semanticEvidenceInvalidReason: "reference_binding_invalid",
+  semanticFreshnessFailure: null,
   semanticPackageFailureReasons: ["span_limit_exceeded"],
   semanticStageDiagnostics: {
     version: 1,
@@ -104,6 +108,7 @@ describe("general PR observation telemetry", () => {
     expect(serialized).not.toContain("sourceSpanRefs");
     expect(serialized).not.toContain("provider output");
     expect(serialized).not.toContain("claimInvalidReason");
+    expect(serialized).not.toContain("evidenceInvalidReason");
     expect(serialized).not.toContain("semanticClaimInvalidReason");
   });
 
@@ -119,6 +124,8 @@ describe("general PR observation telemetry", () => {
       providerCallCount: 2,
       selectedCountBuckets: { sourceSpans: "9_12", evidenceCandidates: "17_32" },
       claimInvalidReason: "span_binding_invalid",
+      evidenceInvalidReason: "reference_binding_invalid",
+      freshnessFailure: null,
       semanticPackageFailureReasons: ["span_limit_exceeded"],
       omittedReasonCounts: {
         spanBudget: 3,
@@ -132,7 +139,9 @@ describe("general PR observation telemetry", () => {
       "claimInvalidReason",
       "claimState",
       "evidenceCoverage",
+      "evidenceInvalidReason",
       "evidenceState",
+      "freshnessFailure",
       "omittedReasonCounts",
       "providerCallCount",
       "selectedCountBuckets",
@@ -140,6 +149,26 @@ describe("general PR observation telemetry", () => {
       "sourceCoverage"
     ]);
     expect(serialized).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
+  });
+
+  it("projects a closed freshness failure only to the operator boundary", () => {
+    const diagnostics = buildGeneralPrSemanticOperatorDiagnosticsV1({
+      ...bundle,
+      semanticFreshnessFailure: { phase: "after_claim", state: "stale", reason: "source_changed" }
+    });
+
+    expect(diagnostics.freshnessFailure).toEqual({ phase: "after_claim", state: "stale", reason: "source_changed" });
+    expect(JSON.stringify(buildGeneralPrObservationTelemetryV1({ mode: "shadow", bundle: { ...bundle, semanticFreshnessFailure: { phase: "after_claim", state: "stale", reason: "source_changed" } }, elapsedMs: 1 }))).not.toContain("source_changed");
+  });
+
+  it("excludes provider failure metadata from aggregate telemetry", () => {
+    const telemetry = buildGeneralPrObservationTelemetryV1({
+      mode: "shadow",
+      bundle: { ...bundle, semanticStageDiagnostics: { ...bundle.semanticStageDiagnostics, providerFailure: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 } } },
+      elapsedMs: 712
+    });
+
+    expect(telemetry.semanticStageDiagnostics).not.toHaveProperty("providerFailure");
   });
 
   it("preserves a third or later invocation only as the closed 3_plus bucket", () => {
@@ -179,6 +208,8 @@ describe("general PR observation telemetry", () => {
       providerCallCount: 0,
       selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
       claimInvalidReason: null,
+      evidenceInvalidReason: null,
+      freshnessFailure: null,
       semanticPackageFailureReasons: [],
       omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
     });

@@ -572,7 +572,7 @@ function validateGeneralPrAssessment(
     ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes"],
     "generalPrAssessment",
     errors,
-    summaryMode ? [] : ["targets"]
+    summaryMode ? ["observations"] : ["targets", "observations"]
   );
   if (!summaryMode && !("targets" in value)) errors.push("generalPrAssessment.targets is required for full reports.");
   if (value.version !== 1) errors.push("generalPrAssessment.version is invalid.");
@@ -581,6 +581,7 @@ function validateGeneralPrAssessment(
   validateEnum(value.overallConclusion, "generalPrAssessment.overallConclusion", GENERAL_PR_ASSESSMENT_CONCLUSIONS, errors);
   const counts = validateGeneralPrAssessmentCounts(value.counts, errors);
   const reportReasons = validateClosedReasonCodes(value.reasonCodes, "generalPrAssessment.reasonCodes", errors);
+  validateGeneralPrEvidenceObservations(value.observations, counts, errors);
   if (summaryMode) {
     validateGeneralPrAssessmentSummaryCeiling(value, counts, reportReasons, errors);
     return;
@@ -670,6 +671,42 @@ function validateGeneralPrAssessment(
     "target_relation_unresolved"
   ].includes(reason))) {
     errors.push("generalPrAssessment.reasonCodes must be derived from targets or an empty-target source state.");
+  }
+}
+
+function validateGeneralPrEvidenceObservations(value: unknown, counts: Record<string, number> | null, errors: string[]): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) { errors.push("generalPrAssessment.observations must be an object."); return; }
+  requireKeys(value, ["version", "inventory", "links", "coverage"], "generalPrAssessment.observations", errors);
+  if (value.version !== 1) errors.push("generalPrAssessment.observations.version is invalid.");
+  const inventory = isRecord(value.inventory) ? value.inventory : null;
+  if (!inventory) errors.push("generalPrAssessment.observations.inventory must be an object.");
+  else {
+    requireKeys(inventory, ["state", "changedArtifacts", "changedTestCandidates"], "generalPrAssessment.observations.inventory", errors);
+    validateEnum(inventory.state, "generalPrAssessment.observations.inventory.state", new Set(["complete", "incomplete", "unavailable"]), errors);
+    for (const key of ["changedArtifacts", "changedTestCandidates"] as const) if (!Number.isSafeInteger(inventory[key]) || (inventory[key] as number) < 0) errors.push(`generalPrAssessment.observations.inventory.${key} must be a non-negative safe integer.`);
+    if (Number.isSafeInteger(inventory.changedArtifacts) && Number.isSafeInteger(inventory.changedTestCandidates) && (inventory.changedTestCandidates as number) > (inventory.changedArtifacts as number)) errors.push("generalPrAssessment.observations.inventory.changedTestCandidates must not exceed changedArtifacts.");
+  }
+  const links = isRecord(value.links) ? value.links : null;
+  if (!links) errors.push("generalPrAssessment.observations.links must be an object.");
+  else {
+    const linkKeys = ["state", "linkedObjectives", "supports", "tests", "implements", "contradicts"] as const;
+    requireKeys(links, [...linkKeys], "generalPrAssessment.observations.links", errors);
+    validateEnum(links.state, "generalPrAssessment.observations.links.state", new Set(["not_attempted", "proposed", "none_proposed", "unavailable"]), errors);
+    for (const key of linkKeys.slice(1)) if (!Number.isSafeInteger(links[key]) || (links[key] as number) < 0) errors.push(`generalPrAssessment.observations.links.${key} must be a non-negative safe integer.`);
+    const relations = ["supports", "tests", "implements", "contradicts"].reduce((sum, key) => sum + (Number.isSafeInteger(links[key]) ? links[key] as number : 0), 0);
+    if (relations > 64) errors.push("generalPrAssessment.observations.links relation total must not exceed 64.");
+    if (Number.isSafeInteger(links.linkedObjectives) && counts && (links.linkedObjectives as number) > Object.values(counts).reduce((sum, count) => sum + count, 0)) errors.push("generalPrAssessment.observations.links.linkedObjectives must not exceed assessment targets.");
+    const hasCounts = Number.isSafeInteger(links.linkedObjectives) && (links.linkedObjectives as number) > 0 || relations > 0;
+    if (Number.isSafeInteger(links.linkedObjectives) && (links.linkedObjectives as number) > relations) errors.push("generalPrAssessment.observations.links.linkedObjectives must not exceed relations.");
+    if (links.state === "proposed" && ((links.linkedObjectives as number) === 0 || relations === 0)) errors.push("generalPrAssessment.observations.links.proposed requires nonzero objectives and relations.");
+    if (links.state !== "proposed" && hasCounts) errors.push("generalPrAssessment.observations.links non-proposed states require zero counts.");
+  }
+  const coverage = isRecord(value.coverage) ? value.coverage : null;
+  if (!coverage) errors.push("generalPrAssessment.observations.coverage must be an object.");
+  else {
+    requireKeys(coverage, ["source", "evidence"], "generalPrAssessment.observations.coverage", errors);
+    for (const key of ["source", "evidence"] as const) if (coverage[key] !== null && coverage[key] !== "complete" && coverage[key] !== "sampled" && coverage[key] !== "incomplete") errors.push(`generalPrAssessment.observations.coverage.${key} is invalid.`);
   }
 }
 

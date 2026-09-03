@@ -6,12 +6,14 @@ import {
   runGeneralPrSemanticObserverV2,
   type GeneralPrSemanticFailureStageV1,
   type GeneralPrSemanticPackageFailureReasonV1,
+  type GeneralPrSemanticProviderDiagnosticV1,
   type GeneralPrSemanticObserverModelProfileV2,
   type GeneralPrSemanticObserverProviderV4,
-  type GeneralPrSemanticObserverRunResultV3
+  type GeneralPrSemanticObserverRunResultV3,
+  type GeneralPrFreshnessFailureV1
 } from "./general-pr-semantic-observer";
 import type { GeneralPrSemanticSelectionCoverageV1 } from "./general-pr-semantic-selection";
-import type { GeneralPrSemanticClaimInvalidReasonV2, GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
+import type { GeneralPrSemanticClaimInvalidReasonV2, GeneralPrSemanticEvidenceInvalidReasonV1, GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { evaluateScopeMappingObservationV2 } from "./scope-mapping-observation";
 import { evaluateTestCoverageObservationV2 } from "./test-coverage-observation";
 import type { GeneralPrAssessmentDiagnosticsV1, PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
@@ -29,20 +31,35 @@ export interface GeneralPrObservationBundleV2 {
     state: "observed" | "hypothesis";
   }>;
   relationLevelCounts: Record<RelationVerificationLevelV1, number>;
+  /** Private, accepted Stage B proposal edges. Never project IDs into reports. */
+  evidenceRelations: GeneralPrObservedEvidenceRelationV1[];
   testCoverage: ReturnType<typeof evaluateTestCoverageObservationV2>[];
   scopeMappings: ReturnType<typeof evaluateScopeMappingObservationV2>[];
   semanticState: "disabled" | "ineligible" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   /** Private aggregate diagnostic only; it is not copied into reports. */
   semanticFailureStage: GeneralPrSemanticFailureStageV1 | null;
+  /** Private closed provider metadata; authenticated operator projection only. */
+  semanticProviderDiagnostic: GeneralPrSemanticProviderDiagnosticV1 | null;
   /** Private closed reason set only; it is not copied into reports. */
   semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[];
   /** Private closed validator category; only the authenticated operator projection exposes it. */
   semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null;
+  /** Private closed Stage B validator category; only the authenticated operator projection exposes it. */
+  semanticEvidenceInvalidReason: GeneralPrSemanticEvidenceInvalidReasonV1 | null;
+  /** Private closed freshness diagnostic; only the authenticated operator projection exposes it. */
+  semanticFreshnessFailure: GeneralPrFreshnessFailureV1 | null;
   /** Private aggregate only; no selection IDs, hashes, descriptors, or provider output. */
   semanticStageDiagnostics: GeneralPrSemanticStageDiagnosticsV1;
   /** Private closed aggregate only; it is not copied into reports. */
   semanticSelectionOmittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1;
   diagnostics: GeneralPrAssessmentDiagnosticsV1;
+}
+
+export interface GeneralPrObservedEvidenceRelationV1 {
+  objectiveId: string;
+  evidenceId: string;
+  proposal: "supports" | "tests" | "implements" | "contradicts";
+  level: "hypothesis";
 }
 
 export interface GeneralPrSemanticStageDiagnosticsV1 {
@@ -56,6 +73,13 @@ export interface GeneralPrSemanticStageDiagnosticsV1 {
     sourceSpans: "0" | "1_4" | "5_8" | "9_12";
     evidenceCandidates: "0" | "1_16" | "17_32" | "33_64";
   };
+  providerFailure?: GeneralPrSemanticProviderDiagnosticV1 | null;
+}
+
+/** Optional private finalizer diagnostics; Task 2 extends this object. */
+export interface GeneralPrSemanticFailureDiagnosticsV1 {
+  evidenceInvalidReason?: GeneralPrSemanticEvidenceInvalidReasonV1 | null;
+  freshnessFailure?: GeneralPrFreshnessFailureV1 | null;
 }
 
 /** Closed private safety bucket; it never exposes an unbounded call metric. */
@@ -157,7 +181,9 @@ export async function runGeneralPrObservationNowV2(
     semantic.semanticPackageFailureReasons,
     aggregate.stageDiagnostics,
     aggregate.omittedReasonCounts,
-    semantic.semanticClaimInvalidReason
+    semantic.semanticClaimInvalidReason,
+    semantic.semanticProviderDiagnostic,
+    { evidenceInvalidReason: semantic.semanticEvidenceInvalidReason, freshnessFailure: semantic.semanticFreshnessFailure }
   );
   return {
     report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
@@ -206,7 +232,9 @@ export function finalizeDeterministicGeneralPrObservationsV2(
   semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = [],
   semanticStageDiagnostics: GeneralPrSemanticStageDiagnosticsV1 = emptySemanticStageDiagnostics(),
   semanticSelectionOmittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1 = emptySemanticSelectionOmittedReasonCounts(),
-  semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null = null
+  semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null = null,
+  semanticProviderDiagnostic: GeneralPrSemanticProviderDiagnosticV1 | null = null,
+  failureDiagnostics: GeneralPrSemanticFailureDiagnosticsV1 = {}
 ): GeneralPrObservationBundleV2 {
   const deterministicObjectives = seed.spans.flatMap((span) => {
     if (span.deterministicRole !== "objective_candidate") return [];
@@ -237,7 +265,7 @@ export function finalizeDeterministicGeneralPrObservationsV2(
   });
   const objectives = selectAdmittedObjectives(deterministicObjectives, semanticObjectives);
   const semanticObjectiveIds = new Set(objectives.filter((objective) => objective.state === "hypothesis").map((objective) => objective.id));
-  const semanticEdges = semanticProposal === null ? [] : semanticProposal.evidenceRelationProposals.flatMap((proposal) => {
+  const semanticEdges = semanticProposal === null || semanticProposal.seedHash !== seed.seedHash || semanticState !== "valid" || semanticStageDiagnostics.evidenceState !== "valid" ? [] : semanticProposal.evidenceRelationProposals.flatMap((proposal) => {
     if (proposal.proposal === "unresolved" || !semanticObjectiveIds.has(proposal.objectiveGroupId)) return [];
     const atom = seed.evidenceAtoms.find((candidate) => candidate.id === proposal.evidenceId);
     if (!atom) return [];
@@ -249,7 +277,8 @@ export function finalizeDeterministicGeneralPrObservationsV2(
       basis: "semantic_proposal" as const,
       subjectDigest: seed.seedHash,
       evidenceRefs: [atom.id],
-      completeness: atom.completeness
+      completeness: atom.completeness,
+      proposal: proposal.proposal
     }];
   });
   const ledger = buildObjectiveEvidenceRelationLedgerV1({
@@ -259,8 +288,14 @@ export function finalizeDeterministicGeneralPrObservationsV2(
       ...seed.testArtifacts.map((artifact) => ({ version: 1 as const, id: artifact.id, kind: "test_artifact" as const, subjectDigest: seed.seedHash })),
       ...seed.evidenceAtoms.map((atom) => ({ version: 1 as const, id: atom.id, kind: "evidence_atom" as const, subjectDigest: seed.seedHash }))
     ],
-    edges: semanticEdges
+    edges: semanticEdges.map(({ proposal: _proposal, ...edge }) => edge)
   });
+  const evidenceRelations: GeneralPrObservedEvidenceRelationV1[] = ledger.valid ? semanticEdges.map((edge) => ({
+    objectiveId: edge.fromNodeId,
+    evidenceId: edge.toNodeId,
+    proposal: edge.proposal,
+    level: "hypothesis"
+  })) : [];
   const relationLevelCounts: Record<RelationVerificationLevelV1, number> = {
     verified: 0,
     observed: 0,
@@ -268,7 +303,7 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     unresolved: 0,
     unavailable: 0
   };
-  for (const edge of semanticEdges) relationLevelCounts[edge.level] += 1;
+  for (const edge of evidenceRelations) relationLevelCounts[edge.level] += 1;
   const inventoryComplete = seed.completeness === "complete";
   const semanticEvidenceComplete = semanticStageDiagnostics.evidenceCoverage === "complete";
   const semanticTestProposals = new Map((semanticProposal?.testApplicabilityProposals ?? []).map((proposal) => [`${proposal.objectiveGroupId}:${proposal.changeClusterId}`, proposal]));
@@ -314,7 +349,8 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     deterministicCandidates: deterministicObjectives.length,
     semanticCandidates: semanticObjectives.length,
     objectives,
-    relationLevelCounts
+    relationLevelCounts,
+    evidenceRelations
   });
   return {
     version: 2,
@@ -322,17 +358,21 @@ export function finalizeDeterministicGeneralPrObservationsV2(
     ledgerDigest: ledger.valid ? ledger.ledger.ledgerDigest : digest({ domain: "agentproof.general-pr.empty-ledger.v2", seedHash: seed.seedHash }),
     objectives,
     relationLevelCounts,
+    evidenceRelations,
     testCoverage,
     scopeMappings,
     semanticState,
-    semanticFailureStage: semanticState === "unavailable" ? semanticFailureStage : null,
+    semanticFailureStage,
+    semanticProviderDiagnostic,
+    semanticEvidenceInvalidReason: failureDiagnostics.evidenceInvalidReason ?? null,
+    semanticFreshnessFailure: failureDiagnostics.freshnessFailure ?? null,
     semanticPackageFailureReasons: semanticState === "unavailable" && semanticFailureStage === "package"
       ? semanticPackageFailureReasons
       : [],
     semanticClaimInvalidReason: semanticState === "invalid" ? semanticClaimInvalidReason : null,
     semanticStageDiagnostics,
     semanticSelectionOmittedReasonCounts,
-    diagnostics
+  diagnostics
   };
 }
 
@@ -355,7 +395,8 @@ export function buildGeneralPrSemanticAggregateDiagnosticsV1(
       selectedCountBuckets: {
         sourceSpans: sourceSpanCountBucket(manifest?.counts.sourceSpansSelected ?? 0),
         evidenceCandidates: evidenceCandidateCountBucket(manifest?.counts.evidenceCandidatesSelected ?? 0)
-      }
+      },
+      ...(semantic.semanticProviderDiagnostic ? { providerFailure: semantic.semanticProviderDiagnostic } : {})
     },
     omittedReasonCounts: manifest
       ? { ...manifest.omittedReasonCounts }
@@ -423,6 +464,7 @@ function buildDiagnostics(input: {
   semanticCandidates: number;
   objectives: GeneralPrObservationBundleV2["objectives"];
   relationLevelCounts: GeneralPrObservationBundleV2["relationLevelCounts"];
+  evidenceRelations: GeneralPrObservationBundleV2["evidenceRelations"];
 }): GeneralPrAssessmentDiagnosticsV1 {
   const deterministicSelected = input.objectives.some((objective) => objective.admissionBasis === "explicit_structure");
   const semanticAdmitted = input.objectives.some((objective) => objective.admissionBasis === "semantic_proposal");
@@ -449,7 +491,7 @@ function buildDiagnostics(input: {
       ? "collection_blocked"
       : input.relationLevelCounts.verified > 0
         ? "verified"
-        : input.relationLevelCounts.hypothesis > 0 ? "hypothesis_only" : "unresolved";
+    : input.evidenceRelations.length > 0 ? "hypothesis_only" : "unresolved";
   return {
     version: 1,
     sourceCollection,

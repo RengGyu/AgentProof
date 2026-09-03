@@ -146,7 +146,9 @@ export async function advanceQueuedGeneralPrObservationV2(
       semantic.semanticPackageFailureReasons,
       aggregate.stageDiagnostics,
       aggregate.omittedReasonCounts,
-      semantic.semanticClaimInvalidReason
+      semantic.semanticClaimInvalidReason,
+      semantic.semanticProviderDiagnostic,
+      { evidenceInvalidReason: semantic.semanticEvidenceInvalidReason, freshnessFailure: semantic.semanticFreshnessFailure }
     ),
     semantic
   };

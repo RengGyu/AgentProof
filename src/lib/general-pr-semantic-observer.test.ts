@@ -7,6 +7,14 @@ import {
   type GeneralPrSemanticObserverPackageV4
 } from "./general-pr-semantic-observer";
 import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import {
+  GitHubFetchError,
+  GitHubPullRequestHeadChangedError,
+  GitHubPullRequestSourceChangedError
+} from "./github";
+import { buildGeneralPrSemanticAggregateDiagnosticsV1 } from "./general-pr-observation-service";
+import { submitGeneralPrSemanticObservationWithOpenAI } from "./openai-semantic";
+import * as proposalContract from "./general-pr-semantic-proposal";
 import type { PullRequestInput } from "./types";
 
 afterEach(() => vi.useRealTimers());
@@ -197,7 +205,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
 
     const result = await run(input(), { provider, clock: () => now });
 
-    expect(result).toMatchObject({ state: "valid", receipt: { claimState: "valid", evidenceState: "timeout" } });
+    expect(result).toMatchObject({ state: "valid", semanticEvidenceInvalidReason: null, receipt: { claimState: "valid", evidenceState: "timeout" } });
     expect(provider.observe).toHaveBeenCalledTimes(1);
   });
 
@@ -210,7 +218,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     expect(provider.observe).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
 
-    await expect(result).resolves.toMatchObject({ state: "timeout", receipt: { claimState: "timeout", evidenceState: "not_run" } });
+    await expect(result).resolves.toMatchObject({ state: "timeout", semanticProviderDiagnostic: { phase: "claim_discovery", category: "timeout" }, receipt: { claimState: "timeout", evidenceState: "not_run" } });
   });
 
   it("runs claim discovery once and rejects an invalid claim without starting evidence", async () => {
@@ -265,6 +273,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
       state: "unavailable",
       semanticFailureStage: "provider_request",
       semanticClaimInvalidReason: null,
+      semanticEvidenceInvalidReason: null,
       receipt: { claimState: "unavailable", evidenceState: "not_run" }
     });
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
@@ -277,6 +286,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
 
     expect(result).toMatchObject({
       state: "valid",
+      semanticEvidenceInvalidReason: null,
       proposal: { objectiveGroups: {}, testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] },
       receipt: { claimState: "valid", evidenceState: "not_run", evidenceSelectionHash: null, evidencePromptHash: null, evidenceSchemaHash: null, evidenceOutputHash: null }
     });
@@ -331,9 +341,52 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     const provider = stagedProvider();
     const result = await run(request, { provider });
 
-    expect(result).toMatchObject({ state: "valid", receipt: { claimState: "valid", evidenceState: "valid" } });
+    expect(result).toMatchObject({ state: "valid", semanticEvidenceInvalidReason: null, receipt: { claimState: "valid", evidenceState: "valid" } });
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
     expect(result.receipt.evidenceSelectionHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("preserves claims-only output when evidence references an unselected ID", async () => {
+    const request = input();
+    const provider = stagedProvider({ evidence: (packet) => ({
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: [{
+        objectiveSpanIds: packet.input.objectiveGroups[0]!.objectiveSpanIds,
+        evidenceId: "gpea_unselected",
+        proposal: "supports"
+      }]
+    }) });
+    const result = await run(request, { provider });
+
+    expect(result).toMatchObject({
+      state: "valid",
+      semanticEvidenceInvalidReason: "reference_binding_invalid",
+      receipt: { claimState: "valid", evidenceState: "invalid" },
+      proposal: { evidenceRelationProposals: [] }
+    });
+  });
+
+  it("records validator_exception without retaining a thrown validator detail", async () => {
+    const request = input();
+    const hostile = new Proxy({ ...emptyEvidenceCandidate }, { getPrototypeOf() { throw new Error("HOSTILE_VALIDATOR_SECRET"); } });
+    const result = await run(request, { provider: stagedProvider({ evidence: () => hostile }) });
+
+    expect(result).toMatchObject({ state: "valid", semanticEvidenceInvalidReason: "validator_exception", receipt: { claimState: "valid", evidenceState: "invalid" } });
+    expect(JSON.stringify(result)).not.toContain("HOSTILE_VALIDATOR_SECRET");
+  });
+
+  it("records merge_binding_invalid while retaining validated claims", async () => {
+    const original = proposalContract.mergeGeneralPrSemanticStageCandidatesV1;
+    const spy = vi.spyOn(proposalContract, "mergeGeneralPrSemanticStageCandidatesV1").mockImplementation((seed, claim, evidence) => evidence === null
+      ? original(seed, claim, evidence)
+      : { valid: false, errors: ["forced merge rejection"] });
+    try {
+      const result = await run(input(), { provider: stagedProvider() });
+      expect(result).toMatchObject({ state: "valid", semanticEvidenceInvalidReason: "merge_binding_invalid", receipt: { claimState: "valid", evidenceState: "invalid" }, proposal: { evidenceRelationProposals: [] } });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("reads fresh input around each semantic stage in order", async () => {
@@ -354,6 +407,46 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
   });
 
   it.each([
+    ["head drift", () => new GitHubPullRequestHeadChangedError("a".repeat(40), "b".repeat(40), "final"), "stale", "head_changed"],
+    ["base drift", () => new GitHubPullRequestHeadChangedError("a".repeat(40), "b".repeat(40), "final", "base"), "stale", "base_changed"],
+    ["source drift", () => new GitHubPullRequestSourceChangedError(), "stale", "source_changed"],
+    ["token rejection", () => new GitHubFetchError(401, "github_token_rejected", "private"), "unavailable", "auth_unavailable"],
+    ["rate limit", () => new GitHubFetchError(429, "github_rate_limited", "private"), "unavailable", "rate_limited"],
+    ["not found", () => new GitHubFetchError(404, "github_not_found", "private"), "unavailable", "fetch_failed"],
+    ["unknown error", () => new Error("PRIVATE_FRESHNESS_ERROR"), "unavailable", "fetch_failed"]
+  ] as const)("classifies %s at the before-claim freshness fence", async (_name, createError, state, reason) => {
+    const provider = stagedProvider();
+    const result = await run(input(), { provider, readCurrentInput: async () => { throw createError(); } });
+
+    expect(result).toMatchObject({
+      state,
+      semanticFreshnessFailure: { phase: "before_claim", state, reason },
+      proposal: null
+    });
+    expect(provider.observe).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_FRESHNESS_ERROR");
+  });
+
+  it("discards claims when freshness is unavailable before evidence", async () => {
+    const request = input();
+    const provider = stagedProvider();
+    let reads = 0;
+    const result = await run(request, { provider, readCurrentInput: async () => {
+      reads += 1;
+      if (reads === 3) throw new GitHubFetchError(401, "github_auth_required", "private");
+      return request;
+    } });
+
+    expect(result).toMatchObject({
+      state: "unavailable",
+      semanticFreshnessFailure: { phase: "before_evidence", state: "unavailable", reason: "auth_unavailable" },
+      proposal: null,
+      receipt: { claimState: "valid", evidenceState: "unavailable" }
+    });
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery"]);
+  });
+
+  it.each([
     ["timeout", async () => { throw new GeneralPrSemanticProviderFailure("provider_request", true); }, undefined],
     ["invalid", async () => ({}), undefined],
     ["unavailable", async () => { throw new Error("provider unavailable"); }, undefined]
@@ -364,6 +457,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
 
     expect(result).toMatchObject({
       state: "valid",
+      semanticEvidenceInvalidReason: evidenceState === "invalid" ? "root_shape_invalid" : null,
       receipt: { claimState: "valid", evidenceState },
       proposal: { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }
     });
@@ -378,6 +472,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
 
     expect(result).toMatchObject({
       state: "valid",
+      semanticEvidenceInvalidReason: "output_limit_exceeded",
       receipt: { claimState: "valid", evidenceState: "invalid", evidenceOutputHash: null },
       proposal: { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }
     });
@@ -460,8 +555,36 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     } });
 
     expect(events).toEqual(["read-1", "claim_discovery", "read-2"]);
-    expect(result).toMatchObject({ state: "stale", receipt: { claimState: "stale", evidenceState: "not_run" } });
+    expect(result).toMatchObject({ state: "stale", semanticFreshnessFailure: { phase: "after_claim", state: "stale", reason: "seed_changed" }, receipt: { claimState: "stale", evidenceState: "not_run" } });
     expect(provider.observe).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["null snapshot", async (): Promise<null> => null, "snapshot_unavailable"],
+    ["permission denial", async (): Promise<null> => { throw new GitHubFetchError(403, "github_permission_denied", "private"); }, "auth_unavailable"],
+    ["secondary rate limit", async (): Promise<null> => { throw new GitHubFetchError(429, "github_secondary_rate_limited", "private"); }, "rate_limited"]
+  ] as const)("classifies %s as unavailable without a provider call", async (_name, readCurrentInput, reason) => {
+    const provider = stagedProvider();
+    const result = await run(input(), { provider, readCurrentInput });
+
+    expect(result).toMatchObject({ state: "unavailable", semanticFreshnessFailure: { phase: "before_claim", state: "unavailable", reason }, proposal: null });
+    expect(provider.observe).not.toHaveBeenCalled();
+  });
+
+  it("records after-evidence seed drift when only a check changes", async () => {
+    const request = input();
+    const changed = input({ checks: [{ name: "PRIVATE CI CHECK", status: "failed", summary: "changed" }] });
+    const provider = stagedProvider();
+    let read = 0;
+    const result = await run(request, { provider, readCurrentInput: async () => ++read === 4 ? changed : request });
+
+    expect(result).toMatchObject({
+      state: "stale",
+      semanticFreshnessFailure: { phase: "after_evidence", state: "stale", reason: "seed_changed" },
+      proposal: null,
+      receipt: { claimState: "valid", evidenceState: "stale" }
+    });
+    expect(provider.observe).toHaveBeenCalledTimes(2);
   });
 
   it("discards both stages if the current subject becomes private after evidence", async () => {
@@ -474,10 +597,78 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     expect(result).toMatchObject({
       state: "unavailable",
       semanticFailureStage: "privacy",
+      semanticFreshnessFailure: { phase: "after_evidence", state: "unavailable", reason: "privacy_ineligible" },
       proposal: null,
       receipt: { claimState: "valid", evidenceState: "unavailable" }
     });
     expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+  });
+
+  it("retains a closed evidence provider failure diagnostic while preserving valid claims", async () => {
+    const request = input();
+    const provider = stagedProvider();
+    provider.observe.mockImplementation(async (semanticPackage) => {
+      if (semanticPackage.stage === "claim_discovery") return claimCandidate(semanticPackage);
+      throw new GeneralPrSemanticProviderFailure("provider_request", false, {
+        phase: "evidence_linking", category: "rate_limited", httpStatus: 429
+      });
+    });
+
+    const result = await run(request, { provider });
+
+    expect(result).toMatchObject({
+      state: "valid",
+      semanticFailureStage: "provider_request",
+      semanticProviderDiagnostic: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 },
+      receipt: { claimState: "valid", evidenceState: "unavailable" }
+    });
+  });
+
+  it.each([
+    ["invalid schema", () => new Response(JSON.stringify({ error: { code: "invalid_json_schema", message: "PROVIDER_SECRET" } }), { status: 400 }), { category: "invalid_json_schema", httpStatus: 400 }],
+    ["rate limited", () => new Response("PROVIDER_SECRET", { status: 429 }), { category: "rate_limited", httpStatus: 429 }],
+    ["provider unavailable", () => new Response("PROVIDER_SECRET", { status: 503 }), { category: "provider_unavailable", httpStatus: 503 }],
+    ["malformed JSON", () => new Response("not JSON"), { category: "response_invalid" }],
+    ["incomplete max output", () => Response.json({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output_text: "PROVIDER_SECRET" }), { category: "incomplete", incompleteReason: "max_output_tokens" }]
+  ] as const)("carries closed %s diagnostics across the real observer-adapter HTTP boundary", async (_name, response, expected) => {
+    let calls = 0;
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit) => {
+      calls += 1;
+      if (calls > 1) return response();
+      const requestInput = JSON.parse(JSON.parse(String(init.body)).input[1].content[0].text);
+      return Response.json({ output_text: JSON.stringify({
+        spanRoles: requestInput.spans.map((span: { id: string }, index: number) => ({ spanId: span.id, role: index === 0 ? "objective_candidate" : "supporting_context" }))
+      }) });
+    });
+    const result = await run(input(), {
+      provider: { observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, { apiKey: "test-key", fetchFn: fetchFn as unknown as typeof fetch }) }
+    });
+
+    expect(result).toMatchObject({
+      state: "valid",
+      semanticFailureStage: ["incomplete", "response_invalid"].includes(expected.category) ? "provider_response" : "provider_request",
+      semanticProviderDiagnostic: { phase: "evidence_linking", ...expected },
+      receipt: { claimState: "valid", evidenceState: "unavailable" }
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(buildGeneralPrSemanticAggregateDiagnosticsV1(result, 2).stageDiagnostics.providerFailure).toEqual({ phase: "evidence_linking", ...expected });
+    expect(JSON.stringify(result)).not.toContain("PROVIDER_SECRET");
+  });
+
+  it("accepts a valid two-stage result across the real observer-adapter HTTP boundary", async () => {
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      const input = JSON.parse(body.input[1].content[0].text);
+      return Response.json({ output_text: JSON.stringify(body.text.format.name.includes("claim")
+        ? { spanRoles: input.spans.map((span: { id: string }, index: number) => ({ spanId: span.id, role: index === 0 ? "objective_candidate" : "supporting_context" })) }
+        : emptyEvidenceCandidate) });
+    });
+    const result = await run(input(), {
+      provider: { observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, { apiKey: "test-key", fetchFn: fetchFn as unknown as typeof fetch }) }
+    });
+
+    expect(result).toMatchObject({ state: "valid", semanticProviderDiagnostic: null, receipt: { claimState: "valid", evidenceState: "valid" } });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed before either stage when current repository visibility is private", async () => {
@@ -485,7 +676,7 @@ describe("GeneralPrSemanticObserverV3 staging", () => {
     const provider = stagedProvider();
     const result = await run(request, { provider, readCurrentInput: async () => ({ ...request, repositoryPrivate: true }) });
 
-    expect(result).toMatchObject({ state: "unavailable", semanticFailureStage: "privacy", receipt: { claimState: "unavailable", evidenceState: "not_run" } });
+    expect(result).toMatchObject({ state: "unavailable", semanticFailureStage: "privacy", semanticFreshnessFailure: { phase: "before_claim", state: "unavailable", reason: "privacy_ineligible" }, receipt: { claimState: "unavailable", evidenceState: "not_run" } });
     expect(provider.observe).toHaveBeenCalledTimes(0);
   });
 });

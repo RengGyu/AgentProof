@@ -766,7 +766,8 @@ function copyTenantGeneralPrAssessmentSummary(
     sourceState: value.sourceState,
     overallConclusion: value.overallConclusion,
     counts: { ...value.counts },
-    reasonCodes: [...value.reasonCodes]
+    reasonCodes: [...value.reasonCodes],
+    ...(value.observations ? { observations: copyTenantObservations(value.observations) } : {})
   };
 }
 
@@ -776,7 +777,7 @@ function validateTenantGeneralPrAssessmentSummary(value: unknown, errors: string
     return;
   }
   const summary = value as Record<string, unknown>;
-  const allowed = ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes"];
+  const allowed = ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes", "observations"];
   if (Object.keys(summary).some((key) => !allowed.includes(key)) ||
     summary.version !== 1 ||
     !GENERAL_PR_ASSESSMENT_MODES.has(summary.mode as string) ||
@@ -802,6 +803,25 @@ function validateTenantGeneralPrAssessmentSummary(value: unknown, errors: string
     new Set(summary.reasonCodes).size !== summary.reasonCodes.length) {
     errors.push("tenant ordinary-PR assessment summary reasons are invalid.");
   }
+  if (summary.observations !== undefined && !isValidTenantObservations(summary.observations, summary.counts)) errors.push("tenant ordinary-PR assessment summary observations are invalid.");
+}
+
+function copyTenantObservations(value: NonNullable<GeneralPrAssessmentSummaryV1["observations"]>): NonNullable<GeneralPrAssessmentSummaryV1["observations"]> {
+  return { version: value.version, inventory: { state: value.inventory.state, changedArtifacts: value.inventory.changedArtifacts, changedTestCandidates: value.inventory.changedTestCandidates }, links: { state: value.links.state, linkedObjectives: value.links.linkedObjectives, supports: value.links.supports, tests: value.links.tests, implements: value.links.implements, contradicts: value.links.contradicts }, coverage: { source: value.coverage.source, evidence: value.coverage.evidence } };
+}
+
+function isValidTenantObservations(value: unknown, counts: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const observations = value as Record<string, unknown>, inventory = observations.inventory as Record<string, unknown>, links = observations.links as Record<string, unknown>, coverage = observations.coverage as Record<string, unknown>;
+  const exact = (item: Record<string, unknown> | undefined, keys: string[]) => item !== undefined && Object.keys(item).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(item, key));
+  if (!exact(observations, ["version", "inventory", "links", "coverage"]) || observations.version !== 1 || !inventory || !links || !coverage || !exact(inventory, ["state", "changedArtifacts", "changedTestCandidates"]) || !exact(links, ["state", "linkedObjectives", "supports", "tests", "implements", "contradicts"]) || !exact(coverage, ["source", "evidence"])) return false;
+  if (!["complete", "incomplete", "unavailable"].includes(inventory.state as string) || !Number.isSafeInteger(inventory.changedArtifacts) || !Number.isSafeInteger(inventory.changedTestCandidates) || (inventory.changedArtifacts as number) < 0 || (inventory.changedTestCandidates as number) < 0 || (inventory.changedTestCandidates as number) > (inventory.changedArtifacts as number)) return false;
+  const keys = ["supports", "tests", "implements", "contradicts"];
+  if (!["not_attempted", "proposed", "none_proposed", "unavailable"].includes(links.state as string) || !["linkedObjectives", ...keys].every((key) => Number.isSafeInteger(links[key]) && (links[key] as number) >= 0)) return false;
+  const count = keys.reduce((sum, key) => sum + (links[key] as number), 0);
+  const targetCount = counts && typeof counts === "object" && !Array.isArray(counts) ? Object.values(counts as Record<string, unknown>).reduce<number>((sum, item) => sum + (Number.isSafeInteger(item) ? Number(item) : Infinity), 0) : Infinity;
+  if (count > 64 || (links.linkedObjectives as number) > targetCount || (links.linkedObjectives as number) > count || (links.state === "proposed" ? ((links.linkedObjectives as number) === 0 || count === 0) : ((links.linkedObjectives as number) !== 0 || count !== 0))) return false;
+  return ["source", "evidence"].every((key) => coverage[key] === null || ["complete", "sampled", "incomplete"].includes(coverage[key] as string));
 }
 
 function validateTenantPlannerAxisSubjects(value: unknown, proofAxes: unknown, errors: string[]) {

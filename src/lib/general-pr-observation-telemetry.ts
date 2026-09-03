@@ -13,7 +13,7 @@ export interface GeneralPrObservationTelemetryV1 {
   eligibility: "disabled" | "ineligible" | "eligible";
   semanticState: GeneralPrObservationBundleV2["semanticState"] | null;
   semanticFailureStage: GeneralPrObservationBundleV2["semanticFailureStage"] | null;
-  semanticStageDiagnostics: GeneralPrSemanticStageDiagnosticsV1 | null;
+  semanticStageDiagnostics: Omit<GeneralPrSemanticStageDiagnosticsV1, "providerFailure"> | null;
   semanticSelectionOmittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1 | null;
   diagnostics: GeneralPrObservationBundleV2["diagnostics"] | null;
   durationBucket: "lt_1s" | "1_3s" | "3_8s" | "gte_8s" | "unknown";
@@ -36,7 +36,7 @@ export function buildGeneralPrObservationTelemetryV1(input: {
     eligibility: input.mode === "disabled" ? "disabled" : bundle === null ? "ineligible" : "eligible",
     semanticState: bundle?.semanticState ?? null,
     semanticFailureStage: bundle?.semanticFailureStage ?? null,
-    semanticStageDiagnostics: bundle?.semanticStageDiagnostics ?? null,
+    semanticStageDiagnostics: bundle ? withoutProviderFailure(bundle.semanticStageDiagnostics) : null,
     semanticSelectionOmittedReasonCounts: bundle?.semanticSelectionOmittedReasonCounts ?? null,
     diagnostics: bundle?.diagnostics ?? null,
     durationBucket: durationBucket(input.elapsedMs),
@@ -50,8 +50,14 @@ export function buildGeneralPrObservationTelemetryV1(input: {
   };
 }
 
+function withoutProviderFailure({ providerFailure: _providerFailure, ...diagnostics }: GeneralPrSemanticStageDiagnosticsV1): Omit<GeneralPrSemanticStageDiagnosticsV1, "providerFailure"> {
+  return diagnostics;
+}
+
 export type GeneralPrSemanticOperatorDiagnosticsV1 = Omit<GeneralPrSemanticStageDiagnosticsV1, "version"> & {
   claimInvalidReason: GeneralPrObservationBundleV2["semanticClaimInvalidReason"];
+  evidenceInvalidReason: GeneralPrObservationBundleV2["semanticEvidenceInvalidReason"];
+  freshnessFailure: GeneralPrObservationBundleV2["semanticFreshnessFailure"];
   semanticPackageFailureReasons: GeneralPrObservationBundleV2["semanticPackageFailureReasons"];
   omittedReasonCounts: GeneralPrSemanticSelectionOmittedReasonCountsV1;
 };
@@ -73,6 +79,8 @@ export function buildGeneralPrSemanticOperatorDiagnosticsV1(
   return {
     ...diagnostics,
     claimInvalidReason: bundle?.semanticClaimInvalidReason ?? null,
+    evidenceInvalidReason: bundle?.semanticEvidenceInvalidReason ?? null,
+    freshnessFailure: bundle?.semanticFreshnessFailure ?? null,
     semanticPackageFailureReasons: [...(bundle?.semanticPackageFailureReasons ?? [])],
     omittedReasonCounts: bundle?.semanticSelectionOmittedReasonCounts ?? {
       spanBudget: 0,

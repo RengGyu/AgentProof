@@ -6,6 +6,7 @@ import type {
   GeneralPrAssessmentReasonV1,
   GeneralPrAssessmentTargetV1,
   GeneralPrAssessmentV1,
+  GeneralPrEvidenceObservationsV1,
   GeneralPrTargetConclusionV1,
   VerificationReport
 } from "./types";
@@ -39,7 +40,7 @@ export function deriveGeneralPrAssessmentV1({
   const sourceById = new Map(seed.sources.map((source) => [source.id, source]));
   const spanById = new Map(seed.spans.map((span) => [span.id, span]));
   const headBound = hasCompleteHeadBinding(seed);
-  const targets = bundle.seedHash === seed.seedHash
+  const targetRecords = bundle.seedHash === seed.seedHash
     ? bundle.objectives.flatMap((objective) => {
       const spans = objective.sourceSpanIds.map((spanId) => spanById.get(spanId));
       const source = spans[0] ? sourceById.get(spans[0].sourceUnitId) : undefined;
@@ -47,10 +48,11 @@ export function deriveGeneralPrAssessmentV1({
       if (source.kind !== "linked_issue" && source.authority !== "author_claim") return [];
 
       const sourceAuthority = source.kind === "linked_issue" ? "linked_issue" : "pr_author_claim" as const;
+      const hasAcceptedRelation = bundle.evidenceRelations.some((relation) => relation.objectiveId === objective.id);
       const conclusion = conclusionFor(objective.state, headBound);
-      const reasonCodes = reasonsFor(objective.state, headBound, sourceAuthority);
-      const relationLevels = objective.state === "hypothesis" ? ["hypothesis" as const] : ["unresolved" as const];
-      return [{
+      const reasonCodes = reasonsFor(hasAcceptedRelation, headBound, sourceAuthority);
+      const relationLevels = hasAcceptedRelation ? ["hypothesis" as const] : ["unresolved" as const];
+      return [{ objectiveId: objective.id, target: {
         version: 1 as const,
         targetId: `gpa_${digest({ seedHash: seed.seedHash, objectiveId: objective.id }).slice(0, 24)}`,
         sourceBindingRef: source.id,
@@ -63,9 +65,10 @@ export function deriveGeneralPrAssessmentV1({
         evidenceRefs: [],
         relationLevels,
         headBound
-      } satisfies GeneralPrAssessmentTargetV1];
+      } satisfies GeneralPrAssessmentTargetV1 }];
     })
     : [];
+  const targets = targetRecords.map(({ target }) => target);
   const counts = countTargets(targets);
   const sourceState = sourceStateFor(targets, seed, bundle);
   const headMismatch = bundle.seedHash !== seed.seedHash || bundle.semanticState === "stale";
@@ -84,7 +87,8 @@ export function deriveGeneralPrAssessmentV1({
     overallConclusion: overallConclusionFor(targets),
     counts,
     targets,
-    reasonCodes
+    reasonCodes,
+    observations: observationsFor(seed, bundle, new Set(targetRecords.map(({ objectiveId }) => objectiveId)))
   };
 }
 
@@ -97,7 +101,27 @@ export function summarizeGeneralPrAssessmentV1(
     sourceState: assessment.sourceState,
     overallConclusion: assessment.overallConclusion,
     counts: { ...assessment.counts },
-    reasonCodes: [...assessment.reasonCodes]
+    reasonCodes: [...assessment.reasonCodes],
+    ...(assessment.observations ? { observations: {
+      version: assessment.observations.version,
+      inventory: {
+        state: assessment.observations.inventory.state,
+        changedArtifacts: assessment.observations.inventory.changedArtifacts,
+        changedTestCandidates: assessment.observations.inventory.changedTestCandidates
+      },
+      links: {
+        state: assessment.observations.links.state,
+        linkedObjectives: assessment.observations.links.linkedObjectives,
+        supports: assessment.observations.links.supports,
+        tests: assessment.observations.links.tests,
+        implements: assessment.observations.links.implements,
+        contradicts: assessment.observations.links.contradicts
+      },
+      coverage: {
+        source: assessment.observations.coverage.source,
+        evidence: assessment.observations.coverage.evidence
+      }
+    } } : {})
   };
 }
 
@@ -110,7 +134,7 @@ function conclusionFor(
 }
 
 function reasonsFor(
-  state: GeneralPrObservationBundleV2["objectives"][number]["state"],
+  hasAcceptedRelation: boolean,
   headBound: boolean,
   sourceAuthority: GeneralPrAssessmentTargetV1["sourceAuthority"]
 ): GeneralPrAssessmentReasonV1[] {
@@ -119,9 +143,40 @@ function reasonsFor(
     ...(sourceAuthority === "pr_author_claim" ? ["author_claim_requires_confirmation" as const] : [])
   ]);
   return uniqueReasons([
-    state === "hypothesis" ? "semantic_relation_only" : "verified_relation_missing",
+    hasAcceptedRelation ? "semantic_relation_only" : "verified_relation_missing",
     ...(sourceAuthority === "pr_author_claim" ? ["author_claim_requires_confirmation" as const] : [])
   ]);
+}
+
+function observationsFor(
+  seed: GeneralPrObservationSeedV2,
+  bundle: GeneralPrObservationBundleV2,
+  admittedObjectiveIds: Set<string>
+): GeneralPrEvidenceObservationsV1 {
+  const files = new Map(seed.changeFacts.map((fact) => [fact.fileRef, fact]));
+  const changedArtifacts = files.size;
+  const changedTestCandidates = [...files.values()].filter((fact) => fact.roleCandidates.includes("test")).length;
+  const relations = bundle.seedHash === seed.seedHash
+    ? bundle.evidenceRelations.filter((relation) => admittedObjectiveIds.has(relation.objectiveId))
+    : [];
+  const unavailable = bundle.seedHash !== seed.seedHash || bundle.semanticState === "stale" || bundle.semanticFreshnessFailure !== null || ["invalid", "timeout", "unavailable"].includes(bundle.semanticState) || ["invalid", "timeout", "unavailable", "stale"].includes(bundle.semanticStageDiagnostics.evidenceState);
+  const linksState = unavailable
+    ? "unavailable"
+    : relations.length > 0
+      ? "proposed"
+      : bundle.semanticStageDiagnostics.evidenceState === "valid"
+        ? "none_proposed"
+        : "not_attempted";
+  const counts = { supports: 0, tests: 0, implements: 0, contradicts: 0 };
+  for (const relation of relations) counts[relation.proposal] += 1;
+  return {
+    version: 1,
+    inventory: { state: seed.completeness, changedArtifacts, changedTestCandidates },
+    links: linksState === "proposed"
+      ? { state: linksState, linkedObjectives: new Set(relations.map((relation) => relation.objectiveId)).size, ...counts }
+      : { state: linksState, linkedObjectives: 0, supports: 0, tests: 0, implements: 0, contradicts: 0 },
+    coverage: { source: bundle.semanticStageDiagnostics.sourceCoverage, evidence: bundle.semanticStageDiagnostics.evidenceCoverage }
+  };
 }
 
 function sourceStateFor(

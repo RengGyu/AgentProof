@@ -1882,7 +1882,7 @@ describe("analysis worker preflight", () => {
       });
       const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0] });
 
-      expect(result.status).toBe("completed");
+      expect(result.status, JSON.stringify(result)).toBe("completed");
       expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
         policy: expect.objectContaining({
           semanticObservation: "eligible_public_pr",
@@ -1908,6 +1908,35 @@ describe("analysis worker preflight", () => {
       });
       expect(observationResult?.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
       expect(observationResult?.bundle?.relationLevelCounts.verified).toBe(0);
+    } finally {
+      observationSpy.mockRestore();
+    }
+  });
+
+  it("keeps a post-initial GitHub refresh failure private to the worker observation bundle", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "advisory");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("OPENAI_MODEL", "gpt-test");
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    const githubFetch = mockWorkerFetch({ repositoryPrivate: false, pullRequestBody: "Internal cleanup only." });
+    let pullReads = 0;
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") return Promise.resolve(Response.json({ output_text: "{}" }));
+      if (String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7" && ++pullReads === 3) return Promise.resolve(new Response("missing", { status: 404 }));
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+    try {
+      const result = await runNextAnalysisJob({ requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date("2026-06-30T00:01:00Z") });
+      const observationResult = await observationSpy.mock.results.at(-1)?.value;
+      const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0], audits: getAuditEventsForTests() });
+
+      expect(result.status).toBe("completed");
+      expect(observationResult?.bundle).toMatchObject({ semanticFreshnessFailure: { phase: "before_claim", state: "unavailable", reason: "fetch_failed" } });
+      expect(fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses")).toHaveLength(0);
+      expect(serialized).not.toContain("fetch_failed");
     } finally {
       observationSpy.mockRestore();
     }

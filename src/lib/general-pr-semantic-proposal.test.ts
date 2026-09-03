@@ -183,15 +183,17 @@ describe("GeneralPr split semantic stage contracts", () => {
     const allowedClustersByObjective = new Map(evidence.objectiveGroups.map((group) => [JSON.stringify(group.objectiveSpanIds), new Set(group.changeClusterIds)]));
     const allowedEvidenceByObjective = new Map(evidence.objectiveGroups.map((group) => [JSON.stringify(group.objectiveSpanIds), new Set(group.evidenceIds)]));
     for (const variant of relationVariants(evidenceSchema, "testApplicabilityProposals").concat(relationVariants(evidenceSchema, "scopeMappingProposals"))) {
-      const objective = enumValues(variant, "objectiveSpanIds")[0];
+      const objective = typedObjectiveSpanIds(variant);
       const allowed = allowedClustersByObjective.get(JSON.stringify(objective));
       expect(allowed).toBeDefined();
+      expect(objective).toEqual(expect.any(Array));
       expect(enumValues(variant, "changeClusterId").every((id) => allowed!.has(String(id)))).toBe(true);
     }
     for (const variant of relationVariants(evidenceSchema, "evidenceRelationProposals")) {
-      const objective = enumValues(variant, "objectiveSpanIds")[0];
+      const objective = typedObjectiveSpanIds(variant);
       const allowed = allowedEvidenceByObjective.get(JSON.stringify(objective));
       expect(allowed).toBeDefined();
+      expect(objective).toEqual(expect.any(Array));
       expect(enumValues(variant, "evidenceId").every((id) => allowed!.has(String(id)))).toBe(true);
     }
   });
@@ -216,6 +218,11 @@ describe("GeneralPr split semantic stage contracts", () => {
     expect(JSON.stringify(schema)).not.toContain('"enum":[]');
     expect(relationVariants(schema, "testApplicabilityProposals")).toEqual([]);
     expect(relationVariants(schema, "scopeMappingProposals")).toEqual([]);
+    for (const field of ["testApplicabilityProposals", "scopeMappingProposals"]) {
+      const relation = (schema.properties as Record<string, { minItems?: number; maxItems?: number; items?: unknown }>)[field]!;
+      expect(relation).toMatchObject({ type: "array", minItems: 0, maxItems: 0 });
+      expect(relation.items).toEqual(expect.objectContaining({ type: "object" }));
+    }
   });
 
   it("validates a complete selected claim stage and rejects root and span-decision mutations", () => {
@@ -326,7 +333,7 @@ describe("GeneralPr split semantic stage contracts", () => {
       scopeMappingProposals: [{ objectiveSpanIds: selected.objectiveGroups[1]!.objectiveSpanIds, changeClusterId: sharedClusterId, proposal: "plausibly_mapped" as const }],
       evidenceRelationProposals: []
     };
-    expect(validateGeneralPrSemanticEvidenceCandidateV1(crossKindObjectiveReuse, observationSeed, claim, selected)).toEqual(expect.objectContaining({ valid: false }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(crossKindObjectiveReuse, observationSeed, claim, selected)).toEqual(expect.objectContaining({ valid: false, invalidReason: "reference_ownership_conflict" }));
 
     const evidenceIds = selected.evidenceDescriptors.slice(0, 2).map((item) => item.evidenceId);
     if (evidenceIds.length < 2) throw new Error("fixture must contain two evidence descriptors");
@@ -351,14 +358,19 @@ describe("GeneralPr split semantic stage contracts", () => {
       }))
     };
     expect(validateGeneralPrSemanticEvidenceCandidateV1(valid, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: true }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1({}, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "root_shape_invalid" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1({}, observationSeed, claim, { ...boundedSelection, evidenceSelectionHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false, invalidReason: "root_shape_invalid" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1({ ...valid, evidenceRelationProposals: [{ ...valid.evidenceRelationProposals[0]!, proposal: "unknown" }] }, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "relation_shape_invalid" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(valid, { ...observationSeed, seedHash: "0".repeat(64) }, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "validation_provenance_invalid" }));
 
     const unknownId = { ...valid, evidenceRelationProposals: [{ ...valid.evidenceRelationProposals[0]!, evidenceId: "gpea_unknown" }] };
     const otherObjectiveId = { ...valid, evidenceRelationProposals: [{ ...valid.evidenceRelationProposals[0]!, evidenceId: evidenceIds[1]! }] };
     const duplicate = { ...valid, evidenceRelationProposals: [valid.evidenceRelationProposals[0]!, valid.evidenceRelationProposals[0]!] };
     const changedObjective = { ...valid, evidenceRelationProposals: [{ ...valid.evidenceRelationProposals[0]!, objectiveSpanIds: selection.selectedSpanIds.slice(-1) }] };
-    for (const mutation of [unknownId, otherObjectiveId, duplicate, changedObjective]) {
-      expect(validateGeneralPrSemanticEvidenceCandidateV1(mutation, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false }));
-    }
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(unknownId, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "reference_binding_invalid" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(otherObjectiveId, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "reference_binding_invalid" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(duplicate, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "duplicate_relation" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(changedObjective, observationSeed, claim, boundedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "objective_binding_invalid" }));
 
     const sharedSelection = rehashEvidenceSelection({
       ...boundedSelection,
@@ -369,14 +381,15 @@ describe("GeneralPr split semantic stage contracts", () => {
       ...valid,
       evidenceRelationProposals: sharedSelection.objectiveGroups.map((group) => ({ objectiveSpanIds: group.objectiveSpanIds, evidenceId: evidenceIds[0]!, proposal: "supports" as const }))
     };
-    expect(validateGeneralPrSemanticEvidenceCandidateV1(crossObjective, observationSeed, claim, sharedSelection)).toEqual(expect.objectContaining({ valid: false }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(crossObjective, observationSeed, claim, sharedSelection)).toEqual(expect.objectContaining({ valid: false, invalidReason: "reference_ownership_conflict" }));
 
     const overLimit = { ...valid, evidenceRelationProposals: Array.from({ length: 65 }, () => valid.evidenceRelationProposals[0]!) };
-    expect(validateGeneralPrSemanticEvidenceCandidateV1(overLimit, observationSeed, claim, boundedSelection)).toEqual({ valid: false, errors: ["evidence relation limit exceeded"] });
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(overLimit, observationSeed, claim, boundedSelection)).toEqual({ valid: false, invalidReason: "relation_limit_exceeded", errors: ["evidence relation limit exceeded"] });
     const overBytes = { ...valid, evidenceRelationProposals: [{ ...valid.evidenceRelationProposals[0]!, evidenceId: "x".repeat(20_000) }] };
-    expect(validateGeneralPrSemanticEvidenceCandidateV1(overBytes, observationSeed, claim, boundedSelection)).toEqual({ valid: false, errors: ["evidence output byte limit exceeded"] });
-    expect(validateGeneralPrSemanticEvidenceCandidateV1(valid, observationSeed, claim, { ...boundedSelection, parentSeedHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false }));
-    expect(validateGeneralPrSemanticEvidenceCandidateV1(valid, observationSeed, claim, { ...boundedSelection, evidenceSelectionHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(overBytes, observationSeed, claim, boundedSelection)).toEqual({ valid: false, invalidReason: "output_limit_exceeded", errors: ["evidence output byte limit exceeded"] });
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(overBytes, observationSeed, claim, { ...boundedSelection, evidenceSelectionHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false, invalidReason: "output_limit_exceeded" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(valid, observationSeed, claim, { ...boundedSelection, parentSeedHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false, invalidReason: "selection_binding_invalid" }));
+    expect(validateGeneralPrSemanticEvidenceCandidateV1(valid, observationSeed, claim, { ...boundedSelection, evidenceSelectionHash: "0".repeat(64) })).toEqual(expect.objectContaining({ valid: false, invalidReason: "selection_binding_invalid" }));
   });
 
   it("rejects a recomputed forged exact-head evidence binding", () => {
@@ -461,6 +474,7 @@ describe("GeneralPr split semantic stage contracts", () => {
       evidenceRelationProposals: []
     }, observationSeed, forgedClaim, evidenceSelection)).toEqual({
       valid: false,
+      invalidReason: "validation_provenance_invalid",
       errors: ["claim stage validation provenance is invalid"]
     });
   });
@@ -607,4 +621,11 @@ function relationVariants(schema: unknown, field: string): Array<Record<string, 
 function enumValues(variant: Record<string, unknown>, field: string): unknown[] {
   const properties = variant.properties as Record<string, { enum?: unknown[] }>;
   return properties[field]?.enum ?? [];
+}
+
+function typedObjectiveSpanIds(variant: Record<string, unknown>): unknown[] {
+  const property = (variant.properties as Record<string, { type?: unknown; minItems?: unknown; maxItems?: unknown; items?: { enum?: unknown[] } }>).objectiveSpanIds;
+  expect(property).toMatchObject({ type: "array" });
+  expect(property?.minItems).toBe(property?.maxItems);
+  return property?.items?.enum ?? [];
 }

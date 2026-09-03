@@ -107,7 +107,8 @@ describe("server report store", () => {
         blocked: 0,
         not_assessable: 0
       },
-      reasonCodes: [...CLOSED_PARTIAL_REASONS]
+      reasonCodes: [...CLOSED_PARTIAL_REASONS],
+      observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
     };
     Object.assign(inputReport.generalPrAssessmentSummary as Record<string, unknown>, {
       diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
@@ -131,12 +132,27 @@ describe("server report store", () => {
     expect(report.generalPrAssessmentSummary).toEqual(persisted.generalPrAssessmentSummary);
     expect(persisted.generalPrAssessmentSummary).toMatchObject({
       overallConclusion: "evidence_partial",
-      reasonCodes: CLOSED_PARTIAL_REASONS
+      reasonCodes: CLOSED_PARTIAL_REASONS,
+      observations: inputReport.generalPrAssessmentSummary.observations
     });
     expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
     expect(decoded).toMatchObject({ status: "valid", report: { generalPrAssessmentSummary: persisted.generalPrAssessmentSummary } });
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
     expectNoSelectionSentinels(serialized);
+
+    const tampered = structuredClone(persisted);
+    tampered.generalPrAssessmentSummary!.observations!.links.supports = 2;
+    expect(validateTenantPersistedReport(tampered, signingSecret).errors).toContain("tenant persisted report signature is invalid.");
+
+    const legacySource = structuredClone(report);
+    delete legacySource.generalPrAssessmentSummary!.observations;
+    const legacyPersisted = projectTenantPersistedReport(legacySource, signingSecret);
+    expect(legacyPersisted.generalPrAssessmentSummary).toBeDefined();
+    expect(legacyPersisted.generalPrAssessmentSummary!.observations).toBeUndefined();
+    expect(validateTenantPersistedReport(legacyPersisted, signingSecret)).toEqual({ valid: true, errors: [] });
+
+    legacyPersisted.generalPrAssessmentSummary!.observations = inputReport.generalPrAssessmentSummary!.observations;
+    expect(validateTenantPersistedReport(legacyPersisted, signingSecret).errors).toContain("tenant persisted report signature is invalid.");
 
     for (const { injected, expectedError } of [
       { injected: { targets: [] }, expectedError: "tenant ordinary-PR assessment summary is invalid." },
@@ -147,6 +163,18 @@ describe("server report store", () => {
       Object.assign(untrusted.generalPrAssessmentSummary, injected);
       resignPersistedTenantReport(untrusted, signingSecret);
       expect(validateTenantPersistedReport(untrusted, signingSecret)).toEqual({ valid: false, errors: [expectedError] });
+    }
+
+    for (const mutate of [
+      (observations: Record<string, unknown>) => { observations.unknown = "private-observation-sentinel"; },
+      (observations: Record<string, unknown>) => { (observations.links as Record<string, unknown>).state = "invalid"; },
+      (observations: Record<string, unknown>) => { (observations.inventory as Record<string, unknown>).changedArtifacts = Number.MAX_SAFE_INTEGER + 1; },
+      (observations: Record<string, unknown>) => { (observations.links as Record<string, unknown>).state = "none_proposed"; }
+    ]) {
+      const untrusted = structuredClone(persisted) as typeof persisted & { generalPrAssessmentSummary: { observations: Record<string, unknown> } };
+      mutate(untrusted.generalPrAssessmentSummary.observations);
+      resignPersistedTenantReport(untrusted, signingSecret);
+      expect(validateTenantPersistedReport(untrusted, signingSecret).errors).toContain("tenant ordinary-PR assessment summary observations are invalid.");
     }
   });
 

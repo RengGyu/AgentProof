@@ -135,16 +135,10 @@ export async function POST(request: Request) {
           },
           providerAvailable: true,
           privateRepository: false,
-          readCurrentInput: async () => {
-            try {
-              return await buildGitHubPullRequestInput(publicPrUrl, body.githubToken, "", undefined, {
-                expectedHeadSha: input.sourceProvenance?.headSha,
-                expectedBaseSha: input.sourceProvenance?.baseSha
-              });
-            } catch {
-              return null;
-            }
-          },
+          readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, body.githubToken, "", undefined, {
+            expectedHeadSha: input.sourceProvenance?.headSha,
+            expectedBaseSha: input.sourceProvenance?.baseSha
+          }),
           modelProfile: {
             model: observerModel,
             promptVersion: "general-pr-observer.v4",

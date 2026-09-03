@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildGeneralPrSemanticOperatorDiagnosticsV1 } from "../src/lib/general-pr-observation-telemetry.ts";
 import {
   assertSummaryOnlyReport,
   assertReportExpectations,
@@ -10,10 +11,62 @@ import {
   isValidGeneralPrAssessmentSummary,
   parseGitHubEvidenceTimingHeader,
   parseAnalyzeTimingHeader,
-  runAnalyzePrSmoke
+  runAnalyzePrSmoke,
+  projectSmokeReportDetails,
+  readOperatorSemanticDiagnostics
 } from "./smoke-analyze-pr-url.mjs";
 
 describe("smoke-analyze-pr-url", () => {
+  it("accepts the deployed diagnostic builder and rejects unknown reason fields", () => {
+    const diagnostic = buildGeneralPrSemanticOperatorDiagnosticsV1(null);
+    expect(readOperatorSemanticDiagnostics(diagnostic)).toEqual(diagnostic);
+    for (const reason of ["root_shape_invalid", "span_decision_invalid", "span_binding_invalid", "role_ceiling_violation", "output_limit_exceeded"]) {
+      expect(readOperatorSemanticDiagnostics({ ...diagnostic, claimInvalidReason: reason }).claimInvalidReason).toBe(reason);
+    }
+    expect(readOperatorSemanticDiagnostics({ ...diagnostic, evidenceState: "invalid", evidenceInvalidReason: "reference_binding_invalid" }).evidenceInvalidReason).toBe("reference_binding_invalid");
+    expect(readOperatorSemanticDiagnostics({ ...diagnostic, freshnessFailure: { phase: "after_evidence", state: "stale", reason: "seed_changed" } }).freshnessFailure).toEqual({ phase: "after_evidence", state: "stale", reason: "seed_changed" });
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, freshnessFailure: { phase: "after_evidence", state: "stale", reason: "PRIVATE_REASON" } })).toThrow();
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, evidenceState: "invalid", evidenceInvalidReason: null })).toThrow("valid operator staged diagnostic");
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, evidenceState: "valid", evidenceInvalidReason: "reference_binding_invalid" })).toThrow("valid operator staged diagnostic");
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, claimInvalidReason: "private response" })).toThrow();
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, rawProviderResponse: "private" })).toThrow();
+  });
+
+  it("accepts optional closed provider failure metadata but rejects raw provider fields", () => {
+    const diagnostic = buildGeneralPrSemanticOperatorDiagnosticsV1(null);
+    expect(readOperatorSemanticDiagnostics({
+      ...diagnostic,
+      providerFailure: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 }
+    })).toMatchObject({ providerFailure: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 } });
+    expect(() => readOperatorSemanticDiagnostics({
+      ...diagnostic,
+      providerFailure: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429, message: "PROVIDER_SECRET" }
+    })).toThrow();
+  });
+
+  it("preserves PR findings and evidence links without retaining raw evidence or secrets", () => {
+    const report = reportFixture();
+    report.requirements[0].reviewerNote = "opaque-ops-value and github_pat_1234567890123456789012345";
+    report.generalPrAssessment = { targets: [{ claimRole: "test_claim", conclusion: "evidence_partial", sourceBindingRef: "PRIVATE_BINDING", sourceSpanRefs: ["PRIVATE_SPAN"], evidenceRefs: ["ev_2"], reasonCodes: ["target_relation_unresolved"] }] };
+    report.privateReceipt = { raw: "PRIVATE_RECEIPT" };
+    const detail = projectSmokeReportDetails(report, ["opaque-ops-value"]);
+    expect(detail.requirements[0].requirementText).toBe("add invoice export and tests");
+    expect(detail.requirements[0].evidenceRefs).toEqual(["ev_1", "ev_2"]);
+    expect(detail.evidence[1]).toMatchObject({ id: "ev_2", kind: "check", label: "Socket Security" });
+    expect(detail.targets[0].reasonCodes).toEqual(["target_relation_unresolved"]);
+    expect(JSON.stringify(detail)).not.toMatch(/opaque-ops-value|github_pat_|PRIVATE_|Patch excerpt|export function|Add tests and provide/);
+  });
+
+  it("keeps the analyzed details when later summary storage fails", async () => {
+    const diagnostic = vi.fn();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: reportFixture(), operatorDiagnostics: buildGeneralPrSemanticOperatorDiagnosticsV1(null) }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "secret-storage-error" }), { status: 503, headers: { "cache-control": "no-store" } }));
+    await expect(runAnalyzePrSmoke({ baseUrl: "https://agentproof.example", prUrl: "https://github.com/org/repo/pull/1", operatorDiagnosticsToken: "opaque-ops-value", onDiagnostic: diagnostic, fetchImpl: fetchMock })).rejects.toThrow();
+    expect(diagnostic).toHaveBeenCalledOnce();
+    expect(diagnostic.mock.calls[0][0]).toMatchObject({ status: "failed", stage: "summary_save", httpStatus: 503, report: { requirements: [expect.objectContaining({ requirementId: "req_1" })] }, operator: { claimInvalidReason: null } });
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toMatch(/secret-storage-error|opaque-ops-value|Patch excerpt/);
+  });
   it("requests and returns only closed staged operator diagnostics", async () => {
     const fullReport = reportFixture();
     const savedReport = summaryOnlyReportFixture(fullReport);
@@ -248,6 +301,16 @@ describe("smoke-analyze-pr-url", () => {
     };
     expect(isValidGeneralPrAssessmentSummary(allBlocked)).toBe(true);
     expect(isValidGeneralPrAssessmentSummary({ ...allBlocked, overallConclusion: "evidence_partial" })).toBe(false);
+
+    const observations = { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } };
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations })).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, links: { ...observations.links, tests: -1 } } })).toBe(false);
+    const twoTargets = { ...assessmentSummary(), counts: { ...assessmentSummary().counts, evidence_partial: 2 } };
+    expect(isValidGeneralPrAssessmentSummary({ ...twoTargets, observations: { ...observations, links: { ...observations.links, linkedObjectives: 2 } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, links: { ...observations.links, supports: 2, tests: -1 } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, inventory: { ...observations.inventory, state: "current" } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, inventory: { ...observations.inventory, changedArtifacts: Number.MAX_SAFE_INTEGER + 1 } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, coverage: { ...observations.coverage, privateHash: "private" } } })).toBe(false);
 
     const supported = {
       ...assessmentSummary(),

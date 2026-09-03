@@ -52,15 +52,30 @@ describe("validateVerificationReport", () => {
     expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expectNoSelectionSentinels(report);
 
+    const invalidObservations = structuredClone(report) as unknown as { generalPrAssessment: { observations: { links: Record<string, unknown> } } };
+    invalidObservations.generalPrAssessment.observations.links = { state: "proposed", linkedObjectives: 0, supports: 1, tests: 0, implements: 0, contradicts: 0 };
+    expect(validateVerificationReport(invalidObservations, { mode: "v2_full" }).valid).toBe(false);
+    invalidObservations.generalPrAssessment.observations.links = { state: "proposed", linkedObjectives: 2, supports: 1, tests: 0, implements: 0, contradicts: 0 };
+    expect(validateVerificationReport(invalidObservations, { mode: "v2_full" }).valid).toBe(false);
+
     const twoPartialTargets = structuredClone(report) as unknown as {
       generalPrAssessment: {
         counts: { evidence_partial: number };
         targets: Array<Record<string, unknown>>;
+        observations: { links: { state: string; linkedObjectives: number; supports: number } };
       };
     };
     twoPartialTargets.generalPrAssessment.targets.push({ ...assessment.targets[0] });
     twoPartialTargets.generalPrAssessment.counts.evidence_partial = 2;
+    twoPartialTargets.generalPrAssessment.observations.links.state = "proposed";
+    twoPartialTargets.generalPrAssessment.observations.links.linkedObjectives = 2;
+    twoPartialTargets.generalPrAssessment.observations.links.supports = 2;
     expect(validateVerificationReport(twoPartialTargets, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    twoPartialTargets.generalPrAssessment.observations.links.supports = 1;
+    expect(validateVerificationReport(twoPartialTargets, { mode: "v2_full" }).errors).toContain(
+      "generalPrAssessment.observations.links.linkedObjectives must not exceed relations."
+    );
 
     const forgedConclusion = structuredClone(report) as unknown as {
       generalPrAssessment: { overallConclusion: string };

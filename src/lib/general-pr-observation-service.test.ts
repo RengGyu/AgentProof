@@ -118,6 +118,30 @@ describe("runGeneralPrObservationNowV2", () => {
       undefined,
       "span_binding_invalid"
     ).semanticClaimInvalidReason).toBeNull();
+    expect(finalizeDeterministicGeneralPrObservationsV2(
+      observationSeed,
+      null,
+      "valid",
+      null,
+      [],
+      undefined,
+      undefined,
+      null,
+      null,
+      { evidenceInvalidReason: "reference_binding_invalid" }
+    ).semanticEvidenceInvalidReason).toBe("reference_binding_invalid");
+    expect(finalizeDeterministicGeneralPrObservationsV2(
+      observationSeed,
+      null,
+      "unavailable",
+      null,
+      [],
+      undefined,
+      undefined,
+      null,
+      null,
+      { freshnessFailure: { phase: "before_claim", state: "unavailable", reason: "auth_unavailable" } }
+    ).semanticFreshnessFailure).toEqual({ phase: "before_claim", state: "unavailable", reason: "auth_unavailable" });
   });
 
   it("returns the exact deterministic report when the feature is disabled", async () => {
@@ -176,7 +200,11 @@ describe("runGeneralPrObservationNowV2", () => {
     expect(JSON.stringify(result.report.requirements)).toBe(JSON.stringify(v2Report.requirements));
     expect((result.report as VerificationReportV2).generalPrAssessmentSummary).toMatchObject({
       overallConclusion: "evidence_partial",
-      counts: expect.objectContaining({ evidence_supported: 0, evidence_partial: 2 })
+      counts: expect.objectContaining({ evidence_supported: 0, evidence_partial: 2 }),
+      observations: {
+        inventory: { state: "complete", changedArtifacts: 1, changedTestCandidates: 0 },
+        links: { state: "not_attempted", linkedObjectives: 0, supports: 0, tests: 0, implements: 0, contradicts: 0 }
+      }
     });
     expect(JSON.stringify(result.report)).not.toContain("ledgerDigest");
     expect(JSON.stringify(result.report)).not.toContain("diagnostics");
@@ -399,6 +427,11 @@ describe("runGeneralPrObservationNowV2", () => {
     });
     expect(result.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
     expect(result.bundle?.relationLevelCounts.verified).toBe(0);
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle: result.bundle!, report: result.report });
+    expect(assessment).toMatchObject({ counts: { evidence_supported: 0, evidence_partial: 1 } });
+    expect(assessment.observations?.links).toMatchObject({
+      state: "unavailable", linkedObjectives: 0, supports: 0, tests: 0, implements: 0, contradicts: 0
+    });
   });
 
   it("rejects provided requirements and non-GitHub inputs before semantic provider submission", async () => {

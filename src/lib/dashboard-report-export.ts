@@ -167,7 +167,13 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
         conclusion: report.generalPrAssessmentSummary.overallConclusion,
         source_state: report.generalPrAssessmentSummary.sourceState,
         counts: { ...report.generalPrAssessmentSummary.counts },
-        reason_codes: [...report.generalPrAssessmentSummary.reasonCodes]
+        reason_codes: [...report.generalPrAssessmentSummary.reasonCodes],
+        ...(report.generalPrAssessmentSummary.observations ? { observations: {
+          version: report.generalPrAssessmentSummary.observations.version,
+          inventory: { state: report.generalPrAssessmentSummary.observations.inventory.state, changedArtifacts: report.generalPrAssessmentSummary.observations.inventory.changedArtifacts, changedTestCandidates: report.generalPrAssessmentSummary.observations.inventory.changedTestCandidates },
+          links: { state: report.generalPrAssessmentSummary.observations.links.state, linkedObjectives: report.generalPrAssessmentSummary.observations.links.linkedObjectives, supports: report.generalPrAssessmentSummary.observations.links.supports, tests: report.generalPrAssessmentSummary.observations.links.tests, implements: report.generalPrAssessmentSummary.observations.links.implements, contradicts: report.generalPrAssessmentSummary.observations.links.contradicts },
+          coverage: { source: report.generalPrAssessmentSummary.observations.coverage.source, evidence: report.generalPrAssessmentSummary.observations.coverage.evidence }
+        } } : {})
       }
     } : {}),
     requirements: (report?.requirements ?? []).map((item) => {

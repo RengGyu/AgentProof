@@ -1,13 +1,61 @@
 import { describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, chmodSync, statSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildGeneralPrSemanticOperatorDiagnosticsV1 } from "../src/lib/general-pr-observation-telemetry.ts";
 import {
   assertAggregateOnlyRunArtifact,
   assertCurrentExternalPrSemanticBoundaryHealth,
   runCurrentExternalPrCorpusSemanticBoundaryDiagnostic,
-  runCurrentExternalPrCorpusSmoke
+  runCurrentExternalPrCorpusSmoke,
+  writeCurrentExternalPrCaseDetails
 } from "./external-pr-current-corpus-smoke.mjs";
 
 describe("external-pr-current-corpus-smoke", () => {
+  it("restores owner-only permissions even when a stale checkpoint already exists", () => {
+    const directory = mkdtempSync(join(tmpdir(), "agentproof-detail-test-"));
+    try {
+      const path = join(directory, "details.json");
+      writeFileSync(`${path}.tmp`, "stale");
+      chmodSync(`${path}.tmp`, 0o644);
+      writeCurrentExternalPrCaseDetails({ cases: [{ id: "case_01" }] }, path);
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(readFileSync(path, "utf8")).cases).toEqual([{ id: "case_01" }]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("checkpoints per-PR detail and current operator diagnostics outside the public aggregate", async () => {
+    const diagnostics = buildGeneralPrSemanticOperatorDiagnosticsV1(null);
+    const rows = [];
+    const runAnalyze = vi.fn(async (input) => {
+      await input.onDiagnostic({ status: "completed", operator: diagnostics });
+      return { ...validAnalyzeResult(), operatorSemanticDiagnostics: diagnostics };
+    });
+    const result = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+      snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", operatorDiagnosticsToken: "opaque-ops-value",
+      runAnalyze, onCaseDetail: (row) => rows.push(row)
+    });
+    expect(rows).toHaveLength(25);
+    expect(rows[0]).toMatchObject({ id: "case_01", prUrl: "https://github.com/public/repo/pull/1", expectedAnchor: { headSha: "a".repeat(40) }, diagnostic: { operator: { claimInvalidReason: null } } });
+    expect(result.publicRun.completedCount).toBe(25);
+    expect(JSON.stringify(result.publicRun)).not.toMatch(/github.com|operator|claimInvalidReason|opaque-ops-value/);
+  });
+
+  it("checkpoints failed cases and propagates local checkpoint failures", async () => {
+    const rows = [];
+    const result = await runCurrentExternalPrCorpusSmoke({ snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z",
+      runAnalyze: vi.fn().mockRejectedValue(Object.assign(new Error("private body"), { status: 503 })),
+      onCaseDetail: (row) => rows.push(row)
+    });
+    expect(rows).toHaveLength(25);
+    expect(rows[0]).toMatchObject({ analysisStatus: "incomplete", failureKind: "unexpected_server_error" });
+    expect(JSON.stringify(rows)).not.toContain("private body");
+    expect(result.incompleteCount).toBe(25);
+    const runAnalyze = vi.fn().mockResolvedValue(validAnalyzeResult());
+    await expect(runCurrentExternalPrCorpusSmoke({ snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", runAnalyze,
+      onCaseDetail: () => { throw new Error("checkpoint_failed"); }
+    })).rejects.toThrow("checkpoint_failed");
+    expect(runAnalyze).toHaveBeenCalledOnce();
+  });
   it("runs each ready current-state sample with its frozen anchor and URL-only input", async () => {
     const runAnalyze = vi.fn().mockResolvedValue({
       priority: "medium",
@@ -56,6 +104,17 @@ describe("external-pr-current-corpus-smoke", () => {
           contradicted: 0,
           blocked: 0,
           not_assessable: 0
+        },
+        observationSummary: {
+          absentCount: 25,
+          inventoryStateCounts: {},
+          changedArtifactsTotal: 0,
+          changedTestCandidatesTotal: 0,
+          linksStateCounts: {},
+          linkedObjectivesTotal: 0,
+          relationProposalTotals: { supports: 0, tests: 0, implements: 0, contradicts: 0 },
+          sourceCoverageCounts: {},
+          evidenceCoverageCounts: {}
         }
       }
     }));
@@ -131,9 +190,66 @@ describe("external-pr-current-corpus-smoke", () => {
       selectedCountBucketCounts: { sourceSpans: { "1_4": 25 }, evidenceCandidates: { "0": 25 } },
       packageReadyCount: 25,
       semanticPackageFailureReasonCounts: { span_limit_exceeded: 25 },
+      evidenceInvalidReasonCounts: { absent: 25 },
+      freshnessFailureCounts: { absent: 25 },
       omissionReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 25 }
     });
     expect(runAnalyze).toHaveBeenCalledWith(expect.objectContaining({ operatorDiagnosticsToken }));
+  });
+
+  it("keeps optional safe diagnostic and observation fields in closed aggregates without backfilling legacy absence", async () => {
+    const observations = {
+      version: 1,
+      inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 },
+      links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 },
+      coverage: { source: "complete", evidence: "sampled" }
+    };
+    const runAnalyze = vi.fn()
+      .mockResolvedValueOnce({
+        ...validAnalyzeResult(),
+        generalPrAssessmentSummary: { ...assessmentSummary(), observations },
+        operatorSemanticDiagnostics: {
+          ...validOperatorDiagnostics(),
+          evidenceInvalidReason: null,
+          freshnessFailure: { phase: "after_evidence", state: "stale", reason: "seed_changed" }
+        }
+      })
+      .mockResolvedValue({ ...validAnalyzeResult(), operatorSemanticDiagnostics: validOperatorDiagnostics() });
+
+    const result = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+      snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", operatorDiagnosticsToken: "ops-secret-value", runAnalyze
+    });
+
+    expect(result.operatorDiagnostic.evidenceInvalidReasonCounts).toEqual({ none: 1, absent: 24 });
+    expect(result.operatorDiagnostic.freshnessFailureCounts).toEqual({ "after_evidence:stale:seed_changed": 1, absent: 24 });
+    expect(result.publicRun.generalPrAssessmentSummary.observationSummary).toEqual({
+      absentCount: 24,
+      inventoryStateCounts: { complete: 1 },
+      changedArtifactsTotal: 2,
+      changedTestCandidatesTotal: 1,
+      linksStateCounts: { proposed: 1 },
+      linkedObjectivesTotal: 1,
+      relationProposalTotals: { supports: 1, tests: 0, implements: 0, contradicts: 0 },
+      sourceCoverageCounts: { complete: 1 },
+      evidenceCoverageCounts: { sampled: 1 }
+    });
+    expect(JSON.stringify(result.publicRun)).not.toMatch(/seed_changed|operator|ops-secret-value/i);
+  });
+
+  it("continues to accept legacy v1 aggregate artifacts without optional diagnostic distributions", async () => {
+    const publicRun = await runCurrentExternalPrCorpusSmoke({
+      snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", runAnalyze: vi.fn().mockResolvedValue(validAnalyzeResult())
+    });
+    delete publicRun.generalPrAssessmentSummary.observationSummary;
+    expect(() => assertAggregateOnlyRunArtifact(publicRun)).not.toThrow();
+
+    const semanticRun = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+      snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", operatorDiagnosticsToken: "ops-secret-value",
+      runAnalyze: vi.fn().mockResolvedValue({ ...validAnalyzeResult(), operatorSemanticDiagnostics: validOperatorDiagnostics() })
+    });
+    delete semanticRun.operatorDiagnostic.evidenceInvalidReasonCounts;
+    delete semanticRun.operatorDiagnostic.freshnessFailureCounts;
+    expect(() => assertCurrentExternalPrSemanticBoundaryHealth(semanticRun)).not.toThrow();
   });
 
   it("marks missing or invalid assessment summaries as analysis_unavailable", async () => {
@@ -249,6 +365,7 @@ describe("external-pr-current-corpus-smoke", () => {
       ["legacy change-cluster-limit package failure", (value) => { value.operatorDiagnostic.semanticPackageFailureReasonCounts.change_cluster_limit_exceeded = 1; }],
       ["legacy evidence-limit package failure", (value) => { value.operatorDiagnostic.semanticPackageFailureReasonCounts.evidence_atom_limit_exceeded = 1; }],
       ["third or later provider call", (value) => { value.operatorDiagnostic.providerCallCountCounts = { "3_plus": 25 }; }],
+      ["incomplete optional diagnostic aggregate", (value) => { value.operatorDiagnostic.evidenceInvalidReasonCounts = { absent: 24 }; }],
       ["private operator field", (value) => { value.operatorDiagnostic.sourceText = "private"; }],
       ["private nested operator field", (value) => { value.operatorDiagnostic.selectedCountBucketCounts.sourceText = "private"; }],
       ["unexpected server error", (value) => { value.publicRun.results[0] = { id: "case_01", analysisStatus: "incomplete", failureKind: "unexpected_server_error" }; value.publicRun.status = "incomplete"; value.publicRun.completedCount = 24; value.publicRun.incompleteCount = 1; }]
@@ -282,6 +399,15 @@ describe("external-pr-current-corpus-smoke", () => {
       now: "2026-08-31T00:10:00.000Z",
       runAnalyze
     })).rejects.toThrow("requires a ready snapshot");
+
+    const duplicate = readySnapshot();
+    duplicate.cases[1].prUrl = "https://github.com/PUBLIC/REPO/pull/1";
+    await expect(runCurrentExternalPrCorpusSmoke({
+      snapshot: duplicate,
+      now: "2026-08-31T00:10:00.000Z",
+      runAnalyze
+    })).rejects.toThrow("snapshot is invalid");
+    expect(runAnalyze).not.toHaveBeenCalled();
   });
 
 });

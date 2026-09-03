@@ -10,6 +10,7 @@ import {
   validateGeneralPrSemanticEvidenceCandidateV1,
   type GeneralPrSemanticClaimValidationV2,
   type GeneralPrSemanticClaimInvalidReasonV2,
+  type GeneralPrSemanticEvidenceInvalidReasonV1,
   type GeneralPrSemanticEvidenceValidationV1,
   type GeneralPrSemanticInvocationReceiptV3,
   type GeneralPrSemanticProposalV2
@@ -31,6 +32,11 @@ import {
   type GeneralPrSemanticEvidenceSelectionV1
 } from "./general-pr-semantic-evidence-selection";
 import type { PullRequestInput } from "./types";
+import {
+  GitHubFetchError,
+  GitHubPullRequestHeadChangedError,
+  GitHubPullRequestSourceChangedError
+} from "./github";
 
 export const GENERAL_PR_SEMANTIC_OBSERVER_MAX_SPANS = 12;
 export const GENERAL_PR_SEMANTIC_OBSERVER_MAX_EVIDENCE_ATOMS = 64;
@@ -125,10 +131,32 @@ export type GeneralPrSemanticPackageFailureReasonV1 =
   | "schema_unavailable"
   | "input_size_exceeded";
 
+export type GeneralPrSemanticProviderFailureCategoryV1 =
+  | "timeout" | "network_error" | "rate_limited" | "provider_unavailable" | "auth_failed"
+  | "request_invalid" | "invalid_json_schema" | "response_invalid" | "output_invalid" | "incomplete";
+
+/** Closed provider metadata permitted only in authenticated operator diagnostics. */
+export interface GeneralPrSemanticProviderDiagnosticV1 {
+  phase: GeneralPrSemanticObserverPackageV4["stage"];
+  category: GeneralPrSemanticProviderFailureCategoryV1;
+  httpStatus?: number;
+  incompleteReason?: "max_output_tokens";
+}
+
+export type GeneralPrFreshnessResultV1 =
+  | { state: "current" }
+  | { state: "stale"; reason: "head_changed" | "base_changed" | "source_changed" | "seed_changed" }
+  | { state: "unavailable"; reason: "auth_unavailable" | "rate_limited" | "fetch_failed" | "snapshot_unavailable" | "privacy_ineligible" };
+
+export type GeneralPrFreshnessFailureV1 = {
+  phase: "before_claim" | "after_claim" | "before_evidence" | "after_evidence";
+} & Exclude<GeneralPrFreshnessResultV1, { state: "current" }>;
+
 export class GeneralPrSemanticProviderFailure extends Error {
   constructor(
     public readonly stage: Extract<GeneralPrSemanticFailureStageV1, "provider_request" | "provider_response">,
-    public readonly timedOut = false
+    public readonly timedOut = false,
+    public readonly diagnostic?: GeneralPrSemanticProviderDiagnosticV1
   ) {
     super("general PR semantic provider failure");
     this.name = "GeneralPrSemanticProviderFailure";
@@ -180,9 +208,14 @@ export interface GeneralPrSemanticSelectionManifestV1 {
 export type GeneralPrSemanticObserverRunResultV3 = {
   state: "disabled" | "valid" | "invalid" | "timeout" | "unavailable" | "stale";
   semanticFailureStage: GeneralPrSemanticFailureStageV1 | null;
+  semanticProviderDiagnostic: GeneralPrSemanticProviderDiagnosticV1 | null;
   semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[];
   /** Private closed validator category; excluded from receipts and public projections. */
   semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null;
+  /** Private closed Stage B validator category; excluded from receipts and public projections. */
+  semanticEvidenceInvalidReason: GeneralPrSemanticEvidenceInvalidReasonV1 | null;
+  /** Private closed freshness diagnostic; excluded from receipts and public projections. */
+  semanticFreshnessFailure: GeneralPrFreshnessFailureV1 | null;
   proposal: GeneralPrSemanticProposalV2 | null;
   selectionManifest: GeneralPrSemanticSelectionManifestV1 | null;
   receipt: GeneralPrSemanticInvocationReceiptV3 & { receiptHash: string };
@@ -277,7 +310,10 @@ export async function runGeneralPrSemanticObserverV2(
     evidenceState: GeneralPrSemanticInvocationReceiptV3["evidenceState"] = "not_run",
     semanticFailureStage: GeneralPrSemanticFailureStageV1 | null = null,
     semanticPackageFailureReasons: GeneralPrSemanticPackageFailureReasonV1[] = [],
-    semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null = null
+    semanticClaimInvalidReason: GeneralPrSemanticClaimInvalidReasonV2 | null = null,
+    semanticProviderDiagnostic: GeneralPrSemanticProviderDiagnosticV1 | null = null,
+    semanticEvidenceInvalidReason: GeneralPrSemanticEvidenceInvalidReasonV1 | null = null,
+    semanticFreshnessFailure: GeneralPrFreshnessFailureV1 | null = null
   ): GeneralPrSemanticObserverRunResultV3 => {
     const safeClaimSelectionHash = claimSelection ? claimReceiptSelectionHash(options.seed, claimSelection) : null;
     const receiptEvidenceSelection = evidenceAttempted ? evidenceSelection : null;
@@ -304,9 +340,12 @@ export async function runGeneralPrSemanticObserverV2(
     };
     return {
       state,
-      semanticFailureStage: state === "unavailable" ? semanticFailureStage : null,
+      semanticFailureStage,
+      semanticProviderDiagnostic,
       semanticPackageFailureReasons: state === "unavailable" && semanticFailureStage === "package" ? semanticPackageFailureReasons : [],
       semanticClaimInvalidReason,
+      semanticEvidenceInvalidReason,
+      semanticFreshnessFailure,
       proposal,
       selectionManifest: claimSelection && safeClaimSelectionHash && selectionHash
         ? buildSelectionManifest(options.seed, claimSelection, receiptEvidenceSelection, safeClaimSelectionHash, safeEvidenceSelectionHash, selectionHash, evidenceCoverage, evidenceOmissions)
@@ -327,19 +366,19 @@ export async function runGeneralPrSemanticObserverV2(
   if (!claimPackage || !claimSelection) return finish("unavailable", null, "not_run", "not_run", "package", packageResult.failureReasons);
 
   const beforeClaim = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
-  if (beforeClaim !== "current") return finish(beforeClaim, null, beforeClaim, "not_run", beforeClaim === "unavailable" ? "privacy" : null);
+  if (beforeClaim.state !== "current") return finish(beforeClaim.state, null, beforeClaim.state, "not_run", beforeClaim.reason === "privacy_ineligible" ? "privacy" : null, [], null, null, null, freshnessFailure("before_claim", beforeClaim));
   const claimTimeoutMs = remainingTimeoutMs(timeoutMs, startedAt, now);
   if (claimTimeoutMs <= 0) return finish("timeout", null, "timeout");
 
   try {
     claimOutput = await withTimeout(options.provider.observe(withRequestTimeout(claimPackage, claimTimeoutMs)), claimTimeoutMs);
   } catch (error) {
-    if (isTimeout(error)) return finish("timeout", null, "timeout");
-    return finish("unavailable", null, "unavailable", "not_run", providerFailureStage(error));
+    if (isTimeout(error)) return finish("timeout", null, "timeout", "not_run", providerFailureStage(error), [], null, providerFailureDiagnostic(error, "claim_discovery"));
+    return finish("unavailable", null, "unavailable", "not_run", providerFailureStage(error), [], null, providerFailureDiagnostic(error, "claim_discovery"));
   }
 
   const afterClaim = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
-  if (afterClaim !== "current") return finish(afterClaim, null, afterClaim, "not_run", afterClaim === "unavailable" ? "privacy" : null);
+  if (afterClaim.state !== "current") return finish(afterClaim.state, null, afterClaim.state, "not_run", afterClaim.reason === "privacy_ineligible" ? "privacy" : null, [], null, null, null, freshnessFailure("after_claim", afterClaim));
   const claim = safelyValidateClaimOutput(claimOutput, options.seed, claimSelection);
   if (!claim.valid) return finish("invalid", null, "invalid", "not_run", null, [], claim.invalidReason);
   const claimsOnly = mergeGeneralPrSemanticStageCandidatesV1(options.seed, claim, null);
@@ -371,7 +410,7 @@ export async function runGeneralPrSemanticObserverV2(
   evidenceOmissions = { ...evidenceSelection.omittedReasonCounts };
   evidencePackage = buildEvidencePackage(options.seed, claimSelection, evidenceSelection, options.modelProfile, timeoutMs);
   const beforeEvidence = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
-  if (beforeEvidence !== "current") return finish(beforeEvidence, null, "valid", beforeEvidence, beforeEvidence === "unavailable" ? "privacy" : null);
+  if (beforeEvidence.state !== "current") return finish(beforeEvidence.state, null, "valid", beforeEvidence.state, beforeEvidence.reason === "privacy_ineligible" ? "privacy" : null, [], null, null, null, freshnessFailure("before_evidence", beforeEvidence));
   const evidenceTimeoutMs = remainingTimeoutMs(timeoutMs, startedAt, now);
   if (evidenceTimeoutMs <= 0) return finish("valid", claimsOnly.proposal, "valid", "timeout");
 
@@ -379,17 +418,17 @@ export async function runGeneralPrSemanticObserverV2(
   try {
     evidenceOutput = await withTimeout(options.provider.observe(withRequestTimeout(evidencePackage, evidenceTimeoutMs)), evidenceTimeoutMs);
   } catch (error) {
-    return finish("valid", claimsOnly.proposal, "valid", isTimeout(error) ? "timeout" : "unavailable");
+    return finish("valid", claimsOnly.proposal, "valid", isTimeout(error) ? "timeout" : "unavailable", providerFailureStage(error), [], null, providerFailureDiagnostic(error, "evidence_linking"));
   }
 
   const afterEvidence = await readCurrentPublicSubject(options.readCurrentInput, options.seed);
-  if (afterEvidence !== "current") return finish(afterEvidence, null, "valid", afterEvidence, afterEvidence === "unavailable" ? "privacy" : null);
+  if (afterEvidence.state !== "current") return finish(afterEvidence.state, null, "valid", afterEvidence.state, afterEvidence.reason === "privacy_ineligible" ? "privacy" : null, [], null, null, null, freshnessFailure("after_evidence", afterEvidence));
   const evidence = safelyValidateEvidenceOutput(evidenceOutput, options.seed, claim, evidenceSelection);
-  if (!evidence.valid) return finish("valid", claimsOnly.proposal, "valid", "invalid");
+  if (!evidence.valid) return finish("valid", claimsOnly.proposal, "valid", "invalid", null, [], null, null, evidence.invalidReason);
   const merged = mergeGeneralPrSemanticStageCandidatesV1(options.seed, claim, evidence);
   return merged.valid
     ? finish("valid", merged.proposal, "valid", "valid")
-    : finish("valid", claimsOnly.proposal, "valid", "invalid");
+    : finish("valid", claimsOnly.proposal, "valid", "invalid", null, [], null, null, "merge_binding_invalid");
 }
 
 function buildEvidencePackage(
@@ -474,12 +513,31 @@ function withRequestTimeout<T extends GeneralPrSemanticObserverPackageV4>(semant
 async function readCurrentPublicSubject(
   readCurrentInput: () => Promise<PullRequestInput | null>,
   expectedSeed: GeneralPrObservationSeedV2
-): Promise<"current" | "unavailable" | "stale"> {
+): Promise<GeneralPrFreshnessResultV1> {
   let currentInput: PullRequestInput | null;
-  try { currentInput = await readCurrentInput(); } catch { currentInput = null; }
-  if (!currentInput) return "stale";
-  if (currentInput.repositoryPrivate !== false) return "unavailable";
-  return buildGeneralPrObservationSeedV2(currentInput).seedHash === expectedSeed.seedHash ? "current" : "stale";
+  try { currentInput = await readCurrentInput(); } catch (error) { return freshnessErrorResult(error); }
+  if (!currentInput) return { state: "unavailable", reason: "snapshot_unavailable" };
+  if (currentInput.repositoryPrivate !== false) return { state: "unavailable", reason: "privacy_ineligible" };
+  return buildGeneralPrObservationSeedV2(currentInput).seedHash === expectedSeed.seedHash
+    ? { state: "current" }
+    : { state: "stale", reason: "seed_changed" };
+}
+
+function freshnessErrorResult(error: unknown): GeneralPrFreshnessResultV1 {
+  if (error instanceof GitHubPullRequestHeadChangedError) return { state: "stale", reason: error.anchor === "base" ? "base_changed" : "head_changed" };
+  if (error instanceof GitHubPullRequestSourceChangedError) return { state: "stale", reason: "source_changed" };
+  if (error instanceof GitHubFetchError) {
+    if (["github_token_rejected", "github_auth_required", "github_permission_denied"].includes(error.code)) return { state: "unavailable", reason: "auth_unavailable" };
+    if (["github_rate_limited", "github_secondary_rate_limited"].includes(error.code)) return { state: "unavailable", reason: "rate_limited" };
+  }
+  return { state: "unavailable", reason: "fetch_failed" };
+}
+
+function freshnessFailure(
+  phase: GeneralPrFreshnessFailureV1["phase"],
+  result: Exclude<GeneralPrFreshnessResultV1, { state: "current" }>
+): GeneralPrFreshnessFailureV1 {
+  return { phase, ...result };
 }
 
 class ObserverTimeoutError extends Error {}
@@ -500,6 +558,13 @@ function isTimeout(error: unknown): boolean {
 
 function providerFailureStage(error: unknown): GeneralPrSemanticFailureStageV1 {
   return error instanceof GeneralPrSemanticProviderFailure ? error.stage : "provider_request";
+}
+
+function providerFailureDiagnostic(error: unknown, phase: GeneralPrSemanticObserverPackageV4["stage"]): GeneralPrSemanticProviderDiagnosticV1 | null {
+  if (error instanceof GeneralPrSemanticProviderFailure && error.diagnostic) return { ...error.diagnostic, phase };
+  return error instanceof ObserverTimeoutError || (error instanceof GeneralPrSemanticProviderFailure && error.timedOut)
+    ? { phase, category: "timeout" }
+    : null;
 }
 
 function safelyValidateClaimOutput(
@@ -523,7 +588,7 @@ function safelyValidateEvidenceOutput(
   try {
     return validateGeneralPrSemanticEvidenceCandidateV1(output, seed, claim, selection);
   } catch {
-    return { valid: false, errors: ["evidence candidate validation failed"] };
+    return { valid: false, invalidReason: "validator_exception", errors: ["evidence candidate validation failed"] };
   }
 }
 

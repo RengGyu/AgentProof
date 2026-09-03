@@ -100,6 +100,7 @@ describe("POST /api/analyze", () => {
           sourceCoverage: string | null;
           evidenceCoverage: string | null;
           claimInvalidReason: string | null;
+          evidenceInvalidReason: string | null;
           providerCallCount: number;
           selectedCountBuckets: { sourceSpans: string; evidenceCandidates: string };
           semanticPackageFailureReasons: string[];
@@ -114,13 +115,15 @@ describe("POST /api/analyze", () => {
         sourceCoverage: null,
         evidenceCoverage: null,
         claimInvalidReason: null,
+        evidenceInvalidReason: null,
+        freshnessFailure: null,
         providerCallCount: 0,
         selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
         semanticPackageFailureReasons: [],
         omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
       });
       expect(Object.keys(json.operatorDiagnostics ?? {}).sort()).toEqual([
-        "claimInvalidReason", "claimState", "evidenceCoverage", "evidenceState", "omittedReasonCounts", "providerCallCount", "selectedCountBuckets", "semanticPackageFailureReasons", "sourceCoverage"
+        "claimInvalidReason", "claimState", "evidenceCoverage", "evidenceInvalidReason", "evidenceState", "freshnessFailure", "omittedReasonCounts", "providerCallCount", "selectedCountBuckets", "semanticPackageFailureReasons", "sourceCoverage"
       ]);
       expect(JSON.stringify(json.operatorDiagnostics)).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
     } finally {
@@ -150,7 +153,7 @@ describe("POST /api/analyze", () => {
           head: { ref: "agent/validation", sha: headSha }
         }));
       }
-      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "export const status = 'ready';" }]));
       if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
       if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
       throw new Error(`unexpected URL ${url}`);
@@ -240,7 +243,8 @@ describe("POST /api/analyze", () => {
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
       const summary = (json.report as VerificationReportV2).generalPrAssessmentSummary;
-      expect(summary?.reasonCodes).toContain("semantic_relation_only");
+      expect(summary?.reasonCodes).toContain("target_relation_unresolved");
+      expect(summary?.reasonCodes).not.toContain("semantic_relation_only");
       expect(summary?.reasonCodes).not.toEqual(expect.arrayContaining(["semantic_observer_unavailable", "semantic_proposal_invalid", "semantic_candidate_missing"]));
       expect(summary?.counts.evidence_supported).toBe(0);
     } finally {
@@ -248,6 +252,46 @@ describe("POST /api/analyze", () => {
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
         else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
+      }
+    }
+  });
+
+  it("keeps a post-initial GitHub auth failure in authenticated diagnostics only", async () => {
+    const previous = { mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL, ops: process.env.AGENTPROOF_OPS_TOKEN };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    process.env.AGENTPROOF_OPS_TOKEN = "ops-secret-value";
+    let pullReads = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        pullReads += 1;
+        if (pullReads % 3 === 0) return Promise.resolve(new Response("denied", { status: 401 }));
+        return Promise.resolve(Response.json({ title: "Maintenance notes", body: "Internal cleanup only.", url: "https://api.github.com/repos/acme/repo/pulls/12", base: { ref: "main", sha: "b".repeat(40), repo: { private: false } }, head: { ref: "agent/validation", sha: "a".repeat(40) } }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "+ status" }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" });
+    try {
+      const operator = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", "x-agentproof-observation-diagnostics": "semantic-boundary-v1", "x-agentproof-ops-token": "ops-secret-value" }, body }));
+      const operatorJson = await operator.json() as { operatorDiagnostics?: { freshnessFailure?: unknown }; report: VerificationReport };
+      const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+
+      expect(operator.status, JSON.stringify(operatorJson)).toBe(200);
+      expect(operatorJson.operatorDiagnostics?.freshnessFailure).toEqual({ phase: "before_claim", state: "unavailable", reason: "auth_unavailable" });
+      expect(fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses")).toHaveLength(0);
+      expect(JSON.stringify(operatorJson.report)).not.toContain("auth_unavailable");
+      expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(JSON.stringify(publicJson)).not.toContain("auth_unavailable");
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
+        if (value === undefined) delete process.env[environmentKey]; else process.env[environmentKey] = value;
       }
     }
   });
@@ -292,7 +336,7 @@ describe("POST /api/analyze", () => {
         },
         body
       }));
-      const operatorJson = await operator.json() as { operatorDiagnostics?: { claimInvalidReason?: string | null }; report: VerificationReport };
+      const operatorJson = await operator.json() as { operatorDiagnostics?: { claimInvalidReason?: string | null; evidenceInvalidReason?: string | null }; report: VerificationReport };
       const publicResponse = await POST(new Request("http://localhost/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -302,15 +346,55 @@ describe("POST /api/analyze", () => {
 
       expect(operator.status).toBe(200);
       expect(operatorJson.operatorDiagnostics?.claimInvalidReason).toBe("span_binding_invalid");
-      expect(JSON.stringify(operatorJson.report)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason/);
+      expect(operatorJson.operatorDiagnostics?.evidenceInvalidReason).toBeNull();
+      expect(JSON.stringify(operatorJson.report)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
       expect(publicResponse.status).toBe(200);
       expect(publicJson.operatorDiagnostics).toBeUndefined();
-      expect(JSON.stringify(publicJson)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason/);
+      expect(JSON.stringify(publicJson)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
     } finally {
       for (const [key, value] of Object.entries(previous)) {
         const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
         if (value === undefined) delete process.env[environmentKey];
         else process.env[environmentKey] = value;
+      }
+    }
+  });
+
+  it("exposes an invalid evidence reason only to authenticated operator diagnostics", async () => {
+    const previous = { mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL, ops: process.env.AGENTPROOF_OPS_TOKEN };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    process.env.AGENTPROOF_OPS_TOKEN = "ops-secret-value";
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === "https://api.openai.com/v1/responses") {
+        const packet = JSON.parse(JSON.parse(String(init?.body)).input[1].content[0].text);
+        const output = packet.contractVersion === "general_pr_semantic_claim.v2"
+          ? { spanRoles: packet.spans.map((span: { id: string }, index: number) => ({ spanId: span.id, role: index === 0 ? "objective_candidate" : "supporting_context" })) }
+          : {};
+        return Promise.resolve(Response.json({ output_text: JSON.stringify(output) }));
+      }
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({ title: "Maintenance notes", body: "Internal cleanup only.", url: "https://api.github.com/repos/acme/repo/pulls/12", base: { ref: "main", sha: "b".repeat(40), repo: { private: false } }, head: { ref: "agent/validation", sha: "a".repeat(40) } }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "export const status = 'ready';" }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" });
+    try {
+      const operator = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", "x-agentproof-observation-diagnostics": "semantic-boundary-v1", "x-agentproof-ops-token": "ops-secret-value" }, body }));
+      const operatorJson = await operator.json() as { operatorDiagnostics?: { claimInvalidReason?: string | null; evidenceInvalidReason?: string | null }; report: VerificationReport };
+      const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+      expect(operatorJson.operatorDiagnostics).toMatchObject({ claimInvalidReason: null, evidenceInvalidReason: "root_shape_invalid" });
+      expect(JSON.stringify(operatorJson.report)).not.toMatch(/evidenceInvalidReason|semanticEvidenceInvalidReason/);
+      expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(JSON.stringify(publicJson)).not.toMatch(/evidenceInvalidReason|semanticEvidenceInvalidReason/);
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
+        if (value === undefined) delete process.env[environmentKey]; else process.env[environmentKey] = value;
       }
     }
   });

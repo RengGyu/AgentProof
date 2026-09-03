@@ -8,7 +8,7 @@ import {
   validateRuntimeReportBoundary
 } from "./report-runtime-validation";
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
-import type { PullRequestInput } from "./types";
+import type { PullRequestInput, VerificationReportV2 } from "./types";
 
 const input = {
   title: "Runtime validation fallback",
@@ -227,6 +227,34 @@ describe("resolveRuntimeReportValidation", () => {
     }
   });
 
+  it("rejects malformed nested ordinary-PR observations at the signed-summary boundary", () => {
+    const summary = signedSummaryWithObservations();
+
+    expect(validateRuntimeReportBoundary({ boundary: "signed_summary_read", report: summary }).valid).toBe(true);
+
+    const unknownField = structuredClone(summary) as typeof summary & { generalPrAssessmentSummary: { observations: Record<string, unknown> } };
+    unknownField.generalPrAssessmentSummary.observations.diagnostics = "private-observation-sentinel";
+    expect(validateRuntimeReportBoundary({ boundary: "signed_summary_read", report: unknownField }).valid).toBe(false);
+
+    const crossState = structuredClone(summary) as typeof summary & { generalPrAssessmentSummary: { observations: { links: { state: string } } } };
+    crossState.generalPrAssessmentSummary.observations.links.state = "none_proposed";
+    expect(validateRuntimeReportBoundary({ boundary: "signed_summary_read", report: crossState }).valid).toBe(false);
+  });
+
+  it.each([
+    ["fractional artifact count", (report: VerificationReportV2) => { report.generalPrAssessmentSummary!.observations!.inventory.changedArtifacts = 1.5; }],
+    ["NaN artifact count", (report: VerificationReportV2) => { report.generalPrAssessmentSummary!.observations!.inventory.changedArtifacts = Number.NaN; }],
+    ["infinite artifact count", (report: VerificationReportV2) => { report.generalPrAssessmentSummary!.observations!.inventory.changedArtifacts = Number.POSITIVE_INFINITY; }],
+    ["test candidates exceeding changed artifacts", (report: VerificationReportV2) => { report.generalPrAssessmentSummary!.observations!.inventory.changedTestCandidates = 3; }],
+    ["more than 64 relation counts", (report: VerificationReportV2) => { report.generalPrAssessmentSummary!.observations!.links.supports = 65; }],
+    ["unavailable links with positive counts", (report: VerificationReportV2) => { report.generalPrAssessmentSummary!.observations!.links.state = "unavailable"; }]
+  ])("rejects %s at the serialized signed-summary runtime boundary", (_label, mutate) => {
+    const summary = JSON.parse(JSON.stringify(signedSummaryWithObservations())) as VerificationReportV2;
+    mutate(summary);
+
+    expect(validateRuntimeReportBoundary({ boundary: "signed_summary_read", report: summary }).valid).toBe(false);
+  });
+
   it("keeps raw validator calls out of runtime production callers", () => {
     const sourceRoot = resolve(process.cwd(), "src");
     const runtimeProductionFiles = productionTypeScriptFiles(sourceRoot);
@@ -247,6 +275,20 @@ describe("resolveRuntimeReportValidation", () => {
     ]);
   });
 });
+
+function signedSummaryWithObservations(): VerificationReportV2 {
+  const summary = sanitizeReportForShare(generateVerificationReportV2FromInput(exactHeadReceiptInput())) as VerificationReportV2;
+  summary.generalPrAssessmentSummary = {
+    version: 1,
+    mode: "ordinary_pr",
+    sourceState: "pr_author_claim",
+    overallConclusion: "evidence_partial",
+    counts: { evidence_supported: 0, evidence_partial: 2, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+    reasonCodes: ["author_claim_requires_confirmation"],
+    observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 2, supports: 2, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
+  };
+  return summary;
+}
 
 function productionTypeScriptFiles(sourceRoot: string): string[] {
   const visit = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

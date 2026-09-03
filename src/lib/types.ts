@@ -737,6 +737,28 @@ export interface GeneralPrAssessmentTargetV1 {
   headBound: boolean;
 }
 
+/** Target-free inventory and AI-relation proposal aggregate. */
+export interface GeneralPrEvidenceObservationsV1 {
+  version: 1;
+  inventory: {
+    state: "complete" | "incomplete" | "unavailable";
+    changedArtifacts: number;
+    changedTestCandidates: number;
+  };
+  links: {
+    state: "not_attempted" | "proposed" | "none_proposed" | "unavailable";
+    linkedObjectives: number;
+    supports: number;
+    tests: number;
+    implements: number;
+    contradicts: number;
+  };
+  coverage: {
+    source: "complete" | "sampled" | "incomplete" | null;
+    evidence: "complete" | "sampled" | "incomplete" | null;
+  };
+}
+
 /** Full private report companion; it is not a strict contract conclusion. */
 export interface GeneralPrAssessmentV1 {
   version: 1;
@@ -752,6 +774,7 @@ export interface GeneralPrAssessmentV1 {
   counts: GeneralPrAssessmentCountsV1;
   targets: GeneralPrAssessmentTargetV1[];
   reasonCodes: GeneralPrAssessmentReasonV1[];
+  observations?: GeneralPrEvidenceObservationsV1;
 }
 
 /** Explicit allowlist for share, tenant, comment, and export surfaces. */

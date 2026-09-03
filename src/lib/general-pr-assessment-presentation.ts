@@ -20,7 +20,7 @@ export function presentGeneralPrAssessmentSummary(
     conclusionLabel: conclusionLabel(assessment.overallConclusion),
     sourceLabel: sourceLabel(assessment.sourceState),
     countsLabel: countLabel(assessment),
-    reasonLabels: assessment.reasonCodes.map(reasonLabel)
+    reasonLabels: [...assessment.reasonCodes.map(reasonLabel), ...observationLabels(assessment)]
   };
 }
 
@@ -28,11 +28,27 @@ function conclusionLabel(
   conclusion: GeneralPrAssessmentSummaryV1["overallConclusion"]
 ): string {
   if (conclusion === "evidence_supports_stated_change") return "Evidence supports the stated change";
-  if (conclusion === "evidence_partial") return "Evidence partially supports the stated change";
+  if (conclusion === "evidence_partial") return "Partial observations; objective fulfillment remains unconfirmed";
   if (conclusion === "attention_required") return "Evidence needs attention";
   if (conclusion === "collection_blocked") return "Evidence collection was incomplete";
   if (conclusion === "no_assessable_claims") return "No assessable objective was found";
   return "Evidence is partially connected";
+}
+
+function observationLabels(assessment: GeneralPrAssessmentSummaryV1): string[] {
+  const observations = assessment.observations;
+  if (!observations) return [];
+  const labels = [`Observed changed artifacts: ${observations.inventory.changedArtifacts}; changed-file test path candidates (including deletions): ${observations.inventory.changedTestCandidates}.`];
+  if (observations.inventory.state === "incomplete") labels.push("Changed-file inventory was incomplete; counts are not a complete file inventory.");
+  if (observations.inventory.state === "unavailable") labels.push("Changed-file inventory was unavailable.");
+  if (observations.links.state === "proposed") labels.push(`AI relevance proposals link ${observations.links.linkedObjectives} objective(s) across ${observations.links.supports + observations.links.tests + observations.links.implements + observations.links.contradicts} relation(s); they are not verified connections.`);
+  if (observations.links.state === "none_proposed") labels.push("No AI relevance proposal was accepted in the selected scope; this does not prove none exist.");
+  if (observations.links.state === "not_attempted") labels.push("AI relevance linking was not attempted.");
+  if (observations.links.state === "unavailable") labels.push("AI relevance linking could not be confirmed.");
+  if (observations.coverage.source === "sampled" || observations.coverage.evidence === "sampled") labels.push("Only selected material was considered.");
+  if (observations.coverage.source === "incomplete" || observations.coverage.evidence === "incomplete") labels.push("Collection coverage was incomplete.");
+  labels.push("Global CI results do not establish target-specific test execution.");
+  return labels;
 }
 
 function sourceLabel(sourceState: GeneralPrAssessmentSummaryV1["sourceState"]): string {

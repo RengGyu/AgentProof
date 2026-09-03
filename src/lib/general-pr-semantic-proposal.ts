@@ -75,6 +75,21 @@ export type GeneralPrSemanticClaimInvalidReasonV2 =
   | "role_ceiling_violation"
   | "output_limit_exceeded";
 
+/** Closed private diagnostic for an already-rejected Stage B candidate. */
+export type GeneralPrSemanticEvidenceInvalidReasonV1 =
+  | "validation_provenance_invalid"
+  | "output_limit_exceeded"
+  | "root_shape_invalid"
+  | "relation_limit_exceeded"
+  | "selection_binding_invalid"
+  | "relation_shape_invalid"
+  | "objective_binding_invalid"
+  | "reference_binding_invalid"
+  | "duplicate_relation"
+  | "reference_ownership_conflict"
+  | "merge_binding_invalid"
+  | "validator_exception";
+
 /** Private provider response. Grouping and abstention are locally derived. */
 export interface GeneralPrSemanticClaimCandidateV2 {
   spanRoles: Array<{ spanId: string; role: GeneralPrClaimRoleV2 }>;
@@ -179,7 +194,7 @@ export type GeneralPrSemanticEvidenceValidationV1 =
       evidenceRelationProposals: GeneralPrSemanticProviderCandidateV1["evidenceRelationProposals"];
       errors: [];
     }
-  | { valid: false; errors: string[] };
+  | { valid: false; invalidReason: GeneralPrSemanticEvidenceInvalidReasonV1; errors: string[] };
 
 type ValidatedClaimResultV1 = Extract<GeneralPrSemanticClaimValidationV2, { valid: true }>;
 type ValidatedEvidenceResultV1 = Extract<GeneralPrSemanticEvidenceValidationV1, { valid: true }>;
@@ -259,32 +274,36 @@ export function validateGeneralPrSemanticEvidenceCandidateV1(
 ): GeneralPrSemanticEvidenceValidationV1 {
   const validatedClaim = VALIDATED_CLAIM_RESULTS.get(claim);
   if (!validatedClaim) {
-    if (!claim.valid) return invalidEvidence("claim stage is invalid");
-    return invalidEvidence("claim stage validation provenance is invalid");
+    if (!claim.valid) return invalidEvidence("validation_provenance_invalid", "claim stage is invalid");
+    return invalidEvidence("validation_provenance_invalid", "claim stage validation provenance is invalid");
   }
-  if (!validateGeneralPrObservationSeedV2(seed).valid) return invalidEvidence("seed is invalid");
-  if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidEvidence("evidence output byte limit exceeded");
-  if (!isRecord(value) || !hasExactKeys(value, EVIDENCE_ROOT_KEYS) || !Array.isArray(value.testApplicabilityProposals) || !Array.isArray(value.scopeMappingProposals) || !Array.isArray(value.evidenceRelationProposals)) return invalidEvidence("evidence candidate root shape is invalid");
+  if (!validateGeneralPrObservationSeedV2(seed).valid) return invalidEvidence("validation_provenance_invalid", "seed is invalid");
+  if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidEvidence("output_limit_exceeded", "evidence output byte limit exceeded");
+  if (!isRecord(value) || !hasExactKeys(value, EVIDENCE_ROOT_KEYS) || !Array.isArray(value.testApplicabilityProposals) || !Array.isArray(value.scopeMappingProposals) || !Array.isArray(value.evidenceRelationProposals)) return invalidEvidence("root_shape_invalid", "evidence candidate root shape is invalid");
   const totalRelations = value.testApplicabilityProposals.length + value.scopeMappingProposals.length + value.evidenceRelationProposals.length;
-  if (totalRelations > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS) return invalidEvidence("evidence relation limit exceeded");
+  if (totalRelations > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS) return invalidEvidence("relation_limit_exceeded", "evidence relation limit exceeded");
   const allowedGroups = validateEvidenceSelection(seed, validatedClaim, selection);
-  if (!allowedGroups) return invalidEvidence("evidence selection binding is invalid");
+  if (!allowedGroups) return invalidEvidence("selection_binding_invalid", "evidence selection binding is invalid");
   const testApplicabilityProposals = normalizeSelectedRelations(value.testApplicabilityProposals, PROVIDER_TEST_APPLICABILITY_KEYS, allowedGroups, "changeClusterIds", "changeClusterId", ["likely_expected", "likely_not_applicable", "ambiguous"]);
   const scopeMappingProposals = normalizeSelectedRelations(value.scopeMappingProposals, PROVIDER_SCOPE_MAPPING_KEYS, allowedGroups, "changeClusterIds", "changeClusterId", ["plausibly_mapped", "unresolved"]);
   const evidenceRelationProposals = normalizeSelectedRelations(value.evidenceRelationProposals, PROVIDER_EVIDENCE_RELATION_KEYS, allowedGroups, "evidenceIds", "evidenceId", ["supports", "tests", "implements", "contradicts", "unresolved"]);
-  if (!testApplicabilityProposals || !scopeMappingProposals || !evidenceRelationProposals) return invalidEvidence("evidence relation proposal is invalid");
-  if (!hasConsistentRelationOwnership([
-    ...testApplicabilityProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
-    ...scopeMappingProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
-    ...evidenceRelationProposals.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `evidence:${item.evidenceId}` }))
-  ])) return invalidEvidence("evidence relation proposal is invalid");
+  if (!testApplicabilityProposals.valid) return invalidEvidence(testApplicabilityProposals.invalidReason, "evidence relation proposal is invalid");
+  if (!scopeMappingProposals.valid) return invalidEvidence(scopeMappingProposals.invalidReason, "evidence relation proposal is invalid");
+  if (!evidenceRelationProposals.valid) return invalidEvidence(evidenceRelationProposals.invalidReason, "evidence relation proposal is invalid");
+  const normalizedRelations = [
+    ...testApplicabilityProposals.values.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
+    ...scopeMappingProposals.values.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `cluster:${item.changeClusterId}` })),
+    ...evidenceRelationProposals.values.map((item) => ({ objectiveSpanIds: item.objectiveSpanIds, referenceId: `evidence:${item.evidenceId}` }))
+  ];
+  const ownershipFailure = relationOwnershipFailure(normalizedRelations);
+  if (ownershipFailure) return invalidEvidence(ownershipFailure, "evidence relation proposal is invalid");
   return registerValidatedEvidenceStageResult({
     valid: true,
     parentSeedHash: seed.seedHash,
     evidenceSelectionHash: selection.evidenceSelectionHash,
-    testApplicabilityProposals,
-    scopeMappingProposals,
-    evidenceRelationProposals,
+    testApplicabilityProposals: testApplicabilityProposals.values,
+    scopeMappingProposals: scopeMappingProposals.values,
+    evidenceRelationProposals: evidenceRelationProposals.values,
     errors: []
   }, validatedClaim);
 }
@@ -574,6 +593,10 @@ function validEvidenceDescriptorBinding(
   return descriptor.subjectBinding === expectedBinding && descriptor.relationBasis === expectedBasis;
 }
 
+type NormalizedRelationsResult<T> =
+  | { valid: true; values: T[] }
+  | { valid: false; invalidReason: Extract<GeneralPrSemanticEvidenceInvalidReasonV1, "relation_shape_invalid" | "objective_binding_invalid" | "reference_binding_invalid" | "duplicate_relation" | "reference_ownership_conflict"> };
+
 function normalizeSelectedRelations<
   Field extends "changeClusterId" | "evidenceId",
   IdField extends "changeClusterIds" | "evidenceIds",
@@ -585,26 +608,28 @@ function normalizeSelectedRelations<
   idsField: IdField,
   referenceField: Field,
   proposals: readonly Proposal[]
-): Array<{ objectiveSpanIds: string[] } & Record<Field, string> & { proposal: Proposal }> | null {
-  if (!hasNoArrayHoles(values)) return null;
+): NormalizedRelationsResult<{ objectiveSpanIds: string[] } & Record<Field, string> & { proposal: Proposal }> {
+  if (!hasNoArrayHoles(values)) return { valid: false, invalidReason: "relation_shape_invalid" };
   const groupsByKey = new Map(groups.map((group) => [objectiveKey(group.objectiveSpanIds), group]));
   const normalized: Array<{ objectiveSpanIds: string[] } & Record<Field, string> & { proposal: Proposal }> = [];
   const seen = new Set<string>();
   const ownerByReference = new Map<string, string>();
   for (const value of values) {
-    if (!isRecord(value) || !hasExactKeys(value, keys) || !uniqueStringArray(value.objectiveSpanIds) || typeof value[referenceField] !== "string" || !proposals.includes(value.proposal as Proposal)) return null;
+    if (!isRecord(value) || !hasExactKeys(value, keys) || !uniqueStringArray(value.objectiveSpanIds) || typeof value[referenceField] !== "string" || !proposals.includes(value.proposal as Proposal)) return { valid: false, invalidReason: "relation_shape_invalid" };
     const groupKey = objectiveKey(value.objectiveSpanIds);
     const group = groupsByKey.get(groupKey);
     const referenceId = value[referenceField] as string;
-    if (!group || !(group[idsField] as string[]).includes(referenceId)) return null;
+    if (!group) return { valid: false, invalidReason: "objective_binding_invalid" };
+    if (!(group[idsField] as string[]).includes(referenceId)) return { valid: false, invalidReason: "reference_binding_invalid" };
     const relationKey = `${groupKey}:${referenceId}`;
     const priorOwner = ownerByReference.get(referenceId);
-    if (seen.has(relationKey) || (priorOwner !== undefined && priorOwner !== groupKey)) return null;
+    if (seen.has(relationKey)) return { valid: false, invalidReason: "duplicate_relation" };
+    if (priorOwner !== undefined && priorOwner !== groupKey) return { valid: false, invalidReason: "reference_ownership_conflict" };
     seen.add(relationKey);
     ownerByReference.set(referenceId, groupKey);
     normalized.push({ objectiveSpanIds: [...value.objectiveSpanIds], [referenceField]: referenceId, proposal: value.proposal as Proposal } as { objectiveSpanIds: string[] } & Record<Field, string> & { proposal: Proposal });
   }
-  return normalized;
+  return { valid: true, values: normalized };
 }
 
 function deterministicUnselectedRole(span: GeneralPrSemanticSpanV2): GeneralPrSemanticSpanRoleV2 {
@@ -656,12 +681,17 @@ function selectedRelationArraySchema(
   proposals: readonly string[]
 ): JsonSchema {
   const variants = groups.flatMap((group) => group[idsField].length === 0 ? [] : [exactObjectSchema(keys, {
-    objectiveSpanIds: enumSchema([[...group.objectiveSpanIds]]),
+    objectiveSpanIds: {
+      type: "array",
+      minItems: group.objectiveSpanIds.length,
+      maxItems: group.objectiveSpanIds.length,
+      items: enumSchema(group.objectiveSpanIds)
+    },
     [referenceField]: enumSchema(group[idsField]),
     proposal: enumSchema(proposals)
   })]);
   return variants.length === 0
-    ? { type: "array", maxItems: 0, items: false }
+    ? { type: "array", minItems: 0, maxItems: 0, items: exactObjectSchema([], {}) }
     : { type: "array", maxItems: GENERAL_PR_SEMANTIC_PROPOSAL_MAX_RELATIONS, items: { anyOf: variants } };
 }
 
@@ -699,7 +729,10 @@ function isObjectiveDisposition(value: unknown): value is GeneralPrSemanticObjec
 function isRole(value: unknown): value is GeneralPrClaimRoleV2 { return typeof value === "string" && ROLES.includes(value as GeneralPrClaimRoleV2); }
 function invalid(error: string): GeneralPrSemanticProposalValidation { return { valid: false, errors: [error] }; }
 function invalidClaim(invalidReason: GeneralPrSemanticClaimInvalidReasonV2, error: string): GeneralPrSemanticClaimValidationV2 { return { valid: false, invalidReason, errors: [error] }; }
-function invalidEvidence(error: string): GeneralPrSemanticEvidenceValidationV1 { return { valid: false, errors: [error] }; }
+function relationOwnershipFailure(values: Array<{ objectiveSpanIds: string[]; referenceId: string }>): Extract<GeneralPrSemanticEvidenceInvalidReasonV1, "reference_ownership_conflict"> | null {
+  return hasConsistentRelationOwnership(values) ? null : "reference_ownership_conflict";
+}
+function invalidEvidence(invalidReason: GeneralPrSemanticEvidenceInvalidReasonV1, error: string): GeneralPrSemanticEvidenceValidationV1 { return { valid: false, invalidReason, errors: [error] }; }
 function isRecord(value: unknown): value is Record<string, unknown> { const prototype = value && typeof value === "object" ? Object.getPrototypeOf(value) : null; return Boolean(value) && !Array.isArray(value) && (prototype === Object.prototype || prototype === null); }
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean { const actual = Object.keys(value).sort(); const expected = [...keys].sort(); return actual.length === expected.length && actual.every((key, index) => key === expected[index]); }
 function hasNoArrayHoles(value: readonly unknown[]): boolean { return Object.keys(value).length === value.length; }

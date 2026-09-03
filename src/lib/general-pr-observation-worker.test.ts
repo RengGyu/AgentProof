@@ -7,6 +7,7 @@ import {
 import { advanceQueuedGeneralPrObservationV2 } from "./general-pr-observation-worker";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import * as semanticObserver from "./general-pr-semantic-observer";
+import { GitHubFetchError } from "./github";
 import type {
   GeneralPrSemanticObserverModelProfileV2,
   GeneralPrSemanticObserverPackageV4
@@ -54,6 +55,25 @@ function validProposal(request: GeneralPrSemanticObserverPackageV4) {
 }
 
 describe("advanceQueuedGeneralPrObservationV2", () => {
+  it("propagates an evidence validation reason into the worker bundle while retaining claims", async () => {
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider: { observe: async (request) => request.stage === "claim_discovery" ? validProposal(request) : {} },
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => input,
+      modelProfile
+    });
+
+    expect(result).toMatchObject({
+      semantic: { state: "valid", semanticEvidenceInvalidReason: "root_shape_invalid", receipt: { claimState: "valid", evidenceState: "invalid" } },
+      bundle: { semanticState: "valid", semanticEvidenceInvalidReason: "root_shape_invalid" }
+    });
+  });
+
   it("does not construct a bundle or call a provider while the rollout is disabled", async () => {
     const seed = buildGeneralPrObservationSeedV2(input);
     const provider = { observe: vi.fn(async () => ({})) };
@@ -265,6 +285,26 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
 
     expect(result.semantic).toMatchObject({ state: "unavailable", semanticFailureStage: "provider_request" });
     expect(result.bundle).toMatchObject({ semanticState: "unavailable", semanticFailureStage: "provider_request" });
+  });
+
+  it("retains a typed freshness failure when the queued worker cannot re-read GitHub", async () => {
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider: { observe: async () => ({}) },
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => { throw new GitHubFetchError(401, "github_auth_required", "private"); },
+      modelProfile
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      semantic: { state: "unavailable", semanticFreshnessFailure: { phase: "before_claim", state: "unavailable", reason: "auth_unavailable" } },
+      bundle: { semanticFreshnessFailure: { phase: "before_claim", state: "unavailable", reason: "auth_unavailable" } }
+    });
   });
 
   it("carries a closed invalid claim reason into the private worker bundle", async () => {

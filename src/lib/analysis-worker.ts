@@ -481,16 +481,10 @@ async function runPreflightedAnalysisJob(
           },
           providerAvailable: true,
           privateRepository: false,
-          readCurrentInput: async () => {
-            try {
-              return await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
-                expectedHeadSha: input.sourceProvenance?.headSha,
-                expectedBaseSha: input.sourceProvenance?.baseSha
-              });
-            } catch {
-              return null;
-            }
-          },
+          readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
+            expectedHeadSha: input.sourceProvenance?.headSha,
+            expectedBaseSha: input.sourceProvenance?.baseSha
+          }),
           modelProfile: {
             model: generalPrObserverModel,
             promptVersion: "general-pr-observer.v4",

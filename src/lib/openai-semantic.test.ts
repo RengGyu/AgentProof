@@ -93,6 +93,40 @@ describe("OpenAI semantic adapter", () => {
     }
   });
 
+  it("allows only invalid_json_schema from a bounded rejected-request body", async () => {
+    const failure = await submitGeneralPrSemanticObservationWithOpenAI(stagedSemanticPackages()[0]!, {
+      apiKey: "test-key",
+      fetchFn: vi.fn(async () => new Response(JSON.stringify({ error: { code: "invalid_json_schema", message: "PROVIDER_SECRET" } }), { status: 400 })) as unknown as typeof fetch
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ diagnostic: { phase: "claim_discovery", category: "invalid_json_schema", httpStatus: 400 } });
+    expect(JSON.stringify(failure)).not.toContain("PROVIDER_SECRET");
+  });
+
+  it.each([
+    ["request invalid", 400, { phase: "evidence_linking", category: "request_invalid", httpStatus: 400 }],
+    ["rate limited", 429, { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 }],
+    ["provider unavailable", 503, { phase: "evidence_linking", category: "provider_unavailable", httpStatus: 503 }]
+  ] as const)("keeps closed %s diagnostics for the staged provider boundary", async (_name, status, expected) => {
+    const failure = await submitGeneralPrSemanticObservationWithOpenAI(stagedSemanticPackages()[1]!, {
+      apiKey: "test-key",
+      fetchFn: vi.fn(async () => new Response("PROVIDER_SECRET", { status })) as unknown as typeof fetch
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ diagnostic: expected });
+    expect(JSON.stringify(failure)).not.toContain("PROVIDER_SECRET");
+  });
+
+  it("marks incomplete max-output responses without retaining their output", async () => {
+    const failure = await submitGeneralPrSemanticObservationWithOpenAI(stagedSemanticPackages()[1]!, {
+      apiKey: "test-key",
+      fetchFn: vi.fn(async () => Response.json({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output_text: "PROVIDER_SECRET" })) as unknown as typeof fetch
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ diagnostic: { phase: "evidence_linking", category: "incomplete", incompleteReason: "max_output_tokens" } });
+    expect(JSON.stringify(failure)).not.toContain("PROVIDER_SECRET");
+  });
+
   it("submits one strict hybrid planner response with store false and no repair request", async () => {
     const { input, seed, plannerPackage, plan } = hybridFixture();
     const fetchMock = vi.fn().mockResolvedValue(Response.json({

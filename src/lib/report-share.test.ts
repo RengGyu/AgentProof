@@ -41,13 +41,14 @@ describe("report share", () => {
       overallConclusion: "evidence_partial",
       counts: {
         evidence_supported: 0,
-        evidence_partial: 1,
+        evidence_partial: 2,
         not_demonstrated: 0,
         contradicted: 0,
         blocked: 0,
         not_assessable: 0
       },
-      reasonCodes: [...CLOSED_PARTIAL_REASONS]
+      reasonCodes: [...CLOSED_PARTIAL_REASONS],
+      observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 2, supports: 2, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
     };
     Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
       diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
@@ -64,6 +65,7 @@ describe("report share", () => {
       reasonCodes: CLOSED_PARTIAL_REASONS
     });
     expect(decoded.generalPrAssessmentSummary).toEqual(envelope.generalPrAssessmentSummary);
+    expect(decoded.generalPrAssessmentSummary?.observations).toEqual(report.generalPrAssessmentSummary.observations);
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
     expectNoSelectionSentinels(serialized);
 
@@ -77,6 +79,10 @@ describe("report share", () => {
     expect(() => decodeSharedReport(diagnosticsInjected)).toThrow("Shared report assessment has unknown fields");
 
     delete (envelope.generalPrAssessmentSummary as Record<string, unknown>).diagnostics;
+    (envelope.generalPrAssessmentSummary as { observations: { links: Record<string, unknown> } }).observations.links.supports = 1;
+    const invalidObservationInjected = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
+    expect(() => decodeSharedReport(invalidObservationInjected)).toThrow("Shared report assessment observations are invalid");
+    (envelope.generalPrAssessmentSummary as { observations: { links: Record<string, unknown> } }).observations.links.supports = 2;
     (envelope.generalPrAssessmentSummary as Record<string, unknown>).reasonCodes = ["unknown_reason"];
     const unknownReasonInjected = Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url");
     expect(() => decodeSharedReport(unknownReasonInjected)).toThrow("Shared report payload failed summary validation");

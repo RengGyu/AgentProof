@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, openSync, fchmodSync, closeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
 import {
   isValidGeneralPrAssessmentSummary,
+  readOperatorSemanticDiagnostics,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
 import {
@@ -46,6 +47,21 @@ const OPERATOR_PACKAGE_FAILURE_REASONS = new Set([
   "span_limit_exceeded", "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch",
   "source_binding_invalid", "selection_unavailable", "schema_unavailable", "input_size_exceeded"
 ]);
+const OPERATOR_EVIDENCE_INVALID_REASONS = new Set([
+  "validation_provenance_invalid", "output_limit_exceeded", "root_shape_invalid", "relation_limit_exceeded",
+  "selection_binding_invalid", "relation_shape_invalid", "objective_binding_invalid", "reference_binding_invalid",
+  "duplicate_relation", "reference_ownership_conflict", "merge_binding_invalid", "validator_exception"
+]);
+const OPERATOR_FRESHNESS_FAILURE_KEYS = new Set([
+  "before_claim:stale:head_changed", "before_claim:stale:base_changed", "before_claim:stale:source_changed", "before_claim:stale:seed_changed",
+  "after_claim:stale:head_changed", "after_claim:stale:base_changed", "after_claim:stale:source_changed", "after_claim:stale:seed_changed",
+  "before_evidence:stale:head_changed", "before_evidence:stale:base_changed", "before_evidence:stale:source_changed", "before_evidence:stale:seed_changed",
+  "after_evidence:stale:head_changed", "after_evidence:stale:base_changed", "after_evidence:stale:source_changed", "after_evidence:stale:seed_changed",
+  "before_claim:unavailable:auth_unavailable", "before_claim:unavailable:rate_limited", "before_claim:unavailable:fetch_failed", "before_claim:unavailable:snapshot_unavailable", "before_claim:unavailable:privacy_ineligible",
+  "after_claim:unavailable:auth_unavailable", "after_claim:unavailable:rate_limited", "after_claim:unavailable:fetch_failed", "after_claim:unavailable:snapshot_unavailable", "after_claim:unavailable:privacy_ineligible",
+  "before_evidence:unavailable:auth_unavailable", "before_evidence:unavailable:rate_limited", "before_evidence:unavailable:fetch_failed", "before_evidence:unavailable:snapshot_unavailable", "before_evidence:unavailable:privacy_ineligible",
+  "after_evidence:unavailable:auth_unavailable", "after_evidence:unavailable:rate_limited", "after_evidence:unavailable:fetch_failed", "after_evidence:unavailable:snapshot_unavailable", "after_evidence:unavailable:privacy_ineligible"
+]);
 const QUALITY_GATE_LABELS = new Map([
   ["requirements_present", "Requirement extraction present"],
   ["met_requirement_execution", "Met requirements cite passing execution evidence"],
@@ -62,12 +78,14 @@ export async function runCurrentExternalPrCorpusSmoke({
   allowProductionGithubToken = false,
   now = new Date().toISOString(),
   maxSnapshotAgeMs = DEFAULT_MAX_SNAPSHOT_AGE_MS,
-  runAnalyze = runAnalyzePrSmoke
+  runAnalyze = runAnalyzePrSmoke,
+  onCaseDetail
 }) {
   validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs });
   const results = [];
 
   for (const testCase of snapshot.cases) {
+    let diagnostic = null;
     try {
       const result = await runAnalyze({
         baseUrl,
@@ -76,11 +94,20 @@ export async function runCurrentExternalPrCorpusSmoke({
         allowProductionGithubToken,
         requireRequirementFindings: false,
         requireGeneralPrAssessmentSummary: true,
-        expectedSourceAnchor: testCase.anchor
+        expectedSourceAnchor: testCase.anchor,
+        ...(onCaseDetail ? { onDiagnostic: (value) => { diagnostic = value; } } : {})
       });
       results.push(completedResult(testCase, result));
     } catch (error) {
       results.push(incompleteResult(testCase, error));
+    }
+    if (onCaseDetail) {
+      const result = results.at(-1);
+      await onCaseDetail({
+        id: opaqueCaseId(results.length - 1), prUrl: testCase.prUrl,
+        expectedAnchor: { headSha: testCase.anchor.headSha, baseSha: testCase.anchor.baseSha },
+        analysisStatus: result.analysisStatus, failureKind: result.failureKind ?? null, diagnostic
+      });
     }
   }
 
@@ -175,20 +202,7 @@ function completedResult(testCase, result) {
 }
 
 function isValidOperatorSemanticDiagnostics(value) {
-  return value && typeof value === "object" && !Array.isArray(value) &&
-    Object.keys(value).length === 8 && OPERATOR_STAGE_STATES.has(value.claimState) && OPERATOR_STAGE_STATES.has(value.evidenceState) &&
-    (value.sourceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) &&
-    (value.evidenceCoverage === null || OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) &&
-    [0, 1, 2, "3_plus"].includes(value.providerCallCount) &&
-    value.selectedCountBuckets && typeof value.selectedCountBuckets === "object" && !Array.isArray(value.selectedCountBuckets) &&
-    Object.keys(value.selectedCountBuckets).length === 2 && OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) &&
-    OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) &&
-    Array.isArray(value.semanticPackageFailureReasons) &&
-    new Set(value.semanticPackageFailureReasons).size === value.semanticPackageFailureReasons.length &&
-    value.semanticPackageFailureReasons.every((reason) => OPERATOR_PACKAGE_FAILURE_REASONS.has(reason)) &&
-    value.omittedReasonCounts && typeof value.omittedReasonCounts === "object" && !Array.isArray(value.omittedReasonCounts) &&
-    Object.keys(value.omittedReasonCounts).length === OPERATOR_OMISSION_KEYS.length &&
-    OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omittedReasonCounts[key]) && value.omittedReasonCounts[key] >= 0);
+  try { readOperatorSemanticDiagnostics(value); return true; } catch { return false; }
 }
 
 function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
@@ -199,6 +213,8 @@ function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
   const providerCallCountCounts = {};
   const selectedCountBucketCounts = { sourceSpans: {}, evidenceCandidates: {} };
   const semanticPackageFailureReasonCounts = {};
+  const evidenceInvalidReasonCounts = {};
+  const freshnessFailureCounts = {};
   const omissionReasonCounts = Object.fromEntries(OPERATOR_OMISSION_KEYS.map((key) => [key, 0]));
   let packageReadyCount = 0;
 
@@ -211,6 +227,14 @@ function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
     incrementCount(selectedCountBucketCounts.sourceSpans, diagnostic.selectedCountBuckets.sourceSpans);
     incrementCount(selectedCountBucketCounts.evidenceCandidates, diagnostic.selectedCountBuckets.evidenceCandidates);
     for (const reason of diagnostic.semanticPackageFailureReasons) incrementCount(semanticPackageFailureReasonCounts, reason);
+    incrementCount(evidenceInvalidReasonCounts, Object.hasOwn(diagnostic, "evidenceInvalidReason")
+      ? diagnostic.evidenceInvalidReason ?? "none"
+      : "absent");
+    incrementCount(freshnessFailureCounts, Object.hasOwn(diagnostic, "freshnessFailure")
+      ? diagnostic.freshnessFailure === null
+        ? "none"
+        : [diagnostic.freshnessFailure.phase, diagnostic.freshnessFailure.state, diagnostic.freshnessFailure.reason].join(":")
+      : "absent");
     for (const key of OPERATOR_OMISSION_KEYS) omissionReasonCounts[key] += diagnostic.omittedReasonCounts[key];
     if (diagnostic.claimState === "valid" && ["valid", "not_run"].includes(diagnostic.evidenceState)) packageReadyCount += 1;
   }
@@ -227,6 +251,8 @@ function summarizeOperatorSemanticDiagnostics(diagnostics, caseCount) {
     selectedCountBucketCounts,
     packageReadyCount,
     semanticPackageFailureReasonCounts,
+    evidenceInvalidReasonCounts,
+    freshnessFailureCounts,
     omissionReasonCounts
   };
 }
@@ -237,6 +263,17 @@ function summarizeGeneralPrAssessments(results) {
   const reasonCodeCounts = {};
   const assessmentCountTotals = Object.fromEntries(GENERAL_PR_ASSESSMENT_COUNT_KEYS.map((key) => [key, 0]));
   let presentCount = 0;
+  const observationSummary = {
+    absentCount: 0,
+    inventoryStateCounts: {},
+    changedArtifactsTotal: 0,
+    changedTestCandidatesTotal: 0,
+    linksStateCounts: {},
+    linkedObjectivesTotal: 0,
+    relationProposalTotals: { supports: 0, tests: 0, implements: 0, contradicts: 0 },
+    sourceCoverageCounts: {},
+    evidenceCoverageCounts: {}
+  };
 
   for (const result of results) {
     if (result.analysisStatus !== "completed") continue;
@@ -248,9 +285,24 @@ function summarizeGeneralPrAssessments(results) {
     incrementCount(sourceStateCounts, summary.sourceState);
     for (const reasonCode of summary.reasonCodes) incrementCount(reasonCodeCounts, reasonCode);
     for (const key of GENERAL_PR_ASSESSMENT_COUNT_KEYS) assessmentCountTotals[key] += summary.counts[key];
+    if (!summary.observations) {
+      observationSummary.absentCount += 1;
+      continue;
+    }
+    const { inventory, links, coverage } = summary.observations;
+    incrementCount(observationSummary.inventoryStateCounts, inventory.state);
+    observationSummary.changedArtifactsTotal += inventory.changedArtifacts;
+    observationSummary.changedTestCandidatesTotal += inventory.changedTestCandidates;
+    incrementCount(observationSummary.linksStateCounts, links.state);
+    observationSummary.linkedObjectivesTotal += links.linkedObjectives;
+    for (const key of Object.keys(observationSummary.relationProposalTotals)) {
+      observationSummary.relationProposalTotals[key] += links[key];
+    }
+    if (coverage.source !== null) incrementCount(observationSummary.sourceCoverageCounts, coverage.source);
+    if (coverage.evidence !== null) incrementCount(observationSummary.evidenceCoverageCounts, coverage.evidence);
   }
 
-  return { presentCount, overallConclusionCounts, sourceStateCounts, reasonCodeCounts, assessmentCountTotals };
+  return { presentCount, overallConclusionCounts, sourceStateCounts, reasonCodeCounts, assessmentCountTotals, observationSummary };
 }
 
 const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
@@ -344,7 +396,11 @@ export function assertAggregateOnlyRunArtifact(value) {
 
   countRecord(value.requirementStatusSummary, REQUIREMENT_STATUSES);
   countRecord(value.requirementEvidenceStatusSummary, REQUIREMENT_STATUSES);
-  exactObject(value.generalPrAssessmentSummary, ["presentCount", "overallConclusionCounts", "sourceStateCounts", "reasonCodeCounts", "assessmentCountTotals"]);
+  const hasObservationSummary = Object.hasOwn(value.generalPrAssessmentSummary, "observationSummary");
+  exactObject(value.generalPrAssessmentSummary, [
+    "presentCount", "overallConclusionCounts", "sourceStateCounts", "reasonCodeCounts", "assessmentCountTotals",
+    ...(hasObservationSummary ? ["observationSummary"] : [])
+  ]);
   if (!nonNegativeInteger(value.generalPrAssessmentSummary.presentCount) || value.generalPrAssessmentSummary.presentCount > value.completedCount) fail();
   countRecord(value.generalPrAssessmentSummary.overallConclusionCounts, GENERAL_PR_CONCLUSIONS);
   countRecord(value.generalPrAssessmentSummary.sourceStateCounts, GENERAL_PR_SOURCE_STATES);
@@ -352,6 +408,27 @@ export function assertAggregateOnlyRunArtifact(value) {
   exactObject(value.generalPrAssessmentSummary.assessmentCountTotals, GENERAL_PR_ASSESSMENT_COUNT_KEYS);
   for (const count of Object.values(value.generalPrAssessmentSummary.assessmentCountTotals)) {
     if (!nonNegativeInteger(count)) fail();
+  }
+  if (hasObservationSummary) {
+    const observationSummary = value.generalPrAssessmentSummary.observationSummary;
+    exactObject(observationSummary, [
+      "absentCount", "inventoryStateCounts", "changedArtifactsTotal", "changedTestCandidatesTotal", "linksStateCounts",
+      "linkedObjectivesTotal", "relationProposalTotals", "sourceCoverageCounts", "evidenceCoverageCounts"
+    ]);
+    if (![observationSummary.absentCount, observationSummary.changedArtifactsTotal, observationSummary.changedTestCandidatesTotal,
+      observationSummary.linkedObjectivesTotal].every(nonNegativeInteger) ||
+      observationSummary.absentCount > value.generalPrAssessmentSummary.presentCount) fail();
+    countRecord(observationSummary.inventoryStateCounts, new Set(["complete", "incomplete", "unavailable"]));
+    countRecord(observationSummary.linksStateCounts, new Set(["not_attempted", "proposed", "none_proposed", "unavailable"]));
+    countRecord(observationSummary.sourceCoverageCounts, OPERATOR_COVERAGE_STATES);
+    countRecord(observationSummary.evidenceCoverageCounts, OPERATOR_COVERAGE_STATES);
+    exactObject(observationSummary.relationProposalTotals, ["supports", "tests", "implements", "contradicts"]);
+    if (!Object.values(observationSummary.relationProposalTotals).every(nonNegativeInteger)) fail();
+    const observedCount = value.generalPrAssessmentSummary.presentCount - observationSummary.absentCount;
+    if (Object.values(observationSummary.inventoryStateCounts).reduce((sum, count) => sum + count, 0) !== observedCount ||
+      Object.values(observationSummary.linksStateCounts).reduce((sum, count) => sum + count, 0) !== observedCount ||
+      Object.values(observationSummary.sourceCoverageCounts).reduce((sum, count) => sum + count, 0) > observedCount ||
+      Object.values(observationSummary.evidenceCoverageCounts).reduce((sum, count) => sum + count, 0) > observedCount) fail();
   }
 
   exactObject(value.qualityGateSummary, ["ok", "checks"]);
@@ -409,22 +486,33 @@ function isValidOperatorDiagnosticAggregate(value, caseCount) {
     [value.providerCallCountCounts, new Set(["0", "1", "2", "3_plus"])], [value.selectedCountBucketCounts?.sourceSpans, OPERATOR_SOURCE_BUCKETS],
     [value.selectedCountBucketCounts?.evidenceCandidates, OPERATOR_EVIDENCE_BUCKETS]
   ];
-  if (Object.keys(value).length !== 12 || !value.selectedCountBucketCounts || typeof value.selectedCountBucketCounts !== "object" ||
+  const hasEvidenceInvalidReasonCounts = Object.hasOwn(value, "evidenceInvalidReasonCounts");
+  const hasFreshnessFailureCounts = Object.hasOwn(value, "freshnessFailureCounts");
+  if (Object.keys(value).length !== 12 + Number(hasEvidenceInvalidReasonCounts) + Number(hasFreshnessFailureCounts) ||
+    !value.selectedCountBucketCounts || typeof value.selectedCountBucketCounts !== "object" ||
     Array.isArray(value.selectedCountBucketCounts) || Object.keys(value.selectedCountBucketCounts).length !== 2 ||
     !Object.prototype.hasOwnProperty.call(value.selectedCountBucketCounts, "sourceSpans") ||
     !Object.prototype.hasOwnProperty.call(value.selectedCountBucketCounts, "evidenceCandidates") ||
     !value.omissionReasonCounts || typeof value.omissionReasonCounts !== "object" ||
     Object.keys(value.omissionReasonCounts).length !== OPERATOR_OMISSION_KEYS.length ||
     !value.semanticPackageFailureReasonCounts || typeof value.semanticPackageFailureReasonCounts !== "object" ||
+    (hasEvidenceInvalidReasonCounts && (!value.evidenceInvalidReasonCounts || typeof value.evidenceInvalidReasonCounts !== "object" || Array.isArray(value.evidenceInvalidReasonCounts))) ||
+    (hasFreshnessFailureCounts && (!value.freshnessFailureCounts || typeof value.freshnessFailureCounts !== "object" || Array.isArray(value.freshnessFailureCounts))) ||
     Array.isArray(value.semanticPackageFailureReasonCounts)) return false;
   for (const [record, keys] of records) {
     if (!record || typeof record !== "object" || Array.isArray(record) ||
       Object.entries(record).some(([key, count]) => !keys.has(key) || !Number.isSafeInteger(count) || count < 0)) return false;
   }
+  const countTotal = (counts) => Object.values(counts).reduce((sum, count) => sum + count, 0);
   return OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omissionReasonCounts[key]) && value.omissionReasonCounts[key] >= 0) &&
     Object.entries(value.semanticPackageFailureReasonCounts).every(([reason, count]) =>
       OPERATOR_PACKAGE_FAILURE_REASONS.has(reason) && Number.isSafeInteger(count) && count >= 0
-    );
+    ) && (!hasEvidenceInvalidReasonCounts || (Object.entries(value.evidenceInvalidReasonCounts).every(([reason, count]) =>
+      (reason === "absent" || reason === "none" || OPERATOR_EVIDENCE_INVALID_REASONS.has(reason)) && Number.isSafeInteger(count) && count >= 0
+    ) && countTotal(value.evidenceInvalidReasonCounts) === caseCount)) &&
+    (!hasFreshnessFailureCounts || (Object.entries(value.freshnessFailureCounts).every(([reason, count]) =>
+      (reason === "absent" || reason === "none" || OPERATOR_FRESHNESS_FAILURE_KEYS.has(reason)) && Number.isSafeInteger(count) && count >= 0
+    ) && countTotal(value.freshnessFailureCounts) === caseCount));
 }
 
 function validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs }) {
@@ -444,14 +532,20 @@ function validateReadySnapshot(snapshot, { now, maxSnapshotAgeMs }) {
     throw new Error("Current external PR evaluation snapshot must be refreshed before analysis.");
   }
   const ids = new Set();
-  const urls = new Set();
+  const prIdentities = new Set();
   for (const testCase of snapshot.cases) {
-    if (!validCapturedCase(testCase) || ids.has(testCase.id) || urls.has(testCase.prUrl)) {
+    const prIdentity = validCapturedCase(testCase) ? canonicalPullRequestIdentity(testCase.prUrl) : null;
+    if (!prIdentity || ids.has(testCase.id) || prIdentities.has(prIdentity)) {
       throw new Error("Current external PR evaluation snapshot is invalid.");
     }
     ids.add(testCase.id);
-    urls.add(testCase.prUrl);
+    prIdentities.add(prIdentity);
   }
+}
+
+function canonicalPullRequestIdentity(prUrl) {
+  const match = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(prUrl);
+  return match ? `${match[1].toLowerCase()}/${match[2].toLowerCase()}/${Number(match[3])}` : null;
 }
 
 function validCapturedCase(testCase) {
@@ -467,16 +561,48 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+// Operator-only local checkpoint. Never passed to public save/share/export routes.
+export function writeCurrentExternalPrCaseDetails(details, outputPath) {
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const temporary = `${outputPath}.tmp`;
+  const fd = openSync(temporary, "w", 0o600);
+  try {
+    fchmodSync(fd, 0o600);
+    writeFileSync(fd, `${JSON.stringify(details, null, 2)}\n`, "utf8");
+  } finally { closeSync(fd); }
+  renameSync(temporary, outputPath);
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv.slice(2).includes("--help")) {
+    console.log("Usage: pnpm smoke:external-pr-current-corpus\n\nThis command accepts no CLI flags. It reads only its configured snapshot path when run; use AGENTPROOF_EXTERNAL_CORPUS_SNAPSHOT, AGENTPROOF_EXTERNAL_CORPUS_RUN_OUTPUT, AGENTPROOF_SMOKE_BASE_URL, and the existing approved token environment handling.");
+  } else {
   const snapshotPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_SNAPSHOT ?? DEFAULT_SNAPSHOT_PATH;
   const outputPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_RUN_OUTPUT ?? DEFAULT_OUTPUT_PATH;
   const requireSemanticBoundary = process.env.AGENTPROOF_EXTERNAL_CORPUS_REQUIRE_SEMANTIC_BOUNDARY === "1";
   const operatorDiagnosticsToken = process.env.AGENTPROOF_SMOKE_OPS_TOKEN;
+  const detailsPath = process.env.AGENTPROOF_EXTERNAL_CORPUS_DETAILS_OUTPUT;
+  const snapshot = readJson(snapshotPath);
+  validateReadySnapshot(snapshot, { now: new Date().toISOString(), maxSnapshotAgeMs: DEFAULT_MAX_SNAPSHOT_AGE_MS });
+  if (requireSemanticBoundary && !operatorDiagnosticsToken) throw new Error("Operator diagnostics token is required before starting the release smoke.");
+  const details = {
+    version: 1, privacy: "local-operator-pr-diagnostics", status: "running",
+    startedAt: new Date().toISOString(), sourceSnapshotFingerprint: snapshot.corpusFingerprint,
+    deploymentUrl: new URL(DEFAULT_BASE_URL).origin,
+    operatorRequested: Boolean(operatorDiagnosticsToken), caseCount: snapshot.cases.length,
+    releaseHealth: "not_evaluated", cases: []
+  };
+  if (detailsPath) writeCurrentExternalPrCaseDetails(details, detailsPath);
 
   const options = {
-    snapshot: readJson(snapshotPath),
+    snapshot,
     githubToken: process.env.AGENTPROOF_SMOKE_GITHUB_TOKEN,
-    allowProductionGithubToken: process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1"
+    allowProductionGithubToken: process.env.AGENTPROOF_ALLOW_PRODUCTION_GITHUB_TOKEN === "1",
+    ...(detailsPath ? { onCaseDetail: (value) => {
+      details.cases.push(value);
+      writeCurrentExternalPrCaseDetails(details, detailsPath);
+      console.log(JSON.stringify({ progress: details.cases.length, total: details.caseCount, status: value.analysisStatus }));
+    } } : {})
   };
   const execution = operatorDiagnosticsToken
     ? runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({ ...options, operatorDiagnosticsToken })
@@ -486,20 +612,30 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     .then((result) => {
       const publicRun = "publicRun" in result ? result.publicRun : result;
       const operatorDiagnostic = "operatorDiagnostic" in result ? result.operatorDiagnostic : null;
-      if (requireSemanticBoundary) assertCurrentExternalPrSemanticBoundaryHealth(result);
       writeCurrentExternalPrCorpusRun(publicRun, outputPath);
+      details.status = publicRun.status;
+      details.completedAt = new Date().toISOString();
+      details.operatorAggregate = operatorDiagnostic;
+      details.releaseHealth = "not_requested";
+      if (requireSemanticBoundary) {
+        try { assertCurrentExternalPrSemanticBoundaryHealth(result); details.releaseHealth = "passed"; }
+        catch { details.releaseHealth = "failed"; }
+      }
+      if (detailsPath) writeCurrentExternalPrCaseDetails(details, detailsPath);
       console.log(JSON.stringify({
         status: publicRun.status,
         caseCount: publicRun.caseCount,
         completedCount: publicRun.completedCount,
         incompleteCount: publicRun.incompleteCount,
         ...(operatorDiagnostic ? { operatorDiagnostic } : {}),
-        outputPath
+        outputPath,
+        releaseHealth: details.releaseHealth
       }));
-      process.exitCode = publicRun.status === "completed" ? 0 : 1;
+      process.exitCode = publicRun.status === "completed" && details.releaseHealth !== "failed" ? 0 : 1;
     })
     .catch(() => {
       console.error(JSON.stringify({ status: "incomplete", error: "Current external PR corpus smoke could not run." }));
       process.exitCode = 1;
     });
+  }
 }
