@@ -1,6 +1,6 @@
 import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
-import type { HybridPlannerProvenance, PortableHybridPlannerProvenance, PublicProofGraph, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
+import type { GeneralPrAssessmentSummaryV1, HybridPlannerProvenance, PortableHybridPlannerProvenance, PublicProofGraph, SourceProvenance, VerificationReport, VerificationReportV2 } from "./types";
 import type { VerificationContractReportV2 } from "./verification-contract-v2";
 import { redactSecrets } from "./redact";
 
@@ -44,6 +44,7 @@ interface ShareableReportV4 extends Omit<ShareableReportV3, "version"> {
   version: 4;
   reportSchemaVersion: "verification-report.v2";
   verificationContract: Omit<VerificationContractReportV2, "integrity" | "gaps">;
+  generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
 }
 
 type ShareableReport = ShareableReportV1 | ShareableReportV2 | ShareableReportV3 | ShareableReportV4;
@@ -146,7 +147,10 @@ function toShareableReport(report: VerificationReport): ShareableReportV3 | Shar
     ...base,
     version: 4,
     reportSchemaVersion: "verification-report.v2",
-    verificationContract: portableVerificationContract(report.verificationContract)
+    verificationContract: portableVerificationContract(report.verificationContract),
+    ...(report.generalPrAssessmentSummary ? {
+      generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
+    } : {})
   };
 }
 
@@ -204,7 +208,10 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
     verificationContract: {
       ...shared.verificationContract,
       gaps: portableVerificationContractGaps(shared.verificationContract.state)
-    }
+    },
+    ...(shared.generalPrAssessmentSummary ? {
+      generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(shared.generalPrAssessmentSummary)
+    } : {})
   } as VerificationReportV2;
 }
 
@@ -213,7 +220,7 @@ function parseShareableReport(value: unknown): ShareableReport {
   const version = value.version;
   if (version !== 1 && version !== 2 && version !== 3 && version !== 4) throw new Error("Shared report version is not supported.");
   assertOnlyShareableKeys(value, version === 4
-    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations", "reportSchemaVersion", "verificationContract"]
+    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary"]
     : version === 2 || version === 3
     ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations"]
     : ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "limitations"], "report");
@@ -227,6 +234,7 @@ function parseShareableReport(value: unknown): ShareableReport {
   validateShareableProofGraph(value.proofGraph);
   if (value.planner !== undefined) validateShareablePlanner(value.planner, version === 4 ? 3 : version);
   if (version === 4) validateShareableVerificationContract(value);
+  if (version === 4 && value.generalPrAssessmentSummary !== undefined) validateShareableGeneralPrAssessmentSummary(value.generalPrAssessmentSummary);
   return value as unknown as ShareableReport;
 }
 
@@ -270,6 +278,46 @@ function validateShareableVerificationContract(value: Record<string, unknown>): 
     throw new Error("Shared v2 report contract is invalid.");
   }
 }
+
+function validateShareableGeneralPrAssessmentSummary(value: unknown): void {
+  if (!isPlainRecord(value)) throw new Error("Shared report assessment is invalid.");
+  assertOnlyShareableKeys(value, ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes", "observations"], "assessment");
+  if (!isPlainRecord(value.counts) || !Array.isArray(value.reasonCodes)) {
+    throw new Error("Shared report assessment is invalid.");
+  }
+  if (value.observations !== undefined && !isValidObservations(value.observations, value.counts)) throw new Error("Shared report assessment observations are invalid.");
+}
+
+function copyGeneralPrAssessmentSummary(assessment: GeneralPrAssessmentSummaryV1): GeneralPrAssessmentSummaryV1 {
+  return {
+    version: assessment.version,
+    mode: assessment.mode,
+    sourceState: assessment.sourceState,
+    overallConclusion: assessment.overallConclusion,
+    counts: { ...assessment.counts },
+    reasonCodes: [...assessment.reasonCodes],
+    ...(assessment.observations ? { observations: copyObservations(assessment.observations) } : {})
+  };
+}
+
+function copyObservations(value: NonNullable<GeneralPrAssessmentSummaryV1["observations"]>): NonNullable<GeneralPrAssessmentSummaryV1["observations"]> {
+  return { version: value.version, inventory: { state: value.inventory.state, changedArtifacts: value.inventory.changedArtifacts, changedTestCandidates: value.inventory.changedTestCandidates }, links: { state: value.links.state, linkedObjectives: value.links.linkedObjectives, supports: value.links.supports, tests: value.links.tests, implements: value.links.implements, contradicts: value.links.contradicts }, coverage: { source: value.coverage.source, evidence: value.coverage.evidence } };
+}
+
+function isValidObservations(value: unknown, counts: Record<string, unknown>): boolean {
+  if (!isPlainRecord(value) || Object.keys(value).length !== 4 || value.version !== 1 || !isPlainRecord(value.inventory) || !isPlainRecord(value.links) || !isPlainRecord(value.coverage)) return false;
+  const inventory = value.inventory, links = value.links, coverage = value.coverage;
+  if (!hasKeys(inventory, ["state", "changedArtifacts", "changedTestCandidates"]) || !hasKeys(links, ["state", "linkedObjectives", "supports", "tests", "implements", "contradicts"]) || !hasKeys(coverage, ["source", "evidence"])) return false;
+  if (!["complete", "incomplete", "unavailable"].includes(inventory.state as string) || !Number.isSafeInteger(inventory.changedArtifacts) || !Number.isSafeInteger(inventory.changedTestCandidates) || (inventory.changedArtifacts as number) < 0 || (inventory.changedTestCandidates as number) < 0 || (inventory.changedTestCandidates as number) > (inventory.changedArtifacts as number)) return false;
+  const relationKeys = ["supports", "tests", "implements", "contradicts"];
+  if (!["not_attempted", "proposed", "none_proposed", "unavailable"].includes(links.state as string) || !["linkedObjectives", ...relationKeys].every((key) => Number.isSafeInteger(links[key]) && (links[key] as number) >= 0)) return false;
+  const relationCount = relationKeys.reduce((sum, key) => sum + (links[key] as number), 0);
+  const targetCount = Object.values(counts).reduce<number>((sum, count) => sum + (Number.isSafeInteger(count) ? Number(count) : Infinity), 0);
+  if (relationCount > 64 || (links.linkedObjectives as number) > targetCount || (links.linkedObjectives as number) > relationCount || (links.state === "proposed" ? ((links.linkedObjectives as number) === 0 || relationCount === 0) : ((links.linkedObjectives as number) !== 0 || relationCount !== 0))) return false;
+  return ["source", "evidence"].every((key) => coverage[key] === null || ["complete", "sampled", "incomplete"].includes(coverage[key] as string));
+}
+
+function hasKeys(value: Record<string, unknown>, keys: string[]): boolean { return Object.keys(value).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)); }
 
 function validateShareableRequirement(value: unknown) {
   if (!isPlainRecord(value)) throw new Error("Shared report requirement is invalid.");

@@ -23,6 +23,20 @@ describe("V2 evidence release gate", () => {
     assert.equal(result.structuralMismatchCount, 0);
     assert.ok(releaseGatePasses(result));
   });
+  it("counts a false objective met separately from a false satisfied criterion", () => {
+    const base = fixture();
+    const candidates = structuredClone(base.candidates);
+    const reference = deriveEvidenceReferenceV2(base.cases, base.seal);
+    const caseIndex = reference.cases.findIndex((item) => item.reference.objectives.some((objective) => objective.outcome !== "met"));
+    const objectiveIndex = reference.cases[caseIndex].reference.objectives.findIndex((objective) => objective.outcome !== "met");
+
+    candidates.cases[caseIndex].actual.objectives[objectiveIndex].outcome = "met";
+
+    const result = evaluateEvidenceReleaseGateV2({ cases: base.cases, seal: base.seal, candidates });
+    assert.equal(result.falseMetCount, 1);
+    assert.equal(result.falseSupportedCount, 0);
+    assert.equal(releaseGatePasses(result), false);
+  });
   it("fails closed for seal, candidate-set, semantic, ownership, CI, receipt, and privacy drift", () => {
     const base = fixture();
     assert.equal(evaluateEvidenceReleaseGateV2({ ...base, seal: { ...base.seal, evidenceCorpusSha256: "0".repeat(64) } }).totalCases, "UNKNOWN");

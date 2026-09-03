@@ -3,6 +3,7 @@ import { createHash, createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "./report-share";
 import { demoScenarios } from "./sample-data";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import {
   clearSavedReportsForTests,
   cleanupExpiredReports,
@@ -20,10 +21,32 @@ import {
 } from "./server-report-store";
 import { createVerifiedAuthenticity } from "./report-authenticity";
 import { decodeTenantPersistedReport, projectTenantPersistedReport, validateTenantPersistedReport, validateTenantStoredReport } from "./tenant-report-validation";
-import type { PullRequestInput, VerificationReport } from "./types";
+import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
 import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 
 const TEST_SLACK_WEBHOOK = ["https://hooks.slack.com", "services", "T00000000", "B00000000", "XXXXXXXXXXXXXXXXXXXXXXXX"].join("/");
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
+const CLOSED_PARTIAL_REASONS = [
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
+] as const;
 
 describe("server report store", () => {
   const originalEnv = { ...process.env };
@@ -65,6 +88,128 @@ describe("server report store", () => {
       evidenceIndex: []
     });
     expect(saved.report.authenticity?.trust).toBe("imported_unverified");
+  });
+
+  it("persists and hydrates only the bounded ordinary-PR assessment summary", async () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    process.env.AGENTPROOF_REPORT_SIGNING_SECRET = signingSecret;
+    const inputReport = generateVerificationReportV2FromInput(demoScenarios.clean);
+    inputReport.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "evidence_partial",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 1,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      reasonCodes: [...CLOSED_PARTIAL_REASONS, "head_mismatch"],
+      observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
+    };
+    Object.assign(inputReport.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
+    const saved = await createVerifiedSavedReport(inputReport, {
+      tenantId: "tenant_summary",
+      installationId: 321,
+      repositoryId: 100,
+      pullRequestNumber: 42,
+      headSha: "a".repeat(40)
+    });
+    const report = saved.report as VerificationReportV2;
+    const persisted = projectTenantPersistedReport(report, signingSecret);
+    const decoded = decodeTenantPersistedReport(persisted, {
+      signingSecret,
+      createdAt: "2026-08-31T00:00:00.000Z"
+    });
+    const serialized = JSON.stringify({ persisted, decoded });
+
+    expect(report.generalPrAssessmentSummary).toEqual(persisted.generalPrAssessmentSummary);
+    expect(persisted.generalPrAssessmentSummary).toMatchObject({
+      overallConclusion: "evidence_partial",
+      reasonCodes: expect.arrayContaining([...CLOSED_PARTIAL_REASONS, "head_mismatch"]),
+      observations: inputReport.generalPrAssessmentSummary.observations
+    });
+    expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });
+    expect(decoded).toMatchObject({ status: "valid", report: { generalPrAssessmentSummary: persisted.generalPrAssessmentSummary } });
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(serialized).not.toContain(forbidden);
+    expectNoSelectionSentinels(serialized);
+
+    const tampered = structuredClone(persisted);
+    tampered.generalPrAssessmentSummary!.observations!.links.supports = 2;
+    expect(validateTenantPersistedReport(tampered, signingSecret).errors).toContain("tenant persisted report signature is invalid.");
+
+    const legacySource = structuredClone(report);
+    delete legacySource.generalPrAssessmentSummary!.observations;
+    const legacyPersisted = projectTenantPersistedReport(legacySource, signingSecret);
+    expect(legacyPersisted.generalPrAssessmentSummary).toBeDefined();
+    expect(legacyPersisted.generalPrAssessmentSummary!.observations).toBeUndefined();
+    expect(validateTenantPersistedReport(legacyPersisted, signingSecret)).toEqual({ valid: true, errors: [] });
+
+    legacyPersisted.generalPrAssessmentSummary!.observations = inputReport.generalPrAssessmentSummary!.observations;
+    expect(validateTenantPersistedReport(legacyPersisted, signingSecret).errors).toContain("tenant persisted report signature is invalid.");
+
+    for (const { injected, expectedError } of [
+      { injected: { targets: [] }, expectedError: "tenant ordinary-PR assessment summary is invalid." },
+      { injected: { diagnostics: {} }, expectedError: "tenant ordinary-PR assessment summary is invalid." },
+      { injected: { reasonCodes: ["unknown_reason"] }, expectedError: "tenant ordinary-PR assessment summary reasons are invalid." }
+    ]) {
+      const untrusted = structuredClone(persisted) as typeof persisted & { generalPrAssessmentSummary: Record<string, unknown> };
+      Object.assign(untrusted.generalPrAssessmentSummary, injected);
+      resignPersistedTenantReport(untrusted, signingSecret);
+      expect(validateTenantPersistedReport(untrusted, signingSecret)).toEqual({ valid: false, errors: [expectedError] });
+    }
+
+    for (const mutate of [
+      (observations: Record<string, unknown>) => { observations.unknown = "private-observation-sentinel"; },
+      (observations: Record<string, unknown>) => { (observations.links as Record<string, unknown>).state = "invalid"; },
+      (observations: Record<string, unknown>) => { (observations.inventory as Record<string, unknown>).changedArtifacts = Number.MAX_SAFE_INTEGER + 1; },
+      (observations: Record<string, unknown>) => { (observations.links as Record<string, unknown>).state = "none_proposed"; }
+    ]) {
+      const untrusted = structuredClone(persisted) as typeof persisted & { generalPrAssessmentSummary: { observations: Record<string, unknown> } };
+      mutate(untrusted.generalPrAssessmentSummary.observations);
+      resignPersistedTenantReport(untrusted, signingSecret);
+      expect(validateTenantPersistedReport(untrusted, signingSecret).errors).toContain("tenant ordinary-PR assessment summary observations are invalid.");
+    }
+  });
+
+  it("rejects a forged target-free assessment conclusion before projection and after persistence", () => {
+    const signingSecret = "test-report-signing-secret-that-is-long-enough";
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "linked_issue",
+      overallConclusion: "evidence_partial",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 1,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      reasonCodes: []
+    };
+
+    const persisted = projectTenantPersistedReport(report, signingSecret);
+    const forgedReport = structuredClone(report);
+    forgedReport.generalPrAssessmentSummary!.overallConclusion = "mixed_evidence";
+    expect(() => projectTenantPersistedReport(forgedReport, signingSecret)).toThrow(
+      "Target-free general-PR assessment summary conclusion does not match counts."
+    );
+
+    const forgedPersisted = structuredClone(persisted);
+    forgedPersisted.generalPrAssessmentSummary!.overallConclusion = "mixed_evidence";
+    resignPersistedTenantReport(forgedPersisted, signingSecret);
+    expect(validateTenantPersistedReport(forgedPersisted, signingSecret).errors).toContain(
+      "tenant ordinary-PR assessment summary conclusion does not match counts."
+    );
   });
 
   it("preserves a v2 no-contract discriminator through the private tenant storage boundary", async () => {

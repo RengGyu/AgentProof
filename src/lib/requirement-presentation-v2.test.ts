@@ -19,7 +19,8 @@ describe("deriveRequirementPresentationV2", () => {
       outcomeLabel: "Unclear against approved contract",
       observationLabel: "Supported",
       outcomeBasis: "Required criterion evidence was incomplete or unavailable.",
-      primaryGap: "evidence_unavailable"
+      primaryGap: "evidence_unavailable",
+      reasonCode: "evidence_unavailable"
     });
   });
 
@@ -53,6 +54,22 @@ describe("deriveRequirementPresentationV2", () => {
       primaryGap: "verification_contract_missing"
     });
   });
+
+  it("marks evidence hidden by a portable summary as omitted rather than absent", () => {
+    const result = deriveRequirementPresentationV2(report({
+      contractState: "authoritative",
+      status: "unclear",
+      evidenceStatus: "met",
+      criterionState: "unavailable",
+      criterionGaps: ["evidence_unavailable"],
+      portableSummary: true
+    }), "vc_o1");
+
+    expect(result).toMatchObject({
+      evidenceVisibility: "omitted_for_summary",
+      evidenceVisibilityLabel: "Evidence details are omitted from this portable summary."
+    });
+  });
 });
 
 function report(input: {
@@ -62,6 +79,7 @@ function report(input: {
   criterionState: "satisfied" | "violated" | "incomplete" | "unavailable";
   contractGaps?: string[];
   criterionGaps?: string[];
+  portableSummary?: boolean;
 }): VerificationReportV2 {
   const gapKinds = input.criterionGaps ?? [];
   return {
@@ -102,6 +120,16 @@ function report(input: {
           gapKinds
         }]
       }]
-    }
+    },
+    ...(input.portableSummary ? {
+      authenticity: {
+        version: 1 as const,
+        trust: "portable_unverified" as const,
+        generator: {
+          reportSchemaVersion: "verification-report.v2" as const,
+          deterministicEngineVersion: "test"
+        }
+      }
+    } : {})
   } as unknown as VerificationReportV2;
 }

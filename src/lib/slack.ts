@@ -1,4 +1,5 @@
 import { sanitizeReportForShare } from "./report-share";
+import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import type { AnalysisQueueAlert } from "./analysis-job-alerts";
 import type { AnalysisJobQueueSummary } from "./analysis-jobs";
 import type { VerificationReport } from "./types";
@@ -30,10 +31,19 @@ export const SLACK_NOTIFICATION_TIMEOUT_MS = 5000;
 export function reportToSlackPayload(report: VerificationReport, reportUrl?: string): SlackWebhookPayload {
   const safeReport = sanitizeReportForShare(report);
   const v2Report = isVerificationReportV2(safeReport) ? safeReport : undefined;
+  const ordinaryPrAssessment = v2Report?.generalPrAssessmentSummary
+    ? presentGeneralPrAssessmentSummary(v2Report.generalPrAssessmentSummary)
+    : undefined;
   const outcomeLines = v2Report
     ? v2Report.requirements.slice(0, 3).flatMap((requirement) => {
       const presentation = deriveRequirementPresentationV2(v2Report, requirement.requirementId);
-      return [`- ${presentation.outcomeLabel}`, `  Observed evidence: ${presentation.observationLabel}`];
+      return [
+        `- ${presentation.outcomeLabel}`,
+        `  Observed evidence: ${presentation.observationLabel}`,
+        ...(presentation.evidenceVisibility === "omitted_for_summary"
+          ? [`  ${presentation.evidenceVisibilityLabel}`]
+          : [])
+      ];
     }).join("\n")
     : "";
   const topRisks = safeReport.summary.topRisks.slice(0, 3).map((risk) => `- ${risk}`).join("\n");
@@ -64,6 +74,19 @@ export function reportToSlackPayload(report: VerificationReport, reportUrl?: str
         text: {
           type: "plain_text",
           text: truncateSlackText(`Requirement outcomes\n${outcomeLines}`, 3000)
+        }
+      }] : []),
+      ...(ordinaryPrAssessment ? [{
+        type: "section",
+        text: {
+          type: "plain_text",
+          text: truncateSlackText([
+            ordinaryPrAssessment.heading,
+            `Result: ${ordinaryPrAssessment.conclusionLabel}`,
+            `Source: ${ordinaryPrAssessment.sourceLabel}`,
+            ordinaryPrAssessment.countsLabel,
+            ...ordinaryPrAssessment.reasonLabels
+          ].join("\n"), 3000)
         }
       }] : []),
       {

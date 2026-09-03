@@ -1,13 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { demoScenarios } from "./sample-data";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import {
   analysisQueueAlertsToSlackPayload,
   isAllowedSlackWebhookUrl,
   neutralizeSlackMentions,
   reportToSlackPayload
 } from "./slack";
-import { generateVerificationReport, generateVerificationReportV2 } from "./verifier";
+import { generateVerificationReport, generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
+import type { AnalysisJobQueueSummary } from "./analysis-jobs";
 import type { PullRequestInput } from "./types";
+
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
 
 describe("slack helpers", () => {
   it("renders enhanced planning as neutral policy copy only", () => {
@@ -104,7 +117,38 @@ describe("slack helpers", () => {
     expect(report.requirements[0]).toMatchObject({ status: "unclear", evidenceStatus: "partial" });
     expect(payload).toContain("Unclear against approved contract");
     expect(payload).toContain("Observed evidence: Partially supported");
+    expect(payload).toContain("Evidence details are omitted from this portable summary.");
     expect(payload).not.toContain("Supported against approved contract");
+  });
+
+  it("includes only the target-free ordinary-PR assessment in a Slack summary", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "evidence_partial",
+      counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"],
+      observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
+    };
+    Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
+    Object.assign(report.generalPrAssessmentSummary.observations as object, { diagnostics: "private-observation-sentinel" });
+
+    const payload = JSON.stringify(reportToSlackPayload(report));
+
+    expect(payload).toContain("Ordinary PR evidence assessment");
+    expect(payload).toContain("Partial observations; objective fulfillment remains unconfirmed");
+    expect(payload).toContain("Partial evidence: 1");
+    expect(payload).toContain("Semantic assessment was unavailable.");
+    expect(payload).toContain("The target-to-evidence relation remains unresolved.");
+    expect(payload).toContain("Observed changed artifacts: 2");
+    expect(payload).not.toContain("private-observation-sentinel");
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(payload).not.toContain(forbidden);
+    expectNoSelectionSentinels(payload);
   });
 
   it("escapes Slack markdown link delimiters in report URLs", () => {
@@ -125,8 +169,7 @@ describe("slack helpers", () => {
   });
 
   it("formats analysis queue alerts as aggregate-only payloads", () => {
-    const payloadText = JSON.stringify(analysisQueueAlertsToSlackPayload({
-      summary: {
+    const summary = {
         privacy: "analysis-job-queue-summary-only",
         sampled: 3,
         truncated: false,
@@ -140,8 +183,11 @@ describe("slack helpers", () => {
         due: 1,
         delayedRetry: 0,
         staleProcessing: 1,
-        oldestQueuedAgeSeconds: 1000
-      },
+        oldestQueuedAgeSeconds: 1000,
+        ...transientSelectionFixture()
+      } as unknown as AnalysisJobQueueSummary;
+    const payloadText = JSON.stringify(analysisQueueAlertsToSlackPayload({
+      summary,
       alerts: [
         {
           code: "analysis_queue_failed_terminal",
@@ -172,5 +218,6 @@ describe("slack helpers", () => {
     expect(payloadText).not.toContain("reprompt");
     expect(payloadText).not.toContain("Patch excerpt");
     expect(payloadText).not.toContain("github_pat_");
+    expectNoSelectionSentinels(payloadText);
   });
 });

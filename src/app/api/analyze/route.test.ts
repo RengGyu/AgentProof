@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { validateVerificationReport } from "@/lib/report-validation";
-import type { VerificationReport } from "@/lib/types";
+import * as generalPrObservationService from "@/lib/general-pr-observation-service";
+import type { VerificationReport, VerificationReportV2 } from "@/lib/types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -47,7 +48,529 @@ function expectNoGitHubEvidenceTiming(response: Response) {
   expect(response.headers.get("X-AgentProof-Evidence-Timing")).toBeNull();
 }
 
+function validGeneralPrObserverCandidate(init?: RequestInit) {
+  const request = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ text: string }> }> };
+  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as {
+    contractVersion: string;
+    spans?: Array<{ id: string }>;
+  };
+  if (observerInput.contractVersion === "general_pr_semantic_evidence.v1") {
+    return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
+  }
+  const objective = observerInput.spans?.[0];
+  if (!objective) throw new Error("claim package must include a span");
+  return {
+    spanRoles: observerInput.spans!.map((span) => ({
+      spanId: span.id,
+      role: span.id === objective.id ? "objective_candidate" : "supporting_context"
+    }))
+  };
+}
+
 describe("POST /api/analyze", () => {
+  it("returns semantic boundary state only to an authenticated operator diagnostic request", async () => {
+    const previous = process.env.AGENTPROOF_OPS_TOKEN;
+    process.env.AGENTPROOF_OPS_TOKEN = "ops-secret-value";
+
+    try {
+      const unauthorized = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-agentproof-observation-diagnostics": "semantic-boundary-v1"
+        },
+        body: JSON.stringify({ demoScenario: "clean" })
+      }));
+
+      expect(unauthorized.status).toBe(401);
+
+      const authorized = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-agentproof-observation-diagnostics": "semantic-boundary-v1",
+          "x-agentproof-ops-token": "ops-secret-value"
+        },
+        body: JSON.stringify({ demoScenario: "clean" })
+      }));
+      const json = await authorized.json() as {
+        operatorDiagnostics?: {
+          claimState: string;
+          evidenceState: string;
+          sourceCoverage: string | null;
+          evidenceCoverage: string | null;
+          claimInvalidReason: string | null;
+          evidenceInvalidReason: string | null;
+          providerCallCount: number;
+          selectedCountBuckets: { sourceSpans: string; evidenceCandidates: string };
+          semanticPackageFailureReasons: string[];
+          omittedReasonCounts: Record<string, number>;
+        };
+      };
+
+      expect(authorized.status).toBe(200);
+      expect(json.operatorDiagnostics).toEqual({
+        claimState: "not_run",
+        evidenceState: "not_run",
+        sourceCoverage: null,
+        evidenceCoverage: null,
+        claimInvalidReason: null,
+        evidenceInvalidReason: null,
+        freshnessFailure: null,
+        providerCallCount: 0,
+        selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
+        semanticPackageFailureReasons: [],
+        omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
+      });
+      expect(Object.keys(json.operatorDiagnostics ?? {}).sort()).toEqual([
+        "claimInvalidReason", "claimState", "evidenceCoverage", "evidenceInvalidReason", "evidenceState", "freshnessFailure", "omittedReasonCounts", "providerCallCount", "selectedCountBuckets", "semanticPackageFailureReasons", "sourceCoverage"
+      ]);
+      expect(JSON.stringify(json.operatorDiagnostics)).not.toMatch(/seedHash|selectionHash|path|tokenSketch|sourceText|checkName|repositoryName|pullRequestNumber|providerOutput/i);
+    } finally {
+      if (previous === undefined) delete process.env.AGENTPROOF_OPS_TOKEN;
+      else process.env.AGENTPROOF_OPS_TOKEN = previous;
+    }
+  });
+
+  it("does not let a request field enable semantics when the server policy is disabled", async () => {
+    const previous = {
+      mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
+      key: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL
+    };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "disabled";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Public PR",
+          body: "Acceptance criteria: add validation.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: baseSha, repo: { private: false } },
+          head: { ref: "agent/validation", sha: headSha }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "export const status = 'ready';" }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/repo/pull/12",
+          requestedSemanticMode: "enable"
+        })
+      }));
+      const json = await response.json() as { report: VerificationReport };
+
+      expect(response.status, JSON.stringify(json)).toBe(200);
+      expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(false);
+      expect((json.report as VerificationReportV2).generalPrAssessmentSummary).toBeUndefined();
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
+        else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
+      }
+    }
+  });
+
+  it("uses the observer provider for an explicitly public live GitHub PR in advisory policy", async () => {
+    const previous = {
+      mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
+      key: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL
+    };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === "https://api.openai.com/v1/responses") {
+        return Promise.resolve(Response.json({ output_text: JSON.stringify(validGeneralPrObserverCandidate(init)) }));
+      }
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Maintenance notes",
+          body: "Internal cleanup only.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: baseSha, repo: { private: false } },
+          head: { ref: "agent/validation", sha: headSha }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "+ return Ready;" }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/repo/pull/12",
+          requestedSemanticMode: "disable"
+        })
+      }));
+      const json = await response.json() as { report: VerificationReport; observation?: unknown };
+
+      expect(response.status, JSON.stringify(json)).toBe(200);
+      const observerCalls = fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses");
+      expect(observerCalls).toHaveLength(2);
+      expect(observerCalls.map(([, init]) => {
+        const body = JSON.parse(String(init?.body));
+        return JSON.parse(body.input[1].content[0].text).contractVersion;
+      })).toEqual(["general_pr_semantic_claim.v2", "general_pr_semantic_evidence.v1"]);
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        policy: expect.objectContaining({
+          semanticObservation: "eligible_public_pr",
+          assessmentProjection: "advisory"
+        }),
+        semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
+      }));
+      expect(json.report).toHaveProperty("generalPrAssessmentSummary");
+      expect(json.observation).toBeUndefined();
+      expect(JSON.stringify(json)).not.toContain("ledgerDigest");
+      const summary = (json.report as VerificationReportV2).generalPrAssessmentSummary;
+      expect(summary?.reasonCodes).toContain("target_relation_unresolved");
+      expect(summary?.reasonCodes).not.toContain("semantic_relation_only");
+      expect(summary?.reasonCodes).not.toEqual(expect.arrayContaining(["semantic_observer_unavailable", "semantic_proposal_invalid", "semantic_candidate_missing"]));
+      expect(summary?.counts.evidence_supported).toBe(0);
+    } finally {
+      observationSpy.mockRestore();
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
+        else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
+      }
+    }
+  });
+
+  it("keeps a post-initial GitHub auth failure in authenticated diagnostics only", async () => {
+    const previous = { mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL, ops: process.env.AGENTPROOF_OPS_TOKEN };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    process.env.AGENTPROOF_OPS_TOKEN = "ops-secret-value";
+    let pullReads = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/pulls/12")) {
+        pullReads += 1;
+        if (pullReads % 3 === 0) return Promise.resolve(new Response("denied", { status: 401 }));
+        return Promise.resolve(Response.json({ title: "Maintenance notes", body: "Internal cleanup only.", url: "https://api.github.com/repos/acme/repo/pulls/12", base: { ref: "main", sha: "b".repeat(40), repo: { private: false } }, head: { ref: "agent/validation", sha: "a".repeat(40) } }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "+ status" }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" });
+    try {
+      const operator = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", "x-agentproof-observation-diagnostics": "semantic-boundary-v1", "x-agentproof-ops-token": "ops-secret-value" }, body }));
+      const operatorJson = await operator.json() as { operatorDiagnostics?: { freshnessFailure?: unknown }; report: VerificationReport };
+      const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+
+      expect(operator.status, JSON.stringify(operatorJson)).toBe(200);
+      expect(operatorJson.operatorDiagnostics?.freshnessFailure).toEqual({ phase: "before_claim", state: "unavailable", reason: "auth_unavailable" });
+      expect(fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses")).toHaveLength(0);
+      expect(JSON.stringify(operatorJson.report)).not.toContain("auth_unavailable");
+      expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(JSON.stringify(publicJson)).not.toContain("auth_unavailable");
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
+        if (value === undefined) delete process.env[environmentKey]; else process.env[environmentKey] = value;
+      }
+    }
+  });
+
+  it("exposes an invalid claim reason only to authenticated operator diagnostics", async () => {
+    const previous = {
+      mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
+      key: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL,
+      ops: process.env.AGENTPROOF_OPS_TOKEN
+    };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    process.env.AGENTPROOF_OPS_TOKEN = "ops-secret-value";
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "https://api.openai.com/v1/responses") return Promise.resolve(Response.json({ output_text: JSON.stringify({ spanRoles: [] }) }));
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Maintenance notes",
+        body: "Internal cleanup only.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        base: { ref: "main", sha: baseSha, repo: { private: false } },
+        head: { ref: "agent/validation", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" });
+
+    try {
+      const operator = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-agentproof-observation-diagnostics": "semantic-boundary-v1",
+          "x-agentproof-ops-token": "ops-secret-value"
+        },
+        body
+      }));
+      const operatorJson = await operator.json() as { operatorDiagnostics?: { claimInvalidReason?: string | null; evidenceInvalidReason?: string | null }; report: VerificationReport };
+      const publicResponse = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body
+      }));
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+
+      expect(operator.status).toBe(200);
+      expect(operatorJson.operatorDiagnostics?.claimInvalidReason).toBe("span_binding_invalid");
+      expect(operatorJson.operatorDiagnostics?.evidenceInvalidReason).toBeNull();
+      expect(JSON.stringify(operatorJson.report)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
+      expect(publicResponse.status).toBe(200);
+      expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(JSON.stringify(publicJson)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
+        if (value === undefined) delete process.env[environmentKey];
+        else process.env[environmentKey] = value;
+      }
+    }
+  });
+
+  it("exposes an invalid evidence reason only to authenticated operator diagnostics", async () => {
+    const previous = { mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL, ops: process.env.AGENTPROOF_OPS_TOKEN };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    process.env.AGENTPROOF_OPS_TOKEN = "ops-secret-value";
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === "https://api.openai.com/v1/responses") {
+        const packet = JSON.parse(JSON.parse(String(init?.body)).input[1].content[0].text);
+        const output = packet.contractVersion === "general_pr_semantic_claim.v2"
+          ? { spanRoles: packet.spans.map((span: { id: string }, index: number) => ({ spanId: span.id, role: index === 0 ? "objective_candidate" : "supporting_context" })) }
+          : {};
+        return Promise.resolve(Response.json({ output_text: JSON.stringify(output) }));
+      }
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({ title: "Maintenance notes", body: "Internal cleanup only.", url: "https://api.github.com/repos/acme/repo/pulls/12", base: { ref: "main", sha: "b".repeat(40), repo: { private: false } }, head: { ref: "agent/validation", sha: "a".repeat(40) } }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "export const status = 'ready';" }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" });
+    try {
+      const operator = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", "x-agentproof-observation-diagnostics": "semantic-boundary-v1", "x-agentproof-ops-token": "ops-secret-value" }, body }));
+      const operatorJson = await operator.json() as { operatorDiagnostics?: { claimInvalidReason?: string | null; evidenceInvalidReason?: string | null }; report: VerificationReport };
+      const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+      expect(operatorJson.operatorDiagnostics).toMatchObject({ claimInvalidReason: null, evidenceInvalidReason: "root_shape_invalid" });
+      expect(JSON.stringify(operatorJson.report)).not.toMatch(/evidenceInvalidReason|semanticEvidenceInvalidReason/);
+      expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(JSON.stringify(publicJson)).not.toMatch(/evidenceInvalidReason|semanticEvidenceInvalidReason/);
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
+        if (value === undefined) delete process.env[environmentKey]; else process.env[environmentKey] = value;
+      }
+    }
+  });
+
+  it("does not call the observer for an explicit deterministic objective in an eligible public PR", async () => {
+    const previous = {
+      mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
+      key: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL
+    };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "https://api.openai.com/v1/responses") throw new Error("semantic provider must not run");
+      if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({
+        title: "Return Ready when checks pass",
+        body: "The service must return Ready when checks pass.",
+        url: "https://api.github.com/repos/acme/repo/pulls/12",
+        base: { ref: "main", sha: baseSha, repo: { private: false } },
+        head: { ref: "agent/validation", sha: headSha }
+      }));
+      if (url.includes("/files?")) return Promise.resolve(Response.json([{ filename: "src/status.ts", status: "modified", patch: "+ return Ready;" }]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" })
+      }));
+      const json = await response.json() as { report: VerificationReport };
+
+      expect(response.status, JSON.stringify(json)).toBe(200);
+      expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(false);
+      expect((json.report as VerificationReportV2).generalPrAssessmentSummary).toBeDefined();
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
+        else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
+      }
+    }
+  });
+
+  it("does not submit request-provided task text to the public-PR semantic observer", async () => {
+    const previous = {
+      mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
+      key: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL
+    };
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL = "gpt-test";
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "https://api.openai.com/v1/responses") {
+        return Promise.resolve(Response.json({ output_text: "{}" }));
+      }
+      if (url.endsWith("/pulls/12")) {
+        return Promise.resolve(Response.json({
+          title: "Public PR",
+          body: "Internal cleanup only.",
+          url: "https://api.github.com/repos/acme/repo/pulls/12",
+          base: { ref: "main", sha: baseSha, repo: { private: false } },
+          head: { ref: "agent/validation", sha: headSha }
+        }));
+      }
+      if (url.includes("/files?")) return Promise.resolve(Response.json([]));
+      if (url.includes("/check-runs")) return Promise.resolve(Response.json({ total_count: 0, check_runs: [] }));
+      if (url.endsWith("/status")) return Promise.resolve(Response.json({ statuses: [] }));
+      throw new Error(`unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prUrl: "https://github.com/acme/repo/pull/12",
+          taskText: "Request-only context must not enter the provider package."
+        })
+      }));
+      const json = await response.json() as { report: VerificationReportV2 };
+
+      expect(response.status, JSON.stringify(json)).toBe(200);
+      expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(false);
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        input: expect.objectContaining({ taskSource: "task" })
+      }));
+      expect(observationSpy.mock.calls[0]?.[0]).not.toHaveProperty("semantic");
+      expect(json.report.generalPrAssessmentSummary?.reasonCodes).toContain("semantic_observer_ineligible");
+    } finally {
+      observationSpy.mockRestore();
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
+        else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
+      }
+    }
+  });
+
+  it("runs configured shadow observations without adding private observations to the response", async () => {
+    const previousMode = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "shadow";
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          taskText: "Acceptance criteria: document the reset procedure.",
+          changedFiles: "docs/reset.md"
+        })
+      }));
+      const json = await response.json() as { report: VerificationReport; observation?: unknown };
+
+      expect(response.status).toBe(200);
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        policy: expect.objectContaining({ releasePhase: "shadow" })
+      }));
+      expect(json.observation).toBeUndefined();
+      expect(JSON.stringify(json)).not.toContain("ledgerDigest");
+      expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    } finally {
+      observationSpy.mockRestore();
+      if (previousMode === undefined) {
+        delete process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+      } else {
+        process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = previousMode;
+      }
+    }
+  });
+
+  it("returns a validator-approved advisory assessment without returning the private observation bundle", async () => {
+    const previousMode = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+    process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+
+    try {
+      const response = await POST(new Request("http://localhost/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prDescription: "The service must return the repository label.",
+          changedFiles: "src/repository-label.ts\ntest/repository-label.test.ts",
+          checks: "CI: passed"
+        })
+      }));
+      const json = await response.json() as { report: VerificationReport; observation?: unknown };
+
+      expect(response.status, JSON.stringify(json)).toBe(200);
+      expect(json.observation).toBeUndefined();
+      expect(json.report).toMatchObject({
+        generalPrAssessmentSummary: {
+          sourceState: "pr_author_claim",
+          overallConclusion: "collection_blocked",
+          counts: expect.objectContaining({ evidence_supported: 0, blocked: 1 })
+        }
+      });
+      expect(JSON.stringify(json)).not.toContain("sourceSpanRefs");
+      expect(JSON.stringify(json)).not.toContain("sourceBindingRef");
+      expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    } finally {
+      if (previousMode === undefined) delete process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
+      else process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = previousMode;
+    }
+  });
+
   it("rejects invalid PR URLs before producing a report", async () => {
     const response = await POST(
       new Request("http://localhost/api/analyze", {

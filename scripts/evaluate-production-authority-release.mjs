@@ -20,7 +20,7 @@ const SOURCE_KEYS = [
   "bindings", "result", "signerKeyId", "signature"
 ];
 const REQUIREMENT_AGGREGATE_KEYS = [
-  "totalCases", "structuralMismatchCount", "falseSupportedCount",
+  "totalCases", "structuralMismatchCount", "falseSupportedCount", "falseMetCount",
   "falseRequirementLocalCiAssociationCount", "crossRequirementReceiptReuseCount", "privacyLeakCount",
   "unexpectedFailure", "durationMs", "githubRequestCount", "githubPageCount", "githubRetryCount",
   "providerCallCount"
@@ -175,7 +175,7 @@ export function signedEvidencePayload(source) {
 export function validateRequirementAggregate(aggregate, expectedTotalCases) {
   if (!Number.isSafeInteger(expectedTotalCases) || expectedTotalCases <= 0 ||
     !hasExactKeys(aggregate, REQUIREMENT_AGGREGATE_KEYS) || aggregate.totalCases !== expectedTotalCases ||
-    !REQUIREMENT_AGGREGATE_KEYS.slice(1, 6).every((key) => isCountOrUnknown(aggregate[key])) ||
+    !REQUIREMENT_AGGREGATE_KEYS.slice(1, 7).every((key) => isCountOrUnknown(aggregate[key])) ||
     aggregate.structuralMismatchCount > aggregate.totalCases ||
     !isCountRateGroup(aggregate.unexpectedFailure, aggregate.totalCases) ||
     !["durationMs", "githubRequestCount", "githubPageCount", "githubRetryCount"].every((key) => isPercentileGroup(aggregate[key])) ||

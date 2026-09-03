@@ -8,6 +8,10 @@ import {
 } from "./llm-semantic-package";
 import { extractOpenAIResponseText } from "./openai-verifier";
 import { HYBRID_PLANNER_MAX_OUTPUT_BYTES } from "./hybrid-planner";
+import {
+  GeneralPrSemanticProviderFailure,
+  type GeneralPrSemanticObserverPackageV4
+} from "./general-pr-semantic-observer";
 import { redactSecrets } from "./redact";
 import type {
   HybridPlannerTransportRequest,
@@ -41,7 +45,9 @@ export class OpenAISemanticError extends Error {
     public readonly code: OpenAISemanticFailureCode,
     public readonly retryable: boolean,
     message: string,
-    public readonly httpStatus?: number
+    public readonly httpStatus?: number,
+    public readonly providerCode?: "invalid_json_schema",
+    public readonly incompleteReason?: "max_output_tokens"
   ) {
     super(message);
     this.name = "OpenAISemanticError";
@@ -58,6 +64,136 @@ export interface OpenAISemanticOptions {
 export interface OpenAISemanticResult {
   output: LlmSemanticOutput;
   validation: LlmSemanticValidationResult;
+}
+
+/** Sends the already bounded observer package; validation remains with the observer. */
+export async function submitGeneralPrSemanticObservationWithOpenAI(
+  semanticPackage: GeneralPrSemanticObserverPackageV4,
+  options: Pick<OpenAISemanticOptions, "apiKey" | "fetchFn">
+): Promise<unknown> {
+  try {
+    const response = await fetchGeneralPrSemanticObservationResponse(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      headers: openAIHeaders(options.apiKey),
+      body: JSON.stringify({
+        model: semanticPackage.request.model,
+        input: [
+          { role: "system", content: [{ type: "input_text", text: semanticPackage.system }] },
+          { role: "user", content: [{ type: "input_text", text: JSON.stringify(semanticPackage.input) }] }
+        ],
+        text: { format: semanticPackage.request.responseFormat },
+        store: false,
+        max_output_tokens: semanticPackage.request.maxOutputTokens
+      }),
+      signal: AbortSignal.timeout(semanticPackage.request.timeoutMs)
+    }, options.fetchFn);
+    const payload = await parseOpenAIResponseJson(response);
+    const incompleteReason = openAIIncompleteReason(payload);
+    if (incompleteReason) throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI observer response was incomplete.", undefined, undefined, incompleteReason);
+    const text = extractOpenAIResponseText(payload);
+    if (!text) throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI observer response did not contain text output.");
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI observer response was not valid JSON.");
+    }
+  } catch (error) {
+    throw toGeneralPrSemanticProviderFailure(error, semanticPackage.stage);
+  }
+}
+
+/** This staged path reads only a bounded allowlisted schema code from 400 bodies. */
+async function fetchGeneralPrSemanticObservationResponse(
+  url: string,
+  init: RequestInit,
+  fetchFn: typeof fetch | undefined
+): Promise<Response> {
+  try {
+    const response = await (fetchFn ?? fetch)(url, init);
+    if (response.ok) return response;
+
+    const status = response.status;
+    if (status === 408) throw new OpenAISemanticError("openai_timeout", true, "OpenAI semantic request timed out.", status);
+    if (status === 409 || status === 429) throw new OpenAISemanticError("openai_rate_limited", true, "OpenAI semantic request was temporarily limited.", status);
+    if (status >= 500) throw new OpenAISemanticError("openai_provider_unavailable", true, "OpenAI semantic provider is unavailable.", status);
+    if (status === 401 || status === 403) throw new OpenAISemanticError("openai_auth_failed", false, "OpenAI semantic authorization failed.", status);
+    const providerCode = status === 400 ? await readOpenAIInvalidSchemaCode(response) : undefined;
+    throw new OpenAISemanticError("openai_request_invalid", false, "OpenAI semantic request was rejected.", status, providerCode);
+  } catch (error) {
+    if (error instanceof OpenAISemanticError) throw error;
+    const name = error instanceof Error ? error.name : "";
+    if (name === "AbortError" || name === "TimeoutError") {
+      throw new OpenAISemanticError("openai_timeout", true, "OpenAI semantic request timed out.");
+    }
+    throw new OpenAISemanticError("openai_network_error", true, "OpenAI semantic request could not reach the provider.");
+  }
+}
+
+function toGeneralPrSemanticProviderFailure(
+  error: unknown,
+  phase: GeneralPrSemanticObserverPackageV4["stage"]
+): GeneralPrSemanticProviderFailure {
+  if (error instanceof GeneralPrSemanticProviderFailure) return error;
+  if (error instanceof OpenAISemanticError) {
+    if (error.code === "openai_timeout") return new GeneralPrSemanticProviderFailure("provider_request", true, { phase, category: "timeout", ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}) });
+    const responseFailure = error.code === "openai_response_not_found" ||
+      error.code === "openai_response_invalid" ||
+      error.code === "openai_output_invalid" ||
+      error.code === "openai_output_rejected";
+    const category = error.providerCode === "invalid_json_schema" ? "invalid_json_schema"
+      : error.incompleteReason ? "incomplete"
+      : error.code === "openai_rate_limited" ? "rate_limited"
+      : error.code === "openai_provider_unavailable" ? "provider_unavailable"
+      : error.code === "openai_auth_failed" ? "auth_failed"
+      : error.code === "openai_request_invalid" ? "request_invalid"
+      : error.code === "openai_network_error" ? "network_error"
+      : error.code === "openai_output_invalid" ? "output_invalid"
+      : "response_invalid";
+    return new GeneralPrSemanticProviderFailure(responseFailure ? "provider_response" : "provider_request", false, {
+      phase,
+      category,
+      ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
+      ...(error.incompleteReason ? { incompleteReason: error.incompleteReason } : {})
+    });
+  }
+  return new GeneralPrSemanticProviderFailure("provider_response");
+}
+
+function openAIIncompleteReason(payload: unknown): "max_output_tokens" | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const value = payload as { status?: unknown; incomplete_details?: { reason?: unknown } };
+  return value.status === "incomplete" && value.incomplete_details?.reason === "max_output_tokens" ? "max_output_tokens" : undefined;
+}
+
+async function readOpenAIInvalidSchemaCode(response: Response): Promise<"invalid_json_schema" | undefined> {
+  const length = Number(response.headers.get("content-length"));
+  if (Number.isFinite(length) && length > 4096) return undefined;
+  const reader = response.body?.getReader();
+  if (!reader) return undefined;
+  try {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (size <= 4096) {
+      const next = await reader.read();
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > 4096) return undefined;
+      chunks.push(next.value);
+    }
+    const text = new TextDecoder().decode(concatBytes(chunks, size));
+    return (JSON.parse(text) as { error?: { code?: unknown } }).error?.code === "invalid_json_schema" ? "invalid_json_schema" : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    try { await reader.cancel(); } catch { /* optional diagnostic read only */ }
+  }
+}
+
+function concatBytes(chunks: Uint8Array[], size: number): Uint8Array {
+  const value = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { value.set(chunk, offset); offset += chunk.byteLength; }
+  return value;
 }
 
 /** One-shot hybrid planner POST. Validation/finalization stay in the shared orchestrator. */

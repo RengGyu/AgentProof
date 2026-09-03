@@ -22,6 +22,7 @@ import {
 } from "./tenant-deletion-state";
 import { clearUsageQuotaForTests } from "./usage-quota";
 import { clearBillingWebhookEventsForTests } from "./billing-beta";
+import * as generalPrObservationService from "./general-pr-observation-service";
 
 describe("analysis worker preflight", () => {
   afterEach(() => {
@@ -1858,6 +1859,89 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("key=");
   });
 
+  it("runs advisory observations without retaining private bundles in a worker result", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "advisory");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("OPENAI_MODEL", "gpt-test");
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    const githubFetch = mockWorkerFetch({ repositoryPrivate: false, pullRequestBody: "Internal cleanup only." });
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") {
+        return Promise.resolve(Response.json({ output_text: JSON.stringify(validGeneralPrObserverCandidate(init)) }));
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+
+    try {
+      const result = await runNextAnalysisJob({
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+        now: new Date("2026-06-30T00:01:00Z")
+      });
+      const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0] });
+
+      expect(result.status, JSON.stringify(result)).toBe("completed");
+      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
+        policy: expect.objectContaining({
+          semanticObservation: "eligible_public_pr",
+          assessmentProjection: "advisory"
+        }),
+        input: expect.objectContaining({ taskText: "" }),
+        semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
+      }));
+      const observerCalls = fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses");
+      expect(observerCalls).toHaveLength(2);
+      expect(observerCalls.map(([, init]) => {
+        const body = JSON.parse(String(init?.body));
+        return JSON.parse(body.input[1].content[0].text).contractVersion;
+      })).toEqual(["general_pr_semantic_claim.v2", "general_pr_semantic_evidence.v1"]);
+      expect(serialized).not.toContain("ledgerDigest");
+      expect(serialized).not.toContain("generalPrObservation");
+      const observationResult = await observationSpy.mock.results.at(-1)?.value;
+      expect(observationResult?.bundle).toMatchObject({
+        semanticState: "valid",
+        semanticFailureStage: null,
+        diagnostics: { semanticAdmission: "admitted" },
+        semanticStageDiagnostics: { claimState: "valid", evidenceState: "valid", providerCallCount: 2 }
+      });
+      expect(observationResult?.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
+      expect(observationResult?.bundle?.relationLevelCounts.verified).toBe(0);
+    } finally {
+      observationSpy.mockRestore();
+    }
+  });
+
+  it("keeps a post-initial GitHub refresh failure private to the worker observation bundle", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "advisory");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("OPENAI_MODEL", "gpt-test");
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    const githubFetch = mockWorkerFetch({ repositoryPrivate: false, pullRequestBody: "Internal cleanup only." });
+    let pullReads = 0;
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/responses") return Promise.resolve(Response.json({ output_text: "{}" }));
+      if (String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7" && ++pullReads === 3) return Promise.resolve(new Response("missing", { status: 404 }));
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+    try {
+      const result = await runNextAnalysisJob({ requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date("2026-06-30T00:01:00Z") });
+      const observationResult = await observationSpy.mock.results.at(-1)?.value;
+      const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0], audits: getAuditEventsForTests() });
+
+      expect(result.status).toBe("completed");
+      expect(observationResult?.bundle).toMatchObject({ semanticFreshnessFailure: { phase: "before_claim", state: "unavailable", reason: "fetch_failed" } });
+      expect(fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses")).toHaveLength(0);
+      expect(serialized).not.toContain("fetch_failed");
+    } finally {
+      observationSpy.mockRestore();
+    }
+  });
+
   it("fails closed when the PR base changes after collection and before publication", async () => {
     stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
     const githubFetch = mockWorkerFetch();
@@ -2953,7 +3037,23 @@ function exampleFromJsonSchema(schema: Record<string, unknown>, root: Record<str
   throw new Error("Test schema did not provide a deterministic example value.");
 }
 
-function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
+function validGeneralPrObserverCandidate(init?: RequestInit) {
+  const request = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ text: string }> }> };
+  const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as { contractVersion: string; spans?: Array<{ id: string }> };
+  if (observerInput.contractVersion === "general_pr_semantic_evidence.v1") {
+    return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
+  }
+  const objective = observerInput.spans?.[0];
+  if (!objective) throw new Error("claim package must include a span");
+  return {
+    spanRoles: observerInput.spans!.map((span) => ({
+      spanId: span.id,
+      role: span.id === objective.id ? "objective_candidate" : "supporting_context"
+    }))
+  };
+}
+
+function mockWorkerFetch(options: { pullRequestBody?: string; repositoryPrivate?: boolean } = {}) {
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url);
     const method = init?.method ?? "GET";
@@ -2971,7 +3071,7 @@ function mockWorkerFetch(options: { pullRequestBody?: string } = {}) {
           ?? "Acceptance criteria: add signed webhook-triggered AgentProof analysis. Save only summary reports. Keep automated comments opt-in.",
         url: `https://api.github.com/repos/RengGyu/AgentProof/pulls/${pullNumber}`,
         user: { login: "agent-author" },
-        base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+        base: { ref: "main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", repo: { private: options.repositoryPrivate } },
         head: { ref: "feature/app-automation", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
       });
     }

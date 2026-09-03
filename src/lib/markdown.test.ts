@@ -1,15 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { AGENTPROOF_COMMENT_MARKER, reportToGitHubComment, reportToMarkdown } from "./markdown";
 import { demoScenarios } from "./sample-data";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import { generateVerificationReport } from "./verifier";
 import { generateVerificationReportV2, generateVerificationReportV2FromInput } from "./verifier";
 import type { PullRequestInput } from "./types";
+
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
 
 describe("reportToGitHubComment", () => {
   it("omits private proof receipts from Markdown and GitHub comments", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     const requirementId = report.requirements[0]!.requirementId;
     Object.assign(report.proofGraph, {
+      transientObserver: transientSelectionFixture(),
       sourceBindings: [{
         version: 1,
         kind: "requirement_source_binding",
@@ -62,6 +75,7 @@ describe("reportToGitHubComment", () => {
     ]) {
       expect(output).not.toContain(privateValue);
     }
+    expectNoSelectionSentinels(output);
   });
 
   it("separates v2 no-contract outcomes from observed implementation and execution evidence", () => {
@@ -76,6 +90,36 @@ describe("reportToGitHubComment", () => {
     expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
     expect(comment.match(/Approved verification contract is missing\./g)).toHaveLength(1);
     expect(output).not.toContain("Outcome was not assessed against an approved verification contract.");
+  });
+
+  it("renders the target-free ordinary-PR assessment without turning it into a contract outcome", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "evidence_partial",
+      counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"],
+      observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
+    };
+    Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private" },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
+    Object.assign(report.generalPrAssessmentSummary.observations as object, { diagnostics: "private-observation-sentinel" });
+
+    const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
+
+    expect(output).toContain("Ordinary PR evidence assessment");
+    expect(output).toContain("Partial observations; objective fulfillment remains unconfirmed");
+    expect(output).toContain("PR description claim — reviewer confirmation needed");
+    expect(output).toContain("Partial evidence: 1");
+    expect(output).toContain("Semantic assessment was unavailable.");
+    expect(output).toContain("The target-to-evidence relation remains unresolved.");
+    expect(output).toContain("Observed changed artifacts: 2");
+    expect(output).not.toContain("private-observation-sentinel");
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(output).not.toContain(forbidden);
   });
 
   it("uses the strict v2 outcome rather than high observed coverage on every Markdown surface", () => {

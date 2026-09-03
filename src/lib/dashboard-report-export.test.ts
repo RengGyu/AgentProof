@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "./dashboard-report-export";
+import { sanitizeReportForShare } from "./report-share";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import { generateVerificationReportV2FromInput } from "./verifier";
+
+const PRIVATE_ASSESSMENT_TERMS = [
+  "sourceSpanRefs",
+  "sourceBindingRef",
+  "ledgerDigest",
+  "semantic output",
+  "workflowIdentity",
+  "github_pat_",
+  "diagnostics",
+  "targets"
+];
 
 const detail = {
   repositoryFullName: "synthetic-org/agentproof-rendering-fixture",
@@ -98,6 +111,63 @@ describe("dashboard report export", () => {
       "User-facing interaction needs component or browser evidence beyond logic and suite execution."
     ]);
     expect(JSON.stringify(json.requirements[0])).not.toContain("Approved verification contract is missing.");
+  });
+
+  it("labels references omitted from a portable summary instead of treating them as unavailable", () => {
+    const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    strictDetail.report = sanitizeReportForShare(generatedSearchEmptyStateReport());
+
+    const markdown = dashboardReportToMarkdown(strictDetail);
+    const json = JSON.parse(dashboardReportToJson(strictDetail));
+
+    expect(markdown).toContain("Evidence visibility: Evidence details are omitted from this portable summary.");
+    expect(markdown).toContain("Evidence IDs: Omitted from portable summary");
+    expect(json.requirements[0]).toMatchObject({ evidence_visibility: "omitted_for_summary" });
+  });
+
+  it("exports the bounded ordinary-PR assessment without private target records", () => {
+    const assessmentDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
+    const report = generatedSearchEmptyStateReport();
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "pr_author_claim",
+      overallConclusion: "evidence_partial",
+      counts: { evidence_supported: 0, evidence_partial: 1, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"],
+      observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
+    };
+    Object.assign(report.generalPrAssessmentSummary as Record<string, unknown>, {
+      diagnostics: { ledgerDigest: "ledgerDigest", semanticOutput: "semantic output", workflowIdentity: "workflowIdentity", token: "github_pat_private", ...transientSelectionFixture() },
+      targets: [{ sourceBindingRef: "sourceBindingRef", sourceSpanRefs: ["sourceSpanRefs"] }]
+    });
+    Object.assign(report.generalPrAssessmentSummary.observations as object, { diagnostics: "private-observation-sentinel" });
+    assessmentDetail.report = report;
+
+    const markdown = dashboardReportToMarkdown(assessmentDetail);
+    const json = JSON.parse(dashboardReportToJson(assessmentDetail));
+    const output = `${markdown}\n${JSON.stringify(json)}`;
+
+    expect(markdown).toContain("## Ordinary PR Evidence Assessment");
+    expect(markdown).toContain("Partial observations; objective fulfillment remains unconfirmed");
+    expect(markdown).toContain("Semantic assessment was unavailable.");
+    expect(json.ordinary_pr_assessment).toMatchObject({
+      version: 1,
+      mode: "ordinary_pr",
+      conclusion: "evidence_partial",
+      counts: { evidence_partial: 1 },
+      reason_codes: ["author_claim_requires_confirmation", "semantic_observer_unavailable", "target_relation_unresolved"]
+    });
+    expect(json.ordinary_pr_assessment.observations).toMatchObject({
+      version: 1,
+      inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 },
+      links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 },
+      coverage: { source: "complete", evidence: "sampled" }
+    });
+    expect(json.ordinary_pr_assessment.observations.diagnostics).toBeUndefined();
+    expect(output).not.toContain("private-observation-sentinel");
+    for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(output).not.toContain(forbidden);
+    expectNoSelectionSentinels(output);
   });
 
   it("renders a verified authoritative outcome as contract-supported", () => {

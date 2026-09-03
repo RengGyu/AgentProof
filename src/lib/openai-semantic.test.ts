@@ -4,11 +4,19 @@ import {
   retrieveHybridPlannerWithOpenAI,
   retrieveMissingSemanticsWithOpenAIBackground,
   retrieveSemanticsWithOpenAIBackground,
+  submitGeneralPrSemanticObservationWithOpenAI,
   submitHybridPlannerWithOpenAI,
   submitMissingSemanticsWithOpenAIBackground,
   submitSemanticsWithOpenAIBackground
 } from "./openai-semantic";
 import { extractRequirementSpanSeed } from "./extractors";
+import {
+  type GeneralPrSemanticObserverPackageV4
+} from "./general-pr-semantic-observer";
+import {
+  GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME,
+  GENERAL_PR_SEMANTIC_EVIDENCE_SCHEMA_NAME
+} from "./general-pr-semantic-proposal";
 import { bindHybridPlannerSeedHash, buildHybridPlannerPackage, buildHybridPlannerPlan } from "./hybrid-planner";
 import {
   buildLlmSemanticPackage,
@@ -18,6 +26,107 @@ import { demoScenarios } from "./sample-data";
 import { generateVerificationReport } from "./verifier";
 
 describe("OpenAI semantic adapter", () => {
+  it.each(stagedSemanticPackages())("sends the $stage package's strict schema without retention", async (semanticPackage) => {
+    const fetchMock = vi.fn(async () => Response.json({ output_text: "{}" }));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+
+    await expect(submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    })).resolves.toEqual({});
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(timeoutSpy).toHaveBeenCalledWith(semanticPackage.request.timeoutMs);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body).toMatchObject({
+      model: semanticPackage.request.model,
+      store: false,
+      max_output_tokens: semanticPackage.request.maxOutputTokens,
+      text: { format: { type: "json_schema", strict: true, name: semanticPackage.request.responseFormat.name } }
+    });
+    expect(body.text.format.schema).toEqual(semanticPackage.request.responseFormat.schema);
+    timeoutSpy.mockRestore();
+  });
+
+  it("passes a package's remaining 20 second timeout to AbortSignal without retention", async () => {
+    const semanticPackage = { ...stagedSemanticPackages()[1]!, request: { ...stagedSemanticPackages()[1]!.request, timeoutMs: 20_000 } };
+    const fetchMock = vi.fn(async () => Response.json({ output_text: "{}" }));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+
+    await submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(20_000);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).store).toBe(false);
+    timeoutSpy.mockRestore();
+  });
+
+  it.each([
+    ["rate limit", () => ({ ok: false, status: 429, text: vi.fn(async () => "PROVIDER_SECRET") }), { stage: "provider_request", timedOut: false }],
+    ["timeout", () => { throw new DOMException("PROVIDER_SECRET", "TimeoutError"); }, { stage: "provider_request", timedOut: true }],
+    ["invalid JSON", () => new Response("not JSON"), { stage: "provider_response", timedOut: false }],
+    ["missing output", () => Response.json({}), { stage: "provider_response", timedOut: false }]
+  ] as const)("makes one request and exposes only a closed failure for %s", async (_caseName, response, expected) => {
+    let providerErrorText: ReturnType<typeof vi.fn> | undefined;
+    const fetchMock = vi.fn(async () => {
+      const next = response();
+      if (next && typeof next === "object" && "text" in next && vi.isMockFunction(next.text)) {
+        providerErrorText = next.text;
+      }
+      return next as Response;
+    });
+
+    const failure = await submitGeneralPrSemanticObservationWithOpenAI(stagedSemanticPackages()[0]!, {
+      apiKey: "test-key",
+      fetchFn: fetchMock as unknown as typeof fetch
+    }).catch((error: unknown) => error);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(failure).toMatchObject(expected);
+    expect(JSON.stringify(failure)).not.toContain("PROVIDER_SECRET");
+    if (providerErrorText) {
+      expect(providerErrorText).not.toHaveBeenCalled();
+    }
+  });
+
+  it("allows only invalid_json_schema from a bounded rejected-request body", async () => {
+    const failure = await submitGeneralPrSemanticObservationWithOpenAI(stagedSemanticPackages()[0]!, {
+      apiKey: "test-key",
+      fetchFn: vi.fn(async () => new Response(JSON.stringify({ error: { code: "invalid_json_schema", message: "PROVIDER_SECRET" } }), { status: 400 })) as unknown as typeof fetch
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ diagnostic: { phase: "claim_discovery", category: "invalid_json_schema", httpStatus: 400 } });
+    expect(JSON.stringify(failure)).not.toContain("PROVIDER_SECRET");
+  });
+
+  it.each([
+    ["request invalid", 400, { phase: "evidence_linking", category: "request_invalid", httpStatus: 400 }],
+    ["rate limited", 429, { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 }],
+    ["provider unavailable", 503, { phase: "evidence_linking", category: "provider_unavailable", httpStatus: 503 }]
+  ] as const)("keeps closed %s diagnostics for the staged provider boundary", async (_name, status, expected) => {
+    const failure = await submitGeneralPrSemanticObservationWithOpenAI(stagedSemanticPackages()[1]!, {
+      apiKey: "test-key",
+      fetchFn: vi.fn(async () => new Response("PROVIDER_SECRET", { status })) as unknown as typeof fetch
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ diagnostic: expected });
+    expect(JSON.stringify(failure)).not.toContain("PROVIDER_SECRET");
+  });
+
+  it("marks incomplete max-output responses without retaining their output", async () => {
+    const failure = await submitGeneralPrSemanticObservationWithOpenAI(stagedSemanticPackages()[1]!, {
+      apiKey: "test-key",
+      fetchFn: vi.fn(async () => Response.json({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output_text: "PROVIDER_SECRET" })) as unknown as typeof fetch
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ diagnostic: { phase: "evidence_linking", category: "incomplete", incompleteReason: "max_output_tokens" } });
+    expect(JSON.stringify(failure)).not.toContain("PROVIDER_SECRET");
+  });
+
   it("submits one strict hybrid planner response with store false and no repair request", async () => {
     const { input, seed, plannerPackage, plan } = hybridFixture();
     const fetchMock = vi.fn().mockResolvedValue(Response.json({
@@ -606,6 +715,54 @@ describe("OpenAI semantic adapter", () => {
     45_000
   );
 });
+
+function stagedSemanticPackages(): GeneralPrSemanticObserverPackageV4[] {
+  return [
+    {
+      stage: "claim_discovery",
+      system: "claim system",
+      input: {
+        contractVersion: "general_pr_semantic_claim.v2",
+        schemaVersion: "agentproof_general_pr_claim_observer_v2",
+        seedHash: "a".repeat(64),
+        claimSelectionHash: "b".repeat(64),
+        coverage: "complete",
+        spans: []
+      },
+      request: stagedRequest("claim-model", 1_111, GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME)
+    },
+    {
+      stage: "evidence_linking",
+      system: "evidence system",
+      input: {
+        contractVersion: "general_pr_semantic_evidence.v1",
+        schemaVersion: "agentproof_general_pr_evidence_observer_v1",
+        seedHash: "a".repeat(64),
+        claimSelectionHash: "b".repeat(64),
+        evidenceSelectionHash: "c".repeat(64),
+        coverage: "sampled",
+        objectiveGroups: [],
+        changeClusterDescriptors: [],
+        evidenceDescriptors: []
+      },
+      request: stagedRequest("evidence-model", 2_222, GENERAL_PR_SEMANTIC_EVIDENCE_SCHEMA_NAME)
+    }
+  ];
+}
+
+function stagedRequest(
+  model: string,
+  timeoutMs: number,
+  name: typeof GENERAL_PR_SEMANTIC_CLAIM_SCHEMA_NAME | typeof GENERAL_PR_SEMANTIC_EVIDENCE_SCHEMA_NAME
+) {
+  return {
+    model,
+    store: false as const,
+    timeoutMs,
+    maxOutputTokens: 3200 as const,
+    responseFormat: { type: "json_schema" as const, name, strict: true as const, schema: { type: "object" } }
+  };
+}
 
 function hybridFixture() {
   const input = {

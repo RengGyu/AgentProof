@@ -91,6 +91,7 @@ export function evaluateEvidenceReleaseGateV1({ oracle, candidates }) {
     totalCases: oracleCases.length,
     structuralMismatchCount,
     falseSupportedCount: falseSupported,
+    falseMetCount: comparisonComplete ? countFalseMet(oracleCases, candidateCases) : UNKNOWN,
     falseRequirementLocalCiAssociationCount: falseLocalCi,
     crossRequirementReceiptReuseCount: receiptReuse,
     privacyLeakCount: privacyLeak,
@@ -122,6 +123,7 @@ export function evaluateEvidenceReleaseGateV2({ cases, seal, candidates }) {
     totalCases: reference.cases.length,
     structuralMismatchCount,
     falseSupportedCount: countV2FalseSupported(reference.cases, candidateCases),
+    falseMetCount: countV2FalseMet(reference.cases, candidateCases),
     falseRequirementLocalCiAssociationCount: localCi,
     crossRequirementReceiptReuseCount: receiptReuse,
     privacyLeakCount: privacyLeak,
@@ -147,6 +149,18 @@ function countV2FalseSupported(referenceCases, candidateCases) {
       for (let criterionIndex = 0; criterionIndex < Math.min(expected[objectiveIndex].criteria.length, actual[objectiveIndex].criteria.length); criterionIndex += 1) {
         if (expected[objectiveIndex].criteria[criterionIndex].state !== "satisfied" && actual[objectiveIndex].criteria[criterionIndex].state === "satisfied") count += 1;
       }
+    }
+  }
+  return count;
+}
+
+function countV2FalseMet(referenceCases, candidateCases) {
+  let count = 0;
+  for (let index = 0; index < referenceCases.length; index += 1) {
+    const expected = referenceCases[index].reference.objectives;
+    const actual = candidateCases[index].actual.objectives;
+    for (let objectiveIndex = 0; objectiveIndex < Math.min(expected.length, actual.length); objectiveIndex += 1) {
+      if (expected[objectiveIndex].outcome !== "met" && actual[objectiveIndex].outcome === "met") count += 1;
     }
   }
   return count;
@@ -209,6 +223,7 @@ export function releaseGatePasses(result) {
   return isPositiveInteger(result?.totalCases) &&
     isZero(result?.structuralMismatchCount) &&
     isZero(result?.falseSupportedCount) &&
+    isZero(result?.falseMetCount) &&
     isZero(result?.falseRequirementLocalCiAssociationCount) &&
     isZero(result?.crossRequirementReceiptReuseCount) &&
     isZero(result?.privacyLeakCount) &&
@@ -223,6 +238,7 @@ function unavailableReleaseGateResult() {
     totalCases: UNKNOWN,
     structuralMismatchCount: UNKNOWN,
     falseSupportedCount: UNKNOWN,
+    falseMetCount: UNKNOWN,
     falseRequirementLocalCiAssociationCount: UNKNOWN,
     crossRequirementReceiptReuseCount: UNKNOWN,
     privacyLeakCount: UNKNOWN,
@@ -388,8 +404,21 @@ function countFalseSupported(oracleCases, candidateCases) {
       if (!isRecord(expected) || !isRecord(actual)) continue;
       const unexpectedSatisfiedAxis = Object.entries(isRecord(expected.axisStates) ? expected.axisStates : {})
         .some(([axis, state]) => state !== POSITIVE_AXIS_STATE && actual.axisStates?.[axis] === POSITIVE_AXIS_STATE);
-      const unexpectedMetOutcome = expected.outcome !== "met" && actual.outcome === "met";
-      if (unexpectedSatisfiedAxis || unexpectedMetOutcome) count += 1;
+      if (unexpectedSatisfiedAxis) count += 1;
+    }
+  }
+  return count;
+}
+
+function countFalseMet(oracleCases, candidateCases) {
+  let count = 0;
+  for (let caseIndex = 0; caseIndex < oracleCases.length; caseIndex += 1) {
+    const expectedRequirements = arrayOrEmpty(oracleCases[caseIndex]?.expected?.requirements);
+    const actualRequirements = arrayOrEmpty(candidateCases[caseIndex]?.actual?.requirements);
+    for (let index = 0; index < expectedRequirements.length; index += 1) {
+      const expected = expectedRequirements[index];
+      const actual = actualRequirements[index];
+      if (isRecord(expected) && isRecord(actual) && expected.outcome !== "met" && actual.outcome === "met") count += 1;
     }
   }
   return count;

@@ -1,6 +1,7 @@
 import { redactSecrets } from "./redact";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
+import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
 
 const EXPORT_SCHEMA_VERSION = "agentproof.dashboard-report-export.v1";
@@ -28,6 +29,9 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
   });
   const locationsByEvidenceId = new Map(exported.evidence_locations.map((item) => [item.id, item.safe_location]));
   const contractGuidance = verificationContractGuidance(detail.report?.verificationContract?.state);
+  const ordinaryPrAssessment = detail.report?.generalPrAssessmentSummary
+    ? presentGeneralPrAssessmentSummary(detail.report.generalPrAssessmentSummary)
+    : undefined;
   const lines = [
     "# AgentProof evidence report",
     "",
@@ -43,6 +47,15 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     ...(exported.verification_policy ? [`**Policy:** ${exported.verification_policy}`] : []),
     ...(exported.verification_outcome_note ? [`**Outcome policy:** ${exported.verification_outcome_note}`] : []),
     ...(contractGuidance ? [`**Contract guidance:** ${contractGuidance}`] : []),
+    ...(ordinaryPrAssessment ? [
+      "",
+      "## Ordinary PR Evidence Assessment",
+      "",
+      `- Result: ${ordinaryPrAssessment.conclusionLabel}`,
+      `- Source: ${ordinaryPrAssessment.sourceLabel}`,
+      `- ${ordinaryPrAssessment.countsLabel}`,
+      ...ordinaryPrAssessment.reasonLabels.map((reason) => `- ${reason}`)
+    ] : []),
     "",
     "## Requirements",
     "",
@@ -101,6 +114,9 @@ function conciseRequirementMarkdown(
     ...(item.outcomeLabel && item.outcomeMeaning ? [`  - Requirement outcome: ${item.outcomeLabel}`, `  - Outcome basis: ${item.outcomeMeaning}`] : []),
     ...(item.sourceAuthorityLabel ? [`  - Requirement source: ${item.sourceAuthorityLabel}`] : []),
     ...(item.sourceAuthorityMeaning ? [`  - Source authority: ${item.sourceAuthorityMeaning}`] : []),
+    ...(item.evidenceVisibility === "omitted_for_summary" && item.evidenceVisibilityLabel
+      ? [`  - Evidence visibility: ${item.evidenceVisibilityLabel}`]
+      : []),
     `  - What the evidence shows: ${item.explanation.text}`,
     ...(item.primaryGap ? [`  - Key gap: ${item.primaryGap}`] : []),
     ...(item.nextAction ? [`  - Next: ${item.nextAction}`] : []),
@@ -110,8 +126,8 @@ function conciseRequirementMarkdown(
     "  <summary>Evidence details</summary>",
     "",
     `  Requirement ID: ${item.requirementId}`,
-    `  Evidence IDs: ${references.join(", ") || "Unavailable"}`,
-    `  Locations: ${locations.join(", ") || "Unavailable"}`,
+    `  Evidence IDs: ${references.join(", ") || (item.evidenceVisibility === "omitted_for_summary" ? "Omitted from portable summary" : "Unavailable")}`,
+    `  Locations: ${locations.join(", ") || (item.evidenceVisibility === "omitted_for_summary" ? "Omitted from portable summary" : "Unavailable")}`,
     "",
     "  </details>"
   ];
@@ -144,6 +160,22 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       verification_policy: "Strict verification contract",
       verification_outcome_note: verificationOutcomeNote(report.verificationContract.state)
     } : {}),
+    ...(report?.generalPrAssessmentSummary ? {
+      ordinary_pr_assessment: {
+        version: report.generalPrAssessmentSummary.version,
+        mode: report.generalPrAssessmentSummary.mode,
+        conclusion: report.generalPrAssessmentSummary.overallConclusion,
+        source_state: report.generalPrAssessmentSummary.sourceState,
+        counts: { ...report.generalPrAssessmentSummary.counts },
+        reason_codes: [...report.generalPrAssessmentSummary.reasonCodes],
+        ...(report.generalPrAssessmentSummary.observations ? { observations: {
+          version: report.generalPrAssessmentSummary.observations.version,
+          inventory: { state: report.generalPrAssessmentSummary.observations.inventory.state, changedArtifacts: report.generalPrAssessmentSummary.observations.inventory.changedArtifacts, changedTestCandidates: report.generalPrAssessmentSummary.observations.inventory.changedTestCandidates },
+          links: { state: report.generalPrAssessmentSummary.observations.links.state, linkedObjectives: report.generalPrAssessmentSummary.observations.links.linkedObjectives, supports: report.generalPrAssessmentSummary.observations.links.supports, tests: report.generalPrAssessmentSummary.observations.links.tests, implements: report.generalPrAssessmentSummary.observations.links.implements, contradicts: report.generalPrAssessmentSummary.observations.links.contradicts },
+          coverage: { source: report.generalPrAssessmentSummary.observations.coverage.source, evidence: report.generalPrAssessmentSummary.observations.coverage.evidence }
+        } } : {})
+      }
+    } : {}),
     requirements: (report?.requirements ?? []).map((item) => {
       const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, item.requirementId) : undefined;
       return {
@@ -153,7 +185,8 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
           outcome: presentation.outcome,
           outcome_label: presentation.outcomeLabel,
           outcome_basis: presentation.outcomeBasis,
-          observed_evidence_label: presentation.observationLabel
+          observed_evidence_label: presentation.observationLabel,
+          evidence_visibility: presentation.evidenceVisibility
         } : {}),
         ...(item.sourceAuthority ? { source_authority: item.sourceAuthority } : {}),
         evidence_ids: item.evidenceRefs.map((reference) => safeText(reference) ?? "Unavailable"),

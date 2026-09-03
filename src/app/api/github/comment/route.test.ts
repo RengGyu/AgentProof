@@ -3,6 +3,7 @@ import { AGENTPROOF_COMMENT_MARKER } from "@/lib/markdown";
 import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "@/lib/verifier";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "@/lib/general-pr-selection-sentinels.test-fixture";
 import { POST } from "./route";
 
 describe("POST /api/github/comment", () => {
@@ -29,9 +30,11 @@ describe("POST /api/github/comment", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects invalid report shapes before calling GitHub", async () => {
+  it("rejects unknown transient observer fields on an otherwise valid report before calling GitHub", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
+    const report = reportFor("https://github.com/org/repo/pull/1");
+    Object.assign(report as unknown as Record<string, unknown>, transientSelectionFixture());
 
     const response = await POST(
       new Request("http://localhost/api/github/comment", {
@@ -39,12 +42,13 @@ describe("POST /api/github/comment", () => {
         body: JSON.stringify({
           prUrl: "https://github.com/org/repo/pull/1",
           githubToken: "token",
-          report: { analysisId: "bad" }
+          report
         })
       })
     );
 
     expect(response.status).toBe(422);
+    expectNoSelectionSentinels(await response.text());
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

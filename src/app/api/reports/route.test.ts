@@ -176,13 +176,43 @@ describe("POST /api/reports", () => {
     const response = await POST(
       new Request("http://localhost/api/reports", {
         method: "POST",
-        body: "x".repeat(121_000)
+        body: "x".repeat(1_000_001)
       })
     );
     const json = await response.json();
 
     expect(response.status).toBe(413);
     expect(json.error).toContain("too large");
+  });
+
+  it("projects a valid full report above the legacy request limit before summary-only storage", async () => {
+    const report = generateVerificationReport(demoScenarios["scope-creep"]);
+    const privateEvidenceMarker = "full-evidence-marker-that-must-not-be-saved";
+    const evidence = report.evidenceIndex[0];
+    report.evidenceIndex.push(...Array.from({ length: 45 }, (_, index) => ({
+      ...evidence,
+      id: `large_evidence_${index}`,
+      summary: `${privateEvidenceMarker}-${"x".repeat(2_900)}`
+    })));
+    const body = JSON.stringify({ report });
+
+    expect(new TextEncoder().encode(body).length).toBeGreaterThan(120_000);
+
+    const response = await POST(
+      new Request("http://localhost/api/reports", { method: "POST", body })
+    );
+    const saved = await response.json();
+
+    expect(response.status).toBe(200);
+
+    const readResponse = await GET(new Request(saved.url), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    const read = await readResponse.json();
+
+    expect(readResponse.status).toBe(200);
+    expect(read.report.evidenceIndex).toEqual([]);
+    expect(JSON.stringify(read.report)).not.toContain(privateEvidenceMarker);
   });
 
   it("rejects full reports that omit required provenance", async () => {

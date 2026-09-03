@@ -1,4 +1,5 @@
 import { getExecutionEvidenceItems, statusFromEvidenceSummary } from "./execution-evidence";
+import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import { redactSecrets } from "./redact";
 import type { VerificationReport } from "./types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
@@ -11,6 +12,9 @@ export function reportToMarkdown(report: VerificationReport): string {
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex);
   const strictContract = strictContractPresentation(report);
   const v2Report = isVerificationReportV2(report) ? report : undefined;
+  const ordinaryPrAssessment = v2Report?.generalPrAssessmentSummary
+    ? presentGeneralPrAssessmentSummary(v2Report.generalPrAssessmentSummary)
+    : undefined;
   const lines = [
     `# AgentProof Evidence Report`,
     "",
@@ -28,6 +32,15 @@ export function reportToMarkdown(report: VerificationReport): string {
     `## Summary`,
     "",
     safeInlineText(report.summary.oneLine),
+    ...(ordinaryPrAssessment ? [
+      "",
+      `## ${ordinaryPrAssessment.heading}`,
+      "",
+      `- Result: ${ordinaryPrAssessment.conclusionLabel}`,
+      `- Source: ${ordinaryPrAssessment.sourceLabel}`,
+      `- ${ordinaryPrAssessment.countsLabel}`,
+      ...ordinaryPrAssessment.reasonLabels.map((reason) => `- ${reason}`)
+    ] : []),
     "",
     `## Requirement Coverage`,
     "",
@@ -132,6 +145,9 @@ export function reportToGitHubComment(
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex, 5);
   const strictContract = strictContractPresentation(report);
   const v2Report = isVerificationReportV2(report) ? report : undefined;
+  const ordinaryPrAssessment = v2Report?.generalPrAssessmentSummary
+    ? presentGeneralPrAssessmentSummary(v2Report.generalPrAssessmentSummary)
+    : undefined;
   const requirementLines = report.requirements.slice(0, 8).map((requirement) => {
     const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, requirement.requirementId) : undefined;
     const evidence = requirement.evidenceRefs.length > 0
@@ -182,6 +198,15 @@ export function reportToGitHubComment(
     strictContract ? "**Observed evidence:** implementation, targeted tests, and execution are listed below." : undefined,
     "",
     safeInlineText(report.summary.oneLine),
+    ...(ordinaryPrAssessment ? [
+      "",
+      `### ${ordinaryPrAssessment.heading}`,
+      "",
+      `- Result: ${ordinaryPrAssessment.conclusionLabel}`,
+      `- Source: ${ordinaryPrAssessment.sourceLabel}`,
+      `- ${ordinaryPrAssessment.countsLabel}`,
+      ...ordinaryPrAssessment.reasonLabels.map((reason) => `- ${reason}`)
+    ] : []),
     "",
     "### Requirement Coverage",
     "",

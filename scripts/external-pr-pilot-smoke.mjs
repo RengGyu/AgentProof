@@ -69,6 +69,7 @@ export async function runExternalPrPilotSmoke({
       taskText: testCase.taskText,
       githubToken,
       allowProductionGithubToken,
+      requireRequirementFindings: false,
       fetchImpl
     });
 

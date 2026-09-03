@@ -17,6 +17,9 @@
     "smoke:real-prs": "node scripts/smoke-real-pr-evaluation.mjs",
     "smoke:production-regression": "node scripts/smoke-real-pr-evaluation.mjs",
     "smoke:external-pr-pilot": "node scripts/external-pr-pilot-smoke.mjs",
+    "refresh:external-pr-corpus": "node scripts/refresh-external-pr-corpus.mjs",
+    "smoke:external-pr-current-corpus": "node scripts/external-pr-current-corpus-smoke.mjs",
+    "smoke:external-pr-current-corpus:release": "AGENTPROOF_EXTERNAL_CORPUS_REQUIRE_SEMANTIC_BOUNDARY=1 node scripts/external-pr-current-corpus-smoke.mjs",
     "smoke:github-comment": "node scripts/smoke-github-comment.mjs",
     "smoke:github-webhook": "node scripts/smoke-github-webhook.mjs",
     "smoke:github-webhook-live": "node scripts/smoke-github-webhook-live.mjs",
@@ -38,6 +41,8 @@
     "eval:production-boundary:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-production-boundary-release-gate.mjs \"$@\"' --",
     "eval:toolchain:manifest": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/build-evaluation-toolchain-manifest.mjs \"$@\"' --",
     "eval:production-authority:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-production-authority-release-cli.mjs \"$@\"' --",
+    "eval:general-pr-observation:score": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-general-pr-observations.mjs \"$@\"' --",
+    "eval:general-pr-observation:release": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; node scripts/evaluate-general-pr-observation-release.mjs \"$@\"' --",
     "eval:summary": "vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:strict": "AGENTPROOF_EVAL_STRICT=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
     "eval:summary:fixture": "AGENTPROOF_EVAL_FIXTURE_ONLY=1 vitest run --config vitest.eval.config.ts --reporter=verbose",
@@ -54,7 +59,10 @@
     "next": "^15.0.0",
     "openai": "^7.4.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

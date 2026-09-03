@@ -20,6 +20,7 @@ const LOCAL_AXIS_ORDER = ["implementation", "targeted_test", "execution"] as con
 
 describe("pasted evidence authority transitions", () => {
   it.each([
+    ["description only", { prDescription: "Updated PR description." }],
     ["files only", { changedFiles: "src/repositories/pasted-name.js" }],
     ["checks only", { checks: "repository name regression tests: passed" }],
     ["logs only", { logs: "repository name regression tests: passed" }],
@@ -94,11 +95,10 @@ describe("pasted evidence authority transitions", () => {
     expect(report.verificationContract.state).toBe("authoritative");
   }));
 
-  it("does not change authority for task-text and description edits alone", () => {
+  it("does not change authority for task-text edits alone", () => {
     const live = livePositiveInput();
     const merged = mergePastedEvidenceForAnalysis(live, {
-      taskText: "Updated task wording.",
-      prDescription: "Updated PR description."
+      taskText: "Updated task wording."
     });
 
     expect(merged.sourceProvenance).toBe(live.sourceProvenance);

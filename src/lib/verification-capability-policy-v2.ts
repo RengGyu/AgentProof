@@ -13,7 +13,28 @@ export const RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2 = [
   "path_change_absence"
 ] as const satisfies readonly VerificationCapabilityV2[];
 
+/**
+ * General PR prose is advisory-only. If an authoritative typed contract is
+ * later materialized from that flow, it may only plan the literal-document
+ * capability until the separate absence contract has a complete rename-safe
+ * inventory proof.
+ */
+export const GENERAL_PR_EXECUTABLE_CAPABILITIES_V2 = [
+  "documentation_literal"
+] as const satisfies readonly VerificationCapabilityV2[];
+
 const RELEASE_ELIGIBLE_CAPABILITY_SET = new Set<string>(RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2);
+const GENERAL_PR_EXECUTABLE_CAPABILITY_SET = new Set<string>(GENERAL_PR_EXECUTABLE_CAPABILITIES_V2);
+
+/** A closed registry for newly materialized executable plans. */
+export function isReleasedVerificationCapabilityV2(capability: VerificationCapabilityV2): boolean {
+  return RELEASE_ELIGIBLE_CAPABILITY_SET.has(capability);
+}
+
+/** A narrower closed registry used only by the new general-PR planner. */
+export function isGeneralPrExecutableCapabilityV2(capability: VerificationCapabilityV2): boolean {
+  return GENERAL_PR_EXECUTABLE_CAPABILITY_SET.has(capability);
+}
 
 /**
  * A malformed policy is fail-closed as a whole. This keeps production default

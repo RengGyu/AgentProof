@@ -1,5 +1,5 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
-import type { HybridPlannerProvenance, RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
+import type { GeneralPrAssessmentSummaryV1, HybridPlannerProvenance, RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
 import type { VerificationContractStateV2 } from "./verification-contract-v2";
 
 export interface DashboardRepositoryGrant {
@@ -59,6 +59,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     planner?: HybridPlannerProvenance;
     reportSchemaVersion?: "verification-report.v2";
     verificationContract?: { state: VerificationContractStateV2 };
+    generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
   };
 }
 

@@ -1,19 +1,190 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildGeneralPrSemanticOperatorDiagnosticsV1 } from "../src/lib/general-pr-observation-telemetry.ts";
 import {
   assertSummaryOnlyReport,
   assertReportExpectations,
   failedCheckAnnotationLocations,
   passingExecutionEvidence,
+  evaluateReportQualityGate,
   analyzeTimingFromResponse,
   githubEvidenceTimingFromResponse,
+  isValidGeneralPrAssessmentSummary,
   parseGitHubEvidenceTimingHeader,
   parseAnalyzeTimingHeader,
-  runAnalyzePrSmoke
+  runAnalyzePrSmoke,
+  projectSmokeReportDetails,
+  readOperatorSemanticDiagnostics
 } from "./smoke-analyze-pr-url.mjs";
 
 describe("smoke-analyze-pr-url", () => {
+  it("accepts the deployed diagnostic builder and rejects unknown reason fields", () => {
+    const diagnostic = buildGeneralPrSemanticOperatorDiagnosticsV1(null);
+    expect(readOperatorSemanticDiagnostics(diagnostic)).toEqual(diagnostic);
+    for (const reason of ["root_shape_invalid", "span_decision_invalid", "span_binding_invalid", "role_ceiling_violation", "output_limit_exceeded"]) {
+      expect(readOperatorSemanticDiagnostics({ ...diagnostic, claimInvalidReason: reason }).claimInvalidReason).toBe(reason);
+    }
+    expect(readOperatorSemanticDiagnostics({ ...diagnostic, evidenceState: "invalid", evidenceInvalidReason: "reference_binding_invalid" }).evidenceInvalidReason).toBe("reference_binding_invalid");
+    expect(readOperatorSemanticDiagnostics({ ...diagnostic, freshnessFailure: { phase: "after_evidence", state: "stale", reason: "seed_changed" } }).freshnessFailure).toEqual({ phase: "after_evidence", state: "stale", reason: "seed_changed" });
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, freshnessFailure: { phase: "after_evidence", state: "stale", reason: "PRIVATE_REASON" } })).toThrow();
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, evidenceState: "invalid", evidenceInvalidReason: null })).toThrow("valid operator staged diagnostic");
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, evidenceState: "valid", evidenceInvalidReason: "reference_binding_invalid" })).toThrow("valid operator staged diagnostic");
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, claimInvalidReason: "private response" })).toThrow();
+    expect(() => readOperatorSemanticDiagnostics({ ...diagnostic, rawProviderResponse: "private" })).toThrow();
+  });
+
+  it("accepts optional closed provider failure metadata but rejects raw provider fields", () => {
+    const diagnostic = buildGeneralPrSemanticOperatorDiagnosticsV1(null);
+    expect(readOperatorSemanticDiagnostics({
+      ...diagnostic,
+      providerFailure: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 }
+    })).toMatchObject({ providerFailure: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429 } });
+    expect(() => readOperatorSemanticDiagnostics({
+      ...diagnostic,
+      providerFailure: { phase: "evidence_linking", category: "rate_limited", httpStatus: 429, message: "PROVIDER_SECRET" }
+    })).toThrow();
+  });
+
+  it("preserves PR findings and evidence links without retaining raw evidence or secrets", () => {
+    const report = reportFixture();
+    report.requirements[0].reviewerNote = "opaque-ops-value and github_pat_1234567890123456789012345";
+    report.generalPrAssessment = { targets: [{ claimRole: "test_claim", conclusion: "evidence_partial", sourceBindingRef: "PRIVATE_BINDING", sourceSpanRefs: ["PRIVATE_SPAN"], evidenceRefs: ["ev_2"], reasonCodes: ["target_relation_unresolved"] }] };
+    report.privateReceipt = { raw: "PRIVATE_RECEIPT" };
+    const detail = projectSmokeReportDetails(report, ["opaque-ops-value"]);
+    expect(detail.requirements[0].requirementText).toBe("add invoice export and tests");
+    expect(detail.requirements[0].evidenceRefs).toEqual(["ev_1", "ev_2"]);
+    expect(detail.evidence[1]).toMatchObject({ id: "ev_2", kind: "check", label: "Socket Security" });
+    expect(detail.targets[0].reasonCodes).toEqual(["target_relation_unresolved"]);
+    expect(JSON.stringify(detail)).not.toMatch(/opaque-ops-value|github_pat_|PRIVATE_|Patch excerpt|export function|Add tests and provide/);
+  });
+
+  it("keeps the analyzed details when later summary storage fails", async () => {
+    const diagnostic = vi.fn();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: reportFixture(), operatorDiagnostics: buildGeneralPrSemanticOperatorDiagnosticsV1(null) }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "secret-storage-error" }), { status: 503, headers: { "cache-control": "no-store" } }));
+    await expect(runAnalyzePrSmoke({ baseUrl: "https://agentproof.example", prUrl: "https://github.com/org/repo/pull/1", operatorDiagnosticsToken: "opaque-ops-value", onDiagnostic: diagnostic, fetchImpl: fetchMock })).rejects.toThrow();
+    expect(diagnostic).toHaveBeenCalledOnce();
+    expect(diagnostic.mock.calls[0][0]).toMatchObject({ status: "failed", stage: "summary_save", httpStatus: 503, report: { requirements: [expect.objectContaining({ requirementId: "req_1" })] }, operator: { claimInvalidReason: null } });
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toMatch(/secret-storage-error|opaque-ops-value|Patch excerpt/);
+  });
+  it("requests and returns only closed staged operator diagnostics", async () => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        report: fullReport,
+        operatorDiagnostics: {
+          claimState: "valid",
+          evidenceState: "not_run",
+          sourceCoverage: "sampled",
+          evidenceCoverage: null,
+          providerCallCount: 1,
+          selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" },
+          semanticPackageFailureReasons: [],
+          omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 1 }
+        }
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: "saved_123",
+        url: "https://agentproof.example/reports/saved_123",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        report: savedReport,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        expiresAt: "2026-06-27T00:00:00.000Z",
+        privacy: "summary-only",
+        durability: "short-lived-in-memory",
+        durabilityWarning: "Saved reports are short-lived."
+      }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    const result = await runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      operatorDiagnosticsToken: "ops-secret-value",
+      fetchImpl: fetchMock
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://agentproof.example/api/analyze", expect.objectContaining({
+      headers: {
+        "content-type": "application/json",
+        "x-agentproof-observation-diagnostics": "semantic-boundary-v1",
+        "x-agentproof-ops-token": "ops-secret-value"
+      }
+    }));
+    expect(result.operatorSemanticDiagnostics).toEqual({
+      claimState: "valid",
+      evidenceState: "not_run",
+      sourceCoverage: "sampled",
+      evidenceCoverage: null,
+      providerCallCount: 1,
+      selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" },
+      semanticPackageFailureReasons: [],
+      omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 1 }
+    });
+    expect(JSON.stringify(result.operatorSemanticDiagnostics)).not.toMatch(/token|path|prompt|output|hash|text/i);
+  });
+
+  it("rejects operator diagnostics with private fields, invalid stage values, or raw call counts", async () => {
+    for (const operatorDiagnostics of [
+      { claimState: "valid", evidenceState: "not_run", sourceCoverage: "sampled", evidenceCoverage: null, providerCallCount: 1, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }, sourceText: "private" },
+      { claimState: "selected", evidenceState: "not_run", sourceCoverage: "sampled", evidenceCoverage: null, providerCallCount: 1, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } },
+      { claimState: "valid", evidenceState: "not_run", sourceCoverage: "sampled", evidenceCoverage: null, providerCallCount: 3, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } },
+      { claimState: "valid", evidenceState: "not_run", sourceCoverage: "sampled", evidenceCoverage: null, providerCallCount: 1, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" }, semanticPackageFailureReasons: ["private failure payload"], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } }
+    ]) {
+      const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report: reportFixture(), operatorDiagnostics }));
+      await expect(runAnalyzePrSmoke({
+        baseUrl: "https://agentproof.example",
+        prUrl: "https://github.com/org/repo/pull/1",
+        operatorDiagnosticsToken: "ops-secret-value",
+        fetchImpl: fetchMock
+      })).rejects.toThrow("valid operator staged diagnostic");
+    }
+  });
+
+  it("accepts only the closed 3_plus provider-call safety bucket", async () => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const operatorDiagnostics = { claimState: "valid", evidenceState: "valid", sourceCoverage: "complete", evidenceCoverage: "complete", providerCallCount: "3_plus", selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: fullReport, operatorDiagnostics }))
+      .mockResolvedValueOnce(jsonResponse({ id: "saved_123", url: "https://agentproof.example/reports/saved_123", expiresAt: "2026-06-27T00:00:00.000Z", privacy: "summary-only", durability: "short-lived-in-memory", durabilityWarning: "Saved reports are short-lived." }))
+      .mockResolvedValueOnce(jsonResponse({ report: savedReport, privacy: "summary-only", durability: "short-lived-in-memory", durabilityWarning: "Saved reports are short-lived." }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    await expect(runAnalyzePrSmoke({ baseUrl: "https://agentproof.example", prUrl: "https://github.com/org/repo/pull/1", operatorDiagnosticsToken: "ops-secret-value", fetchImpl: fetchMock }))
+      .resolves.toEqual(expect.objectContaining({ operatorSemanticDiagnostics: operatorDiagnostics }));
+  });
+
+  it.each([
+    ["valid claim with no evidence packet", { claimState: "valid", evidenceState: "not_run", sourceCoverage: "complete", evidenceCoverage: null, providerCallCount: 1, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "0" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 1 } }],
+    ["valid two-stage result", { claimState: "valid", evidenceState: "valid", sourceCoverage: "complete", evidenceCoverage: "complete", providerCallCount: 2, selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } }],
+    ["evidence timeout with claims preserved", { claimState: "valid", evidenceState: "timeout", sourceCoverage: "sampled", evidenceCoverage: "sampled", providerCallCount: 2, selectedCountBuckets: { sourceSpans: "5_8", evidenceCandidates: "17_32" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } }],
+    ["selection unavailable", { claimState: "unavailable", evidenceState: "not_run", sourceCoverage: null, evidenceCoverage: null, providerCallCount: 0, selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" }, semanticPackageFailureReasons: [], omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 } }]
+  ])("parses closed %s diagnostics", async (_name, operatorDiagnostics) => {
+    const fullReport = reportFixture();
+    const savedReport = summaryOnlyReportFixture(fullReport);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: fullReport, operatorDiagnostics }))
+      .mockResolvedValueOnce(jsonResponse({ id: "saved_123", url: "https://agentproof.example/reports/saved_123", expiresAt: "2026-06-27T00:00:00.000Z", privacy: "summary-only", durability: "short-lived-in-memory", durabilityWarning: "Saved reports are short-lived." }))
+      .mockResolvedValueOnce(jsonResponse({ report: savedReport, privacy: "summary-only", durability: "short-lived-in-memory", durabilityWarning: "Saved reports are short-lived." }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      operatorDiagnosticsToken: "ops-secret-value",
+      fetchImpl: fetchMock
+    })).resolves.toEqual(expect.objectContaining({ operatorSemanticDiagnostics: operatorDiagnostics }));
+  });
+
   it("verifies analyze metadata and summary-only saved report privacy", async () => {
     const fullReport = reportFixture();
+    fullReport.generalPrAssessmentSummary = assessmentSummary();
     const savedReport = summaryOnlyReportFixture(fullReport);
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ report: fullReport }))
@@ -40,6 +211,7 @@ describe("smoke-analyze-pr-url", () => {
       prUrl: "https://github.com/org/repo/pull/1",
       taskText: "Acceptance criteria: add invoice export and tests.",
       githubToken: "github_pat_secret_should_not_leak_123",
+      requireGeneralPrAssessmentSummary: true,
       fetchImpl: fetchMock
     });
 
@@ -53,7 +225,10 @@ describe("smoke-analyze-pr-url", () => {
       savedClaimCount: 0,
       savedRepromptOmitted: true,
       savedEvidenceRefsCleared: true,
-      savedReportDeleted: true
+      savedReportDeleted: true,
+      requirementStatusCounts: { partial: 1 },
+      requirementEvidenceStatusCounts: { partial: 1 },
+      generalPrAssessmentSummary: assessmentSummary()
     }));
     expect(result.analyzeTiming).toEqual({
       input: 3,
@@ -73,6 +248,88 @@ describe("smoke-analyze-pr-url", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, "https://agentproof.example/api/reports", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "https://agentproof.example/api/reports/saved_123");
     expect(fetchMock).toHaveBeenNthCalledWith(4, "https://agentproof.example/api/reports/saved_123", { method: "DELETE" });
+  });
+
+  it("rejects a live external PR result when advisory assessment is absent", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report: reportFixture() }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      requireGeneralPrAssessmentSummary: true,
+      fetchImpl: fetchMock
+    })).rejects.toThrow("General PR assessment summary was unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a live external PR result when its assessment summary is not a closed target-free projection", async () => {
+    const report = reportFixture();
+    report.generalPrAssessmentSummary = {
+      ...assessmentSummary(),
+      sourceState: "unbounded_source_state",
+      targets: [{ sourceText: "private source text" }]
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      requireGeneralPrAssessmentSummary: true,
+      fetchImpl: fetchMock
+    })).rejects.toThrow("General PR assessment summary was unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the assessment conclusion to match its aggregate count states", () => {
+    expect(isValidGeneralPrAssessmentSummary(assessmentSummary())).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({
+      ...assessmentSummary(),
+      overallConclusion: "mixed_evidence"
+    })).toBe(false);
+
+    const allBlocked = {
+      ...assessmentSummary(),
+      overallConclusion: "collection_blocked",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 0,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 2,
+        not_assessable: 0
+      }
+    };
+    expect(isValidGeneralPrAssessmentSummary(allBlocked)).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({ ...allBlocked, overallConclusion: "evidence_partial" })).toBe(false);
+
+    const observations = { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } };
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations })).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, links: { ...observations.links, tests: -1 } } })).toBe(false);
+    const twoTargets = { ...assessmentSummary(), counts: { ...assessmentSummary().counts, evidence_partial: 2 } };
+    expect(isValidGeneralPrAssessmentSummary({ ...twoTargets, observations: { ...observations, links: { ...observations.links, linkedObjectives: 2 } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, links: { ...observations.links, supports: 2, tests: -1 } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, inventory: { ...observations.inventory, state: "current" } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, inventory: { ...observations.inventory, changedArtifacts: Number.MAX_SAFE_INTEGER + 1 } } })).toBe(false);
+    expect(isValidGeneralPrAssessmentSummary({ ...assessmentSummary(), observations: { ...observations, coverage: { ...observations.coverage, privateHash: "private" } } })).toBe(false);
+
+    const supported = {
+      ...assessmentSummary(),
+      overallConclusion: "evidence_supports_stated_change",
+      counts: {
+        evidence_supported: 1,
+        evidence_partial: 0,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      }
+    };
+    expect(isValidGeneralPrAssessmentSummary(supported)).toBe(true);
+    expect(isValidGeneralPrAssessmentSummary({
+      ...supported,
+      overallConclusion: "attention_required",
+      counts: { ...supported.counts, evidence_supported: 0, contradicted: 1 }
+    })).toBe(true);
   });
 
   it("accepts durable Supabase saved-report metadata while keeping summary-only checks", async () => {
@@ -119,6 +376,60 @@ describe("smoke-analyze-pr-url", () => {
       originalReprompt: fullReport.reprompt.prompt,
       githubToken: "github_pat_secret_should_not_leak_123"
     })).toThrow("Saved report retained raw evidenceIndex items");
+  });
+
+  it("rejects saved reports that retain a private general PR assessment target", () => {
+    const savedReport = summaryOnlyReportFixture(reportFixture());
+    savedReport.generalPrAssessmentSummary = {
+      ...assessmentSummary(),
+      targets: [{ targetId: "gpa_private_target" }]
+    };
+
+    expect(() => assertSummaryOnlyReport(savedReport))
+      .toThrow("Saved report retained private general PR assessment data");
+  });
+
+  it("rejects a live report when its GitHub source anchor differs from the frozen sample", async () => {
+    const report = reportFixture();
+    report.source.provenance = {
+      origin: "github_snapshot",
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40)
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ report }));
+
+    await expect(runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      expectedSourceAnchor: {
+        headSha: "c".repeat(40),
+        baseSha: "b".repeat(40)
+      },
+      fetchImpl: fetchMock
+    })).rejects.toThrow("Analyze report source anchor did not match the frozen external PR sample");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows URL-only external PR evaluation to have no extracted requirements", () => {
+    const report = reportFixture();
+    report.requirements = [];
+    report.claims = [];
+    const savedReport = summaryOnlyReportFixture(report);
+
+    const strictResult = evaluateReportQualityGate(report, { savedReport });
+    const urlOnlyResult = evaluateReportQualityGate(report, {
+      savedReport,
+      requireRequirementFindings: false
+    });
+
+    expect(strictResult.checks.find((check) => check.id === "requirements_present")).toEqual(expect.objectContaining({
+      ok: false
+    }));
+    expect(urlOnlyResult).toEqual(expect.objectContaining({ ok: true }));
+    expect(urlOnlyResult.checks.find((check) => check.id === "requirements_present")).toEqual(expect.objectContaining({
+      ok: true,
+      detail: "No acceptance contract is required for this evaluation; zero requirement findings are allowed."
+    }));
   });
 
   it("parses only bounded analyze timing metrics", () => {
@@ -483,7 +794,7 @@ function jsonResponse(payload, status = 200) {
     "cache-control": "private, no-store"
   };
 
-  if (payload && typeof payload === "object" && Object.keys(payload).length === 1 && payload.report) {
+  if (payload && typeof payload === "object" && payload.report) {
     headers["x-agentproof-timing"] = "ap_input;dur=3, ap_evidence;dur=120, ap_report;dur=14, ap_validation;dur=2, ap_total;dur=139";
     headers["x-agentproof-evidence-timing"] = "ap_github_pr;dur=20, ap_github_files;dur=40, ap_github_checks;dur=50, ap_github_statuses;dur=10, ap_github_annotations;dur=0, ap_github_jobs;dur=0";
   }
@@ -584,6 +895,24 @@ function reportFixture() {
       }
     ],
     limitations: ["No CI or test logs were available."]
+  };
+}
+
+function assessmentSummary() {
+  return {
+    version: 1,
+    mode: "ordinary_pr",
+    sourceState: "pr_author_claim",
+    overallConclusion: "evidence_partial",
+    counts: {
+      evidence_supported: 0,
+      evidence_partial: 1,
+      not_demonstrated: 0,
+      contradicted: 0,
+      blocked: 0,
+      not_assessable: 0
+    },
+    reasonCodes: ["verified_relation_missing", "author_claim_requires_confirmation"]
   };
 }
 

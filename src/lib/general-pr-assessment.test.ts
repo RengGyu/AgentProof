@@ -1,0 +1,574 @@
+import { describe, expect, it } from "vitest";
+import { deriveGeneralPrAssessmentV1, summarizeGeneralPrAssessmentV1 } from "./general-pr-assessment";
+import { finalizeDeterministicGeneralPrObservationsV2 } from "./general-pr-observation-service";
+import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import { buildObjectiveEvidenceRelationLedgerV1 } from "./objective-evidence-relation-ledger";
+import { deriveGeneralPrObjectiveGroupIdV2, type GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
+import { validateVerificationReport } from "./report-validation";
+import { generateVerificationReportV2FromInput } from "./verifier";
+import type { PullRequestInput, VerificationReport, VerificationReportV2 } from "./types";
+
+const report = { requirements: [], evidenceIndex: [] } as unknown as VerificationReport;
+
+function input(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
+  return {
+    title: "Return the repository label",
+    description: "",
+    taskText: "",
+    changedFiles: [
+      { path: "src/repository-label.ts", status: "modified" },
+      { path: "test/repository-label.test.ts", status: "modified" }
+    ],
+    checks: [{ name: "CI", status: "passed" }],
+    logs: [],
+    repositoryPrivate: false,
+    sourceProvenance: {
+      version: 1,
+      origin: "github_snapshot",
+      baseSha: "a".repeat(40),
+      headSha: "b".repeat(40),
+      changedFileInventory: { version: 1, completeness: "complete", headSha: "b".repeat(40) },
+      evidenceCapturedAt: "2026-08-31T00:00:00.000Z",
+      inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+    },
+    ...overrides
+  };
+}
+
+function semanticOnlyInput(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
+  return input({
+    title: "Maintenance notes",
+    description: "Internal cleanup only.",
+    changedFiles: [{ path: "src/status.ts", status: "modified", patch: "+ return Ready;" }],
+    ...overrides
+  });
+}
+
+function semanticProposal(seed: ReturnType<typeof buildGeneralPrObservationSeedV2>): GeneralPrSemanticProposalV2 {
+  const span = seed.spans.find((candidate) => seed.sources.find((source) => source.id === candidate.sourceUnitId)?.kind === "pr_title");
+  const cluster = seed.changeClusters[0];
+  const evidence = seed.evidenceAtoms[0];
+  if (!span || !cluster || !evidence) throw new Error("semantic fixture requires bounded source and evidence");
+  const groupId = deriveGeneralPrObjectiveGroupIdV2([span.id]);
+  return {
+    contractVersion: "general_pr_semantic_proposal.v2",
+    schemaVersion: "agentproof_general_pr_observer_v2",
+    seedHash: seed.seedHash,
+    spanRoles: Object.fromEntries(seed.spans.map((candidate) => [candidate.id, {
+      spanId: candidate.id,
+      role: candidate.id === span.id ? "objective_candidate" as const : "supporting_context" as const,
+      abstained: false
+    }])),
+    objectiveGroups: { [groupId]: { groupId, spanIds: [span.id], disposition: "candidate" } },
+    testApplicabilityProposals: [{ objectiveGroupId: groupId, changeClusterId: cluster.id, proposal: "likely_expected" }],
+    scopeMappingProposals: [{ objectiveGroupId: groupId, changeClusterId: cluster.id, proposal: "plausibly_mapped" }],
+    evidenceRelationProposals: [{ objectiveGroupId: groupId, evidenceId: evidence.id, proposal: "supports" }]
+  };
+}
+
+function validStageDiagnostics() {
+  return {
+    version: 1 as const,
+    claimState: "valid" as const,
+    evidenceState: "valid" as const,
+    sourceCoverage: "complete" as const,
+    evidenceCoverage: "complete" as const,
+    providerCallCount: 2 as const,
+    selectedCountBuckets: { sourceSpans: "1_4" as const, evidenceCandidates: "1_16" as const }
+  };
+}
+
+function relevantResult(
+  assessment: ReturnType<typeof deriveGeneralPrAssessmentV1>,
+  bundle: ReturnType<typeof finalizeDeterministicGeneralPrObservationsV2>,
+  proposal: GeneralPrSemanticProposalV2
+) {
+  return {
+    assessment: {
+      sourceState: assessment.sourceState,
+      overallConclusion: assessment.overallConclusion,
+      counts: assessment.counts,
+      targets: assessment.targets.map(({ targetId: _targetId, sourceBindingRef: _sourceBindingRef, sourceSpanRefs: _sourceSpanRefs, ...target }) => target),
+      reasonCodes: assessment.reasonCodes
+    },
+    proposal: {
+      objectiveGroups: Object.values(proposal.objectiveGroups).map(({ groupId: _groupId, ...group }) => group),
+      testApplicability: proposal.testApplicabilityProposals.map(({ objectiveGroupId: _objectiveGroupId, changeClusterId: _changeClusterId, ...item }) => item),
+      scopeMappings: proposal.scopeMappingProposals.map(({ objectiveGroupId: _objectiveGroupId, changeClusterId: _changeClusterId, ...item }) => item),
+      evidenceRelations: proposal.evidenceRelationProposals.map(({ objectiveGroupId: _objectiveGroupId, evidenceId: _evidenceId, ...item }) => item)
+    },
+    relationLevelCounts: bundle.relationLevelCounts,
+    testCoverage: bundle.testCoverage
+      .filter((item) => item.relation === "hypothesis")
+      .map(({ objectiveId: _objectiveId, changeClusterId: _changeClusterId, ...item }) => item),
+    scopeMappings: bundle.scopeMappings
+      .filter((item) => item.state === "plausibly_mapped")
+      .map(({ objectiveId: _objectiveId, changeClusterId: _changeClusterId, ...item }) => item)
+  };
+}
+
+describe("deriveGeneralPrAssessmentV1", () => {
+  it("caps a PR author objective at partial when only changed artifacts and global CI are observed", () => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+    Object.assign(bundle as unknown as Record<string, unknown>, { transientObserver: transientSelectionFixture() });
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle, report })).toMatchObject({
+      sourceState: "pr_author_claim",
+      overallConclusion: "evidence_partial",
+      counts: {
+        evidence_supported: 0,
+        evidence_partial: 1,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      targets: [expect.objectContaining({
+        conclusion: "evidence_partial",
+        reasonCodes: expect.arrayContaining(["verified_relation_missing", "author_claim_requires_confirmation"]),
+        evidenceRefs: [],
+        headBound: true
+      })]
+    });
+    expectNoSelectionSentinels(deriveGeneralPrAssessmentV1({ seed, bundle, report }));
+  });
+
+  it("keeps a semantic-only target evidence-partial and its relation hypothesis-only", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), "valid", null, [], {
+      version: 1,
+      claimState: "valid",
+      evidenceState: "valid",
+      sourceCoverage: "complete",
+      evidenceCoverage: "complete",
+      providerCallCount: 2,
+      selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
+    });
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.targets).toEqual([expect.objectContaining({
+      admissionBasis: "semantic_span_proposal",
+      conclusion: "evidence_partial",
+      relationLevels: ["hypothesis"],
+      evidenceRefs: []
+    })]);
+    expect(bundle.relationLevelCounts).toMatchObject({ verified: 0, observed: 0, hypothesis: 1 });
+  });
+
+  it("summarizes only accepted Stage B relation proposals without changing the outcome ceiling", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), "valid", null, [], {
+      version: 1,
+      claimState: "valid",
+      evidenceState: "valid",
+      sourceCoverage: "complete",
+      evidenceCoverage: "complete",
+      providerCallCount: 2,
+      selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
+    });
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(bundle.evidenceRelations).toEqual([expect.objectContaining({ proposal: "supports", level: "hypothesis" })]);
+    expect(assessment.targets).toEqual([expect.objectContaining({
+      conclusion: "evidence_partial",
+      relationLevels: ["hypothesis"],
+      evidenceRefs: []
+    })]);
+    expect(summarizeGeneralPrAssessmentV1(assessment)).toMatchObject({
+      observations: {
+        version: 1,
+        inventory: { state: "complete", changedArtifacts: 1, changedTestCandidates: 0 },
+        links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 },
+        coverage: { source: "complete", evidence: "complete" }
+      }
+    });
+    expect(assessment.counts.evidence_supported).toBe(0);
+  });
+
+  it("counts every accepted proposal kind without promoting a contradiction to a behavioral conclusion", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput({ changedFiles: [
+      { path: "src/one.ts", status: "modified" }, { path: "src/two.ts", status: "modified" },
+      { path: "src/three.ts", status: "modified" }, { path: "src/four.ts", status: "modified" }
+    ] }));
+    const proposal = semanticProposal(seed);
+    const relations = ["supports", "tests", "implements", "contradicts"] as const;
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, {
+      ...proposal,
+      evidenceRelationProposals: relations.map((kind, index) => ({
+        objectiveGroupId: Object.keys(proposal.objectiveGroups)[0]!, evidenceId: seed.evidenceAtoms[index]!.id, proposal: kind
+      }))
+    }, "valid", null, [], validStageDiagnostics());
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(summarizeGeneralPrAssessmentV1(assessment).observations?.links).toMatchObject({
+      state: "proposed", supports: 1, tests: 1, implements: 1, contradicts: 1
+    });
+    expect(assessment.targets[0]).toMatchObject({ conclusion: "evidence_partial" });
+    expect(assessment.counts.contradicted).toBe(0);
+  });
+
+  it("counts multiple accepted semantic objectives without exposing their mapping", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput({ changedFiles: [
+      { path: "src/one.ts", status: "modified" }, { path: "src/two.ts", status: "modified" }
+    ] }));
+    const proposal = semanticProposal(seed);
+    const secondSpan = seed.spans.find((span) => span.id !== Object.values(proposal.objectiveGroups)[0]!.spanIds[0]);
+    if (!secondSpan) throw new Error("fixture requires a second source span");
+    const secondGroupId = deriveGeneralPrObjectiveGroupIdV2([secondSpan.id]);
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, {
+      ...proposal,
+      objectiveGroups: {
+        ...proposal.objectiveGroups,
+        [secondGroupId]: { groupId: secondGroupId, spanIds: [secondSpan.id], disposition: "candidate" }
+      },
+      evidenceRelationProposals: [
+        ...proposal.evidenceRelationProposals,
+        { objectiveGroupId: secondGroupId, evidenceId: seed.evidenceAtoms[1]!.id, proposal: "tests" }
+      ]
+    }, "valid", null, [], validStageDiagnostics());
+    const summary = summarizeGeneralPrAssessmentV1(deriveGeneralPrAssessmentV1({ seed, bundle, report }));
+
+    expect(summary.observations?.links).toMatchObject({ linkedObjectives: 2, supports: 1, tests: 1 });
+    expect(JSON.stringify(summary)).not.toContain(secondGroupId);
+  });
+
+  it.each(["invalid", "timeout", "stale"] as const)("marks %s evidence linking unavailable", (semanticState) => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const assessment = deriveGeneralPrAssessmentV1({
+      seed,
+      bundle: finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), semanticState, null, [], { ...validStageDiagnostics(), evidenceState: semanticState }),
+      report
+    });
+
+    expect(assessment.observations?.links).toMatchObject({ state: "unavailable", linkedObjectives: 0, supports: 0 });
+  });
+
+  it("marks freshness failure unavailable even when the Stage B receipt was valid", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const assessment = deriveGeneralPrAssessmentV1({
+      seed,
+      bundle: finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), "valid", null, [], validStageDiagnostics(), undefined, null, null, {
+        freshnessFailure: { phase: "after_evidence", state: "stale", reason: "seed_changed" }
+      }),
+      report
+    });
+
+    expect(assessment.observations?.links.state).toBe("unavailable");
+  });
+
+  it.each([
+    ["head_changed", true],
+    ["base_changed", false],
+    ["source_changed", false],
+    ["seed_changed", false]
+  ] as const)("marks head mismatch only for an observed %s freshness failure", (reason, hasHeadMismatch) => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "stale", null, [], undefined, undefined, null, null, {
+      freshnessFailure: { phase: "after_claim", state: "stale", reason }
+    });
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.reasonCodes.includes("head_mismatch")).toBe(hasHeadMismatch);
+    expect(assessment.reasonCodes.includes("source_ambiguous")).toBe(!hasHeadMismatch);
+    expect(assessment.observations?.links.state).toBe("unavailable");
+  });
+
+  it("does not infer head movement from a seed and bundle mismatch", () => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = { ...finalizeDeterministicGeneralPrObservationsV2(seed), seedHash: "d".repeat(64) };
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.reasonCodes).not.toContain("head_mismatch");
+    expect(assessment.reasonCodes).toContain("source_ambiguous");
+  });
+
+  it.each(["snapshot_unavailable", "auth_unavailable"] as const)("keeps %s unavailable without a head mismatch", (reason) => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable", null, [], undefined, undefined, null, null, { freshnessFailure: { phase: "before_claim", state: "unavailable", reason } });
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+    expect(assessment.reasonCodes).not.toContain("head_mismatch");
+    expect(assessment.observations?.links.state).toBe("unavailable");
+  });
+
+  it("copies observations through an explicit nested public allowlist", () => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle: finalizeDeterministicGeneralPrObservationsV2(seed), report });
+    Object.assign(assessment.observations!.inventory as unknown as Record<string, unknown>, { privatePath: "src/private.ts" });
+    Object.assign(assessment.observations!.links as unknown as Record<string, unknown>, { privateEvidenceId: "gpea_private" });
+    Object.assign(assessment.observations!.coverage as unknown as Record<string, unknown>, { privateHash: "secret" });
+
+    const serialized = JSON.stringify(summarizeGeneralPrAssessmentV1(assessment));
+    expect(serialized).not.toContain("privatePath");
+    expect(serialized).not.toContain("privateEvidenceId");
+    expect(serialized).not.toContain("privateHash");
+  });
+
+  it("counts deleted test paths, filters non-target relations, and never exposes private relation IDs", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput({
+      changedFiles: [{ path: "test/removed-status.test.ts", status: "removed" }]
+    }));
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), "valid", null, [], {
+      version: 1,
+      claimState: "valid",
+      evidenceState: "valid",
+      sourceCoverage: "complete",
+      evidenceCoverage: "complete",
+      providerCallCount: 2,
+      selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
+    });
+    bundle.evidenceRelations.push({ objectiveId: "not-an-admitted-target", evidenceId: "gpea_private", proposal: "contradicts", level: "hypothesis" });
+
+    const summary = summarizeGeneralPrAssessmentV1(deriveGeneralPrAssessmentV1({ seed, bundle, report }));
+    expect(summary.observations).toMatchObject({
+      inventory: { changedArtifacts: 1, changedTestCandidates: 1 },
+      links: { supports: 1, tests: 0, implements: 0, contradicts: 0, linkedObjectives: 1 }
+    });
+    expect(JSON.stringify(summary)).not.toContain("gpea_private");
+  });
+
+  it("makes mismatch relations unavailable and leaves an edge-free hypothesis unresolved", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const proposal = semanticProposal(seed);
+    const diagnostics = {
+      version: 1 as const, claimState: "valid" as const, evidenceState: "valid" as const,
+      sourceCoverage: "complete" as const, evidenceCoverage: "complete" as const,
+      providerCallCount: 2 as const, selectedCountBuckets: { sourceSpans: "1_4" as const, evidenceCandidates: "1_16" as const }
+    };
+    const edgeFree = finalizeDeterministicGeneralPrObservationsV2(seed, { ...proposal, evidenceRelationProposals: [] }, "valid", null, [], diagnostics);
+    const edgeFreeAssessment = deriveGeneralPrAssessmentV1({ seed, bundle: edgeFree, report });
+    const mismatch = deriveGeneralPrAssessmentV1({ seed, bundle: { ...edgeFree, seedHash: "m".repeat(64) }, report });
+
+    expect(edgeFreeAssessment.targets[0]).toMatchObject({ relationLevels: ["unresolved"], reasonCodes: expect.not.arrayContaining(["semantic_relation_only"]) });
+    expect(mismatch.observations?.links).toMatchObject({ state: "unavailable", linkedObjectives: 0 });
+  });
+
+  it("does not turn generic passed CI or a changed test artifact into target-local passed execution", () => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.targets[0]).toMatchObject({ conclusion: "evidence_partial", evidenceRefs: [] });
+    expect(bundle.testCoverage).toEqual(expect.arrayContaining([
+      expect.objectContaining({ execution: "not_observed", summaryState: "relation_unresolved" })
+    ]));
+  });
+
+  it("does not convert sampled semantic evidence into missing-test or contradiction findings", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, semanticProposal(seed), "valid", null, [], {
+      version: 1,
+      claimState: "valid",
+      evidenceState: "valid",
+      sourceCoverage: "sampled",
+      evidenceCoverage: "sampled",
+      providerCallCount: 2,
+      selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
+    });
+
+    expect(bundle.testCoverage).toEqual([expect.objectContaining({
+      applicability: "hypothesized_required",
+      relation: "hypothesis",
+      execution: "not_observed",
+      summaryState: "relation_unresolved"
+    })]);
+    expect(bundle.scopeMappings).toEqual([expect.objectContaining({ state: "plausibly_mapped" })]);
+    expect(summarizeGeneralPrAssessmentV1(deriveGeneralPrAssessmentV1({ seed, bundle, report })).observations?.coverage)
+      .toEqual({ source: "sampled", evidence: "sampled" });
+  });
+
+  it("marks unresolved Stage B relations collection-unavailable when evidence coverage is not complete", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const proposal = semanticProposal(seed);
+    const unresolvedProposal = {
+      ...proposal,
+      testApplicabilityProposals: [],
+      scopeMappingProposals: [],
+      evidenceRelationProposals: proposal.evidenceRelationProposals.map((relation) => ({ ...relation, proposal: "unresolved" as const }))
+    };
+
+    for (const [evidenceCoverage, evidenceState] of [
+      ["sampled", "valid"],
+      ["incomplete", "valid"],
+      [null, "unavailable"]
+    ] as const) {
+      const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, unresolvedProposal, "valid", null, [], {
+        version: 1,
+        claimState: "valid",
+        evidenceState,
+        sourceCoverage: "complete",
+        evidenceCoverage,
+        providerCallCount: 2,
+        selectedCountBuckets: { sourceSpans: "1_4", evidenceCandidates: "1_16" }
+      });
+
+      expect(bundle.testCoverage).toEqual([expect.objectContaining({
+        relation: "unresolved",
+        summaryState: "collection_unavailable"
+      })]);
+      expect(bundle.scopeMappings).toEqual([expect.objectContaining({ state: "collection_unavailable" })]);
+      const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+      expect(bundle.evidenceRelations).toEqual([]);
+      expect(assessment.targets[0]).toMatchObject({ relationLevels: ["unresolved"], reasonCodes: expect.not.arrayContaining(["semantic_relation_only"]) });
+      expect(assessment.observations?.links).toMatchObject({
+        state: evidenceState === "valid" ? "none_proposed" : "unavailable",
+        linkedObjectives: 0
+      });
+    }
+  });
+
+  it("treats a sampled valid zero-objective result as incomplete rather than globally missing", () => {
+    const seed = buildGeneralPrObservationSeedV2(semanticOnlyInput());
+    const stageDiagnostics = {
+      version: 1 as const,
+      claimState: "valid" as const,
+      evidenceState: "not_run" as const,
+      sourceCoverage: "sampled" as const,
+      evidenceCoverage: null,
+      providerCallCount: 1 as const,
+      selectedCountBuckets: { sourceSpans: "1_4" as const, evidenceCandidates: "0" as const }
+    };
+    const sampled = finalizeDeterministicGeneralPrObservationsV2(seed, null, "valid", null, [], stageDiagnostics);
+    const complete = finalizeDeterministicGeneralPrObservationsV2(seed, null, "valid", null, [], {
+      ...stageDiagnostics,
+      sourceCoverage: "complete"
+    });
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: sampled, report }).reasonCodes).toEqual(expect.arrayContaining([
+      "collection_incomplete"
+    ]));
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: sampled, report }).reasonCodes).not.toContain("semantic_candidate_missing");
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: complete, report }).reasonCodes).toContain("semantic_candidate_missing");
+  });
+
+  it("downgrades selected evidence but leaves the complete relevant result unchanged when unrelated evidence is removed", () => {
+    const withUnrelated = semanticOnlyInput({ changedFiles: [
+      { path: "src/status.ts", status: "modified", patch: "+ return Ready;" },
+      { path: "src/unrelated.ts", status: "modified", patch: "+ export const unrelated = true;" }
+    ] });
+    const selectedSeed = buildGeneralPrObservationSeedV2(withUnrelated);
+    const selectedProposal = semanticProposal(selectedSeed);
+    const stageDiagnostics = {
+      version: 1 as const,
+      claimState: "valid" as const,
+      evidenceState: "valid" as const,
+      sourceCoverage: "complete" as const,
+      evidenceCoverage: "complete" as const,
+      providerCallCount: 2 as const,
+      selectedCountBuckets: { sourceSpans: "1_4" as const, evidenceCandidates: "1_16" as const }
+    };
+    const selected = finalizeDeterministicGeneralPrObservationsV2(selectedSeed, selectedProposal, "valid", null, [], stageDiagnostics);
+    const removedSelected = finalizeDeterministicGeneralPrObservationsV2(selectedSeed, { ...selectedProposal, evidenceRelationProposals: [] }, "valid", null, [], stageDiagnostics);
+    const withoutUnrelatedSeed = buildGeneralPrObservationSeedV2(semanticOnlyInput({ changedFiles: [withUnrelated.changedFiles[0]!] }));
+    const withoutUnrelated = finalizeDeterministicGeneralPrObservationsV2(withoutUnrelatedSeed, semanticProposal(withoutUnrelatedSeed), "valid", null, [], stageDiagnostics);
+    const baselineAssessment = deriveGeneralPrAssessmentV1({ seed: selectedSeed, bundle: selected, report });
+    const withoutUnrelatedAssessment = deriveGeneralPrAssessmentV1({ seed: withoutUnrelatedSeed, bundle: withoutUnrelated, report });
+
+    expect(selected.diagnostics.relationState).toBe("hypothesis_only");
+    expect(removedSelected.diagnostics.relationState).toBe("unresolved");
+    expect(summarizeGeneralPrAssessmentV1(deriveGeneralPrAssessmentV1({ seed: selectedSeed, bundle: removedSelected, report }))).toMatchObject({
+      observations: { links: { state: "none_proposed", supports: 0 } }
+    });
+    expect(deriveGeneralPrAssessmentV1({ seed: selectedSeed, bundle: removedSelected, report }).overallConclusion)
+      .toBe(baselineAssessment.overallConclusion);
+    const selectedSummary = summarizeGeneralPrAssessmentV1(baselineAssessment);
+    const withoutUnrelatedSummary = summarizeGeneralPrAssessmentV1(withoutUnrelatedAssessment);
+    expect(withoutUnrelatedSummary.observations?.links).toEqual(selectedSummary.observations?.links);
+    expect(withoutUnrelatedSummary.observations?.inventory.changedArtifacts)
+      .toBe(selectedSummary.observations!.inventory.changedArtifacts - 1);
+    expect(relevantResult(withoutUnrelatedAssessment, withoutUnrelated, semanticProposal(withoutUnrelatedSeed)))
+      .toEqual(relevantResult(baselineAssessment, selected, selectedProposal));
+  });
+
+  it("rejects a verified relation copied to another objective", () => {
+    const copied = buildObjectiveEvidenceRelationLedgerV1({
+      nodes: [
+        ...["objective_a", "objective_b"].map((id) => ({ version: 1 as const, id, kind: "objective_group" as const, subjectDigest: "a".repeat(64) })),
+        { version: 1 as const, id: "evidence", kind: "evidence_atom" as const, subjectDigest: "a".repeat(64) }
+      ],
+      edges: ["objective_a", "objective_b"].map((fromNodeId) => ({
+        fromNodeId,
+        toNodeId: "evidence",
+        kind: "syntax_imports" as const,
+        level: "verified" as const,
+        basis: "typescript_ast_relation" as const,
+        subjectDigest: "a".repeat(64),
+        evidenceRefs: ["evidence"],
+        completeness: "complete" as const
+      }))
+    });
+
+    expect(copied).toEqual({ valid: false, errors: ["verified evidence cannot be copied across objectives"] });
+  });
+
+  it("blocks a target when complete exact-head collection is unavailable", () => {
+    const seed = buildGeneralPrObservationSeedV2(input({ sourceProvenance: undefined }));
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle, report })).toMatchObject({
+      overallConclusion: "collection_blocked",
+      counts: expect.objectContaining({ blocked: 1 }),
+      targets: [expect.objectContaining({
+        conclusion: "blocked",
+        reasonCodes: expect.arrayContaining(["collection_incomplete"]),
+        headBound: false
+      })]
+    });
+  });
+
+  it("retains PR-author source state and diagnostic reasons when no target is admitted", () => {
+    const noCandidateInput = input({ title: "Maintenance notes", description: "Internal cleanup only." });
+    const seed = buildGeneralPrObservationSeedV2(noCandidateInput);
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+    const runtimeReport = generateVerificationReportV2FromInput(noCandidateInput) as VerificationReportV2;
+    const { observations: _observations, ...legacySummary } = summarizeGeneralPrAssessmentV1(assessment);
+    runtimeReport.generalPrAssessmentSummary = legacySummary;
+
+    expect(assessment).toMatchObject({
+      sourceState: "pr_author_claim",
+      overallConclusion: "no_assessable_claims",
+      reasonCodes: expect.arrayContaining([
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ])
+    });
+    expect(validateVerificationReport(runtimeReport, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("retains linked-Issue source state with zero targets and marks stale ownership ambiguous", () => {
+    const seed = buildGeneralPrObservationSeedV2(input({
+      title: "Maintenance notes",
+      taskSource: "issue",
+      taskText: "Background information about the current status page."
+    }));
+    const available = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+    const stale = finalizeDeterministicGeneralPrObservationsV2(seed, null, "stale");
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: available, report }).sourceState).toBe("linked_issue");
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report })).toMatchObject({
+      sourceState: "ambiguous",
+      reasonCodes: expect.arrayContaining(["source_ambiguous"])
+    });
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report }).reasonCodes).not.toContain("head_mismatch");
+  });
+
+  it("keeps fallback PR targets as author claims requiring reviewer confirmation", () => {
+    const seed = buildGeneralPrObservationSeedV2(input({
+      title: "Maintenance notes",
+      description: "The service must return Ready when checks pass.",
+      taskSource: "issue",
+      taskText: "Background information about the current status page."
+    }));
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
+
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle, report }).targets).toEqual([
+      expect.objectContaining({
+        sourceAuthority: "pr_author_claim",
+        reasonCodes: expect.arrayContaining(["author_claim_requires_confirmation"])
+      })
+    ]);
+  });
+});

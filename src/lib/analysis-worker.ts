@@ -70,12 +70,15 @@ import {
   UsageQuotaStoreError
 } from "./usage-quota";
 import { generateVerificationReportV2FromInput } from "./verifier";
+import * as generalPrObservationService from "./general-pr-observation-service";
+import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "./general-pr-runtime-policy";
 import {
   OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS,
   OpenAISemanticError,
   retrieveHybridPlannerWithOpenAI,
   retrieveMissingSemanticsWithOpenAIBackground,
   retrieveSemanticsWithOpenAIBackground,
+  submitGeneralPrSemanticObservationWithOpenAI,
   submitHybridPlannerWithOpenAI,
   submitMissingSemanticsWithOpenAIBackground,
   submitSemanticsWithOpenAIBackground
@@ -447,7 +450,50 @@ async function runPreflightedAnalysisJob(
       );
     }
 
-    const deterministicReport = generateVerificationReportV2FromInput(input);
+    const generalPrPolicy = resolveGeneralPrAssessmentRuntimePolicyV1(
+      env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
+    );
+    const generalPrObserverApiKey = env.OPENAI_API_KEY?.trim();
+    const generalPrObserverModel = env.OPENAI_MODEL?.trim();
+    const semanticEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
+      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
+      Boolean(generalPrObserverApiKey && generalPrObserverModel);
+    const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
+      policy: generalPrPolicy,
+      input,
+      generateReport: generateVerificationReportV2FromInput,
+      // The generated/semantic report still crosses the existing worker
+      // runtime boundary below; this only keeps observation collection off
+      // when deterministic generation is invalid.
+      validateDeterministicReport: (candidateInput, candidateReport) =>
+        resolveRuntimeReportValidation({
+          input: candidateInput,
+          report: candidateReport,
+          requireV2: true,
+          requireSourceProvenance: true
+        }).valid,
+      ...(semanticEligible && generalPrObserverApiKey && generalPrObserverModel ? {
+        semantic: {
+          provider: {
+            observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+              apiKey: generalPrObserverApiKey
+            })
+          },
+          providerAvailable: true,
+          privateRepository: false,
+          readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
+            expectedHeadSha: input.sourceProvenance?.headSha,
+            expectedBaseSha: input.sourceProvenance?.baseSha
+          }),
+          modelProfile: {
+            model: generalPrObserverModel,
+            promptVersion: "general-pr-observer.v4",
+            inputFieldPolicyVersion: "general-pr-observer-fields.v1"
+          }
+        }
+      } : {})
+    });
+    const deterministicReport = generalPrObservation.report;
     const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
     const semanticResult = protocol === "legacy"
       ? await advanceQueuedSemanticAnalysis(

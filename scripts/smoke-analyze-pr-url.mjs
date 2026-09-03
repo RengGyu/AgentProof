@@ -1,3 +1,5 @@
+import { redactSecrets } from "../src/lib/redact.ts";
+
 const baseUrl = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const prUrl = process.env.AGENTPROOF_SMOKE_PR_URL;
 const taskText = process.env.AGENTPROOF_SMOKE_TASK_TEXT ?? "";
@@ -8,15 +10,154 @@ const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation", "tot
 const ANALYZE_TIMING_PATTERN = /^ap_(input|evidence|report|validation|total);dur=(\d+)$/;
 const GITHUB_EVIDENCE_TIMING_PHASES = ["github_pr", "github_files", "github_checks", "github_statuses", "github_annotations", "github_jobs"];
 const GITHUB_EVIDENCE_TIMING_PATTERN = /^ap_(github_pr|github_files|github_checks|github_statuses|github_annotations|github_jobs);dur=(\d+)$/;
+const REQUIREMENT_STATUSES = new Set(["met", "partial", "missing", "unclear"]);
+const GENERAL_PR_ASSESSMENT_MODES = new Set(["ordinary_pr", "typed_contract_companion"]);
+const GENERAL_PR_ASSESSMENT_SOURCE_STATES = new Set(["linked_issue", "pr_author_claim", "mixed", "missing", "ambiguous"]);
+const GENERAL_PR_ASSESSMENT_CONCLUSIONS = new Set([
+  "evidence_supports_stated_change",
+  "evidence_partial",
+  "mixed_evidence",
+  "attention_required",
+  "collection_blocked",
+  "no_assessable_claims"
+]);
+const GENERAL_PR_ASSESSMENT_REASON_CODES = new Set([
+  "implementation_evidence_observed",
+  "test_artifact_observed",
+  "exact_execution_passed",
+  "exact_execution_failed",
+  "verified_relation_missing",
+  "execution_not_observed",
+  "claimed_artifact_not_observed",
+  "unsupported_claim_type",
+  "source_missing",
+  "source_ambiguous",
+  "source_unavailable",
+  "collection_incomplete",
+  "head_mismatch",
+  "evidence_identity_incomplete",
+  "semantic_relation_only",
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
+]);
+const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
+  "evidence_supported",
+  "evidence_partial",
+  "not_demonstrated",
+  "contradicted",
+  "blocked",
+  "not_assessable"
+];
+const OPERATOR_DIAGNOSTIC_HEADER = "x-agentproof-observation-diagnostics";
+const OPERATOR_DIAGNOSTIC_VERSION = "semantic-boundary-v1";
+const OPERATOR_STAGE_STATES = new Set(["not_run", "valid", "invalid", "timeout", "unavailable", "stale"]);
+const OPERATOR_COVERAGE_STATES = new Set(["complete", "sampled", "incomplete"]);
+const OPERATOR_SOURCE_BUCKETS = new Set(["0", "1_4", "5_8", "9_12"]);
+const OPERATOR_EVIDENCE_BUCKETS = new Set(["0", "1_16", "17_32", "33_64"]);
+const OPERATOR_OMISSION_KEYS = ["spanBudget", "evidenceBudget", "inputByteBudget", "unsafeDescriptor", "noDeterministicSignal"];
+const OPERATOR_PACKAGE_FAILURE_REASONS = new Set([
+  "model_profile_invalid", "timeout_invalid", "seed_invalid", "seed_parse_incomplete", "span_missing",
+  "span_limit_exceeded", "change_cluster_limit_exceeded", "evidence_atom_limit_exceeded", "seed_rebuild_mismatch",
+  "source_binding_invalid", "selection_unavailable", "schema_unavailable", "input_size_exceeded"
+]);
+const OPERATOR_PROVIDER_PHASES = new Set(["claim_discovery", "evidence_linking"]);
+const OPERATOR_PROVIDER_CATEGORIES = new Set(["timeout", "network_error", "rate_limited", "provider_unavailable", "auth_failed", "request_invalid", "invalid_json_schema", "response_invalid", "output_invalid", "incomplete"]);
+const OPERATOR_EVIDENCE_INVALID_REASONS = new Set(["validation_provenance_invalid", "output_limit_exceeded", "root_shape_invalid", "relation_limit_exceeded", "selection_binding_invalid", "relation_shape_invalid", "objective_binding_invalid", "reference_binding_invalid", "duplicate_relation", "reference_ownership_conflict", "merge_binding_invalid", "validator_exception"]);
+const OPERATOR_FRESHNESS_PHASES = new Set(["before_claim", "after_claim", "before_evidence", "after_evidence"]);
+const OPERATOR_FRESHNESS_STALE_REASONS = new Set(["head_changed", "base_changed", "source_changed", "seed_changed"]);
+const OPERATOR_FRESHNESS_UNAVAILABLE_REASONS = new Set(["auth_unavailable", "rate_limited", "fetch_failed", "snapshot_unavailable", "privacy_ineligible"]);
 
-export async function runAnalyzePrSmoke({
+/** Optional local diagnostics never change the default public smoke result. */
+export async function runAnalyzePrSmoke({ onDiagnostic, ...options }) {
+  if (!onDiagnostic) return executeAnalyzePrSmoke(options);
+  const diagnostic = { status: "failed", stage: "analyze", httpStatus: null, report: null, operator: null, cleanupConfirmed: null };
+  let result;
+  let failure;
+  try {
+    result = await executeAnalyzePrSmoke({
+      ...options,
+      onStage: (stage) => { diagnostic.stage = stage; },
+      onAnalyzed: (report) => { diagnostic.httpStatus = 200; diagnostic.report = projectSmokeReportDetails(report, [options.githubToken, options.operatorDiagnosticsToken]); },
+      onOperator: (operator) => { diagnostic.operator = operator; }
+    });
+    diagnostic.status = "completed";
+    diagnostic.stage = "completed";
+    diagnostic.httpStatus = result.status;
+    diagnostic.cleanupConfirmed = result.savedReportDeleted;
+  } catch (error) {
+    if (Number.isInteger(error?.status)) diagnostic.httpStatus = error.status;
+    failure = error;
+  }
+  // A failed local checkpoint must stop the run, not masquerade as an API failure.
+  await onDiagnostic(diagnostic);
+  if (failure) throw failure;
+  return result;
+}
+
+/** Explicit projection: no raw evidence summaries, bindings, receipts or provider bodies. */
+export function projectSmokeReportDetails(report, secrets = []) {
+  const safeText = (value) => {
+    if (typeof value !== "string") return null;
+    let clean = value;
+    for (const secret of secrets) if (secret) clean = clean.replaceAll(secret, "[redacted]");
+    clean = redactSecrets(clean);
+    if (/Patch excerpt|raw[_ ](?:details|diff|log|patch|annotation)|```/i.test(clean)) return "[raw excerpt omitted]";
+    return clean.slice(0, 1000);
+  };
+  const list = (values) => Array.isArray(values) ? values : [];
+  const texts = (values) => list(values).map(safeText);
+  const pick = (value, keys) => Object.fromEntries(keys.map((key) => [key, safeText(value?.[key])]));
+  return {
+    createdAt: safeText(report.createdAt),
+    observedAnchor: Object.fromEntries(["headSha", "baseSha"].map((key) => {
+      const value = report.source?.provenance?.[key];
+      return [key, typeof value === "string" && /^[a-f0-9]{40,64}$/.test(value) ? value : null];
+    })),
+    summary: pick(report.summary, ["oneLine", "priority"]),
+    checks: pick(report.testing, ["ciStatus", "lintStatus", "typecheckStatus"]),
+    requirements: list(report.requirements).map((item) => ({
+      ...pick(item, ["requirementId", "requirementText", "status", "evidenceStatus", "sourceAuthority", "reviewerNote"]),
+      gaps: texts(item.gaps), evidenceRefs: texts(item.evidenceRefs),
+      proofAxes: list(item.proofAxes).map((axis) => ({
+        ...pick(axis, ["subject", "polarity", "state", "collectionBasis"]), evidenceRefs: texts(axis.evidenceRefs)
+      }))
+    })),
+    generalPrAssessmentSummary: isValidGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
+      ? copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary) : null,
+    targets: list(report.generalPrAssessment?.targets).map((target, index) => ({
+      id: `target_${index + 1}`,
+      ...pick(target, ["claimRole", "conclusion", "admissionBasis", "sourceAuthority", "requirementId"]),
+      reasonCodes: texts(target.reasonCodes), evidenceRefs: texts(target.evidenceRefs),
+      relationLevels: texts(target.relationLevels), headBound: target.headBound === true
+    })),
+    evidence: list(report.evidenceIndex).map((item) => pick(item, ["id", "kind", "label", "locator"])),
+    limitations: texts(report.limitations)
+  };
+}
+
+async function executeAnalyzePrSmoke({
   baseUrl,
   prUrl,
   taskText = "",
   githubToken,
+  operatorDiagnosticsToken,
   allowProductionGithubToken = false,
+  requireRequirementFindings = true,
+  requireGeneralPrAssessmentSummary = false,
+  expectedSourceAnchor,
   expectations,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  onStage = () => {},
+  onAnalyzed = () => {},
+  onOperator = () => {}
 }) {
   if (!prUrl) {
     throw smokeError("Set AGENTPROOF_SMOKE_PR_URL to a GitHub pull request URL.");
@@ -26,7 +167,13 @@ export async function runAnalyzePrSmoke({
 
   const response = await fetchImpl(`${baseUrl}/api/analyze`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(operatorDiagnosticsToken ? {
+        [OPERATOR_DIAGNOSTIC_HEADER]: OPERATOR_DIAGNOSTIC_VERSION,
+        "x-agentproof-ops-token": operatorDiagnosticsToken
+      } : {})
+    },
     body: JSON.stringify({
       prUrl,
       taskText,
@@ -45,6 +192,18 @@ export async function runAnalyzePrSmoke({
   const analyzeTiming = analyzeTimingFromResponse(response);
   const githubEvidenceTiming = githubEvidenceTimingFromResponse(response);
   const report = payload.report;
+  onAnalyzed(report);
+  onStage("operator_diagnostics");
+  const operatorSemanticDiagnostics = readOperatorSemanticDiagnostics(payload.operatorDiagnostics, Boolean(operatorDiagnosticsToken));
+  onOperator(operatorSemanticDiagnostics);
+  onStage("assessment_summary");
+  const generalPrAssessmentSummary = readGeneralPrAssessmentSummary(
+    report,
+    requireGeneralPrAssessmentSummary
+  );
+  onStage("source_anchor");
+  assertExpectedSourceAnchor(report, expectedSourceAnchor);
+  onStage("ci_evidence");
   const executionEvidence = passingExecutionEvidence(report);
   const failedCheckLocations = failedCheckAnnotationLocations(report);
   const expectationResult = assertReportExpectations(report, expectations);
@@ -53,14 +212,20 @@ export async function runAnalyzePrSmoke({
     throw smokeError("Report claimed passed CI without passing check/log evidence.", response.status);
   }
 
+  onStage("summary_save");
   const saveResult = await saveSummaryOnlyReport({ baseUrl, report, fetchImpl });
   const savedReport = saveResult.savedReport;
+  onStage("summary_privacy");
   assertSummaryOnlyReport(savedReport, {
     originalReprompt: report.reprompt?.prompt,
     githubToken,
     failedCheckLocations
   });
-  const qualityGate = evaluateReportQualityGate(report, { savedReport });
+  onStage("quality_gate");
+  const qualityGate = evaluateReportQualityGate(report, {
+    savedReport,
+    requireRequirementFindings
+  });
 
   if (!qualityGate.ok) {
     const failedChecks = qualityGate.checks
@@ -79,8 +244,13 @@ export async function runAnalyzePrSmoke({
     evidenceCoverage: report.summary?.evidenceCoverage,
     ciStatus: report.testing?.ciStatus,
     requirementCount: Array.isArray(report.requirements) ? report.requirements.length : 0,
+    requirementStatusCounts: requirementStatusCounts(report.requirements),
+    requirementEvidenceStatusCounts: requirementStatusCounts(report.requirements, (requirement) =>
+      requirement.evidenceStatus ?? requirement.status
+    ),
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
+    generalPrAssessmentSummary,
     analyzeTiming,
     githubEvidenceTiming,
     expectationCheckCount: expectationResult.checks.length,
@@ -98,8 +268,198 @@ export async function runAnalyzePrSmoke({
     savedEvidenceRefsCleared: evidenceRefsCleared(savedReport),
     savedReportDeleted: saveResult.deleted,
     savedReportDeleteWarning: saveResult.deleteWarning,
+    operatorSemanticDiagnostics,
     qualityGate
   };
+}
+
+export function readOperatorSemanticDiagnostics(value, required = true) {
+  if (!required) return null;
+  const keys = ["claimState", "evidenceState", "sourceCoverage", "evidenceCoverage", "providerCallCount", "selectedCountBuckets", "semanticPackageFailureReasons", "omittedReasonCounts"];
+  const hasReason = value && Object.hasOwn(value, "claimInvalidReason");
+  const hasEvidenceInvalidReason = value && Object.hasOwn(value, "evidenceInvalidReason");
+  const hasFreshnessFailure = value && Object.hasOwn(value, "freshnessFailure");
+  const hasProviderFailure = value && Object.hasOwn(value, "providerFailure");
+  if (hasReason) keys.push("claimInvalidReason");
+  if (hasEvidenceInvalidReason) keys.push("evidenceInvalidReason");
+  if (hasFreshnessFailure) keys.push("freshnessFailure");
+  if (hasProviderFailure) keys.push("providerFailure");
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+    !hasExactKeys(value, keys) ||
+    (hasReason && value.claimInvalidReason !== null && !["root_shape_invalid", "span_decision_invalid", "span_binding_invalid", "role_ceiling_violation", "output_limit_exceeded"].includes(value.claimInvalidReason)) ||
+    (hasEvidenceInvalidReason && (
+      (value.evidenceState === "invalid" && (value.evidenceInvalidReason === null || !OPERATOR_EVIDENCE_INVALID_REASONS.has(value.evidenceInvalidReason))) ||
+      (value.evidenceState !== "invalid" && value.evidenceInvalidReason !== null)
+    )) ||
+    (hasFreshnessFailure && !isValidOperatorFreshnessFailure(value.freshnessFailure)) ||
+    (hasProviderFailure && !isValidOperatorProviderFailure(value.providerFailure)) ||
+    !OPERATOR_STAGE_STATES.has(value.claimState) || !OPERATOR_STAGE_STATES.has(value.evidenceState) ||
+    (value.sourceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.sourceCoverage)) ||
+    (value.evidenceCoverage !== null && !OPERATOR_COVERAGE_STATES.has(value.evidenceCoverage)) ||
+    ![0, 1, 2, "3_plus"].includes(value.providerCallCount) ||
+    !value.selectedCountBuckets || typeof value.selectedCountBuckets !== "object" || Array.isArray(value.selectedCountBuckets) ||
+    !hasExactKeys(value.selectedCountBuckets, ["sourceSpans", "evidenceCandidates"]) ||
+    !OPERATOR_SOURCE_BUCKETS.has(value.selectedCountBuckets.sourceSpans) || !OPERATOR_EVIDENCE_BUCKETS.has(value.selectedCountBuckets.evidenceCandidates) ||
+    !Array.isArray(value.semanticPackageFailureReasons) ||
+    new Set(value.semanticPackageFailureReasons).size !== value.semanticPackageFailureReasons.length ||
+    !value.semanticPackageFailureReasons.every((reason) => OPERATOR_PACKAGE_FAILURE_REASONS.has(reason)) ||
+    !value.omittedReasonCounts || typeof value.omittedReasonCounts !== "object" || Array.isArray(value.omittedReasonCounts) ||
+    !hasExactKeys(value.omittedReasonCounts, OPERATOR_OMISSION_KEYS) ||
+    !OPERATOR_OMISSION_KEYS.every((key) => Number.isSafeInteger(value.omittedReasonCounts[key]) && value.omittedReasonCounts[key] >= 0)) {
+    throw smokeError("Analyze response did not include a valid operator staged diagnostic.");
+  }
+
+  return {
+    claimState: value.claimState,
+    ...(hasReason ? { claimInvalidReason: value.claimInvalidReason } : {}),
+    ...(hasEvidenceInvalidReason ? { evidenceInvalidReason: value.evidenceInvalidReason } : {}),
+    ...(hasFreshnessFailure ? { freshnessFailure: copyOperatorFreshnessFailure(value.freshnessFailure) } : {}),
+    ...(hasProviderFailure ? { providerFailure: copyOperatorProviderFailure(value.providerFailure) } : {}),
+    evidenceState: value.evidenceState,
+    sourceCoverage: value.sourceCoverage,
+    evidenceCoverage: value.evidenceCoverage,
+    providerCallCount: value.providerCallCount,
+    selectedCountBuckets: { ...value.selectedCountBuckets },
+    semanticPackageFailureReasons: [...value.semanticPackageFailureReasons],
+    omittedReasonCounts: Object.fromEntries(OPERATOR_OMISSION_KEYS.map((key) => [key, value.omittedReasonCounts[key]]))
+  };
+}
+
+function isValidOperatorFreshnessFailure(value) {
+  if (value === null) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value) || !hasExactKeys(value, ["phase", "state", "reason"]) || !OPERATOR_FRESHNESS_PHASES.has(value.phase)) return false;
+  return (value.state === "stale" && OPERATOR_FRESHNESS_STALE_REASONS.has(value.reason)) ||
+    (value.state === "unavailable" && OPERATOR_FRESHNESS_UNAVAILABLE_REASONS.has(value.reason));
+}
+
+function copyOperatorFreshnessFailure(value) {
+  return value === null ? null : { phase: value.phase, state: value.state, reason: value.reason };
+}
+
+function isValidOperatorProviderFailure(value) {
+  if (value === null) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = ["phase", "category"];
+  if (Object.hasOwn(value, "httpStatus")) keys.push("httpStatus");
+  if (Object.hasOwn(value, "incompleteReason")) keys.push("incompleteReason");
+  return hasExactKeys(value, keys) && OPERATOR_PROVIDER_PHASES.has(value.phase) && OPERATOR_PROVIDER_CATEGORIES.has(value.category) &&
+    (!Object.hasOwn(value, "httpStatus") || (Number.isSafeInteger(value.httpStatus) && value.httpStatus >= 100 && value.httpStatus <= 599)) &&
+    (!Object.hasOwn(value, "incompleteReason") || value.incompleteReason === "max_output_tokens") &&
+    (value.category === "incomplete" ? value.incompleteReason === "max_output_tokens" : !Object.hasOwn(value, "incompleteReason"));
+}
+
+function copyOperatorProviderFailure(value) {
+  if (value === null) return null;
+  return { phase: value.phase, category: value.category, ...(Object.hasOwn(value, "httpStatus") ? { httpStatus: value.httpStatus } : {}), ...(Object.hasOwn(value, "incompleteReason") ? { incompleteReason: value.incompleteReason } : {}) };
+}
+
+function readGeneralPrAssessmentSummary(report, required) {
+  const summary = report?.generalPrAssessmentSummary;
+  if (!required) return summary;
+
+  if (!isValidGeneralPrAssessmentSummary(summary)) {
+    throw smokeError("General PR assessment summary was unavailable.");
+  }
+
+  return copyGeneralPrAssessmentSummary(summary);
+}
+
+export function isValidGeneralPrAssessmentSummary(summary) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) return false;
+  const expectedKeys = ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes", ...(summary.observations === undefined ? [] : ["observations"])];
+  if (!hasExactKeys(summary, expectedKeys) || summary.version !== 1 ||
+    !GENERAL_PR_ASSESSMENT_MODES.has(summary.mode) ||
+    !GENERAL_PR_ASSESSMENT_SOURCE_STATES.has(summary.sourceState) ||
+    !GENERAL_PR_ASSESSMENT_CONCLUSIONS.has(summary.overallConclusion) ||
+    !summary.counts || typeof summary.counts !== "object" || Array.isArray(summary.counts) ||
+    !hasExactKeys(summary.counts, GENERAL_PR_ASSESSMENT_COUNT_KEYS) ||
+    !Array.isArray(summary.reasonCodes) || summary.reasonCodes.length > 16 ||
+    new Set(summary.reasonCodes).size !== summary.reasonCodes.length ||
+    !summary.reasonCodes.every((reason) => GENERAL_PR_ASSESSMENT_REASON_CODES.has(reason))) {
+    return false;
+  }
+
+  for (const key of GENERAL_PR_ASSESSMENT_COUNT_KEYS) {
+    if (!Number.isSafeInteger(summary.counts[key]) || summary.counts[key] < 0 || summary.counts[key] > 100) return false;
+  }
+
+  if (summary.overallConclusion !== aggregateGeneralPrAssessmentConclusion(summary.counts) ||
+    (summary.sourceState === "pr_author_claim" && !summary.reasonCodes.includes("author_claim_requires_confirmation"))) {
+    return false;
+  }
+
+  if (summary.observations !== undefined && !isValidGeneralPrAssessmentObservations(summary.observations, summary.counts)) return false;
+
+  return true;
+}
+
+function aggregateGeneralPrAssessmentConclusion(counts) {
+  if (counts.contradicted > 0) return "attention_required";
+  const total = GENERAL_PR_ASSESSMENT_COUNT_KEYS.reduce((sum, key) => sum + counts[key], 0);
+  if (total === 0) return "no_assessable_claims";
+  if (counts.blocked === total) return "collection_blocked";
+  if (counts.evidence_supported === total) return "evidence_supports_stated_change";
+  if (counts.evidence_partial === total) return "evidence_partial";
+  return "mixed_evidence";
+}
+
+export function copyGeneralPrAssessmentSummary(summary) {
+  return {
+    version: summary.version,
+    mode: summary.mode,
+    sourceState: summary.sourceState,
+    overallConclusion: summary.overallConclusion,
+    counts: Object.fromEntries(GENERAL_PR_ASSESSMENT_COUNT_KEYS.map((key) => [key, summary.counts[key]])),
+    reasonCodes: [...summary.reasonCodes],
+    ...(summary.observations ? { observations: { version: summary.observations.version, inventory: { state: summary.observations.inventory.state, changedArtifacts: summary.observations.inventory.changedArtifacts, changedTestCandidates: summary.observations.inventory.changedTestCandidates }, links: { state: summary.observations.links.state, linkedObjectives: summary.observations.links.linkedObjectives, supports: summary.observations.links.supports, tests: summary.observations.links.tests, implements: summary.observations.links.implements, contradicts: summary.observations.links.contradicts }, coverage: { source: summary.observations.coverage.source, evidence: summary.observations.coverage.evidence } } } : {})
+  };
+}
+
+function isValidGeneralPrAssessmentObservations(value, counts) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !hasExactKeys(value, ["version", "inventory", "links", "coverage"]) || value.version !== 1 || !value.inventory || typeof value.inventory !== "object" || Array.isArray(value.inventory) || !value.links || typeof value.links !== "object" || Array.isArray(value.links) || !value.coverage || typeof value.coverage !== "object" || Array.isArray(value.coverage)) return false;
+  const { inventory, links, coverage } = value;
+  if (!hasExactKeys(inventory, ["state", "changedArtifacts", "changedTestCandidates"]) || !hasExactKeys(links, ["state", "linkedObjectives", "supports", "tests", "implements", "contradicts"]) || !hasExactKeys(coverage, ["source", "evidence"]) || !["complete", "incomplete", "unavailable"].includes(inventory.state) || !Number.isSafeInteger(inventory.changedArtifacts) || !Number.isSafeInteger(inventory.changedTestCandidates) || inventory.changedArtifacts < 0 || inventory.changedTestCandidates < 0 || inventory.changedTestCandidates > inventory.changedArtifacts) return false;
+  const keys = ["supports", "tests", "implements", "contradicts"];
+  if (!["not_attempted", "proposed", "none_proposed", "unavailable"].includes(links.state) || !Number.isSafeInteger(links.linkedObjectives) || links.linkedObjectives < 0 || !keys.every((key) => Number.isSafeInteger(links[key]) && links[key] >= 0)) return false;
+  const count = keys.reduce((sum, key) => sum + links[key], 0);
+  const targetCount = Object.values(counts).reduce((sum, item) => sum + (Number.isSafeInteger(item) ? item : Infinity), 0);
+  if (count > 64 || links.linkedObjectives > targetCount || links.linkedObjectives > count || (links.state === "proposed" ? (links.linkedObjectives === 0 || count === 0) : (links.linkedObjectives !== 0 || count !== 0))) return false;
+  return ["source", "evidence"].every((key) => coverage[key] === null || ["complete", "sampled", "incomplete"].includes(coverage[key]));
+}
+
+function hasExactKeys(value, expectedKeys) {
+  const keys = Object.keys(value);
+  return keys.length === expectedKeys.length && expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+function requirementStatusCounts(requirements, selectStatus = (requirement) => requirement.status) {
+  const counts = {};
+  for (const requirement of Array.isArray(requirements) ? requirements : []) {
+    const status = selectStatus(requirement);
+    if (REQUIREMENT_STATUSES.has(status)) counts[status] = (counts[status] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function assertExpectedSourceAnchor(report, expectedSourceAnchor) {
+  if (expectedSourceAnchor === undefined) return;
+
+  const expectedHeadSha = expectedSourceAnchor?.headSha;
+  const expectedBaseSha = expectedSourceAnchor?.baseSha;
+  const provenance = report?.source?.provenance;
+  if (
+    !isFullGitSha(expectedHeadSha) ||
+    !isFullGitSha(expectedBaseSha) ||
+    provenance?.origin !== "github_snapshot" ||
+    provenance?.headSha !== expectedHeadSha ||
+    provenance?.baseSha !== expectedBaseSha
+  ) {
+    throw smokeError("Analyze report source anchor did not match the frozen external PR sample.");
+  }
+}
+
+function isFullGitSha(value) {
+  return typeof value === "string" && /^[a-f0-9]{40,64}$/.test(value);
 }
 
 export function analyzeTimingFromResponse(response) {
@@ -335,9 +695,12 @@ export function assertReportExpectations(report, expectations = {}) {
   return { checks };
 }
 
-export function evaluateReportQualityGate(report, { savedReport } = {}) {
+export function evaluateReportQualityGate(report, {
+  savedReport,
+  requireRequirementFindings = true
+} = {}) {
   const checks = [
-    requirementsPresentQualityCheck(report),
+    requirementsPresentQualityCheck(report, requireRequirementFindings),
     metRequirementExecutionQualityCheck(report),
     ciExecutionQualityCheck(report),
     reviewerLeadProvenanceQualityCheck(report),
@@ -351,14 +714,16 @@ export function evaluateReportQualityGate(report, { savedReport } = {}) {
   };
 }
 
-function requirementsPresentQualityCheck(report) {
+function requirementsPresentQualityCheck(report, requireRequirementFindings) {
   const count = Array.isArray(report.requirements) ? report.requirements.length : 0;
 
   return qualityCheck({
     id: "requirements_present",
     label: "Requirement extraction present",
-    ok: count > 0,
-    detail: count > 0
+    ok: !requireRequirementFindings || count > 0,
+    detail: !requireRequirementFindings
+      ? "No acceptance contract is required for this evaluation; zero requirement findings are allowed."
+      : count > 0
       ? `${count} requirement finding(s) are available for reviewer coverage checks.`
       : "No requirement findings were available for reviewer coverage checks."
   });
@@ -584,6 +949,10 @@ export function assertSummaryOnlyReport(report, options = {}) {
     throw smokeError("Saved report retained evidenceRefs.");
   }
 
+  if (report.generalPrAssessmentSummary !== undefined && !isValidGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)) {
+    throw smokeError("Saved report retained private general PR assessment data.");
+  }
+
   if (!Array.isArray(report.limitations) || !report.limitations.some((item) => /omits raw evidence, patch\/log excerpts, claims,(?: proof-graph evidence refs,)? and re-prompt text/i.test(item))) {
     throw smokeError("Saved report did not include the summary-only omission limitation.");
   }
@@ -711,6 +1080,9 @@ function smokeError(message, status) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv.slice(2).includes("--help")) {
+    console.log("Usage: pnpm smoke:analyze-pr\n\nThis command accepts no CLI flags. Configure AGENTPROOF_SMOKE_BASE_URL, AGENTPROOF_SMOKE_PR_URL, optional AGENTPROOF_SMOKE_TASK_TEXT, and optional approved GitHub-token environment handling.");
+  } else {
   runAnalyzePrSmoke({ baseUrl, prUrl, taskText, githubToken, allowProductionGithubToken })
     .then((result) => {
       console.log(JSON.stringify(result, null, 2));
@@ -723,4 +1095,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       }));
       process.exit(1);
     });
+  }
 }

@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { containsSecretPattern } from "./redact";
 import { createVerifiedAuthenticity, verifyVerifiedAuthenticity } from "./report-authenticity";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
+import { aggregateGeneralPrConclusionFromCounts } from "./report-validation";
 import type { ReportValidationResult } from "./report-validation";
 import { validateLlmSemanticCandidate, type LlmSemanticOutput } from "./llm-semantic-output";
 import {
@@ -16,7 +17,7 @@ import {
   isProofAxisCollectionBasisAllowed,
   isProofAxisSubject
 } from "./proof-contract";
-import type { CheckStatus, EvidenceKind, HybridPlannerProvenance, PriorityLevel, RequirementAuthority, RequirementProofAxis, RequirementStatus, VerificationReport, VerificationReportV2 } from "./types";
+import type { CheckStatus, EvidenceKind, GeneralPrAssessmentSummaryV1, HybridPlannerProvenance, PriorityLevel, RequirementAuthority, RequirementProofAxis, RequirementStatus, VerificationReport, VerificationReportV2 } from "./types";
 import type { VerificationContractReportV2 } from "./verification-contract-v2";
 import { aggregateVerificationCriteriaV2 } from "./verification-contract-v2";
 
@@ -30,6 +31,51 @@ const MAX_TENANT_PRIORITY_FILES = 100;
 const MAX_TENANT_EVIDENCE_REFS = 50;
 const MAX_TENANT_GAPS = 20;
 const MAX_TENANT_OBJECTIVE_LABEL = 160;
+const GENERAL_PR_ASSESSMENT_MODES = new Set(["ordinary_pr", "typed_contract_companion"]);
+const GENERAL_PR_ASSESSMENT_SOURCE_STATES = new Set(["linked_issue", "pr_author_claim", "mixed", "missing", "ambiguous"]);
+const GENERAL_PR_ASSESSMENT_CONCLUSIONS = new Set([
+  "evidence_supports_stated_change",
+  "evidence_partial",
+  "mixed_evidence",
+  "attention_required",
+  "collection_blocked",
+  "no_assessable_claims"
+]);
+const GENERAL_PR_ASSESSMENT_REASONS = new Set([
+  "implementation_evidence_observed",
+  "test_artifact_observed",
+  "exact_execution_passed",
+  "exact_execution_failed",
+  "verified_relation_missing",
+  "execution_not_observed",
+  "claimed_artifact_not_observed",
+  "unsupported_claim_type",
+  "source_missing",
+  "source_ambiguous",
+  "source_unavailable",
+  "collection_incomplete",
+  "head_mismatch",
+  "evidence_identity_incomplete",
+  "semantic_relation_only",
+  "author_claim_requires_confirmation",
+  "deterministic_candidate_missing",
+  "semantic_observer_disabled",
+  "semantic_observer_ineligible",
+  "semantic_observer_unavailable",
+  "semantic_observer_timeout",
+  "semantic_proposal_invalid",
+  "semantic_candidate_missing",
+  "semantic_candidate_rejected",
+  "target_relation_unresolved"
+]);
+const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
+  "evidence_supported",
+  "evidence_partial",
+  "not_demonstrated",
+  "contradicted",
+  "blocked",
+  "not_assessable"
+] as const;
 
 export interface TenantPersistedReport {
   version: 1;
@@ -37,6 +83,8 @@ export interface TenantPersistedReport {
   /** A privacy-safe strict-contract outcome projection. Source content and evaluator inputs are never stored. */
   reportSchemaVersion?: "verification-report.v2";
   verificationContract?: TenantVerificationContract;
+  /** Target-free ordinary-PR evidence summary; private bindings never persist. */
+  generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
   planner?: HybridPlannerProvenance;
   priority: PriorityLevel;
   requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
@@ -181,6 +229,9 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
       verificationContract
     } : {}),
     ...(report.planner ? { planner: copyTenantPlannerProvenance(report.planner) } : {}),
+    ...(isVerificationReportV2(report) && report.generalPrAssessmentSummary ? {
+      generalPrAssessmentSummary: copyTenantGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
+    } : {}),
     priority: report.summary.priority,
     requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceStatus, sourceAuthority, evidenceRefs, gaps, proofAxes, classificationBasis, plannerAxisSubjects }) => {
       const objectiveLabel = tenantObjectiveLabel(requirementText);
@@ -312,11 +363,15 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const errors: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return { valid: false, errors: ["Tenant persisted report must be an object."] };
   const report = value as Partial<TenantPersistedReport> & Record<string, unknown>;
-  const allowed = new Set(["version", "analysisContext", "reportSchemaVersion", "verificationContract", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
+  const allowed = new Set(["version", "analysisContext", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
   for (const key of Object.keys(report)) if (!allowed.has(key)) errors.push(`tenant persisted report contains disallowed field: ${key}.`);
   if (report.version !== 1) errors.push("tenant persisted report version must be 1.");
   if (report.analysisContext !== undefined && !isAnalysisContext(report.analysisContext)) errors.push("tenant persisted report analysis context is invalid.");
   validateTenantVerificationContractMarker(report, errors);
+  if (report.generalPrAssessmentSummary !== undefined) {
+    if (report.reportSchemaVersion !== "verification-report.v2") errors.push("tenant ordinary-PR assessment requires a v2 report.");
+    validateTenantGeneralPrAssessmentSummary(report.generalPrAssessmentSummary, errors);
+  }
   if (report.planner !== undefined) validateTenantPlannerProvenance(report.planner, errors);
   if (!isPriority(report.priority)) errors.push("tenant persisted report priority is invalid.");
   if (!Array.isArray(report.requirements) || report.requirements.length > MAX_TENANT_REQUIREMENTS) errors.push("tenant persisted report requirements are invalid.");
@@ -383,7 +438,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   const integrity = report.integrity as Record<string, unknown> | undefined;
-  const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.reportSchemaVersion !== undefined ? { reportSchemaVersion: report.reportSchemaVersion } : {}), ...(report.verificationContract !== undefined ? { verificationContract: report.verificationContract } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
+  const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.reportSchemaVersion !== undefined ? { reportSchemaVersion: report.reportSchemaVersion } : {}), ...(report.verificationContract !== undefined ? { verificationContract: report.verificationContract } : {}), ...(report.generalPrAssessmentSummary !== undefined ? { generalPrAssessmentSummary: report.generalPrAssessmentSummary } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
   const payload = stableJson(unsigned);
   if (!integrity || Object.keys(integrity).some((key) => !["version", "algorithm", "canonicalDigest", "signature"].includes(key)) || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > TENANT_REPORT_MAX_BYTES) errors.push(`report exceeds ${TENANT_REPORT_MAX_BYTES} bytes.`);
@@ -630,7 +685,10 @@ function hydrateTenantPersistedReport(
   if (report.reportSchemaVersion === "verification-report.v2" && report.verificationContract) {
     Object.assign(hydrated, {
       reportSchemaVersion: "verification-report.v2",
-      verificationContract: hydrateTenantVerificationContract(report.verificationContract)
+      verificationContract: hydrateTenantVerificationContract(report.verificationContract),
+      ...(report.generalPrAssessmentSummary ? {
+        generalPrAssessmentSummary: copyTenantGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
+      } : {})
     });
   }
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, input.signingSecret);
@@ -689,6 +747,81 @@ function copyTenantPlannerProvenance(value: HybridPlannerProvenance): HybridPlan
     model: value.model,
     inputHash: value.inputHash
   };
+}
+
+/**
+ * Tenant storage keeps the same closed projection used by public reports.
+ * Target bindings, source spans, evidence refs, and source text are excluded
+ * before signature creation.
+ */
+function copyTenantGeneralPrAssessmentSummary(
+  value: GeneralPrAssessmentSummaryV1
+): GeneralPrAssessmentSummaryV1 {
+  if (value.overallConclusion !== aggregateGeneralPrConclusionFromCounts(value.counts)) {
+    throw new Error("Target-free general-PR assessment summary conclusion does not match counts.");
+  }
+  return {
+    version: value.version,
+    mode: value.mode,
+    sourceState: value.sourceState,
+    overallConclusion: value.overallConclusion,
+    counts: { ...value.counts },
+    reasonCodes: [...value.reasonCodes],
+    ...(value.observations ? { observations: copyTenantObservations(value.observations) } : {})
+  };
+}
+
+function validateTenantGeneralPrAssessmentSummary(value: unknown, errors: string[]): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    errors.push("tenant ordinary-PR assessment summary is invalid.");
+    return;
+  }
+  const summary = value as Record<string, unknown>;
+  const allowed = ["version", "mode", "sourceState", "overallConclusion", "counts", "reasonCodes", "observations"];
+  if (Object.keys(summary).some((key) => !allowed.includes(key)) ||
+    summary.version !== 1 ||
+    !GENERAL_PR_ASSESSMENT_MODES.has(summary.mode as string) ||
+    !GENERAL_PR_ASSESSMENT_SOURCE_STATES.has(summary.sourceState as string) ||
+    !GENERAL_PR_ASSESSMENT_CONCLUSIONS.has(summary.overallConclusion as string)) {
+    errors.push("tenant ordinary-PR assessment summary is invalid.");
+  }
+  if (!summary.counts || typeof summary.counts !== "object" || Array.isArray(summary.counts)) {
+    errors.push("tenant ordinary-PR assessment summary counts are invalid.");
+  } else {
+    const counts = summary.counts as Record<string, unknown>;
+    if (Object.keys(counts).length !== GENERAL_PR_ASSESSMENT_COUNT_KEYS.length ||
+      GENERAL_PR_ASSESSMENT_COUNT_KEYS.some((key) =>
+        !Number.isSafeInteger(counts[key]) || (counts[key] as number) < 0 || (counts[key] as number) > MAX_TENANT_REQUIREMENTS
+      )) {
+      errors.push("tenant ordinary-PR assessment summary counts are invalid.");
+    } else if (summary.overallConclusion !== aggregateGeneralPrConclusionFromCounts(counts as unknown as GeneralPrAssessmentSummaryV1["counts"])) {
+      errors.push("tenant ordinary-PR assessment summary conclusion does not match counts.");
+    }
+  }
+  if (!Array.isArray(summary.reasonCodes) || summary.reasonCodes.length > 16 ||
+    summary.reasonCodes.some((reason) => typeof reason !== "string" || !GENERAL_PR_ASSESSMENT_REASONS.has(reason)) ||
+    new Set(summary.reasonCodes).size !== summary.reasonCodes.length) {
+    errors.push("tenant ordinary-PR assessment summary reasons are invalid.");
+  }
+  if (summary.observations !== undefined && !isValidTenantObservations(summary.observations, summary.counts)) errors.push("tenant ordinary-PR assessment summary observations are invalid.");
+}
+
+function copyTenantObservations(value: NonNullable<GeneralPrAssessmentSummaryV1["observations"]>): NonNullable<GeneralPrAssessmentSummaryV1["observations"]> {
+  return { version: value.version, inventory: { state: value.inventory.state, changedArtifacts: value.inventory.changedArtifacts, changedTestCandidates: value.inventory.changedTestCandidates }, links: { state: value.links.state, linkedObjectives: value.links.linkedObjectives, supports: value.links.supports, tests: value.links.tests, implements: value.links.implements, contradicts: value.links.contradicts }, coverage: { source: value.coverage.source, evidence: value.coverage.evidence } };
+}
+
+function isValidTenantObservations(value: unknown, counts: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const observations = value as Record<string, unknown>, inventory = observations.inventory as Record<string, unknown>, links = observations.links as Record<string, unknown>, coverage = observations.coverage as Record<string, unknown>;
+  const exact = (item: Record<string, unknown> | undefined, keys: string[]) => item !== undefined && Object.keys(item).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(item, key));
+  if (!exact(observations, ["version", "inventory", "links", "coverage"]) || observations.version !== 1 || !inventory || !links || !coverage || !exact(inventory, ["state", "changedArtifacts", "changedTestCandidates"]) || !exact(links, ["state", "linkedObjectives", "supports", "tests", "implements", "contradicts"]) || !exact(coverage, ["source", "evidence"])) return false;
+  if (!["complete", "incomplete", "unavailable"].includes(inventory.state as string) || !Number.isSafeInteger(inventory.changedArtifacts) || !Number.isSafeInteger(inventory.changedTestCandidates) || (inventory.changedArtifacts as number) < 0 || (inventory.changedTestCandidates as number) < 0 || (inventory.changedTestCandidates as number) > (inventory.changedArtifacts as number)) return false;
+  const keys = ["supports", "tests", "implements", "contradicts"];
+  if (!["not_attempted", "proposed", "none_proposed", "unavailable"].includes(links.state as string) || !["linkedObjectives", ...keys].every((key) => Number.isSafeInteger(links[key]) && (links[key] as number) >= 0)) return false;
+  const count = keys.reduce((sum, key) => sum + (links[key] as number), 0);
+  const targetCount = counts && typeof counts === "object" && !Array.isArray(counts) ? Object.values(counts as Record<string, unknown>).reduce<number>((sum, item) => sum + (Number.isSafeInteger(item) ? Number(item) : Infinity), 0) : Infinity;
+  if (count > 64 || (links.linkedObjectives as number) > targetCount || (links.linkedObjectives as number) > count || (links.state === "proposed" ? ((links.linkedObjectives as number) === 0 || count === 0) : ((links.linkedObjectives as number) !== 0 || count !== 0))) return false;
+  return ["source", "evidence"].every((key) => coverage[key] === null || ["complete", "sampled", "incomplete"].includes(coverage[key] as string));
 }
 
 function validateTenantPlannerAxisSubjects(value: unknown, proofAxes: unknown, errors: string[]) {

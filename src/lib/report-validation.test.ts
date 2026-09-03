@@ -8,7 +8,11 @@ import { demoScenarios } from "./sample-data";
 import { projectTenantPersistedReport } from "./tenant-report-validation";
 import { generateVerificationReport, generateVerificationReportV2FromInput } from "./verifier";
 import { generateVerificationReportV2 } from "./verifier";
-import type { PullRequestInput, TestRelationReceiptV2 } from "./types";
+import { deriveGeneralPrAssessmentV1 } from "./general-pr-assessment";
+import { finalizeDeterministicGeneralPrObservationsV2 } from "./general-pr-observation-service";
+import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
+import type { PullRequestInput, TestRelationReceiptV2, VerificationReportV2 } from "./types";
 
 const HYBRID_PLANNER_PROVENANCE = {
   version: 1,
@@ -20,6 +24,155 @@ const HYBRID_PLANNER_PROVENANCE = {
 } as const;
 
 describe("validateVerificationReport", () => {
+  it("accepts a closed ordinary-PR assessment while rejecting injected private target fields", () => {
+    const input: PullRequestInput = {
+      title: "Return the repository label",
+      description: "",
+      taskText: "",
+      changedFiles: [{ path: "src/repository-label.ts", status: "modified" }],
+      checks: [],
+      logs: [],
+      sourceProvenance: {
+        version: 1,
+        origin: "github_snapshot",
+        baseSha: "a".repeat(40),
+        headSha: "b".repeat(40),
+        changedFileInventory: { version: 1, completeness: "complete", headSha: "b".repeat(40) },
+        evidenceCapturedAt: "2026-08-31T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+      }
+    };
+    const report = generateVerificationReportV2FromInput(input);
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed);
+    Object.assign(bundle as unknown as Record<string, unknown>, { transientObserver: transientSelectionFixture() });
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+    report.generalPrAssessment = assessment;
+
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    expectNoSelectionSentinels(report);
+
+    const invalidObservations = structuredClone(report) as unknown as { generalPrAssessment: { observations: { links: Record<string, unknown> } } };
+    invalidObservations.generalPrAssessment.observations.links = { state: "proposed", linkedObjectives: 0, supports: 1, tests: 0, implements: 0, contradicts: 0 };
+    expect(validateVerificationReport(invalidObservations, { mode: "v2_full" }).valid).toBe(false);
+    invalidObservations.generalPrAssessment.observations.links = { state: "proposed", linkedObjectives: 2, supports: 1, tests: 0, implements: 0, contradicts: 0 };
+    expect(validateVerificationReport(invalidObservations, { mode: "v2_full" }).valid).toBe(false);
+
+    const twoPartialTargets = structuredClone(report) as unknown as {
+      generalPrAssessment: {
+        counts: { evidence_partial: number };
+        targets: Array<Record<string, unknown>>;
+        observations: { links: { state: string; linkedObjectives: number; supports: number } };
+      };
+    };
+    twoPartialTargets.generalPrAssessment.targets.push({ ...assessment.targets[0] });
+    twoPartialTargets.generalPrAssessment.counts.evidence_partial = 2;
+    twoPartialTargets.generalPrAssessment.observations.links.state = "proposed";
+    twoPartialTargets.generalPrAssessment.observations.links.linkedObjectives = 2;
+    twoPartialTargets.generalPrAssessment.observations.links.supports = 2;
+    expect(validateVerificationReport(twoPartialTargets, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    twoPartialTargets.generalPrAssessment.observations.links.supports = 1;
+    expect(validateVerificationReport(twoPartialTargets, { mode: "v2_full" }).errors).toContain(
+      "generalPrAssessment.observations.links.linkedObjectives must not exceed relations."
+    );
+
+    const forgedConclusion = structuredClone(report) as unknown as {
+      generalPrAssessment: { overallConclusion: string };
+    };
+    forgedConclusion.generalPrAssessment.overallConclusion = "mixed_evidence";
+    expect(validateVerificationReport(forgedConclusion, { mode: "v2_full" }).errors).toContain(
+      "generalPrAssessment.overallConclusion does not match targets."
+    );
+
+    const forgedCounts = structuredClone(report) as unknown as {
+      generalPrAssessment: { counts: { evidence_partial: number } };
+    };
+    forgedCounts.generalPrAssessment.counts.evidence_partial = 2;
+    expect(validateVerificationReport(forgedCounts, { mode: "v2_full" }).errors).toContain(
+      "generalPrAssessment.counts.evidence_partial does not match targets."
+    );
+
+    const injected = structuredClone(report) as unknown as {
+      generalPrAssessment: { targets: Array<Record<string, unknown>> };
+    };
+    injected.generalPrAssessment.targets = [
+      { ...assessment.targets[0], rawSource: "must not enter a report" }
+    ];
+    expect(validateVerificationReport(injected, { mode: "v2_full" }).valid).toBe(false);
+  });
+
+  it("rejects a target-free summary that attempts an unsupported positive promotion", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean) as VerificationReportV2;
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "linked_issue",
+      overallConclusion: "evidence_supports_stated_change",
+      counts: {
+        evidence_supported: 1,
+        evidence_partial: 0,
+        not_demonstrated: 0,
+        contradicted: 0,
+        blocked: 0,
+        not_assessable: 0
+      },
+      reasonCodes: ["implementation_evidence_observed"]
+    };
+
+    expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(false);
+  });
+
+  it("derives every target-free summary conclusion from its aggregate counts", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean) as VerificationReportV2;
+    const counts = {
+      evidence_supported: 0,
+      evidence_partial: 1,
+      not_demonstrated: 0,
+      contradicted: 0,
+      blocked: 0,
+      not_assessable: 0
+    };
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "linked_issue",
+      overallConclusion: "evidence_partial",
+      counts,
+      reasonCodes: []
+    };
+
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+
+    for (const [forgedCounts, overallConclusion] of [
+      [{ ...counts, evidence_partial: 0 }, "evidence_partial"],
+      [counts, "evidence_supports_stated_change"],
+      [counts, "mixed_evidence"],
+      [counts, "attention_required"],
+      [counts, "collection_blocked"],
+      [counts, "no_assessable_claims"]
+    ] as const) {
+      const forged = structuredClone(report);
+      const summary = forged.generalPrAssessmentSummary!;
+      summary.counts = forgedCounts;
+      summary.overallConclusion = overallConclusion as typeof summary.overallConclusion;
+      expect(validateVerificationReport(forged, { mode: "v2_full" }).errors).toContain(
+        "generalPrAssessmentSummary.overallConclusion does not match counts."
+      );
+    }
+
+    for (const [validCounts, overallConclusion] of [
+      [{ ...counts, evidence_partial: 0 }, "no_assessable_claims"],
+      [counts, "evidence_partial"],
+      [{ ...counts, not_demonstrated: 1 }, "mixed_evidence"],
+      [{ ...counts, evidence_partial: 0, blocked: 1 }, "collection_blocked"]
+    ] as const) {
+      const valid = structuredClone(report);
+      valid.generalPrAssessmentSummary!.counts = validCounts;
+      valid.generalPrAssessmentSummary!.overallConclusion = overallConclusion;
+      expect(validateVerificationReport(valid, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    }
+  });
   it("admits a structurally valid private v2 receipt bundle only for a full report", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     const requirementId = report.requirements[0]!.requirementId;

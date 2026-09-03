@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "baseSha": "5ed9519c291b118d880bed538659fae8327aadb9",
+  "previousSpecBaselineSha": "65fa428d6dae3e2024494c5a84dbff86a12889d7",
+  "candidateBranch": "codex/general-pr-hybrid-observation-impl",
+  "reportSchemaVersion": "verification-report.v2",
+  "packageLockSha256": "e6471f9cff882bc5fd9c393cd1917d32d404699a5e8794fc8468eb48783afcd1",
+  "featurePolicy": {
+    "semanticObserverShadow": false,
+    "reviewerAdvisoryObservations": false,
+    "deterministicRelationConsumption": false,
+    "positiveProofPromotion": false
+  },
+  "legacySemanticInputs": {
+    "semanticOutputSha256": "36d9aa13bc2368ef8639fc73c402969f2ee17c51a4d48d6d08edd84c6189822e",
+    "semanticPackageSha256": "fc762d97743ce4eda6c272a3138bb86d391f5d9b551b4ed9352ca0e34f5c7e40",
+    "hybridPlannerSha256": "34f1a781771271b6e90b0a76d29cb6a04575ecf2d729a9ee384501975d2ffbd9",
+    "openAiAdapterSha256": "0705711c61d64b9776ac1edc51c94d62be97f9d0c861ce64a98daa46351af24d"
+  },
+  "visibleRegressionFixtures": {
+    "externalPrPilotSha256": "9e0e39af9556fedb637dfb21e7b526edc3d21322641fe50dd991a0ae060cc3f1",
+    "externalRegressionCasesSha256": "f4534701f5c753b516e764d1097ac48ed3cd5d325c7134a59460b9489cf8bb8d"
+  }
+}
