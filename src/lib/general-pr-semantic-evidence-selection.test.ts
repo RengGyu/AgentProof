@@ -67,7 +67,78 @@ function selected(request: PullRequestInput, overrides: Partial<Parameters<typeo
   return { seed, selection: result.selection };
 }
 
+function permutations<T>(items: readonly T[]): T[][] {
+  return items.length < 2
+    ? [[...items]]
+    : items.flatMap((item, index) => permutations(items.filter((_, other) => other !== index)).map((tail) => [item, ...tail]));
+}
+
 describe("selectGeneralPrSemanticEvidenceV1", () => {
+  it("keeps evidence descriptors paired and selection invariant under collection permutations", () => {
+    const request = completeInput({
+      changedFiles: [
+        { path: "src/zebra.ts", status: "modified", patch: "@@ -1 +1 @@ zebraHunkMarker" },
+        { path: "tests/alpha.test.ts", status: "added", patch: "@@ -1 +1 @@ alphaHunkMarker" },
+        { path: "docs/beta.md", status: "modified", patch: "@@ -1 +1 @@ betaHunkMarker" }
+      ],
+      checks: [
+        { name: "zebra check", status: "passed" },
+        { name: "alpha check", status: "passed" },
+        { name: "beta check", status: "passed" }
+      ]
+    });
+    const expected = selected(request).selection;
+    expect(expected.evidenceDescriptors.filter((descriptor) => descriptor.kind === "change").map((descriptor) => descriptor.tokenSketch))
+      .toEqual([["docs", "beta", "md", "hunk", "marker"], ["src", "zebra", "ts", "hunk", "marker"], ["tests", "alpha", "test", "ts", "hunk", "marker"]]);
+
+    for (const changedFiles of permutations(request.changedFiles)) {
+      for (const checks of permutations(request.checks)) {
+        expect(selected({ ...request, changedFiles, checks }).selection).toEqual(expected);
+      }
+    }
+  });
+
+  it.each(["modified", "removed"] as const)("keeps %s duplicate file references rejected after canonical ordering", (secondStatus) => {
+    const request = completeInput({
+      changedFiles: [
+        { path: "src/duplicate.ts", status: "modified" },
+        { path: "src/duplicate.ts", status: secondStatus }
+      ]
+    });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const claims = claimSelection(request);
+    const result = selectGeneralPrSemanticEvidenceV1({
+      pullRequest: request,
+      seed,
+      claimSelection: claims,
+      objectiveGroups: objectiveGroup(claims, "repository visibility")
+    });
+
+    expect(result).toEqual({ status: "invalid", reason: "descriptor_invalid" });
+  });
+
+  it("keeps same-name checks with different execution identities paired across reversal", () => {
+    const identity = (workflowId: number, runId: number, runAttempt: number, jobId: number, workflowPath: string) => ({ version: 1 as const, kind: "workflow_execution_identity" as const, workflowPath, workflowName: "workflow", workflowId, runId, runAttempt, jobId, jobName: "same", headSha: HEAD_SHA, checkEvidenceRef: `${workflowId}:${runId}:${jobId}` });
+    const request = completeInput({ checks: [
+      { name: "same", status: "passed", workflowExecutionIdentity: identity(1, 2, 1, 3, ".github/a.yml") },
+      { name: "same", status: "passed", workflowExecutionIdentity: identity(4, 5, 2, 6, ".github/b.yml") }
+    ] });
+    const reversed = { ...request, checks: [...request.checks].reverse() };
+
+    expect(buildGeneralPrObservationSeedV2(reversed)).toEqual(buildGeneralPrObservationSeedV2(request));
+    expect(selected(reversed).selection).toEqual(selected(request).selection);
+  });
+
+  it.each(["workflowPath", "workflowId", "runId", "runAttempt", "jobId"] as const)("keeps same-name checks differing only by %s paired across reversal", (field) => {
+    const base = { version: 1 as const, kind: "workflow_execution_identity" as const, workflowPath: ".github/a.yml", workflowName: "workflow", workflowId: 1, runId: 2, runAttempt: 1, jobId: 3, jobName: "same", headSha: HEAD_SHA, checkEvidenceRef: "base" };
+    const changed = { ...base, [field]: field === "workflowPath" ? ".github/b.yml" : base[field] + 1, checkEvidenceRef: "changed" };
+    const request = completeInput({ checks: [{ name: "same", status: "passed", workflowExecutionIdentity: base }, { name: "same", status: "passed", workflowExecutionIdentity: changed }] });
+    const reversed = { ...request, checks: [...request.checks].reverse() };
+
+    expect(buildGeneralPrObservationSeedV2(reversed)).toEqual(buildGeneralPrObservationSeedV2(request));
+    expect(selected(reversed).selection).toEqual(selected(request).selection);
+  });
+
   it("builds deterministic redacted sketches only from paths, hunk labels, and display names", () => {
     const secret = "github_pat_abcdefghijklmnopqrstuvwxyz123456";
     const request = completeInput({

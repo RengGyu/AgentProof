@@ -71,7 +71,7 @@ export function deriveGeneralPrAssessmentV1({
   const targets = targetRecords.map(({ target }) => target);
   const counts = countTargets(targets);
   const sourceState = sourceStateFor(targets, seed, bundle);
-  const headMismatch = bundle.seedHash !== seed.seedHash || bundle.semanticState === "stale";
+  const headMismatch = bundle.semanticFreshnessFailure?.state === "stale" && bundle.semanticFreshnessFailure.reason === "head_changed";
   const reasonCodes = uniqueReasons([
     ...targets.flatMap((target) => target.reasonCodes),
     ...diagnosticReasons(bundle),

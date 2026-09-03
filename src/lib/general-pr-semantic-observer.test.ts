@@ -120,7 +120,110 @@ function run(request: PullRequestInput, overrides: Partial<Parameters<typeof run
   });
 }
 
+function permutations<T>(items: readonly T[]): T[][] {
+  return items.length < 2 ? [[...items]] : items.flatMap((item, index) => permutations(items.filter((_, other) => other !== index)).map((tail) => [item, ...tail]));
+}
+
 describe("GeneralPrSemanticObserverV3 staging", () => {
+  it.each([
+    ["head movement", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, headSha: "c".repeat(40), changedFileInventory: { ...request.sourceProvenance!.changedFileInventory!, headSha: "c".repeat(40) } } }), "head_changed"],
+    ["base movement", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, baseSha: "d".repeat(40) } }), "base_changed"],
+    ["both anchors moving", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, baseSha: "d".repeat(40), headSha: "c".repeat(40), changedFileInventory: { ...request.sourceProvenance!.changedFileInventory!, headSha: "c".repeat(40) } } }), "head_changed"],
+    ["missing current head anchor", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, headSha: undefined, changedFileInventory: { ...request.sourceProvenance!.changedFileInventory!, headSha: undefined } } }), "seed_changed"],
+    ["empty current head anchor", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, headSha: "", changedFileInventory: { ...request.sourceProvenance!.changedFileInventory!, headSha: "" } } }), "seed_changed"],
+    ["empty current base anchor", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, baseSha: "" } }), "seed_changed"],
+    ["missing current base anchor", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, baseSha: undefined } }), "seed_changed"],
+    ["changed check", (request: PullRequestInput) => ({ ...request, checks: request.checks.map((check) => ({ ...check, status: "failed" as const })) }), "seed_changed"],
+    ["changed source", (request: PullRequestInput) => ({ ...request, description: "Different source text." }), "seed_changed"]
+  ] as const)("reports %s only when that change is observed", async (_name, changed, reason) => {
+    const original = input({
+      sourceProvenance: {
+        version: 1,
+        origin: "github_snapshot",
+        baseSha: "a".repeat(40),
+        headSha: "b".repeat(40),
+        changedFileInventory: { version: 1, completeness: "complete", headSha: "b".repeat(40) },
+        evidenceCapturedAt: "2026-09-04T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+      }
+    });
+    const provider = stagedProvider();
+    const result = await run(original, { provider, readCurrentInput: async () => changed(original) });
+
+    expect(result).toMatchObject({
+      state: "stale",
+      proposal: null,
+      semanticFreshnessFailure: { phase: "before_claim", state: "stale", reason }
+    });
+    expect(provider.observe).not.toHaveBeenCalled();
+  });
+
+  it.each([["headSha", undefined], ["headSha", ""], ["baseSha", undefined], ["baseSha", ""]] as const)("does not infer movement when expected %s is %j", async (field, value) => {
+    const current = input({ sourceProvenance: { version: 1, origin: "github_snapshot", baseSha: "a".repeat(40), headSha: "b".repeat(40), changedFileInventory: { version: 1, completeness: "complete", headSha: "b".repeat(40) }, evidenceCapturedAt: "2026-09-04T00:00:00.000Z", inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" } } });
+    const expected = { ...current, sourceProvenance: { ...current.sourceProvenance!, [field]: value, ...(field === "headSha" ? { changedFileInventory: { ...current.sourceProvenance!.changedFileInventory!, headSha: value } } : {}) } };
+    const result = await run(expected, { provider: stagedProvider(), readCurrentInput: async () => current });
+    expect(result).toMatchObject({ state: "stale", semanticFreshnessFailure: { state: "stale", reason: "seed_changed" } });
+  });
+
+  it.each([
+    [1, "before_claim", 0],
+    [2, "after_claim", 1],
+    [3, "before_evidence", 1],
+    [4, "after_evidence", 2]
+  ] as const)("rejects a changed check at read %i without retaining either semantic stage", async (at, phase, calls) => {
+    const original = input({
+      changedFiles: [{ path: "src/a.ts", status: "modified" }, { path: "test/a.test.ts", status: "added" }],
+      checks: [{ name: "unit", status: "passed" }, { name: "lint", status: "passed" }]
+    });
+    const changed = { ...original, checks: original.checks.map((check) => ({ ...check, status: "failed" as const })) };
+    const provider = stagedProvider();
+    let reads = 0;
+    const result = await run(original, { provider, readCurrentInput: async () => ++reads === at ? changed : original });
+
+    expect(result).toMatchObject({ state: "stale", proposal: null, semanticFreshnessFailure: { phase, state: "stale", reason: "seed_changed" } });
+    expect(provider.observe).toHaveBeenCalledTimes(calls);
+  });
+
+  it("keeps all four fences current when only file and check order changes", async () => {
+    const original = input({
+      changedFiles: [{ path: "src/a.ts", status: "modified" }, { path: "test/a.test.ts", status: "added" }],
+      checks: [{ name: "unit", status: "passed" }, { name: "lint", status: "passed" }]
+    });
+    const reordered = { ...original, changedFiles: [...original.changedFiles].reverse(), checks: [...original.checks].reverse() };
+    const provider = stagedProvider();
+    const result = await run(original, { provider, readCurrentInput: async () => reordered });
+
+    expect(result).toMatchObject({ state: "valid", receipt: { claimState: "valid", evidenceState: "valid" } });
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+  });
+
+  it("keeps fixed-budget provider requests identical across all file and check permutations", async () => {
+    const original = input({
+      changedFiles: [{ path: "src/z.ts", status: "modified" }, { path: "test/a.test.ts", status: "added" }, { path: "docs/b.md", status: "modified" }],
+      checks: [{ name: "z-unit", status: "passed" }, { name: "a-lint", status: "passed" }, { name: "b-type", status: "passed" }]
+    });
+    let expected: string | undefined;
+    for (const changedFiles of permutations(original.changedFiles)) for (const checks of permutations(original.checks)) {
+      const request = { ...original, changedFiles, checks };
+      const provider = stagedProvider();
+      const result = await run(request, { provider, timeoutMs: 60_000, clock: () => 0, readCurrentInput: async () => request });
+      const actual = JSON.stringify(provider.observe.mock.calls.map(([stage]) => stage));
+      expect(result.state).toBe("valid");
+      expect(actual).toBe(expected ?? actual);
+      expected = actual;
+    }
+  });
+
+  it.each([[1, "before_claim", 0], [2, "after_claim", 1], [3, "before_evidence", 1], [4, "after_evidence", 2]] as const)("fails closed for a null snapshot at %s", async (at, phase, calls) => {
+    const request = input();
+    const provider = stagedProvider();
+    let reads = 0;
+    const result = await run(request, { provider, readCurrentInput: async () => ++reads === at ? null : request });
+
+    expect(result).toMatchObject({ state: "unavailable", proposal: null, semanticFreshnessFailure: { phase, state: "unavailable", reason: "snapshot_unavailable" } });
+    expect(provider.observe).toHaveBeenCalledTimes(calls);
+  });
+
   it("sends a bounded redacted claim package instead of rejecting oversized full seeds", async () => {
     const request = input({
       title: "Return Ready with token sk-123456789",

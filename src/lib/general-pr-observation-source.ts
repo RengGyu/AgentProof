@@ -92,7 +92,30 @@ export interface GeneralPrObservationSeedV2 {
 
 export type GeneralPrObservationSeedValidation = { valid: true } | { valid: false; errors: string[] };
 
+export function canonicalizeGeneralPrObservationCollectionsV1(
+  input: Pick<PullRequestInput, "changedFiles" | "checks">
+): Pick<PullRequestInput, "changedFiles" | "checks"> {
+  return {
+    changedFiles: orderByKey(input.changedFiles, (file) => JSON.stringify([
+      file.path.replace(/\\/g, "/"), file.previousPath ?? null, file.status ?? "unknown"
+    ])),
+    checks: orderByKey(input.checks, (check) => {
+      const identity = check.workflowExecutionIdentity;
+      return JSON.stringify([
+        check.name,
+        check.status,
+        identity?.workflowPath || null,
+        identity ? String(identity.workflowId) : null,
+        identity ? String(identity.runId) : null,
+        identity && Number.isSafeInteger(identity.runAttempt) && identity.runAttempt > 0 ? identity.runAttempt : null,
+        identity ? String(identity.jobId) : null
+      ]);
+    })
+  };
+}
+
 export function buildGeneralPrObservationSeedV2(input: PullRequestInput): GeneralPrObservationSeedV2 {
+  const { changedFiles, checks } = canonicalizeGeneralPrObservationCollectionsV1(input);
   const repositoryIdentityHash = digest({ domain: "agentproof.general-pr.repository.v2", url: input.url ?? "", sourceIdentity: input.requirementSourceIdentityHash ?? "" });
   const baseSha = input.sourceProvenance?.baseSha ?? null;
   const headSha = input.sourceProvenance?.headSha ?? null;
@@ -136,7 +159,7 @@ export function buildGeneralPrObservationSeedV2(input: PullRequestInput): Genera
   const parseState: GeneralPrObservationSeedV2["parseState"] = sourceViews.every(({ candidate, supported, structure }) => supported && (candidate.kind === "pr_title" || structure?.parseState === "complete"))
     ? "complete"
     : "incomplete";
-  const changeObservation = buildGeneralPrChangeObservationV2(input.changedFiles, {
+  const changeObservation = buildGeneralPrChangeObservationV2(changedFiles, {
     inventoryCompleteness: completeness === "unavailable" ? "unknown" : completeness
   });
   const changeFacts = changeObservation.facts;
@@ -144,7 +167,7 @@ export function buildGeneralPrObservationSeedV2(input: PullRequestInput): Genera
   const testArtifacts = changeFacts
     .filter((fact) => fact.roleCandidates.includes("test"))
     .map((fact) => ({ version: 2 as const, id: `gpta_${digest({ domain: "agentproof.general-pr.test-artifact.v2", fileRef: fact.fileRef, subjectDigest }).slice(0, 24)}`, evidenceRef: fact.fileRef, subjectDigest, kind: "changed_test" as const, completeness: fact.completeness }));
-  const executions = input.checks.map((check) => buildGeneralPrExecutionEnvelopeV2({
+  const executions = checks.map((check) => buildGeneralPrExecutionEnvelopeV2({
     repositoryIdentityHash,
     prNumber: pullRequestNumber(input.url),
     subjectKind: headSha ? "head" : "unknown",
@@ -170,7 +193,7 @@ export function buildGeneralPrObservationSeedV2(input: PullRequestInput): Genera
   const evidenceAtoms: GeneralPrEvidenceAtomV2[] = [
     ...changeFacts.map((fact) => ({ version: 2 as const, id: `gpea_${digest({ domain: "agentproof.general-pr.change-atom.v2", fileRef: fact.fileRef, subjectDigest }).slice(0, 24)}`, kind: "change" as const, subjectDigest, contentDigest: digest({ domain: "agentproof.general-pr.change-content.v2", fact }), completeness: fact.completeness })),
     ...testArtifacts.map((artifact) => ({ version: 2 as const, id: `gpea_${digest({ domain: "agentproof.general-pr.test-atom.v2", artifact: artifact.id }).slice(0, 24)}`, kind: "test_artifact" as const, subjectDigest, contentDigest: digest({ domain: "agentproof.general-pr.test-content.v2", artifact }), completeness: artifact.completeness })),
-    ...input.checks.map((check, index) => ({ version: 2 as const, id: `gpea_${digest({ domain: "agentproof.general-pr.check-atom.v2", index, subjectDigest, name: check.name, status: check.status }).slice(0, 24)}`, kind: "check" as const, subjectDigest, contentDigest: digest({ domain: "agentproof.general-pr.check-content.v2", name: check.name, status: check.status }), completeness: completeness === "complete" ? "complete" as const : "unknown" as const })),
+    ...checks.map((check, index) => ({ version: 2 as const, id: `gpea_${digest({ domain: "agentproof.general-pr.check-atom.v2", index, subjectDigest, name: check.name, status: check.status }).slice(0, 24)}`, kind: "check" as const, subjectDigest, contentDigest: digest({ domain: "agentproof.general-pr.check-content.v2", name: check.name, status: check.status }), completeness: completeness === "complete" ? "complete" as const : "unknown" as const })),
     ...executions.map((execution, index) => ({ version: 2 as const, id: `gpea_${digest({ domain: "agentproof.general-pr.execution-atom.v2", index, subjectDigest, execution }).slice(0, 24)}`, kind: "execution" as const, subjectDigest, contentDigest: digest({ domain: "agentproof.general-pr.execution-content.v2", execution }), completeness: execution.completeness }))
   ];
   const unsigned = {
@@ -190,6 +213,13 @@ export function buildGeneralPrObservationSeedV2(input: PullRequestInput): Genera
     evidenceAtoms
   };
   return { ...unsigned, seedHash: digest({ domain: "agentproof.general-pr.seed.v2", seed: unsigned }) };
+}
+
+function orderByKey<T>(values: readonly T[], keyOf: (value: T) => string): T[] {
+  return values
+    .map((value) => ({ value, key: keyOf(value) }))
+    .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+    .map(({ value }) => value);
 }
 
 export function validateGeneralPrObservationSeedV2(value: unknown): GeneralPrObservationSeedValidation {

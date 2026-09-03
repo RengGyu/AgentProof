@@ -273,6 +273,34 @@ describe("runGeneralPrObservationNowV2", () => {
     expect(JSON.stringify(result.bundle)).not.toMatch(/claimSelectionHash|evidenceSelectionHash|tokenSketch|changeClusterDescriptors|evidenceDescriptors/i);
   });
 
+  it("keeps a real two-stage service observation bound when current collections are reordered", async () => {
+    const semanticInput: PullRequestInput = {
+      ...input,
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      changedFiles: [{ path: "src/status.ts", status: "modified" }, { path: "test/status.test.ts", status: "added" }],
+      checks: [{ name: "unit", status: "passed" }, { name: "lint", status: "passed" }]
+    };
+    const seed = buildGeneralPrObservationSeedV2(semanticInput);
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => semanticProviderCandidate(seed, "pr_title", request)) };
+    const reordered = { ...semanticInput, changedFiles: [...semanticInput.changedFiles].reverse(), checks: [...semanticInput.checks].reverse() };
+    const v2Report = { ...report, reportSchemaVersion: "verification-report.v2", verificationContract: { state: "absent" }, requirements: [] } as unknown as VerificationReportV2;
+    const result = await runGeneralPrObservationNowV2({
+      policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
+      input: semanticInput,
+      generateReport: () => v2Report,
+      validateDeterministicReport: () => true,
+      semantic: { provider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => reordered, modelProfile }
+    });
+
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+    expect(result.bundle).toMatchObject({ semanticState: "valid", semanticStageDiagnostics: { claimState: "valid", evidenceState: "valid", providerCallCount: 2 } });
+    expect((result.report as VerificationReportV2).generalPrAssessmentSummary?.observations?.links.state).toBe("proposed");
+    const normalProvider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => semanticProviderCandidate(seed, "pr_title", request)) };
+    const normal = await runGeneralPrObservationNowV2({ policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"), input: semanticInput, generateReport: () => v2Report, validateDeterministicReport: () => true, semantic: { provider: normalProvider, providerAvailable: true, privateRepository: false, readCurrentInput: async () => semanticInput, modelProfile } });
+    expect((result.report as VerificationReportV2).generalPrAssessmentSummary).toEqual((normal.report as VerificationReportV2).generalPrAssessmentSummary);
+  });
+
   it("distinguishes unavailable, invalid, stale, and admitted semantic pipeline states", async () => {
     const noCandidateInput = { ...input, title: "Maintenance notes", description: "Internal cleanup only." };
     const unavailable = await runGeneralPrObservationNowV2({

@@ -26,6 +26,12 @@ const summary: GeneralPrAssessmentSummaryV1 = {
 };
 
 describe("presentGeneralPrAssessmentSummary", () => {
+  it("does not infer a head change from a legacy head-mismatch reason", () => {
+    const presentation = presentGeneralPrAssessmentSummary({ ...summary, reasonCodes: ["head_mismatch"] });
+
+    expect(presentation.reasonLabels).toContain("Collected evidence could not be matched to the analyzed snapshot.");
+  });
+
   it("renders a bounded reviewer explanation without target or source details", () => {
     Object.assign(summary as Record<string, unknown>, { transientObserver: transientSelectionFixture() });
     const presentation = presentGeneralPrAssessmentSummary(summary);

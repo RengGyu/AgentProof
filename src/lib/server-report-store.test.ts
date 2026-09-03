@@ -107,7 +107,7 @@ describe("server report store", () => {
         blocked: 0,
         not_assessable: 0
       },
-      reasonCodes: [...CLOSED_PARTIAL_REASONS],
+      reasonCodes: [...CLOSED_PARTIAL_REASONS, "head_mismatch"],
       observations: { version: 1, inventory: { state: "complete", changedArtifacts: 2, changedTestCandidates: 1 }, links: { state: "proposed", linkedObjectives: 1, supports: 1, tests: 0, implements: 0, contradicts: 0 }, coverage: { source: "complete", evidence: "sampled" } }
     };
     Object.assign(inputReport.generalPrAssessmentSummary as Record<string, unknown>, {
@@ -132,7 +132,7 @@ describe("server report store", () => {
     expect(report.generalPrAssessmentSummary).toEqual(persisted.generalPrAssessmentSummary);
     expect(persisted.generalPrAssessmentSummary).toMatchObject({
       overallConclusion: "evidence_partial",
-      reasonCodes: CLOSED_PARTIAL_REASONS,
+      reasonCodes: expect.arrayContaining([...CLOSED_PARTIAL_REASONS, "head_mismatch"]),
       observations: inputReport.generalPrAssessmentSummary.observations
     });
     expect(validateTenantPersistedReport(persisted, signingSecret)).toEqual({ valid: true, errors: [] });

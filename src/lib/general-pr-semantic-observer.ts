@@ -518,9 +518,10 @@ async function readCurrentPublicSubject(
   try { currentInput = await readCurrentInput(); } catch (error) { return freshnessErrorResult(error); }
   if (!currentInput) return { state: "unavailable", reason: "snapshot_unavailable" };
   if (currentInput.repositoryPrivate !== false) return { state: "unavailable", reason: "privacy_ineligible" };
-  return buildGeneralPrObservationSeedV2(currentInput).seedHash === expectedSeed.seedHash
-    ? { state: "current" }
-    : { state: "stale", reason: "seed_changed" };
+  const currentSeed = buildGeneralPrObservationSeedV2(currentInput);
+  if (expectedSeed.headSha && currentSeed.headSha && currentSeed.headSha !== expectedSeed.headSha) return { state: "stale", reason: "head_changed" };
+  if (expectedSeed.baseSha && currentSeed.baseSha && currentSeed.baseSha !== expectedSeed.baseSha) return { state: "stale", reason: "base_changed" };
+  return currentSeed.seedHash === expectedSeed.seedHash ? { state: "current" } : { state: "stale", reason: "seed_changed" };
 }
 
 function freshnessErrorResult(error: unknown): GeneralPrFreshnessResultV1 {

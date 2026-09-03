@@ -92,6 +92,22 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     expect(provider.observe).not.toHaveBeenCalled();
   });
 
+  it("keeps a mismatched pending seed stale without constructing semantic state", async () => {
+    const provider = { observe: vi.fn(async () => ({})) };
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input,
+      current: { version: 2, seedHash: "d".repeat(64), attempt: 0, status: "pending" },
+      provider,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => input
+    });
+
+    expect(result).toMatchObject({ status: "stale", bundle: null, semantic: null });
+    expect(provider.observe).not.toHaveBeenCalled();
+  });
+
   it("uses the same deterministic bundle as the synchronous adapter without retaining source text", async () => {
     const seed = buildGeneralPrObservationSeedV2(input);
     const result = await advanceQueuedGeneralPrObservationV2({
@@ -227,6 +243,34 @@ describe("advanceQueuedGeneralPrObservationV2", () => {
     expect(result.bundle?.semanticStageDiagnostics).toMatchObject({ providerCallCount: 2, claimState: "valid", evidenceState: "valid" });
     expect(result.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
     expect(result.bundle?.relationLevelCounts.verified).toBe(0);
+  });
+
+  it("runs the queued two-stage observation when pending and reread collections differ only by order", async () => {
+    const semanticInput: PullRequestInput = {
+      ...input,
+      title: "Maintenance notes",
+      description: "Internal cleanup only.",
+      changedFiles: [{ path: "docs/reset.md", status: "modified" }, { path: "test/reset.test.ts", status: "added" }],
+      checks: [{ name: "unit", status: "passed" }, { name: "lint", status: "passed" }]
+    };
+    const seed = buildGeneralPrObservationSeedV2(semanticInput);
+    const reordered = { ...semanticInput, changedFiles: [...semanticInput.changedFiles].reverse(), checks: [...semanticInput.checks].reverse() };
+    const provider = { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => validProposal(request)) };
+    const result = await advanceQueuedGeneralPrObservationV2({
+      mode: "shadow",
+      input: reordered,
+      current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" },
+      provider,
+      providerAvailable: true,
+      privateRepository: false,
+      readCurrentInput: async () => reordered,
+      modelProfile
+    });
+
+    expect(provider.observe.mock.calls.map(([request]) => request.stage)).toEqual(["claim_discovery", "evidence_linking"]);
+    expect(result).toMatchObject({ status: "completed", semantic: { state: "valid", receipt: { claimState: "valid", evidenceState: "valid" } } });
+    const normal = await advanceQueuedGeneralPrObservationV2({ mode: "shadow", input: semanticInput, current: { version: 2, seedHash: seed.seedHash, attempt: 0, status: "pending" }, provider: { observe: vi.fn(async (request: GeneralPrSemanticObserverPackageV4) => validProposal(request)) }, providerAvailable: true, privateRepository: false, readCurrentInput: async () => semanticInput, modelProfile });
+    expect(result.bundle).toEqual(normal.bundle);
   });
 
   it("records a third observer invocation as the closed 3_plus bucket", async () => {

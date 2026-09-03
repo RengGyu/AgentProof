@@ -88,7 +88,7 @@ function reasonLabel(reason: GeneralPrAssessmentSummaryV1["reasonCodes"][number]
     source_ambiguous: "The objective source could not be used safely.",
     source_unavailable: "The objective source was unavailable.",
     collection_incomplete: "Evidence collection was incomplete for the analyzed head.",
-    head_mismatch: "Collected evidence did not match the analyzed head.",
+    head_mismatch: "Collected evidence could not be matched to the analyzed snapshot.",
     evidence_identity_incomplete: "Evidence identity was incomplete.",
     semantic_relation_only: "Only a semantic relation was available, not deterministic proof.",
     author_claim_requires_confirmation: "The PR description is an author claim and needs reviewer confirmation.",

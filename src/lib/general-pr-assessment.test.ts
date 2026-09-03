@@ -258,6 +258,40 @@ describe("deriveGeneralPrAssessmentV1", () => {
     expect(assessment.observations?.links.state).toBe("unavailable");
   });
 
+  it.each([
+    ["head_changed", true],
+    ["base_changed", false],
+    ["source_changed", false],
+    ["seed_changed", false]
+  ] as const)("marks head mismatch only for an observed %s freshness failure", (reason, hasHeadMismatch) => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "stale", null, [], undefined, undefined, null, null, {
+      freshnessFailure: { phase: "after_claim", state: "stale", reason }
+    });
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.reasonCodes.includes("head_mismatch")).toBe(hasHeadMismatch);
+    expect(assessment.reasonCodes.includes("source_ambiguous")).toBe(!hasHeadMismatch);
+    expect(assessment.observations?.links.state).toBe("unavailable");
+  });
+
+  it("does not infer head movement from a seed and bundle mismatch", () => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = { ...finalizeDeterministicGeneralPrObservationsV2(seed), seedHash: "d".repeat(64) };
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+
+    expect(assessment.reasonCodes).not.toContain("head_mismatch");
+    expect(assessment.reasonCodes).toContain("source_ambiguous");
+  });
+
+  it.each(["snapshot_unavailable", "auth_unavailable"] as const)("keeps %s unavailable without a head mismatch", (reason) => {
+    const seed = buildGeneralPrObservationSeedV2(input());
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable", null, [], undefined, undefined, null, null, { freshnessFailure: { phase: "before_claim", state: "unavailable", reason } });
+    const assessment = deriveGeneralPrAssessmentV1({ seed, bundle, report });
+    expect(assessment.reasonCodes).not.toContain("head_mismatch");
+    expect(assessment.observations?.links.state).toBe("unavailable");
+  });
+
   it("copies observations through an explicit nested public allowlist", () => {
     const seed = buildGeneralPrObservationSeedV2(input());
     const assessment = deriveGeneralPrAssessmentV1({ seed, bundle: finalizeDeterministicGeneralPrObservationsV2(seed), report });
@@ -516,9 +550,9 @@ describe("deriveGeneralPrAssessmentV1", () => {
     expect(deriveGeneralPrAssessmentV1({ seed, bundle: available, report }).sourceState).toBe("linked_issue");
     expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report })).toMatchObject({
       sourceState: "ambiguous",
-      reasonCodes: expect.arrayContaining(["head_mismatch"])
+      reasonCodes: expect.arrayContaining(["source_ambiguous"])
     });
-    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report }).reasonCodes).not.toContain("source_ambiguous");
+    expect(deriveGeneralPrAssessmentV1({ seed, bundle: stale, report }).reasonCodes).not.toContain("head_mismatch");
   });
 
   it("keeps fallback PR targets as author claims requiring reviewer confirmation", () => {

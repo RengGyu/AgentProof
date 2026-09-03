@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GENERAL_PR_OBSERVATION_MAX_SOURCE_VIEW_BYTES,
   buildGeneralPrObservationSeedV2,
+  canonicalizeGeneralPrObservationCollectionsV1,
   validateGeneralPrObservationSeedV2
 } from "./general-pr-observation-source";
 import type { PullRequestInput } from "./types";
@@ -18,7 +19,103 @@ function input(overrides: Partial<PullRequestInput> = {}): PullRequestInput {
   };
 }
 
+function permutations<T>(items: readonly T[]): T[][] {
+  return items.length < 2
+    ? [[...items]]
+    : items.flatMap((item, index) => permutations(items.filter((_, other) => other !== index)).map((tail) => [item, ...tail]));
+}
+
 describe("buildGeneralPrObservationSeedV2", () => {
+  it("keeps the full seed invariant under file and check permutations", () => {
+    const original = input({
+      changedFiles: [
+        { path: "src/z.ts", status: "modified" },
+        { path: "test/z.test.ts", status: "added" },
+        { path: "docs/a.md", status: "modified" }
+      ],
+      checks: [
+        { name: "z-unit", status: "passed" },
+        { name: "a-lint", status: "passed" },
+        { name: "b-type", status: "passed" }
+      ]
+    });
+    const untouched = structuredClone(original);
+    const expected = buildGeneralPrObservationSeedV2(original);
+
+    for (const changedFiles of permutations(original.changedFiles)) {
+      for (const checks of permutations(original.checks)) {
+        expect(buildGeneralPrObservationSeedV2({ ...original, changedFiles, checks })).toEqual(expected);
+      }
+    }
+    expect(original).toEqual(untouched);
+  });
+
+  it("copies, orders, and preserves duplicate collection records", () => {
+    const original = input({
+      changedFiles: [
+        { path: "src\\z.ts", status: "modified" },
+        { path: "src/a.ts", status: "added" }
+      ],
+      checks: [
+        { name: "same", status: "passed", workflowExecutionIdentity: { version: 1, kind: "workflow_execution_identity", workflowPath: ".github/z.yml", workflowName: "z", workflowId: 1, runId: 2, runAttempt: 1, jobId: 3, jobName: "z", headSha: "a".repeat(40), checkEvidenceRef: "z" } },
+        { name: "same", status: "passed", workflowExecutionIdentity: { version: 1, kind: "workflow_execution_identity", workflowPath: ".github/a.yml", workflowName: "a", workflowId: 4, runId: 5, runAttempt: 2, jobId: 6, jobName: "a", headSha: "a".repeat(40), checkEvidenceRef: "a" } },
+        { name: "duplicate", status: "passed" },
+        { name: "duplicate", status: "passed" }
+      ]
+    });
+    const untouched = structuredClone(original);
+    const canonical = canonicalizeGeneralPrObservationCollectionsV1(original);
+
+    expect(canonical).toEqual(canonicalizeGeneralPrObservationCollectionsV1(canonical));
+    expect(canonical.changedFiles).toHaveLength(original.changedFiles.length);
+    expect(canonical.checks).toHaveLength(original.checks.length);
+    expect(canonical.checks.filter((check) => check.name === "duplicate")).toHaveLength(2);
+    expect(canonical.checks.map((check) => check.workflowExecutionIdentity?.workflowPath).filter(Boolean)).toEqual([".github/a.yml", ".github/z.yml"]);
+    expect(original).toEqual(untouched);
+  });
+
+  it("does not mutate frozen records and keeps canonical records by reference", () => {
+    const files = Object.freeze([Object.freeze({ path: "src/z.ts", status: "modified" as const }), Object.freeze({ path: "src/a.ts", status: "added" as const })]);
+    const checks = Object.freeze([Object.freeze({ name: "same", status: "passed" as const, workflowExecutionIdentity: { version: 1 as const, kind: "workflow_execution_identity" as const, workflowPath: ".github/a.yml", workflowName: "a", workflowId: 1, runId: 2, runAttempt: 1, jobId: 3, jobName: "a", headSha: "a".repeat(40), checkEvidenceRef: "a" } })]);
+    const canonical = canonicalizeGeneralPrObservationCollectionsV1({ changedFiles: files as unknown as PullRequestInput["changedFiles"], checks: checks as unknown as PullRequestInput["checks"] });
+
+    expect(canonical.changedFiles).toEqual([files[1], files[0]]);
+    expect(canonical.changedFiles[0]).toBe(files[1]);
+    expect(canonical.checks[0]).toBe(checks[0]);
+  });
+
+  it("still changes the seed for every covered field mutation", () => {
+    const base = input({
+      sourceProvenance: {
+        version: 1,
+        origin: "github_snapshot",
+        baseSha: "a".repeat(40),
+        headSha: "b".repeat(40),
+        changedFileInventory: { version: 1, completeness: "complete", headSha: "b".repeat(40) },
+        evidenceCapturedAt: "2026-09-04T00:00:00.000Z",
+        inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" }
+      },
+      description: "First source sentence.\n\nSecond source sentence.",
+      checks: [{ name: "unit", status: "passed", workflowExecutionIdentity: { version: 1, kind: "workflow_execution_identity", workflowPath: ".github/a.yml", workflowName: "a", workflowId: 1, runId: 2, runAttempt: 1, jobId: 3, jobName: "unit", headSha: "b".repeat(40), checkEvidenceRef: "a" } }]
+    });
+    const expected = buildGeneralPrObservationSeedV2(base).seedHash;
+    const changes = [
+      { ...base, sourceProvenance: { ...base.sourceProvenance!, headSha: "d".repeat(40), changedFileInventory: { ...base.sourceProvenance!.changedFileInventory!, headSha: "d".repeat(40) } } },
+      { ...base, sourceProvenance: { ...base.sourceProvenance!, baseSha: "d".repeat(40) } },
+      { ...base, description: "Different source." },
+      { ...base, description: "Second source sentence.\n\nFirst source sentence." },
+      { ...base, requirementSourceIdentityHash: "d".repeat(64) },
+      { ...base, changedFiles: [{ ...base.changedFiles[0]!, path: "src/renamed-status.ts" }] },
+      { ...base, changedFiles: [{ ...base.changedFiles[0]!, previousPath: "src/old-status.ts" }] },
+      { ...base, checks: [{ ...base.checks[0]!, name: "renamed-unit" }] },
+      { ...base, checks: [{ ...base.checks[0]!, status: "failed" as const }] },
+      { ...base, sourceProvenance: { ...base.sourceProvenance!, changedFileInventory: { ...base.sourceProvenance!.changedFileInventory!, completeness: "incomplete" as const } } },
+      ...(["workflowPath", "workflowId", "runId", "runAttempt", "jobId"] as const).map((field) => ({ ...base, checks: [{ ...base.checks[0]!, workflowExecutionIdentity: { ...base.checks[0]!.workflowExecutionIdentity!, [field]: field === "workflowPath" ? ".github/b.yml" : base.checks[0]!.workflowExecutionIdentity![field] + 1 } }] }))
+    ];
+
+    for (const changed of changes) expect(buildGeneralPrObservationSeedV2(changed).seedHash).not.toBe(expected);
+  });
+
   it("creates a separately bound author-claim title source when the PR has no authoritative source", () => {
     const seed = buildGeneralPrObservationSeedV2(input({ description: "" }));
 

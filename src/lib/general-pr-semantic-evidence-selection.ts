@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { buildGeneralPrChangeObservationV2, type GeneralPrChangeFactV2 } from "./general-pr-change-observation";
 import {
   buildGeneralPrObservationSeedV2,
+  canonicalizeGeneralPrObservationCollectionsV1,
   validateGeneralPrObservationSeedV2,
   type GeneralPrEvidenceAtomV2,
   type GeneralPrObservationSeedV2
@@ -119,7 +120,10 @@ export function selectGeneralPrSemanticEvidenceV1(input: {
   if (rebuilt.seedHash !== input.seed.seedHash) return { status: "invalid", reason: "seed_invalid" };
   const objectiveTexts = validateClaimBinding(input.pullRequest, input.seed, input.claimSelection, input.objectiveGroups);
   if (!objectiveTexts) return { status: "invalid", reason: "claim_binding_invalid" };
-  const catalogs = buildDescriptorCatalogs(input.pullRequest, input.seed);
+  const catalogs = buildDescriptorCatalogs({
+    ...input.pullRequest,
+    ...canonicalizeGeneralPrObservationCollectionsV1(input.pullRequest)
+  }, input.seed);
   if (!catalogs) return { status: "invalid", reason: "descriptor_invalid" };
 
   const maxPerObjective = boundedBudget(input.maxPerObjective, DEFAULT_MAX_PER_OBJECTIVE, DEFAULT_MAX_PER_OBJECTIVE);
