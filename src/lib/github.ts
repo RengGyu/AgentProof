@@ -729,17 +729,97 @@ async function collectVerificationContractArtifactEvidenceV2(input: {
   return artifactBlobs.length > 0 ? { artifactBlobs } : undefined;
 }
 
+/** Bounded public, source-declared documentation reads. No repository code executes. */
+/** Independent complete-project budget; no changed-file inventory substitution. */
+export async function collectOrdinaryTypeScriptProject(prUrl: string, token: string | undefined, headSha: string): Promise<import("./typescript-assignability-verification").TypeScriptProjectSnapshot | null> {
+  const parsed = parseGitHubPullUrl(prUrl);
+  if (!parsed || !/^[a-f0-9]{40}$/i.test(headSha)) return null;
+  const { safeTypeScriptProjectPath, isTypeScriptProjectFile } = await import("./typescript-assignability-verification");
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  const root = `https://api.github.com/repos/${parsed.owner}/${parsed.repo}`;
+  try {
+    const commitResponse = await githubFetch(`${root}/git/commits/${headSha}`, headers);
+    if (!commitResponse.ok) return null;
+    const commit = await commitResponse.json();
+    if (commit.sha !== headSha || !/^[a-f0-9]{40}$/i.test(commit.tree?.sha ?? "")) return null;
+    const treeResponse = await githubFetch(`${root}/git/trees/${commit.tree.sha}?recursive=1`, headers);
+    if (!treeResponse.ok) return null;
+    const tree = await treeResponse.json();
+    if (tree.sha !== commit.tree.sha || tree.truncated !== false || !Array.isArray(tree.tree) || tree.tree.length > 20000) return null;
+    const entries = tree.tree as Array<{ path: string; mode: string; type: string; sha: string; size?: number }>;
+    if (entries.some(entry => !entry || !safeTypeScriptProjectPath(entry.path) || !/^[a-f0-9]{40}$/i.test(entry.sha) || !(entry.type === "tree" && entry.mode === "040000" || entry.type === "blob" && ["100644", "100755"].includes(entry.mode))) || new Set(entries.map(entry => entry.path)).size !== entries.length) return null;
+    const paths = entries.filter(entry => entry.type === "blob").map(entry => entry.path).sort();
+    let required = entries.filter(entry => entry.type === "blob" && isTypeScriptProjectFile(entry.path)).sort((a, b) => a.path.localeCompare(b.path));
+    const blobs: Array<{ path: string; headSha: string; content: string }> = [];
+    const ts = (await import("typescript")).default;
+    const configPaths = paths.filter(path => /(?:^|\/)tsconfig\.json$/.test(path));
+    // Native config resolution discovers only required inheritance JSON, not lock/data files.
+    while (required.length) {
+      if (blobs.length + required.length > 64 || required.some(entry => !Number.isSafeInteger(entry.size) || entry.size! < 0 || entry.size! > 65536) || blobs.reduce((sum, blob) => sum + Buffer.byteLength(blob.content), 0) + required.reduce((sum, entry) => sum + entry.size!, 0) > 4 * 1024 * 1024) return null;
+      for (const entry of required) {
+        const response = await githubFetch(`${root}/contents/${encodeGitHubContentPath(entry.path)}?ref=${headSha}`, headers);
+        if (!response.ok) return null;
+        const payload = await response.json();
+        const content = decodeBoundedGitHubTextContent(payload, true);
+        if (content === null || payload.type !== "file" || payload.sha !== entry.sha || Buffer.byteLength(content) !== entry.size || createHash("sha1").update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest("hex") !== entry.sha) return null;
+        blobs.push({ path: entry.path, headSha, content });
+      }
+      const missing = new Set<string>();
+      const contents = new Map(blobs.map(blob => [`/project/${blob.path}`, blob.content]));
+      const existing = new Set(paths.map(path => `/project/${path}`));
+      for (const configPath of configPaths) ts.getParsedCommandLineOfConfigFile(`/project/${configPath}`, {}, { useCaseSensitiveFileNames: true, getCurrentDirectory: () => "/project", fileExists: path => existing.has(path),
+        readFile: path => { if (existing.has(path) && !contents.has(path)) missing.add(path.slice(9)); return contents.get(path); }, readDirectory: () => [], onUnRecoverableConfigFileDiagnostic: () => {} });
+      if ([...missing].some(path => !path.endsWith(".json"))) return null;
+      required = entries.filter(entry => missing.has(entry.path));
+    }
+    return { headSha, treeSha: commit.tree.sha, inventory: { paths, complete: true }, blobs };
+  } catch { return null; }
+}
+
+export async function collectOrdinaryDocumentationArtifacts(prUrl: string, token: string | undefined, paths: readonly string[], headSha: string): Promise<Array<{ path: string; headSha: string; content: string }>> {
+  return collectOrdinaryArtifacts(prUrl, token, paths, headSha, "documentation");
+}
+
+export async function collectOrdinaryStaticArtifacts(prUrl: string, token: string | undefined, paths: readonly string[], headSha: string): Promise<Array<{ path: string; headSha: string; content: string }>> {
+  return collectOrdinaryArtifacts(prUrl, token, paths, headSha, "typescript");
+}
+
+export async function collectOrdinaryScalarArtifacts(prUrl: string, token: string | undefined, paths: readonly string[], headSha: string): Promise<Array<{ path: string; headSha: string; content: string }>> {
+  return collectOrdinaryArtifacts(prUrl, token, paths, headSha, "javascript");
+}
+
+async function collectOrdinaryArtifacts(prUrl: string, token: string | undefined, paths: readonly string[], headSha: string, kind: "documentation" | "typescript" | "javascript"): Promise<Array<{ path: string; headSha: string; content: string }>> {
+  const parsed = parseGitHubPullUrl(prUrl);
+  const allowedPath = kind === "documentation" ? /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:md|mdx|rst|txt)$/ : kind === "typescript" ? /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:ts|tsx|mts|cts)$/ : /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:js|mjs|cjs)$/;
+  if (!parsed || !/^[a-f0-9]{40}$/i.test(headSha) || paths.length > GITHUB_MAX_CONTRACT_ARTIFACT_PATHS || paths.some(path => path.length > 200 || !allowedPath.test(path))) return [];
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+  if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  const blobs: Array<{ path: string; headSha: string; content: string }> = [];
+  for (const path of new Set(paths)) {
+    try {
+      const response = await githubFetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${encodeGitHubContentPath(path)}?ref=${encodeURIComponent(headSha)}`, headers);
+      if (!response.ok) continue;
+      const content = decodeBoundedGitHubTextContent(await response.json(), kind === "javascript");
+      if (content !== null) blobs.push({ path, headSha, content });
+    } catch { /* An unsuccessful full read supplies no absence evidence. */ }
+  }
+  return blobs;
+}
+
 function encodeGitHubContentPath(path: string): string {
   return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-function decodeBoundedGitHubTextContent(value: unknown): string | null {
+function decodeBoundedGitHubTextContent(value: unknown, requireExactUtf8 = false): string | null {
   if (!value || typeof value !== "object") return null;
   const payload = value as { encoding?: unknown; content?: unknown; type?: unknown };
   if (payload.type !== undefined && payload.type !== "file") return null;
   if (payload.encoding !== "base64" || typeof payload.content !== "string") return null;
   try {
-    const content = Buffer.from(payload.content.replace(/\s/g, ""), "base64").toString("utf8");
+    const bytes = Buffer.from(payload.content.replace(/\s/g, ""), "base64");
+    const content = bytes.toString("utf8");
+    if (requireExactUtf8 && !bytes.equals(Buffer.from(content, "utf8"))) return null;
     return Buffer.byteLength(content, "utf8") <= GITHUB_MAX_CONTRACT_ARTIFACT_BYTES ? content : null;
   } catch {
     return null;

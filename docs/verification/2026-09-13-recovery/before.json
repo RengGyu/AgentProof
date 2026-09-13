@@ -1,0 +1,1791 @@
+{
+  "schemaVersion": "candidate_coverage_snapshot.v1",
+  "sourceHashes": {
+    "src/lib/general-pr-semantic-selection.ts": "8e81e1566b255f814606735a2d362450948a8fae75795cd5386006b6ab984f98",
+    "scripts/requirement-source-ablation.ts": "1ff4bf2bf73776c7d69ba27362d576236b256df72709932c257112f70ac9bd43"
+  },
+  "cases": [
+    {
+      "id": "sections-a",
+      "seedHash": "e57d40f089e7cee167f0bebfa2f1cb6e0bf9c6a9b970e706bcad94b07596b36d",
+      "selected": [
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 15,
+          "end": 41
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 42,
+          "end": 68
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 69,
+          "end": 95
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 96,
+          "end": 122
+        },
+        {
+          "id": "gpsp_1_6",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 123,
+          "end": 149
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 150,
+          "end": 176
+        },
+        {
+          "id": "gpsp_1_8",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 177,
+          "end": 203
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 204,
+          "end": 230
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 231,
+          "end": 257
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 258,
+          "end": 285
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 286,
+          "end": 313
+        },
+        {
+          "id": "gpsp_1_13",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 314,
+          "end": 341
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_036c459371746c86d8d279ce",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 9,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2340
+    },
+    {
+      "id": "sections-b",
+      "seedHash": "a8781500e2b9d4cc071a1cf0bcba290f98f7d1bd2f6ebba28b76d2b0fc9a0e79",
+      "selected": [
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 12,
+          "end": 38
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 39,
+          "end": 65
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 66,
+          "end": 92
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 93,
+          "end": 119
+        },
+        {
+          "id": "gpsp_1_6",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 120,
+          "end": 146
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 147,
+          "end": 173
+        },
+        {
+          "id": "gpsp_1_8",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 174,
+          "end": 200
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 201,
+          "end": 227
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 228,
+          "end": 254
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 255,
+          "end": 282
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 283,
+          "end": 310
+        },
+        {
+          "id": "gpsp_1_13",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 311,
+          "end": 338
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_b4f4ade63eaccd2425101e1f",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 9,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2340
+    },
+    {
+      "id": "sections-c",
+      "seedHash": "ee83a7059e3be3e42fd3d1c2b2c12bc6c8ffd18e632a6de3af801e801f7830ea",
+      "selected": [
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 10,
+          "end": 36
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 37,
+          "end": 63
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 64,
+          "end": 90
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 91,
+          "end": 117
+        },
+        {
+          "id": "gpsp_1_6",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 118,
+          "end": 144
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 145,
+          "end": 171
+        },
+        {
+          "id": "gpsp_1_8",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 172,
+          "end": 198
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 199,
+          "end": 225
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 226,
+          "end": 252
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 253,
+          "end": 280
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 281,
+          "end": 308
+        },
+        {
+          "id": "gpsp_1_13",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 309,
+          "end": 336
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_bf710ff063c512ea15fc8531",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 9,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2340
+    },
+    {
+      "id": "sections-reordered",
+      "seedHash": "b919d6f70768e1b6390fa61904791ee3e59eae8061d02071f284306c090d74ac",
+      "selected": [
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 75,
+          "end": 101
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 102,
+          "end": 128
+        },
+        {
+          "id": "gpsp_1_6",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 129,
+          "end": 155
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 156,
+          "end": 182
+        },
+        {
+          "id": "gpsp_1_8",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 183,
+          "end": 209
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 210,
+          "end": 236
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 237,
+          "end": 263
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 264,
+          "end": 290
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 291,
+          "end": 317
+        },
+        {
+          "id": "gpsp_1_13",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 318,
+          "end": 345
+        },
+        {
+          "id": "gpsp_1_14",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 346,
+          "end": 373
+        },
+        {
+          "id": "gpsp_1_15",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 374,
+          "end": 401
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_512cdf2fd23e16669297df13",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 9,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2342
+    },
+    {
+      "id": "no-heading-scope-limit",
+      "seedHash": "b9a551e26e1dfa13ac93dd8f61ba678b07f25b77ef4d16fc69f9d2b72d895598",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 0,
+          "end": 26
+        },
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 27,
+          "end": 53
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 54,
+          "end": 80
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 81,
+          "end": 107
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 108,
+          "end": 134
+        },
+        {
+          "id": "gpsp_1_6",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 135,
+          "end": 161
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 162,
+          "end": 188
+        },
+        {
+          "id": "gpsp_1_8",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 189,
+          "end": 215
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 216,
+          "end": 242
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 243,
+          "end": 270
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 271,
+          "end": 298
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 299,
+          "end": 326
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_e80ce04d74ef26d771d3921a",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 7,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2339
+    },
+    {
+      "id": "source-diversity",
+      "seedHash": "81a84d725732f536ffb39f7d446e183645b564a3bbbe6c6d5d111a261dea1c5b",
+      "selected": [
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 12,
+          "end": 38
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 39,
+          "end": 65
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 66,
+          "end": 92
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 93,
+          "end": 119
+        },
+        {
+          "id": "gpsp_1_6",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 120,
+          "end": 146
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 147,
+          "end": 173
+        },
+        {
+          "id": "gpsp_1_8",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 174,
+          "end": 200
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 201,
+          "end": 227
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 228,
+          "end": 254
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 255,
+          "end": 282
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 15
+        },
+        {
+          "id": "gpsp_3_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 20,
+          "end": 62
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_b4f4ade63eaccd2425101e1f",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_9b4a4a38301a7f0744530001",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_afeca3dd0952088a9e7a81e1",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 12,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2351
+    },
+    {
+      "id": "oversized-section",
+      "seedHash": "991a462a6c6a5d5bc1c799370892bf1141642eeed3e8e526117e8213f911509b",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 0,
+          "end": 8
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 14012,
+          "end": 14021
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 14023,
+          "end": 14061
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_5ec703954a833728a2a39618",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 1
+      },
+      "inputBytes": 809
+    },
+    {
+      "id": "excluded-content",
+      "seedHash": "915b253d3393a67f6ea0b47d78d6ad5b393dfe21946505690305933934f84e5c",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 0,
+          "end": 10
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 78,
+          "end": 87
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 89,
+          "end": 127
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_df8c85255b08889aa4e07b21",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 812
+    },
+    {
+      "id": "nodejs-undici-5521",
+      "seedHash": "e2c8382dcffa0afce75a4cfcae01c4972cb2f96f108f06061ed31096791328ac",
+      "selected": [
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 12,
+          "end": 381
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 383,
+          "end": 498
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 500,
+          "end": 687
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 688,
+          "end": 1451
+        },
+        {
+          "id": "gpsp_1_15",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 3776,
+          "end": 4074
+        },
+        {
+          "id": "gpsp_1_16",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 4075,
+          "end": 4267
+        },
+        {
+          "id": "gpsp_1_17",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 4269,
+          "end": 4450
+        },
+        {
+          "id": "gpsp_1_32",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 5561,
+          "end": 5758
+        },
+        {
+          "id": "gpsp_1_34",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 5930,
+          "end": 6354
+        },
+        {
+          "id": "gpsp_1_36",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 6392,
+          "end": 6927
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 47
+        },
+        {
+          "id": "gpsp_3_13",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1771,
+          "end": 1890
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_074f975accd06e7cf3f22a2b",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_a2b36ee0189b7ce16a338245",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_3b74e66e9b99117bd0c6d954",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 52,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 5548
+    },
+    {
+      "id": "nodejs-undici-5776",
+      "seedHash": "1ffbcd022487625e8d3ce4747100a3567d6f249c3da58dcf7903dc39f86fb6aa",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 41
+        },
+        {
+          "id": "gpsp_2_4",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 525,
+          "end": 569
+        },
+        {
+          "id": "gpsp_2_5",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 570,
+          "end": 613
+        },
+        {
+          "id": "gpsp_2_7",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 629,
+          "end": 756
+        },
+        {
+          "id": "gpsp_2_9",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 770,
+          "end": 880
+        },
+        {
+          "id": "gpsp_2_21",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1356,
+          "end": 1433
+        },
+        {
+          "id": "gpsp_2_22",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1434,
+          "end": 1446
+        },
+        {
+          "id": "gpsp_2_23",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1447,
+          "end": 1479
+        },
+        {
+          "id": "gpsp_2_24",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1480,
+          "end": 1496
+        },
+        {
+          "id": "gpsp_2_25",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1497,
+          "end": 1515
+        },
+        {
+          "id": "gpsp_2_26",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1516,
+          "end": 1531
+        },
+        {
+          "id": "gpsp_2_27",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1532,
+          "end": 1549
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_a027a09fdc281e3ed4f98784",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_f92712953b29761b1d1c6b6a",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 10,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2660
+    },
+    {
+      "id": "vitejs-vite-23452",
+      "seedHash": "b45f7fc21f0dfc5e462ecfc4a7c880a2aeea001e26f654b06e42246d2e598078",
+      "selected": [
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 22,
+          "end": 35
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 36,
+          "end": 50
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 107,
+          "end": 242
+        },
+        {
+          "id": "gpsp_1_8",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 244,
+          "end": 371
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 477,
+          "end": 669
+        },
+        {
+          "id": "gpsp_1_13",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 1002,
+          "end": 1156
+        },
+        {
+          "id": "gpsp_1_15",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 1174,
+          "end": 1292
+        },
+        {
+          "id": "gpsp_1_19",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 1471,
+          "end": 1502
+        },
+        {
+          "id": "gpsp_1_20",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 1503,
+          "end": 1530
+        },
+        {
+          "id": "gpsp_1_21",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 1531,
+          "end": 1570
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 75
+        },
+        {
+          "id": "gpsp_3_4",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 119,
+          "end": 151
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_af8cf31db3bd537366647097",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_d8b2ab1a1b0e40fa31639c4e",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_ab71ff0230b09f7e5bd9c631",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 20,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 3002
+    },
+    {
+      "id": "vitejs-vite-23443",
+      "seedHash": "469684ff4fc17c0f189fe39f4f990cb4112e10abd5970d85014c705ce5c9936b",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 69
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 14
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 16,
+          "end": 127
+        },
+        {
+          "id": "gpsp_2_3",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 129,
+          "end": 535
+        },
+        {
+          "id": "gpsp_2_4",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 537,
+          "end": 972
+        },
+        {
+          "id": "gpsp_2_5",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 974,
+          "end": 1183
+        },
+        {
+          "id": "gpsp_2_6",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 1185,
+          "end": 1200
+        },
+        {
+          "id": "gpsp_2_7",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1202,
+          "end": 1334
+        },
+        {
+          "id": "gpsp_2_8",
+          "sourceKind": "pr_body",
+          "kind": "list_item",
+          "start": 1335,
+          "end": 1558
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_6aa4d1a0a2bdbd1ddfc85484",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_b0710958e90d1273572b80c7",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 3257
+    },
+    {
+      "id": "pytest-dev-pytest-14993",
+      "seedHash": "c359d5aee065fa828a76bc2ba957c1a819e95ad9f81c9921fdf719d475fc2e42",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 0,
+          "end": 10
+        },
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 12,
+          "end": 180
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 182,
+          "end": 399
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 401,
+          "end": 637
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 639,
+          "end": 1005
+        },
+        {
+          "id": "gpsp_1_6",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 1007,
+          "end": 1024
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 1026,
+          "end": 1406
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 1425,
+          "end": 1449
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 2578,
+          "end": 2843
+        },
+        {
+          "id": "gpsp_1_14",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 2858,
+          "end": 3207
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 55
+        },
+        {
+          "id": "gpsp_3_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 16,
+          "end": 262
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_32c4e9ac1d1acbc9e540cc65",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_d1b6c2c9a2e1c9f75287e94c",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_3a7b4eab3b99ca1ab48d81a2",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 11,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 4459
+    },
+    {
+      "id": "pytest-dev-pytest-14551",
+      "seedHash": "3b6bea4cd54763f830d1cd143b12dcb0d73f071ee3a8e6b43ba4051344947289",
+      "selected": [
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 14,
+          "end": 294
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 296,
+          "end": 375
+        },
+        {
+          "id": "gpsp_1_4",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 377,
+          "end": 487
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 855,
+          "end": 862
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 2605,
+          "end": 2641
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 2643,
+          "end": 2666
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 2668,
+          "end": 2733
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 2734,
+          "end": 2803
+        },
+        {
+          "id": "gpsp_1_13",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 2804,
+          "end": 2846
+        },
+        {
+          "id": "gpsp_1_14",
+          "sourceKind": "linked_issue",
+          "kind": "list_item",
+          "start": 2847,
+          "end": 2880
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 73
+        },
+        {
+          "id": "gpsp_3_1",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 0,
+          "end": 13
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_af0409bf33d60110670d0586",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_2d1dcee7f45996ae51d2e978",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_6149487f8c37493c43345b93",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 2,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2915
+    },
+    {
+      "id": "rust-lang-cargo-17451",
+      "seedHash": "d8f32ceff2191fdc76ae8df693f3499a191c14e62fabdb2d5182cef9198117d5",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 0,
+          "end": 11
+        },
+        {
+          "id": "gpsp_1_2",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 13,
+          "end": 128
+        },
+        {
+          "id": "gpsp_1_3",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 130,
+          "end": 297
+        },
+        {
+          "id": "gpsp_1_5",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 363,
+          "end": 403
+        },
+        {
+          "id": "gpsp_1_7",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 466,
+          "end": 515
+        },
+        {
+          "id": "gpsp_1_9",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 608,
+          "end": 648
+        },
+        {
+          "id": "gpsp_1_10",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 650,
+          "end": 671
+        },
+        {
+          "id": "gpsp_1_11",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 673,
+          "end": 686
+        },
+        {
+          "id": "gpsp_1_12",
+          "sourceKind": "linked_issue",
+          "kind": "heading",
+          "start": 688,
+          "end": 697
+        },
+        {
+          "id": "gpsp_1_13",
+          "sourceKind": "linked_issue",
+          "kind": "paragraph",
+          "start": 699,
+          "end": 712
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 94
+        },
+        {
+          "id": "gpsp_3_4",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 547,
+          "end": 764
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_847b935c1f8dbef0faa39310",
+          "kind": "linked_issue",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_af26f007c93ba9f72f494961",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_b350f788c3ec72b08a282549",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 3,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 2899
+    },
+    {
+      "id": "rust-lang-cargo-17427",
+      "seedHash": "71b2d7e8d11759d6bda02a5961061704dc058b89901d9d2345f3130cd450112e",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 45
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 37
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 39,
+          "end": 87
+        },
+        {
+          "id": "gpsp_2_4",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 676,
+          "end": 728
+        },
+        {
+          "id": "gpsp_2_5",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 730,
+          "end": 765
+        },
+        {
+          "id": "gpsp_2_6",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 767,
+          "end": 848
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_6ecb9d7e744c59c0ba628842",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_26cb3689864ace94302a4f1d",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 1489
+    },
+    {
+      "id": "controlled-phrase-a",
+      "seedHash": "56cee69da0ea60069c7f874cc93af5f4b811e764f5dd13b8199a3fd6cee28667",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 17
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 20
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 22,
+          "end": 92
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_90ccb27a02500522977f2cd5",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_6c54c6d60c1e08ee0986de09",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 858
+    },
+    {
+      "id": "controlled-phrase-b",
+      "seedHash": "8153af95d89e1758d5978b06107cac90eb710468f02f6a0213db6da9d6ecd1b0",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 17
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 20
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 22,
+          "end": 105
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_90ccb27a02500522977f2cd5",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_7acfe0fc8c7d4c1b854a611c",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 870
+    },
+    {
+      "id": "controlled-test-past",
+      "seedHash": "63d7bd0cba076d74375c5f8ba2dae477f6d5496438bbeb47b047086b936e7218",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 13
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 21
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 23,
+          "end": 98
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_21bfd732cfc0c70e7622b35b",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_dd9d41c5d40dc79d65e91ec4",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 860
+    },
+    {
+      "id": "controlled-test-future",
+      "seedHash": "94ff366ebb19c0453fe8bd29e839df639d8a97abdb4e8819f4f403dacd00f9d3",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 13
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 22
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 24,
+          "end": 101
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_21bfd732cfc0c70e7622b35b",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_21a74212493bc6419ad65e26",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 863
+    },
+    {
+      "id": "controlled-bot-usage",
+      "seedHash": "f857e8691d279d6d8f4ac3ab7485b0a15da930871d3edfceaabc2d55fbf227b0",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 14
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 24
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 26,
+          "end": 75
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_e81b817c2e2e51d3e56204c8",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_944241ec0d5ecb556e1c3c80",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 837
+    },
+    {
+      "id": "controlled-bot-product",
+      "seedHash": "eaf75471bee08c7a3109f833ea379cb57f19796b7a2dd9a56b3c1419978d6349",
+      "selected": [
+        {
+          "id": "gpsp_1_1",
+          "sourceKind": "pr_title",
+          "kind": "title",
+          "start": 0,
+          "end": 14
+        },
+        {
+          "id": "gpsp_2_1",
+          "sourceKind": "pr_body",
+          "kind": "heading",
+          "start": 0,
+          "end": 20
+        },
+        {
+          "id": "gpsp_2_2",
+          "sourceKind": "pr_body",
+          "kind": "paragraph",
+          "start": 22,
+          "end": 67
+        }
+      ],
+      "sources": [
+        {
+          "id": "gpsrc_e81b817c2e2e51d3e56204c8",
+          "kind": "pr_title",
+          "roleCeiling": "objective"
+        },
+        {
+          "id": "gpsrc_227e684301ad90aca95d14f1",
+          "kind": "pr_body",
+          "roleCeiling": "objective"
+        }
+      ],
+      "omissions": {
+        "spanBudget": 0,
+        "inputByteBudget": 0
+      },
+      "inputBytes": 829
+    }
+  ]
+}

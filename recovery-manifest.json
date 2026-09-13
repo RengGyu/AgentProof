@@ -1,0 +1,2612 @@
+{
+  "events": 336,
+  "guardianIssues": [
+    {
+      "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+      "line": 107,
+      "index": null,
+      "call_id": "call_6gcVQ2IQVV28J9WsXVMBUT7K",
+      "reason": "patch acknowledgement missing",
+      "patches": 1,
+      "acknowledgements": 0
+    },
+    {
+      "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+      "line": 36,
+      "index": null,
+      "call_id": "call_eESbUVtbW3d3Qub5C6PNC5Xb",
+      "reason": "patch acknowledgement missing",
+      "patches": 1,
+      "acknowledgements": 0
+    },
+    {
+      "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+      "line": 601,
+      "index": null,
+      "call_id": "call_hNgJTIyDtSsLbub1FnZXElvx",
+      "reason": "patch acknowledgement missing",
+      "patches": 1,
+      "acknowledgements": 0
+    },
+    {
+      "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+      "line": 656,
+      "index": null,
+      "call_id": "call_A4J2AZevWOAMeX0Hhjcbs97l",
+      "reason": "patch acknowledgement missing",
+      "patches": 1,
+      "acknowledgements": 0
+    },
+    {
+      "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+      "line": 431,
+      "index": null,
+      "call_id": "call_cPMTepbCyKFiOlqrsFIdds9f",
+      "reason": "patch acknowledgement missing",
+      "patches": 1,
+      "acknowledgements": 0
+    }
+  ],
+  "files": [
+    {
+      "path": "src/app/api/analyze/route.test.ts",
+      "sha256": "2eaaa0faba29608caf8b9b9a1e154103cc316675855e2db0bfa8a977046db19e",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 108,
+          "timestamp": "2026-09-06T22:59:04.919Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 139,
+          "timestamp": "2026-09-07T03:35:27.302Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 177,
+          "timestamp": "2026-09-07T03:38:23.118Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 257,
+          "timestamp": "2026-09-07T03:40:59.550Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 145,
+          "timestamp": "2026-09-08T23:45:48.735Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-09T03:23:00.175Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-information-diagnostic.ts",
+      "sha256": "29108d5c5aaa86892230897bb4f77e7beed498da9e18cde049ad70c13d8c51a6",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 120,
+          "timestamp": "2026-09-06T22:59:23.704Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 178,
+          "timestamp": "2026-09-06T23:01:31.664Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 287,
+          "timestamp": "2026-09-07T03:09:19.626Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 346,
+          "timestamp": "2026-09-07T03:11:40.003Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 386,
+          "timestamp": "2026-09-07T03:13:18.308Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 438,
+          "timestamp": "2026-09-07T03:26:57.345Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 462,
+          "timestamp": "2026-09-07T03:27:38.517Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-07T03:31:44.713Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 82,
+          "timestamp": "2026-09-07T03:32:10.071Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 101,
+          "timestamp": "2026-09-07T03:33:56.931Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 159,
+          "timestamp": "2026-09-07T03:35:45.453Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 165,
+          "timestamp": "2026-09-07T03:36:52.948Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 193,
+          "timestamp": "2026-09-07T03:38:44.689Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 240,
+          "timestamp": "2026-09-07T03:40:23.846Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 314,
+          "timestamp": "2026-09-07T03:42:42.332Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 375,
+          "timestamp": "2026-09-07T03:56:10.779Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 381,
+          "timestamp": "2026-09-07T03:56:59.769Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 412,
+          "timestamp": "2026-09-07T03:59:16.446Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 428,
+          "timestamp": "2026-09-07T03:59:44.524Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 434,
+          "timestamp": "2026-09-07T04:00:14.118Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 507,
+          "timestamp": "2026-09-07T04:02:32.598Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 608,
+          "timestamp": "2026-09-07T04:12:49.588Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 614,
+          "timestamp": "2026-09-07T04:13:00.561Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 625,
+          "timestamp": "2026-09-07T04:13:29.365Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 668,
+          "timestamp": "2026-09-07T04:14:49.857Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 674,
+          "timestamp": "2026-09-07T04:15:04.396Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 779,
+          "timestamp": "2026-09-07T04:18:24.649Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 832,
+          "timestamp": "2026-09-07T04:27:01.918Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 840,
+          "timestamp": "2026-09-07T04:27:18.439Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 932,
+          "timestamp": "2026-09-07T04:37:28.517Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 943,
+          "timestamp": "2026-09-07T04:37:46.921Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1022,
+          "timestamp": "2026-09-07T04:41:19.802Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1061,
+          "timestamp": "2026-09-07T04:48:12.602Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1098,
+          "timestamp": "2026-09-07T04:49:10.418Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1180,
+          "timestamp": "2026-09-07T04:59:39.465Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1230,
+          "timestamp": "2026-09-07T05:01:21.733Z"
+        },
+        {
+          "parentLogLines": [
+            70845,
+            70173
+          ],
+          "kind": "exact import, optional field, forwarding return and recursive validator source"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/app/api/analyze/route.ts",
+      "sha256": "edcc343df3f563bdb6e1f79066cfb4160dd7f5b8e33b19e808ab89f246bc3f2a",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 126,
+          "timestamp": "2026-09-06T23:00:10.677Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 166,
+          "timestamp": "2026-09-06T23:01:17.300Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 223,
+          "timestamp": "2026-09-06T23:02:55.386Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 118,
+          "timestamp": "2026-09-08T03:20:53.579Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 57,
+          "timestamp": "2026-09-08T23:40:20.970Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 309,
+          "timestamp": "2026-09-09T08:17:23.691Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 130,
+          "timestamp": "2026-09-09T10:11:00.244Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "edcc343df3f563bdb6e1f79066cfb4160dd7f5b8e33b19e808ab89f246bc3f2a",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "scripts/smoke-analyze-pr-url.mjs",
+      "sha256": "bc9324d2f6c45092dbef9fbe632bf83d9a07e98c36fd3e8a5195a60425d32aec",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 138,
+          "timestamp": "2026-09-06T23:00:26.457Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 144,
+          "timestamp": "2026-09-06T23:00:42.964Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 150,
+          "timestamp": "2026-09-06T23:00:52.023Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 293,
+          "timestamp": "2026-09-07T03:09:52.609Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 352,
+          "timestamp": "2026-09-07T03:12:04.727Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 375,
+          "timestamp": "2026-09-07T03:12:50.745Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 392,
+          "timestamp": "2026-09-07T03:13:36.182Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 127,
+          "timestamp": "2026-09-07T03:34:28.769Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 133,
+          "timestamp": "2026-09-07T03:35:19.344Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 171,
+          "timestamp": "2026-09-07T03:37:41.035Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 209,
+          "timestamp": "2026-09-07T03:39:08.463Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 314,
+          "timestamp": "2026-09-07T03:42:42.332Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 387,
+          "timestamp": "2026-09-07T03:57:39.167Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 393,
+          "timestamp": "2026-09-07T03:58:17.327Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 474,
+          "timestamp": "2026-09-07T04:01:28.211Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 608,
+          "timestamp": "2026-09-07T04:12:49.588Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 614,
+          "timestamp": "2026-09-07T04:13:00.561Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 707,
+          "timestamp": "2026-09-07T04:16:27.064Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 713,
+          "timestamp": "2026-09-07T04:16:53.642Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 840,
+          "timestamp": "2026-09-07T04:27:18.439Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 886,
+          "timestamp": "2026-09-07T04:35:42.131Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 943,
+          "timestamp": "2026-09-07T04:37:46.921Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1104,
+          "timestamp": "2026-09-07T04:49:23.232Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1218,
+          "timestamp": "2026-09-07T05:00:53.901Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1224,
+          "timestamp": "2026-09-07T05:01:09.070Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 561,
+          "timestamp": "2026-09-08T13:37:17.305Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 587,
+          "timestamp": "2026-09-08T13:39:32.803Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 605,
+          "timestamp": "2026-09-08T13:40:48.934Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 87,
+          "timestamp": "2026-09-08T23:42:32.629Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-information-diagnostic.test.ts",
+      "sha256": "0f0ed374bedf7353bf1c84061988b6fce85af6a4096e2bcef7f442283cacad6e",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 184,
+          "timestamp": "2026-09-06T23:01:46.366Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 195,
+          "timestamp": "2026-09-06T23:02:13.067Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 206,
+          "timestamp": "2026-09-06T23:02:27.546Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 217,
+          "timestamp": "2026-09-06T23:02:46.291Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 358,
+          "timestamp": "2026-09-07T03:12:17.865Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 215,
+          "timestamp": "2026-09-07T03:39:32.191Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 221,
+          "timestamp": "2026-09-07T03:39:48.528Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 283,
+          "timestamp": "2026-09-07T03:41:47.158Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 406,
+          "timestamp": "2026-09-07T03:58:41.394Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 451,
+          "timestamp": "2026-09-07T04:00:41.712Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 457,
+          "timestamp": "2026-09-07T04:00:55.743Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 463,
+          "timestamp": "2026-09-07T04:01:07.208Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 541,
+          "timestamp": "2026-09-07T04:03:30.618Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 553,
+          "timestamp": "2026-09-07T04:04:07.376Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 565,
+          "timestamp": "2026-09-07T04:04:23.598Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 785,
+          "timestamp": "2026-09-07T04:18:39.819Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 798,
+          "timestamp": "2026-09-07T04:19:04.228Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 846,
+          "timestamp": "2026-09-07T04:27:40.472Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 978,
+          "timestamp": "2026-09-07T04:38:51.348Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 984,
+          "timestamp": "2026-09-07T04:39:14.654Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1028,
+          "timestamp": "2026-09-07T04:41:32.154Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1110,
+          "timestamp": "2026-09-07T04:49:39.859Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T16-41-35-01a07ad0-bd5a-7f22-b08e-4eab60fd282b.jsonl",
+          "line": 36,
+          "timestamp": "2026-09-07T07:42:16.389Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/smoke-analyze-pr-url.test.mjs",
+      "sha256": "90e8e169fde515940145dfff363185db01ce66d9633b734fc75f47ccc92f1cd4",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 315,
+          "timestamp": "2026-09-07T03:10:56.257Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 326,
+          "timestamp": "2026-09-07T03:11:12.050Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 364,
+          "timestamp": "2026-09-07T03:12:30.275Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 398,
+          "timestamp": "2026-09-07T03:14:02.561Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 139,
+          "timestamp": "2026-09-07T03:35:27.302Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 177,
+          "timestamp": "2026-09-07T03:38:23.118Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 227,
+          "timestamp": "2026-09-07T03:40:02.075Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 406,
+          "timestamp": "2026-09-07T03:58:41.394Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 445,
+          "timestamp": "2026-09-07T04:00:29.840Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 746,
+          "timestamp": "2026-09-07T04:17:33.752Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 846,
+          "timestamp": "2026-09-07T04:27:40.472Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 892,
+          "timestamp": "2026-09-07T04:36:03.009Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 984,
+          "timestamp": "2026-09-07T04:39:14.654Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1110,
+          "timestamp": "2026-09-07T04:49:39.859Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1150,
+          "timestamp": "2026-09-07T04:51:10.677Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 552,
+          "timestamp": "2026-09-08T13:36:05.438Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 553,
+          "timestamp": "2026-09-08T13:36:05.438Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 582,
+          "timestamp": "2026-09-08T13:38:57.155Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 599,
+          "timestamp": "2026-09-08T13:39:52.849Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 95,
+          "timestamp": "2026-09-08T23:43:15.670Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 101,
+          "timestamp": "2026-09-08T23:43:38.266Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-documentation.test.ts",
+      "sha256": "035113354826375651f8105a638581ad9407b56b9227d0ebfbc881a517f2e6ba",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 73,
+          "timestamp": "2026-09-08T03:16:00.848Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 92,
+          "timestamp": "2026-09-08T03:18:43.511Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 129,
+          "timestamp": "2026-09-08T03:22:16.427Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 140,
+          "timestamp": "2026-09-08T03:22:39.288Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 146,
+          "timestamp": "2026-09-08T03:22:53.625Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 159,
+          "timestamp": "2026-09-08T03:23:22.972Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-documentation-presentation.ts",
+      "sha256": "8b79bb59919d686ff50e70793144342fb74ae81f59fd2928f0f230a2d0416e91",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 79,
+          "timestamp": "2026-09-08T03:16:55.463Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 228,
+          "timestamp": "2026-09-08T03:27:30.466Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/app/api/analyze/ordinary-documentation.test.ts",
+      "sha256": "bcb35c2aede4d86a0dbcaf681ee59ebfcb942040fa624c4fe23de968979e463c",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 103,
+          "timestamp": "2026-09-08T03:19:15.935Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 146,
+          "timestamp": "2026-09-08T03:22:53.625Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 178,
+          "timestamp": "2026-09-08T03:24:29.264Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 215,
+          "timestamp": "2026-09-08T03:27:05.307Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 228,
+          "timestamp": "2026-09-08T03:27:30.466Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 296,
+          "timestamp": "2026-09-08T03:31:56.949Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/types.ts",
+      "sha256": "1fe0dc793fb246b43b94b7ccf4565f96c9af4bf7c1e3cb2ab593a72920be8d10",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 118,
+          "timestamp": "2026-09-08T03:20:53.579Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72344,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-observation-service.ts",
+      "sha256": "5b7006aaa3a87b6906dbd2f2fa0b0c22ca67eb523e3a824a3b1a3520e2380d2b",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 118,
+          "timestamp": "2026-09-08T03:20:53.579Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 51,
+          "timestamp": "2026-09-08T23:39:28.670Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 57,
+          "timestamp": "2026-09-08T23:40:20.970Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 309,
+          "timestamp": "2026-09-09T08:17:23.691Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-09T10:06:50.706Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 28,
+          "kind": "untruncated prefix within truncated full cat"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 76,
+          "kind": "recorded TypeScriptProjectCollector import"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 75730,
+          "kind": "exact source range joined by overlapping anchors"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72349,
+          "kind": "exact source range joined by overlapping anchors"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 75704,
+          "kind": "exact source range joined by overlapping anchors"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 28,
+          "kind": "untruncated prefix within truncated full cat"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 76,
+          "kind": "recorded TypeScriptProjectCollector import"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 75730,
+          "kind": "exact source range joined by overlapping anchors"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72349,
+          "kind": "exact source range joined by overlapping anchors"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 75704,
+          "kind": "exact source range joined by overlapping anchors"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "5b7006aaa3a87b6906dbd2f2fa0b0c22ca67eb523e3a824a3b1a3520e2380d2b",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/github.ts",
+      "sha256": "ef4c2967785e14f558b0ee5138920dcd11656eb257c754dee1e9991e8d941eb8",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 118,
+          "timestamp": "2026-09-08T03:20:53.579Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 51,
+          "timestamp": "2026-09-08T23:39:28.670Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 309,
+          "timestamp": "2026-09-09T08:17:23.691Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 112,
+          "timestamp": "2026-09-09T10:09:19.020Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 155,
+          "timestamp": "2026-09-09T10:12:35.720Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "ef4c2967785e14f558b0ee5138920dcd11656eb257c754dee1e9991e8d941eb8",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/report-validation.ts",
+      "sha256": "4e3be93ffee65b9588234910eea24b57840e95e3f4c90cb8331a87da9efbc450",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 123,
+          "timestamp": "2026-09-08T03:21:45.472Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72344,
+          "kind": "exact observed source lines"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/report-runtime-validation.ts",
+      "sha256": "7f3718f627ff360631769218d6e201a3f3f5098d8c9b2561784f43fcc87bf3e2",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 123,
+          "timestamp": "2026-09-08T03:21:45.472Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 288,
+          "timestamp": "2026-09-08T03:31:31.308Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 338,
+          "timestamp": "2026-09-08T03:34:31.720Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 44,
+          "timestamp": "2026-09-08T23:38:24.661Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/github-dashboard-view-model.ts",
+      "sha256": "1cae5cce69ad93c9581f6f56d6b25eabc59285c877a9b993456f5c8e7bc24dd6",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 184,
+          "timestamp": "2026-09-08T03:24:47.990Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/tenant-report-validation.ts",
+      "sha256": "add52e6962b86d495bc59786536aef0ffdb069bd333a2205feb7fad9832dfa04",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 184,
+          "timestamp": "2026-09-08T03:24:47.990Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 203,
+          "timestamp": "2026-09-08T03:26:29.260Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 209,
+          "timestamp": "2026-09-08T03:26:47.550Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 338,
+          "timestamp": "2026-09-08T03:34:31.720Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/report-share.ts",
+      "sha256": "4085fc13230e3845e57ee8183221ebc421e37efb028dd49d5b17900671d67edf",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 184,
+          "timestamp": "2026-09-08T03:24:47.990Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72380,
+          "kind": "exact observed source lines"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72400,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/server-report-store.ts",
+      "sha256": "3f351e7618f0eb0be1bd549e9acf77a757da565a6959cc2c700795e4826d9987",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 184,
+          "timestamp": "2026-09-08T03:24:47.990Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 302,
+          "timestamp": "2026-09-08T03:32:39.146Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/components/ordinary-documentation-presentation.test.ts",
+      "sha256": "22ae1786a1a3419669204bd6f8e40f820a1762db691ea49c7289361fc2856ece",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 399,
+          "timestamp": "2026-09-08T06:47:49.550Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "vitest.config.ts",
+      "sha256": "184517d5cf89cea3140db8216027ea8135a2dbcf32522dbb166e9a9af23504af",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 443,
+          "timestamp": "2026-09-08T06:51:09.333Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/components/PublicGitHubDashboard.tsx",
+      "sha256": "8f25b4eb5c6de7235e210976c71534752ef3e261a5912afa88728a920272e0fa",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 450,
+          "timestamp": "2026-09-08T06:51:19.447Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 467,
+          "timestamp": "2026-09-08T06:52:30.790Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 468,
+          "timestamp": "2026-09-08T06:52:30.790Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/markdown.ts",
+      "sha256": "8a143c15d18f267f0e9df42a3852ca858e71947f26b0ebfe2bebc7f7a6410fcf",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 467,
+          "timestamp": "2026-09-08T06:52:30.790Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 74956,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/dashboard-report-export.ts",
+      "sha256": "65e5e5a554fbe9f2c36ad0094f82ee207dda5f55721a57889a1290a817942a63",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 467,
+          "timestamp": "2026-09-08T06:52:30.790Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/components/ReportView.tsx",
+      "sha256": "ec5c023b5f70e6d91daf232a6d9582846cd5397ff7b71272300918f5dda22680",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 467,
+          "timestamp": "2026-09-08T06:52:30.790Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-08T23:41:53.848Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "365c47fa7db5e2a72a5a84db5f1ff947ad5cd6103c946601d9d05e2df6caee36",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 68978,
+          "timestamp": "2026-09-08T12:02:07.485Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-semantic-observer.test.ts",
+      "sha256": "afae7d4aa7c75c0890a1a45c4dd6794951c58822fe16c4d2794700aabb7112c7",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T22:56:43.992Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:27:44.720Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-semantic-observer.ts",
+      "sha256": "bc28d2479446094cf6a789b84da6d6a159019f36ec1636f778252f2808e86945",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T22:57:05.613Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:28:59.393Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 70,
+          "timestamp": "2026-09-08T23:41:06.262Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 75704,
+          "kind": "exact final system prompts including union candidates"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/typescript-union-verification.test.ts",
+      "sha256": "8696d689338e2fb6b0207ee082c60654f02b53473c918c09893cc39c6df4fff0",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:20:34.865Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/typescript-union-verification.ts",
+      "sha256": "0251f452e2f38da244fa99415f40f0a6f46a766f7ead61b48f45c13f35870ed5",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:21:43.359Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:22:17.889Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 71899,
+          "timestamp": "2026-09-09T02:00:19.512Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-semantic-proposal.test.ts",
+      "sha256": "cd782001be4d246588b0874a9d2c86e71ad14c8bce4cd220006a0af50f24c5f7",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:27:44.720Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-semantic-proposal.ts",
+      "sha256": "4fad2d1630f624651dcce76d02d0e30ec4e26c89aaa8c336a7f1b0266b6d2dba",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:28:59.393Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 167,
+          "timestamp": "2026-09-08T23:46:39.635Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/app/api/analyze/ordinary-static-types.test.ts",
+      "sha256": "ef63095fda86e6b4b4371bc583232346630d466e5c30f16e3db4e9d7fc8567ed",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:32:21.684Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 57,
+          "timestamp": "2026-09-08T23:40:20.970Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 71892,
+          "timestamp": "2026-09-09T01:59:52.549Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-static-types.test.ts",
+      "sha256": "9cfe097d88008cca127420bfdb44f17ff0da1015cfdadc82295b43648958a129",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-08T23:33:45.801Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 21,
+          "timestamp": "2026-09-08T23:37:22.720Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 87,
+          "timestamp": "2026-09-08T23:42:32.629Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-static-types-presentation.ts",
+      "sha256": "02c973c9626ceca82b5554f7a461ce29972165432beddf7a64b988f3080fdb57",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 39,
+          "timestamp": "2026-09-08T23:37:46.994Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 51,
+          "timestamp": "2026-09-08T23:39:28.670Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/verification-capability-policy-v2.ts",
+      "sha256": "92c25a92b73f1f2699cc51f798c904ae26506b87d32d8f85612c33dda8826c87",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 44,
+          "timestamp": "2026-09-08T23:38:24.661Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 87,
+          "timestamp": "2026-09-08T23:42:32.629Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-static-types.ts",
+      "sha256": "6864276586a9f64fba53e35c316cf970a87d5d59504d45ff527f38dabce4febe",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 44,
+          "timestamp": "2026-09-08T23:38:24.661Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 70,
+          "timestamp": "2026-09-08T23:41:06.262Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 245,
+          "timestamp": "2026-09-09T08:12:32.837Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/verification-capability-policy-v2.test.ts",
+      "sha256": "90ceb20a8ae29ec92d1acbbf47248f71d6b750b283f606f0423f061f8a2f21f3",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 87,
+          "timestamp": "2026-09-08T23:42:32.629Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/app/api/reports/route.test.ts",
+      "sha256": "e3314bc818b0bd5f8b2a5d907006905d53c2ea8ef9827c50fea3b48d08166a67",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 212,
+          "timestamp": "2026-09-09T00:00:19.752Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 222,
+          "timestamp": "2026-09-09T00:01:16.651Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 228,
+          "timestamp": "2026-09-09T00:01:33.697Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 234,
+          "timestamp": "2026-09-09T00:01:47.720Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 250,
+          "timestamp": "2026-09-09T00:02:43.303Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/app/api/reports/route.ts",
+      "sha256": "d1dadb3357c38903ab0375f02279ed5f6c39b4df1a3245441e7afae0c1e8194d",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T07-24-25-01a0831f-59ff-75a0-8396-5c5c484528ac.jsonl",
+          "line": 244,
+          "timestamp": "2026-09-09T00:02:12.671Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/requirement-goal-audit.test.ts",
+      "sha256": "35d9f032d75090487bfdcb3030a6d4a2b5a5f0679deedcbdd87523807ad1d134",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T11-01-27-01a083e6-0d2a-7a41-acce-9b4d1e1409fd.jsonl",
+          "line": 38,
+          "timestamp": "2026-09-09T02:02:30.420Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T11-01-27-01a083e6-0d2a-7a41-acce-9b4d1e1409fd.jsonl",
+          "line": 69,
+          "timestamp": "2026-09-09T02:04:47.813Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T11-01-27-01a083e6-0d2a-7a41-acce-9b4d1e1409fd.jsonl",
+          "line": 99,
+          "timestamp": "2026-09-09T02:06:39.884Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T11-01-27-01a083e6-0d2a-7a41-acce-9b4d1e1409fd.jsonl",
+          "line": 106,
+          "timestamp": "2026-09-09T02:07:41.017Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/run-requirement-goal-audit.mjs",
+      "sha256": "bd2bd1e35691f8465e207cdd50786737f2eadfc6cd09620cb908d0d44f61efb2",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T11-01-27-01a083e6-0d2a-7a41-acce-9b4d1e1409fd.jsonl",
+          "line": 38,
+          "timestamp": "2026-09-09T02:02:30.420Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T11-01-27-01a083e6-0d2a-7a41-acce-9b4d1e1409fd.jsonl",
+          "line": 69,
+          "timestamp": "2026-09-09T02:04:47.813Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T11-01-27-01a083e6-0d2a-7a41-acce-9b4d1e1409fd.jsonl",
+          "line": 99,
+          "timestamp": "2026-09-09T02:06:39.884Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "runtime/scalar-quickjs/package.json",
+      "sha256": "32cd23ab95bf3c41a21995701a0e681750c362b57baaf7528e0644c9bd2528b8",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-09T07:50:41.649Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "runtime/scalar-quickjs/.gitignore",
+      "sha256": "4d56952b0fb13bf8f9b6c13a6d4c34a075bac3af447636a1df4335d7576e2f97",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 2,
+          "timestamp": "2026-09-09T07:50:41.649Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/isolated-scalar-execution.ts",
+      "sha256": "7199b49538ac67a9de71a9acab04cd9484c7b75659e5a7168cdee013ebf74554",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 32,
+          "timestamp": "2026-09-09T07:55:37.440Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 44,
+          "timestamp": "2026-09-09T07:58:19.140Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 66,
+          "timestamp": "2026-09-09T08:01:37.213Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 72,
+          "timestamp": "2026-09-09T08:01:56.361Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 135,
+          "timestamp": "2026-09-09T08:04:25.109Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 168,
+          "timestamp": "2026-09-09T08:06:26.743Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 201,
+          "timestamp": "2026-09-09T08:08:18.821Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 378,
+          "timestamp": "2026-09-09T08:23:09.232Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 538,
+          "timestamp": "2026-09-09T09:01:52.136Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 551,
+          "timestamp": "2026-09-09T09:03:26.229Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/isolated-scalar-execution.test.ts",
+      "sha256": "d97f38c83e0c77c044e09d2e04e6441dbc6ab907e524d58a5b9547fc4ef04ffb",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 32,
+          "timestamp": "2026-09-09T07:55:37.440Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 112,
+          "timestamp": "2026-09-09T08:03:26.773Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 142,
+          "timestamp": "2026-09-09T08:05:03.482Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 156,
+          "timestamp": "2026-09-09T08:05:47.928Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/verification-execution-v2.ts",
+      "sha256": "d4281b3ee96a0f39e34480e7a1ccadb1cab4398ad95edcc185cd7cbc16cb4453",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 43,
+          "timestamp": "2026-09-09T07:58:19.140Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/trusted-scalar-observer.mjs",
+      "sha256": "e12b9fd0cd1546e5a17a9de45e1df912faafdb4925b7b9db569755909d9e24f6",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 52,
+          "timestamp": "2026-09-09T08:00:10.411Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 201,
+          "timestamp": "2026-09-09T08:08:18.821Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "runtime/scalar-quickjs/Dockerfile",
+      "sha256": "f9e95c06a3afc4029378e1a964b64abbcc3dd53825b0c22d925799958f26e018",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 52,
+          "timestamp": "2026-09-09T08:00:10.411Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "runtime/scalar-quickjs/target.mjs",
+      "sha256": "cc410af618b5bf7d0d987bc3982f66d44970e56766a8c29d8a9b9bc3854fdc0d",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 52,
+          "timestamp": "2026-09-09T08:00:10.411Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 134,
+          "timestamp": "2026-09-09T08:04:25.109Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 201,
+          "timestamp": "2026-09-09T08:08:18.821Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 538,
+          "timestamp": "2026-09-09T09:01:52.136Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 591,
+          "timestamp": "2026-09-09T09:05:57.368Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/isolated-scalar-execution-stream.test.ts",
+      "sha256": "0038f6fa304ab937f8b672ff97bb8f1972a402bef0e934e5ec81ed043b131581",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 194,
+          "timestamp": "2026-09-09T08:07:34.786Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/ordinary-requirement-outcomes.ts",
+      "sha256": "117fe71b7d412bf55c5db3fa44d38db1e63365829f43522e68d1ab1c236c7ae2",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 245,
+          "timestamp": "2026-09-09T08:12:32.837Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 309,
+          "timestamp": "2026-09-09T08:17:23.691Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 394,
+          "timestamp": "2026-09-09T08:24:01.352Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-09T10:06:50.706Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 82,
+          "timestamp": "2026-09-09T10:07:53.804Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "117fe71b7d412bf55c5db3fa44d38db1e63365829f43522e68d1ab1c236c7ae2",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/ordinary-requirement-outcome-contract.ts",
+      "sha256": "388547aff2a6d11ccb9cff9bfb26682291865e5eb06eb983c5261907656d7daa",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 245,
+          "timestamp": "2026-09-09T08:12:32.837Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 309,
+          "timestamp": "2026-09-09T08:17:23.691Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 76,
+          "timestamp": "2026-09-09T10:06:50.706Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "388547aff2a6d11ccb9cff9bfb26682291865e5eb06eb983c5261907656d7daa",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/general-pr-scalar.ts",
+      "sha256": "614e837736685f2c3f57aa862a6a89f2b8fa56a930c21c4c0d02ff7ed33722e2",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 279,
+          "timestamp": "2026-09-09T08:13:57.954Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 285,
+          "timestamp": "2026-09-09T08:14:43.046Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 367,
+          "timestamp": "2026-09-09T08:21:51.696Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-scalar.test.ts",
+      "sha256": "c7f993639842bb27a1f10dbea9077a6b1b17794f1c9540b0b065c0a2bd3ccb72",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 279,
+          "timestamp": "2026-09-09T08:13:57.954Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 362,
+          "timestamp": "2026-09-09T08:21:35.067Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/app/api/analyze/ordinary-scalar.test.ts",
+      "sha256": "e24e3d63085e8d981c091a15ff24e07d23111d0b9e3d5e3d1d954ee8c779d658",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 304,
+          "timestamp": "2026-09-09T08:16:26.382Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 327,
+          "timestamp": "2026-09-09T08:19:33.927Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 409,
+          "timestamp": "2026-09-09T08:25:01.925Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 558,
+          "timestamp": "2026-09-09T09:03:46.436Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/owned-scalar-next-preload.mjs",
+      "sha256": "fe1eb32d9591c89b10aa68b1557c81e2d741170a5745cc24593b8376c7ce8087",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 328,
+          "timestamp": "2026-09-09T08:19:33.927Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/ordinary-scalar-next.test.mjs",
+      "sha256": "1941cf19cdff79a55029301aa905ee97ec2b8fa5fe997a5cc45a47593a4d621a",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 328,
+          "timestamp": "2026-09-09T08:19:33.927Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/ordinary-scalar-outcomes.test.ts",
+      "sha256": "be0f560ce8d0c8df4bc72baea5a458303221eb51c0928edc557731a08e8e5001",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 368,
+          "timestamp": "2026-09-09T08:21:51.696Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 394,
+          "timestamp": "2026-09-09T08:24:01.352Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 444,
+          "timestamp": "2026-09-09T08:27:31.972Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/github-ordinary-scalar.test.ts",
+      "sha256": "9687f427c65013c8c47b63188d45f7276de0986ad83cd655cd1b537741b2d4a7",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 410,
+          "timestamp": "2026-09-09T08:25:01.925Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 416,
+          "timestamp": "2026-09-09T08:25:48.878Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/isolated-scalar-modules.test.ts",
+      "sha256": "103c1c37cd07fa15a69302b514e295b0b352084c5606fecf009d3ea771a67334",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 530,
+          "timestamp": "2026-09-09T09:00:46.720Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T12-03-01-01a0841e-6de6-79f2-a649-b4513acc61f5.jsonl",
+          "line": 577,
+          "timestamp": "2026-09-09T09:04:56.186Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/ordinary-typescript-assignability.test.ts",
+      "sha256": "7cc18568d4928c03a5edcd73392f22af15813c10d48bb026c31af6ab90ccc816",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 60,
+          "timestamp": "2026-09-09T10:03:50.181Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 163,
+          "timestamp": "2026-09-09T10:13:29.600Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 193,
+          "timestamp": "2026-09-09T10:15:54.227Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 206,
+          "timestamp": "2026-09-09T10:16:53.763Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 222,
+          "timestamp": "2026-09-09T10:18:13.055Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 244,
+          "timestamp": "2026-09-09T10:20:03.604Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 271,
+          "timestamp": "2026-09-09T10:21:59.979Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "7cc18568d4928c03a5edcd73392f22af15813c10d48bb026c31af6ab90ccc816",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/typescript-assignability-verification.ts",
+      "sha256": "0d87c42f7f2a9c453743ca7d605d7a06f63fe04bb50773f10f8999ea51f5fd99",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 68,
+          "timestamp": "2026-09-09T10:04:30.203Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 155,
+          "timestamp": "2026-09-09T10:12:35.720Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 238,
+          "timestamp": "2026-09-09T10:19:12.828Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 244,
+          "timestamp": "2026-09-09T10:20:03.604Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 276,
+          "timestamp": "2026-09-09T10:22:20.487Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "0d87c42f7f2a9c453743ca7d605d7a06f63fe04bb50773f10f8999ea51f5fd99",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "scripts/trusted-typescript-assignability.mjs",
+      "sha256": "c5ffb9b5313b6a54c7c3be35300642e014e8074bae6f7db3f58a8a106657c082",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 68,
+          "timestamp": "2026-09-09T10:04:30.203Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 93,
+          "timestamp": "2026-09-09T10:08:26.810Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 198,
+          "timestamp": "2026-09-09T10:16:33.652Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 214,
+          "timestamp": "2026-09-09T10:17:28.932Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 230,
+          "timestamp": "2026-09-09T10:18:50.062Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 238,
+          "timestamp": "2026-09-09T10:19:12.828Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "c5ffb9b5313b6a54c7c3be35300642e014e8074bae6f7db3f58a8a106657c082",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/github-typescript-project.test.ts",
+      "sha256": "ccf5ab057b31b803093a33aa4e7ad22c4dd4c44df747bc3bbe38b2acba5ab897",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 106,
+          "timestamp": "2026-09-09T10:08:54.157Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 149,
+          "timestamp": "2026-09-09T10:11:53.162Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 252,
+          "timestamp": "2026-09-09T10:20:32.645Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "ccf5ab057b31b803093a33aa4e7ad22c4dd4c44df747bc3bbe38b2acba5ab897",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/app/api/analyze/ordinary-assignability.test.ts",
+      "sha256": "27ed4bc6ce802565a50c670a2457e39a4eae692130c3043310e826ae6de7c74a",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 118,
+          "timestamp": "2026-09-09T10:10:02.849Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "27ed4bc6ce802565a50c670a2457e39a4eae692130c3043310e826ae6de7c74a",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "next.config.ts",
+      "sha256": "3b5774fec94dd2bd3a86dfed9d1271538f75047fc923b09c4dd8bc392d2d5bfb",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 238,
+          "timestamp": "2026-09-09T10:19:12.828Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "3b5774fec94dd2bd3a86dfed9d1271538f75047fc923b09c4dd8bc392d2d5bfb",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "scripts/requirement-goal-audit-v2.test.ts",
+      "sha256": "80bb1027a5fdf8cf6152a21d956cb780de2f5110c0d3f6cc7a1d11d9ad9c13d8",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T22-47-49-01a0866c-c2a6-7c71-9cd3-65ab62c76f2b.jsonl",
+          "line": 59,
+          "timestamp": "2026-09-09T13:50:45.289Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T22-47-49-01a0866c-c2a6-7c71-9cd3-65ab62c76f2b.jsonl",
+          "line": 84,
+          "timestamp": "2026-09-09T13:53:07.180Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T22-47-49-01a0866c-c2a6-7c71-9cd3-65ab62c76f2b.jsonl",
+          "line": 113,
+          "timestamp": "2026-09-09T13:54:58.344Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T22-47-49-01a0866c-c2a6-7c71-9cd3-65ab62c76f2b.jsonl",
+          "line": 132,
+          "timestamp": "2026-09-09T13:56:16.136Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/run-requirement-goal-audit-v2.mjs",
+      "sha256": "5ed91c113feef21e0730b644ff823aa5eea335b34b2f59a119d5465c6bbc8cb0",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T22-47-49-01a0866c-c2a6-7c71-9cd3-65ab62c76f2b.jsonl",
+          "line": 59,
+          "timestamp": "2026-09-09T13:50:45.289Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/extractors-source-hygiene.test.ts",
+      "sha256": "1e7453d1e9f94a1e0e244611d06598dd8ac8105bb70ccb36bf06a355bcc06af0",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 45,
+          "timestamp": "2026-09-09T14:11:19.185Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 64,
+          "timestamp": "2026-09-09T14:12:51.990Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 80,
+          "timestamp": "2026-09-09T14:13:37.194Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 107,
+          "timestamp": "2026-09-09T14:16:04.620Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 124,
+          "timestamp": "2026-09-09T14:17:10.047Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/extractors.ts",
+      "sha256": "f2d0eb7848b44ca4d5c544ca8ce343c87c81844cf200761780c8e681e138217f",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 53,
+          "timestamp": "2026-09-09T14:12:06.721Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 64,
+          "timestamp": "2026-09-09T14:12:51.990Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 113,
+          "timestamp": "2026-09-09T14:16:27.359Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T23-10-02-01a08681-1830-7001-90bf-aa8c14046a58.jsonl",
+          "line": 132,
+          "timestamp": "2026-09-09T14:17:51.636Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/requirement-source-ablation.test.ts",
+      "sha256": "f14ef192455953388dfd1490f0bad7f41b8ba9f5436e145d60455e7d1f350b4a",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 50,
+          "timestamp": "2026-09-09T22:35:02.218Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 63,
+          "timestamp": "2026-09-09T22:36:39.764Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 79,
+          "timestamp": "2026-09-09T22:40:09.936Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 92,
+          "timestamp": "2026-09-09T22:40:38.144Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 111,
+          "timestamp": "2026-09-09T22:42:48.909Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 29,
+          "timestamp": "2026-09-10T02:51:06.442Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "f14ef192455953388dfd1490f0bad7f41b8ba9f5436e145d60455e7d1f350b4a",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "scripts/requirement-source-ablation.ts",
+      "sha256": "e52954106003de655047f81b4e4f702260286080299b1ea367c6f7f5dcaa4f3d",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 71,
+          "timestamp": "2026-09-09T22:37:02.412Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 105,
+          "timestamp": "2026-09-09T22:41:46.290Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 95,
+          "timestamp": "2026-09-10T02:53:49.453Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "e52954106003de655047f81b4e4f702260286080299b1ea367c6f7f5dcaa4f3d",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "scripts/requirement-source-ablation-run.test.ts",
+      "sha256": "66092ad15f1929c12f14747dc091074ad7a1b12f905e80f1ede687841aaade5a",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 92,
+          "timestamp": "2026-09-09T22:40:38.144Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/run-requirement-source-ablation.mjs",
+      "sha256": "fe3888dc5fb49a4dc6dcfe078cb97efbb46a8286cc49a0ac7099b9ff174d2073",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T07-33-56-01a0884e-6ec5-7db3-bddc-e4ab537780c5.jsonl",
+          "line": 105,
+          "timestamp": "2026-09-09T22:41:46.290Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-semantic-selection.test.ts",
+      "sha256": "6384b35f3ecbf84b3db3470b0d8b5452cf2970efe81f3273ba2764054e6955b4",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 29,
+          "timestamp": "2026-09-10T02:51:06.442Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 64,
+          "timestamp": "2026-09-10T02:52:36.429Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 109,
+          "timestamp": "2026-09-10T02:55:08.310Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 148,
+          "timestamp": "2026-09-10T02:56:57.342Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 154,
+          "timestamp": "2026-09-10T02:57:22.338Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "6384b35f3ecbf84b3db3470b0d8b5452cf2970efe81f3273ba2764054e6955b4",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/general-pr-semantic-selection.ts",
+      "sha256": "23e00be5635fc040fb7c89d592009b6b8cec91e4954a8715e1fc00ea60d208d7",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 95,
+          "timestamp": "2026-09-10T02:53:49.453Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 159,
+          "timestamp": "2026-09-10T02:57:38.152Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots",
+      "originalSha256": "23e00be5635fc040fb7c89d592009b6b8cec91e4954a8715e1fc00ea60d208d7",
+      "exactOriginalHashMatch": true
+    },
+    {
+      "path": "src/lib/general-pr-semantic-evidence-selection.test.ts",
+      "sha256": "9d949f09a8240a022ca94acd011e82f23a3f6eb283fd618d28da2a6d0dce5d7e",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/10/rollout-2026-09-10T11-50-35-01a08939-662d-7b61-9a65-e9c95ced6d0d.jsonl",
+          "line": 184,
+          "timestamp": "2026-09-10T03:05:39.818Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/general-pr-documentation.ts",
+      "sha256": "92225ff0934f4e2d46a11d1ee23ebde47437a15274adb741870fbd7f9e84cd8d",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 71899,
+          "block": "4",
+          "type": "full-file-read"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/requirement-presentation-v2.ts",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72349,
+          "kind": "full-file sed output"
+        }
+      ],
+      "sha256": "488d0de4a3b5837fc5472963620a818c2f80adfdfc529ec93ce7d86b19920781",
+      "recoveryEvidence": "Early exact snapshot plus supervisor-authorized minimum compatibility reconstruction of four observationLabel return strings from baseline 946bf17; unchanged tests and later recorded full-suite pass parent74842 support compatibility, but final original helper bytes unavailable."
+    },
+    {
+      "path": "scripts/external-pr-current-corpus-smoke.test.mjs",
+      "sha256": "f51ec22fb5bfcdaf832b65daa4566b86f149149b52ee3713a03a4193beb921d9",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T07-57-24-01a078f0-d728-7642-944b-4e83f6e6d1fa.jsonl",
+          "line": 245,
+          "timestamp": "2026-09-06T23:03:23.319Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 277,
+          "timestamp": "2026-09-07T03:41:32.578Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 308,
+          "timestamp": "2026-09-07T03:42:20.223Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 406,
+          "timestamp": "2026-09-07T03:58:41.394Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T16-41-35-01a07ad0-bd5a-7f22-b08e-4eab60fd282b.jsonl",
+          "line": 36,
+          "timestamp": "2026-09-07T07:42:16.389Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 552,
+          "timestamp": "2026-09-08T13:36:05.438Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "scripts/external-pr-current-corpus-smoke.mjs",
+      "sha256": "25fd4581adae9eb72e7e4264257fa0edae4752562332c89f354b3a52fd7a2d3e",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 246,
+          "timestamp": "2026-09-07T03:40:44.872Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/07/rollout-2026-09-07T12-28-28-01a079e9-0219-7342-a034-8206688affc2.jsonl",
+          "line": 1236,
+          "timestamp": "2026-09-07T05:01:34.034Z"
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/08/rollout-2026-09-08T12-13-53-01a07f02-02f2-7c73-ab8c-98ef222a3d63.jsonl",
+          "line": 561,
+          "timestamp": "2026-09-08T13:37:17.305Z"
+        }
+      ],
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    },
+    {
+      "path": "src/lib/dashboard-requirement-view-model.ts",
+      "sources": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 74968,
+          "kind": "exact observed source lines"
+        }
+      ],
+      "sha256": "61eadb8db054be077b801e895f894a71997ae4af4ef3842ea0731b135d57f330",
+      "recoveryEvidence": "recorded patches and/or source read snapshots"
+    }
+  ],
+  "gaps": [
+    {
+      "path": "src/lib/general-pr-observation-service.test.ts",
+      "reason": "Historical additional tests lack exact surviving source; baseline existing tests preserved, no replacement tests invented."
+    },
+    {
+      "path": "scripts/smoke-analyze-pr-url.test.mjs",
+      "reason": "Historical additional mixed explicit/semantic diagnostic test lacks exact surviving source; other original tests and recorded static-summary test restored."
+    }
+  ],
+  "baseCommit": "946bf17",
+  "status": "runtime_restored_with_documented_declaration_reconstruction_and_missing_historical_tests",
+  "reconstructedDeclarations": [
+    {
+      "path": "src/lib/report-validation.ts",
+      "declaration": "ordinaryOutcomeValidator?: (report: VerificationReport) => boolean;",
+      "kind": "inferredTypeOnly1line",
+      "authority": "Supervisor explicitly authorized type-only reconstruction from two observed call sites; not claimed byte-identical.",
+      "evidence": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/09/09/rollout-2026-09-09T18-58-35-01a0859a-e2e6-7b72-b57b-5f566b9b96be.jsonl",
+          "line": 39
+        }
+      ]
+    },
+    {
+      "path": "src/lib/report-share.ts",
+      "kind": "source-grounded reconstructed import declarations",
+      "authority": "Supervisor explicitly authorized existing-symbol to hash-confirmed existing-module imports; not claimed byte-identical.",
+      "module": "./ordinary-requirement-outcome-contract",
+      "evidence": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72380
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333
+        }
+      ]
+    },
+    {
+      "path": "src/lib/server-report-store.ts",
+      "kind": "source-grounded reconstructed import declarations",
+      "authority": "Supervisor explicitly authorized existing-symbol to hash-confirmed existing-module imports; not claimed byte-identical.",
+      "module": "./ordinary-requirement-outcome-contract",
+      "evidence": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72380
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333
+        }
+      ]
+    },
+    {
+      "path": "src/lib/tenant-report-validation.ts",
+      "kind": "source-grounded reconstructed import declarations",
+      "authority": "Supervisor explicitly authorized existing-symbol to hash-confirmed existing-module imports; not claimed byte-identical.",
+      "module": "./ordinary-requirement-outcome-contract",
+      "evidence": [
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 72380
+        },
+        {
+          "log": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+          "line": 73333
+        }
+      ]
+    }
+  ],
+  "recoveryOnlyChanges": [
+    {
+      "path": ".gitignore",
+      "change": "Ignore /.recovery-tools/; recovery helper directory only."
+    }
+  ],
+  "dependencies": {
+    "command": "pnpm install --offline --frozen-lockfile --ignore-scripts",
+    "exitCode": 0,
+    "reused": 406,
+    "downloaded": 0,
+    "packageAndLockChanged": false
+  },
+  "checks": [
+    {
+      "command": "pnpm typecheck",
+      "exitCode": 0,
+      "stage": "final"
+    },
+    {
+      "command": "pnpm exec vitest run --config .recovery-tools/vitest.config.ts (13 specifically selected source/observer/proposal/extractor/ordinary/static/smoke/ablation files)",
+      "passed": 309,
+      "failed": 4,
+      "skipped": 8,
+      "stage": "before final restoration of observed share validator and markdown policy lines"
+    },
+    {
+      "command": "pnpm exec vitest run src/lib/ordinary-requirement-outcomes.test.ts src/app/api/analyze/ordinary-static-types.test.ts",
+      "exitCode": 0,
+      "passed": 14,
+      "failed": 0,
+      "stage": "after exact-source restoration of the four failed cases"
+    },
+    {
+      "aggregateFinalFocusedEvidence": {
+        "passed": 313,
+        "skipped": 8,
+        "files": 13,
+        "method": "Unchanged passing files retained; only two source-affected failed files rerun after restoration."
+      }
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    {
+      "fullSuite": "Run by supervisor before final two-file restoration: 207 files, 2755 passed, 5 failed, 66 skipped (REPORTED). Worker did not repeat the full suite."
+    },
+    {
+      "command": "pnpm exec vitest run src/app/api/analyze/route.test.ts src/lib/dashboard-report-export.test.ts src/lib/markdown.test.ts src/lib/slack.test.ts src/lib/requirement-presentation-v2.test.ts src/lib/general-pr-information-diagnostic.test.ts",
+      "stage": "after exact diagnostic restoration and authorized four-string compatibility reconstruction",
+      "files": 6,
+      "passed": 75,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm typecheck",
+      "stage": "after final two-file restoration",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --check",
+      "stage": "after final two-file restoration",
+      "exitCode": 0
+    }
+  ],
+  "anchorMatches": 15,
+  "postFullSuiteRecovery": {
+    "diagnostic": "Exact recorded missing forwarding and validator restored",
+    "presentation": "inferredCompatibilityFourReturnStrings; not bit-identical claim",
+    "tests": {
+      "files": 6,
+      "passed": 75,
+      "exitCode": 0
+    },
+    "typecheckExitCode": 0,
+    "diffCheckExitCode": 0,
+    "testExpectationsChanged": false
+  }
+}

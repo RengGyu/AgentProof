@@ -60,6 +60,8 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     reportSchemaVersion?: "verification-report.v2";
     verificationContract?: { state: VerificationContractStateV2 };
     generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
+    ordinaryDocumentationSummary?: import("./general-pr-documentation-presentation").OrdinaryDocumentationSummary;
+    ordinaryStaticSummary?: import("./general-pr-static-types-presentation").OrdinaryStaticSummary;
   };
 }
 

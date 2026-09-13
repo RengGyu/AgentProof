@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { TypeScriptUnionPrimitive } from "./typescript-union-verification";
 import {
   validateGeneralPrObservationSeedV2,
   type GeneralPrClaimRoleV2,
@@ -36,7 +37,10 @@ const PROVIDER_OBJECTIVE_GROUP_KEYS = ["spanIds", "disposition"] as const;
 const PROVIDER_TEST_APPLICABILITY_KEYS = ["objectiveSpanIds", "changeClusterId", "proposal"] as const;
 const PROVIDER_SCOPE_MAPPING_KEYS = ["objectiveSpanIds", "changeClusterId", "proposal"] as const;
 const PROVIDER_EVIDENCE_RELATION_KEYS = ["objectiveSpanIds", "evidenceId", "proposal"] as const;
-const CLAIM_ROOT_KEYS = ["spanRoles"] as const;
+const CLAIM_ROOT_KEYS = ["spanRoles", "unionMemberCandidates"] as const;
+const UNION_CANDIDATE_KEYS = ["spanId", "aliasName", "member"] as const;
+const UNION_PRIMITIVES: readonly TypeScriptUnionPrimitive[] = ["string", "number", "boolean", "bigint", "symbol", "undefined", "null"];
+const UNION_ALIAS_PATTERN = "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$";
 const EVIDENCE_ROOT_KEYS = ["testApplicabilityProposals", "scopeMappingProposals", "evidenceRelationProposals"] as const;
 const CLAIM_SELECTION_KEYS = ["version", "parentSeedHash", "claimSelectionHash", "selectedSpanIds", "selectedSpans", "coverage", "omittedReasonCounts"] as const;
 const CLAIM_SELECTED_SPAN_KEYS = ["spanId", "sourceUnitId", "authority", "sourceRole", "structuralKind", "deterministicRole", "text"] as const;
@@ -93,6 +97,14 @@ export type GeneralPrSemanticEvidenceInvalidReasonV1 =
 /** Private provider response. Grouping and abstention are locally derived. */
 export interface GeneralPrSemanticClaimCandidateV2 {
   spanRoles: Array<{ spanId: string; role: GeneralPrClaimRoleV2 }>;
+  unionMemberCandidates?: GeneralPrUnionMemberCandidateV1[];
+}
+
+/** Source-bound operands only; matching tokens does not verify the intended predicate. */
+export interface GeneralPrUnionMemberCandidateV1 {
+  spanId: string;
+  aliasName: string;
+  member: TypeScriptUnionPrimitive;
 }
 
 export interface GeneralPrSemanticObjectiveGroupV2 {
@@ -180,6 +192,7 @@ export type GeneralPrSemanticClaimValidationV2 =
       claimSelectionHash: string;
       spanRoles: GeneralPrSemanticSpanRoleV2[];
       objectiveGroups: Array<{ spanIds: string[]; disposition: "candidate" }>;
+      unionMemberCandidates?: GeneralPrUnionMemberCandidateV1[];
       errors: [];
     }
   | { valid: false; invalidReason: GeneralPrSemanticClaimInvalidReasonV2; errors: string[] };
@@ -205,6 +218,8 @@ interface ValidatedEvidenceRegistrationV1 {
 
 const VALIDATED_CLAIM_RESULTS = new WeakMap<object, ValidatedClaimResultV1>();
 const VALIDATED_EVIDENCE_RESULTS = new WeakMap<object, ValidatedEvidenceRegistrationV1>();
+const UNION_PROPOSAL_CANDIDATES = new WeakMap<object, { seedHash: string; proposalHash: string; candidates: readonly Readonly<GeneralPrUnionMemberCandidateV1>[] }>();
+const NO_UNION_CANDIDATES: readonly Readonly<GeneralPrUnionMemberCandidateV1>[] = Object.freeze([]);
 
 type JsonSchema = Record<string, unknown>;
 
@@ -214,6 +229,14 @@ export function deriveGeneralPrObjectiveGroupIdV2(spanIds: readonly string[]): s
 
 export function hashGeneralPrSemanticProposalV2(proposal: GeneralPrSemanticProposalV2): string {
   return digest({ domain: "agentproof.general-pr.semantic-proposal.v2", proposal });
+}
+
+export function getGeneralPrUnionMemberCandidatesV1(proposal: GeneralPrSemanticProposalV2 | null, seedHash: string): readonly Readonly<GeneralPrUnionMemberCandidateV1>[] {
+  if (!proposal) return NO_UNION_CANDIDATES;
+  const registered = UNION_PROPOSAL_CANDIDATES.get(proposal);
+  try {
+    return registered && registered.seedHash === seedHash && proposal.seedHash === seedHash && registered.proposalHash === hashGeneralPrSemanticProposalV2(proposal) ? registered.candidates : NO_UNION_CANDIDATES;
+  } catch { return NO_UNION_CANDIDATES; }
 }
 
 export function hashGeneralPrSemanticInvocationReceiptV3(receipt: GeneralPrSemanticInvocationReceiptV3): string {
@@ -230,6 +253,14 @@ export function buildGeneralPrSemanticClaimJsonSchemaV1(selection: GeneralPrSema
       items: exactObjectSchema(SPAN_ROLE_KEYS, {
         spanId: enumSchema(spanIds),
         role: enumSchema(ROLES)
+      })
+    },
+    unionMemberCandidates: {
+      type: "array", maxItems: 8,
+      items: exactObjectSchema(UNION_CANDIDATE_KEYS, {
+        spanId: enumSchema(spanIds),
+        aliasName: { type: "string", minLength: 1, maxLength: 200, pattern: UNION_ALIAS_PATTERN },
+        member: enumSchema(UNION_PRIMITIVES)
       })
     }
   });
@@ -252,7 +283,7 @@ export function validateGeneralPrSemanticClaimCandidateV2(
   const selectedEntries = validateClaimSelection(seed, selection);
   if (!selectedEntries) return invalidClaim("span_binding_invalid", "claim selection binding is invalid");
   if (serializedBytes(value) > GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES) return invalidClaim("output_limit_exceeded", "claim output byte limit exceeded");
-  if (!isRecord(value) || !hasExactKeys(value, CLAIM_ROOT_KEYS) || !Array.isArray(value.spanRoles)) return invalidClaim("root_shape_invalid", "claim candidate root shape is invalid");
+  if (!isRecord(value) || !hasExactKeys(value, Object.hasOwn(value, "unionMemberCandidates") ? CLAIM_ROOT_KEYS : ["spanRoles"]) || !Array.isArray(value.spanRoles)) return invalidClaim("root_shape_invalid", "claim candidate root shape is invalid");
   const sourcesById = new Map(seed.sources.map((source) => [source.id, source]));
   const selectedById = new Map(selectedEntries.map((entry) => [entry.span.id, entry]));
   const invalidReason = classifyClaimSpanRoles(value.spanRoles, selection.selectedSpanIds, selectedById, sourcesById);
@@ -263,7 +294,8 @@ export function validateGeneralPrSemanticClaimCandidateV2(
   const objectiveGroups = selection.selectedSpanIds.flatMap((spanId) => normalizedSelectedRoles[spanId]?.role === "objective_candidate"
     ? [{ spanIds: [spanId], disposition: "candidate" as const }]
     : []);
-  return registerValidatedStageResult(VALIDATED_CLAIM_RESULTS, { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, errors: [] });
+  const unionMemberCandidates = normalizeUnionMemberCandidates(value.unionMemberCandidates, selection, normalizedSelectedRoles);
+  return registerValidatedStageResult(VALIDATED_CLAIM_RESULTS, { valid: true, parentSeedHash: seed.seedHash, claimSelectionHash: selection.claimSelectionHash, spanRoles, objectiveGroups, unionMemberCandidates, errors: [] });
 }
 
 export function validateGeneralPrSemanticEvidenceCandidateV1(
@@ -327,13 +359,40 @@ export function mergeGeneralPrSemanticStageCandidatesV1(
   if (validatedEvidence && validatedEvidence.claimSnapshot !== validatedClaim) return invalid("evidence stage claim provenance is invalid");
   if (validatedEvidence && validatedEvidence.evidenceSnapshot.parentSeedHash !== seed.seedHash) return invalid("evidence stage is stale");
   const evidenceSnapshot = validatedEvidence?.evidenceSnapshot;
-  return validateGeneralPrSemanticProposalV2Internal({
+  const merged = validateGeneralPrSemanticProposalV2Internal({
     spanRoles: validatedClaim.spanRoles,
     objectiveGroups: validatedClaim.objectiveGroups,
     testApplicabilityProposals: evidenceSnapshot?.testApplicabilityProposals ?? [],
     scopeMappingProposals: evidenceSnapshot?.scopeMappingProposals ?? [],
     evidenceRelationProposals: evidenceSnapshot?.evidenceRelationProposals ?? []
   }, seed);
+  if (merged.valid) UNION_PROPOSAL_CANDIDATES.set(merged.proposal, {
+    seedHash: seed.seedHash,
+    proposalHash: hashGeneralPrSemanticProposalV2(merged.proposal),
+    candidates: deepFreeze(structuredClone(validatedClaim.unionMemberCandidates ?? []))
+  });
+  return merged;
+}
+
+function normalizeUnionMemberCandidates(value: unknown, selection: GeneralPrSemanticClaimSelectionV1, roles: Record<string, GeneralPrSemanticSpanRoleV2>): GeneralPrUnionMemberCandidateV1[] {
+  try {
+    if (!Array.isArray(value) || value.length > 8 || !hasNoArrayHoles(value)) return [];
+    const accepted: GeneralPrUnionMemberCandidateV1[] = [];
+    const seen = new Set<string>();
+    for (const item of value) {
+      if (!isRecord(item) || !hasExactKeys(item, UNION_CANDIDATE_KEYS) || typeof item.spanId !== "string" || typeof item.aliasName !== "string" || item.aliasName.length > 200 || !new RegExp(UNION_ALIAS_PATTERN).test(item.aliasName) || !UNION_PRIMITIVES.includes(item.member as TypeScriptUnionPrimitive)) continue;
+      const span = selection.selectedSpans.find(span => span.spanId === item.spanId);
+      if (!span || span.sourceRole !== "objective" || roles[span.spanId]?.role !== "objective_candidate") continue;
+      // Complete identifier tokens, including qualified names; never substrings from another operand.
+      const tokens: readonly string[] = span.text.match(/[$\p{ID_Continue}\u200c\u200d]+(?:\.[$\p{ID_Continue}\u200c\u200d]+)*/gu) ?? [];
+      if (!tokens.includes(item.aliasName) || !tokens.includes(item.member as string)) continue;
+      const key = JSON.stringify([item.spanId, item.aliasName, item.member]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      accepted.push({ spanId: item.spanId, aliasName: item.aliasName, member: item.member as TypeScriptUnionPrimitive });
+    }
+    return accepted;
+  } catch { return []; }
 }
 
 function validateGeneralPrSemanticProposalV2Internal(

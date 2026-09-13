@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "agentproof_recovery_artifact_manifest.v1",
+  "recoveredAtUtc": "2026-09-13T15:03:12Z",
+  "source": "Completed FileChange records in the current task's local session log, applied in recorded order; no source reconstruction from model guesses.",
+  "sourceSessionPath": "/Users/jeonggyuju/.codex/sessions/2026/08/14/rollout-2026-08-14T07-39-24-019ffd47-bb30-7dc1-a3ae-2218a50da4dd.jsonl",
+  "originalFolders": [
+    "/private/tmp/agentproof-source-ablation-20260910-srjo5N",
+    "/private/tmp/agentproof-candidate-coverage-20260910-QBMdmC"
+  ],
+  "files": [
+    {
+      "file": "after.json",
+      "bytes": 39850,
+      "sha256": "ecf524a3ba2a1b0675253f37ab99974308094d44655dbbe5de1d11c0349dd3f5"
+    },
+    {
+      "file": "before.json",
+      "bytes": 42641,
+      "sha256": "ea3ead7a5401f31f55851aefcaddf69cc972fc5710a4a341cd17aad7ad2b7e06"
+    },
+    {
+      "file": "corpus.json",
+      "bytes": 54197,
+      "sha256": "7f946a8b94cd830d65d329d34637826ed80ebf4afc1fe8c0c7d9979c986d7184"
+    },
+    {
+      "file": "label-spec.json",
+      "bytes": 6737,
+      "sha256": "7e09ea92007513c3d34d4bde42ba363e42b52e6d345c42a2a48e7fe1279f8aba"
+    },
+    {
+      "file": "public-issues.json",
+      "bytes": 18588,
+      "sha256": "4e05fed99abd6b48cf59fbf0f41b721f3d2c9ccaafe8f4545edd54f29be81806"
+    },
+    {
+      "file": "public-snapshot.json",
+      "bytes": 15641,
+      "sha256": "3ff31177410414bd99e62dd1c688523d385a31ec618a6b8eec87d080a59ec139"
+    },
+    {
+      "file": "rescored-existing-v2.json",
+      "bytes": 184967,
+      "sha256": "71a55ca950b0845363afe40a1b688a59cc2fb28f0a5be24eaf576f1f5cf43ad3"
+    },
+    {
+      "file": "score-sentinel-results.json",
+      "bytes": 4065,
+      "sha256": "dec27696757a750cef1298f30aaf9d1f589d87ef7b406bf41ea6dd0d6bd14c8d"
+    },
+    {
+      "file": "score-sentinels.json",
+      "bytes": 4840,
+      "sha256": "487d8a6ecff21267a168ca8e24f5824feee4ad8b2b448480e283e3fe8a7912c4"
+    },
+    {
+      "file": "supervisor-cases.json",
+      "bytes": 21243,
+      "sha256": "ad66b869d37db731743a25fe96cb1f5f3699392ddc3c51c830dd4945923a21fe"
+    }
+  ],
+  "verification": {
+    "corpusSha256MatchesOriginal": true,
+    "labelSpecificationSha256MatchesOriginal": true,
+    "publicSourceHashesMatchOriginal": true,
+    "caseCount": 14,
+    "labelCount": 44,
+    "labelCounts": {
+      "requirement": 15,
+      "non_requirement": 20,
+      "ambiguous": 9
+    },
+    "all44SourceRangesMatch": true
+  },
+  "limitations": [
+    "Historical live-result.json full original was not recovered; rescored-existing-v2.json preserves 132 scored rows, not complete raw per-call output and telemetry.",
+    "Historical test success is not current restoration verification.",
+    "No fresh model requests have been sent during artifact recovery."
+  ]
+}

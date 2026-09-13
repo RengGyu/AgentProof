@@ -1,0 +1,6367 @@
+{
+  "schemaVersion": "source_ablation_frozen_output_rescore.v2",
+  "sourceResultPath": "/private/tmp/agentproof-source-ablation-20260910-srjo5N/live-result.json",
+  "sourceResultSha256": "15dc13a2ca46c3cffca421ec09b4f9225a1062324df5ee3cb1a42f15eede7285",
+  "sourceCorpusSha256": "7f946a8b94cd830d65d329d34637826ed80ebf4afc1fe8c0c7d9979c986d7184",
+  "newModelCalls": 0,
+  "legacyRowsUnchanged": 132,
+  "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+  "summary": {
+    "A": {
+      "strict": 6,
+      "content": 6
+    },
+    "B": {
+      "strict": 13,
+      "content": 13
+    },
+    "C": {
+      "strict": 13,
+      "content": 14
+    }
+  },
+  "cases": [
+    {
+      "id": "nodejs-undici-5521",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 42,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 350,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 97,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 141,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 762,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 4,
+              "denominator": 5,
+              "rate": 0.8
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 4,
+              "denominator": 5,
+              "rate": 0.8
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 42,
+                "selectedCharacters": 42,
+                "objectiveCharacters": 42,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 350,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 97,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 141,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 762,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 4,
+              "denominator": 5,
+              "rate": 0.8
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 4,
+              "denominator": 5,
+              "rate": 0.8
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 42,
+                "selectedCharacters": 42,
+                "objectiveCharacters": 42,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 350,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 97,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 141,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 762,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "nodejs-undici-5776",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 3,
+              "rate": 0.3333333333333333
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 3,
+              "rate": 0.3333333333333333
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 36,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 359,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "partial",
+              "contentCoverage": {
+                "labelCharacters": 101,
+                "selectedCharacters": 38,
+                "objectiveCharacters": 38,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0.37623762376237624,
+                "selectionState": "partial",
+                "prediction": "partial"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 93,
+                "selectedCharacters": 93,
+                "objectiveCharacters": 93,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 9,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 36,
+                "selectedCharacters": 36,
+                "objectiveCharacters": 36,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 359,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 101,
+                "selectedCharacters": 101,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 93,
+                "selectedCharacters": 93,
+                "objectiveCharacters": 93,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 9,
+                "selectedCharacters": 9,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 36,
+                "selectedCharacters": 36,
+                "objectiveCharacters": 36,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 359,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "ambiguous",
+              "contentCoverage": {
+                "labelCharacters": 101,
+                "selectedCharacters": 101,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 101,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "ambiguous"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 93,
+                "selectedCharacters": 93,
+                "objectiveCharacters": 93,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 9,
+                "selectedCharacters": 9,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "vitejs-vite-23452",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "omitted": {
+              "numerator": 4,
+              "denominator": 5,
+              "rate": 0.8
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "omitted": {
+              "numerator": 4,
+              "denominator": 5,
+              "rate": 0.8
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 71,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 24,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 114,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "partial",
+              "contentCoverage": {
+                "labelCharacters": 87,
+                "selectedCharacters": 36,
+                "objectiveCharacters": 36,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0.41379310344827586,
+                "selectionState": "partial",
+                "prediction": "partial"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 178,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "ambiguous",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 71,
+                "selectedCharacters": 71,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 24,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 114,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "partial",
+              "contentCoverage": {
+                "labelCharacters": 87,
+                "selectedCharacters": 87,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 178,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "ambiguous",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 71,
+                "selectedCharacters": 71,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 24,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 114,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "partial",
+              "contentCoverage": {
+                "labelCharacters": 87,
+                "selectedCharacters": 87,
+                "objectiveCharacters": 87,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 178,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "vitejs-vite-23443",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 4,
+              "rate": 0.75
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 4,
+              "rate": 0.75
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 58,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 98,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 114,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 190,
+                "selectedCharacters": 190,
+                "objectiveCharacters": 190,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 58,
+                "selectedCharacters": 58,
+                "objectiveCharacters": 58,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 98,
+                "selectedCharacters": 98,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 114,
+                "selectedCharacters": 114,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 190,
+                "selectedCharacters": 190,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 58,
+                "selectedCharacters": 58,
+                "objectiveCharacters": 58,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 98,
+                "selectedCharacters": 98,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 114,
+                "selectedCharacters": 114,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 190,
+                "selectedCharacters": 190,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pytest-dev-pytest-14993",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 49,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 357,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 268,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 207,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 295,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 1,
+              "denominator": 5,
+              "rate": 0.2
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 49,
+                "selectedCharacters": 49,
+                "objectiveCharacters": 49,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 357,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 268,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 207,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "ambiguous",
+              "contentCoverage": {
+                "labelCharacters": 295,
+                "selectedCharacters": 295,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 295,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "ambiguous"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 5,
+              "rate": 0.6
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 49,
+                "selectedCharacters": 49,
+                "objectiveCharacters": 49,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 357,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 268,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 207,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 295,
+                "selectedCharacters": 295,
+                "objectiveCharacters": 295,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pytest-dev-pytest-14551",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 3,
+              "rate": 0.3333333333333333
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 4,
+              "rate": 0.75
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 3,
+              "rate": 0.3333333333333333
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 4,
+              "rate": 0.75
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 62,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 1424,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 91,
+                "selectedCharacters": 91,
+                "objectiveCharacters": 91,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 170,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 62,
+                "selectedCharacters": 62,
+                "objectiveCharacters": 62,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 1424,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 91,
+                "selectedCharacters": 91,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "partial",
+              "contentCoverage": {
+                "labelCharacters": 170,
+                "selectedCharacters": 170,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 62,
+                "selectedCharacters": 62,
+                "objectiveCharacters": 62,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 1424,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 91,
+                "selectedCharacters": 91,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "partial",
+              "contentCoverage": {
+                "labelCharacters": 170,
+                "selectedCharacters": 170,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rust-lang-cargo-17451",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 5,
+              "denominator": 6,
+              "rate": 0.8333333333333334
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 5,
+              "denominator": 6,
+              "rate": 0.8333333333333334
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 80,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 155,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 185,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 95,
+                "selectedCharacters": 95,
+                "objectiveCharacters": 95,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 40,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-6",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 35,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 6,
+              "rate": 0.16666666666666666
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 6,
+              "rate": 0.16666666666666666
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 80,
+                "selectedCharacters": 80,
+                "objectiveCharacters": 80,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 155,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 185,
+                "selectedCharacters": 185,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 95,
+                "selectedCharacters": 95,
+                "objectiveCharacters": 95,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 40,
+                "selectedCharacters": 40,
+                "objectiveCharacters": 40,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-6",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 35,
+                "selectedCharacters": 35,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 6,
+              "rate": 0.16666666666666666
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 1,
+              "denominator": 2,
+              "rate": 0.5
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 6,
+              "rate": 0.16666666666666666
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 6,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 80,
+                "selectedCharacters": 80,
+                "objectiveCharacters": 80,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "ambiguous",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 155,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 185,
+                "selectedCharacters": 185,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 95,
+                "selectedCharacters": 95,
+                "objectiveCharacters": 95,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-5",
+              "gold": "ambiguous",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 40,
+                "selectedCharacters": 40,
+                "objectiveCharacters": 40,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-6",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 35,
+                "selectedCharacters": 35,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rust-lang-cargo-17427",
+      "cohort": "public",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 3,
+              "rate": 0.3333333333333333
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 4,
+              "rate": 0.75
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 3,
+              "rate": 0.3333333333333333
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 3,
+              "denominator": 4,
+              "rate": 0.75
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 41,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 42,
+                "selectedCharacters": 42,
+                "objectiveCharacters": 42,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 481,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 67,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 41,
+                "selectedCharacters": 41,
+                "objectiveCharacters": 41,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 42,
+                "selectedCharacters": 42,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 481,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 67,
+                "selectedCharacters": 67,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 3,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 4,
+              "rate": 0.25
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 41,
+                "selectedCharacters": 41,
+                "objectiveCharacters": 41,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            },
+            {
+              "labelId": "label-2",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 42,
+                "selectedCharacters": 42,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            },
+            {
+              "labelId": "label-3",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 481,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            },
+            {
+              "labelId": "label-4",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 67,
+                "selectedCharacters": 67,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "controlled-phrase-a",
+      "cohort": "controlled",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 59,
+                "selectedCharacters": 59,
+                "objectiveCharacters": 59,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 59,
+                "selectedCharacters": 59,
+                "objectiveCharacters": 59,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 59,
+                "selectedCharacters": 59,
+                "objectiveCharacters": 59,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "controlled-phrase-b",
+      "cohort": "controlled",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 67,
+                "selectedCharacters": 67,
+                "objectiveCharacters": 67,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 67,
+                "selectedCharacters": 67,
+                "objectiveCharacters": 67,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 67,
+                "selectedCharacters": 67,
+                "objectiveCharacters": 67,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "controlled-test-past",
+      "cohort": "controlled",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "non_requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 63,
+                "selectedCharacters": 63,
+                "objectiveCharacters": 63,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 63,
+                "selectedCharacters": 63,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 63,
+                "selectedCharacters": 63,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "controlled-test-future",
+      "cohort": "controlled",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 64,
+                "selectedCharacters": 64,
+                "objectiveCharacters": 64,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 64,
+                "selectedCharacters": 64,
+                "objectiveCharacters": 64,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 64,
+                "selectedCharacters": 64,
+                "objectiveCharacters": 64,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "controlled-bot-usage",
+      "cohort": "controlled",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "non_requirement",
+              "legacyPrediction": "omitted",
+              "contentCoverage": {
+                "labelCharacters": 41,
+                "selectedCharacters": 0,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 0,
+                "selectionState": "not_selected",
+                "prediction": "omitted"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "non_requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 41,
+                "selectedCharacters": 41,
+                "objectiveCharacters": 41,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "preservedRequirement": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "non_requirement",
+              "legacyPrediction": "non_requirement",
+              "contentCoverage": {
+                "labelCharacters": 41,
+                "selectedCharacters": 41,
+                "objectiveCharacters": 0,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "non_requirement"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "controlled-bot-product",
+      "cohort": "controlled",
+      "arms": {
+        "A": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 38,
+                "selectedCharacters": 38,
+                "objectiveCharacters": 38,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "B": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 38,
+                "selectedCharacters": 38,
+                "objectiveCharacters": 38,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        },
+        "C": {
+          "state": "valid",
+          "evaluationPolicyVersion": "requirement-source-content-coverage.v1",
+          "legacyMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "contentMetrics": {
+            "missedRequirement": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "preservedRequirement": {
+              "numerator": 1,
+              "denominator": 1,
+              "rate": 1
+            },
+            "falsePositive": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "abstention": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "ambiguousGoldPromotion": {
+              "numerator": 0,
+              "denominator": 0,
+              "rate": null
+            },
+            "partialSelection": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "omitted": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "invalidOrUnavailable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notRun": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            },
+            "notEvaluable": {
+              "numerator": 0,
+              "denominator": 1,
+              "rate": 0
+            }
+          },
+          "rows": [
+            {
+              "labelId": "label-1",
+              "gold": "requirement",
+              "legacyPrediction": "requirement",
+              "contentCoverage": {
+                "labelCharacters": 38,
+                "selectedCharacters": 38,
+                "objectiveCharacters": 38,
+                "ambiguousCharacters": 0,
+                "selectedFraction": 1,
+                "selectionState": "full",
+                "prediction": "requirement"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

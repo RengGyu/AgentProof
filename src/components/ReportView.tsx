@@ -23,6 +23,8 @@ import {
 import { useMemo, useState } from "react";
 import { getExecutionEvidenceItems } from "@/lib/execution-evidence";
 import { presentGeneralPrAssessmentSummary } from "@/lib/general-pr-assessment-presentation";
+import { presentOrdinaryDocumentationSummary } from "@/lib/general-pr-documentation-presentation";
+import { presentOrdinaryStaticSummary } from "@/lib/general-pr-static-types-presentation";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
 import { buildShareUrl } from "@/lib/report-share";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
@@ -232,6 +234,8 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           </div>
         </div>
 
+        {isVerificationReportV2(report) && report.ordinaryDocumentationSummary ? <div className="notice" aria-label="Scoped documentation evidence"><span><strong>Documentation predicate evidence:</strong> {presentOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary).join(" ")}</span></div> : null}
+        {isVerificationReportV2(report) && report.ordinaryStaticSummary ? <div className="notice" aria-label="Scoped static evidence"><span><strong>Static predicate evidence:</strong> {presentOrdinaryStaticSummary(report.ordinaryStaticSummary).join(" ")}</span></div> : null}
         {ordinaryPrAssessment ? (
           <div className="notice" aria-label="Ordinary PR evidence assessment">
             <ShieldAlert size={15} />

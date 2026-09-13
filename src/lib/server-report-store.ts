@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import { copyOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
+import { copyOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
 import { getSharedControlPlaneServiceRoleKey } from "./control-plane-supabase";
 import {
   createUnverifiedAuthenticity,
@@ -929,6 +931,9 @@ export function prepareTenantDetailReportForStorage(
     Object.assign(safe, {
       reportSchemaVersion: "verification-report.v2",
       verificationContract: structuredClone(report.verificationContract),
+      ...(report.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
+      ...(report.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
+      ...(report.ordinaryRequirementOutcomes ? { ordinaryRequirementOutcomes: copyOrdinaryRequirementOutcomes(report.ordinaryRequirementOutcomes) } : {}),
       ...(report.generalPrAssessmentSummary ? {
         generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
       } : {})
@@ -1333,6 +1338,9 @@ function normalizeCreateOptions(optionsOrTtlMs: CreateSavedReportOptions | numbe
 
 function requiresGeneratedPrivateContext(report: VerificationReport): boolean {
   if ((report as { reportSchemaVersion?: unknown }).reportSchemaVersion !== "verification-report.v2") return false;
+  if ((report as VerificationReportV2).ordinaryDocumentationSummary !== undefined) return true;
+  if ((report as VerificationReportV2).ordinaryStaticSummary !== undefined) return true;
+  if ((report as VerificationReportV2).ordinaryRequirementOutcomes !== undefined) return true;
   const contractState = (report as { verificationContract?: { state?: unknown } }).verificationContract?.state;
   const hasPositive = report.requirements.some((requirement) => requirement.proofAxes?.some((axis) =>
     (axis.subject === "targeted_test" || axis.subject === "execution") && axis.state === "satisfied"
@@ -1560,3 +1568,4 @@ function trimReportStore() {
     store.delete(oldest);
   }
 }
+import { copyOrdinaryRequirementOutcomes } from "./ordinary-requirement-outcome-contract";

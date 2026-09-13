@@ -8,9 +8,10 @@ import {
   type GeneralPrSourceUnitV2
 } from "./general-pr-observation-source";
 import { redactSecrets } from "./redact";
+import { parseGeneralPrStructureV1 } from "./general-pr-structure";
 import type { PullRequestInput } from "./types";
 
-export const GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION = "general-pr-claim-evidence-selection.v1" as const;
+export const GENERAL_PR_SEMANTIC_SELECTION_POLICY_VERSION = "general-pr-claim-evidence-selection.v2" as const;
 const DEFAULT_MAX_SPANS = 12;
 const DEFAULT_MAX_INPUT_BYTES = 12_000;
 
@@ -76,6 +77,12 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
   const maxSpans = boundedBudget(input.maxSpans, DEFAULT_MAX_SPANS);
   const maxInputBytes = boundedBudget(input.maxInputBytes, DEFAULT_MAX_INPUT_BYTES);
   const sourcesById = new Map(input.seed.sources.map((source, index) => [source.id, { source, index }]));
+  const sectionsByRange = new Map<string, string>();
+  for (const [sourceId, view] of views) {
+    for (const span of parseGeneralPrStructureV1(view).spans) {
+      sectionsByRange.set(`${sourceId}:${span.start}:${span.end}`, `${sourceId}:${span.headingPath.join("/")}`);
+    }
+  }
   let inputByteBudget = 0;
   const candidates = input.seed.spans.flatMap((span, seedIndex) => {
     const owner = sourcesById.get(span.sourceUnitId);
@@ -86,7 +93,8 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
       inputByteBudget += 1;
       return [];
     }
-    return [{ span, selected, seedIndex, sourceIndex: owner.index, source: owner.source }];
+    return [{ span, selected, seedIndex, sourceIndex: owner.index, source: owner.source,
+      section: sectionsByRange.get(`${span.sourceUnitId}:${span.start}:${span.end}`) ?? span.sourceUnitId }];
   });
   const byRank = [...candidates].sort(compareCandidate);
   const reserved = new Set<string>();
@@ -96,6 +104,15 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
     if (candidate) reserved.add(candidate.span.id);
   }
   const selected = byRank.filter((item) => reserved.has(item.span.id)).slice(0, maxSpans);
+  const sectionRepresentatives = new Set<string>();
+  for (const section of new Set(candidates.map(item => item.section))) {
+    if (selected.length >= maxSpans) break;
+    const inSection = candidates.filter(item => item.section === section && item.span.structuralKind !== "heading" && item.span.deterministicRole !== "template_or_process");
+    const representative = inSection.find(item => item.span.structuralKind === "paragraph") ?? inSection[0];
+    if (!representative || selected.some(item => item.span.id === representative.span.id)) continue;
+    selected.push(representative);
+    sectionRepresentatives.add(representative.span.id);
+  }
   for (const candidate of byRank) {
     if (selected.length >= maxSpans) break;
     if (!selected.some((item) => item.span.id === candidate.span.id)) selected.push(candidate);
@@ -103,7 +120,9 @@ export function selectGeneralPrSemanticClaimSpansV1(input: {
   const selectedIds = new Set(selected.map((item) => item.span.id));
   let spanBudget = Math.max(0, candidates.length - selected.length);
   while (selected.length > 0 && selectionBytes(input.seed.seedHash, selected.map((item) => item.selected), candidates.length, inputByteBudget) > maxInputBytes) {
-    const removable = [...selected].sort(compareCandidate).reverse().find((item) => !reserved.has(item.span.id));
+    const removalOrder = [...selected].sort(compareCandidate).reverse();
+    const removable = removalOrder.find(item => !reserved.has(item.span.id) && !sectionRepresentatives.has(item.span.id))
+      ?? removalOrder.find(item => !reserved.has(item.span.id));
     if (!removable) {
       const reservedCandidate = [...selected].sort(compareCandidate).reverse()[0];
       if (!reservedCandidate) break;

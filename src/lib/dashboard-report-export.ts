@@ -1,4 +1,6 @@
 import { redactSecrets } from "./redact";
+import { copyOrdinaryDocumentationSummary, presentOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
+import { copyOrdinaryStaticSummary, presentOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
 import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
 import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
@@ -57,6 +59,8 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
       ...ordinaryPrAssessment.reasonLabels.map((reason) => `- ${reason}`)
     ] : []),
     "",
+    ...(detail.report?.ordinaryDocumentationSummary ? ["## Documentation predicate evidence", "", ...presentOrdinaryDocumentationSummary(detail.report.ordinaryDocumentationSummary).map(line => `- ${line}`), ""] : []),
+    ...(detail.report?.ordinaryStaticSummary ? ["## Static predicate evidence", "", ...presentOrdinaryStaticSummary(detail.report.ordinaryStaticSummary).map(line => `- ${line}`), ""] : []),
     "## Requirements",
     "",
     ...(requirementCards.length > 0
@@ -160,6 +164,8 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
       verification_policy: "Strict verification contract",
       verification_outcome_note: verificationOutcomeNote(report.verificationContract.state)
     } : {}),
+    ...(report?.ordinaryDocumentationSummary ? { documentation_predicates: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
+    ...(report?.ordinaryStaticSummary ? { static_predicates: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
     ...(report?.generalPrAssessmentSummary ? {
       ordinary_pr_assessment: {
         version: report.generalPrAssessmentSummary.version,

@@ -1,0 +1,160 @@
+{
+  "schemaVersion": "content_coverage_supervisor_results.v1",
+  "sentinelSha256": "487d8a6ecff21267a168ca8e24f5824feee4ad8b2b448480e283e3fe8a7912c4",
+  "checks": [
+    {
+      "id": "newline_gap",
+      "pass": true,
+      "legacy": "partial",
+      "content": {
+        "labelCharacters": 2,
+        "selectedCharacters": 2,
+        "objectiveCharacters": 2,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 1,
+        "selectionState": "full",
+        "prediction": "requirement"
+      }
+    },
+    {
+      "id": "missing_negation",
+      "pass": true,
+      "legacy": "partial",
+      "content": {
+        "labelCharacters": 9,
+        "selectedCharacters": 6,
+        "objectiveCharacters": 6,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 0.6666666666666666,
+        "selectionState": "partial",
+        "prediction": "partial"
+      }
+    },
+    {
+      "id": "missing_operator",
+      "pass": true,
+      "legacy": "partial",
+      "content": {
+        "labelCharacters": 4,
+        "selectedCharacters": 3,
+        "objectiveCharacters": 3,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 0.75,
+        "selectionState": "partial",
+        "prediction": "partial"
+      }
+    },
+    {
+      "id": "whitespace_only",
+      "pass": true,
+      "legacy": "requirement",
+      "content": {
+        "labelCharacters": 0,
+        "selectedCharacters": 0,
+        "objectiveCharacters": 0,
+        "ambiguousCharacters": 0,
+        "selectedFraction": null,
+        "selectionState": "empty",
+        "prediction": "not_evaluable"
+      }
+    },
+    {
+      "id": "mixed_roles",
+      "pass": true,
+      "legacy": "partial",
+      "content": {
+        "labelCharacters": 2,
+        "selectedCharacters": 2,
+        "objectiveCharacters": 1,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 1,
+        "selectionState": "full",
+        "prediction": "ambiguous"
+      }
+    },
+    {
+      "id": "unicode_utf16",
+      "pass": true,
+      "legacy": "partial",
+      "content": {
+        "labelCharacters": 3,
+        "selectedCharacters": 3,
+        "objectiveCharacters": 3,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 1,
+        "selectionState": "full",
+        "prediction": "requirement"
+      }
+    },
+    {
+      "id": "overlap_union",
+      "pass": true,
+      "legacy": "requirement",
+      "content": {
+        "labelCharacters": 4,
+        "selectedCharacters": 4,
+        "objectiveCharacters": 4,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 1,
+        "selectionState": "full",
+        "prediction": "requirement"
+      }
+    },
+    {
+      "id": "invalid_with_selection",
+      "pass": true,
+      "legacy": "invalid",
+      "content": {
+        "labelCharacters": 2,
+        "selectedCharacters": 2,
+        "objectiveCharacters": 0,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 1,
+        "selectionState": "full",
+        "prediction": "invalid"
+      }
+    },
+    {
+      "id": "unavailable_with_selection",
+      "pass": true,
+      "legacy": "unavailable",
+      "content": {
+        "labelCharacters": 2,
+        "selectedCharacters": 2,
+        "objectiveCharacters": 0,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 1,
+        "selectionState": "full",
+        "prediction": "unavailable"
+      }
+    },
+    {
+      "id": "not_run_with_selection",
+      "pass": true,
+      "legacy": "not_run",
+      "content": {
+        "labelCharacters": 2,
+        "selectedCharacters": 2,
+        "objectiveCharacters": 0,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 1,
+        "selectionState": "full",
+        "prediction": "not_run"
+      }
+    },
+    {
+      "id": "source_identity",
+      "pass": true,
+      "legacy": "omitted",
+      "content": {
+        "labelCharacters": 2,
+        "selectedCharacters": 0,
+        "objectiveCharacters": 0,
+        "ambiguousCharacters": 0,
+        "selectedFraction": 0,
+        "selectionState": "not_selected",
+        "prediction": "omitted"
+      }
+    }
+  ]
+}

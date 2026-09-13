@@ -1,4 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { copyOrdinaryDocumentationSummary, isOrdinaryDocumentationSummary, type OrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
+import { copyOrdinaryStaticSummary, isOrdinaryStaticSummary, type OrdinaryStaticSummary } from "./general-pr-static-types-presentation";
 import { containsSecretPattern } from "./redact";
 import { createVerifiedAuthenticity, verifyVerifiedAuthenticity } from "./report-authenticity";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
@@ -85,6 +87,9 @@ export interface TenantPersistedReport {
   verificationContract?: TenantVerificationContract;
   /** Target-free ordinary-PR evidence summary; private bindings never persist. */
   generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
+  ordinaryDocumentationSummary?: OrdinaryDocumentationSummary;
+  ordinaryStaticSummary?: OrdinaryStaticSummary;
+  ordinaryRequirementOutcomes?: OrdinaryRequirementOutcomes;
   planner?: HybridPlannerProvenance;
   priority: PriorityLevel;
   requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
@@ -232,6 +237,9 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
     ...(isVerificationReportV2(report) && report.generalPrAssessmentSummary ? {
       generalPrAssessmentSummary: copyTenantGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
     } : {}),
+    ...(isVerificationReportV2(report) && report.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
+    ...(isVerificationReportV2(report) && report.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
+    ...(isVerificationReportV2(report) && report.ordinaryRequirementOutcomes ? { ordinaryRequirementOutcomes: copyOrdinaryRequirementOutcomes(report.ordinaryRequirementOutcomes) } : {}),
     priority: report.summary.priority,
     requirements: report.requirements.map(({ requirementId, requirementText, status, evidenceStatus, sourceAuthority, evidenceRefs, gaps, proofAxes, classificationBasis, plannerAxisSubjects }) => {
       const objectiveLabel = tenantObjectiveLabel(requirementText);
@@ -259,7 +267,7 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
     ...(report.semantic ? { semantic: report.semantic } : {}),
     ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
   };
-  const payload = stableJson(unsigned);
+  const payload = stableJson({ ...unsigned, ...(isVerificationReportV2(report) && report.ordinaryDocumentationSummary !== undefined ? { ordinaryDocumentationSummary: report.ordinaryDocumentationSummary } : {}), ...(isVerificationReportV2(report) && report.ordinaryStaticSummary !== undefined ? { ordinaryStaticSummary: report.ordinaryStaticSummary } : {}) });
   return {
     ...unsigned,
     integrity: {
@@ -363,9 +371,11 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const errors: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return { valid: false, errors: ["Tenant persisted report must be an object."] };
   const report = value as Partial<TenantPersistedReport> & Record<string, unknown>;
-  const allowed = new Set(["version", "analysisContext", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
+  const allowed = new Set(["version", "analysisContext", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
   for (const key of Object.keys(report)) if (!allowed.has(key)) errors.push(`tenant persisted report contains disallowed field: ${key}.`);
   if (report.version !== 1) errors.push("tenant persisted report version must be 1.");
+  if (report.ordinaryDocumentationSummary !== undefined && (report.reportSchemaVersion !== "verification-report.v2" || !isOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary))) errors.push("Invalid scoped documentation summary.");
+  if (report.ordinaryStaticSummary !== undefined && (report.reportSchemaVersion !== "verification-report.v2" || !isOrdinaryStaticSummary(report.ordinaryStaticSummary))) errors.push("Invalid scoped static summary.");
   if (report.analysisContext !== undefined && !isAnalysisContext(report.analysisContext)) errors.push("tenant persisted report analysis context is invalid.");
   validateTenantVerificationContractMarker(report, errors);
   if (report.generalPrAssessmentSummary !== undefined) {
@@ -439,7 +449,11 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   const integrity = report.integrity as Record<string, unknown> | undefined;
   const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.reportSchemaVersion !== undefined ? { reportSchemaVersion: report.reportSchemaVersion } : {}), ...(report.verificationContract !== undefined ? { verificationContract: report.verificationContract } : {}), ...(report.generalPrAssessmentSummary !== undefined ? { generalPrAssessmentSummary: report.generalPrAssessmentSummary } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
-  const payload = stableJson(unsigned);
+  if (report.ordinaryRequirementOutcomes !== undefined) {
+    if (report.reportSchemaVersion !== "verification-report.v2" || report.verificationContract?.state !== "absent") errors.push("Source-derived outcomes cannot replace a typed contract.");
+    errors.push(...ordinaryRequirementOutcomeErrors(report.ordinaryRequirementOutcomes, report.requirements ?? [], new Set((report.evidenceIndex ?? []).map(item => item.id))));
+  }
+  const payload = stableJson({ ...unsigned, ...(report.ordinaryRequirementOutcomes !== undefined ? { ordinaryRequirementOutcomes: report.ordinaryRequirementOutcomes } : {}), ...(report.ordinaryDocumentationSummary !== undefined ? { ordinaryDocumentationSummary: report.ordinaryDocumentationSummary } : {}), ...(report.ordinaryStaticSummary !== undefined ? { ordinaryStaticSummary: report.ordinaryStaticSummary } : {}) });
   if (!integrity || Object.keys(integrity).some((key) => !["version", "algorithm", "canonicalDigest", "signature"].includes(key)) || integrity.version !== 1 || integrity.algorithm !== "hmac-sha256" || !sameDigest(integrity.canonicalDigest, sha256(payload)) || !sameDigest(integrity.signature, createHmac("sha256", signingSecret).update(payload).digest("hex"))) errors.push("tenant persisted report signature is invalid.");
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > TENANT_REPORT_MAX_BYTES) errors.push(`report exceeds ${TENANT_REPORT_MAX_BYTES} bytes.`);
   return { valid: errors.length === 0, errors: [...new Set(errors)] };
@@ -686,6 +700,9 @@ function hydrateTenantPersistedReport(
     Object.assign(hydrated, {
       reportSchemaVersion: "verification-report.v2",
       verificationContract: hydrateTenantVerificationContract(report.verificationContract),
+      ...(report.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
+      ...(report.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
+      ...(report.ordinaryRequirementOutcomes ? { ordinaryRequirementOutcomes: copyOrdinaryRequirementOutcomes(report.ordinaryRequirementOutcomes) } : {}),
       ...(report.generalPrAssessmentSummary ? {
         generalPrAssessmentSummary: copyTenantGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
       } : {})
@@ -933,3 +950,4 @@ function isEvidenceKind(value: unknown): value is EvidenceKind { return value ==
 function stableJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") { const record = value as Record<string, unknown>; return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`; } return JSON.stringify(value); }
 function sha256(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function sameDigest(value: unknown, expected: string): boolean { if (typeof value !== "string") return false; const left = Buffer.from(value, "utf8"); const right = Buffer.from(expected, "utf8"); return left.length === right.length && timingSafeEqual(left, right); }
+import { copyOrdinaryRequirementOutcomes, ordinaryRequirementOutcomeErrors, type OrdinaryRequirementOutcomes } from "./ordinary-requirement-outcome-contract";

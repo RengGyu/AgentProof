@@ -13,10 +13,94 @@ import {
   parseAnalyzeTimingHeader,
   runAnalyzePrSmoke,
   projectSmokeReportDetails,
-  readOperatorSemanticDiagnostics
+  readOperatorSemanticDiagnostics,
+  readOperatorTargetDiagnostics,
+  readOrdinaryStaticSummary
 } from "./smoke-analyze-pr-url.mjs";
 
 describe("smoke-analyze-pr-url", () => {
+  it("copies only strict ordinary static summary counts", () => {
+    const summary = { version: 1, scope: "direct_union_membership_only", interpretation: "hypothesis", lookupScope: "changed_files_only", lookupIncomplete: false, predicates: [{ sourceKind: "pr_body", sourceOrdinal: 1, artifactCounts: { present: 1, absent: 0, unavailable: 0 } }] };
+    expect(readOrdinaryStaticSummary(summary)).toEqual(summary);
+    expect(readOrdinaryStaticSummary({ ...summary, aliasName: "PrivateName" })).toBeNull();
+    expect(readOrdinaryStaticSummary({ ...summary, predicates: new Array(1) })).toBeNull();
+    expect(readOrdinaryStaticSummary({ ...summary, predicates: [{ ...summary.predicates[0], artifactCounts: { present: 9, absent: 0, unavailable: 0 } }] })).toBeNull();
+  });
+  it("projects only the exact bounded documentation summary and returns a defensive copy", () => {
+    const summary = documentationSummary();
+    const projected = projectSmokeReportDetails({ ...reportFixture(), ordinaryDocumentationSummary: summary });
+    expect(projected.ordinaryDocumentationSummary).toEqual(summary);
+    summary.predicates[0].state = "contradicted";
+    expect(projected.ordinaryDocumentationSummary.predicates[0].state).toBe("supported");
+    for (const invalid of [null, { ...summary, rawSource: "PRIVATE_SOURCE" }, { ...summary, predicates: Array(9).fill(summary.predicates[0]) }, { ...summary, predicates: new Array(1) }, { ...summary, predicates: [{ ...summary.predicates[0], path: "PRIVATE_PATH.md" }] }, { ...summary, predicates: [{ ...summary.predicates[0], state: "met" }] }, { ...summary, predicates: [{ ...summary.predicates[0], sourceKind: new String("pr_body") }] }]) {
+      expect(projectSmokeReportDetails({ ...reportFixture(), ordinaryDocumentationSummary: invalid }).ordinaryDocumentationSummary ?? null).toBeNull();
+    }
+  });
+  it("accepts a safe saved documentation summary but rejects private or malformed additions", () => {
+    const saved = summaryOnlyReportFixture(reportFixture());
+    saved.ordinaryDocumentationSummary = documentationSummary();
+    expect(() => assertSummaryOnlyReport(saved)).not.toThrow();
+    saved.ordinaryDocumentationSummary.predicates[0].literal = "PRIVATE_LITERAL";
+    expect(() => assertSummaryOnlyReport(saved)).toThrow("documentation");
+  });
+  it("rejects unknown nested operator target fields and requires target diagnostics", () => {
+    const value = { version: 1, targetCount: 1, omittedTargetCount: 0, rejectedProviderProposalCount: 0, projectionOmissionCounts: { targetLimit: 0, sourceRefLimit: 0, changeClusterRefLimit: 0, evidenceRefLimit: 0, proposalLimit: 0 }, targets: [{ targetRef: "target_1", selectedSourceSpanRefs: ["span_1"], selectedChangeClusterRefs: ["cluster_1"], selectedEvidenceRefs: ["evidence_1"], sourceObligation: "author_claim_confirmation", currentAssessmentEligibility: "eligible", objectiveState: "semantic_candidate", admissionDisposition: "admitted", nonAdmissionReason: "not_applicable", proposedRelations: [{ kind: "scope_mapping", proposal: "plausibly_mapped", referenceRef: "cluster_1", validatorDisposition: "accepted", finalizerDisposition: "used" }], validator: { scope: "global_stage", claimState: "valid", evidenceState: "valid", claimInvalidReason: null, evidenceInvalidReason: null, capability: "semantic_relation_validation_only" }, currentAssessmentCeiling: "evidence_partial", missingProofReasons: ["author_claim_confirmation_required", "verified_objective_change_relation_not_evaluated", "targeted_test_requirement_not_evaluated", "exact_head_execution_not_evaluated"] }] };
+    expect(readOperatorTargetDiagnostics(value)).toEqual(value);
+    expect(() => readOperatorTargetDiagnostics(undefined)).toThrow("bounded operator target diagnostics");
+    expect(readOperatorTargetDiagnostics(value, false)).toBeNull();
+    const malformed = structuredClone(value);
+    malformed.targets[0].selectedSourceSpanRefs = ["span_2"];
+    expect(() => readOperatorTargetDiagnostics(malformed)).toThrow();
+    malformed.targets[0].selectedSourceSpanRefs = ["span_1"];
+    malformed.targets[0].admissionDisposition = "not_admitted";
+    expect(() => readOperatorTargetDiagnostics(malformed)).toThrow();
+    malformed.targets[0].admissionDisposition = "admitted";
+    malformed.targets[0].validator.evidenceState = "invalid";
+    expect(() => readOperatorTargetDiagnostics(malformed)).toThrow();
+    malformed.targets[0].validator.evidenceState = "valid";
+    malformed.targets[0].missingProofReasons = [];
+    expect(() => readOperatorTargetDiagnostics(malformed)).toThrow();
+    malformed.targets = new Array(1);
+    expect(() => readOperatorTargetDiagnostics(malformed)).toThrow();
+    for (const mutate of [
+      (v) => { v.targets[0].validator.claimState = "invalid"; },
+      (v) => { v.targets[0].validator.claimInvalidReason = "PRIVATE_PROVIDER_DETAIL"; },
+      (v) => { v.targets[0].validator.evidenceInvalidReason = "PRIVATE_EVIDENCE_DETAIL"; },
+      (v) => { v.targets[0].validator.claimState = "invalid"; v.targets[0].validator.claimInvalidReason = "span_binding_invalid"; v.targets[0].validator.evidenceState = "valid"; },
+      (v) => { v.targets[0].validator.capability = "collection_only"; },
+      (v) => { v.targets[0].proposedRelations[0].finalizerDisposition = "not_applicable"; },
+      (v) => { v.targets[0].validator.evidenceState = "invalid"; v.targets[0].validator.evidenceInvalidReason = "root_shape_invalid"; v.targets[0].proposedRelations[0].validatorDisposition = "rejected"; v.targets[0].proposedRelations[0].finalizerDisposition = "not_used"; },
+      (v) => { v.targets[0].admissionDisposition = "not_admitted"; v.targets[0].nonAdmissionReason = "finalizer_not_admitted"; v.targets[0].currentAssessmentCeiling = "not_assessable"; v.targets[0].missingProofReasons.push("candidate_not_admitted"); },
+      (v) => { v.targets[0].currentAssessmentCeiling = "not_assessable"; },
+      (v) => { v.targets[0].missingProofReasons = v.targets[0].missingProofReasons.filter((x) => x !== "author_claim_confirmation_required"); },
+      (v) => { v.targets[0].missingProofReasons.push("candidate_not_admitted"); },
+      (v) => { v.targets[0].sourceObligation = "unavailable"; },
+      (v) => { v.targets[0].currentAssessmentEligibility = "unavailable"; },
+      (v) => { v.targets[0].sourceObligation = "authoritative_requirement"; v.targets[0].currentAssessmentEligibility = "unavailable"; },
+      (v) => { v.targets = []; v.targetCount = 0; v.omittedTargetCount = 100; v.projectionOmissionCounts.targetLimit = 100; }
+    ]) { const candidate = structuredClone(value); mutate(candidate); expect(() => readOperatorTargetDiagnostics(candidate)).toThrow(); }
+    const cross = structuredClone(value);
+    cross.targets.push({ ...cross.targets[0], targetRef: "target_2", selectedSourceSpanRefs: ["span_2"] });
+    cross.targetCount = 2;
+    cross.targets[1].validator.capability = "collection_incomplete";
+    expect(() => readOperatorTargetDiagnostics(cross)).toThrow();
+    cross.targets[1].validator.capability = cross.targets[0].validator.capability;
+    cross.targets[1].missingProofReasons.push("exact_head_subject_required");
+    expect(() => readOperatorTargetDiagnostics(cross)).toThrow();
+    cross.targets[1].missingProofReasons = [...cross.targets[0].missingProofReasons];
+    cross.targets[1].currentAssessmentEligibility = "ineligible_provided_requirement";
+    expect(() => readOperatorTargetDiagnostics(cross)).toThrow();
+    const ownership = structuredClone(value);
+    ownership.targets.push({ ...ownership.targets[0], targetRef: "target_2", selectedSourceSpanRefs: ["span_1"] }); ownership.targetCount = 2;
+    expect(() => readOperatorTargetDiagnostics(ownership)).toThrow();
+    ownership.targets[1].selectedSourceSpanRefs = ["span_2"];
+    expect(() => readOperatorTargetDiagnostics(ownership)).toThrow();
+    const encounter = structuredClone(value);
+    encounter.targets[0].selectedSourceSpanRefs = ["span_2", "span_1"];
+    expect(() => readOperatorTargetDiagnostics(encounter)).toThrow();
+    expect(() => readOperatorTargetDiagnostics({ ...value, rawProviderOutput: "secret" })).toThrow();
+    expect(() => readOperatorTargetDiagnostics({ ...value, targets: [{ ...value.targets[0], validator: { ...value.targets[0].validator, sourceText: "secret" } }] })).toThrow();
+  });
   it("accepts the deployed diagnostic builder and rejects unknown reason fields", () => {
     const diagnostic = buildGeneralPrSemanticOperatorDiagnosticsV1(null);
     expect(readOperatorSemanticDiagnostics(diagnostic)).toEqual(diagnostic);
@@ -185,6 +269,7 @@ describe("smoke-analyze-pr-url", () => {
   it("verifies analyze metadata and summary-only saved report privacy", async () => {
     const fullReport = reportFixture();
     fullReport.generalPrAssessmentSummary = assessmentSummary();
+    fullReport.ordinaryDocumentationSummary = documentationSummary();
     const savedReport = summaryOnlyReportFixture(fullReport);
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ report: fullReport }))
@@ -228,7 +313,8 @@ describe("smoke-analyze-pr-url", () => {
       savedReportDeleted: true,
       requirementStatusCounts: { partial: 1 },
       requirementEvidenceStatusCounts: { partial: 1 },
-      generalPrAssessmentSummary: assessmentSummary()
+      generalPrAssessmentSummary: assessmentSummary(),
+      ordinaryDocumentationSummary: documentationSummary()
     }));
     expect(result.analyzeTiming).toEqual({
       input: 3,
@@ -789,6 +875,7 @@ describe("smoke-analyze-pr-url", () => {
 });
 
 function jsonResponse(payload, status = 200) {
+  if (payload?.operatorDiagnostics && payload.operatorTargetDiagnostics === undefined) payload.operatorTargetDiagnostics = { version: 1, targetCount: 0, omittedTargetCount: 0, rejectedProviderProposalCount: 0, projectionOmissionCounts: { targetLimit: 0, sourceRefLimit: 0, changeClusterRefLimit: 0, evidenceRefLimit: 0, proposalLimit: 0 }, targets: [] };
   const headers = {
     "content-type": "application/json",
     "cache-control": "private, no-store"
@@ -803,6 +890,10 @@ function jsonResponse(payload, status = 200) {
     status,
     headers
   });
+}
+
+function documentationSummary() {
+  return { version: 1, scope: "literal_presence_only", predicates: [{ sourceKind: "pr_body", sourceOrdinal: 1, legacyRequirementId: "req_1", state: "supported" }] };
 }
 
 function reportFixture() {

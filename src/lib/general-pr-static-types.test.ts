@@ -1,0 +1,56 @@
+import { describe, expect, it } from "vitest";
+import { compileOrdinaryStaticPlans, projectOrdinaryStaticSummary, selectOrdinaryStaticLookup, validateGeneratedOrdinaryStaticSummary } from "./general-pr-static-types";
+import { isOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
+import { buildGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
+import { finalizeDeterministicGeneralPrObservationsV2 } from "./general-pr-observation-service";
+import { selectGeneralPrSemanticClaimSpansV1 } from "./general-pr-semantic-selection";
+import { mergeGeneralPrSemanticStageCandidatesV1, validateGeneralPrSemanticClaimCandidateV2 } from "./general-pr-semantic-proposal";
+import type { PullRequestInput } from "./types";
+
+describe("ordinary static type private context", () => {
+  it("rejects forged and stale plans/summaries while retaining bounded unavailable counts", async () => {
+    const input: PullRequestInput = { title: "Types", description: "Type `Result` includes `undefined`.", taskText: "", repositoryPrivate: false, changedFiles: [{ path: "types.ts", status: "modified" }], checks: [], logs: [], sourceProvenance: { version: 1, origin: "github_snapshot", headSha: "a".repeat(40), baseSha: "b".repeat(40), evidenceCapturedAt: "2026-09-09T00:00:00Z", inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" } } };
+    const seed = buildGeneralPrObservationSeedV2(input);
+    const selected = selectGeneralPrSemanticClaimSpansV1({ pullRequest: input, seed });
+    if (!selected.ok) throw new Error("fixture selection failed");
+    const span = selected.selection.selectedSpans.find(span => span.text.includes("Result"))!;
+    const claim = validateGeneralPrSemanticClaimCandidateV2({ spanRoles: selected.selection.selectedSpans.map(item => ({ spanId: item.spanId, role: item === span ? "objective_candidate" : "supporting_context" })), unionMemberCandidates: [{ spanId: span.spanId, aliasName: "Result", member: "undefined" }] }, seed, selected.selection);
+    const merged = mergeGeneralPrSemanticStageCandidatesV1(seed, claim, null);
+    if (!merged.valid) throw new Error("fixture merge failed");
+    const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, merged.proposal, "valid");
+    const plans = compileOrdinaryStaticPlans(input, seed, bundle, merged.proposal);
+    expect(plans).toHaveLength(1);
+    expect(Object.isFrozen(plans[0])).toBe(true);
+    expect(compileOrdinaryStaticPlans(input, seed, bundle, structuredClone(merged.proposal))).toEqual([]);
+    expect(compileOrdinaryStaticPlans({ ...input, description: "Changed source" }, seed, bundle, merged.proposal)).toEqual([]);
+    const context = { input, plans, artifactBlobs: [] };
+    const summary = await projectOrdinaryStaticSummary(context);
+    expect(summary).toMatchObject({ lookupIncomplete: true, predicates: [{ artifactCounts: { present: 0, absent: 0, unavailable: 1 } }] });
+    expect(validateGeneratedOrdinaryStaticSummary(input, summary!)).toBe(true);
+    expect(validateGeneratedOrdinaryStaticSummary(input, structuredClone(summary!))).toBe(false);
+    expect(validateGeneratedOrdinaryStaticSummary({ ...input, description: "Changed source" }, summary!)).toBe(false);
+    expect(validateGeneratedOrdinaryStaticSummary({ ...input, repositoryPrivate: true }, summary!)).toBe(false);
+    expect(await projectOrdinaryStaticSummary({ ...context, input: { ...input, repositoryPrivate: true } })).toBeUndefined();
+    const completeInput: PullRequestInput = { ...input, sourceProvenance: { ...input.sourceProvenance!, changedFileInventory: { version: 1, completeness: "complete", headSha: input.sourceProvenance!.headSha } } };
+    const completeSeed = buildGeneralPrObservationSeedV2(completeInput);
+    // Recompile source-owned plans for the inventory-bearing source seed.
+    const completeSelection = selectGeneralPrSemanticClaimSpansV1({ pullRequest: completeInput, seed: completeSeed });
+    if (!completeSelection.ok) throw new Error("fixture selection failed");
+    const completeSpan = completeSelection.selection.selectedSpans.find(item => item.text.includes("Result"))!;
+    const completeClaim = validateGeneralPrSemanticClaimCandidateV2({ spanRoles: completeSelection.selection.selectedSpans.map(item => ({ spanId: item.spanId, role: item === completeSpan ? "objective_candidate" : "supporting_context" })), unionMemberCandidates: [{ spanId: completeSpan.spanId, aliasName: "Result", member: "undefined" }] }, completeSeed, completeSelection.selection);
+    const completeMerge = mergeGeneralPrSemanticStageCandidatesV1(completeSeed, completeClaim, null);
+    if (!completeMerge.valid) throw new Error("fixture merge failed");
+    const completePlans = compileOrdinaryStaticPlans(completeInput, completeSeed, finalizeDeterministicGeneralPrObservationsV2(completeSeed, completeMerge.proposal, "valid"), completeMerge.proposal);
+    const completeSummary = await projectOrdinaryStaticSummary({ input: completeInput, plans: completePlans, artifactBlobs: [] });
+    expect(completeSummary?.lookupIncomplete).toBe(false);
+    expect(validateGeneratedOrdinaryStaticSummary({ ...completeInput, sourceProvenance: { ...completeInput.sourceProvenance!, changedFileInventory: { version: 1, completeness: "complete", headSha: "d".repeat(40) } } }, completeSummary!)).toBe(false);
+    expect(await projectOrdinaryStaticSummary({ ...context, plans: plans.map(plan => ({ ...plan })) })).toBeUndefined();
+    summary!.predicates[0].artifactCounts = { present: 1, absent: 0, unavailable: 0 };
+    expect(validateGeneratedOrdinaryStaticSummary(input, summary!)).toBe(false);
+    const lookup = selectOrdinaryStaticLookup({ ...input, changedFiles: Array.from({ length: 10 }, (_, index) => ({ path: `file${index}.ts`, status: "modified" })) });
+    expect(lookup.paths).toHaveLength(8);
+    expect(lookup.incomplete).toBe(true);
+    expect(selectOrdinaryStaticLookup({ ...input, changedFiles: [{ path: "../types.ts", status: "modified" }, { path: "README.md", status: "modified" }] }).paths).toEqual([]);
+    for (const invalid of [{ ...summary, aliasName: "Result" }, { ...summary, predicates: new Array(1) }, { ...summary, interpretation: "verified" }, { ...summary, predicates: [{ ...summary!.predicates[0], sourceOrdinal: 10001 }] }, { ...summary, predicates: [{ ...summary!.predicates[0], artifactCounts: { present: 9, absent: 0, unavailable: 0 } }] }]) expect(isOrdinaryStaticSummary(invalid)).toBe(false);
+  });
+});

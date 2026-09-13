@@ -1,4 +1,6 @@
 import { createHash } from "crypto";
+import { isOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
+import { isOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
 import type {
   CanonicalRequirementSetV1,
   ChangedFile,
@@ -210,6 +212,7 @@ export interface ReportValidationOptions {
   requireFullProvenance?: boolean;
   requireSourceProvenance?: boolean;
   receiptValidationContext?: VerificationValidationContextV2;
+  ordinaryOutcomeValidator?: (report: VerificationReport) => boolean;
 }
 
 export interface VerificationValidationContextV2 {
@@ -484,7 +487,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "verificationContract", "generalPrAssessment", "generalPrAssessmentSummary"] : [])]
+    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "verificationContract", "generalPrAssessment", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes"] : [])]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -512,6 +515,8 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validatePlanningFieldConsistency(report, errors);
   validateGeneralPrAssessment(report.generalPrAssessment, evidenceIds, requirementIds, report.requirements, report.source, mode, "full", errors);
   validateGeneralPrAssessment(report.generalPrAssessmentSummary, evidenceIds, requirementIds, report.requirements, report.source, mode, "summary", errors);
+  if (report.ordinaryDocumentationSummary !== undefined && !isOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary)) errors.push("Invalid scoped documentation summary.");
+  if (report.ordinaryStaticSummary !== undefined && !isOrdinaryStaticSummary(report.ordinaryStaticSummary)) errors.push("Invalid scoped static summary.");
   validateAuthenticity(report.authenticity, errors);
   if (mode === "full" || mode === "v2_full") {
     validateFailedCheckProofIsolation(report, errors);
@@ -528,6 +533,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     validateObservationProofSemantics(report, evidenceIds, errors, mode === "v2_full");
   }
   if (mode === "v2_full") {
+    if (report.ordinaryRequirementOutcomes !== undefined && options.ordinaryOutcomeValidator?.(report as unknown as VerificationReport) !== true) errors.push("Source-derived outcomes require independent transient source and artifact validation.");
     validatePrivateV2CriterionPlanSemantics(report, options.receiptValidationContext, errors);
     validatePrivateV2ReceiptSemantics(report, options.receiptValidationContext, errors);
   }
@@ -1132,7 +1138,10 @@ function validateVerificationContractV2(
     errors.push("v2 objectives must cover every requirement and proof-graph node exactly once.");
   }
   validateV2CriterionAxisOwnership(contract, requirements, errors);
-  if ((state === "absent" || state === "invalid") && requirements.some((requirement) => requirement.status !== "unclear")) {
+  if (report.ordinaryRequirementOutcomes !== undefined) {
+    if (state !== "absent") errors.push("Source-derived outcomes cannot replace a typed contract.");
+    errors.push(...ordinaryRequirementOutcomeErrors(report.ordinaryRequirementOutcomes, requirements as unknown as Parameters<typeof ordinaryRequirementOutcomeErrors>[1], evidenceIds, mode === "v2_summary"));
+  } else if ((state === "absent" || state === "invalid") && requirements.some((requirement) => requirement.status !== "unclear")) {
     errors.push("absent or invalid verification contracts must produce only unclear requirement outcomes.");
   }
 }
@@ -3872,3 +3881,4 @@ function requireKeys(
 function isRecord(value: unknown): value is RecordValue {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
+import { ordinaryRequirementOutcomeErrors } from "./ordinary-requirement-outcome-contract";

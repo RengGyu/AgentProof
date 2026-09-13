@@ -14,7 +14,10 @@ import {
 import { submitGeneralPrSemanticObservationWithOpenAI } from "@/lib/openai-semantic";
 import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
+import type { RunGeneralPrObservationNowOptionsV2 } from "@/lib/general-pr-observation-service";
+import { collectOrdinaryDocumentationArtifacts, collectOrdinaryStaticArtifacts, collectOrdinaryScalarArtifacts, collectOrdinaryTypeScriptProject } from "@/lib/github";
 import { buildGeneralPrSemanticOperatorDiagnosticsV1 } from "@/lib/general-pr-observation-telemetry";
+import { runGeneralPrInformationDiagnosticV1 } from "@/lib/general-pr-information-diagnostic";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "@/lib/general-pr-runtime-policy";
 import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
@@ -113,9 +116,13 @@ export async function POST(request: Request) {
     const semanticEligible = policy.semanticObservation === "eligible_public_pr" &&
       generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
       Boolean(publicPrUrl && observerApiKey && observerModel);
-    const observed = await generalPrObservationService.runGeneralPrObservationNowV2({
+    const observationOptions: RunGeneralPrObservationNowOptionsV2 = {
       policy,
       input,
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectDocumentationArtifacts: (paths: string[], headSha: string) => collectOrdinaryDocumentationArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectStaticArtifacts: (paths: string[], headSha: string) => collectOrdinaryStaticArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectScalarArtifacts: (paths: string[], headSha: string) => collectOrdinaryScalarArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectTypeScriptProject: (headSha: string) => collectOrdinaryTypeScriptProject(publicPrUrl, body.githubToken, headSha) } : {}),
       generateReport: generateVerificationReportV2FromInput,
       // The existing runtime gate remains the final authority below. This
       // preflight merely prevents shadow collection for an invalid report.
@@ -146,7 +153,11 @@ export async function POST(request: Request) {
           }
         }
       } : {})
-    });
+    };
+    const diagnosticRun = operatorDiagnosticsRequested
+      ? await runGeneralPrInformationDiagnosticV1(observationOptions)
+      : null;
+    const observed = diagnosticRun?.result ?? await generalPrObservationService.runGeneralPrObservationNowV2(observationOptions);
     const report = observed.report;
 
     timing.start("validation");
@@ -171,7 +182,8 @@ export async function POST(request: Request) {
     return jsonNoStore({
       report: validation.report,
       ...(operatorDiagnosticsRequested ? {
-        operatorDiagnostics: buildGeneralPrSemanticOperatorDiagnosticsV1(observed.bundle)
+        operatorDiagnostics: buildGeneralPrSemanticOperatorDiagnosticsV1(observed.bundle),
+        operatorTargetDiagnostics: diagnosticRun?.diagnostic
       } : {})
     }, 200, timing, evidenceTiming);
   } catch (error) {

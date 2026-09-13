@@ -788,6 +788,9 @@ export interface VerificationReportV2 extends VerificationReport {
   generalPrAssessment?: GeneralPrAssessmentV1;
   /** Reviewer/API-safe companion; it is intentionally target-free. */
   generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
+  ordinaryDocumentationSummary?: import("./general-pr-documentation-presentation").OrdinaryDocumentationSummary;
+  ordinaryStaticSummary?: import("./general-pr-static-types-presentation").OrdinaryStaticSummary;
+  ordinaryRequirementOutcomes?: import("./ordinary-requirement-outcome-contract").OrdinaryRequirementOutcomes;
 }
 
 export type DecodedVerificationReport = VerificationReport | VerificationReportV2;

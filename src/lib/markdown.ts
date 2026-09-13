@@ -1,5 +1,7 @@
 import { getExecutionEvidenceItems, statusFromEvidenceSummary } from "./execution-evidence";
 import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
+import { presentOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
+import { presentOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
 import { redactSecrets } from "./redact";
 import type { VerificationReport } from "./types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
@@ -24,7 +26,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     `**Evidence coverage:** ${report.summary.evidenceCoverage}%`,
     `**Confidence:** ${Math.round(report.summary.confidence * 100)}%`,
     report.planner ? `**Policy:** Enhanced planning policy` : undefined,
-    strictContract ? `**Policy:** Strict verification contract` : undefined,
+    strictContract ? `**Policy:** ${v2Report?.ordinaryRequirementOutcomes ? "Source-derived requirement criteria" : "Strict verification contract"}` : undefined,
     strictContract ? `**Outcome policy:** ${strictContract.outcomePolicy}` : undefined,
     ...(strictContract?.guidance.map((message) => `**Contract guidance:** ${safeInlineText(message)}`) ?? []),
     strictContract ? "**Observed evidence:** implementation, targeted tests, and execution are listed below." : undefined,
@@ -42,6 +44,8 @@ export function reportToMarkdown(report: VerificationReport): string {
       ...ordinaryPrAssessment.reasonLabels.map((reason) => `- ${reason}`)
     ] : []),
     "",
+    ...(v2Report?.ordinaryDocumentationSummary ? ["## Documentation predicate evidence", "", ...presentOrdinaryDocumentationSummary(v2Report.ordinaryDocumentationSummary).map(line => `- ${line}`), ""] : []),
+    ...(v2Report?.ordinaryStaticSummary ? ["## Static predicate evidence", "", ...presentOrdinaryStaticSummary(v2Report.ordinaryStaticSummary).map(line => `- ${line}`), ""] : []),
     `## Requirement Coverage`,
     "",
     ...report.requirements.flatMap((requirement) => {
@@ -192,7 +196,7 @@ export function reportToGitHubComment(
     "",
     `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **Test/Build:** ${report.testing.ciStatus}`,
     report.planner ? "**Policy:** Enhanced planning policy" : undefined,
-    strictContract ? "**Policy:** Strict verification contract" : undefined,
+    strictContract ? `**Policy:** ${v2Report?.ordinaryRequirementOutcomes ? "Source-derived requirement criteria" : "Strict verification contract"}` : undefined,
     strictContract ? `**Outcome policy:** ${strictContract.outcomePolicy}` : undefined,
     ...(strictContract?.guidance.map((message) => `**Contract guidance:** ${safeInlineText(message)}`) ?? []),
     strictContract ? "**Observed evidence:** implementation, targeted tests, and execution are listed below." : undefined,
@@ -208,6 +212,8 @@ export function reportToGitHubComment(
       ...ordinaryPrAssessment.reasonLabels.map((reason) => `- ${reason}`)
     ] : []),
     "",
+    ...(v2Report?.ordinaryDocumentationSummary ? ["### Documentation predicate evidence", "", ...presentOrdinaryDocumentationSummary(v2Report.ordinaryDocumentationSummary).map(line => `- ${line}`), ""] : []),
+    ...(v2Report?.ordinaryStaticSummary ? ["### Static predicate evidence", "", ...presentOrdinaryStaticSummary(v2Report.ordinaryStaticSummary).map(line => `- ${line}`), ""] : []),
     "### Requirement Coverage",
     "",
     ...(requirementLines.length > 0 ? requirementLines : ["- No requirements were extracted."]),
@@ -266,6 +272,7 @@ export function reportToGitHubComment(
 }
 
 function strictContractPresentation(report: VerificationReport): { outcomePolicy: string; guidance: string[] } | undefined {
+  if (isVerificationReportV2(report) && report.ordinaryRequirementOutcomes) return { outcomePolicy: "Each result covers only its original explicit requirement. Unsupported obligations remain unavailable; no whole-PR completion is inferred.", guidance: [] };
   const candidate = report as VerificationReport & {
     reportSchemaVersion?: string;
     verificationContract?: { state?: unknown; gaps?: unknown };

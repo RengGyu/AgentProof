@@ -1,5 +1,6 @@
 .next
 node_modules
+/.recovery-tools/
 .pnpm-store
 dist
 coverage

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync, mkdtempSync, writeFileSync, chmodSync, statSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { buildGeneralPrSemanticOperatorDiagnosticsV1 } from "../src/lib/general-pr-observation-telemetry.ts";
 import {
   assertAggregateOnlyRunArtifact,
@@ -12,6 +13,35 @@ import {
 } from "./external-pr-current-corpus-smoke.mjs";
 
 describe("external-pr-current-corpus-smoke", () => {
+  it("runs help for a relative CLI entry path without reading a snapshot or contacting a service", () => {
+    const relative = "scripts/external-pr-current-corpus-smoke.mjs";
+    for (const args of [[relative, "--help"], ["--input-type=module", "--eval", `process.argv = [process.execPath, ${JSON.stringify(relative)}, "--help"]; await import(${JSON.stringify(`./${relative}`)});`]]) {
+      const child = spawnSync(process.execPath, args, { cwd: process.cwd(), encoding: "utf8" });
+      expect(child.status, child.stderr).toBe(0);
+      expect(child.stdout).toContain("Usage: pnpm smoke:external-pr-current-corpus");
+    }
+  });
+
+  it("counts only validated documentation predicates from completed reports and keeps public case rows opaque", async () => {
+    const summary = { version: 1, scope: "literal_presence_only", predicates: [
+      { sourceKind: "pr_body", sourceOrdinal: 1, legacyRequirementId: "req_1", state: "supported" },
+      { sourceKind: "linked_issue", sourceOrdinal: 2, legacyRequirementId: null, state: "contradicted" },
+      { sourceKind: "pr_body", sourceOrdinal: 3, legacyRequirementId: null, state: "unavailable" }
+    ] };
+    let count = 0;
+    const result = await runCurrentExternalPrCorpusSmoke({ snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", runAnalyze: async () => {
+      count += 1;
+      if (count === 25) throw new Error("analysis unavailable");
+      return { ...validAnalyzeResult(), ...(count < 3 ? { ordinaryDocumentationSummary: summary } : count === 3 ? { ordinaryDocumentationSummary: { ...summary, rawSource: "PRIVATE_SOURCE" } } : {}) };
+    } });
+    expect(result.ordinaryDocumentationSummary).toEqual({ completedWithSummaryCount: 2, completedWithoutSummaryCount: 22, predicateCount: 6, stateCounts: { supported: 2, contradicted: 2, unavailable: 2 } });
+    expect(result.completedCount).toBe(24);
+    expect(result.results[0]).toEqual({ id: "case_01", analysisStatus: "completed" });
+    expect(JSON.stringify(result)).not.toMatch(/PRIVATE_SOURCE|sourceOrdinal|legacyRequirementId|prUrl|https:\/\/github|literal_presence_only|rawSource/);
+    for (const patch of [{ completedWithoutSummaryCount: 23 }, { predicateCount: 7 }, { stateCounts: { supported: 2, contradicted: 2, unavailable: 2, raw: 0 } }]) {
+      expect(() => assertAggregateOnlyRunArtifact({ ...result, ordinaryDocumentationSummary: { ...result.ordinaryDocumentationSummary, ...patch } })).toThrow();
+    }
+  });
   it("restores owner-only permissions even when a stale checkpoint already exists", () => {
     const directory = mkdtempSync(join(tmpdir(), "agentproof-detail-test-"));
     try {
@@ -25,17 +55,21 @@ describe("external-pr-current-corpus-smoke", () => {
   });
   it("checkpoints per-PR detail and current operator diagnostics outside the public aggregate", async () => {
     const diagnostics = buildGeneralPrSemanticOperatorDiagnosticsV1(null);
+    const targetDiagnostics = validTargetDiagnostics();
+    targetDiagnostics.targets[0].objectiveState = "observed_objective";
+    targetDiagnostics.targets[0].validator.claimState = "not_run";
+    targetDiagnostics.targets[0].validator.capability = "collection_only";
     const rows = [];
     const runAnalyze = vi.fn(async (input) => {
-      await input.onDiagnostic({ status: "completed", operator: diagnostics });
-      return { ...validAnalyzeResult(), operatorSemanticDiagnostics: diagnostics };
+      await input.onDiagnostic({ status: "completed", operator: diagnostics, operatorTargetDiagnostics: targetDiagnostics });
+      return { ...validAnalyzeResult(), operatorSemanticDiagnostics: diagnostics, operatorTargetDiagnostics: targetDiagnostics };
     });
     const result = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
       snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", operatorDiagnosticsToken: "opaque-ops-value",
       runAnalyze, onCaseDetail: (row) => rows.push(row)
     });
     expect(rows).toHaveLength(25);
-    expect(rows[0]).toMatchObject({ id: "case_01", prUrl: "https://github.com/public/repo/pull/1", expectedAnchor: { headSha: "a".repeat(40) }, diagnostic: { operator: { claimInvalidReason: null } } });
+    expect(rows[0]).toMatchObject({ id: "case_01", prUrl: "https://github.com/public/repo/pull/1", expectedAnchor: { headSha: "a".repeat(40) }, diagnostic: { operator: { claimInvalidReason: null }, operatorTargetDiagnostics: targetDiagnostics } });
     expect(result.publicRun.completedCount).toBe(25);
     expect(JSON.stringify(result.publicRun)).not.toMatch(/github.com|operator|claimInvalidReason|opaque-ops-value/);
   });
@@ -55,6 +89,29 @@ describe("external-pr-current-corpus-smoke", () => {
       onCaseDetail: () => { throw new Error("checkpoint_failed"); }
     })).rejects.toThrow("checkpoint_failed");
     expect(runAnalyze).toHaveBeenCalledOnce();
+  });
+  it("requires a complete, recursively valid target diagnostic before completing a corpus case", async () => {
+    const diagnostics = validOperatorDiagnostics();
+    const missing = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+      snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", operatorDiagnosticsToken: "opaque-ops-value",
+      runAnalyze: vi.fn().mockResolvedValue({ ...validAnalyzeResult(), operatorSemanticDiagnostics: diagnostics, operatorTargetDiagnostics: undefined })
+    });
+    expect(missing.publicRun.completedCount).toBe(0);
+    const malformed = structuredClone(validTargetDiagnostics());
+    malformed.targets[0].validator.extra = "not-allowed";
+    const bad = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+      snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", operatorDiagnosticsToken: "opaque-ops-value",
+      runAnalyze: vi.fn().mockResolvedValue({ ...validAnalyzeResult(), operatorSemanticDiagnostics: diagnostics, operatorTargetDiagnostics: malformed })
+    });
+    expect(bad.publicRun.completedCount).toBe(0);
+  });
+  it("does not complete corpus cases with inconsistent aggregate and target stage states", async () => {
+    const result = await runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
+      snapshot: readySnapshot(), now: "2026-08-31T00:10:00.000Z", operatorDiagnosticsToken: "opaque-ops-value",
+      runAnalyze: vi.fn().mockResolvedValue({ ...validAnalyzeResult(), operatorSemanticDiagnostics: { ...validOperatorDiagnostics(), evidenceState: "valid" } })
+    });
+    expect(result.publicRun.completedCount).toBe(0);
+    expect(result.publicRun.incompleteCount).toBe(25);
   });
   it("runs each ready current-state sample with its frozen anchor and URL-only input", async () => {
     const runAnalyze = vi.fn().mockResolvedValue({
@@ -444,8 +501,13 @@ function validAnalyzeResult() {
     generalPrAssessmentSummary: assessmentSummary(),
     qualityGate: { ok: true, checks: [] },
     savedReportPrivacy: "summary-only",
-    savedReportDeleted: true
+    savedReportDeleted: true,
+    operatorTargetDiagnostics: validTargetDiagnostics()
   };
+}
+
+function validTargetDiagnostics() {
+  return { version: 1, targetCount: 1, omittedTargetCount: 0, rejectedProviderProposalCount: 0, projectionOmissionCounts: { targetLimit: 0, sourceRefLimit: 0, changeClusterRefLimit: 0, evidenceRefLimit: 0, proposalLimit: 0 }, targets: [{ targetRef: "target_1", selectedSourceSpanRefs: ["span_1"], selectedChangeClusterRefs: [], selectedEvidenceRefs: [], sourceObligation: "author_claim_confirmation", currentAssessmentEligibility: "eligible", objectiveState: "semantic_candidate", admissionDisposition: "admitted", nonAdmissionReason: "not_applicable", validator: { scope: "global_stage", claimState: "valid", evidenceState: "not_run", claimInvalidReason: null, evidenceInvalidReason: null, capability: "collection_incomplete" }, proposedRelations: [], currentAssessmentCeiling: "evidence_partial", missingProofReasons: ["author_claim_confirmation_required", "verified_objective_change_relation_not_evaluated", "targeted_test_requirement_not_evaluated", "exact_head_execution_not_evaluated"] }] };
 }
 
 function validOperatorDiagnostics() {

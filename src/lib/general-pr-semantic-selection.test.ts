@@ -34,6 +34,36 @@ function selected(result: ReturnType<typeof selectGeneralPrSemanticClaimSpansV1>
 }
 
 describe("selectGeneralPrSemanticClaimSpansV1", () => {
+  it.each([false, true])("keeps the source reservation and its section's preferred paragraph (paragraphFirst=%s)", (paragraphFirst) => {
+    const prose = "A visible connection indicator belongs beside the account name.";
+    const list = "- The service must preserve the current response.";
+    const repeated = "- The service must preserve the current status.";
+    const request = input({ title: "", taskText: "", description: "## Cedar\n" + (paragraphFirst ? [prose, list, repeated] : [list, repeated, prose]).join("\n\n") });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const selection = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxSpans: 2 }));
+    expect(selection.selectedSpans.map(span => span.text)).toEqual(paragraphFirst ? [prose, list] : [list, prose]);
+  });
+
+  it("does not give template-only sections a representative ahead of ranked content", () => {
+    const request = input({ title: "", taskText: "", description: "## Checklist\nPlease review this change.\n\n## Cedar\n- The service must preserve the current response.\n- The service must preserve the current status." });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    expect(seed.spans.some(span => span.deterministicRole === "template_or_process")).toBe(true);
+    const selection = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed, maxSpans: 2 }));
+    expect(selection.selectedSpans.map(span => span.text)).toEqual(["- The service must preserve the current response.", "- The service must preserve the current status."]);
+  });
+
+  it.each([false, true])("covers distinct renamed sections before repeated early claims (reordered=%s)", (reordered) => {
+    const prose = "A visible connection indicator belongs beside the account name.";
+    const sections = ["## Cedar\n- The service must preserve the current response.\n" + Array.from({ length: 20 }, (_, i) => `- Tests passed for scenario ${i}.`).join("\n"), `## ${reordered ? "Elm" : "Birch"}\n- An adjacent detail.\n\n${prose}`, "## Cedar\n- A separate final item."];
+    if (reordered) sections.reverse();
+    const request = input({ taskText: "", description: sections.join("\n\n") });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const selection = selected(selectGeneralPrSemanticClaimSpansV1({ pullRequest: request, seed }));
+    expect(selection.selectedSpans.map(span => span.text)).toContain(prose);
+    expect(selection.selectedSpans.map(span => span.text)).toContain("- A separate final item.");
+    expect(selection.selectedSpans).toHaveLength(12);
+  });
+
   it("bounds twenty legal spans, reserves objective-capable sources, and serializes in seed order", () => {
     const request = input();
     const seed = buildGeneralPrObservationSeedV2(request);

@@ -1,4 +1,6 @@
 import { redactSecrets } from "../src/lib/redact.ts";
+import { isOrdinaryDocumentationSummary, copyOrdinaryDocumentationSummary } from "../src/lib/general-pr-documentation-presentation.ts";
+import { isOrdinaryStaticSummary, copyOrdinaryStaticSummary } from "../src/lib/general-pr-static-types-presentation.ts";
 
 const baseUrl = (process.env.AGENTPROOF_SMOKE_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const prUrl = process.env.AGENTPROOF_SMOKE_PR_URL;
@@ -86,7 +88,7 @@ export async function runAnalyzePrSmoke({ onDiagnostic, ...options }) {
       ...options,
       onStage: (stage) => { diagnostic.stage = stage; },
       onAnalyzed: (report) => { diagnostic.httpStatus = 200; diagnostic.report = projectSmokeReportDetails(report, [options.githubToken, options.operatorDiagnosticsToken]); },
-      onOperator: (operator) => { diagnostic.operator = operator; }
+      onOperator: (operator, targetDiagnostics) => { diagnostic.operator = operator; diagnostic.operatorTargetDiagnostics = targetDiagnostics; }
     });
     diagnostic.status = "completed";
     diagnostic.stage = "completed";
@@ -132,6 +134,8 @@ export function projectSmokeReportDetails(report, secrets = []) {
     })),
     generalPrAssessmentSummary: isValidGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
       ? copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary) : null,
+    ordinaryDocumentationSummary: readOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary),
+    ordinaryStaticSummary: readOrdinaryStaticSummary(report.ordinaryStaticSummary),
     targets: list(report.generalPrAssessment?.targets).map((target, index) => ({
       id: `target_${index + 1}`,
       ...pick(target, ["claimRole", "conclusion", "admissionBasis", "sourceAuthority", "requirementId"]),
@@ -195,7 +199,8 @@ async function executeAnalyzePrSmoke({
   onAnalyzed(report);
   onStage("operator_diagnostics");
   const operatorSemanticDiagnostics = readOperatorSemanticDiagnostics(payload.operatorDiagnostics, Boolean(operatorDiagnosticsToken));
-  onOperator(operatorSemanticDiagnostics);
+  const operatorTargetDiagnostics = readOperatorTargetDiagnostics(payload.operatorTargetDiagnostics, Boolean(operatorDiagnosticsToken));
+  onOperator(operatorSemanticDiagnostics, operatorTargetDiagnostics);
   onStage("assessment_summary");
   const generalPrAssessmentSummary = readGeneralPrAssessmentSummary(
     report,
@@ -251,6 +256,8 @@ async function executeAnalyzePrSmoke({
     evidenceCount: Array.isArray(report.evidenceIndex) ? report.evidenceIndex.length : 0,
     limitationCount: Array.isArray(report.limitations) ? report.limitations.length : 0,
     generalPrAssessmentSummary,
+    ordinaryDocumentationSummary: readOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary),
+    ordinaryStaticSummary: readOrdinaryStaticSummary(report.ordinaryStaticSummary),
     analyzeTiming,
     githubEvidenceTiming,
     expectationCheckCount: expectationResult.checks.length,
@@ -269,8 +276,43 @@ async function executeAnalyzePrSmoke({
     savedReportDeleted: saveResult.deleted,
     savedReportDeleteWarning: saveResult.deleteWarning,
     operatorSemanticDiagnostics,
+    operatorTargetDiagnostics,
     qualityGate
   };
+}
+
+export function readOperatorTargetDiagnostics(value, required = true) {
+  if (!required) return null;
+  const bad = () => { throw smokeError("Analyze response did not include bounded operator target diagnostics."); };
+  const keys = (v, expected) => v && typeof v === "object" && !Array.isArray(v) && hasExactKeys(v, expected);
+  const dense = (items) => Array.isArray(items) && Object.keys(items).length === items.length && Array.from({ length: items.length }, (_, index) => Object.hasOwn(items, index)).every(Boolean);
+  const refs = (items, prefix, required = false) => dense(items) && (!required || items.length > 0) && items.length <= 12 && new Set(items).size === items.length && items.every((item) => typeof item === "string" && new RegExp(`^${prefix}_(?:[1-9]|[1-9]\\d|1\\d\\d|2[0-3]\\d|240)$`).test(item));
+  const omissions = (v) => keys(v, ["targetLimit", "sourceRefLimit", "changeClusterRefLimit", "evidenceRefLimit", "proposalLimit"]) && Object.values(v).every((count) => Number.isSafeInteger(count) && count >= 0 && count <= 100);
+  if (!keys(value, ["version", "targetCount", "omittedTargetCount", "rejectedProviderProposalCount", "projectionOmissionCounts", "targets"]) || value.version !== 1 || !Number.isSafeInteger(value.targetCount) || value.targetCount < 0 || value.targetCount > 20 || !Number.isSafeInteger(value.omittedTargetCount) || value.omittedTargetCount < 0 || value.omittedTargetCount > 100 || (value.omittedTargetCount > 0 && value.targetCount !== 20) || !Number.isSafeInteger(value.rejectedProviderProposalCount) || value.rejectedProviderProposalCount < 0 || value.rejectedProviderProposalCount > 64 || !omissions(value.projectionOmissionCounts) || value.omittedTargetCount !== value.projectionOmissionCounts.targetLimit || !dense(value.targets) || value.targets.length !== value.targetCount) bad();
+  const targets = value.targets.map((row, targetIndex) => {
+    const ordinal = targetIndex + 1;
+    if (!keys(row, ["targetRef", "selectedSourceSpanRefs", "selectedChangeClusterRefs", "selectedEvidenceRefs", "sourceObligation", "currentAssessmentEligibility", "objectiveState", "admissionDisposition", "nonAdmissionReason", "validator", "proposedRelations", "currentAssessmentCeiling", "missingProofReasons"]) || row.targetRef !== `target_${ordinal}` || !refs(row.selectedSourceSpanRefs, "span", true) || !refs(row.selectedChangeClusterRefs, "cluster") || !refs(row.selectedEvidenceRefs, "evidence") || !["author_claim_confirmation", "authoritative_requirement", "unavailable"].includes(row.sourceObligation) || !["eligible", "ineligible_provided_requirement", "unavailable"].includes(row.currentAssessmentEligibility) || !["semantic_candidate", "observed_objective"].includes(row.objectiveState) || !["admitted", "not_admitted"].includes(row.admissionDisposition) || !["not_applicable", "claim_stage_not_valid", "evidence_stage_not_valid", "finalizer_not_admitted", "unavailable"].includes(row.nonAdmissionReason) || (row.admissionDisposition === "admitted" && row.nonAdmissionReason !== "not_applicable") || (row.admissionDisposition === "not_admitted" && row.nonAdmissionReason === "not_applicable") || (row.objectiveState === "observed_objective" && row.admissionDisposition !== "admitted") || (row.currentAssessmentEligibility !== "eligible" && row.currentAssessmentCeiling !== "not_assessable") || !["evidence_partial", "blocked", "not_assessable"].includes(row.currentAssessmentCeiling) || !dense(row.proposedRelations) || row.proposedRelations.length > 64 || !dense(row.missingProofReasons) || row.missingProofReasons.length === 0 || row.missingProofReasons.length > 6 || new Set(row.missingProofReasons).size !== row.missingProofReasons.length || !row.missingProofReasons.every((reason) => ["author_claim_confirmation_required", "exact_head_subject_required", "verified_objective_change_relation_not_evaluated", "targeted_test_requirement_not_evaluated", "exact_head_execution_not_evaluated", "candidate_not_admitted"].includes(reason)) || !["verified_objective_change_relation_not_evaluated", "targeted_test_requirement_not_evaluated", "exact_head_execution_not_evaluated"].every((reason) => row.missingProofReasons.includes(reason))) bad();
+    const validator = row.validator;
+    const stagePair = keys(validator, ["scope", "claimState", "evidenceState", "claimInvalidReason", "evidenceInvalidReason", "capability"]) && validator.scope === "global_stage" && OPERATOR_STAGE_STATES.has(validator.claimState) && OPERATOR_STAGE_STATES.has(validator.evidenceState) && (validator.claimState === "invalid" ? ["span_binding_invalid", "root_shape_invalid", "span_decision_invalid", "role_ceiling_violation", "output_limit_exceeded"].includes(validator.claimInvalidReason) : validator.claimInvalidReason === null) && (validator.evidenceState === "invalid" ? OPERATOR_EVIDENCE_INVALID_REASONS.has(validator.evidenceInvalidReason) : validator.evidenceInvalidReason === null) && (!["valid", "invalid"].includes(validator.evidenceState) || validator.claimState === "valid") && validator.capability === (["valid", "invalid"].includes(validator.evidenceState) ? "semantic_relation_validation_only" : validator.claimState === "not_run" ? "collection_only" : "collection_incomplete");
+    if (!stagePair) bad();
+    if ((row.objectiveState === "semantic_candidate" && validator.claimState !== "valid") || (row.objectiveState === "observed_objective" && validator.claimState !== "not_run")) bad();
+    const seen = new Set();
+    const relation = (item) => keys(item, ["kind", "proposal", "referenceRef", "validatorDisposition", "finalizerDisposition"]) && ["evidence_relation", "test_applicability", "scope_mapping"].includes(item.kind) && (validator.evidenceState === "valid" ? item.validatorDisposition === "accepted" && ["used", "not_used"].includes(item.finalizerDisposition) : validator.evidenceState === "invalid" ? item.validatorDisposition === "rejected" && item.finalizerDisposition === "not_applicable" : item.validatorDisposition === "not_completed" && item.finalizerDisposition === "not_applicable") && (item.kind === "evidence_relation" ? row.selectedEvidenceRefs.includes(item.referenceRef) : row.selectedChangeClusterRefs.includes(item.referenceRef)) && ((item.kind === "evidence_relation" && ["supports", "tests", "implements", "contradicts", "unresolved"].includes(item.proposal)) || (item.kind === "test_applicability" && ["likely_expected", "likely_not_applicable", "ambiguous"].includes(item.proposal)) || (item.kind === "scope_mapping" && ["plausibly_mapped", "unresolved"].includes(item.proposal))) && !seen.has(`${item.kind}:${item.referenceRef}`) && (seen.add(`${item.kind}:${item.referenceRef}`) || true);
+    if (!row.proposedRelations.every(relation)) bad();
+    if ((row.admissionDisposition === "not_admitted" && (row.objectiveState !== "semantic_candidate" || row.nonAdmissionReason !== "finalizer_not_admitted" || row.currentAssessmentCeiling !== "not_assessable" || !row.missingProofReasons.includes("candidate_not_admitted") || row.proposedRelations.some((item) => item.finalizerDisposition === "used"))) || (row.admissionDisposition === "admitted" && row.missingProofReasons.includes("candidate_not_admitted")) || (row.currentAssessmentEligibility === "eligible" && row.admissionDisposition === "admitted" && row.currentAssessmentCeiling !== (row.missingProofReasons.includes("exact_head_subject_required") ? "blocked" : "evidence_partial")) || !(row.sourceObligation === "author_claim_confirmation" ? row.currentAssessmentEligibility === "eligible" && row.missingProofReasons.includes("author_claim_confirmation_required") : row.sourceObligation === "authoritative_requirement" ? ["eligible", "ineligible_provided_requirement"].includes(row.currentAssessmentEligibility) : row.currentAssessmentEligibility === "unavailable")) bad();
+    return { ...row, selectedSourceSpanRefs: [...row.selectedSourceSpanRefs], selectedChangeClusterRefs: [...row.selectedChangeClusterRefs], selectedEvidenceRefs: [...row.selectedEvidenceRefs], proposedRelations: row.proposedRelations.map((item) => ({ ...item })), missingProofReasons: [...row.missingProofReasons], validator: { ...row.validator } };
+  });
+  for (const prefix of ["span", "cluster", "evidence"]) { const seen = new Set(); let next = 1; for (const row of targets) for (const list of [row.selectedSourceSpanRefs, row.selectedChangeClusterRefs, row.selectedEvidenceRefs]) for (const ref of list) if (ref.startsWith(`${prefix}_`) && !seen.has(ref)) { if (ref !== `${prefix}_${next++}`) bad(); seen.add(ref); } }
+  const sourceOwners = new Set();
+  const referenceOwners = new Map();
+  for (const [index, row] of targets.entries()) {
+    for (const ref of row.selectedSourceSpanRefs) { if (sourceOwners.has(ref)) bad(); sourceOwners.add(ref); }
+    if (row.validator.evidenceState === "valid") for (const relation of row.proposedRelations) { const prior = referenceOwners.get(relation.referenceRef); if (prior !== undefined && prior !== index) bad(); referenceOwners.set(relation.referenceRef, index); }
+  }
+  if (new Set(targets.map((row) => JSON.stringify(row.validator))).size > 1 || new Set(targets.map((row) => row.missingProofReasons.includes("exact_head_subject_required"))).size > 1 || targets.some((row) => row.currentAssessmentEligibility === "ineligible_provided_requirement" && row.objectiveState !== "observed_objective")) bad();
+  const totalRelations = targets.reduce((sum, row) => sum + row.proposedRelations.length, 0);
+  if (totalRelations > 64 || (targets.length === 0 && (value.rejectedProviderProposalCount !== 0 || Object.values(value.projectionOmissionCounts).some((count) => count !== 0))) || (targets.length > 0 && (value.rejectedProviderProposalCount > 0 || value.projectionOmissionCounts.proposalLimit > 0) && targets[0].validator.evidenceState !== "invalid") || [["sourceRefLimit", "selectedSourceSpanRefs"], ["changeClusterRefLimit", "selectedChangeClusterRefs"], ["evidenceRefLimit", "selectedEvidenceRefs"]].some(([count, field]) => value.projectionOmissionCounts[count] > 0 && !targets.some((row) => row[field].length === 12))) bad();
+  return { version: 1, targetCount: value.targetCount, omittedTargetCount: value.omittedTargetCount, rejectedProviderProposalCount: value.rejectedProviderProposalCount, projectionOmissionCounts: { ...value.projectionOmissionCounts }, targets };
 }
 
 export function readOperatorSemanticDiagnostics(value, required = true) {
@@ -351,6 +393,17 @@ function isValidOperatorProviderFailure(value) {
 function copyOperatorProviderFailure(value) {
   if (value === null) return null;
   return { phase: value.phase, category: value.category, ...(Object.hasOwn(value, "httpStatus") ? { httpStatus: value.httpStatus } : {}), ...(Object.hasOwn(value, "incompleteReason") ? { incompleteReason: value.incompleteReason } : {}) };
+}
+
+/** Optional, closed source-inspection metadata only; never retain unvalidated fields. */
+export function readOrdinaryDocumentationSummary(value) {
+  return isOrdinaryDocumentationSummary(value) && Object.keys(value.predicates).length === value.predicates.length &&
+    value.predicates.every((predicate) => typeof predicate.sourceKind === "string" && typeof predicate.state === "string")
+    ? copyOrdinaryDocumentationSummary(value) : null;
+}
+
+export function readOrdinaryStaticSummary(value) {
+  return isOrdinaryStaticSummary(value) ? copyOrdinaryStaticSummary(value) : null;
 }
 
 function readGeneralPrAssessmentSummary(report, required) {
@@ -952,6 +1005,9 @@ export function assertSummaryOnlyReport(report, options = {}) {
   if (report.generalPrAssessmentSummary !== undefined && !isValidGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)) {
     throw smokeError("Saved report retained private general PR assessment data.");
   }
+  if (report.ordinaryDocumentationSummary !== undefined && !readOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary)) {
+    throw smokeError("Saved report retained invalid documentation predicate data.");
+  }
 
   if (!Array.isArray(report.limitations) || !report.limitations.some((item) => /omits raw evidence, patch\/log excerpts, claims,(?: proof-graph evidence refs,)? and re-prompt text/i.test(item))) {
     throw smokeError("Saved report did not include the summary-only omission limitation.");
@@ -973,6 +1029,9 @@ export function assertSummaryOnlyReport(report, options = {}) {
     if (pattern.test(serialized)) {
       throw smokeError("Saved report retained raw evidence or secret-like content.");
     }
+  }
+  if (report.ordinaryStaticSummary !== undefined && !readOrdinaryStaticSummary(report.ordinaryStaticSummary)) {
+    throw smokeError("Saved report retained invalid static predicate data.");
   }
 
   const forbiddenValues = [

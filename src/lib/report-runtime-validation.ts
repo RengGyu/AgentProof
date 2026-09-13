@@ -18,6 +18,21 @@ export type RuntimeReportBoundary =
   | "inbound_untrusted_full"
   | "signed_summary_read";
 
+// The source compiler is server-only. Retain its independent validator without
+// importing it into client-side summary readers. JSON cannot create this context.
+const ordinaryDocumentationContexts = new WeakMap<object, (input: PullRequestInput) => boolean>();
+const ordinaryStaticContexts = new WeakMap<object, (input: PullRequestInput) => boolean>();
+const ordinaryOutcomeContexts = new WeakMap<object, (input: PullRequestInput, report: VerificationReport) => boolean>();
+export function registerOrdinaryOutcomeValidationContext(outcomes: object, validate: (input: PullRequestInput, report: VerificationReport) => boolean): void {
+  ordinaryOutcomeContexts.set(outcomes, validate);
+}
+export function registerOrdinaryStaticValidationContext(summary: object, validate: (input: PullRequestInput) => boolean): void {
+  ordinaryStaticContexts.set(summary, validate);
+}
+export function registerOrdinaryDocumentationValidationContext(summary: object, validate: (input: PullRequestInput) => boolean): void {
+  ordinaryDocumentationContexts.set(summary, validate);
+}
+
 export type RuntimeReportValidation =
   | {
       valid: true;
@@ -58,6 +73,9 @@ export function validateRuntimeReportBoundary(
   }
 
   if (input.boundary === "inbound_untrusted_full") {
+    if ((input.report as VerificationReportV2).ordinaryRequirementOutcomes !== undefined) return { valid: false, errors: ["Inbound reports cannot supply source-derived requirement authority."] };
+    if ((input.report as VerificationReportV2).ordinaryStaticSummary !== undefined) return { valid: false, errors: ["Inbound reports cannot supply scoped static evidence."] };
+    if ((input.report as VerificationReportV2).ordinaryDocumentationSummary !== undefined) return { valid: false, errors: ["Inbound reports cannot supply scoped documentation verification."] };
     if (hasActiveV2ContractAuthority(input.report)) {
       return {
         valid: false,
@@ -114,6 +132,12 @@ export function resolveRuntimeReportValidation(input: {
 
 function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, { boundary: "generated_private_full" }>): RuntimeReportValidation {
   const v2 = isVerificationReportV2(input.report);
+  const documentation = (input.report as VerificationReportV2).ordinaryDocumentationSummary;
+  const staticSummary = (input.report as VerificationReportV2).ordinaryStaticSummary;
+  const ordinaryOutcomes = (input.report as VerificationReportV2).ordinaryRequirementOutcomes;
+  if (ordinaryOutcomes && ordinaryOutcomeContexts.get(ordinaryOutcomes)?.(input.input, input.report) !== true) return { valid: false, errors: ["Source-derived outcomes require transient source, head, plan and artifact validation."] };
+  if (v2 && staticSummary && ordinaryStaticContexts.get(staticSummary)?.(input.input) !== true) return { valid: false, errors: ["Scoped static evidence requires separate transient source, plan and artifact context."] };
+  if (v2 && documentation && ordinaryDocumentationContexts.get(documentation)?.(input.input) !== true) return { valid: false, errors: ["Scoped documentation verification requires separate transient source, plan and artifact context."] };
   const requirementLocalPromotionMode = input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode();
   if (v2 && requirementLocalPromotionMode === "off" &&
     (hasReceiptGatedPositive(input.report) || hasPrivateV2Receipts(input.report))) {
@@ -124,6 +148,7 @@ function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, 
   }
   const validation = validateVerificationReport(input.report, {
     mode: v2 ? "v2_full" : "full",
+    ...(ordinaryOutcomes ? { ordinaryOutcomeValidator: (report: VerificationReport) => ordinaryOutcomeContexts.get(ordinaryOutcomes)?.(input.input, report) === true } : {}),
     ...(v2 ? { receiptValidationContext: createRuntimeValidationContextV2(input.input, input.verificationCapabilitiesV2) } : {}),
     ...(input.requireSourceProvenance ? { requireSourceProvenance: true } : {})
   });

@@ -125,6 +125,42 @@ function permutations<T>(items: readonly T[]): T[][] {
 }
 
 describe("GeneralPrSemanticObserverV3 staging", () => {
+  it("requests bounded source-only union operands in the existing claim call", async () => {
+    const request = input({ title: "Types", description: "Type `Result` includes `undefined`." });
+    let packaged: Extract<GeneralPrSemanticObserverPackageV4, { stage: "claim_discovery" }> | undefined;
+    const provider = stagedProvider({ claim: stage => {
+      packaged = stage;
+      const span = stage.input.spans.find(span => span.text.includes("Result"))!;
+      return { spanRoles: stage.input.spans.map(item => ({ spanId: item.id, role: item.id === span.id ? "objective_candidate" : "supporting_context" })), unionMemberCandidates: [{ spanId: span.id, aliasName: "Result", member: "undefined" }] };
+    } });
+    const result = await run(request, { provider });
+    expect(result.state).toBe("valid");
+    const schema = packaged!.request.responseFormat.schema as { required: string[]; properties: Record<string, unknown> };
+    expect(schema.required).toContain("unionMemberCandidates");
+    expect(schema.properties.unionMemberCandidates).toMatchObject({ type: "array", maxItems: 8, items: { additionalProperties: false, required: ["spanId", "aliasName", "member"] } });
+    expect(packaged!.system).toContain("positive direct named-type primitive membership explicitly stated in the same source span");
+    expect(packaged!.system).toContain("Do not infer a namespace or file path");
+    expect(packaged!.system).toContain("Skip negative, conditional, or unclear inclusion");
+    expect(proposalContract.getGeneralPrUnionMemberCandidatesV1(result.proposal, buildGeneralPrObservationSeedV2(request).seedHash)).toEqual([{ spanId: packaged!.input.spans.find(span => span.text.includes("Result"))!.id, aliasName: "Result", member: "undefined" }]);
+    expect(result.receipt).toMatchObject({ claimState: "valid", evidenceState: "valid", claimPromptHash: expect.any(String), claimSchemaHash: expect.any(String) });
+  });
+  it("packages Stage-B ownership and abstention rules for allowed references", async () => {
+    let packaged: Extract<GeneralPrSemanticObserverPackageV4, { stage: "evidence_linking" }> | undefined;
+    const provider = stagedProvider({ evidence: stage => { packaged = stage; return emptyEvidenceCandidate; } });
+    const result = await run(input(), { provider });
+    expect(result.state).toBe("valid");
+    expect(packaged!.input.objectiveGroups.length).toBeGreaterThan(0);
+    const system = packaged!.system;
+    expect(system).toContain("Copy objectiveSpanIds exactly from the supplied group");
+    expect(system).toContain("only that group's allowed IDs");
+    expect(system).toContain("Globally assign each evidence ID and each change cluster ID to at most one objective group across all output arrays");
+    expect(system).toContain("same cluster may appear in testApplicabilityProposals and scopeMappingProposals only for the same owner");
+    expect(system).toContain("Do not repeat a reference within a relation kind");
+    expect(system).toContain("at most 64 proposals combined across the three arrays");
+    expect(system).toContain("If ownership is ambiguous, omit the relation rather than duplicate it");
+    expect(system).toContain("Relations are hypotheses, not proof or evidence that tests passed");
+    expect(JSON.stringify(packaged)).not.toMatch(/SECRET_PATCH|SECRET_LOG|PRIVATE CI/);
+  });
   it.each([
     ["head movement", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, headSha: "c".repeat(40), changedFileInventory: { ...request.sourceProvenance!.changedFileInventory!, headSha: "c".repeat(40) } } }), "head_changed"],
     ["base movement", (request: PullRequestInput) => ({ ...request, sourceProvenance: { ...request.sourceProvenance!, baseSha: "d".repeat(40) } }), "base_changed"],

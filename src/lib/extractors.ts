@@ -76,7 +76,7 @@ const CLAIM_START_PATTERN =
   /^\s*(add(?:ed)?|align(?:ed)?|implement(?:ed)?|fix(?:ed)?|update(?:d)?|create(?:d)?|change(?:d)?|remove(?:d)?|redesign(?:ed)?|reframe(?:d)?|refresh(?:ed)?|rename(?:d)?|rework(?:ed)?|validate(?:d)?|verif(?:y|ied)|test(?:ed)?|pass(?:ed)?)\s+(.+)$/i;
 const HEADING_PATTERN = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/;
 const INLINE_SECTION_PATTERN =
-  /^\s*(acceptance criteria|expected behavior|expected outcome|actual behavior|actual outcome|steps to reproduce|reproducible example|code for reproduction|describe the bug|issue description|suggested fix|suggested solution|proposed fix|proposed solution|possible fix|possible solution|debug output|electron version|operating system(?: version)?|browser(?: version)?|platform|trac ticket number|jira ticket number|branch description|ai assistance disclosure|test plan|testing|validation|summary)\s*:?\s*(.*)$/i;
+  /^\s*(acceptance criteria|expected behavior|expected outcome|actual behavior|actual outcome|steps to reproduce|reproducible example|code for reproduction|describe the bug|issue description|suggested fix|suggested solution|proposed fix|proposed solution|possible fix|possible solution|debug output|electron version|operating system(?: version)?|browser(?: version)?|platform|trac ticket number|jira ticket number|branch description|ai assistance disclosure|test plan|testing|validation|verification|summary)\s*:?\s*(.*)$/i;
 const ACCEPTANCE_SECTION_PATTERN = /\b(acceptance criteria|requirements?|expected behavior|expected outcome|desired behavior)\b/i;
 const PROBLEM_SECTION_PATTERN = /\b(actual behavior|actual outcome|describe the bug|bug summary|issue description|error|crash|segfault|failure)\b/i;
 const REPRODUCTION_SECTION_PATTERN = /\b(steps to reproduce|reproducible example|code for reproduction|reproduce|reproduction|minimal repro)\b/i;
@@ -96,7 +96,7 @@ const REQUIREMENT_LANGUAGE_PATTERN =
 const ISSUE_PROBLEM_PATTERN = /\b(bug|crash|segfault|error|exception|fails?|broken|regression|incorrect|wrong|unable|cannot|does not|doesn't|missing required argument)\b/i;
 const KOREAN_REQUIREMENT_PATTERN = /(?:표시한다|이동한다|유지한다|복원한다|차단한다|제공한다|지원한다|저장한다|삭제한다|보여준다|할 수 없어야 한다|하지 않아야 한다|필요는 없(?:다|음))\.?$/;
 const AMBIGUITY_PATTERN = /\b(?:undefined|not defined|unclear|ambiguous|unspecified)\b|(?:정의하지 않|명확하지 않|모호|불명확)/i;
-const AUTHOR_EVIDENCE_SECTION_PATTERN = /\b(testing|test plan|validation|verified)\b/i;
+const AUTHOR_EVIDENCE_SECTION_PATTERN = /\b(tests|testing|test plan|validation|verification|verified)\b/i;
 const PR_OBJECTIVE_ACTION_PATTERN =
   /\b(?:add|align|allow|block|create|delete|disable|display|document|enable|ensure|export|fix|handle|hide|implement|keep|migrate|prevent|preserve|refactor|refresh|rename|replace|require|return|rework|save|send|show|support|test|update|validat|verif)(?:e?s?|ed|es|ing|ied)?\b|(?:추가|수정|삭제|구현|문서화|리팩터링|지원|방지|유지|개선|변경|테스트|허용|표시|보장|보여줍니다)|\b(?:documentar|agregar|añadir|actualizar|mostrar|permitir|impedir|devolver|mantener)\b/i;
 const PR_META_PURPOSE_PATTERN =
@@ -232,7 +232,6 @@ function canonicalSelectedSource(input: CanonicalSelectedSourceInputV1): Canonic
     .filter((candidate) => candidate.text.trim().length > 12)
     .filter((candidate) => !isPrBody || (
       !isPurePrEvidenceInventory(candidate.text) &&
-      !AUTHOR_EVIDENCE_SECTION_PATTERN.test(candidate.sourceSection ?? "") &&
       isEligibleUnlinkedPrObjective({ text: normalizeSourceLine(candidate.text), source: "pr_description", role: "author_claim", sourceQuality: "author_claim", sourceSection: candidate.sourceSection })
     ))
     .filter((candidate) => isPrBody || !isVagueRequirementLine(normalizeSourceLine(candidate.text), /acceptance criteria|must|required|given|when|then/i.test(cleanRequirementSourceText(sourceText))));
@@ -811,8 +810,7 @@ function selectSpanCandidates(candidates: SpanCandidate[], isPrBody: boolean): S
   if (isPrBody) {
     return candidates
       .filter((candidate) => candidate.role === "author_claim")
-      .filter((candidate) => !isPurePrEvidenceInventory(candidate.text))
-      .filter((candidate) => !AUTHOR_EVIDENCE_SECTION_PATTERN.test(candidate.sourceSection ?? ""));
+      .filter((candidate) => !isPurePrEvidenceInventory(candidate.text));
   }
 
   const core = candidates.filter((candidate) => candidate.role === "core_requirement");
@@ -1058,7 +1056,23 @@ function isEligibleUnlinkedPrObjective(line: ClassifiedRequirementLine): boolean
   if (isEvaluationContextLine(line)) return false;
   if (PR_META_PURPOSE_PATTERN.test(line.text)) return false;
   if (ACCEPTANCE_SECTION_PATTERN.test(line.sourceSection ?? "")) return true;
-  return PR_OBJECTIVE_ACTION_PATTERN.test(line.text);
+  return PR_OBJECTIVE_ACTION_PATTERN.test(line.text) || /\breject\b/i.test(line.text);
+}
+
+function isSourceProcessNoise(line: string, section: string): boolean {
+  const text = line.replace(/^\[[ xX-]\]\s*/, "").replace(/[`*_]/g, "").trim();
+  if (/^`@[^`]+`\s+(?:will|can)\b/i.test(line) && !/\b(?:must|should|shall|add|implement|change|fix|added|implemented|changed|fixed)\b/i.test(text)) return true;
+  // Preserve mixed prose and observable acceptance behavior, even in test sections.
+  if (PR_PRODUCT_BEHAVIOR_PATTERN.test(text) || /\b(?:must|should|shall|added|implemented|fixed|updated|created|changed|removed|rejected)\b/i.test(text)) return false;
+  if (/^(?:@\S+\s+(?:rebase|retry|rebuild|merge|ignore|refresh)\b|(?:you can|to\b).+\bcomment(?:ing)?\b.+@\S+)/i.test(text)) return true;
+  if (/^(?:(?:i|we)\s+)?(?:ran|executed)\b.+\b(?:tests?|pytest|jest|vitest|npm|pnpm|yarn|build|lint|typecheck)\b/i.test(text)) return true;
+  if (/^(?:tested|verified|validated)(?:\s+locally)?\s+(?:with|using|via|by running)\b/i.test(text)) return true;
+  if (/^(?:the\s+)?[^.!?]*\bcommand\s+(?:was|has been)\s+(?:also\s+)?(?:attempted|run|executed)\b/i.test(text)) return true;
+  if (AUTHOR_EVIDENCE_SECTION_PATTERN.test(section) && /^(?:on|in)\b.+\b(?:reports?|encounters?|produces?)\b.+\b(?:error|failure)\b/i.test(text)) return true;
+  if (/^(?:all\s+)?(?:\d+\s+)?(?:(?:unit|integration|regression|end-to-end|e2e|smoke)\s+)?(?:tests?|test suites?|checks?|build|lint|typecheck)(?:\s*:\s*|\s+)(?:\d+\s+)?(?:(?:have|has)\s+)?(?:passed|failed|succeeded|completed)\b/i.test(text)) return true;
+  if (/^(?:(?:단위|통합|회귀|전체)\s+)?테스트(?:를|는|가)?\s*(?:실행(?:했고|했으며|하여|한 결과)\s*)?(?:모두\s*)?(?:통과|성공|실패)(?:했습니다|했다|했음)[.!]?$/.test(text)) return true;
+  const command = /^(?:npm|pnpm|yarn|bun|pytest|jest|vitest|tsc|cargo|go|make)\b/i.test(text);
+  return command && (AUTHOR_EVIDENCE_SECTION_PATTERN.test(section) || /\b(?:passed|failed|succeeded|completed|exit code\s*0)\b/i.test(text));
 }
 
 function isPurePrEvidenceInventory(text: string): boolean {
@@ -1203,7 +1217,8 @@ function classifyLineRole(
   const normalized = normalizeSection(line);
   const sectionText = section ?? "";
 
-  if (isIssueTemplateNoiseLine(line) || TEMPLATE_SECTION_PATTERN.test(sectionText) || CHECKBOX_ONLY_PATTERN.test(line)) {
+  if (isIssueTemplateNoiseLine(line) || TEMPLATE_SECTION_PATTERN.test(sectionText) || CHECKBOX_ONLY_PATTERN.test(line) ||
+    /^\s*\[!\[[^\]]*\]\([^)]+\)\]\([^)]+\)\s*$/.test(line) || isSourceProcessNoise(line, sectionText)) {
     return "template_noise";
   }
 

@@ -4,6 +4,7 @@ import {
   buildGeneralPrSemanticEvidenceJsonSchemaV1,
   GENERAL_PR_SEMANTIC_PROPOSAL_MAX_OUTPUT_BYTES,
   hashGeneralPrSemanticInvocationReceiptV3,
+  getGeneralPrUnionMemberCandidatesV1,
   mergeGeneralPrSemanticStageCandidatesV1,
   validateGeneralPrSemanticClaimCandidateV2,
   validateGeneralPrSemanticEvidenceCandidateV1
@@ -117,6 +118,58 @@ function rehashEvidenceSelection(selection: GeneralPrSemanticEvidenceSelectionV1
 }
 
 describe("GeneralPr split semantic stage contracts", () => {
+  it("retains source-bound union candidates only on registered, unchanged merged proposals", () => {
+    const request = stageInput({ taskText: "Type `Result` includes `undefined`; its qualified name is `API.Result`." });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, seed);
+    const roles = claimCandidate(selection, ["Type `Result`"]);
+    const spanId = roles.spanRoles.find(role => role.role === "objective_candidate")!.spanId;
+    const candidate = { spanId, aliasName: "API.Result", member: "undefined" as const };
+    const claim = validateGeneralPrSemanticClaimCandidateV2({ ...roles, unionMemberCandidates: [candidate] }, seed, selection);
+    expect(claim.valid).toBe(true);
+    const evidence = validateGeneralPrSemanticEvidenceCandidateV1({ testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] }, seed, claim, selectedEvidence(request, seed, selection, roles));
+    expect(evidence.valid).toBe(true);
+    for (const stage of [null, evidence]) {
+      const merged = mergeGeneralPrSemanticStageCandidatesV1(seed, claim, stage);
+      expect(merged.valid).toBe(true);
+      if (!merged.valid) throw new Error("merge must succeed");
+      const candidates = getGeneralPrUnionMemberCandidatesV1(merged.proposal, seed.seedHash);
+      expect(candidates).toEqual([candidate]);
+      expect(Object.isFrozen(candidates)).toBe(true);
+      expect(Object.isFrozen(candidates[0])).toBe(true);
+      expect(JSON.stringify(merged.proposal)).not.toMatch(/unionMemberCandidates|API\.Result|aliasName/);
+      expect(getGeneralPrUnionMemberCandidatesV1(structuredClone(merged.proposal), seed.seedHash)).toEqual([]);
+      expect(getGeneralPrUnionMemberCandidatesV1(merged.proposal, "0".repeat(64))).toEqual([]);
+      merged.proposal.spanRoles[spanId].role = "supporting_context";
+      expect(getGeneralPrUnionMemberCandidatesV1(merged.proposal, seed.seedHash)).toEqual([]);
+    }
+    const legacy = validateGeneralPrSemanticClaimCandidateV2(roles, seed, selection);
+    expect(legacy.valid).toBe(true);
+    const mergedLegacy = mergeGeneralPrSemanticStageCandidatesV1(seed, legacy, null);
+    if (!mergedLegacy.valid) throw new Error("legacy merge must succeed");
+    expect(getGeneralPrUnionMemberCandidatesV1(mergedLegacy.proposal, seed.seedHash)).toEqual([]);
+  });
+
+  it("discards malformed or unbound union candidates without losing valid span roles", () => {
+    const request = stageInput({ title: "OtherResult undefinedValue", description: "Context: API.Result undefined", taskText: "Type `Result` includes `undefined`; its qualified name is `API.Result`." });
+    const seed = buildGeneralPrObservationSeedV2(request);
+    const selection = claimSelection(request, seed);
+    const roles = claimCandidate(selection, ["Type `Result`", "OtherResult"]);
+    const sourceSpan = selection.selectedSpans.find(span => span.text.startsWith("Type"))!;
+    const titleSpan = selection.selectedSpans.find(span => span.text === request.title)!;
+    const contextSpan = selection.selectedSpans.find(span => span.text === request.description)!;
+    const good = { spanId: sourceSpan.spanId, aliasName: "Result", member: "undefined" };
+    const read = (unionMemberCandidates: unknown) => {
+      const claim = validateGeneralPrSemanticClaimCandidateV2({ ...roles, unionMemberCandidates }, seed, selection);
+      expect(claim.valid).toBe(true);
+      const merged = mergeGeneralPrSemanticStageCandidatesV1(seed, claim, null);
+      if (!merged.valid) throw new Error("role classification must survive");
+      return getGeneralPrUnionMemberCandidatesV1(merged.proposal, seed.seedHash);
+    };
+    for (const value of [null, {}, new Array(1), Array(9).fill(good)]) expect(read(value)).toEqual([]);
+    for (const invalid of [{ ...good, spanId: "unknown" }, { ...good, spanId: titleSpan.spanId }, { ...good, spanId: contextSpan.spanId }, { ...good, aliasName: "Invented.Result" }, { ...good, aliasName: "a".repeat(201) }, { ...good, aliasName: "Result;" }, { ...good, member: "number" }, { ...good, member: "unsupported" }, { ...good, path: "src/types.ts" }]) expect(read([invalid])).toEqual([]);
+    expect(read([good, good, { ...good, member: "unsupported" }])).toEqual([good]);
+  });
   it("hashes every V3 invocation-receipt stage binding", () => {
     const receipt = {
       version: 3 as const,

@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import type { TypeScriptProjectCollector } from "./typescript-assignability-verification";
+import { attachOrdinaryRequirementOutcomes } from "./ordinary-requirement-outcomes";
+import { compileOrdinaryStaticPlans, projectOrdinaryStaticSummary, selectOrdinaryStaticLookup } from "./general-pr-static-types";
+import { compileOrdinaryDocumentationPlansWithDiagnostic, emptyOrdinaryDocumentationDiagnostic, projectOrdinaryDocumentationSummary, type OrdinaryDocumentationBlob, type OrdinaryDocumentationDiagnostic } from "./general-pr-documentation";
+import { readEnabledVerificationCapabilitiesV2 } from "./verification-capability-policy-v2";
 import { buildObjectiveEvidenceRelationLedgerV1, type RelationVerificationLevelV1 } from "./objective-evidence-relation-ledger";
 import { deriveGeneralPrAssessmentV1, summarizeGeneralPrAssessmentV1 } from "./general-pr-assessment";
 import { buildGeneralPrObservationSeedV2, validateGeneralPrObservationSeedV2 } from "./general-pr-observation-source";
@@ -12,7 +17,7 @@ import {
   type GeneralPrSemanticObserverRunResultV3,
   type GeneralPrFreshnessFailureV1
 } from "./general-pr-semantic-observer";
-import type { GeneralPrSemanticSelectionCoverageV1 } from "./general-pr-semantic-selection";
+import { isGeneralPrSemanticClaimSpanReservableV1, selectGeneralPrSemanticClaimSpansV1, type GeneralPrSemanticSelectionCoverageV1 } from "./general-pr-semantic-selection";
 import type { GeneralPrSemanticClaimInvalidReasonV2, GeneralPrSemanticEvidenceInvalidReasonV1, GeneralPrSemanticProposalV2 } from "./general-pr-semantic-proposal";
 import { evaluateScopeMappingObservationV2 } from "./scope-mapping-observation";
 import { evaluateTestCoverageObservationV2 } from "./test-coverage-observation";
@@ -94,6 +99,10 @@ export interface GeneralPrSemanticSelectionOmittedReasonCountsV1 {
 }
 
 export interface RunGeneralPrObservationNowOptionsV2 {
+  collectTypeScriptProject?: TypeScriptProjectCollector;
+  collectStaticArtifacts?: (paths: string[], headSha: string) => Promise<OrdinaryDocumentationBlob[]>;
+  collectScalarArtifacts?: (paths: string[], headSha: string) => Promise<OrdinaryDocumentationBlob[]>;
+  collectDocumentationArtifacts?: (paths: string[], headSha: string) => Promise<OrdinaryDocumentationBlob[]>;
   policy: GeneralPrAssessmentRuntimePolicyV1;
   input: PullRequestInput;
   generateReport: (input: PullRequestInput) => VerificationReport;
@@ -122,32 +131,63 @@ const UNCONFIGURED_MODEL_PROFILE: GeneralPrSemanticObserverModelProfileV2 = {
  */
 export async function runGeneralPrObservationNowV2(
   options: RunGeneralPrObservationNowOptionsV2
-): Promise<{ report: VerificationReport; bundle: GeneralPrObservationBundleV2 | null }> {
+): Promise<{ report: VerificationReport; bundle: GeneralPrObservationBundleV2 | null; ordinaryDocumentationDiagnostic: OrdinaryDocumentationDiagnostic }> {
+  // Reuse fetched exact-head blobs when both the observation and outcome need them.
+  const scoped = { ...options, collectDocumentationArtifacts: boundedOrdinaryArtifactCollector(options.collectDocumentationArtifacts), collectStaticArtifacts: boundedOrdinaryArtifactCollector(options.collectStaticArtifacts), collectScalarArtifacts: boundedOrdinaryArtifactCollector(options.collectScalarArtifacts) };
+  const result = await runGeneralPrObservations(scoped);
+  if (options.policy.assessmentProjection !== "advisory" || result.ordinaryDocumentationDiagnostic.state === "deterministic_report_invalid" || (result.report as VerificationReportV2).reportSchemaVersion !== "verification-report.v2") return result;
+  return { ...result, report: await attachOrdinaryRequirementOutcomes(options.input, result.report as VerificationReportV2, scoped) };
+}
+
+export function boundedOrdinaryArtifactCollector(collector: RunGeneralPrObservationNowOptionsV2["collectDocumentationArtifacts"]) {
+  const heads = new Map<string, Map<string, Promise<OrdinaryDocumentationBlob[]>>>();
+  return collector ? async (paths: string[], headSha: string) => {
+    const cache = heads.get(headSha) ?? new Map<string, Promise<OrdinaryDocumentationBlob[]>>();
+    heads.set(headSha, cache);
+    const requested = [...new Set(paths)];
+    const missing = requested.filter(path => !cache.has(path)).slice(0, Math.max(0, 8 - cache.size));
+    if (missing.length) {
+      const batch = Promise.resolve().then(() => collector(missing, headSha));
+      for (const path of missing) cache.set(path, batch.then(blobs => blobs.filter(blob => blob.path === path)));
+    }
+    return (await Promise.all(requested.flatMap(path => cache.has(path) ? [cache.get(path)!] : []))).flat();
+  } : undefined;
+}
+
+async function runGeneralPrObservations(
+  options: RunGeneralPrObservationNowOptionsV2
+): Promise<{ report: VerificationReport; bundle: GeneralPrObservationBundleV2 | null; ordinaryDocumentationDiagnostic: OrdinaryDocumentationDiagnostic }> {
   // The deterministic report is always the first and authoritative product output.
   const report = options.generateReport(options.input);
-  if (!options.validateDeterministicReport(options.input, report)) return { report, bundle: null };
-  if (options.policy.semanticObservation === "disabled") return { report, bundle: null };
+  const ordinaryDocumentationDiagnostic = emptyOrdinaryDocumentationDiagnostic("assessment_hidden");
+  const skipped = (state: OrdinaryDocumentationDiagnostic["state"]) => ({ report, bundle: null, ordinaryDocumentationDiagnostic: { ...ordinaryDocumentationDiagnostic, state } });
+  if (!options.validateDeterministicReport(options.input, report)) return skipped("deterministic_report_invalid");
+  if (options.policy.semanticObservation === "disabled") return skipped("observation_disabled");
   const seed = buildGeneralPrObservationSeedV2(options.input);
-  if (!validateGeneralPrObservationSeedV2(seed).valid) return { report, bundle: null };
+  if (!validateGeneralPrObservationSeedV2(seed).valid) return skipped("seed_invalid");
   if (!isGeneralPrSemanticObserverEligibleV2(options.input)) {
     const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "ineligible");
     return {
       report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
-      bundle
+      bundle,
+      ordinaryDocumentationDiagnostic: { ...ordinaryDocumentationDiagnostic, state: "observer_ineligible" }
     };
   }
   if (seed.parseState !== "complete") {
     const bundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "unavailable");
     return {
       report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
-      bundle
+      bundle,
+      ordinaryDocumentationDiagnostic: { ...ordinaryDocumentationDiagnostic, state: "parse_incomplete" }
     };
   }
   const deterministicBundle = finalizeDeterministicGeneralPrObservationsV2(seed, null, "disabled");
-  if (hasExplicitDeterministicObjective(deterministicBundle)) {
+  const needsStaticCandidates = options.policy.assessmentProjection === "advisory" && readEnabledVerificationCapabilitiesV2().has("typescript_union_member") && Boolean(options.collectStaticArtifacts) && selectOrdinaryStaticLookup(options.input).paths.length > 0;
+  if (hasExplicitDeterministicObjective(deterministicBundle) && !hasRemainingSemanticObjectiveMaterial(options.input, seed, deterministicBundle) && !needsStaticCandidates) {
     return {
-      report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, deterministicBundle) : report,
-      bundle: deterministicBundle
+      report: options.policy.assessmentProjection === "advisory" ? await attachDocumentationAssessment(options, attachGeneralPrAssessmentV1(report, seed, deterministicBundle), seed, deterministicBundle, ordinaryDocumentationDiagnostic) : report,
+      bundle: deterministicBundle,
+      ordinaryDocumentationDiagnostic
     };
   }
   let providerCallCount: GeneralPrSemanticProviderCallCountV1 = 0;
@@ -186,13 +226,54 @@ export async function runGeneralPrObservationNowV2(
     { evidenceInvalidReason: semantic.semanticEvidenceInvalidReason, freshnessFailure: semantic.semanticFreshnessFailure }
   );
   return {
-    report: options.policy.assessmentProjection === "advisory" ? attachGeneralPrAssessmentV1(report, seed, bundle) : report,
-    bundle
+    report: options.policy.assessmentProjection === "advisory" ? await attachStaticAssessment(options, await attachDocumentationAssessment(options, attachGeneralPrAssessmentV1(report, seed, bundle), seed, bundle, ordinaryDocumentationDiagnostic), seed, bundle, semantic.proposal) : report,
+    bundle,
+    ordinaryDocumentationDiagnostic
   };
+}
+
+async function attachDocumentationAssessment(options: RunGeneralPrObservationNowOptionsV2, report: VerificationReport, seed: ReturnType<typeof buildGeneralPrObservationSeedV2>, bundle: GeneralPrObservationBundleV2, diagnostic: OrdinaryDocumentationDiagnostic): Promise<VerificationReport> {
+  if ((report as VerificationReportV2).reportSchemaVersion !== "verification-report.v2") { diagnostic.state = "report_version_ineligible"; return report; }
+  if (!readEnabledVerificationCapabilitiesV2().has("documentation_literal")) { diagnostic.state = "capability_disabled"; return report; }
+  if (!options.collectDocumentationArtifacts) { diagnostic.state = "collector_unavailable"; return report; }
+  const compiled = compileOrdinaryDocumentationPlansWithDiagnostic(options.input, seed, bundle);
+  Object.assign(diagnostic, compiled.diagnostic);
+  const plans = compiled.plans;
+  if (!plans.length) return report;
+  let artifactBlobs: OrdinaryDocumentationBlob[] = [];
+  let collectionFailed = false;
+  try { artifactBlobs = await options.collectDocumentationArtifacts([...new Set(plans.map(plan => plan.path))], seed.headSha!); } catch { collectionFailed = true; /* Collection failure is unavailable, never absence. */ }
+  const ordinaryDocumentationSummary = projectOrdinaryDocumentationSummary({ input: options.input, plans, artifactBlobs });
+  diagnostic.state = collectionFailed ? "artifact_collection_failed" : ordinaryDocumentationSummary ? "evaluated" : "projection_unavailable";
+  for (const predicate of ordinaryDocumentationSummary?.predicates ?? []) diagnostic.predicateCounts[predicate.state] += 1;
+  return ordinaryDocumentationSummary ? { ...report, ordinaryDocumentationSummary } as VerificationReportV2 : report;
+}
+
+async function attachStaticAssessment(options: RunGeneralPrObservationNowOptionsV2, report: VerificationReport, seed: ReturnType<typeof buildGeneralPrObservationSeedV2>, bundle: GeneralPrObservationBundleV2, proposal: GeneralPrSemanticProposalV2 | null): Promise<VerificationReport> {
+  if ((report as VerificationReportV2).reportSchemaVersion !== "verification-report.v2" || !readEnabledVerificationCapabilitiesV2().has("typescript_union_member") || !options.collectStaticArtifacts) return report;
+  const plans = compileOrdinaryStaticPlans(options.input, seed, bundle, proposal);
+  const lookup = selectOrdinaryStaticLookup(options.input);
+  if (!plans.length || !lookup.paths.length) return report;
+  let artifactBlobs: OrdinaryDocumentationBlob[] = [];
+  try { artifactBlobs = await options.collectStaticArtifacts(lookup.paths, seed.headSha!); } catch { /* Failed lookup is unavailable, never absent. */ }
+  const ordinaryStaticSummary = await projectOrdinaryStaticSummary({ input: options.input, plans, artifactBlobs });
+  return ordinaryStaticSummary ? { ...report, ordinaryStaticSummary } as VerificationReportV2 : report;
 }
 
 function hasExplicitDeterministicObjective(bundle: GeneralPrObservationBundleV2): boolean {
   return bundle.objectives.some((objective) => objective.admissionBasis === "explicit_structure");
+}
+
+function hasRemainingSemanticObjectiveMaterial(input: PullRequestInput, seed: ReturnType<typeof buildGeneralPrObservationSeedV2>, bundle: GeneralPrObservationBundleV2): boolean {
+  const selected = selectGeneralPrSemanticClaimSpansV1({ pullRequest: input, seed });
+  if (!selected.ok) return false;
+  const admitted = new Set(bundle.objectives.flatMap(objective => objective.sourceSpanIds));
+  const sources = new Map(seed.sources.map(source => [source.id, source]));
+  const hasPrimary = seed.spans.some(span => admitted.has(span.id) && sources.get(span.sourceUnitId)?.admissionTier === "primary");
+  return seed.spans.some(span => {
+    const source = sources.get(span.sourceUnitId);
+    return source && source.admissionTier !== "context" && (!hasPrimary || source.admissionTier === "primary") && selected.selection.selectedSpanIds.includes(span.id) && !admitted.has(span.id) && isGeneralPrSemanticClaimSpanReservableV1(source, span);
+  });
 }
 
 function nextProviderCallCount(value: GeneralPrSemanticProviderCallCountV1): GeneralPrSemanticProviderCallCountV1 {
@@ -447,12 +528,12 @@ function selectAdmittedObjectives(
   deterministic: ObjectiveCandidate[],
   semantic: ObjectiveCandidate[]
 ): GeneralPrObservationBundleV2["objectives"] {
-  const firstAvailable = [
-    deterministic.filter((candidate) => candidate.admissionTier === "primary"),
-    semantic.filter((candidate) => candidate.admissionTier === "primary"),
-    deterministic.filter((candidate) => candidate.admissionTier === "fallback"),
-    semantic.filter((candidate) => candidate.admissionTier === "fallback")
-  ].find((candidates) => candidates.length > 0) ?? [];
+  const firstAvailable = (["primary", "fallback"] as const).map(tier => {
+    const explicit = deterministic.filter(candidate => candidate.admissionTier === tier);
+    const explicitSpans = new Set(explicit.flatMap(candidate => candidate.sourceSpanIds));
+    // Explicit source bindings stay observed; a model cannot replace or duplicate them.
+    return [...explicit, ...semantic.filter(candidate => candidate.admissionTier === tier && !candidate.sourceSpanIds.some(id => explicitSpans.has(id)))];
+  }).find(candidates => candidates.length > 0) ?? [];
   return firstAvailable.map(({ admissionTier: _admissionTier, ...objective }) => objective);
 }
 
@@ -478,7 +559,7 @@ function buildDiagnostics(input: {
   const deterministicAdmission: GeneralPrAssessmentDiagnosticsV1["deterministicAdmission"] = input.deterministicCandidates > 0
     ? "admitted"
     : input.eligibleSpans === 0 && input.seed.sources.length > 0 ? "context_only" : "no_candidate";
-  const semanticAdmission: GeneralPrAssessmentDiagnosticsV1["semanticAdmission"] = deterministicSelected
+  const semanticAdmission: GeneralPrAssessmentDiagnosticsV1["semanticAdmission"] = deterministicSelected && !semanticAdmitted
     ? "not_needed"
     : input.seed.parseState !== "complete" || input.eligibleSpans === 0
       ? "ineligible"

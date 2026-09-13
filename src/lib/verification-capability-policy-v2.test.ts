@@ -24,7 +24,9 @@ describe("readEnabledVerificationCapabilitiesV2", () => {
     expect(isReleasedVerificationCapabilityV2("path_change_absence")).toBe(true);
   });
 
-  it("limits new general-PR plans to documentation literals without narrowing typed V2 contracts", () => {
+  it("limits general-PR plans to documentation and direct union membership without enabling path absence", () => {
+    expect(readEnabledVerificationCapabilitiesV2("typescript_union_member")).toEqual(new Set(["typescript_union_member"]));
+    expect(isGeneralPrExecutableCapabilityV2("typescript_union_member")).toBe(true);
     expect(isGeneralPrExecutableCapabilityV2("documentation_literal")).toBe(true);
     expect(isGeneralPrExecutableCapabilityV2("path_change_absence")).toBe(false);
     expect(isGeneralPrExecutableCapabilityV2("test_case")).toBe(false);

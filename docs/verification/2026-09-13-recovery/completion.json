@@ -1,0 +1,199 @@
+{
+  "schemaVersion": "agentproof_recovery_completion.v1",
+  "completedAtUtc": "2026-09-13 15:43:59 UTC",
+  "status": "runtime_restored_verified_and_same_corpus_model_comparison_completed_with_documented_recovery_limits",
+  "worktree": "/Users/jeonggyuju/Project_folder/AgentProof/.worktrees/agentproof-recovery-20260913",
+  "branch": "codex/recover-bounded-target-20260913",
+  "baseCommit": "946bf17b1b200017e6763ec7ba3cbc8615958399",
+  "recoveredFiles": 82,
+  "exactHistoricalHashAnchors": 15,
+  "originalArtifactHashMatches": 10,
+  "sourceFreeze": {
+    "sourceFiles": 485,
+    "sourceAggregateSha256": "007d878504213357845f999792badc886796bbd3c81b3ca3ad67d7f647067469",
+    "corpusFileSha256": "7f946a8b94cd830d65d329d34637826ed80ebf4afc1fe8c0c7d9979c986d7184",
+    "dryRunFileSha256": "136dea37ac56aa401411e49cee0b99d809316ead9209b6f311f4c9c1fe6cbe91",
+    "corpusHash": "2637837a8d1999c4d2bf3892aff05b95de5b214c43346d7a7323de66890df324",
+    "labelProvenanceHash": "14524134277bf7fe2a65853761194b094f57e4cb7d7ea7ff675d65deadd035e6",
+    "modelProfileHash": "0bc5152ae43d140d85bf3b4ef5f3037cedb628b94c2b07a0fa7c481b95a7b9e1",
+    "configuredModel": "gpt-5.6-luna",
+    "selectionPolicyVersion": "general-pr-claim-evidence-selection.v2",
+    "evaluationPolicyVersion": "requirement-source-content-coverage.v1"
+  },
+  "verification": {
+    "fullSuite": {
+      "command": "pnpm test --maxWorkers=1",
+      "exitCode": 1,
+      "testFiles": {
+        "total": 207,
+        "passed": 199,
+        "failed": 5,
+        "skipped": 3
+      },
+      "tests": {
+        "passed": 2755,
+        "failed": 5,
+        "skipped": 66
+      },
+      "durationSeconds": 69.13,
+      "failures": [
+        "src/app/api/analyze/route.test.ts",
+        "src/lib/dashboard-report-export.test.ts",
+        "src/lib/markdown.test.ts",
+        "src/lib/slack.test.ts",
+        "src/lib/requirement-presentation-v2.test.ts"
+      ]
+    },
+    "focusedFailureClosure": {
+      "testFiles": 6,
+      "passed": 75,
+      "failed": 0,
+      "exitCode": 0,
+      "note": "After restoring missing documentation diagnostics and reconstructing four compatibility copy lines; original test expectations unchanged. Full suite not repeated."
+    },
+    "typecheck": {
+      "exitCode": 0
+    },
+    "build": {
+      "exitCode": 0,
+      "staticPages": 56,
+      "eslintSkipped": true
+    },
+    "frozenSourceValidation": {
+      "testCases": 12,
+      "sourceCases": 22,
+      "scoreSentinels": 11,
+      "exitCode": 0
+    },
+    "offlineCli": {
+      "exitCode": 0,
+      "caseCount": 14,
+      "labelCount": 44,
+      "apiCalls": 0
+    },
+    "liveCli": {
+      "exitCode": 0,
+      "apiCalls": 28,
+      "validOutputs": 28,
+      "http200": 28,
+      "configuredModel": "gpt-5.6-luna",
+      "retries": 0,
+      "durationSeconds": 122.26
+    },
+    "independentComparison": {
+      "exitCode": 0,
+      "rowsChecked": 132,
+      "inputsAndRequestsUnchanged": true
+    },
+    "diffCheck": {
+      "exitCode": 0
+    }
+  },
+  "modelResults": {
+    "before": {
+      "A": {
+        "exactPreserved": 6,
+        "contentPreserved": 6,
+        "required": 15,
+        "nonRequirementPromoted": 5,
+        "nonRequirement": 20,
+        "ambiguousPromoted": 0,
+        "ambiguous": 9
+      },
+      "B": {
+        "exactPreserved": 13,
+        "contentPreserved": 13,
+        "required": 15,
+        "nonRequirementPromoted": 1,
+        "nonRequirement": 20,
+        "ambiguousPromoted": 1,
+        "ambiguous": 9
+      },
+      "C": {
+        "exactPreserved": 13,
+        "contentPreserved": 14,
+        "required": 15,
+        "nonRequirementPromoted": 0,
+        "nonRequirement": 20,
+        "ambiguousPromoted": 2,
+        "ambiguous": 9
+      }
+    },
+    "after": {
+      "A": {
+        "exactPreserved": 6,
+        "contentPreserved": 6,
+        "required": 15,
+        "nonRequirementPromoted": 5,
+        "nonRequirement": 20,
+        "ambiguousPromoted": 0,
+        "ambiguous": 9,
+        "states": {
+          "valid": 14
+        },
+        "httpStatuses": [
+          null
+        ],
+        "models": [
+          null
+        ],
+        "totalTokens": 0,
+        "missingUsage": 14,
+        "medianLatencyMs": null
+      },
+      "B": {
+        "exactPreserved": 14,
+        "contentPreserved": 14,
+        "required": 15,
+        "nonRequirementPromoted": 1,
+        "nonRequirement": 20,
+        "ambiguousPromoted": 2,
+        "ambiguous": 9,
+        "states": {
+          "valid": 14
+        },
+        "httpStatuses": [
+          200
+        ],
+        "models": [
+          "gpt-5.6-luna"
+        ],
+        "totalTokens": 22838,
+        "missingUsage": 0,
+        "medianLatencyMs": 3203
+      },
+      "C": {
+        "exactPreserved": 14,
+        "contentPreserved": 15,
+        "required": 15,
+        "nonRequirementPromoted": 1,
+        "nonRequirement": 20,
+        "ambiguousPromoted": 2,
+        "ambiguous": 9,
+        "states": {
+          "valid": 14
+        },
+        "httpStatuses": [
+          200
+        ],
+        "models": [
+          "gpt-5.6-luna"
+        ],
+        "totalTokens": 58978,
+        "missingUsage": 0,
+        "medianLatencyMs": 4069
+      }
+    },
+    "contextToBaselineTokenRatio": 2.582450302128032,
+    "unselectedNonRequirementLabelsPerModelArm": 6,
+    "billingAmount": null
+  },
+  "recoveryLimits": [
+    "Some type/import declarations reconstructed from preserved uses and existing definitions, not claimed byte-identical.",
+    "Four observation-label return strings reconstructed for baseline compatibility from existing code/tests and the historical final passing suite; latest original helper text unavailable.",
+    "Historical added tests in general-pr-observation-service.test.ts and one mixed diagnostics addition in smoke-analyze-pr-url.test.mjs lack exact surviving source; baseline tests preserved.",
+    "Original raw previous live-result.json not recovered; preserved rescored 132 rows used for historical comparison.",
+    "Not a re-deployment, live GitHub end-to-end accuracy check, or product fulfillment validation. No product model switch, commit, push, or main source overwrite."
+  ],
+  "interpretation": "Candidate coverage repaired on this fixed corpus. C preserves one more required content unit than B but has the same negative and ambiguous promotion counts and costs 2.58x tokens. Do not automatically adopt C; broader independently labeled evaluation would require a separate task."
+}

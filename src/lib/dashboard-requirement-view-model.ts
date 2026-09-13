@@ -101,7 +101,7 @@ export function toDashboardRequirementViewModels({ report, requirements = [], se
       coverageStatus: requirement.evidenceStatus ?? requirement.status,
       coverageHeading: presentation || verificationContract ? "Observed evidence" : "Evidence coverage",
       coverageLabel: presentation?.observationLabel ?? toRequirementCoverageLabel(requirement.evidenceStatus ?? requirement.status),
-      coverageMeaning: toCoverageMeaning(presentation?.observedEvidence ?? requirement.evidenceStatus ?? requirement.status),
+      coverageMeaning: v2Report?.ordinaryRequirementOutcomes ? "These are artifact and evidence-axis observations, not a requirement-fulfillment verdict." : toCoverageMeaning(presentation?.observedEvidence ?? requirement.evidenceStatus ?? requirement.status),
       ...(presentation
         ? {
             outcomeLabel: presentation.outcomeLabel,
@@ -112,7 +112,7 @@ export function toDashboardRequirementViewModels({ report, requirements = [], se
         : strictContractOutcomePresentation(requirement.status, verificationContract)),
       ...(requirement.sourceAuthority === "pr_description" ? {
         sourceAuthorityLabel: "PR description",
-        sourceAuthorityMeaning: "Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation."
+        sourceAuthorityMeaning: v2Report?.ordinaryRequirementOutcomes ? "The objective comes from the PR description and needs reviewer confirmation; observations do not establish its authority." : "Evidence is supported, but the objective comes from the PR description and needs reviewer confirmation."
       } : {}),
       evidenceRefs: requirement.evidenceRefs,
       proofEvidence: unique(requirement.proofAxes?.flatMap((axis) => {

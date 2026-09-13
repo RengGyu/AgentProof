@@ -1,0 +1,242 @@
+{
+  "schemaVersion": "content_coverage_supervisor_sentinels.v1",
+  "provenance": "Literal expectations defined by supervisor before implementation results; UTF-16 coordinates and only whitespace exclusion.",
+  "cases": [
+    {
+      "id": "newline_gap",
+      "text": "A\nB",
+      "roles": [
+        [
+          0,
+          1,
+          "objective_candidate"
+        ],
+        [
+          2,
+          3,
+          "objective_candidate"
+        ]
+      ],
+      "want": {
+        "prediction": "requirement",
+        "selectedCharacters": 2,
+        "objectiveCharacters": 2,
+        "labelCharacters": 2,
+        "legacy": "partial"
+      }
+    },
+    {
+      "id": "missing_negation",
+      "text": "do not send",
+      "roles": [
+        [
+          0,
+          2,
+          "objective_candidate"
+        ],
+        [
+          7,
+          11,
+          "objective_candidate"
+        ]
+      ],
+      "want": {
+        "prediction": "partial",
+        "selectedCharacters": 6,
+        "objectiveCharacters": 6,
+        "labelCharacters": 9,
+        "legacy": "partial"
+      }
+    },
+    {
+      "id": "missing_operator",
+      "text": "a<=b",
+      "roles": [
+        [
+          0,
+          1,
+          "objective_candidate"
+        ],
+        [
+          2,
+          4,
+          "objective_candidate"
+        ]
+      ],
+      "want": {
+        "prediction": "partial",
+        "selectedCharacters": 3,
+        "objectiveCharacters": 3,
+        "labelCharacters": 4,
+        "legacy": "partial"
+      }
+    },
+    {
+      "id": "whitespace_only",
+      "text": " \n\t",
+      "roles": [
+        [
+          0,
+          3,
+          "objective_candidate"
+        ]
+      ],
+      "want": {
+        "prediction": "not_evaluable",
+        "selectedCharacters": 0,
+        "objectiveCharacters": 0,
+        "labelCharacters": 0,
+        "selectionState": "empty",
+        "selectedFraction": null
+      }
+    },
+    {
+      "id": "mixed_roles",
+      "text": "A B",
+      "roles": [
+        [
+          0,
+          1,
+          "objective_candidate"
+        ],
+        [
+          2,
+          3,
+          "supporting_context"
+        ]
+      ],
+      "want": {
+        "prediction": "ambiguous",
+        "selectedCharacters": 2,
+        "objectiveCharacters": 1,
+        "labelCharacters": 2,
+        "legacy": "partial"
+      }
+    },
+    {
+      "id": "unicode_utf16",
+      "text": "가\n🙂",
+      "roles": [
+        [
+          0,
+          1,
+          "objective_candidate"
+        ],
+        [
+          2,
+          4,
+          "objective_candidate"
+        ]
+      ],
+      "want": {
+        "prediction": "requirement",
+        "selectedCharacters": 3,
+        "objectiveCharacters": 3,
+        "labelCharacters": 3,
+        "legacy": "partial"
+      }
+    },
+    {
+      "id": "overlap_union",
+      "text": "ABCD",
+      "roles": [
+        [
+          0,
+          3,
+          "objective_candidate"
+        ],
+        [
+          1,
+          4,
+          "objective_candidate"
+        ]
+      ],
+      "want": {
+        "prediction": "requirement",
+        "selectedCharacters": 4,
+        "objectiveCharacters": 4,
+        "labelCharacters": 4,
+        "legacy": "requirement"
+      }
+    },
+    {
+      "id": "invalid_with_selection",
+      "text": "AB",
+      "roles": [],
+      "selected": [
+        [
+          0,
+          2
+        ]
+      ],
+      "state": "invalid",
+      "want": {
+        "prediction": "invalid",
+        "selectedCharacters": 2,
+        "objectiveCharacters": 0,
+        "labelCharacters": 2,
+        "selectionState": "full",
+        "legacy": "invalid"
+      }
+    },
+    {
+      "id": "unavailable_with_selection",
+      "text": "AB",
+      "roles": [],
+      "selected": [
+        [
+          0,
+          2
+        ]
+      ],
+      "state": "unavailable",
+      "want": {
+        "prediction": "unavailable",
+        "selectedCharacters": 2,
+        "objectiveCharacters": 0,
+        "labelCharacters": 2,
+        "selectionState": "full",
+        "legacy": "unavailable"
+      }
+    },
+    {
+      "id": "not_run_with_selection",
+      "text": "AB",
+      "roles": [],
+      "selected": [
+        [
+          0,
+          2
+        ]
+      ],
+      "state": "not_run",
+      "want": {
+        "prediction": "not_run",
+        "selectedCharacters": 2,
+        "objectiveCharacters": 0,
+        "labelCharacters": 2,
+        "selectionState": "full",
+        "legacy": "not_run"
+      }
+    },
+    {
+      "id": "source_identity",
+      "text": "AB",
+      "roles": [
+        [
+          0,
+          2,
+          "objective_candidate",
+          "linked_issue"
+        ]
+      ],
+      "want": {
+        "prediction": "omitted",
+        "selectedCharacters": 0,
+        "objectiveCharacters": 0,
+        "labelCharacters": 2,
+        "legacy": "omitted"
+      }
+    }
+  ]
+}

@@ -1,10 +1,17 @@
-import { createPublicKey, verify } from "node:crypto";
+import { createPublicKey, sign, verify, type KeyObject } from "node:crypto";
 import type { ReturnValueCaseV2, ReturnValueCriterionV2 } from "./verification-contract-v2";
 
 const MAX_RESULT_BYTES = 64 * 1024;
 const HASH = /^[a-f0-9]{64}$/;
 
 type Scalar = string | number | boolean | null;
+// Helper-only adapter: deliberately not added to the release contract schema.
+export interface StandaloneScalarCriterion {
+  id: string;
+  adapter: { id: "quickjs_standalone_scalar.v1"; modulePath: string; functionName: string };
+  cases: ReturnValueCaseV2[];
+}
+type ExecutionCriterion = ReturnValueCriterionV2 | StandaloneScalarCriterion;
 type TargetErrorCodeV2 = "symbol_missing" | "syntax_error" | "threw" | "timeout" | "process_exit" | "non_scalar";
 type EnvironmentUnavailableCodeV2 = "dependency_missing" | "loader_incompatible" | "executor_runtime_missing";
 
@@ -13,7 +20,7 @@ export interface VerificationExecutionRequestV2 {
   bindingDigest: string;
   criteria: Array<{
     criterionId: string;
-    adapter: ReturnValueCriterionV2["adapter"];
+    adapter: ExecutionCriterion["adapter"];
     cases: ReturnValueCaseV2[];
   }>;
 }
@@ -32,7 +39,7 @@ export interface AttestedVerificationExecutionResultV2 {
   bindingDigest: string;
   results: Array<{
     criterionId: string;
-    adapterId: ReturnValueCriterionV2["adapter"]["id"];
+    adapterId: ExecutionCriterion["adapter"]["id"];
     cases: Array<{ id: string; outcome: ReturnValueObservationV2 }>;
   }>;
   signature: string;
@@ -40,7 +47,7 @@ export interface AttestedVerificationExecutionResultV2 {
 
 export function buildVerificationExecutionRequestV2(
   bindingDigest: string,
-  criterion: ReturnValueCriterionV2
+  criterion: ExecutionCriterion
 ): VerificationExecutionRequestV2 {
   if (!HASH.test(bindingDigest)) throw new Error("verification execution binding must be a SHA-256 digest");
   return {
@@ -95,7 +102,7 @@ export function validateAttestedExecutionResultV2(
 
 /** Server-owned comparison of signed actual observations to approved cases. */
 export function evaluateReturnValueCriterionV2(
-  criterion: ReturnValueCriterionV2,
+  criterion: ExecutionCriterion,
   result: AttestedVerificationExecutionResultV2 | undefined
 ): { state: "satisfied" | "violated" | "unavailable"; evidenceRefs: string[]; gapKinds: string[] } {
   const observed = result?.results.find((item) => item.criterionId === criterion.id && item.adapterId === criterion.adapter.id);
@@ -119,6 +126,11 @@ export function evaluateReturnValueCriterionV2(
   }
 
   return { state: "violated", evidenceRefs: [], gapKinds: ["missing_execution"] };
+}
+
+/** Called by the trusted host, never with target-authored envelopes. */
+export function signExecutionObservationV2(payload: Omit<AttestedVerificationExecutionResultV2, "signature">, privateKey: KeyObject): AttestedVerificationExecutionResultV2 {
+  return { ...payload, signature: sign(null, Buffer.from(stableJson(payload), "utf8"), privateKey).toString("base64") };
 }
 
 function isReturnValueObservation(value: unknown): value is ReturnValueObservationV2 {

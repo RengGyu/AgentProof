@@ -1,8 +1,10 @@
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
+import { isOrdinaryDocumentationSummary } from "@/lib/general-pr-documentation-presentation";
+import { isOrdinaryStaticSummary } from "@/lib/general-pr-static-types-presentation";
 import { redactSecrets } from "@/lib/redact";
 import { createSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
-import type { VerificationReport } from "@/lib/types";
+import type { VerificationReport, VerificationReportV2 } from "@/lib/types";
 
 const MAX_REPORT_REQUEST_BYTES = 1_000_000;
 
@@ -26,9 +28,24 @@ export async function POST(request: Request) {
     return noStoreJson({ error: "report is required." }, { status: 400 });
   }
 
+  const summaryOnly = isSummaryOnlyReport(body.report);
+  let validationReport = body.report;
+  if (!summaryOnly) {
+    const { ordinaryDocumentationSummary, ordinaryStaticSummary, ...fullReport } = body.report as VerificationReportV2;
+    if (ordinaryDocumentationSummary !== undefined || ordinaryStaticSummary !== undefined) {
+      if (fullReport.reportSchemaVersion !== "verification-report.v2" ||
+        (ordinaryDocumentationSummary !== undefined && !isOrdinaryDocumentationSummary(ordinaryDocumentationSummary)) ||
+        (ordinaryStaticSummary !== undefined && !isOrdinaryStaticSummary(ordinaryStaticSummary))) {
+        return noStoreJson({ error: "Report failed validation.", details: ["Invalid scoped summary import."] }, { status: 422 });
+      }
+      // These are imported summary data, not caller-supplied verification authority.
+      // Keep every other full-report field subject to the existing inbound gate.
+      validationReport = fullReport;
+    }
+  }
   const validation = validateRuntimeReportBoundary({
-    boundary: isSummaryOnlyReport(body.report) ? "signed_summary_read" : "inbound_untrusted_full",
-    report: body.report
+    boundary: summaryOnly ? "signed_summary_read" : "inbound_untrusted_full",
+    report: validationReport
   });
   if (!validation.valid) {
     return noStoreJson({ error: "Report failed validation.", details: validation.errors.map(redactSecrets) }, { status: 422 });

@@ -1,0 +1,12 @@
+{
+  "sourceFiles": 485,
+  "sourceAggregateSha256": "007d878504213357845f999792badc886796bbd3c81b3ca3ad67d7f647067469",
+  "corpusFileSha256": "7f946a8b94cd830d65d329d34637826ed80ebf4afc1fe8c0c7d9979c986d7184",
+  "dryRunFileSha256": "136dea37ac56aa401411e49cee0b99d809316ead9209b6f311f4c9c1fe6cbe91",
+  "corpusHash": "2637837a8d1999c4d2bf3892aff05b95de5b214c43346d7a7323de66890df324",
+  "labelProvenanceHash": "14524134277bf7fe2a65853761194b094f57e4cb7d7ea7ff675d65deadd035e6",
+  "modelProfileHash": "0bc5152ae43d140d85bf3b4ef5f3037cedb628b94c2b07a0fa7c481b95a7b9e1",
+  "configuredModel": "gpt-5.6-luna",
+  "selectionPolicyVersion": "general-pr-claim-evidence-selection.v2",
+  "evaluationPolicyVersion": "requirement-source-content-coverage.v1"
+}

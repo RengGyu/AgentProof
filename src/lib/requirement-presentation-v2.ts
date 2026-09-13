@@ -1,5 +1,6 @@
 import type { RequirementStatus, VerificationReport, VerificationReportV2 } from "./types";
 import type { VerificationContractStateV2 } from "./verification-contract-v2";
+import { ordinaryRequirementStatus } from "./ordinary-requirement-outcome-contract";
 
 export interface RequirementPresentationV2 {
   requirementId: string;
@@ -31,6 +32,16 @@ export function deriveRequirementPresentationV2(
 ): RequirementPresentationV2 {
   const requirement = report.requirements.find((item) => item.requirementId === requirementId);
   if (!requirement) throw new Error(`Unknown requirement presentation: ${requirementId}`);
+
+  const ordinary = report.ordinaryRequirementOutcomes?.requirements.find(row => row.requirementId === requirementId);
+  if (ordinary) {
+    const outcome = ordinaryRequirementStatus(ordinary);
+    const evidenceVisibility = evidenceVisibilityFor(report, requirement.evidenceRefs.length);
+    return { requirementId, outcome, observedEvidence: requirement.evidenceStatus ?? "unclear", evidenceVisibility, evidenceVisibilityLabel: evidenceVisibilityLabel(evidenceVisibility), authority: ordinary.authority,
+      outcomeLabel: outcome === "met" ? "Fulfilled — explicit source requirement" : outcome === "missing" ? "Violated — explicit source requirement" : outcome === "partial" ? "Partially supported — author claim needs confirmation" : "Unavailable — source requirement not verified",
+      outcomeBasis: ordinary.interpretation === "unavailable" ? "The whole original obligation could not be translated into a supported deterministic criterion." : outcome === "unclear" ? "The source criterion is explicit, but its exact-head evidence is unavailable." : "A deterministic evaluator checked the whole explicit source obligation; this does not establish whole-PR completion.",
+      observationLabel: observationLabel(requirement.evidenceStatus ?? "unclear"), reasonCode: ordinary.reason, primaryGap: outcome === "met" ? null : ordinary.reason };
+  }
 
   const authority = report.verificationContract.state;
   const outcome = safeOutcome(authority, requirement.status);

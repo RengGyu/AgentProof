@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "source-ablation-public-snapshot.v1",
+  "observedAt": "2026-09-09T22:34:24Z",
+  "selection": "Two most recently updated closed PRs per preselected new repository, no replacement after model results; all bodies preserved.",
+  "rows": [
+    {
+      "repo": "nodejs/undici",
+      "number": 5521,
+      "title": "fix: reject cross-realm FormData request bodies",
+      "url": "https://github.com/nodejs/undici/pull/5521",
+      "updatedAt": "2026-09-09T20:57:15Z",
+      "closedAt": "2026-09-09T14:48:46Z",
+      "head": "6db392378a533e4d4144adab6e4df493ad0baaf5",
+      "base": "0dee09d4872f597373b2edaf474ac8eaa0c98cde",
+      "baseBranch": "main",
+      "private": false,
+      "body": "## This relates to...\n\nFixes #5520. Related context: #5500 / #5502 (legacy dispatcher bridge), #5016 and #4285 (fetch-side cross-realm FormData behavior, unchanged here).\n\n## Rationale\n\n`request()` accepts FormData bodies through the duck-typed `util.isFormDataLike()` check, but only undici's own `FormData` can be encoded: the multipart extraction is gated on the `webidl.is.FormData` brand check. A FormData from another realm (Node.js' builtin `globalThis.FormData`, another undici copy, a polyfill) passed the gate, fell through the extraction, and was dispatched as a body that never produced any bytes: the request hung silently until an external timeout, with zero bytes written to the socket (full version matrix and reproductions in #5520).\n\nPer review direction (encode vs reject, maintainers chose reject): such bodies now fail fast with `InvalidArgumentError`. The check lives in the `Request` constructor, where other invalid body types are already rejected, so both the HTTP/1 and HTTP/2 clients reject cleanly at dispatch time and the fetch code is untouched. The FormData brand check is loaded lazily so the fetch machinery is not pulled in upfront.\n\nNote for changelog purposes: this is a behavior change relative to v6, which encoded cross-realm FormData successfully (v7.0.0 through 7.19.x failed these bodies with an unrelated TypeError; 7.20.0+ hung).\n\n## Changes\n\n- `lib/core/request.js`: FormData-like bodies that are not instances of undici's `FormData` now throw `InvalidArgumentError` instead of falling through to iterable handling.\n- `test/issue-5520.js`: cross-realm FormData rejection over HTTP/1 and HTTP/2 (own-FormData encoding is already covered by `test/client-request.js` and `test/http2-body.js`).\n\n### Features\n\nN/A\n\n### Bug Fixes\n\n- `request()` with a FormData from another realm now rejects immediately with a clear error instead of hanging forever.\n\n### Breaking Changes and Deprecations\n\nN/A (the affected input previously hung or produced a broken body; it never worked on v7/v8)\n\n## Status\n\n- [x] I have read and agreed to the [Developer's Certificate of Origin][cert]\n- [x] Tested (`test/issue-5520.js` plus unit, fetch, client-request, http2-body and h2 core suites; lint clean)\n- [ ] Benchmarked (**optional**)\n- [x] Documented (behavior fix; error message self-describes)\n- [x] Review ready\n- [ ] In review\n- [ ] Merge ready\n\n[cert]: https://github.com/nodejs/undici/blob/main/CONTRIBUTING.md#developers-certificate-of-origin\n"
+    },
+    {
+      "repo": "nodejs/undici",
+      "number": 5776,
+      "title": "fix: selectively re-enable SIMD for ppc64",
+      "url": "https://github.com/nodejs/undici/pull/5776",
+      "updatedAt": "2026-09-09T19:23:33Z",
+      "closedAt": "2026-09-09T19:23:30Z",
+      "head": "5c4a85696a2c702ab66ebf509ebae40aae8038bf",
+      "base": "5e541e0b9df7563e5766bbd469fbfe383d9ae6ca",
+      "baseBranch": "main",
+      "private": false,
+      "body": "<!--\r\nBefore submitting a Pull Request, please read our contribution guidelines, which\r\ncan be found at CONTRIBUTING.md in the repository root.\r\n\r\nFor code changes:\r\n1. Include tests for any bug fixes or new features.\r\n2. Update documentation if relevant.\r\n3. Ensure that tests and linting pass.\r\n\r\nYou will also need to ensure that your contribution complies with the\r\nDeveloper's Certificate of Origin, outlined in CONTRIBUTING.md\r\n-->\r\n\r\n## This relates to...\r\n\r\n<!-- List the issues this resolves or relates to here (if applicable) -->\r\n- https://github.com/nodejs/undici/pull/4530\r\n- https://github.com/nodejs/node/pull/60177\r\n\r\n## Rationale\r\n\r\nWASM SIMD was disabled by default for all ppc64 due to a bug in V8 on Power >= 9. The fix went into Node.js 25.0.0 and 24.12.0.\r\n\r\n## Changes\r\n\r\nRe-enable SIMD by default for ppc64, and only disable when running on the older unpatched versions of Node.js.\r\n\r\n### Features\r\n\r\n<!-- List the new features here (if applicable), or write N/A if not -->\r\nN/A\r\n\r\n### Bug Fixes\r\n\r\n<!-- List the fixed bugs here (if applicable), or write N/A if not -->\r\nWASM SIMD is re-enabled for ppc64 on Node.js versions known to contain the V8 fix.\r\n\r\n### Breaking Changes and Deprecations\r\n\r\n<!-- List the breaking changes (changes that modify the existing API) and\r\ndeprecations (removed features) here -->\r\nN/A\r\n\r\n## Status\r\n\r\n<!-- KEY: S = Skipped, x = complete -->\r\n\r\n\r\n- [x] I have read and agreed to the [Developer's Certificate of Origin][cert]\r\n- [ ] Tested\r\n- [ ] Benchmarked (**optional**)\r\n- [ ] Documented\r\n- [ ] Review ready\r\n- [ ] In review\r\n- [ ] Merge ready\r\n\r\n[cert]: https://github.com/nodejs/undici/blob/main/CONTRIBUTING.md#developers-certificate-of-origin\r\n"
+    },
+    {
+      "repo": "vitejs/vite",
+      "number": 23452,
+      "title": "docs: build.rolldownOptions.preserveEntrySignatures shows incorrect default",
+      "url": "https://github.com/vitejs/vite/pull/23452",
+      "updatedAt": "2026-09-09T08:49:37Z",
+      "closedAt": "2026-09-09T08:49:37Z",
+      "head": "ac8e8eaf5a7b46c3395ee4335fc994beaeded836",
+      "base": "5bce8ca0f19bfdd5206c98bfabc1f8453deb32c7",
+      "baseBranch": "main",
+      "private": false,
+      "body": "## Summary\n\nAddresses #23451: build.rolldownOptions.preserveEntrySignatures shows incorrect default\n\n## Changed files\n\n- `docs/config/build-options.md`\n\n## Validation\n\n- `git diff --check`: passed\n\nFixes #23451\n"
+    },
+    {
+      "repo": "vitejs/vite",
+      "number": 23443,
+      "title": "fix: close chokidar dir watchers orphaned by a close during their add",
+      "url": "https://github.com/vitejs/vite/pull/23443",
+      "updatedAt": "2026-09-08T05:24:08Z",
+      "closedAt": "2026-09-08T05:24:08Z",
+      "head": "6f8d1d896d960f32b3c63dd15466551bafe50f96",
+      "base": "8492422b8f110625a90c702f42f30784e8cf19dc",
+      "baseBranch": "main",
+      "private": false,
+      "body": "## Description\n\nThis extends `patches/chokidar@3.6.0.patch` with a disposal for a watcher that chokidar would otherwise orphan.\n\n`_addToNodeFs()` registers the closer returned by `_handleDir()` with `_addPathCloser()` only **after** re-checking `this.fsw.closed`. When `server.close()` lands inside that await gap, it sweeps a still-empty `_closers` list, the resumed `_addToNodeFs` discards the closer, and the `fs.watch` handle created moments earlier stays open forever — `server.close()` resolves, but the Node process cannot exit.\n\nSeen in the wild on apache/maka CI: a dev server restarted by a manifest edit (config-file dependency) kept scanning in the background; `server.close()` raced it; the orphaned `fs.watch` on a temporary repository root kept a `node --test` child process alive for 13.5 minutes after every test had passed, until the CI workspace hit its timeout. Full fs-level attribution and a ~6% natural-occurrence repro under load: apache/maka#4940.\n\nUpstream root fix (v5, same two drop points, with a regression test): paulmillr/chokidar#1483 (issue: paulmillr/chokidar#1482). chokidar 3.6.0 is EOL, so this patch is the only channel for bundled-3.6.0 users.\n\n## Verification\n\n- The extended patch applies cleanly to pristine `chokidar@3.6.0` (`patch -p1`), the patched module passes `node --check` and loads.\n- On the maka repro harness (Linux, node 24, 3-way load), the same disposal makes the previously hanging test child exit; the chokidar-side regression test fails without the fix and passes with it (paulmillr/chokidar#1483)."
+    },
+    {
+      "repo": "pytest-dev/pytest",
+      "number": 14993,
+      "title": "Keep usefixtures fixtures ahead of autouse dependencies",
+      "url": "https://github.com/pytest-dev/pytest/pull/14993",
+      "updatedAt": "2026-09-09T18:08:06Z",
+      "closedAt": "2026-09-09T18:08:06Z",
+      "head": "0556ce448bc461de43a2c5b06b0972525eb2fc4c",
+      "base": "3fd8675d6d798507c06cf9c60753be6d9d7b0e17",
+      "baseBranch": "main",
+      "private": false,
+      "body": "Closes #14992.\n\nPytest 9.1 changed fixture-closure construction so a fixture requested with\n``usefixtures`` can be set up after the dependencies of an earlier autouse\nfixture. This can move a guard or other setup action after the work it was\nintended to protect.\n\nThe regression came from traversing every initial fixture name depth-first\nbefore honoring the established order of the initial requests. The fix keeps\nthe initial fixture names ahead of their transitive dependencies, preserves\nscope ordering for the expanded closure, updates the affected order\nexpectations, adds a regression test for the reported setup order, and records\nthe behavior in a bug-fix changelog entry.\n\n### How this was tested\n\nAt the reported base commit ``3fd8675d6d798507c06cf9c60753be6d9d7b0e17``, the\nmachine-checked reproduction failed with the observed order\n``['precondition', 'subject_deps', 'guard', 'subject']``. After the change, the\nfinal independent fixture-suite verification reported ``241 passed, 3\nxfailed``.\n\nThe checks ran on Windows 11. Mailman recorded Python 3.14.3 for the host\ncommand metadata. A separate reviewer probe of nested pytester invocations\nencountered existing Windows cache-permission failures in unrelated cases; the\nissue-specific regression passed independently.\n\n### An alternative not taken\n\nThe implementation could special-case only ``usefixtures`` names after the\ndepth-first traversal. Restoring the initial-name prefix keeps the established\nprecedence rule in the shared closure algorithm and avoids a second ordering\nmechanism, while the existing scope sort still handles the expanded fixture\nset.\n\n### AI disclosure\n\nThis change was drafted with AI assistance: codex (``gpt-5.6-luna``) wrote the\npatch and codex (``gpt-5.6-luna``) reviewed it under Mailman. The test results\nabove were executed by the Mailman harness. Human review and filing remain\npending.\n"
+    },
+    {
+      "repo": "pytest-dev/pytest",
+      "number": 14551,
+      "title": "fix: replace co_filename with the correct filename when the file is moved",
+      "url": "https://github.com/pytest-dev/pytest/pull/14551",
+      "updatedAt": "2026-09-08T13:04:57Z",
+      "closedAt": "2026-09-08T13:04:56Z",
+      "head": "44f84e03df8ebc7c7ab7f7b198d111850c8c7726",
+      "base": "ced9022c0ca87ae2a0a604c68d2e1c462f8a5c6f",
+      "baseBranch": "main",
+      "private": false,
+      "body": "closes #14552\r\n\r\n<!--\r\nThanks for submitting a PR, your contribution is really appreciated!\r\n\r\nHere is a quick checklist that should be present in PRs.\r\n\r\n- [ ] Include documentation when adding new features.\r\n- [ ] Include new tests or update existing tests when applicable.\r\n- [X] Allow maintainers to push and squash when merging my commits. Please uncheck this if you prefer to squash the commits yourself.\r\n\r\nIf this change fixes an issue, please:\r\n\r\n- [ ] Add text like ``closes #XYZW`` to the PR description and/or commits (where ``XYZW`` is the issue number). See the [github docs](https://help.github.com/en/github/managing-your-work-on-github/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword) for more information.\r\n\r\n> [!IMPORTANT]\r\n> **Unsupervised agentic contributions are not accepted**. See our [AI/LLM-Assisted Contributions Policy](https://github.com/pytest-dev/pytest/blob/main/CONTRIBUTING.rst#aillm-assisted-contributions-policy).\r\n\r\n- [ ] If AI agents were used, they are credited in `Co-authored-by` commit trailers.\r\n\r\nUnless your change is trivial or a small documentation fix (e.g., a typo or reword of a small section) please:\r\n\r\n- [ ] Create a new changelog file in the `changelog` directory, with a name like `<ISSUE NUMBER>.<TYPE>.rst`. See [changelog/README.rst](https://github.com/pytest-dev/pytest/blob/main/changelog/README.rst) for details.\r\n\r\n  Write sentences in the **past or present tense**, examples:\r\n\r\n  * *Improved verbose diff output with sequences.*\r\n  * *Terminal summary statistics now use multiple colors.*\r\n\r\n  Also make sure to end the sentence with a `.`.\r\n\r\n- [ ] Add yourself to `AUTHORS` in alphabetical order.\r\n-->\r\n"
+    },
+    {
+      "repo": "rust-lang/cargo",
+      "number": 17451,
+      "title": "Fix cargo new/init not adding crate to workspace when created inside a nested member directory",
+      "url": "https://github.com/rust-lang/cargo/pull/17451",
+      "updatedAt": "2026-09-09T17:33:01Z",
+      "closedAt": "2026-09-09T17:32:58Z",
+      "head": "40a8e95320d41eca97bdea98eba21c02442adf6b",
+      "base": "42eee92bc9aa4449f4e25d84e4ceb1cf8e0f87f9",
+      "baseBranch": "master",
+      "private": false,
+      "body": "Fixes #16755\r\n\r\nRunning `cargo new`/`cargo init` inside a workspace member's subdirectory never added the new crate to the root's `[workspace] members` array. This happened because `cargo_new::mk()` used `find_root_manifest_for_wd`, which stops at the first `Cargo.toml` found while walking up even if it's just a plain member manifest, not the actual `[workspace]` root.\r\n\r\nThis swaps it for `find_workspace_root`, which correctly walks past non-root manifests (respecting `workspace.exclude` and`package.workspace` pointers) to find the true root.\r\n\r\nSide effects: pre-existing warnings tied to workspace membership may now surface since the crate is properly recognized as a member. A malformed intermediate manifest's parse error may now print twice instead of once."
+    },
+    {
+      "repo": "rust-lang/cargo",
+      "number": 17427,
+      "title": "chore(deps): update crossbeam-epoch to 0.9.21",
+      "url": "https://github.com/rust-lang/cargo/pull/17427",
+      "updatedAt": "2026-09-08T16:05:26Z",
+      "closedAt": "2026-09-08T15:46:17Z",
+      "head": "8b354acdbd9cd47cf4caef98595727e47053dfe0",
+      "base": "42eee92bc9aa4449f4e25d84e4ceb1cf8e0f87f9",
+      "baseBranch": "master",
+      "private": false,
+      "body": "### What does this PR try to resolve?\r\n\r\ncargo audit showed a crossbeam-epoch finding [1]\r\n\r\n```\r\n$ cargo audit \r\n    Fetching advisory database from `https://github.com/RustSec/advisory-db.git`\r\n      Loaded 1239 security advisories (from /root/.cargo/advisory-db)\r\n    Updating crates.io index\r\n    Scanning Cargo.lock for vulnerabilities (550 crate dependencies)\r\nCrate:     crossbeam-epoch\r\nVersion:   0.9.18\r\nTitle:     Invalid pointer dereference in `fmt::Pointer` impl for `Atomic` and `Shared` when the underlying pointer is invalid\r\nDate:      2026-07-06\r\nID:        RUSTSEC-2026-0204\r\nURL:       https://rustsec.org/advisories/RUSTSEC-2026-0204\r\nSolution:  Upgrade to >=0.9.20\r\n```\r\n\r\n[1] https://rustsec.org/advisories/RUSTSEC-2026-0204\r\n\r\n### How to test and review this PR?\r\n\r\nRan cargo build and cargo test post the update, both worked fine, no issues found"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+import { createHash } from "node:crypto";
+import { afterEach, expect, it, vi } from "vitest";
+import { POST } from "./route";
+const head = "a".repeat(40), tree = "b".repeat(40);
+const sha = (text: string) => createHash("sha1").update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest("hex");
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+it("routes an exact-head source requirement to canonical assignability without exposing project source", async () => {
+  vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "advisory");
+  vi.stubEnv("AGENTPROOF_ORDINARY_TYPESCRIPT_ASSIGNABILITY", "enabled");
+  vi.stubEnv("AGENTPROOF_VERIFICATION_CAPABILITIES_V2", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
+  const files = { "tsconfig.json": '{"compilerOptions":{"strict":true}}', "src/mode.ts": "export type Mode = string | undefined; // PRIVATE_TYPE_SOURCE" };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.endsWith("/pulls/12")) return Response.json({ title: "Update type", body: "## Requirements\n- The type `Mode` must support `undefined`.", url: "https://api.github.com/repos/owned/types/pulls/12", base: { ref: "main", sha: "c".repeat(40), repo: { private: false } }, head: { ref: "types", sha: head } });
+    if (url.includes("/files?")) return Response.json([{ filename: "src/mode.ts", status: "modified", patch: "+// type update" }]);
+    if (url.includes("/check-runs")) return Response.json({ check_runs: [] });
+    if (url.endsWith("/status")) return Response.json({ statuses: [] });
+    if (url.endsWith(`/git/commits/${head}`)) return Response.json({ sha: head, tree: { sha: tree } });
+    if (url.endsWith(`/git/trees/${tree}?recursive=1`)) return Response.json({ sha: tree, truncated: false, tree: Object.entries(files).map(([path, content]) => ({ path, type: "blob", mode: "100644", sha: sha(content), size: Buffer.byteLength(content) })) });
+    const file = Object.entries(files).find(([path]) => url.endsWith(`/contents/${path}?ref=${head}`));
+    if (file) return Response.json({ type: "file", sha: sha(file[1]), encoding: "base64", content: Buffer.from(file[1]).toString("base64") });
+    throw new Error("Unexpected request");
+  }));
+  const response = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prUrl: "https://github.com/owned/types/pull/12" }) }));
+  const json = await response.json();
+  expect(response.status, JSON.stringify(json)).toBe(200);
+  expect(json.report.requirements[0].status).toBe("partial");
+  expect(json.report.ordinaryRequirementOutcomes.requirements[0].criterion).toMatchObject({ kind: "typescript_assignability", state: "satisfied" });
+  expect(JSON.stringify(json)).not.toContain("PRIVATE_TYPE_SOURCE");
+});

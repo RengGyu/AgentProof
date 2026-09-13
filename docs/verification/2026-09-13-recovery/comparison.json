@@ -1,0 +1,203 @@
+{
+  "schemaVersion": "agentproof_recovery_comparison.v1",
+  "checkedRows": 132,
+  "calls": 28,
+  "sourceInputsAndRequestsMatchDryRun": true,
+  "hashes": {
+    "corpus.json": "7f946a8b94cd830d65d329d34637826ed80ebf4afc1fe8c0c7d9979c986d7184",
+    "restored-dry-run-final.json": "136dea37ac56aa401411e49cee0b99d809316ead9209b6f311f4c9c1fe6cbe91",
+    "live-result-20260914.json": "21d618e34bcdefbc2d734a227bca4030726eac70d3f74db68869acfdc697b6e4",
+    "rescored-existing-v2.json": "71a55ca950b0845363afe40a1b688a59cc2fb28f0a5be24eaf576f1f5cf43ad3"
+  },
+  "before": {
+    "A": {
+      "exactPreserved": 6,
+      "contentPreserved": 6,
+      "required": 15,
+      "nonRequirementPromoted": 5,
+      "nonRequirement": 20,
+      "ambiguousPromoted": 0,
+      "ambiguous": 9
+    },
+    "B": {
+      "exactPreserved": 13,
+      "contentPreserved": 13,
+      "required": 15,
+      "nonRequirementPromoted": 1,
+      "nonRequirement": 20,
+      "ambiguousPromoted": 1,
+      "ambiguous": 9
+    },
+    "C": {
+      "exactPreserved": 13,
+      "contentPreserved": 14,
+      "required": 15,
+      "nonRequirementPromoted": 0,
+      "nonRequirement": 20,
+      "ambiguousPromoted": 2,
+      "ambiguous": 9
+    }
+  },
+  "after": {
+    "A": {
+      "exactPreserved": 6,
+      "contentPreserved": 6,
+      "required": 15,
+      "nonRequirementPromoted": 5,
+      "nonRequirement": 20,
+      "ambiguousPromoted": 0,
+      "ambiguous": 9,
+      "states": {
+        "valid": 14
+      },
+      "httpStatuses": [
+        null
+      ],
+      "models": [
+        null
+      ],
+      "totalTokens": 0,
+      "missingUsage": 14,
+      "medianLatencyMs": null
+    },
+    "B": {
+      "exactPreserved": 14,
+      "contentPreserved": 14,
+      "required": 15,
+      "nonRequirementPromoted": 1,
+      "nonRequirement": 20,
+      "ambiguousPromoted": 2,
+      "ambiguous": 9,
+      "states": {
+        "valid": 14
+      },
+      "httpStatuses": [
+        200
+      ],
+      "models": [
+        "gpt-5.6-luna"
+      ],
+      "totalTokens": 22838,
+      "missingUsage": 0,
+      "medianLatencyMs": 3203
+    },
+    "C": {
+      "exactPreserved": 14,
+      "contentPreserved": 15,
+      "required": 15,
+      "nonRequirementPromoted": 1,
+      "nonRequirement": 20,
+      "ambiguousPromoted": 2,
+      "ambiguous": 9,
+      "states": {
+        "valid": 14
+      },
+      "httpStatuses": [
+        200
+      ],
+      "models": [
+        "gpt-5.6-luna"
+      ],
+      "totalTokens": 58978,
+      "missingUsage": 0,
+      "medianLatencyMs": 4069
+    }
+  },
+  "changes": [
+    {
+      "caseId": "nodejs-undici-5521",
+      "arm": "B",
+      "labelId": "label-5",
+      "gold": "ambiguous",
+      "previous": "omitted",
+      "current": "partial"
+    },
+    {
+      "caseId": "nodejs-undici-5521",
+      "arm": "C",
+      "labelId": "label-5",
+      "gold": "ambiguous",
+      "previous": "omitted",
+      "current": "partial"
+    },
+    {
+      "caseId": "nodejs-undici-5776",
+      "arm": "C",
+      "labelId": "label-3",
+      "gold": "non_requirement",
+      "previous": "ambiguous",
+      "current": "non_requirement"
+    },
+    {
+      "caseId": "vitejs-vite-23452",
+      "arm": "B",
+      "labelId": "label-3",
+      "gold": "requirement",
+      "previous": "omitted",
+      "current": "requirement"
+    },
+    {
+      "caseId": "vitejs-vite-23452",
+      "arm": "C",
+      "labelId": "label-3",
+      "gold": "requirement",
+      "previous": "omitted",
+      "current": "requirement"
+    },
+    {
+      "caseId": "pytest-dev-pytest-14993",
+      "arm": "B",
+      "labelId": "label-3",
+      "gold": "non_requirement",
+      "previous": "omitted",
+      "current": "non_requirement"
+    },
+    {
+      "caseId": "pytest-dev-pytest-14993",
+      "arm": "B",
+      "labelId": "label-4",
+      "gold": "non_requirement",
+      "previous": "omitted",
+      "current": "ambiguous"
+    },
+    {
+      "caseId": "pytest-dev-pytest-14993",
+      "arm": "B",
+      "labelId": "label-5",
+      "gold": "ambiguous",
+      "previous": "ambiguous",
+      "current": "requirement"
+    },
+    {
+      "caseId": "pytest-dev-pytest-14993",
+      "arm": "C",
+      "labelId": "label-3",
+      "gold": "non_requirement",
+      "previous": "omitted",
+      "current": "ambiguous"
+    },
+    {
+      "caseId": "pytest-dev-pytest-14993",
+      "arm": "C",
+      "labelId": "label-4",
+      "gold": "non_requirement",
+      "previous": "omitted",
+      "current": "ambiguous"
+    },
+    {
+      "caseId": "controlled-bot-usage",
+      "arm": "C",
+      "labelId": "label-1",
+      "gold": "non_requirement",
+      "previous": "non_requirement",
+      "current": "requirement"
+    }
+  ],
+  "limitations": [
+    "44 provisional sparse supervisor labels; not human gold or an accuracy estimate.",
+    "Earlier raw provider-result artifact was not recovered; its preserved 132 rescored rows support the historical comparison.",
+    "Single sequential run per condition; candidate selection changed and model service/time may also vary.",
+    "Source classification is not requirement fulfillment or a production release decision.",
+    "Token usage is not a collected invoice amount."
+  ]
+}

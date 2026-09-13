@@ -399,7 +399,7 @@ describe("selectGeneralPrSemanticEvidenceV1", () => {
     const { selection } = selected(request, { maxPerObjective: 6, maxTotal: 9, maxInputBytes: 4_000 });
     const { evidenceSelectionHash, ...unsigned } = selection;
 
-    expect(selection.policyVersion).toBe("general-pr-claim-evidence-selection.v1");
+    expect(selection.policyVersion).toBe("general-pr-claim-evidence-selection.v2");
     expect(selection.limits).toEqual({ maxPerObjective: 6, maxTotal: 9, maxInputBytes: 4_000 });
     expect(computeGeneralPrSemanticEvidenceSelectionHashV1(unsigned)).toBe(evidenceSelectionHash);
 

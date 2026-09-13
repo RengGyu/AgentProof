@@ -1,0 +1,605 @@
+{
+  "schemaVersion": "requirement_source_ablation.v1",
+  "labelProvenance": "Supervisor-authored provisional sparse labels, frozen before any arm output. Not human-verified gold. Supervisor-authored provisional labels fixed before arm outputs, not human-verified ground truth. Sparse exact spans, no coverage claim for unlabeled text. A requirement is explicitly requested product behavior; past execution/process reports are non-requirements; competing suggestions, descriptions of changes, and underspecified references are ambiguous. Code fences and HTML templates are non-requirement source roles, not evidence that code behavior is correct. Public corpus is a convenience sample, not representative. PR titles may be ineligible under baseline source policy; do not attribute those misses to semantic quality. Raw snapshot sha256=3ff31177410414bd99e62dd1c688523d385a31ec618a6b8eec87d080a59ec139; issues sha256=4e05fed99abd6b48cf59fbf0f41b721f3d2c9ccaafe8f4545edd54f29be81806; label-spec sha256=7e09ea92007513c3d34d4bde42ba363e42b52e6d345c42a2a48e7fe1279f8aba. Public source text transform: CRLF to LF only; all original raw snapshots retained. Five explicit linked issues use body only as taskText with taskSource=issue; issue title not prepended. No code/diff/check evidence collected. Exactly 8 public plus 6 controlled cases, max 28 requested model calls, no case replacements.",
+  "cases": [
+    {
+      "id": "nodejs-undici-5521",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/nodejs/undici/pull/5521",
+        "title": "fix: reject cross-realm FormData request bodies",
+        "description": "## This relates to...\n\nFixes #5520. Related context: #5500 / #5502 (legacy dispatcher bridge), #5016 and #4285 (fetch-side cross-realm FormData behavior, unchanged here).\n\n## Rationale\n\n`request()` accepts FormData bodies through the duck-typed `util.isFormDataLike()` check, but only undici's own `FormData` can be encoded: the multipart extraction is gated on the `webidl.is.FormData` brand check. A FormData from another realm (Node.js' builtin `globalThis.FormData`, another undici copy, a polyfill) passed the gate, fell through the extraction, and was dispatched as a body that never produced any bytes: the request hung silently until an external timeout, with zero bytes written to the socket (full version matrix and reproductions in #5520).\n\nPer review direction (encode vs reject, maintainers chose reject): such bodies now fail fast with `InvalidArgumentError`. The check lives in the `Request` constructor, where other invalid body types are already rejected, so both the HTTP/1 and HTTP/2 clients reject cleanly at dispatch time and the fetch code is untouched. The FormData brand check is loaded lazily so the fetch machinery is not pulled in upfront.\n\nNote for changelog purposes: this is a behavior change relative to v6, which encoded cross-realm FormData successfully (v7.0.0 through 7.19.x failed these bodies with an unrelated TypeError; 7.20.0+ hung).\n\n## Changes\n\n- `lib/core/request.js`: FormData-like bodies that are not instances of undici's `FormData` now throw `InvalidArgumentError` instead of falling through to iterable handling.\n- `test/issue-5520.js`: cross-realm FormData rejection over HTTP/1 and HTTP/2 (own-FormData encoding is already covered by `test/client-request.js` and `test/http2-body.js`).\n\n### Features\n\nN/A\n\n### Bug Fixes\n\n- `request()` with a FormData from another realm now rejects immediately with a clear error instead of hanging forever.\n\n### Breaking Changes and Deprecations\n\nN/A (the affected input previously hung or produced a broken body; it never worked on v7/v8)\n\n## Status\n\n- [x] I have read and agreed to the [Developer's Certificate of Origin][cert]\n- [x] Tested (`test/issue-5520.js` plus unit, fetch, client-request, http2-body and h2 core suites; lint clean)\n- [ ] Benchmarked (**optional**)\n- [x] Documented (behavior fix; error message self-describes)\n- [x] Review ready\n- [ ] In review\n- [ ] Merge ready\n\n[cert]: https://github.com/nodejs/undici/blob/main/CONTRIBUTING.md#developers-certificate-of-origin\n",
+        "taskText": "## Summary\n\n`undici.request()` half-accepts a FormData that isn't undici's own class: the client's duck-typed gate routes it into body extraction, the brand check inside `extractBody` then rejects it, and the request is dispatched with a null body that never completes. No error is raised; the request hangs until some external timeout (server idle timeout, caller watchdog, etc.).\n\nOn v7.20.0+/v8 this is reachable two ways (v7.0.0 through 7.19.x fail loudly instead; see the version table below):\n\n1. **Standalone:** `request(url, { body: formData })` where `formData` is Node's `globalThis.FormData` (the most common way user code constructs one) hangs. undici's own `FormData` works.\n2. **Cross-copy, via the eager legacy-dispatcher claim** (same mechanism as #5500): a bare `require('undici')` anywhere in the process captures `Symbol.for('undici.globalDispatcher.1')` (every major does guarded eager init at require time; since 7.27.0 a `Dispatcher1Wrapper` is mirrored into the legacy slot, and v8's init guard only checks its own `.2` slot, so it overwrites `.1` even when another copy already owns it, making both require orders break). Any undici **v6** client in the same process (e.g. `@discordjs/rest`, which pins undici 6.x) then dispatches through the newer core, where its FormData bodies, perfectly valid for v6, hit the same silent hang. The affected code never uses v7/v8 APIs and cannot work around it by \"using undici's FormData\".\n\nReal-world impact of (2): adding undici 8.7.0 as a direct dependency of a discord.js bot made every file-attachment upload time out (`AbortError: This operation was aborted` after @discordjs/rest's 15s watchdog, 4 attempts) while all JSON requests kept working. This took a while to trace because the breakage is caused by a bare `require` in an unrelated module.\n\n## Reproduction 1: standalone (no version mixing)\n\n```js\n// npm i undici@8.7.0\nconst http = require('node:http');\nconst { request } = require('undici');\n\nconst server = http.createServer((req, res) => {\n  req.on('data', () => {});\n  req.on('end', () => res.end('{}'));\n});\n\nserver.listen(0, async () => {\n  const form = new FormData(); // Node's global FormData\n  form.append('file', new Blob(['hello world'], { type: 'text/plain' }), 'hello.txt');\n  const res = await request(`http://localhost:${server.address().port}/`, {\n    method: 'POST',\n    body: form,\n  }); // <- never resolves, never rejects\n  console.log('status', res.statusCode); // never reached\n});\n```\n\nReplace `new FormData()` with `new (require('undici').FormData)()` and it completes with a correct multipart body.\n\n## Reproduction 2: bare require of v8 breaks an undici v6 client\n\n```js\n// npm i undici6@npm:undici@6.27.0 undici8@npm:undici@8.7.0\nconst http = require('node:http');\nrequire('undici8'); // bare require, never used again; remove this line and everything works\nconst { request } = require('undici6');\n\nconst server = http.createServer((req, res) => {\n  req.on('data', () => {});\n  req.on('end', () => res.end('{}'));\n});\n\nserver.listen(0, async () => {\n  const form = new FormData();\n  form.append('file', new Blob(['hello world'], { type: 'text/plain' }), 'hello.txt');\n  const res = await request(`http://localhost:${server.address().port}/`, {\n    method: 'POST',\n    body: form,\n  }); // <- hangs; undici 6 alone handles this fine\n});\n```\n\n`diagnostics_channel` shows `undici:request:create` and `undici:client:sendHeaders` firing, but `undici:request:bodySent` never does. Despite the `sendHeaders` event, a raw TCP-level check shows **zero bytes ever reach the wire**: the socket output is held back behind the body that never comes, so the server just sees an idle connection until something times out.\n\n## Root cause\n\nTwo checks disagree about what a FormData is:\n\n- `lib/dispatcher/client-h1.js` routes the body into form-data extraction based on the duck-typed check `util.isFormDataLike(body)` (structural: append/get/set methods plus `Symbol.toStringTag === 'FormData'`), which accepts FormData from any realm: Node's builtin, another undici copy, a polyfill.\n- `lib/web/fetch/body.js` `extractBody()` gates the actual multipart encoding on the brand check `webidl.is.FormData(object)`, which only accepts instances of this copy's own `FormData` class.\n\nFor a cross-realm FormData the duck check passes and the brand check fails, so `extractBody` falls through every branch and returns an empty descriptor. This is observable directly:\n\n```js\nconst { extractBody } = require('undici/lib/web/fetch/body.js');\nconst fd = new FormData(); // Node's global\nfd.append('file', new Blob(['hello']), 'hello.txt');\nconst [body, contentType] = extractBody(fd);\n// body.source = null, body.length = null, contentType = null,\n// body.stream = a ReadableStream that never produces data and never closes.\n// With undici's own FormData: multipart source, correct length,\n// contentType 'multipart/form-data; boundary=...'.\n```\n\n`client-h1` then queues the headers and waits on that never-producing stream with `contentLength = null`: nothing reaches the wire, nothing errors.\n\n## Affected versions (verified)\n\nMeasured with an explicit same-version `Agent` passed as `dispatcher`, which isolates each copy's client from the global-dispatcher slots:\n\n| undici | `request()` + Node global FormData |\n| --- | --- |\n| 6.27.0 | works (duck-typed end to end) |\n| 7.0.0, 7.16.0, 7.18.0, 7.19.0 | `TypeError: Cannot read properties of null (reading 'byteLength')` (loud, but already a regression vs v6) |\n| 7.20.0 through 7.28.0 | silent hang |\n| 8.7.0 | silent hang |\n\nSo the cross-realm FormData support regressed at 7.0.0, and 7.20.0 turned the loud error into the silent hang. The `.2` slot plus `Dispatcher1Wrapper` mirroring in `lib/global.js` landed at 7.27.0.\n\nVerified on Node 24.18.0 and 26.4.0. Repro 2 (bare require poisoning a v6 client) verified with 7.27.1, 7.27.2, 7.28.0 and 8.7.0 as the claimer, in both require orders.\n\n**Caveat for reproducing on Node >= 26:** touching the `FormData`/fetch globals loads Node's bundled undici 8.x, which claims both global dispatcher symbols; for npm copies older than 7.27.0 this silently reroutes their global-dispatcher requests through Node's bundled client (which brand-owns the global FormData) and masks the bug with false OK results. Use an explicit `dispatcher: new Agent()` from the copy under test.\n\n## Relationship to existing issues\n\n- #5016 (fetch() stringifies native FormData) was closed as expected behavior. This report is different on two counts: `request()`'s own gate *accepts* the object before the extraction drops it, and the failure mode is an unbounded silent hang, not a wrong-but-fast request. And in the repro-2 shape, the code hitting the bug is undici **6**, where cross-realm FormData is supported; \"use this copy's FormData\" is not actionable for a v6 client that got its dispatcher swapped out from under it by a bare require elsewhere in the tree.\n- #5500 / #5502 cover the same eager legacy-symbol claim but only normalize duplicated content-length in `Dispatcher1Wrapper`; the FormData hang is unaffected by #5502.\n- #4285 (v7 Request cannot parse v5 FormData) is the fetch-side sibling of the same cross-realm brand-check problem.\n\n## Suggested fix directions\n\n1. Make `extractBody`'s FormData branch accept what `isFormDataLike` accepts: the multipart encoder already only uses the public entry iterator (`for (const [name, value] of object)`) and Blob duck-typing (`name`, `type`, `size`, `stream()`), so encoding a foreign FormData should produce identical output. (The private `#boundary` getter is the only own-state dependency and can fall back to generating a boundary locally.)\n2. Alternatively, use the brand check at the `client-h1` gate too, and throw `InvalidArgumentError('body must be ...')` like every other unsupported body type: a loud error instead of a silent hang.\n3. Independently: reconsider the eager legacy-symbol claim at require time (as proposed in #5500), since it converts every intra-copy strictness change into a cross-copy breakage for code that never imports the new version.\n\nHappy to turn either fix direction into a PR.\n",
+        "taskSource": "issue",
+        "repositoryPrivate": false,
+        "headSha": "6db392378a533e4d4144adab6e4df493ad0baaf5",
+        "baseSha": "0dee09d4872f597373b2edaf474ac8eaa0c98cde",
+        "baseBranch": "main",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 47,
+          "text": "fix: reject cross-realm FormData request bodies",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 752,
+          "end": 1166,
+          "text": "Per review direction (encode vs reject, maintainers chose reject): such bodies now fail fast with `InvalidArgumentError`. The check lives in the `Request` constructor, where other invalid body types are already rejected, so both the HTTP/1 and HTTP/2 clients reject cleanly at dispatch time and the fetch code is untouched. The FormData brand check is loaded lazily so the fetch machinery is not pulled in upfront.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 2114,
+          "end": 2225,
+          "text": "- [x] Tested (`test/issue-5520.js` plus unit, fetch, client-request, http2-body and h2 core suites; lint clean)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "linked_issue",
+          "start": 5760,
+          "end": 5928,
+          "text": "Verified on Node 24.18.0 and 26.4.0. Repro 2 (bare require poisoning a v6 client) verified with 7.27.1, 7.27.2, 7.28.0 and 8.7.0 as the claimer, in both require orders.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "linked_issue",
+          "start": 7244,
+          "end": 8138,
+          "text": "1. Make `extractBody`'s FormData branch accept what `isFormDataLike` accepts: the multipart encoder already only uses the public entry iterator (`for (const [name, value] of object)`) and Blob duck-typing (`name`, `type`, `size`, `stream()`), so encoding a foreign FormData should produce identical output. (The private `#boundary` getter is the only own-state dependency and can fall back to generating a boundary locally.)\n2. Alternatively, use the brand check at the `client-h1` gate too, and throw `InvalidArgumentError('body must be ...')` like every other unsupported body type: a loud error instead of a silent hang.\n3. Independently: reconsider the eager legacy-symbol claim at require time (as proposed in #5500), since it converts every intra-copy strictness change into a cross-copy breakage for code that never imports the new version.\n\nHappy to turn either fix direction into a PR.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "nodejs-undici-5776",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/nodejs/undici/pull/5776",
+        "title": "fix: selectively re-enable SIMD for ppc64",
+        "description": "<!--\nBefore submitting a Pull Request, please read our contribution guidelines, which\ncan be found at CONTRIBUTING.md in the repository root.\n\nFor code changes:\n1. Include tests for any bug fixes or new features.\n2. Update documentation if relevant.\n3. Ensure that tests and linting pass.\n\nYou will also need to ensure that your contribution complies with the\nDeveloper's Certificate of Origin, outlined in CONTRIBUTING.md\n-->\n\n## This relates to...\n\n<!-- List the issues this resolves or relates to here (if applicable) -->\n- https://github.com/nodejs/undici/pull/4530\n- https://github.com/nodejs/node/pull/60177\n\n## Rationale\n\nWASM SIMD was disabled by default for all ppc64 due to a bug in V8 on Power >= 9. The fix went into Node.js 25.0.0 and 24.12.0.\n\n## Changes\n\nRe-enable SIMD by default for ppc64, and only disable when running on the older unpatched versions of Node.js.\n\n### Features\n\n<!-- List the new features here (if applicable), or write N/A if not -->\nN/A\n\n### Bug Fixes\n\n<!-- List the fixed bugs here (if applicable), or write N/A if not -->\nWASM SIMD is re-enabled for ppc64 on Node.js versions known to contain the V8 fix.\n\n### Breaking Changes and Deprecations\n\n<!-- List the breaking changes (changes that modify the existing API) and\ndeprecations (removed features) here -->\nN/A\n\n## Status\n\n<!-- KEY: S = Skipped, x = complete -->\n\n\n- [x] I have read and agreed to the [Developer's Certificate of Origin][cert]\n- [ ] Tested\n- [ ] Benchmarked (**optional**)\n- [ ] Documented\n- [ ] Review ready\n- [ ] In review\n- [ ] Merge ready\n\n[cert]: https://github.com/nodejs/undici/blob/main/CONTRIBUTING.md#developers-certificate-of-origin\n",
+        "taskText": "",
+        "repositoryPrivate": false,
+        "headSha": "5c4a85696a2c702ab66ebf509ebae40aae8038bf",
+        "baseSha": "5e541e0b9df7563e5766bbd469fbfe383d9ae6ca",
+        "baseBranch": "main",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 41,
+          "text": "fix: selectively re-enable SIMD for ppc64",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 426,
+          "text": "<!--\nBefore submitting a Pull Request, please read our contribution guidelines, which\ncan be found at CONTRIBUTING.md in the repository root.\n\nFor code changes:\n1. Include tests for any bug fixes or new features.\n2. Update documentation if relevant.\n3. Ensure that tests and linting pass.\n\nYou will also need to ensure that your contribution complies with the\nDeveloper's Certificate of Origin, outlined in CONTRIBUTING.md\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 629,
+          "end": 756,
+          "text": "WASM SIMD was disabled by default for all ppc64 due to a bug in V8 on Power >= 9. The fix went into Node.js 25.0.0 and 24.12.0.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 770,
+          "end": 880,
+          "text": "Re-enable SIMD by default for ppc64, and only disable when running on the older unpatched versions of Node.js.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 1434,
+          "end": 1446,
+          "text": "- [ ] Tested",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "vitejs-vite-23452",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/vitejs/vite/pull/23452",
+        "title": "docs: build.rolldownOptions.preserveEntrySignatures shows incorrect default",
+        "description": "## Summary\n\nAddresses #23451: build.rolldownOptions.preserveEntrySignatures shows incorrect default\n\n## Changed files\n\n- `docs/config/build-options.md`\n\n## Validation\n\n- `git diff --check`: passed\n\nFixes #23451\n",
+        "taskText": "### Documentation is\n\n- [ ] Missing\n- [ ] Outdated\n- [x] Confusing\n- [ ] Not sure?\n\n### Explain in Detail\n\n`build.rolldownOptions.preserveEntrySignatures` is documented by the underlying Rolldown type with a default value of `'exports-only'`.\n\nHowever, Vite overrides this value internally depending on the build mode. For a regular client build, Vite sets it to `false`:\n\n```ts\npreserveEntrySignatures: ssr\n  ? 'allow-extension'\n  : libOptions\n    ? 'strict'\n    : false\n```\n\nThis means that leaving `build.rolldownOptions.preserveEntrySignatures` undefined in a regular Vite build does not behave as the documented Rolldown default (`'exports-only'`), but as `false`.\n\nThis was confusing in my case because I have multiple TypeScript entry points whose exports are consumed as ES modules from a Blazor application. I expected the documented default to preserve those exports, but I need to explicitly set:\n\n```ts\nbuild: {\n  rolldownOptions: {\n    preserveEntrySignatures: 'exports-only',\n  },\n}\n```\n\nI understand that `build.rolldownOptions` is merged with Vite's internal Rolldown options, but it isn't clear that Vite overrides this particular default.\n\nRelevant code:\n\nhttps://github.com/vitejs/vite/blob/5bce8ca0f19bfdd5206c98bfabc1f8453deb32c7/packages/vite/src/node/build.ts#L658-L662\n\n### Your Suggestion for Changes\n\nDocument the effective Vite defaults for `preserveEntrySignatures`, or otherwise mention that Vite overrides Rolldown's default.\n\nFor example:\n\n* regular client build: `false`\n* library build: `'strict'`\n* SSR/server build: `'allow-extension'`\n\nIt may also be worth considering the IntelliSense/JSDoc experience, since the exposed `RolldownOptions` type reports Rolldown's `'exports-only'` default even though that is not the effective Vite default.\n\n### Reproduction\n\n_No response_\n\n### Steps to reproduce\n\n_No response_",
+        "taskSource": "issue",
+        "repositoryPrivate": false,
+        "headSha": "ac8e8eaf5a7b46c3395ee4335fc994beaeded836",
+        "baseSha": "5bce8ca0f19bfdd5206c98bfabc1f8453deb32c7",
+        "baseBranch": "main",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 75,
+          "text": "docs: build.rolldownOptions.preserveEntrySignatures shows incorrect default",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 168,
+          "end": 196,
+          "text": "- `git diff --check`: passed",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "linked_issue",
+          "start": 1327,
+          "end": 1455,
+          "text": "Document the effective Vite defaults for `preserveEntrySignatures`, or otherwise mention that Vite overrides Rolldown's default.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "linked_issue",
+          "start": 1471,
+          "end": 1570,
+          "text": "* regular client build: `false`\n* library build: `'strict'`\n* SSR/server build: `'allow-extension'`",
+          "label": "requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "linked_issue",
+          "start": 1572,
+          "end": 1776,
+          "text": "It may also be worth considering the IntelliSense/JSDoc experience, since the exposed `RolldownOptions` type reports Rolldown's `'exports-only'` default even though that is not the effective Vite default.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "vitejs-vite-23443",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/vitejs/vite/pull/23443",
+        "title": "fix: close chokidar dir watchers orphaned by a close during their add",
+        "description": "## Description\n\nThis extends `patches/chokidar@3.6.0.patch` with a disposal for a watcher that chokidar would otherwise orphan.\n\n`_addToNodeFs()` registers the closer returned by `_handleDir()` with `_addPathCloser()` only **after** re-checking `this.fsw.closed`. When `server.close()` lands inside that await gap, it sweeps a still-empty `_closers` list, the resumed `_addToNodeFs` discards the closer, and the `fs.watch` handle created moments earlier stays open forever — `server.close()` resolves, but the Node process cannot exit.\n\nSeen in the wild on apache/maka CI: a dev server restarted by a manifest edit (config-file dependency) kept scanning in the background; `server.close()` raced it; the orphaned `fs.watch` on a temporary repository root kept a `node --test` child process alive for 13.5 minutes after every test had passed, until the CI workspace hit its timeout. Full fs-level attribution and a ~6% natural-occurrence repro under load: apache/maka#4940.\n\nUpstream root fix (v5, same two drop points, with a regression test): paulmillr/chokidar#1483 (issue: paulmillr/chokidar#1482). chokidar 3.6.0 is EOL, so this patch is the only channel for bundled-3.6.0 users.\n\n## Verification\n\n- The extended patch applies cleanly to pristine `chokidar@3.6.0` (`patch -p1`), the patched module passes `node --check` and loads.\n- On the maka repro harness (Linux, node 24, 3-way load), the same disposal makes the previously hanging test child exit; the chokidar-side regression test fails without the fix and passes with it (paulmillr/chokidar#1483).",
+        "taskText": "",
+        "repositoryPrivate": false,
+        "headSha": "6f8d1d896d960f32b3c63dd15466551bafe50f96",
+        "baseSha": "8492422b8f110625a90c702f42f30784e8cf19dc",
+        "baseBranch": "main",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 69,
+          "text": "fix: close chokidar dir watchers orphaned by a close during their add",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 16,
+          "end": 127,
+          "text": "This extends `patches/chokidar@3.6.0.patch` with a disposal for a watcher that chokidar would otherwise orphan.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 1202,
+          "end": 1334,
+          "text": "- The extended patch applies cleanly to pristine `chokidar@3.6.0` (`patch -p1`), the patched module passes `node --check` and loads.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1335,
+          "end": 1558,
+          "text": "- On the maka repro harness (Linux, node 24, 3-way load), the same disposal makes the previously hanging test child exit; the chokidar-side regression test fails without the fix and passes with it (paulmillr/chokidar#1483).",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "pytest-dev-pytest-14993",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pytest-dev/pytest/pull/14993",
+        "title": "Keep usefixtures fixtures ahead of autouse dependencies",
+        "description": "Closes #14992.\n\nPytest 9.1 changed fixture-closure construction so a fixture requested with\n``usefixtures`` can be set up after the dependencies of an earlier autouse\nfixture. This can move a guard or other setup action after the work it was\nintended to protect.\n\nThe regression came from traversing every initial fixture name depth-first\nbefore honoring the established order of the initial requests. The fix keeps\nthe initial fixture names ahead of their transitive dependencies, preserves\nscope ordering for the expanded closure, updates the affected order\nexpectations, adds a regression test for the reported setup order, and records\nthe behavior in a bug-fix changelog entry.\n\n### How this was tested\n\nAt the reported base commit ``3fd8675d6d798507c06cf9c60753be6d9d7b0e17``, the\nmachine-checked reproduction failed with the observed order\n``['precondition', 'subject_deps', 'guard', 'subject']``. After the change, the\nfinal independent fixture-suite verification reported ``241 passed, 3\nxfailed``.\n\nThe checks ran on Windows 11. Mailman recorded Python 3.14.3 for the host\ncommand metadata. A separate reviewer probe of nested pytester invocations\nencountered existing Windows cache-permission failures in unrelated cases; the\nissue-specific regression passed independently.\n\n### An alternative not taken\n\nThe implementation could special-case only ``usefixtures`` names after the\ndepth-first traversal. Restoring the initial-name prefix keeps the established\nprecedence rule in the shared closure algorithm and avoids a second ordering\nmechanism, while the existing scope sort still handles the expanded fixture\nset.\n\n### AI disclosure\n\nThis change was drafted with AI assistance: codex (``gpt-5.6-luna``) wrote the\npatch and codex (``gpt-5.6-luna``) reviewed it under Mailman. The test results\nabove were executed by the Mailman harness. Human review and filing remain\npending.\n",
+        "taskText": "## Summary\n\n`initialnames` is built as `deduplicate_names(autousenames, usefixturesnames, argnames)`,\nso a fixture requested through `usefixtures` sits after every autouse fixture.\n\nUp to 9.0, `FixtureManager.getfixtureclosure` seeded the closure with\n`list(initialnames)` and appended dependencies afterwards, so the `usefixtures`\nfixture was set up before the *dependencies* of an autouse fixture.\n\nFrom 9.1 the closure comes from the new `traverse_fixture_closure`, which walks\ndepth first, so an earlier autouse fixture's entire dependency subtree is emitted\nbefore the `usefixtures` name is reached. The setup order changes with it.\n\nThis is not the #14513 change: there is one definition of the fixture and\nnothing overriding it, so no override chain is being resolved. It looks like a\nside effect of #14248 (\"Fixed direct parametrization causing the static fixture\nclosure ... to omit fixtures that are requested transitively from overridden\nfixtures\"), which is the entry that touches the closure.\n\n## Why it matters\n\n`usefixtures` on a class is a common way to install a guard — disconnect a\nsignal, patch a client, enter a transaction — for every test in that class. Code\nwritten against 9.0 can, on upgrading to 9.1, have the guard silently move to after the work it was\nmeant to guard. Nothing warns, and the failure surfaces wherever the unguarded\nwork happens to reach, which may be far away.\n\n## Reproduction\n\nPure pytest, no plugins.\n\n```python\nimport pytest\n\norder = []\n\n\n@pytest.fixture\ndef precondition():\n    order.append(\"precondition\")\n\n\n@pytest.fixture\ndef subject_deps(precondition):\n    order.append(\"subject_deps\")\n\n\n@pytest.fixture(autouse=True)\ndef subject(subject_deps):\n    order.append(\"subject\")\n\n\n@pytest.fixture\ndef guard():\n    order.append(\"guard\")\n\ndef pytest_generate_tests(metafunc):\n    # Move the autouse fixture itself to the end of the closure, leaving its\n    # dependencies where they were placed. pytest-fixture-order does this via\n    # @pytest.mark.late; inlined here so the reproduction needs no plugin.\n    names = metafunc.fixturenames\n    if \"subject\" in names:\n        names.remove(\"subject\")\n        names.append(\"subject\")\n\n\n@pytest.mark.usefixtures(\"guard\")\nclass TestOrdering:\n    def test_guard_is_set_up_first(self):\n        assert order[0] == \"guard\", order\n```\n\n```\npytest 8.3.5    PASS\npytest 8.4.2    PASS\npytest 9.0.0    PASS\npytest 9.0.3    PASS\npytest 9.1.0    FAIL  order=['precondition', 'subject_deps', 'guard', 'subject']\npytest 9.1.1    FAIL  order=['precondition', 'subject_deps', 'guard', 'subject']\n```\n\nThe reordering of the closure happens on 9.1 with or without the\n`pytest_generate_tests` hook; the hook is what makes the consequence observable\nas a setup order, because otherwise `subject` is set up before `guard` on every\nversion and the difference is invisible.\n\n## Question\n\nIs the new depth-first order intended to change where `usefixtures` names land?\nIf so it is worth a changelog note, since the guarantee people relied on —\n`usefixtures` behaving as though the test requested it first — no longer holds\nagainst autouse dependencies. If not, seeding the traversal with `initialnames`\nbefore descending would restore it.",
+        "taskSource": "issue",
+        "repositoryPrivate": false,
+        "headSha": "0556ce448bc461de43a2c5b06b0972525eb2fc4c",
+        "baseSha": "3fd8675d6d798507c06cf9c60753be6d9d7b0e17",
+        "baseBranch": "main",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 55,
+          "text": "Keep usefixtures fixtures ahead of autouse dependencies",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 264,
+          "end": 681,
+          "text": "The regression came from traversing every initial fixture name depth-first\nbefore honoring the established order of the initial requests. The fix keeps\nthe initial fixture names ahead of their transitive dependencies, preserves\nscope ordering for the expanded closure, updates the affected order\nexpectations, adds a regression test for the reported setup order, and records\nthe behavior in a bug-fix changelog entry.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 708,
+          "end": 1006,
+          "text": "At the reported base commit ``3fd8675d6d798507c06cf9c60753be6d9d7b0e17``, the\nmachine-checked reproduction failed with the observed order\n``['precondition', 'subject_deps', 'guard', 'subject']``. After the change, the\nfinal independent fixture-suite verification reported ``241 passed, 3\nxfailed``.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1647,
+          "end": 1888,
+          "text": "This change was drafted with AI assistance: codex (``gpt-5.6-luna``) wrote the\npatch and codex (``gpt-5.6-luna``) reviewed it under Mailman. The test results\nabove were executed by the Mailman harness. Human review and filing remain\npending.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "linked_issue",
+          "start": 2858,
+          "end": 3207,
+          "text": "Is the new depth-first order intended to change where `usefixtures` names land?\nIf so it is worth a changelog note, since the guarantee people relied on —\n`usefixtures` behaving as though the test requested it first — no longer holds\nagainst autouse dependencies. If not, seeding the traversal with `initialnames`\nbefore descending would restore it.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "pytest-dev-pytest-14551",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pytest-dev/pytest/pull/14551",
+        "title": "fix: replace co_filename with the correct filename when the file is moved",
+        "description": "closes #14552\n\n<!--\nThanks for submitting a PR, your contribution is really appreciated!\n\nHere is a quick checklist that should be present in PRs.\n\n- [ ] Include documentation when adding new features.\n- [ ] Include new tests or update existing tests when applicable.\n- [X] Allow maintainers to push and squash when merging my commits. Please uncheck this if you prefer to squash the commits yourself.\n\nIf this change fixes an issue, please:\n\n- [ ] Add text like ``closes #XYZW`` to the PR description and/or commits (where ``XYZW`` is the issue number). See the [github docs](https://help.github.com/en/github/managing-your-work-on-github/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword) for more information.\n\n> [!IMPORTANT]\n> **Unsupervised agentic contributions are not accepted**. See our [AI/LLM-Assisted Contributions Policy](https://github.com/pytest-dev/pytest/blob/main/CONTRIBUTING.rst#aillm-assisted-contributions-policy).\n\n- [ ] If AI agents were used, they are credited in `Co-authored-by` commit trailers.\n\nUnless your change is trivial or a small documentation fix (e.g., a typo or reword of a small section) please:\n\n- [ ] Create a new changelog file in the `changelog` directory, with a name like `<ISSUE NUMBER>.<TYPE>.rst`. See [changelog/README.rst](https://github.com/pytest-dev/pytest/blob/main/changelog/README.rst) for details.\n\n  Write sentences in the **past or present tense**, examples:\n\n  * *Improved verbose diff output with sequences.*\n  * *Terminal summary statistics now use multiple colors.*\n\n  Also make sure to end the sentence with a `.`.\n\n- [ ] Add yourself to `AUTHORS` in alphabetical order.\n-->\n",
+        "taskText": "\n## Problem:\n\nI use co_filename of code objects to find the sourcefile of the calling function in [inline-snapshot](https://github.com/15r10nk/inline-snapshot) and have some [issues](https://github.com/15r10nk/inline-snapshot/issues/371) where the file (reported by co_filename) does not exist.\n\nIt appears that it has been moved for differend reasons (CI artefacts, docker).\n\nThe problem is that the old file location is still stored inside the `.pyc` file which is generated by pytest.\n\n\n## Repro:\n\n``` bash\nmkdir -p test1\n\ncat > test1/test_a.py << EOF\nfrom inspect import currentframe, getfile\n\ndef test_a():\n    assert getfile(test_a)==__file__\n    assert currentframe().f_code.co_filename == __file__\nEOF\n\n\necho first run\nuvx pytest@9.0.3 -s test1/test_a.py\n\nmv test1 test2\n\necho\necho second run\nuvx pytest@9.0.3 -s test2/test_a.py\n\nrm -r test2\n```\n\noutput:\n\n```\nfirst run\n========================================== test session starts ===========================================\nplatform linux -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0\nrootdir: /home/frank/projects/tmp/repro_bytecode_move\ncollected 1 item                                                                                         \n\ntest1/test_a.py .\n\n=========================================== 1 passed in 0.01s ============================================\n\nsecond run\n========================================== test session starts ===========================================\nplatform linux -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0\nrootdir: /home/frank/projects/tmp/repro_bytecode_move\ncollected 1 item                                                                                         \n\ntest2/test_a.py F\n\n================================================ FAILURES ================================================\n_________________________________________________ test_a _________________________________________________\n\n>   ???\nE   AssertionError: assert '/home/frank/...st1/test_a.py' == '/home/frank/...st2/test_a.py'\nE     \nE     Skipping 39 identical leading characters in diff, use -v to show\nE     - _move/test2/test_a.py\nE     ?           ^\nE     + _move/test1/test_a.py\nE     ?           ^\n\n/home/frank/projects/tmp/repro_bytecode_move/test1/test_a.py:4: AssertionError\n======================================== short test summary info =========================================\nFAILED test2/test_a.py::test_a - AssertionError: assert '/home/frank/...st1/test_a.py' == '/home/frank/...\nst2/test_a.py'\n=========================================== 1 failed in 0.04s ============================================\n```\n\nI have already created an PR #14551 \n\npytest: 9.0.3\nos: linux\n\n- [ ] a detailed description of the bug or problem you are having\n- [ ] output of `pip list` from the virtual environment you are using\n- [ ] pytest and operating system versions\n- [ ] minimal example if possible",
+        "taskSource": "issue",
+        "repositoryPrivate": false,
+        "headSha": "44f84e03df8ebc7c7ab7f7b198d111850c8c7726",
+        "baseSha": "ced9022c0ca87ae2a0a604c68d2e1c462f8a5c6f",
+        "baseBranch": "main",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 73,
+          "text": "fix: replace co_filename with the correct filename when the file is moved",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 15,
+          "end": 1674,
+          "text": "<!--\nThanks for submitting a PR, your contribution is really appreciated!\n\nHere is a quick checklist that should be present in PRs.\n\n- [ ] Include documentation when adding new features.\n- [ ] Include new tests or update existing tests when applicable.\n- [X] Allow maintainers to push and squash when merging my commits. Please uncheck this if you prefer to squash the commits yourself.\n\nIf this change fixes an issue, please:\n\n- [ ] Add text like ``closes #XYZW`` to the PR description and/or commits (where ``XYZW`` is the issue number). See the [github docs](https://help.github.com/en/github/managing-your-work-on-github/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword) for more information.\n\n> [!IMPORTANT]\n> **Unsupervised agentic contributions are not accepted**. See our [AI/LLM-Assisted Contributions Policy](https://github.com/pytest-dev/pytest/blob/main/CONTRIBUTING.rst#aillm-assisted-contributions-policy).\n\n- [ ] If AI agents were used, they are credited in `Co-authored-by` commit trailers.\n\nUnless your change is trivial or a small documentation fix (e.g., a typo or reword of a small section) please:\n\n- [ ] Create a new changelog file in the `changelog` directory, with a name like `<ISSUE NUMBER>.<TYPE>.rst`. See [changelog/README.rst](https://github.com/pytest-dev/pytest/blob/main/changelog/README.rst) for details.\n\n  Write sentences in the **past or present tense**, examples:\n\n  * *Improved verbose diff output with sequences.*\n  * *Terminal summary statistics now use multiple colors.*\n\n  Also make sure to end the sentence with a `.`.\n\n- [ ] Add yourself to `AUTHORS` in alphabetical order.\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "linked_issue",
+          "start": 377,
+          "end": 487,
+          "text": "The problem is that the old file location is still stored inside the `.pyc` file which is generated by pytest.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "linked_issue",
+          "start": 2668,
+          "end": 2880,
+          "text": "- [ ] a detailed description of the bug or problem you are having\n- [ ] output of `pip list` from the virtual environment you are using\n- [ ] pytest and operating system versions\n- [ ] minimal example if possible",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-cargo-17451",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/cargo/pull/17451",
+        "title": "Fix cargo new/init not adding crate to workspace when created inside a nested member directory",
+        "description": "Fixes #16755\n\nRunning `cargo new`/`cargo init` inside a workspace member's subdirectory never added the new crate to the root's `[workspace] members` array. This happened because `cargo_new::mk()` used `find_root_manifest_for_wd`, which stops at the first `Cargo.toml` found while walking up even if it's just a plain member manifest, not the actual `[workspace]` root.\n\nThis swaps it for `find_workspace_root`, which correctly walks past non-root manifests (respecting `workspace.exclude` and`package.workspace` pointers) to find the true root.\n\nSide effects: pre-existing warnings tied to workspace membership may now surface since the crate is properly recognized as a member. A malformed intermediate manifest's parse error may now print twice instead of once.",
+        "taskText": "### Problem\n\nCreating new crate in a subdirectory of an existing crate of a workspace should add the new crate to the workspace.\n\nFor example, if I have a repo with a Cargo.toml that is a workspace at the root and has a crate named `a-crate`, I would have the following Cargo.toml at my repo root:\n\n```toml\n[workspace]\nresolver = \"3\"\nmembers = [ \"a-crate\" ]\n```\n\nIn the repo root, if I do the following:\n\n```sh\ncd a-crate\ncargo new --name a-crate-macros macros\n```\n\nI would like the workspace to now look like this:\n\n```toml\n[workspace]\nresolver = \"3\"\nmembers = [\n    \"a-crate\",\n    \"a-crate/macros\",\n]\n```\n\nCurrently, the workspace is not changed.\n\n### Proposed Solution\n\n_No response_\n\n### Notes\n\n_No response_",
+        "taskSource": "issue",
+        "repositoryPrivate": false,
+        "headSha": "40a8e95320d41eca97bdea98eba21c02442adf6b",
+        "baseSha": "42eee92bc9aa4449f4e25d84e4ceb1cf8e0f87f9",
+        "baseBranch": "master",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 94,
+          "text": "Fix cargo new/init not adding crate to workspace when created inside a nested member directory",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 371,
+          "end": 545,
+          "text": "This swaps it for `find_workspace_root`, which correctly walks past non-root manifests (respecting `workspace.exclude` and`package.workspace` pointers) to find the true root.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 547,
+          "end": 764,
+          "text": "Side effects: pre-existing warnings tied to workspace membership may now surface since the crate is properly recognized as a member. A malformed intermediate manifest's parse error may now print twice instead of once.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "linked_issue",
+          "start": 13,
+          "end": 128,
+          "text": "Creating new crate in a subdirectory of an existing crate of a workspace should add the new crate to the workspace.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "linked_issue",
+          "start": 466,
+          "end": 515,
+          "text": "I would like the workspace to now look like this:",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "linked_issue",
+          "start": 608,
+          "end": 648,
+          "text": "Currently, the workspace is not changed.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-cargo-17427",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/cargo/pull/17427",
+        "title": "chore(deps): update crossbeam-epoch to 0.9.21",
+        "description": "### What does this PR try to resolve?\n\ncargo audit showed a crossbeam-epoch finding [1]\n\n```\n$ cargo audit \n    Fetching advisory database from `https://github.com/RustSec/advisory-db.git`\n      Loaded 1239 security advisories (from /root/.cargo/advisory-db)\n    Updating crates.io index\n    Scanning Cargo.lock for vulnerabilities (550 crate dependencies)\nCrate:     crossbeam-epoch\nVersion:   0.9.18\nTitle:     Invalid pointer dereference in `fmt::Pointer` impl for `Atomic` and `Shared` when the underlying pointer is invalid\nDate:      2026-07-06\nID:        RUSTSEC-2026-0204\nURL:       https://rustsec.org/advisories/RUSTSEC-2026-0204\nSolution:  Upgrade to >=0.9.20\n```\n\n[1] https://rustsec.org/advisories/RUSTSEC-2026-0204\n\n### How to test and review this PR?\n\nRan cargo build and cargo test post the update, both worked fine, no issues found",
+        "taskText": "",
+        "repositoryPrivate": false,
+        "headSha": "8b354acdbd9cd47cf4caef98595727e47053dfe0",
+        "baseSha": "42eee92bc9aa4449f4e25d84e4ceb1cf8e0f87f9",
+        "baseBranch": "master",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 45,
+          "text": "chore(deps): update crossbeam-epoch to 0.9.21",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 39,
+          "end": 87,
+          "text": "cargo audit showed a crossbeam-epoch finding [1]",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 89,
+          "end": 674,
+          "text": "```\n$ cargo audit \n    Fetching advisory database from `https://github.com/RustSec/advisory-db.git`\n      Loaded 1239 security advisories (from /root/.cargo/advisory-db)\n    Updating crates.io index\n    Scanning Cargo.lock for vulnerabilities (550 crate dependencies)\nCrate:     crossbeam-epoch\nVersion:   0.9.18\nTitle:     Invalid pointer dereference in `fmt::Pointer` impl for `Atomic` and `Shared` when the underlying pointer is invalid\nDate:      2026-07-06\nID:        RUSTSEC-2026-0204\nURL:       https://rustsec.org/advisories/RUSTSEC-2026-0204\nSolution:  Upgrade to >=0.9.20\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 767,
+          "end": 848,
+          "text": "Ran cargo build and cargo test post the update, both worked fine, no issues found",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "controlled-phrase-a",
+      "cohort": "controlled",
+      "input": {
+        "repositoryPrivate": false,
+        "title": "Expected behavior",
+        "description": "## Expected behavior\n\nThe client must reject an empty access key before sending the request.",
+        "taskText": "",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_body",
+          "start": 22,
+          "end": 92,
+          "text": "The client must reject an empty access key before sending the request.",
+          "label": "requirement"
+        }
+      ]
+    },
+    {
+      "id": "controlled-phrase-b",
+      "cohort": "controlled",
+      "input": {
+        "repositoryPrivate": false,
+        "title": "Expected behavior",
+        "description": "## Expected behavior\n\nIf the access key is empty, do not send the request; return an error to the caller.",
+        "taskText": "",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_body",
+          "start": 22,
+          "end": 105,
+          "text": "If the access key is empty, do not send the request; return an error to the caller.",
+          "label": "requirement"
+        }
+      ]
+    },
+    {
+      "id": "controlled-test-past",
+      "cohort": "controlled",
+      "input": {
+        "repositoryPrivate": false,
+        "title": "Client change",
+        "description": "## Validation results\n\nThe regression test rejected an empty access key before a request was sent.",
+        "taskText": "",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_body",
+          "start": 23,
+          "end": 98,
+          "text": "The regression test rejected an empty access key before a request was sent.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "controlled-test-future",
+      "cohort": "controlled",
+      "input": {
+        "repositoryPrivate": false,
+        "title": "Client change",
+        "description": "## Acceptance criteria\n\nThe regression test must reject an empty access key before a request is sent.",
+        "taskText": "",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_body",
+          "start": 24,
+          "end": 101,
+          "text": "The regression test must reject an empty access key before a request is sent.",
+          "label": "requirement"
+        }
+      ]
+    },
+    {
+      "id": "controlled-bot-usage",
+      "cohort": "controlled",
+      "input": {
+        "repositoryPrivate": false,
+        "title": "Webhook change",
+        "description": "## Reviewer instructions\n\nAsk the bot to retry the failed webhook delivery.",
+        "taskText": "",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_body",
+          "start": 26,
+          "end": 75,
+          "text": "Ask the bot to retry the failed webhook delivery.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "controlled-bot-product",
+      "cohort": "controlled",
+      "input": {
+        "repositoryPrivate": false,
+        "title": "Webhook change",
+        "description": "## Expected behavior\n\nThe bot must retry a failed webhook delivery.",
+        "taskText": "",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_body",
+          "start": 22,
+          "end": 67,
+          "text": "The bot must retry a failed webhook delivery.",
+          "label": "requirement"
+        }
+      ]
+    }
+  ]
+}

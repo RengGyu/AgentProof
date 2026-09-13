@@ -1,8 +1,11 @@
 import { readFileSync, writeFileSync, renameSync, openSync, fchmodSync, closeSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { mkdirSync } from "node:fs";
 import {
   isValidGeneralPrAssessmentSummary,
+  readOrdinaryDocumentationSummary,
+  readOperatorTargetDiagnostics,
   readOperatorSemanticDiagnostics,
   runAnalyzePrSmoke
 } from "./smoke-analyze-pr-url.mjs";
@@ -125,6 +128,7 @@ export async function runCurrentExternalPrCorpusSmoke({
     requirementStatusSummary: summarizeRequirementStatusCounts(results, "requirementStatusCounts"),
     requirementEvidenceStatusSummary: summarizeRequirementStatusCounts(results, "requirementEvidenceStatusCounts"),
     generalPrAssessmentSummary: summarizeGeneralPrAssessments(results),
+    ordinaryDocumentationSummary: summarizeOrdinaryDocumentation(results),
     qualityGateSummary: summarizeQualityGates(results.filter((item) => item.analysisStatus === "completed")),
     timingSummary: summarizeAnalyzeTimings(results.filter((item) => item.analysisStatus === "completed")),
     githubEvidenceTimingSummary: summarizeGitHubEvidenceTimings(results.filter((item) => item.analysisStatus === "completed")),
@@ -154,6 +158,14 @@ export async function runCurrentExternalPrCorpusSemanticBoundaryDiagnostic({
       const result = await runAnalyze({ ...input, operatorDiagnosticsToken });
       if (!isValidOperatorSemanticDiagnostics(result.operatorSemanticDiagnostics)) {
         throw new Error("Operator staged diagnostic was unavailable.");
+      }
+      // The aggregate wrapper must reject absent or malformed authenticated
+      // target diagnostics before it counts a corpus case as complete.
+      const targetDiagnostic = readOperatorTargetDiagnostics(result.operatorTargetDiagnostics);
+      if (targetDiagnostic.targetCount > 0) {
+        const validator = targetDiagnostic.targets[0].validator;
+        const aggregate = result.operatorSemanticDiagnostics;
+        if (validator.claimState !== aggregate.claimState || validator.evidenceState !== aggregate.evidenceState || validator.claimInvalidReason !== (aggregate.claimInvalidReason ?? null) || validator.evidenceInvalidReason !== (aggregate.evidenceInvalidReason ?? null)) throw new Error("Operator target diagnostic did not match staged diagnostic.");
       }
       diagnostics.push(result.operatorSemanticDiagnostics);
       return result;
@@ -193,12 +205,28 @@ function completedResult(testCase, result) {
     evidenceCount: result.evidenceCount,
     limitationCount: result.limitationCount,
     generalPrAssessmentSummary: result.generalPrAssessmentSummary,
+    ordinaryDocumentationSummary: readOrdinaryDocumentationSummary(result.ordinaryDocumentationSummary),
     analyzeTiming: result.analyzeTiming,
     githubEvidenceTiming: result.githubEvidenceTiming,
     qualityGate: result.qualityGate,
     savedReportPrivacy: result.savedReportPrivacy,
     savedReportDeleted: result.savedReportDeleted
   };
+}
+
+function summarizeOrdinaryDocumentation(results) {
+  const summary = { completedWithSummaryCount: 0, completedWithoutSummaryCount: 0, predicateCount: 0, stateCounts: { supported: 0, contradicted: 0, unavailable: 0 } };
+  for (const result of results) {
+    if (result.analysisStatus !== "completed") continue;
+    const documentation = result.ordinaryDocumentationSummary;
+    if (!documentation) { summary.completedWithoutSummaryCount += 1; continue; }
+    summary.completedWithSummaryCount += 1;
+    for (const predicate of documentation.predicates) {
+      summary.predicateCount += 1;
+      summary.stateCounts[predicate.state] += 1;
+    }
+  }
+  return summary;
 }
 
 function isValidOperatorSemanticDiagnostics(value) {
@@ -386,7 +414,8 @@ export function assertAggregateOnlyRunArtifact(value) {
   exactObject(value, [
     "version", "privacy", "status", "observedAt", "sourceSnapshotFingerprint", "caseCount", "completedCount",
     "incompleteCount", "requirementStatusSummary", "requirementEvidenceStatusSummary", "generalPrAssessmentSummary",
-    "qualityGateSummary", "timingSummary", "githubEvidenceTimingSummary", "results"
+    "qualityGateSummary", "timingSummary", "githubEvidenceTimingSummary", "results",
+    ...(Object.hasOwn(value, "ordinaryDocumentationSummary") ? ["ordinaryDocumentationSummary"] : [])
   ]);
   if (value.version !== 1 || value.privacy !== "external-pr-current-corpus-run-summary-only" ||
     !["completed", "incomplete"].includes(value.status) || !Number.isFinite(Date.parse(value.observedAt)) ||
@@ -395,6 +424,15 @@ export function assertAggregateOnlyRunArtifact(value) {
     value.caseCount !== value.results.length || value.caseCount !== value.completedCount + value.incompleteCount) fail();
 
   countRecord(value.requirementStatusSummary, REQUIREMENT_STATUSES);
+  if (Object.hasOwn(value, "ordinaryDocumentationSummary")) {
+    const documentation = value.ordinaryDocumentationSummary;
+    exactObject(documentation, ["completedWithSummaryCount", "completedWithoutSummaryCount", "predicateCount", "stateCounts"]);
+    exactObject(documentation.stateCounts, ["supported", "contradicted", "unavailable"]);
+    if (![documentation.completedWithSummaryCount, documentation.completedWithoutSummaryCount, documentation.predicateCount, ...Object.values(documentation.stateCounts)].every(nonNegativeInteger) ||
+      documentation.completedWithSummaryCount + documentation.completedWithoutSummaryCount !== value.completedCount ||
+      Object.values(documentation.stateCounts).reduce((sum, count) => sum + count, 0) !== documentation.predicateCount ||
+      documentation.predicateCount < documentation.completedWithSummaryCount || documentation.predicateCount > documentation.completedWithSummaryCount * 8) fail();
+  }
   countRecord(value.requirementEvidenceStatusSummary, REQUIREMENT_STATUSES);
   const hasObservationSummary = Object.hasOwn(value.generalPrAssessmentSummary, "observationSummary");
   exactObject(value.generalPrAssessmentSummary, [
@@ -573,7 +611,7 @@ export function writeCurrentExternalPrCaseDetails(details, outputPath) {
   renameSync(temporary, outputPath);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   if (process.argv.slice(2).includes("--help")) {
     console.log("Usage: pnpm smoke:external-pr-current-corpus\n\nThis command accepts no CLI flags. It reads only its configured snapshot path when run; use AGENTPROOF_EXTERNAL_CORPUS_SNAPSHOT, AGENTPROOF_EXTERNAL_CORPUS_RUN_OUTPUT, AGENTPROOF_SMOKE_BASE_URL, and the existing approved token environment handling.");
   } else {

@@ -63,6 +63,41 @@ describe("POST /api/reports", () => {
     expect(json.privacy).toBe("summary-only");
   });
 
+  it("imports both scoped summaries through POST and GET without raw evidence or verified authority", async () => {
+    const report = scopedSummaryReport();
+    expect(report.evidenceIndex.length).toBeGreaterThan(0);
+    const response = await POST(new Request("http://localhost/api/reports", { method: "POST", body: JSON.stringify({ report }) }));
+    expect(response.status).toBe(200);
+    const saved = await response.json();
+    expect(saved.authenticity).toBe("imported_unverified");
+    const context = { params: Promise.resolve({ id: saved.id }) };
+    const read = await GET(new Request(saved.url), context);
+    expect(read.status).toBe(200);
+    const result = await read.json();
+    expect(result.authenticity).toBe("imported_unverified");
+    expect(result.report.ordinaryStaticSummary).toEqual(report.ordinaryStaticSummary);
+    expect(result.report.ordinaryDocumentationSummary).toEqual(report.ordinaryDocumentationSummary);
+    expect(result.report.evidenceIndex).toEqual([]);
+    expect(JSON.stringify(result.report)).not.toContain("PRIVATE_RAW_EVIDENCE");
+    expect(JSON.stringify(result.report.ordinaryStaticSummary)).not.toMatch(/"(?:aliasName|member|headSha|artifactDigest|content|path)":/);
+    expect((await DELETE(new Request(saved.url), context)).status).toBe(200);
+    expect((await GET(new Request(saved.url), context)).status).toBe(404);
+  });
+
+  it.each(["static", "documentation", "v1", "authority", "positive"])("rejects invalid scoped imports without bypassing the full gate: %s", async kind => {
+    const report = kind === "authority" ? { ...authoritativeArtifactReport("authority-marker"), ordinaryStaticSummary: scopedSummaryReport().ordinaryStaticSummary } : scopedSummaryReport();
+    if (kind === "static") Object.assign(report.ordinaryStaticSummary!, { aliasName: "PrivateOperand" });
+    if (kind === "documentation") Object.assign(report.ordinaryDocumentationSummary!, { literal: "PrivateOperand" });
+    if (kind === "v1") delete (report as Partial<typeof report>).reportSchemaVersion;
+    if (kind === "positive") report.requirements[0].proofAxes = [{ subject: "execution", polarity: "present", state: "satisfied", evidenceRefs: [] }];
+    const response = await POST(new Request("http://localhost/api/reports", { method: "POST", body: JSON.stringify({ report }) }));
+    expect(response.status).toBe(422);
+    const result = await response.json();
+    if (kind === "authority") expect(result.details.join(" ")).toContain("active v2 contract authority");
+    if (kind === "positive") expect(result.details.join(" ")).toContain("receipt-gated positive");
+    expect(JSON.stringify(result)).not.toContain("PrivateOperand");
+  });
+
   it("rejects inbound authoritative artifact reports before saving", async () => {
     const marker = "raw-report-save-authority-marker";
     process.env.AGENTPROOF_REPORTS_SUPABASE_URL = "https://agentproof-test.supabase.co";
@@ -302,6 +337,14 @@ describe("POST /api/reports", () => {
     expect(deleteJson.error).toBe("Saved report delete failed.");
   });
 });
+
+function scopedSummaryReport() {
+  return {
+    ...generateVerificationReportV2FromInput({ ...demoScenarios["scope-creep"], logs: [{ source: "test", text: "PRIVATE_RAW_EVIDENCE" }] }),
+    ordinaryDocumentationSummary: { version: 1 as const, scope: "literal_presence_only" as const, predicates: [{ sourceKind: "pr_body" as const, sourceOrdinal: 1, legacyRequirementId: null, state: "supported" as const }] },
+    ordinaryStaticSummary: { version: 1 as const, scope: "direct_union_membership_only" as const, interpretation: "hypothesis" as const, lookupScope: "changed_files_only" as const, lookupIncomplete: false, predicates: [{ sourceKind: "pr_body" as const, sourceOrdinal: 1, artifactCounts: { present: 1, absent: 0, unavailable: 0 } }] }
+  };
+}
 
 function authoritativeArtifactReport(marker: string) {
   const headSha = "a".repeat(40);

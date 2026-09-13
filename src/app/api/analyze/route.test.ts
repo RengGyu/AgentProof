@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { validateVerificationReport } from "@/lib/report-validation";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
+import * as runtimeReportValidation from "@/lib/report-runtime-validation";
 import type { VerificationReport, VerificationReportV2 } from "@/lib/types";
 
 afterEach(() => {
@@ -121,6 +122,21 @@ describe("POST /api/analyze", () => {
         selectedCountBuckets: { sourceSpans: "0", evidenceCandidates: "0" },
         semanticPackageFailureReasons: [],
         omittedReasonCounts: { spanBudget: 0, evidenceBudget: 0, inputByteBudget: 0, unsafeDescriptor: 0, noDeterministicSignal: 0 }
+      });
+      expect(json).toHaveProperty("operatorTargetDiagnostics", {
+        version: 1,
+        targetCount: 0,
+        omittedTargetCount: 0,
+        rejectedProviderProposalCount: 0,
+        projectionOmissionCounts: { targetLimit: 0, sourceRefLimit: 0, changeClusterRefLimit: 0, evidenceRefLimit: 0, proposalLimit: 0 },
+        ordinaryDocumentation: {
+          state: "observation_disabled",
+          admittedObjectiveCount: 0,
+          planCount: 0,
+          rejectionCounts: { multiSpan: 0, sourceIneligible: 0, unsupportedWording: 0, unsafePath: 0, redactedLiteral: 0, planLimit: 0 },
+          predicateCounts: { supported: 0, contradicted: 0, unavailable: 0 }
+        },
+        targets: []
       });
       expect(Object.keys(json.operatorDiagnostics ?? {}).sort()).toEqual([
         "claimInvalidReason", "claimState", "evidenceCoverage", "evidenceInvalidReason", "evidenceState", "freshnessFailure", "omittedReasonCounts", "providerCallCount", "selectedCountBuckets", "semanticPackageFailureReasons", "sourceCoverage"
@@ -280,13 +296,14 @@ describe("POST /api/analyze", () => {
       const operator = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", "x-agentproof-observation-diagnostics": "semantic-boundary-v1", "x-agentproof-ops-token": "ops-secret-value" }, body }));
       const operatorJson = await operator.json() as { operatorDiagnostics?: { freshnessFailure?: unknown }; report: VerificationReport };
       const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
-      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; operatorTargetDiagnostics?: unknown; report: VerificationReport };
 
       expect(operator.status, JSON.stringify(operatorJson)).toBe(200);
       expect(operatorJson.operatorDiagnostics?.freshnessFailure).toEqual({ phase: "before_claim", state: "unavailable", reason: "auth_unavailable" });
       expect(fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses")).toHaveLength(0);
       expect(JSON.stringify(operatorJson.report)).not.toContain("auth_unavailable");
       expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(publicJson.operatorTargetDiagnostics).toBeUndefined();
       expect(JSON.stringify(publicJson)).not.toContain("auth_unavailable");
     } finally {
       for (const [key, value] of Object.entries(previous)) {
@@ -342,7 +359,7 @@ describe("POST /api/analyze", () => {
         headers: { "content-type": "application/json" },
         body
       }));
-      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; operatorTargetDiagnostics?: unknown; report: VerificationReport };
 
       expect(operator.status).toBe(200);
       expect(operatorJson.operatorDiagnostics?.claimInvalidReason).toBe("span_binding_invalid");
@@ -350,6 +367,7 @@ describe("POST /api/analyze", () => {
       expect(JSON.stringify(operatorJson.report)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
       expect(publicResponse.status).toBe(200);
       expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(publicJson.operatorTargetDiagnostics).toBeUndefined();
       expect(JSON.stringify(publicJson)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
     } finally {
       for (const [key, value] of Object.entries(previous)) {
@@ -386,10 +404,11 @@ describe("POST /api/analyze", () => {
       const operator = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", "x-agentproof-observation-diagnostics": "semantic-boundary-v1", "x-agentproof-ops-token": "ops-secret-value" }, body }));
       const operatorJson = await operator.json() as { operatorDiagnostics?: { claimInvalidReason?: string | null; evidenceInvalidReason?: string | null }; report: VerificationReport };
       const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
-      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; report: VerificationReport };
+      const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; operatorTargetDiagnostics?: unknown; report: VerificationReport };
       expect(operatorJson.operatorDiagnostics).toMatchObject({ claimInvalidReason: null, evidenceInvalidReason: "root_shape_invalid" });
       expect(JSON.stringify(operatorJson.report)).not.toMatch(/evidenceInvalidReason|semanticEvidenceInvalidReason/);
       expect(publicJson.operatorDiagnostics).toBeUndefined();
+      expect(publicJson.operatorTargetDiagnostics).toBeUndefined();
       expect(JSON.stringify(publicJson)).not.toMatch(/evidenceInvalidReason|semanticEvidenceInvalidReason/);
     } finally {
       for (const [key, value] of Object.entries(previous)) {
@@ -540,6 +559,7 @@ describe("POST /api/analyze", () => {
   it("returns a validator-approved advisory assessment without returning the private observation bundle", async () => {
     const previousMode = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
     process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
+    const validationSpy = vi.spyOn(runtimeReportValidation, "resolveRuntimeReportValidation");
 
     try {
       const response = await POST(new Request("http://localhost/api/analyze", {
@@ -564,8 +584,12 @@ describe("POST /api/analyze", () => {
       });
       expect(JSON.stringify(json)).not.toContain("sourceSpanRefs");
       expect(JSON.stringify(json)).not.toContain("sourceBindingRef");
-      expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+      // The real server validator has the transient source/artifact context.
+      expect(validationSpy.mock.results.at(-1)?.value).toMatchObject({ valid: true, usedDeterministicFallback: false });
+      // JSON preserves the public structure, but cannot transfer that authority.
+      expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: false, errors: ["Source-derived outcomes require independent transient source and artifact validation."] });
     } finally {
+      validationSpy.mockRestore();
       if (previousMode === undefined) delete process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE;
       else process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = previousMode;
     }

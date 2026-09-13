@@ -1,4 +1,5 @@
 export const VERIFICATION_CAPABILITIES_V2 = [
+  "typescript_union_member",
   "documentation_literal",
   "path_change_absence",
   "test_case",
@@ -9,17 +10,19 @@ export const VERIFICATION_CAPABILITIES_V2 = [
 export type VerificationCapabilityV2 = (typeof VERIFICATION_CAPABILITIES_V2)[number];
 
 export const RELEASE_ELIGIBLE_VERIFICATION_CAPABILITIES_V2 = [
+  "typescript_union_member",
   "documentation_literal",
   "path_change_absence"
 ] as const satisfies readonly VerificationCapabilityV2[];
 
 /**
  * General PR prose is advisory-only. If an authoritative typed contract is
- * later materialized from that flow, it may only plan the literal-document
- * capability until the separate absence contract has a complete rename-safe
- * inventory proof.
+ * later materialized from that flow, only literal-document and direct union
+ * membership capabilities are available. Path absence still needs a complete
+ * rename-safe inventory proof.
  */
 export const GENERAL_PR_EXECUTABLE_CAPABILITIES_V2 = [
+  "typescript_union_member",
   "documentation_literal"
 ] as const satisfies readonly VerificationCapabilityV2[];
 
