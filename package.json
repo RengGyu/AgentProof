@@ -55,6 +55,7 @@
     "human-ab:v2:prerecruit": "node scripts/llm-proof-planner-human-ab-prerecruit.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.23.0",
     "lucide-react": "^0.468.0",
     "next": "^15.0.0",
     "openai": "^7.4.0",
